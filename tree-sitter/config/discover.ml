@@ -64,10 +64,7 @@ let clibs =
     || string_has ~needle:"cygwin" sys
     || string_has ~needle:"mingw" sys
     || string_has ~needle:"msvc" sys
-  then
-    (* On Windows, we don't need -ldl (dlopen is provided differently).
-       Depending on the toolchain, we may need different flags. *)
-    []
+  then []
   else []
 
 let () =

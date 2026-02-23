@@ -2,8 +2,8 @@
 
 (library
  (name tree_sitter_ocaml)
- (public_name mosaic.tree-sitter.ocaml)
- (libraries mosaic.tree-sitter)
+ (public_name tree-sitter.ocaml)
+ (libraries tree-sitter)
  (foreign_stubs
   (language c)
   (names

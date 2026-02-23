@@ -1,8 +1,0 @@
-(test
- (name test_tree_sitter)
- (package mosaic)
- (libraries
-  mosaic.tree-sitter
-  mosaic.tree-sitter.json
-  mosaic.tree-sitter.ocaml
-  windtrap))

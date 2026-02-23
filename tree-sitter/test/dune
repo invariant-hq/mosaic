@@ -1,0 +1,4 @@
+(test
+ (name test_tree_sitter)
+ (package tree-sitter)
+ (libraries windtrap tree-sitter tree-sitter.json tree-sitter.ocaml))

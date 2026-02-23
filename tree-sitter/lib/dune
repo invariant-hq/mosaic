@@ -1,6 +1,6 @@
 (library
  (name tree_sitter)
- (public_name mosaic.tree-sitter)
+ (public_name tree-sitter)
  (foreign_stubs
   (language c)
   (names tree_sitter_stubs tree_sitter_runtime)
