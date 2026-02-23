@@ -14,12 +14,14 @@ type pool = {
   mutable storage : bytes;
   mutable offsets : int array;
   mutable lengths : int array;
+  mutable capacities : int array;
   mutable refcounts : int array;
   mutable generations : int array;
   mutable free_stack : int array;
   mutable free_count : int;
   mutable next_id : int;
   mutable storage_cursor : int;
+  segmenter : Uuseg_grapheme_cluster.t;
 }
 
 (* Constants & Bit Layout *)
@@ -51,6 +53,10 @@ let default_tab_width = 2
 let initial_pool_ids = 4096
 let initial_pool_bytes = 4096 * 8
 
+let () =
+  if Sys.word_size <> 64 then
+    failwith "Glyph: 64-bit OCaml required (63-bit integer packing)"
+
 (* ASCII Helpers *)
 
 let[@inline] normalize_tab_width w = if w <= 0 then default_tab_width else w
@@ -61,19 +67,22 @@ let[@inline] normalize_tab_width w = if w <= 0 then default_tab_width else w
 let[@inline] ascii_width ~tab_width b =
   if b = 0x09 then tab_width else if b >= 0x20 && b <= 0x7E then 1 else 0
 
-(* Check if string contains only ASCII bytes - processes 4 bytes at a time *)
+(* Check if 4 consecutive bytes are all ASCII (< 128). Uses native int
+   operations only — zero allocation on 64-bit OCaml. *)
+let[@inline] is_ascii_4 str i =
+  let c0 = Char.code (String.unsafe_get str i) in
+  let c1 = Char.code (String.unsafe_get str (i + 1)) in
+  let c2 = Char.code (String.unsafe_get str (i + 2)) in
+  let c3 = Char.code (String.unsafe_get str (i + 3)) in
+  c0 lor c1 lor c2 lor c3 < 128
+
 let rec is_ascii_only_tail str len j =
   j >= len
   || Char.code (String.unsafe_get str j) < 128
      && is_ascii_only_tail str len (j + 1)
 
 let rec is_ascii_only str len i =
-  if i + 4 <= len then
-    let c0 = Char.code (String.unsafe_get str i) in
-    let c1 = Char.code (String.unsafe_get str (i + 1)) in
-    let c2 = Char.code (String.unsafe_get str (i + 2)) in
-    let c3 = Char.code (String.unsafe_get str (i + 3)) in
-    c0 lor c1 lor c2 lor c3 < 128 && is_ascii_only str len (i + 4)
+  if i + 4 <= len then is_ascii_4 str i && is_ascii_only str len (i + 4)
   else is_ascii_only_tail str len i
 
 (* Width Predicates *)
@@ -163,7 +172,7 @@ let rec grapheme_width_wcwidth_loop str limit tab_width i acc =
     grapheme_width_wcwidth_loop str limit tab_width next
       (acc + codepoint_width_wcwidth ~tab_width cp)
 
-let grapheme_width ~method_ ~tab_width str off len =
+let cluster_width ~method_ ~tab_width str off len =
   let limit = off + len in
   match method_ with
   | `Wcwidth -> grapheme_width_wcwidth_loop str limit tab_width off 0
@@ -239,7 +248,7 @@ let[@inline] validate_complex pool c =
 
 let space = pack_simple 0x20 1
 
-let[@inline] width ?(tab_width = default_tab_width) c =
+let[@inline] grapheme_width ?(tab_width = default_tab_width) c =
   let tab_width = normalize_tab_width tab_width in
   if is_empty c then 0
   else if is_inline c then
@@ -249,6 +258,12 @@ let[@inline] width ?(tab_width = default_tab_width) c =
     let l = left_extent c in
     let r = right_extent c in
     if is_continuation c then l + 1 + r else if l <> 0 then 0 else r + 1
+
+let[@inline] pool_key c =
+  if is_inline c then None
+  else
+    let idx = pool_index c in
+    if idx = 0 then None else Some (pool_payload c)
 
 let[@inline] cell_width c =
   if c = 0 then 0
@@ -288,12 +303,14 @@ module Pool = struct
       storage = Bytes.create initial_pool_bytes;
       offsets = Array.make initial_pool_ids 0;
       lengths = Array.make initial_pool_ids 0;
+      capacities = Array.make initial_pool_ids 0;
       refcounts = Array.make initial_pool_ids 0;
       generations = Array.make initial_pool_ids 0;
       free_stack = Array.make initial_pool_ids 0;
       free_count = 0;
       next_id = 1;
       storage_cursor = 0;
+      segmenter = Uuseg_grapheme_cluster.create ();
     }
 
   let clear pool =
@@ -302,10 +319,11 @@ module Pool = struct
     pool.storage_cursor <- 0;
     pool.free_count <- 0;
     (* Only zero slots [0..used-1]. Offsets and refcounts are overwritten by
-       alloc_string so they don't need clearing. Lengths must be zeroed to
-       prevent the storage-reuse path from reading stale offsets. Generations
-       must be zeroed so old glyphs fail generation validation. *)
+       alloc_string so they don't need clearing. Lengths and capacities must be
+       zeroed to prevent the storage-reuse path from reading stale offsets.
+       Generations must be zeroed so old glyphs fail generation validation. *)
     Array.fill pool.lengths ~pos:0 ~len:used 0;
+    Array.fill pool.capacities ~pos:0 ~len:used 0;
     Array.fill pool.generations ~pos:0 ~len:used 0
 
   let ensure_id_capacity pool =
@@ -320,6 +338,7 @@ module Pool = struct
       in
       pool.offsets <- resize pool.offsets 0;
       pool.lengths <- resize pool.lengths 0;
+      pool.capacities <- resize pool.capacities 0;
       pool.refcounts <- resize pool.refcounts 0;
       pool.generations <- resize pool.generations 0;
       pool.free_stack <- resize pool.free_stack 0)
@@ -354,13 +373,14 @@ module Pool = struct
   let alloc_string pool str off len =
     ensure_id_capacity pool;
     let id = next_free_id pool in
-    let cap = Array.unsafe_get pool.lengths id in
+    let cap = Array.unsafe_get pool.capacities id in
     let cursor =
       if cap >= len then Array.unsafe_get pool.offsets id
       else (
         ensure_storage_capacity pool len;
         let cur = pool.storage_cursor in
         pool.storage_cursor <- cur + len;
+        Array.unsafe_set pool.capacities id len;
         cur)
     in
     Bytes.blit_string ~src:str ~src_pos:off ~dst:pool.storage ~dst_pos:cursor
@@ -410,32 +430,44 @@ module Pool = struct
 
   let rec ascii_width_loop str limit tab_width i acc =
     if i + 4 <= limit then
-      let b0 = Char.code (String.unsafe_get str i) in
-      let b1 = Char.code (String.unsafe_get str (i + 1)) in
-      let b2 = Char.code (String.unsafe_get str (i + 2)) in
-      let b3 = Char.code (String.unsafe_get str (i + 3)) in
-      if b0 lor b1 lor b2 lor b3 >= 128 then -1
+      if not (is_ascii_4 str i) then -1
       else
-        let w0 = ascii_width ~tab_width b0 in
-        let w1 = ascii_width ~tab_width b1 in
-        let w2 = ascii_width ~tab_width b2 in
-        let w3 = ascii_width ~tab_width b3 in
+        let w0 = ascii_width ~tab_width (Char.code (String.unsafe_get str i)) in
+        let w1 =
+          ascii_width ~tab_width (Char.code (String.unsafe_get str (i + 1)))
+        in
+        let w2 =
+          ascii_width ~tab_width (Char.code (String.unsafe_get str (i + 2)))
+        in
+        let w3 =
+          ascii_width ~tab_width (Char.code (String.unsafe_get str (i + 3)))
+        in
         ascii_width_loop str limit tab_width (i + 4) (acc + w0 + w1 + w2 + w3)
     else ascii_width_loop_tail str limit tab_width i acc
 
   let intern_core pool method_ tab_width precomputed_width off len str =
     if len = 0 then 0
     else if len = 1 then
-      (* Single byte: always ASCII (0-127) *)
       let b = Char.code (String.unsafe_get str off) in
-      let w =
-        match precomputed_width with
-        | Some w -> w
-        | None -> ascii_width ~tab_width b
-      in
-      if w <= 0 then 0
-      else if b = 0x09 then pack_simple b 0
-      else pack_simple b w
+      if b < 0x80 then
+        let w =
+          match precomputed_width with
+          | Some w -> w
+          | None -> ascii_width ~tab_width b
+        in
+        if w <= 0 then 0
+        else if b = 0x09 then pack_simple b 0
+        else pack_simple b w
+      else
+        (* Single invalid UTF-8 byte is interpreted as U+FFFD. *)
+        let d = String.get_utf_8_uchar str off in
+        let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
+        let w =
+          match precomputed_width with
+          | Some w -> w
+          | None -> codepoint_width ~method_ ~tab_width cp
+        in
+        if w <= 0 then 0 else pack_simple cp w
     else
       (* Multi-byte: check if single codepoint *)
       let d = String.get_utf_8_uchar str off in
@@ -457,13 +489,13 @@ module Pool = struct
           | None ->
               let first_b = Char.code (String.unsafe_get str off) in
               if first_b >= 128 then
-                grapheme_width ~method_ ~tab_width str off len
+                cluster_width ~method_ ~tab_width str off len
               else
                 let ascii_w =
                   ascii_width_loop str (off + len) tab_width off 0
                 in
                 if ascii_w >= 0 then ascii_w
-                else grapheme_width ~method_ ~tab_width str off len
+                else cluster_width ~method_ ~tab_width str off len
         in
         if w <= 0 then 0
         else
@@ -491,8 +523,10 @@ module Pool = struct
         else if b >= 0x20 && b <= 0x7E then f (pack_simple b 1)
       done
     else
-      let seg = Uuseg_grapheme_cluster.create () in
       let ignore_zwj = width_method = `No_zwj in
+      let seg = pool.segmenter in
+      Uuseg_grapheme_cluster.reset seg;
+      Uuseg_grapheme_cluster.set_ignore_zwj seg ignore_zwj;
 
       let emit_complex ~off ~clus_len ~width =
         let idx = alloc_string pool str off clus_len in
@@ -512,15 +546,7 @@ module Pool = struct
 
       let rec loop i =
         if i >= len then ()
-        else if
-          i + 4 <= len
-          &&
-          let c0 = Char.code (String.unsafe_get str i) in
-          let c1 = Char.code (String.unsafe_get str (i + 1)) in
-          let c2 = Char.code (String.unsafe_get str (i + 2)) in
-          let c3 = Char.code (String.unsafe_get str (i + 3)) in
-          c0 lor c1 lor c2 lor c3 < 128
-        then (
+        else if i + 4 <= len && is_ascii_4 str i then (
           emit_ascii (Char.code (String.unsafe_get str i));
           emit_ascii (Char.code (String.unsafe_get str (i + 1)));
           emit_ascii (Char.code (String.unsafe_get str (i + 2)));
@@ -535,7 +561,7 @@ module Pool = struct
             let end_pos = next_boundary seg ~ignore_zwj str i len in
             let clus_len = end_pos - i in
             let w =
-              grapheme_width ~method_:width_method ~tab_width str i clus_len
+              cluster_width ~method_:width_method ~tab_width str i clus_len
             in
             (if w > 0 then
                let d = String.get_utf_8_uchar str i in
@@ -553,55 +579,6 @@ module Pool = struct
                else emit_complex ~off:i ~clus_len ~width:w);
             loop end_pos
       in
-      loop 0
-
-  let iter_grapheme_info ~width_method ~tab_width f str =
-    let tab_width = normalize_tab_width tab_width in
-    let len = String.length str in
-    if len = 0 then ()
-    else
-      let seg = Uuseg_grapheme_cluster.create () in
-      let ignore_zwj = width_method = `No_zwj in
-
-      let emit_ascii i =
-        let b = Char.code (String.unsafe_get str i) in
-        let w = ascii_width ~tab_width b in
-        if w > 0 then f ~offset:i ~len:1 ~width:w
-      in
-
-      let rec loop i =
-        if i >= len then ()
-        else if
-          i + 4 <= len
-          &&
-          let c0 = Char.code (String.unsafe_get str i) in
-          let c1 = Char.code (String.unsafe_get str (i + 1)) in
-          let c2 = Char.code (String.unsafe_get str (i + 2)) in
-          let c3 = Char.code (String.unsafe_get str (i + 3)) in
-          c0 lor c1 lor c2 lor c3 < 128
-        then (
-          emit_ascii i;
-          emit_ascii (i + 1);
-          emit_ascii (i + 2);
-          emit_ascii (i + 3);
-          loop (i + 4))
-        else
-          let c = String.unsafe_get str i in
-          if Char.code c < 128 then (
-            emit_ascii i;
-            loop (i + 1))
-          else
-            let end_pos = next_boundary seg ~ignore_zwj str i len in
-            let clus_len = end_pos - i in
-            let w =
-              grapheme_width ~method_:width_method ~tab_width str i clus_len
-            in
-            if w > 0 then (
-              f ~offset:i ~len:clus_len ~width:w;
-              loop end_pos)
-            else loop end_pos
-      in
-
       loop 0
 
   (* Data Retrieval *)
@@ -643,13 +620,14 @@ module Pool = struct
         else (
           ensure_id_capacity dst;
           let dst_id = next_free_id dst in
-          let cap = Array.unsafe_get dst.lengths dst_id in
+          let cap = Array.unsafe_get dst.capacities dst_id in
           let cursor =
             if cap >= len then Array.unsafe_get dst.offsets dst_id
             else (
               ensure_storage_capacity dst len;
               let cur = dst.storage_cursor in
               dst.storage_cursor <- cur + len;
+              Array.unsafe_set dst.capacities dst_id len;
               cur)
           in
           Bytes.blit ~src:src.storage ~src_pos:src_off ~dst:dst.storage
@@ -661,7 +639,7 @@ module Pool = struct
           if is_continuation c then
             pack_continuation ~idx:dst_id ~gen:dst_gen ~left:(left_extent c)
               ~right:(right_extent c)
-          else pack_start dst_id dst_gen (width c))
+          else pack_start dst_id dst_gen (grapheme_width c))
 
   let to_string pool c =
     if is_inline c then (
@@ -681,7 +659,6 @@ end
 
 (* Text utilities *)
 
-(* CR: Why is this here, at the toplevel? Do we even need a type for it? *)
 type line_break_kind = [ `LF | `CR | `CRLF ]
 
 module String = struct
@@ -711,17 +688,57 @@ module String = struct
         iter_graphemes_unicode seg str len f next i)
       else iter_graphemes_unicode seg str len f next start
 
-  let iter_graphemes f str =
+  let iter_graphemes ?(ignore_zwj = false) f str =
     let len = Stdlib.String.length str in
     if len = 0 then ()
     else if is_ascii_only str len 0 then iter_graphemes_ascii str len f 0
     else
-      let seg = Uuseg_grapheme_cluster.create () in
+      let seg = Uuseg_grapheme_cluster.create ~ignore_zwj () in
       let d = Stdlib.String.get_utf_8_uchar str 0 in
       let _ =
         Uuseg_grapheme_cluster.check_boundary seg (Uchar.utf_decode_uchar d)
       in
       iter_graphemes_unicode seg str len f (Uchar.utf_decode_length d) 0
+
+  let iter_grapheme_info ~width_method ~tab_width f str =
+    let tab_width = normalize_tab_width tab_width in
+    let len = Stdlib.String.length str in
+    if len = 0 then ()
+    else
+      let seg = Uuseg_grapheme_cluster.create () in
+      let ignore_zwj = width_method = `No_zwj in
+
+      let emit_ascii i =
+        let b = Char.code (Stdlib.String.unsafe_get str i) in
+        let w = ascii_width ~tab_width b in
+        if w > 0 then f ~offset:i ~len:1 ~width:w
+      in
+
+      let rec loop i =
+        if i >= len then ()
+        else if i + 4 <= len && is_ascii_4 str i then (
+          emit_ascii i;
+          emit_ascii (i + 1);
+          emit_ascii (i + 2);
+          emit_ascii (i + 3);
+          loop (i + 4))
+        else
+          let c = Stdlib.String.unsafe_get str i in
+          if Char.code c < 128 then (
+            emit_ascii i;
+            loop (i + 1))
+          else
+            let end_pos = next_boundary seg ~ignore_zwj str i len in
+            let clus_len = end_pos - i in
+            let w =
+              cluster_width ~method_:width_method ~tab_width str i clus_len
+            in
+            if w > 0 then (
+              f ~offset:i ~len:clus_len ~width:w;
+              loop end_pos)
+            else loop end_pos
+      in
+      loop 0
 
   (* String Measurement *)
 
@@ -734,7 +751,7 @@ module String = struct
       measure_ascii_tail str len tab_width (i + 1) (total + w)
 
   let rec measure_ascii str len tab_width i total =
-    if i + 4 <= len then
+    if i + 4 <= len && is_ascii_4 str i then
       let w0 =
         ascii_width ~tab_width (Char.code (Stdlib.String.unsafe_get str i))
       in
@@ -858,6 +875,35 @@ module String = struct
             (Uchar.utf_decode_length d)
             0 init_w init_flags
 
+  let measure_sub ~width_method ~tab_width str ~pos ~len:sub_len =
+    let tab_width = normalize_tab_width tab_width in
+    let end_pos = pos + sub_len in
+    if sub_len <= 0 then 0
+    else if is_ascii_only str end_pos pos then
+      measure_ascii str end_pos tab_width pos 0
+    else
+      match width_method with
+      | `Wcwidth -> measure_wcwidth str end_pos tab_width pos 0
+      | `Unicode | `No_zwj ->
+          let seg = Uuseg_grapheme_cluster.create () in
+          Uuseg_grapheme_cluster.set_ignore_zwj seg (width_method = `No_zwj);
+          let d = Stdlib.String.get_utf_8_uchar str pos in
+          let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
+          let bw =
+            Uuseg_grapheme_cluster.check_boundary_with_width seg
+              (Uchar.unsafe_of_int cp)
+          in
+          let w = if cp = 0x09 then tab_width else (bw land 3) - 1 in
+          let init_w = if w > 0 then w else 0 in
+          let init_flags =
+            (if w > 0 then ms_has_width else 0)
+            lor (if is_regional_indicator cp then ms_ri_pair else 0)
+            lor if is_virama cp then ms_virama else 0
+          in
+          measure_segmented seg str end_pos tab_width
+            (pos + Uchar.utf_decode_length d)
+            0 init_w init_flags
+
   let grapheme_count str =
     let n = ref 0 in
     iter_graphemes (fun ~offset:_ ~len:_ -> incr n) str;
@@ -879,7 +925,7 @@ module String = struct
     | cp when cp >= 0x2000 && cp <= 0x200A -> true
     | _ -> false
 
-  let iter_wrap_breaks ?(width_method = `Unicode) f s =
+  let iter_wrap_breaks_core ?(width_method = `Unicode) f s =
     let len = Stdlib.String.length s in
     let ignore_zwj = width_method = `No_zwj in
     let seg = Uuseg_grapheme_cluster.create () in
@@ -899,10 +945,17 @@ module String = struct
       else
         let next = next_boundary seg ~ignore_zwj s byte_off len in
         if has_break byte_off next then
-          f ~byte_offset:next ~grapheme_offset:g_off;
+          f ~byte_off ~next_off:next ~grapheme_off:g_off;
         loop next (g_off + 1)
     in
     loop 0 0
+
+  let iter_wrap_breaks ?(width_method = `Unicode) f s =
+    iter_wrap_breaks_core ~width_method
+      (fun ~byte_off ~next_off ~grapheme_off ->
+        f ~break_byte_offset:byte_off ~next_byte_offset:next_off
+          ~grapheme_offset:grapheme_off)
+      s
 
   let iter_line_breaks f s =
     let len = Stdlib.String.length s in
