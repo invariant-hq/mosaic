@@ -64,8 +64,8 @@ val blit : src:t -> dst:t -> unit
     Push/pop pairs must be balanced. *)
 
 val push_clip : t -> rect -> unit
-(** Pushes a clipping region. The effective clip is the intersection of the
-    new region with the current clip (hierarchical narrowing). *)
+(** Pushes a clipping region. The effective clip is the intersection of the new
+    region with the current clip (hierarchical narrowing). *)
 
 val pop_clip : t -> unit
 (** Pops the most recent clip. No-op if the stack is empty. *)
@@ -74,5 +74,5 @@ val clear_clip : t -> unit
 (** Removes all clipping regions. *)
 
 val with_clip : t -> rect -> (unit -> 'a) -> 'a
-(** [with_clip t rect f] runs [f ()] with [rect] as the active clip,
-    popping it on return (even on exception). *)
+(** [with_clip t rect f] runs [f ()] with [rect] as the active clip, popping it
+    on return (even on exception). *)

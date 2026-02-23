@@ -575,9 +575,10 @@ let compute_wrap_break_flags t : (int, int8_unsigned_elt, c_layout) Array1.t =
       for i = 0 to t.length - 1 do
         Array1.unsafe_set flags i 0
       done;
-      (* Use Glyph.String.iter_wrap_breaks semantics: mark break opportunities after
-         graphemes containing wrap-break characters (spaces, punctuation, etc.).
-         For each grapheme, check if it contains any wrap-break codepoints. *)
+      (* Use Glyph.String.iter_wrap_breaks semantics: mark break opportunities
+         after graphemes containing wrap-break characters (spaces, punctuation,
+         etc.). For each grapheme, check if it contains any wrap-break
+         codepoints. *)
       for i = 0 to t.length - 1 do
         let code = Array1.unsafe_get t.chars i in
         let g = Glyph.unsafe_of_int code in
@@ -1080,7 +1081,8 @@ let append_code t buf code =
   let g = Glyph.unsafe_of_int code in
   if is_continuation g then ()
   else if code = 10 then Buffer.add_char buf '\n'
-  else if is_grapheme_id g then Buffer.add_string buf (Glyph.Pool.to_string t.pool g)
+  else if is_grapheme_id g then
+    Buffer.add_string buf (Glyph.Pool.to_string t.pool g)
   else if Uchar.is_valid code then
     Buffer.add_utf_8_uchar buf (Uchar.of_int code)
 

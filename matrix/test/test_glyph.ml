@@ -5,7 +5,9 @@ open Glyph
 
 let encode_to_list pool ~width_method ~tab_width str =
   let lst = ref [] in
-  Pool.encode pool ~width_method ~tab_width (fun cell -> lst := cell :: !lst) str;
+  Pool.encode pool ~width_method ~tab_width
+    (fun cell -> lst := cell :: !lst)
+    str;
   List.rev !lst
 
 let check_width msg expected actual = equal ~msg int expected actual
@@ -217,7 +219,9 @@ let measurement_semantics () =
 
   List.iter
     (fun c ->
-      let w = String.measure ~width_method:c.method_ ~tab_width:c.tab_width c.input in
+      let w =
+        String.measure ~width_method:c.method_ ~tab_width:c.tab_width c.input
+      in
       check_width c.name c.expected w)
     cases
 

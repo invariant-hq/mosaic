@@ -1,14 +1,14 @@
 let ensure_dir dir =
   if Sys.file_exists dir then (
     if not (Sys.is_directory dir) then
-      failwith (Printf.sprintf "Frame_dump: %s exists but is not a directory" dir))
+      failwith
+        (Printf.sprintf "Frame_dump: %s exists but is not a directory" dir))
   else
     try Sys.mkdir dir 0o755
     with Sys_error _ ->
       if Sys.file_exists dir && Sys.is_directory dir then ()
       else
-        failwith
-          (Printf.sprintf "Frame_dump: cannot create directory %s" dir)
+        failwith (Printf.sprintf "Frame_dump: cannot create directory %s" dir)
 
 let write_file path contents =
   let oc = open_out_bin path in

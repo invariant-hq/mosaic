@@ -194,22 +194,40 @@ let extract f data = Array.map f data
 
 let line ?id ?label ?style ?(resolution = `Cell) ?(pattern = `Solid) ?glyph
     ?(y_axis = `Y1) ~x ~y data =
-  let kind = Line { x = extract x data; y = extract y data; resolution; pattern; glyph } in
+  let kind =
+    Line { x = extract x data; y = extract y data; resolution; pattern; glyph }
+  in
   { id; label; style; y_axis; kind }
 
 let line_gaps ?id ?label ?style ?(resolution = `Cell) ?(pattern = `Solid) ?glyph
     ?(y_axis = `Y1) ~x ~y data =
-  let ya = extract (fun d -> match y d with None -> Float.nan | Some v -> v) data in
+  let ya =
+    extract (fun d -> match y d with None -> Float.nan | Some v -> v) data
+  in
   let kind = Line { x = extract x data; y = ya; resolution; pattern; glyph } in
   { id; label; style; y_axis; kind }
 
 let scatter ?id ?label ?style ?glyph ?(mode = (`Cell : scatter_mode))
     ?(y_axis = `Y1) ~x ~y data =
-  { id; label; style; y_axis; kind = Scatter { x = extract x data; y = extract y data; mode; glyph } }
+  {
+    id;
+    label;
+    style;
+    y_axis;
+    kind = Scatter { x = extract x data; y = extract y data; mode; glyph };
+  }
 
 let bar ?id ?label ?style ?(direction = `Vertical)
     ?(mode = (`Half_block : bar_mode)) ~category ~value data =
-  let kind = Bar { categories = extract category data; values = extract value data; direction; mode } in
+  let kind =
+    Bar
+      {
+        categories = extract category data;
+        values = extract value data;
+        direction;
+        mode;
+      }
+  in
   { id; label; style; y_axis = `Y1; kind }
 
 let stacked_bar ?id ?(direction = `Vertical) ?(gap = 1) ?size
@@ -268,7 +286,15 @@ let candles ?id ?bullish ?bearish ?(width = (`One : candle_width))
 let circle ?id ?style
     ?(resolution = (`Cell : [ `Cell | `Wave | `Block2x2 | `Braille2x4 ]))
     ?(y_axis = `Y1) ~cx ~cy ~r data =
-  let kind = Circle { cx = extract cx data; cy = extract cy data; r = extract r data; resolution } in
+  let kind =
+    Circle
+      {
+        cx = extract cx data;
+        cy = extract cy data;
+        r = extract r data;
+        resolution;
+      }
+  in
   { id; label = None; style; y_axis; kind }
 
 let shade ?id ?style ~min ~max () =
@@ -280,17 +306,29 @@ let column_bg ?id ?style x =
 
 let area ?id ?label ?style ?(baseline = `Zero) ?(resolution = `Cell)
     ?(y_axis = `Y1) ~x ~y data =
-  let kind = Area { x = extract x data; y = extract y data; baseline; resolution } in
+  let kind =
+    Area { x = extract x data; y = extract y data; baseline; resolution }
+  in
   { id; label; style; y_axis; kind }
 
 let fill_between ?id ?label ?style ?(resolution = `Cell) ?(y_axis = `Y1) ~x
     ~y_low ~y_high data =
-  let kind = Fill_between { x = extract x data; y_low = extract y_low data; y_high = extract y_high data; resolution } in
+  let kind =
+    Fill_between
+      {
+        x = extract x data;
+        y_low = extract y_low data;
+        y_high = extract y_high data;
+        resolution;
+      }
+  in
   { id; label; style; y_axis; kind }
 
 let histogram ?id ?label ?style ?(bins = Bins 10) ?(normalize = `Count) ~x data
     =
-  let bin_edges, bin_values = compute_histogram_bins ~bins ~normalize (extract x data) in
+  let bin_edges, bin_values =
+    compute_histogram_bins ~bins ~normalize (extract x data)
+  in
   { id; label; style; y_axis = `Y1; kind = Histogram { bin_edges; bin_values } }
 
 (* {1 Domain Inference} *)

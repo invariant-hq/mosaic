@@ -5,19 +5,16 @@
    codepoint maps to a 16-bit entry, giving O(1) lookups at runtime with zero
    initialization cost.
 
-   Structure:
-   - prop_index: maps block numbers to deduplicated block IDs (1 byte each)
-   - prop_data: concatenated deduplicated blocks (512 bytes each)
+   Structure: - prop_index: maps block numbers to deduplicated block IDs (1 byte
+   each) - prop_data: concatenated deduplicated blocks (512 bytes each)
 
    The codepoint space is divided into 256-entry blocks. Blocks with identical
    content share the same data, dramatically reducing size for the large
    unassigned/CJK/etc. ranges that share properties.
 
-   Layout per 16-bit entry:
-   - bits 0-4: grapheme_cluster_break (0-17)
-   - bits 5-6: indic_conjunct_break (0-3)
-   - bit 7: extended_pictographic (boolean)
-   - bits 8-9: width (encoded: 0=-1, 1=0, 2=1, 3=2)
+   Layout per 16-bit entry: - bits 0-4: grapheme_cluster_break (0-17) - bits
+   5-6: indic_conjunct_break (0-3) - bit 7: extended_pictographic (boolean) -
+   bits 8-9: width (encoded: 0=-1, 1=0, 2=1, 3=2)
 
    Surrogates (U+D800-U+DFFF) are excluded from the table.
 
@@ -32,9 +29,7 @@ let block_bytes = block_size * 2
 let compute_prop_table () =
   let buf = Bytes.create (unicode_packed_size * 2) in
   for packed = 0 to unicode_packed_size - 1 do
-    let u =
-      Uchar.of_int (if packed < 0xD800 then packed else packed + 0x800)
-    in
+    let u = Uchar.of_int (if packed < 0xD800 then packed else packed + 0x800) in
     let gcb = Uucp.Break.Low.grapheme_cluster u in
     let incb = Uucp.Break.Low.indic_conjunct_break u in
     let extpic = Uucp.Emoji.is_extended_pictographic u in
@@ -101,16 +96,22 @@ let write_mli oc =
     \    block IDs. Each entry is 1 byte. *)\n\
      val prop_index : string\n\n\
      (** Deduplicated block data: concatenated 512-byte blocks, each containing\n\
-    \    256 packed 16-bit entries. Lookup: prop_data.[block_id * 512 + (cp land 0xFF) * 2]. *)\n\
+    \    256 packed 16-bit entries. Lookup: prop_data.[block_id * 512 + (cp \
+     land 0xFF) * 2]. *)\n\
      val prop_data : string\n"
 
 let write_ml oc =
   let flat = compute_prop_table () in
   let index, data, num_unique = compress_prop_table flat in
   output_string oc header;
-  Printf.fprintf oc "(* %d unique blocks out of %d total (%.1f%% dedup, %d bytes data) *)\n\n"
-    num_unique (unicode_packed_size / block_size)
-    (100. *. (1. -. float_of_int num_unique /. float_of_int (unicode_packed_size / block_size)))
+  Printf.fprintf oc
+    "(* %d unique blocks out of %d total (%.1f%% dedup, %d bytes data) *)\n\n"
+    num_unique
+    (unicode_packed_size / block_size)
+    (100.
+    *. (1.
+       -. float_of_int num_unique
+          /. float_of_int (unicode_packed_size / block_size)))
     (String.length data);
   write_string_literal oc "prop_index" index;
   write_string_literal oc "prop_data" data
@@ -120,9 +121,7 @@ let file = "matrix/lib/glyph/unicode_data"
 let () =
   Format.printf "Dumping Unicode v%s data to %s.@." Uucp.unicode_version file;
   let write name f =
-    let oc =
-      open_out_gen [ Open_trunc; Open_creat; Open_wronly ] 0o664 name
-    in
+    let oc = open_out_gen [ Open_trunc; Open_creat; Open_wronly ] 0o664 name in
     f oc;
     close_out oc
   in

@@ -8,9 +8,9 @@
 
     {1 Overview}
 
-    {!create} returns an inert application handle with configuration only.
-    A platform-specific runtime (e.g., {!Matrix_unix}) attaches I/O via
-    {!attach}, then calls {!run} to drive the event loop. *)
+    {!create} returns an inert application handle with configuration only. A
+    platform-specific runtime (e.g., {!Matrix_unix}) attaches I/O via {!attach},
+    then calls {!run} to drive the event loop. *)
 
 (** {1 Sub-Libraries} *)
 
@@ -70,8 +70,8 @@ type config
 (** Inert configuration. Created by {!create}. No I/O, no terminal state. *)
 
 type app
-(** Attached application with I/O wired. All frame, query, and control
-    functions require this type. Created by {!attach} from a {!config}. *)
+(** Attached application with I/O wired. All frame, query, and control functions
+    require this type. Created by {!attach} from a {!config}. *)
 
 (** {1 Lifecycle} *)
 
@@ -101,8 +101,8 @@ val create :
   config
 (** [create ()] builds a configuration record.
 
-    The result is inert until passed to {!attach} by a runtime.
-    No I/O is performed and no terminal state is modified.
+    The result is inert until passed to {!attach} by a runtime. No I/O is
+    performed and no terminal state is modified.
 
     {4 Display Mode}
 
@@ -127,8 +127,8 @@ val create :
     {4 Frame Timing}
 
     @param target_fps
-      Optional FPS cap in Hz. Defaults to [Some 30.]. Set to [None] for
-      uncapped rendering.
+      Optional FPS cap in Hz. Defaults to [Some 30.]. Set to [None] for uncapped
+      rendering.
     @param resize_debounce
       Debounce window in seconds for resize events. Defaults to [Some 0.1].
 
@@ -160,10 +160,8 @@ val create :
       Maximum number of metrics samples retained by the debug overlay.
     @param frame_dump_every
       Dump every Nth frame to disk. Defaults to [0] (disabled).
-    @param frame_dump_dir
-      Directory for frame dumps.
-    @param frame_dump_pattern
-      Filename pattern for frame dumps.
+    @param frame_dump_dir Directory for frame dumps.
+    @param frame_dump_pattern Filename pattern for frame dumps.
     @param frame_dump_hits
       Whether to include hit grid in frame dumps. Defaults to [false]. *)
 
@@ -177,11 +175,10 @@ val run :
 (** [run ?on_frame ?on_input ?on_resize ~on_render app] drives an immediate-mode
     loop.
 
-    Matrix manages the lifecycle automatically:
-    1. Polls for events and invokes [on_input] / [on_resize].
-    2. Calls {!prepare} to clear buffers.
-    3. Invokes [on_render] (users should draw to {!grid} here).
-    4. Calls {!submit} to flush output.
+    Matrix manages the lifecycle automatically: 1. Polls for events and invokes
+    [on_input] / [on_resize]. 2. Calls {!prepare} to clear buffers. 3. Invokes
+    [on_render] (users should draw to {!grid} here). 4. Calls {!submit} to flush
+    output.
 
     [on_frame] runs before [prepare] with the elapsed seconds since the last
     render. The loop exits when {!running} becomes [false] and closes the
@@ -253,8 +250,8 @@ val request_redraw : app -> unit
 
 val set_debug_overlay :
   ?corner:debug_overlay_corner -> app -> enabled:bool -> unit
-(** [set_debug_overlay ?corner app ~enabled] toggles the built-in debug
-    overlay. *)
+(** [set_debug_overlay ?corner app ~enabled] toggles the built-in debug overlay.
+*)
 
 val toggle_debug_overlay : ?corner:debug_overlay_corner -> app -> unit
 (** [toggle_debug_overlay ?corner app] flips overlay visibility. *)
@@ -271,7 +268,8 @@ val dump_frame : ?hits:bool -> ?dir:string -> ?pattern:string -> app -> unit
 (** {1 Terminal Information} *)
 
 val mode_of_config : config -> mode
-(** [mode_of_config config] returns the presentation mode from a configuration. *)
+(** [mode_of_config config] returns the presentation mode from a configuration.
+*)
 
 val mode : app -> mode
 (** [mode app] returns the presentation mode configured at creation time. *)
@@ -330,16 +328,12 @@ val set_cursor_color : app -> r:float -> g:float -> b:float -> a:float -> unit
 type io = {
   write_output : bytes -> int -> int -> unit;
       (** Write rendered frame bytes to terminal output. *)
-  now : unit -> float;
-      (** Current wall-clock time in seconds. *)
-  wake : unit -> unit;
-      (** Wake the event loop (cross-thread/signal safe). *)
+  now : unit -> float;  (** Current wall-clock time in seconds. *)
+  wake : unit -> unit;  (** Wake the event loop (cross-thread/signal safe). *)
   terminal_size : unit -> int * int;
       (** Query terminal dimensions as [(cols, rows)]. *)
-  set_raw_mode : bool -> unit;
-      (** Enable or disable raw mode. *)
-  flush_input : unit -> unit;
-      (** Discard unread input bytes. *)
+  set_raw_mode : bool -> unit;  (** Enable or disable raw mode. *)
+  flush_input : unit -> unit;  (** Discard unread input bytes. *)
   read_events : timeout:float option -> on_event:(Input.t -> unit) -> unit;
       (** Block up to [timeout] seconds, calling [on_event] for each input
           event. Handles signal-generated events (e.g. SIGWINCH) internally. *)

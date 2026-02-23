@@ -225,8 +225,9 @@ let render_generic ~pool ~row_offset ~use_explicit_width
            | Some p ->
                let prev_idx = (y * prev_width) + x in
                if not (Grid.cells_equal p prev_idx curr idx) then (
-                 Ansi.cursor_position ~row:(row_offset + y + 1) ~col:(x + 1)
-                   writer;
+                 Ansi.cursor_position
+                   ~row:(row_offset + y + 1)
+                   ~col:(x + 1) writer;
                  Ansi.emit (Ansi.char ' ') writer));
         process_cols y (x + 1) row_cells)
       else if is_cell_changed y x idx curr_width then (

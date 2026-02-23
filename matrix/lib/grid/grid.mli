@@ -31,8 +31,8 @@
 
     {1 Scissor Clipping}
 
-    A stack of clipping regions constrains drawing operations. Cells outside
-    the active clip are silently skipped. Use {!clip} for scoped clipping or
+    A stack of clipping regions constrains drawing operations. Cells outside the
+    active clip are silently skipped. Use {!clip} for scoped clipping or
     {!push_clip}/{!pop_clip} for manual control.
 
     {1 Performance}
@@ -65,8 +65,8 @@ val create :
 (** [create ~width ~height ()] creates a grid with all cells initialized to
     spaces (white foreground, transparent background).
 
-    @param glyph_pool Shared pool for grapheme storage. A fresh pool is
-      allocated if omitted.
+    @param glyph_pool
+      Shared pool for grapheme storage. A fresh pool is allocated if omitted.
     @param width_method Grapheme width method. Default [`Unicode].
     @param respect_alpha Enable alpha blending on {!set_cell}. Default [false].
     @raise Invalid_argument if [width <= 0] or [height <= 0]. *)
@@ -106,8 +106,8 @@ val active_height : t -> int
     zero-allocation. *)
 
 val idx : t -> x:int -> y:int -> int
-(** [idx t ~x ~y] returns the flat index for cell [(x, y)].
-    Equivalent to [y * width t + x]. No bounds checking. *)
+(** [idx t ~x ~y] returns the flat index for cell [(x, y)]. Equivalent to
+    [y * width t + x]. No bounds checking. *)
 
 val get_code : t -> int -> int
 (** Cell code at [idx]. Aligned with {!Glyph.t} encoding. *)
@@ -124,14 +124,16 @@ val get_link : t -> int -> int32
 val get_fg_r : t -> int -> float
 val get_fg_g : t -> int -> float
 val get_fg_b : t -> int -> float
+
 val get_fg_a : t -> int -> float
-(** Foreground RGBA components at [idx], in [\[0.0, 1.0\]]. *)
+(** Foreground RGBA components at [idx], in [[0.0, 1.0]]. *)
 
 val get_bg_r : t -> int -> float
 val get_bg_g : t -> int -> float
 val get_bg_b : t -> int -> float
+
 val get_bg_a : t -> int -> float
-(** Background RGBA components at [idx], in [\[0.0, 1.0\]]. *)
+(** Background RGBA components at [idx], in [[0.0, 1.0]]. *)
 
 val get_text : t -> int -> string
 (** Decodes the grapheme at [idx] into a string. Returns [""] for empty or
@@ -150,7 +152,8 @@ val is_continuation : t -> int -> bool
 (** [true] if the cell is the trailing part of a wide character. *)
 
 val is_inline : t -> int -> bool
-(** [true] if the cell needs no glyph pool lookup (ASCII or single codepoint). *)
+(** [true] if the cell needs no glyph pool lookup (ASCII or single codepoint).
+*)
 
 val cell_width : t -> int -> int
 (** Display width of the cell (0 for empty/continuation, 1-2 for start). *)
@@ -160,12 +163,12 @@ val cells_equal : t -> int -> t -> int -> bool
     content and styling. Uses epsilon comparison for RGBA floats. *)
 
 val hyperlink_url : t -> int32 -> string option
-(** Resolves a link ID (from {!get_link}) to a URL. Returns [None] for "no
-    link" or unknown IDs. *)
+(** Resolves a link ID (from {!get_link}) to a URL. Returns [None] for "no link"
+    or unknown IDs. *)
 
 val hyperlink_url_direct : t -> int32 -> string
-(** Like {!hyperlink_url} but returns [""] instead of [None].
-    Zero-allocation for the no-link case. *)
+(** Like {!hyperlink_url} but returns [""] instead of [None]. Zero-allocation
+    for the no-link case. *)
 
 (** {1 Manipulation} *)
 
@@ -182,13 +185,13 @@ val clear : ?color:Ansi.Color.t -> t -> unit
     references. The scissor stack is preserved. *)
 
 val blit : src:t -> dst:t -> unit
-(** [blit ~src ~dst] copies all cell data from [src] to [dst], resizing [dst]
-    to match. When pools are shared, codes are copied verbatim. When pools
-    differ, each distinct grapheme is re-interned once. No alpha blending. *)
+(** [blit ~src ~dst] copies all cell data from [src] to [dst], resizing [dst] to
+    match. When pools are shared, codes are copied verbatim. When pools differ,
+    each distinct grapheme is re-interned once. No alpha blending. *)
 
 val copy : t -> t
-(** [copy t] creates a deep copy sharing the same glyph pool. The scissor
-    stack starts empty on the copy. *)
+(** [copy t] creates a deep copy sharing the same glyph pool. The scissor stack
+    starts empty on the copy. *)
 
 val blit_region :
   src:t ->
@@ -200,8 +203,8 @@ val blit_region :
   dst_x:int ->
   dst_y:int ->
   unit
-(** [blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y] copies
-    a rectangular region from [src] to [dst].
+(** [blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y] copies a
+    rectangular region from [src] to [dst].
 
     The region is clamped to valid bounds in both grids. Negative coordinates
     shift the region inward. Respects the scissor on [dst]. Alpha blending
@@ -265,9 +268,10 @@ val draw_box :
     @param border Character set for borders. Default {!Border.single}.
     @param sides Sides to draw. Default {!Border.all} (all four).
     @param style Style for border characters. Default {!Ansi.Style.default}.
-    @param fill When provided, fills the interior and sets the border cell
-      background to this color. When absent, no fill is applied and border
-      cells use the [style]'s background (or terminal default).
+    @param fill
+      When provided, fills the interior and sets the border cell background to
+      this color. When absent, no fill is applied and border cells use the
+      [style]'s background (or terminal default).
 
     Titles appear on the top border when [`Top] is included and the box is wide
     enough (≥ title width + 4). Title alignment defaults to [`Left] with 2-cell
@@ -322,9 +326,9 @@ val set_cell :
   unit
 (** [set_cell t ~x ~y ~glyph ~fg ~bg ~attrs ()] writes a single cell.
 
-    @param blend Override alpha blending. Defaults to the grid's
-      {!respect_alpha} setting. Pass [~blend:true] to force blending
-      regardless.
+    @param blend
+      Override alpha blending. Defaults to the grid's {!respect_alpha} setting.
+      Pass [~blend:true] to force blending regardless.
 
     Cells outside the grid or scissor are skipped. Existing wide graphemes
     spanning this cell are cleaned up. The caller is responsible for writing
@@ -333,8 +337,8 @@ val set_cell :
 (** {1 Clipping} *)
 
 val push_clip : t -> region -> unit
-(** Pushes a clipping region. The effective clip is the intersection of the
-    new region with the current clip (hierarchical narrowing). *)
+(** Pushes a clipping region. The effective clip is the intersection of the new
+    region with the current clip (hierarchical narrowing). *)
 
 val pop_clip : t -> unit
 (** Pops the most recent clip. No-op if the stack is empty. *)
@@ -343,8 +347,8 @@ val clear_clip : t -> unit
 (** Removes all clipping regions. *)
 
 val clip : t -> region -> (unit -> 'a) -> 'a
-(** [clip t region f] runs [f ()] with [region] as the active clip,
-    popping it on return (even on exception). *)
+(** [clip t region f] runs [f ()] with [region] as the active clip, popping it
+    on return (even on exception). *)
 
 (** {1 Opacity Stack}
 
@@ -353,7 +357,7 @@ val clip : t -> region -> (unit -> 'a) -> 'a
     Supports up to 32 levels. *)
 
 val push_opacity : t -> float -> unit
-(** Pushes [opacity] (clamped to [\[0.0, 1.0\]]). *)
+(** Pushes [opacity] (clamped to [[0.0, 1.0]]). *)
 
 val pop_opacity : t -> unit
 (** Pops the most recent opacity. No-op if the stack is empty. *)
@@ -364,10 +368,9 @@ val current_opacity : t -> float
 (** {1 Scrolling} *)
 
 val scroll : t -> top:int -> bottom:int -> int -> unit
-(** [scroll t ~top ~bottom n] scrolls the region [\[top..bottom\]] by [n]
-    lines. Positive [n] scrolls content up (new blank lines at bottom).
-    Negative [n] scrolls content down (new blank lines at top). Zero is a
-    no-op. *)
+(** [scroll t ~top ~bottom n] scrolls the region [[top..bottom]] by [n] lines.
+    Positive [n] scrolls content up (new blank lines at bottom). Negative [n]
+    scrolls content down (new blank lines at top). Zero is a no-op. *)
 
 (** {1 Comparison} *)
 
@@ -380,5 +383,5 @@ val diff_cells : t -> t -> (int * int) array
 
 val to_ansi : ?reset:bool -> t -> string
 (** [to_ansi ?reset grid] renders the grid to a string with full ANSI escape
-    sequences. Appends a reset sequence when [reset] is [true] (default).
-    Useful for debugging, tests, and static ANSI output. *)
+    sequences. Appends a reset sequence when [reset] is [true] (default). Useful
+    for debugging, tests, and static ANSI output. *)

@@ -167,7 +167,9 @@ let decompress_line line grid row _cols =
                   |> Ansi.Style.with_attrs run.attrs
                 in
                 Grid.draw_text grid ~x:!col ~y:row ~style ~text:segment;
-                let w = Glyph.String.measure ~width_method ~tab_width:2 segment in
+                let w =
+                  Glyph.String.measure ~width_method ~tab_width:2 segment
+                in
                 col := min max_cols (!col + w))
             with Invalid_argument _ ->
               (* Skip problematic segments *)
@@ -602,7 +604,9 @@ let put_text t text =
               (fun ~offset:off ~len:l ->
                 if not !stop then
                   let cluster = String.sub s off l in
-                  let w = Glyph.String.measure ~width_method ~tab_width:2 cluster in
+                  let w =
+                    Glyph.String.measure ~width_method ~tab_width:2 cluster
+                  in
                   if !width_consumed + w <= available then (
                     width_consumed := !width_consumed + w;
                     bytes_consumed := off + l)

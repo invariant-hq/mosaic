@@ -1,4 +1,5 @@
 open Mosaic
+
 open Mosaic_unix
 (** System metrics panel UI. Uses Sysstat library for data collection. *)
 

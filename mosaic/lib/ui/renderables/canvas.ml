@@ -54,8 +54,7 @@ let run_draw t ~width ~height =
       let w = width and h = height in
       Grid.clear t.surface;
       let rect = Grid.{ x = 0; y = 0; width = w; height = h } in
-      Grid.clip t.surface rect (fun () ->
-          draw t.surface ~width:w ~height:h)
+      Grid.clip t.surface rect (fun () -> draw t.surface ~width:w ~height:h)
   | _ -> ()
 
 let set_draw t draw =

@@ -37,8 +37,8 @@ type mouse_mode =
 (** Mouse tracking protocols.
 
     - [`Off]: disable mouse tracking.
-    - [`X10]: basic press-only tracking (legacy; coordinates limited to
-      223x223 cells).
+    - [`X10]: basic press-only tracking (legacy; coordinates limited to 223x223
+      cells).
     - [`Normal]: press and release events with standard xterm encoding (1000).
     - [`Button]: press, release, and drag events (1002).
     - [`Any]: all motion events, including motion with no buttons pressed
@@ -92,9 +92,9 @@ type capabilities = {
     - {b Probe stage}: The runtime calls {!probe} with I/O callbacks and the
       results are folded into the capability record.
 
-    Boolean fields from probing are monotonic: once confirmed, subsequent
-    probes will not disable them. Environment policy overrides may still
-    disable features in specific contexts (e.g. tmux forces wcwidth mode). *)
+    Boolean fields from probing are monotonic: once confirmed, subsequent probes
+    will not disable them. Environment policy overrides may still disable
+    features in specific contexts (e.g. tmux forces wcwidth mode). *)
 
 type terminal_info = { name : string; version : string; from_xtversion : bool }
 (** Best-known terminal program name and version.
@@ -129,8 +129,8 @@ val make :
       [fun s -> write_all fd (Bytes.unsafe_of_string s) 0 (String.length s)].
     - [tty] controls whether escape sequences are actually emitted (default
       [true]). Set to [false] for non-TTY outputs or testing.
-    - [initial_caps] seeds the capability record. When [None], capabilities
-      are built from [$TERM] and environment heuristics. When [Some caps], the
+    - [initial_caps] seeds the capability record. When [None], capabilities are
+      built from [$TERM] and environment heuristics. When [Some caps], the
       record is used as-is (environment overrides are not applied).
     - [parser] shares an existing {!Input.Parser.t} with the runtime. When
       [None], a fresh parser is created.
@@ -297,9 +297,9 @@ val cursor_style_state : t -> cursor_style * bool
 (** Returns the current cursor style and blinking flag. *)
 
 val set_cursor_color : t -> r:float -> g:float -> b:float -> a:float -> unit
-(** Sets the cursor colour. Components are clamped to [\[0.0, 1.0\]]. NaN
-    components are treated as [0.0]. The alpha channel is tracked but not
-    sent to the terminal. *)
+(** Sets the cursor colour. Components are clamped to [[0.0, 1.0]]. NaN
+    components are treated as [0.0]. The alpha channel is tracked but not sent
+    to the terminal. *)
 
 val cursor_color : t -> float * float * float * float
 (** Returns the last set cursor colour as [(r, g, b, a)]. *)
@@ -336,17 +336,17 @@ val reset_state : t -> unit
 
 (** {1 TTY helpers}
 
-    Stateless functions for terminal I/O. These do not require a session
-    handle. *)
+    Stateless functions for terminal I/O. These do not require a session handle.
+*)
 
 val set_raw : Unix.file_descr -> Unix.terminal_io
-(** [set_raw fd] puts [fd] into raw mode (no echo, no canonical processing,
-    no signals, non-blocking) and returns the original termios for later
+(** [set_raw fd] puts [fd] into raw mode (no echo, no canonical processing, no
+    signals, non-blocking) and returns the original termios for later
     restoration with {!restore}. *)
 
 val restore : Unix.file_descr -> Unix.terminal_io -> unit
-(** [restore fd termios] restores [fd] to the given termios settings and
-    clears non-blocking mode. *)
+(** [restore fd termios] restores [fd] to the given termios settings and clears
+    non-blocking mode. *)
 
 val size : Unix.file_descr -> int * int
 (** [size fd] returns terminal dimensions as [(cols, rows)]. Falls back to
@@ -359,5 +359,5 @@ val flush_input : Unix.file_descr -> unit
 (** [flush_input fd] discards unread input on [fd] via [tcflush]. *)
 
 val enable_vt : Unix.file_descr -> unit
-(** [enable_vt fd] enables VT100 processing on Windows consoles. No-op on
-    Unix. Failures are silently ignored. *)
+(** [enable_vt fd] enables VT100 processing on Windows consoles. No-op on Unix.
+    Failures are silently ignored. *)

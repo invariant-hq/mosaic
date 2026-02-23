@@ -114,9 +114,9 @@
     ones). Use {!overlay} to control z-order explicitly: the last image in the
     list appears on top.
 
-    Rendering respects grid clips set via {!Grid.push_clip}. Clips are
-    applied by wrapping primitive execution in {!Grid.clip}, which
-    ensures balanced push/pop pairs even when primitives are skipped.
+    Rendering respects grid clips set via {!Grid.push_clip}. Clips are applied
+    by wrapping primitive execution in {!Grid.clip}, which ensures balanced
+    push/pop pairs even when primitives are skipped.
 
     {2 Hit Regions}
 

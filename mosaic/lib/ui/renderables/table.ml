@@ -507,7 +507,9 @@ let graphemes text =
   Glyph.String.iter_graphemes
     (fun ~offset:off ~len ->
       let text = String.sub text off len in
-      let width = Glyph.String.measure ~width_method:`Unicode ~tab_width:2 text in
+      let width =
+        Glyph.String.measure ~width_method:`Unicode ~tab_width:2 text
+      in
       let width = if width < 0 then 0 else width in
       acc := { text; width } :: !acc)
     text;

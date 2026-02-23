@@ -504,8 +504,7 @@ let finish_selection t =
         (fun cb -> cb ~anchor_x:ax ~anchor_y:ay ~focus_x:fx ~focus_y:fy)
         t.selection_listeners
 
-let intersect_rect (a : Grid.region) (b : Grid.region) :
-    Grid.region option =
+let intersect_rect (a : Grid.region) (b : Grid.region) : Grid.region option =
   let x0 = max a.x b.x in
   let y0 = max a.y b.y in
   let x1 = min (a.x + a.width) (b.x + b.width) in

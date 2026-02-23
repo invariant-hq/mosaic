@@ -69,9 +69,9 @@
 
     {2 Sub-cell rendering}
 
-    Some marks support sub-cell resolution (e.g., [`Braille2x4] renders 2x4
-    dots per cell). Sub-cell rendering is purely visual -- all coordinates in the
-    API remain in cell units. *)
+    Some marks support sub-cell resolution (e.g., [`Braille2x4] renders 2x4 dots
+    per cell). Sub-cell rendering is purely visual -- all coordinates in the API
+    remain in cell units. *)
 
 module Charset : sig
   (** Character sets for chart rendering.
@@ -113,16 +113,17 @@ module Charset : sig
     point_default : string;  (** Default scatter point glyph. *)
     point_heavy : string;  (** Heavy scatter point glyph. *)
     bar_fill : string;  (** Bar fill character. *)
-    shade_levels : string array;  (** Shade density levels, lightest to heaviest. *)
+    shade_levels : string array;
+        (** Shade density levels, lightest to heaviest. *)
     tooltip_frame : frame;  (** Frame characters for tooltip borders. *)
     diag_up : string;  (** Upward diagonal (e.g., [/] or [╱]). *)
-    diag_down : string;  (** Downward diagonal (e.g., [\] or [╲]). *)
+    diag_down : string;  (** Downward diagonal (e.g., [╲]). *)
   }
   (** A complete character set specification for all chart elements. *)
 
   val ascii : t
-  (** ASCII-only characters ([+], [-], [|], [*], [#]).
-      Use for terminals without Unicode support. *)
+  (** ASCII-only characters ([+], [-], [|], [*], [#]). Use for terminals without
+      Unicode support. *)
 
   val unicode_light : t
   (** Light Unicode box-drawing characters (e.g., [─], [│], [┌]). *)
@@ -180,8 +181,8 @@ module Label_format : sig
   (** Axis label formatters.
 
       Each formatter has the signature [int -> float -> string] matching
-      {!Axis.formatter}. The [int] parameter is the tick index (0-based),
-      and the [float] is the tick value. *)
+      {!Axis.formatter}. The [int] parameter is the tick index (0-based), and
+      the [float] is the tick value. *)
 
   val float : ?precision:int -> unit -> int -> float -> string
   (** [float ?precision ()] formats values using [%.*g].
@@ -205,14 +206,14 @@ module Transform : sig
   val ema : float -> (float * float) array -> (float * float) array
   (** [ema alpha data] computes an exponential moving average.
 
-      [alpha] is the smoothing factor in [\[0, 1\]]. Higher values weight
-      recent observations more heavily. *)
+      [alpha] is the smoothing factor in [[0, 1]]. Higher values weight recent
+      observations more heavily. *)
 
   val sma : int -> (float * float) array -> (float * float) array
   (** [sma window data] computes a simple moving average.
 
-      [window] is the number of points to average. For indices before the
-      window is full, a partial average is used. Returns an empty array if
+      [window] is the number of points to average. For indices before the window
+      is full, a partial average is used. Returns an empty array if
       [window <= 0]. *)
 
   val gaussian : float -> (float * float) array -> (float * float) array
@@ -231,8 +232,8 @@ module Scale : sig
       multiple orders of magnitude, use {!log}. *)
 
   type numeric_domain = [ `Auto | `Domain of float * float ]
-  (** Domain specification. [`Auto] infers bounds from the data. [`Domain]
-      fixes the bounds explicitly. *)
+  (** Domain specification. [`Auto] infers bounds from the data. [`Domain] fixes
+      the bounds explicitly. *)
 
   type t =
     | Auto
@@ -246,8 +247,8 @@ module Scale : sig
             to [1e-10]. *)
     | Band of { categories : string list option; padding : float }
         (** Categorical band scale. Each category gets an equal-width band.
-            [padding] (\[0, 0.95\]) controls inter-band spacing as a fraction
-            of the total extent. *)
+            [padding] (\[0, 0.95\]) controls inter-band spacing as a fraction of
+            the total extent. *)
 
   val numeric : ?domain:numeric_domain -> ?clamp:bool -> unit -> t
   (** [numeric ()] creates a linear numeric scale.
@@ -258,8 +259,9 @@ module Scale : sig
   val log : ?base:float -> ?domain:numeric_domain -> ?clamp:bool -> unit -> t
   (** [log ()] creates a logarithmic scale.
 
-      @param base Logarithm base. Must be [> 1]; values [<= 1] default to
-        [10]. Default is [10.0].
+      @param base
+        Logarithm base. Must be [> 1]; values [<= 1] default to [10]. Default is
+        [10.0].
       @param domain Default is [`Auto].
       @param clamp Default is [true]. *)
 
@@ -267,8 +269,9 @@ module Scale : sig
   (** [band ()] creates a categorical band scale.
 
       @param categories Explicit category order. [None] infers from marks.
-      @param padding Inter-band padding as a fraction of total extent. Clamped
-        to [\[0, 0.95\]]. Default is [0.1]. *)
+      @param padding
+        Inter-band padding as a fraction of total extent. Clamped to
+        [[0, 0.95]]. Default is [0.1]. *)
 end
 
 module Axis : sig
@@ -296,15 +299,16 @@ module Axis : sig
   type t = {
     show : bool;  (** Whether to render this axis at all. *)
     line : line;  (** Axis line mode. *)
-    ticks : int;  (** Target number of ticks. The actual count may differ for
-                      "nice" tick spacing. *)
+    ticks : int;
+        (** Target number of ticks. The actual count may differ for "nice" tick
+            spacing. *)
     format : formatter;  (** Tick label formatter. *)
-    style : Ansi.Style.t option;  (** Axis line style. [None] inherits from
-                                      theme. *)
-    tick_style : Ansi.Style.t option;  (** Tick mark style. [None] inherits
-                                           from theme. *)
-    label_style : Ansi.Style.t option;  (** Tick label style. [None] inherits
-                                            from theme. *)
+    style : Ansi.Style.t option;
+        (** Axis line style. [None] inherits from theme. *)
+    tick_style : Ansi.Style.t option;
+        (** Tick mark style. [None] inherits from theme. *)
+    label_style : Ansi.Style.t option;
+        (** Tick label style. [None] inherits from theme. *)
     tick_length : int;  (** Tick mark length in cells. *)
     label_padding : int;  (** Space between tick mark and label in cells. *)
     title : title option;  (** Axis title. *)
@@ -358,14 +362,15 @@ module Gridlines : sig
     y : bool;  (** Show horizontal gridlines (at y-axis ticks). *)
     style : Ansi.Style.t;  (** Major gridline style. *)
     pattern : Charset.line_pattern;  (** Gridline pattern. *)
-    x_step : int option;  (** Show every [n]th vertical gridline. [None] shows
-                               all. *)
-    y_step : int option;  (** Show every [n]th horizontal gridline. [None] shows
-                               all. *)
-    minor : int option;  (** Number of minor subdivisions between major
-                              gridlines. [None] disables minor gridlines. *)
-    minor_style : Ansi.Style.t option;  (** Minor gridline style. [None]
-                                             inherits from theme. *)
+    x_step : int option;
+        (** Show every [n]th vertical gridline. [None] shows all. *)
+    y_step : int option;
+        (** Show every [n]th horizontal gridline. [None] shows all. *)
+    minor : int option;
+        (** Number of minor subdivisions between major gridlines. [None]
+            disables minor gridlines. *)
+    minor_style : Ansi.Style.t option;
+        (** Minor gridline style. [None] inherits from theme. *)
   }
 
   val hidden : t
@@ -406,8 +411,8 @@ module View : sig
       {!View.t} in your application model and pass it to {!draw} or {!layout}.
       Use {!View.empty} to show the full data extent.
 
-      All window operations produce valid windows: [min] is always [< max],
-      with a minimum span enforced to prevent degenerate ranges. *)
+      All window operations produce valid windows: [min] is always [< max], with
+      a minimum span enforced to prevent degenerate ranges. *)
 
   type window = { min : float; max : float }
   (** A 1D range. Invariant: [min < max]. *)
@@ -433,8 +438,8 @@ module View : sig
 
   val zoom : window -> factor:float -> window
   (** [zoom w ~factor] zooms around the center of [w]. [factor > 1] zooms in
-      (smaller range), [factor < 1] zooms out. Non-positive factors are
-      treated as [1.0]. *)
+      (smaller range), [factor < 1] zooms out. Non-positive factors are treated
+      as [1.0]. *)
 
   val zoom_around : window -> center:float -> factor:float -> window
   (** [zoom_around w ~center ~factor] zooms around [center], preserving its
@@ -465,11 +470,11 @@ module Mark : sig
 
       Marks are the graphical primitives rendered on a chart -- lines, scatter
       points, bars, heatmaps, etc. Each constructor extracts data eagerly at
-      construction time via accessor functions ([~x], [~y], etc.), so the
-      source data can be garbage collected after mark creation.
+      construction time via accessor functions ([~x], [~y], etc.), so the source
+      data can be garbage collected after mark creation.
 
-      Marks without an explicit [~style] are auto-colored from the theme
-      palette in the order they are added to the chart. *)
+      Marks without an explicit [~style] are auto-colored from the theme palette
+      in the order they are added to the chart. *)
 
   type id = string
   (** Optional mark identifier for hit-testing. When set, {!Hit.t.mark_id}
@@ -495,13 +500,13 @@ module Mark : sig
   type heatmap_agg = [ `Last | `Avg | `Max ]
   (** Aggregation for multiple values in the same heatmap cell. *)
 
+  (** Heatmap rendering mode. *)
   type heatmap_mode =
     | Cells_fg  (** Foreground color per cell. *)
     | Cells_bg  (** Background color per cell. *)
     | Halfblock_fg_bg  (** Half-block characters for 2x vertical resolution. *)
     | Shaded  (** Shade characters from {!Charset.t.shade_levels}. *)
     | Dense_bilinear  (** Bilinear interpolation for smooth gradients. *)
-  (** Heatmap rendering mode. *)
 
   type bar_mode = [ `Cell | `Half_block ]
   (** Bar rendering granularity.
@@ -517,15 +522,19 @@ module Mark : sig
   (** Candlestick width in cells. *)
 
   type area_baseline = [ `Zero | `Value of float ]
-  (** Baseline for area charts. [`Zero] fills down to y=0; [`Value v] fills
-      down to y=[v]. *)
+  (** Baseline for area charts. [`Zero] fills down to y=0; [`Value v] fills down
+      to y=[v]. *)
 
-  type bin_method = Bins of int | Width of float | Edges of float array
-  (** Histogram binning method.
+  type bin_method =
+    | Bins of int
+    | Width of float
+    | Edges of float array
+        (** Histogram binning method.
 
-      - [Bins n]: Use [n] equal-width bins.
-      - [Width w]: Use bins of width [w].
-      - [Edges arr]: Use explicit bin edges. Must have at least 2 elements. *)
+            - [Bins n]: Use [n] equal-width bins.
+            - [Width w]: Use bins of width [w].
+            - [Edges arr]: Use explicit bin edges. Must have at least 2
+              elements. *)
 
   type histogram_normalize = [ `Count | `Density | `Probability ]
   (** Histogram normalization.
@@ -554,8 +563,8 @@ module Mark : sig
   (** Open-high-low-close data for candlestick charts. *)
 
   type y_axis_selector = [ `Y1 | `Y2 ]
-  (** Selects which y-axis a mark is associated with. [`Y2] requires a
-      secondary y-axis configured via {!Matrix_charts.with_y2_scale} and
+  (** Selects which y-axis a mark is associated with. [`Y2] requires a secondary
+      y-axis configured via {!Matrix_charts.with_y2_scale} and
       {!Matrix_charts.with_y2_axis}. *)
 
   val line :
@@ -577,8 +586,8 @@ module Mark : sig
 
       @param resolution Sub-cell resolution mode. Default is [`Cell].
       @param pattern Line pattern. Default is [`Solid].
-      @param glyph When set, draws this glyph at each point instead of
-        connecting lines.
+      @param glyph
+        When set, draws this glyph at each point instead of connecting lines.
       @param y_axis Default is [`Y1]. *)
 
   val line_gaps :
@@ -593,9 +602,8 @@ module Mark : sig
     y:('a -> float option) ->
     'a array ->
     t
-  (** [line_gaps ~x ~y data] creates a line with explicit gaps where [y]
-      returns [None]. The line breaks at gaps and resumes at the next
-      [Some] value. *)
+  (** [line_gaps ~x ~y data] creates a line with explicit gaps where [y] returns
+      [None]. The line breaks at gaps and resumes at the next [Some] value. *)
 
   val scatter :
     ?id:id ->
@@ -625,12 +633,12 @@ module Mark : sig
     t
   (** [bar ~category ~value data] creates a bar chart.
 
-      Categories are placed on the band-scale axis; values determine bar
-      length. Implicitly uses a {!Scale.Band} on the category axis and includes
-      zero in the value domain.
+      Categories are placed on the band-scale axis; values determine bar length.
+      Implicitly uses a {!Scale.Band} on the category axis and includes zero in
+      the value domain.
 
-      @param direction Default is [`Vertical] (categories on x-axis, bars grow
-        upward).
+      @param direction
+        Default is [`Vertical] (categories on x-axis, bars grow upward).
       @param mode Default is [`Half_block]. *)
 
   val stacked_bar :
@@ -647,10 +655,11 @@ module Mark : sig
       stack from the baseline upward (or leftward for horizontal).
 
       @param direction Default is [`Vertical].
-      @param gap Spacing between bars in cells. Default is [1]. Clamped to
-        [>= 0].
-      @param size Explicit bar width/height in cells. [None] auto-sizes based
-        on available space.
+      @param gap
+        Spacing between bars in cells. Default is [1]. Clamped to [>= 0].
+      @param size
+        Explicit bar width/height in cells. [None] auto-sizes based on available
+        space.
       @param mode Default is [`Half_block]. *)
 
   val rule :
@@ -663,8 +672,9 @@ module Mark : sig
     t
   (** [rule value] draws a reference line spanning the full plot area.
 
-      @param direction Default is [`Horizontal] (horizontal line at
-        y=[value]). [`Vertical] draws a vertical line at x=[value].
+      @param direction
+        Default is [`Horizontal] (horizontal line at y=[value]). [`Vertical]
+        draws a vertical line at x=[value].
       @param pattern Line pattern. Default is [`Solid]. *)
 
   val heatmap :
@@ -685,10 +695,11 @@ module Mark : sig
       using [agg].
 
       @param color_scale Color gradient array. Empty uses a default gradient.
-      @param value_range Fixed [(min, max)] for color mapping. [None] infers
-        from data.
-      @param auto_value_range When [true] (the default), computes the range
-        from data when [value_range] is not set.
+      @param value_range
+        Fixed [(min, max)] for color mapping. [None] infers from data.
+      @param auto_value_range
+        When [true] (the default), computes the range from data when
+        [value_range] is not set.
       @param agg Aggregation for colliding cells. Default is [`Last].
       @param mode Rendering mode. Default is [Cells_fg]. *)
 
@@ -703,8 +714,8 @@ module Mark : sig
     t
   (** [candles data] creates a candlestick chart from OHLC data.
 
-      Data is sorted by {!ohlc.time} internally. Bullish candles
-      (close >= open) and bearish candles (close < open) are styled separately.
+      Data is sorted by {!ohlc.time} internally. Bullish candles (close >= open)
+      and bearish candles (close < open) are styled separately.
 
       @param bullish Style for bullish candles. Default is green.
       @param bearish Style for bearish candles. Default is red.
@@ -727,13 +738,13 @@ module Mark : sig
 
   val shade :
     ?id:id -> ?style:Ansi.Style.t -> min:float -> max:float -> unit -> t
-  (** [shade ~min ~max ()] creates a vertical shaded region between x=[min]
-      and x=[max]. If [min > max], the values are swapped. Useful for
-      highlighting date ranges or intervals. *)
+  (** [shade ~min ~max ()] creates a vertical shaded region between x=[min] and
+      x=[max]. If [min > max], the values are swapped. Useful for highlighting
+      date ranges or intervals. *)
 
   val column_bg : ?id:id -> ?style:Ansi.Style.t -> float -> t
-  (** [column_bg x] highlights the full-height column at data x-coordinate
-      [x]. *)
+  (** [column_bg x] highlights the full-height column at data x-coordinate [x].
+  *)
 
   val area :
     ?id:id ->
@@ -763,8 +774,8 @@ module Mark : sig
     y_high:('a -> float) ->
     'a array ->
     t
-  (** [fill_between ~x ~y_low ~y_high data] fills the region between two
-      y-value curves. Useful for confidence intervals or range bands. *)
+  (** [fill_between ~x ~y_low ~y_high data] fills the region between two y-value
+      curves. Useful for confidence intervals or range bands. *)
 
   val histogram :
     ?id:id ->
@@ -801,29 +812,25 @@ module Hit : sig
     [ `Line | `Scatter | `Bars | `Stacked_bars | `Heatmap | `Candles | `Circle ]
   (** The type of mark that was hit. *)
 
+  (** Mark-specific data payload for the hit point. *)
   type payload =
     | XY of { x : float; y : float }
         (** Point data from line, scatter, or circle marks. *)
-    | Bar of { category : string; value : float }
-        (** Bar chart data. *)
+    | Bar of { category : string; value : float }  (** Bar chart data. *)
     | Stacked_bar of {
         category : string;
         segment_index : int;
         value : float;
         total : float;
-      }
-        (** Stacked bar data with segment detail. *)
-    | Heat of { x : float; y : float; value : float }
-        (** Heatmap cell data. *)
+      }  (** Stacked bar data with segment detail. *)
+    | Heat of { x : float; y : float; value : float }  (** Heatmap cell data. *)
     | OHLC of {
         time : float;
         open_ : float;
         high : float;
         low : float;
         close : float;
-      }
-        (** Candlestick data. *)
-  (** Mark-specific data payload for the hit point. *)
+      }  (** Candlestick data. *)
 
   type t = {
     mark_id : string option;  (** The {!Mark.id} of the hit mark, if set. *)
@@ -831,15 +838,17 @@ module Hit : sig
     index : int;  (** Index of the data point within the mark's data array. *)
     px : int;  (** Cell x-coordinate of the snapped hit point. *)
     py : int;  (** Cell y-coordinate of the snapped hit point. *)
-    distance_px : float;  (** Distance from query point to hit point in
-                               cell units. [0.0] for hits inside bars. *)
+    distance_px : float;
+        (** Distance from query point to hit point in cell units. [0.0] for hits
+            inside bars. *)
     payload : payload;  (** Data values at the hit point. *)
   }
   (** A hit-test result. *)
 end
 
 module Layout : sig
-  (** Compiled chart layout for coordinate mapping, hit-testing, and interaction.
+  (** Compiled chart layout for coordinate mapping, hit-testing, and
+      interaction.
 
       A layout is produced by {!Matrix_charts.draw} or {!Matrix_charts.layout}
       and captures the computed coordinate mapping, plot region, and resolved
@@ -862,8 +871,8 @@ module Layout : sig
       labels, and margins. *)
 
   val is_inside_plot : t -> px:int -> py:int -> bool
-  (** [is_inside_plot layout ~px ~py] tests whether [(px, py)] falls within
-      the plot region. *)
+  (** [is_inside_plot layout ~px ~py] tests whether [(px, py)] falls within the
+      plot region. *)
 
   (** {2 Domain and View} *)
 
@@ -892,8 +901,8 @@ module Layout : sig
       title, in cells. *)
 
   val y2_axis_width : t -> int
-  (** [y2_axis_width layout] returns the width reserved for the secondary
-      y-axis (labels + ticks), in cells. *)
+  (** [y2_axis_width layout] returns the width reserved for the secondary y-axis
+      (labels + ticks), in cells. *)
 
   val has_y2 : t -> bool
   (** [has_y2 layout] returns [true] if a secondary y-axis is active. *)
@@ -901,8 +910,8 @@ module Layout : sig
   (** {2 Coordinate Conversion} *)
 
   val data_of_px : t -> px:int -> py:int -> (float * float) option
-  (** [data_of_px layout ~px ~py] converts cell coordinates to data
-      coordinates. Returns [None] if [(px, py)] is outside the plot region. *)
+  (** [data_of_px layout ~px ~py] converts cell coordinates to data coordinates.
+      Returns [None] if [(px, py)] is outside the plot region. *)
 
   val px_of_data : t -> x:float -> y:float -> int * int
   (** [px_of_data layout ~x ~y] converts data coordinates to cell coordinates.
@@ -920,8 +929,8 @@ module Layout : sig
       the y-axis uses a band scale. *)
 
   val px_of_x_category : t -> string -> int option
-  (** [px_of_x_category layout cat] returns the center cell column for
-      category [cat]. Returns [None] if [cat] is not in the scale. *)
+  (** [px_of_x_category layout cat] returns the center cell column for category
+      [cat]. Returns [None] if [cat] is not in the scale. *)
 
   val py_of_y_category : t -> string -> int option
   (** [py_of_y_category layout cat] returns the center cell row for category
@@ -944,13 +953,13 @@ module Layout : sig
       outside the plot, zooms around the plot center. *)
 
   val pan_view_by_px : t -> view:View.t -> dx:int -> dy:int -> View.t
-  (** [pan_view_by_px layout ~view ~dx ~dy] pans [view] by [(dx, dy)] cells.
-      The delta is converted to data units proportional to the current view
-      range and plot size. *)
+  (** [pan_view_by_px layout ~view ~dx ~dy] pans [view] by [(dx, dy)] cells. The
+      delta is converted to data units proportional to the current view range
+      and plot size. *)
 
   val plot_center_px : t -> int * int
-  (** [plot_center_px layout] returns the cell coordinates of the plot
-      center. *)
+  (** [plot_center_px layout] returns the cell coordinates of the plot center.
+  *)
 
   val zoom_view_around_center :
     t -> view:View.t -> axis:axis -> factor:float -> View.t
@@ -964,8 +973,8 @@ module Layout : sig
   (** [hit_test layout ~px ~py] finds the nearest data point to cell position
       [(px, py)].
 
-      Returns [None] if [(px, py)] is outside the plot region or no data
-      point is within [radius].
+      Returns [None] if [(px, py)] is outside the plot region or no data point
+      is within [radius].
 
       @param radius Maximum hit distance in cells. Default is [3].
       @param policy Distance metric. Default is [`Nearest_px]. *)
@@ -974,9 +983,9 @@ end
 module Overlay : sig
   (** Interactive overlays drawn on top of the chart.
 
-      Overlays mutate the {!Grid.t} directly. They require a {!Layout.t}
-      to convert between data and cell coordinates. All position parameters
-      ([~x], [~y]) are in data coordinates. *)
+      Overlays mutate the {!Grid.t} directly. They require a {!Layout.t} to
+      convert between data and cell coordinates. All position parameters ([~x],
+      [~y]) are in data coordinates. *)
 
   val crosshair :
     ?style:Ansi.Style.t ->
@@ -986,8 +995,8 @@ module Overlay : sig
     x:float ->
     y:float ->
     unit
-  (** [crosshair layout grid ~x ~y] draws vertical and horizontal lines
-      through the data point [(x, y)], spanning the full plot area.
+  (** [crosshair layout grid ~x ~y] draws vertical and horizontal lines through
+      the data point [(x, y)], spanning the full plot area.
 
       @param style Default inherits from {!Theme.t.crosshair}.
       @param pattern Line pattern. Default is [`Solid]. *)
@@ -1037,8 +1046,8 @@ module Overlay : sig
 
       @param style Text style. Default inherits from {!Theme.t.tooltip}.
       @param border Default is [`Theme].
-      @param padding Interior padding in cells. Default is [1]. Clamped to
-        [>= 0].
+      @param padding
+        Interior padding in cells. Default is [1]. Clamped to [>= 0].
       @param anchor Placement strategy. Default is [`Auto]. *)
 
   type h_anchor = [ `Left | `Center | `Right ]
@@ -1057,8 +1066,7 @@ module Overlay : sig
     y:float ->
     string ->
     unit
-  (** [text layout grid ~x ~y label] draws a text label at data point
-      [(x, y)].
+  (** [text layout grid ~x ~y label] draws a text label at data point [(x, y)].
 
       @param style Default inherits from {!Theme.t.labels}.
       @param anchor Horizontal alignment. Default is [`Left].
@@ -1109,13 +1117,14 @@ module Legend : sig
   (** [draw items grid ~width ~height] renders legend items to [grid].
 
       @param direction Layout direction. Default is [`Vertical].
-      @param gap Spacing between items in cells. Default is [0] for vertical,
-        [2] for horizontal. *)
+      @param gap
+        Spacing between items in cells. Default is [0] for vertical, [2] for
+        horizontal. *)
 
   val items_of_layout : Layout.t -> item list
-  (** [items_of_layout layout] extracts legend items from all marks in
-      [layout] that have a [label] set. Mark types without legend support
-      (e.g., rules, shades) are excluded. *)
+  (** [items_of_layout layout] extracts legend items from all marks in [layout]
+      that have a [label] set. Mark types without legend support (e.g., rules,
+      shades) are excluded. *)
 end
 
 module Sparkline = Sparkline
@@ -1131,9 +1140,11 @@ type frame_config = { margins : int * int * int * int; inner_padding : int }
 (** Manual frame configuration. [margins] is [(top, right, bottom, left)] in
     cells. [inner_padding] is the space between frame and plot area. *)
 
-type frame = Auto | Manual of frame_config
-(** Frame mode. [Auto] computes margins from axis/label sizes. [Manual]
-    uses explicit margins and padding. *)
+type frame =
+  | Auto
+  | Manual of frame_config
+      (** Frame mode. [Auto] computes margins from axis/label sizes. [Manual]
+          uses explicit margins and padding. *)
 
 type title = { text : string; style : Ansi.Style.t option }
 (** Chart title with optional style override. *)
@@ -1145,10 +1156,10 @@ val manual_frame :
   ?margins:int * int * int * int -> ?inner_padding:int -> unit -> frame
 (** [manual_frame ()] creates a {!Manual} frame.
 
-    @param margins [(top, right, bottom, left)] in cells. Default is
-      [(0, 0, 0, 0)].
-    @param inner_padding Space between frame and plot area. Clamped to [>= 0].
-      Default is [0]. *)
+    @param margins
+      [(top, right, bottom, left)] in cells. Default is [(0, 0, 0, 0)].
+    @param inner_padding
+      Space between frame and plot area. Clamped to [>= 0]. Default is [0]. *)
 
 val empty : ?theme:Theme.t -> unit -> t
 (** [empty ()] creates an empty chart with no marks.
@@ -1160,15 +1171,14 @@ val empty : ?theme:Theme.t -> unit -> t
 val make : ?theme:Theme.t -> ?title:string -> Mark.t list -> t
 (** [make marks] creates a chart from a list of marks.
 
-    Marks render in list order (first mark is drawn first, last mark is on
-    top).
+    Marks render in list order (first mark is drawn first, last mark is on top).
 
     @param theme Chart theme. Default is {!Theme.default}.
     @param title Chart title displayed above the plot area. *)
 
 val with_theme : Theme.t -> t -> t
-(** [with_theme theme t] replaces the chart theme. Axis and gridline styles
-    are updated to inherit from the new theme. *)
+(** [with_theme theme t] replaces the chart theme. Axis and gridline styles are
+    updated to inherit from the new theme. *)
 
 val with_frame : frame -> t -> t
 (** [with_frame frame t] sets the frame mode. *)
@@ -1186,8 +1196,8 @@ val with_y2_scale : Scale.t -> t -> t
 (** [with_y2_scale scale t] enables and sets the secondary y-axis scale. *)
 
 val with_axes : ?x:Axis.t -> ?y:Axis.t -> t -> t
-(** [with_axes t] configures the primary axes. Only provided axes are
-    replaced; omitted axes keep their current configuration. *)
+(** [with_axes t] configures the primary axes. Only provided axes are replaced;
+    omitted axes keep their current configuration. *)
 
 val with_y2_axis : Axis.t -> t -> t
 (** [with_y2_axis axis t] enables and configures the secondary y-axis. *)
@@ -1196,8 +1206,8 @@ val with_grid : Gridlines.t -> t -> t
 (** [with_grid gridlines t] sets the background gridline configuration. *)
 
 val add : Mark.t -> t -> t
-(** [add mark t] appends [mark] to the chart. Marks render in add order
-    (later marks draw on top). *)
+(** [add mark t] appends [mark] to the chart. Marks render in add order (later
+    marks draw on top). *)
 
 (** {2 Mark convenience wrappers}
 
@@ -1205,9 +1215,7 @@ val add : Mark.t -> t -> t
     construction:
 
     {[
-      empty ()
-      |> line ~x:fst ~y:snd data
-      |> rule 0.0
+      empty () |> line ~x:fst ~y:snd data |> rule 0.0
     ]} *)
 
 val line :
@@ -1230,8 +1238,8 @@ val line :
 
     @param resolution Sub-cell resolution mode. Default is [`Cell].
     @param pattern Line pattern. Default is [`Solid].
-    @param glyph When set, draws this glyph at each point instead of
-      connecting lines.
+    @param glyph
+      When set, draws this glyph at each point instead of connecting lines.
     @param y_axis Default is [`Y1]. *)
 
 val line_gaps :
@@ -1252,8 +1260,8 @@ val line_gaps :
 
     @param resolution Sub-cell resolution mode. Default is [`Cell].
     @param pattern Line pattern. Default is [`Solid].
-    @param glyph When set, draws this glyph at each point instead of
-      connecting lines.
+    @param glyph
+      When set, draws this glyph at each point instead of connecting lines.
     @param y_axis Default is [`Y1]. *)
 
 val scatter :
@@ -1286,12 +1294,12 @@ val bar :
   t
 (** [bar ~category ~value data t] adds a bar chart.
 
-    Categories are placed on the band-scale axis; values determine bar
-    length. Implicitly uses a {!Scale.Band} on the category axis and includes
-    zero in the value domain.
+    Categories are placed on the band-scale axis; values determine bar length.
+    Implicitly uses a {!Scale.Band} on the category axis and includes zero in
+    the value domain.
 
-    @param direction Default is [`Vertical] (categories on x-axis, bars grow
-      upward).
+    @param direction
+      Default is [`Vertical] (categories on x-axis, bars grow upward).
     @param mode Default is [`Half_block]. *)
 
 val stacked_bar :
@@ -1309,10 +1317,10 @@ val stacked_bar :
     Segments stack from the baseline upward (or leftward for horizontal).
 
     @param direction Default is [`Vertical].
-    @param gap Spacing between bars in cells. Default is [1]. Clamped to
-      [>= 0].
-    @param size Explicit bar width/height in cells. [None] auto-sizes based
-      on available space.
+    @param gap Spacing between bars in cells. Default is [1]. Clamped to [>= 0].
+    @param size
+      Explicit bar width/height in cells. [None] auto-sizes based on available
+      space.
     @param mode Default is [`Half_block]. *)
 
 val rule :
@@ -1326,8 +1334,9 @@ val rule :
   t
 (** [rule value t] adds a reference line spanning the full plot area.
 
-    @param direction Default is [`Horizontal] (horizontal line at
-      y=[value]). [`Vertical] draws a vertical line at x=[value].
+    @param direction
+      Default is [`Horizontal] (horizontal line at y=[value]). [`Vertical] draws
+      a vertical line at x=[value].
     @param pattern Line pattern. Default is [`Solid]. *)
 
 val heatmap :
@@ -1345,14 +1354,15 @@ val heatmap :
   t
 (** [heatmap ~x ~y ~value data t] adds a heatmap.
 
-    Maps [value] to colors. Multiple points in the same cell are combined
-    using [agg].
+    Maps [value] to colors. Multiple points in the same cell are combined using
+    [agg].
 
     @param color_scale Color gradient array. Empty uses a default gradient.
-    @param value_range Fixed [(min, max)] for color mapping. [None] infers
-      from data.
-    @param auto_value_range When [true] (the default), computes the range
-      from data when [value_range] is not set.
+    @param value_range
+      Fixed [(min, max)] for color mapping. [None] infers from data.
+    @param auto_value_range
+      When [true] (the default), computes the range from data when [value_range]
+      is not set.
     @param agg Aggregation for colliding cells. Default is [`Last].
     @param mode Rendering mode. Default is [Cells_fg]. *)
 
@@ -1368,8 +1378,8 @@ val candles :
   t
 (** [candles data t] adds a candlestick chart from OHLC data.
 
-    Data is sorted by {!Mark.ohlc.time} internally. Bullish candles
-    (close >= open) and bearish candles (close < open) are styled separately.
+    Data is sorted by {!Mark.ohlc.time} internally. Bullish candles (close >=
+    open) and bearish candles (close < open) are styled separately.
 
     @param bullish Style for bullish candles. Default is green.
     @param bearish Style for bearish candles. Default is red.
@@ -1392,19 +1402,14 @@ val circle :
     Radius [r] is in data units. *)
 
 val shade :
-  ?id:Mark.id ->
-  ?style:Ansi.Style.t ->
-  min:float ->
-  max:float ->
-  t ->
-  t
+  ?id:Mark.id -> ?style:Ansi.Style.t -> min:float -> max:float -> t -> t
 (** [shade ~min ~max t] adds a vertical shaded region between x=[min] and
     x=[max]. If [min > max], the values are swapped. Useful for highlighting
     date ranges or intervals. *)
 
 val column_bg : ?id:Mark.id -> ?style:Ansi.Style.t -> float -> t -> t
-(** [column_bg x t] adds a full-height background highlight at data
-    x-coordinate [x]. *)
+(** [column_bg x t] adds a full-height background highlight at data x-coordinate
+    [x]. *)
 
 val area :
   ?id:Mark.id ->
@@ -1458,9 +1463,9 @@ val histogram :
 
 val layout :
   ?view:View.t -> ?x:int -> ?y:int -> t -> width:int -> height:int -> Layout.t
-(** [layout t ~width ~height] compiles [t] into a {!Layout.t} without
-    rendering. Use this when you need layout information (coordinate mapping,
-    hit-testing) without drawing.
+(** [layout t ~width ~height] compiles [t] into a {!Layout.t} without rendering.
+    Use this when you need layout information (coordinate mapping, hit-testing)
+    without drawing.
 
     @param view Viewport constraints. Default is {!View.empty}.
     @param x Horizontal offset in the grid. Default is [0].
@@ -1477,12 +1482,12 @@ val draw :
   width:int ->
   height:int ->
   Layout.t
-(** [draw t grid ~width ~height] renders [t] to [grid] and returns the
-    compiled layout.
+(** [draw t grid ~width ~height] renders [t] to [grid] and returns the compiled
+    layout.
 
     Fills the chart region with the theme background, then draws gridlines,
-    marks (in add order), axes, and title. The returned {!Layout.t} can be
-    used for subsequent hit-testing and overlay drawing.
+    marks (in add order), axes, and title. The returned {!Layout.t} can be used
+    for subsequent hit-testing and overlay drawing.
 
     @param view Viewport constraints. Default is {!View.empty}.
     @param x Horizontal offset in the grid. Default is [0].

@@ -13,5 +13,7 @@ let run ?mode ?raw_mode ?target_fps ?respect_alpha ?mouse_enabled ?mouse
       ?frame_dump_every ?frame_dump_dir ?frame_dump_pattern ?frame_dump_hits
       ?cursor_visible ?explicit_width ?input_timeout ?resize_debounce ()
   in
-  let matrix = Matrix_unix.create ?output ?signal_handlers ?initial_caps config in
+  let matrix =
+    Matrix_unix.create ?output ?signal_handlers ?initial_caps config
+  in
   Mosaic.run ~matrix app

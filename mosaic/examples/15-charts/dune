@@ -1,3 +1,9 @@
 (executable
  (name main)
- (libraries mosaic mosaic.unix mosaic.ui matrix.charts matrix.ansi matrix.grid))
+ (libraries
+  mosaic
+  mosaic.unix
+  mosaic.ui
+  matrix.charts
+  matrix.ansi
+  matrix.grid))

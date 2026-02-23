@@ -64,8 +64,7 @@ let rect_intersection a b =
   let h = min (a.y + a.height) (b.y + b.height) - y in
   if w > 0 && h > 0 then Some { x; y; width = w; height = h } else None
 
-let current_clip s =
-  if Dynarray.is_empty s then None else Dynarray.find_last s
+let current_clip s = if Dynarray.is_empty s then None else Dynarray.find_last s
 
 let push_clip t rect =
   let r =
@@ -85,8 +84,8 @@ let with_clip t rect f =
   push_clip t rect;
   Fun.protect ~finally:(fun () -> pop_clip t) f
 
-(* Clip a rectangle against grid bounds and the active scissor. Returns
-   (x0, y0, x1, y1) with x0 < x1 && y0 < y1 when the region is non-empty. *)
+(* Clip a rectangle against grid bounds and the active scissor. Returns (x0, y0,
+   x1, y1) with x0 < x1 && y0 < y1 when the region is non-empty. *)
 let clip_region t ~x ~y ~width ~height =
   let x0 = max 0 x in
   let y0 = max 0 y in

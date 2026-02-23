@@ -379,8 +379,8 @@ let is_tmux ~term =
   String.starts_with ~prefix:"tmux" lower
   || String.starts_with ~prefix:"screen" lower
 
-(* Wrap an escape sequence for tmux DCS passthrough. All ESC bytes (0x1b) in
-   the payload are doubled so tmux forwards them to the outer terminal. *)
+(* Wrap an escape sequence for tmux DCS passthrough. All ESC bytes (0x1b) in the
+   payload are doubled so tmux forwards them to the outer terminal. *)
 let wrap_for_tmux seq =
   let buf = Buffer.create (String.length seq + 16) in
   Buffer.add_string buf "\027Ptmux;";
@@ -490,9 +490,7 @@ let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
           let caps = !caps_ref in
           let info = !info_ref in
           let has_da = got_da || !found_da in
-          let da_time =
-            if has_da && not got_da then Some now else da_time
-          in
+          let da_time = if has_da && not got_da then Some now else da_time in
           let got_explicit = got_explicit || caps.explicit_width in
           let got_scaled = got_scaled || caps.scaled_text in
           loop caps info got_explicit got_scaled has_da da_time

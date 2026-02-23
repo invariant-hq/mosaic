@@ -24,8 +24,7 @@ let test_non_tty_no_escape_sequences () =
   T.enter_alternate_screen term;
   T.set_title term "Test";
 
-  is_true ~msg:"no escape sequences on non-TTY"
-    (Buffer.length buf = 0);
+  is_true ~msg:"no escape sequences on non-TTY" (Buffer.length buf = 0);
 
   T.close term
 

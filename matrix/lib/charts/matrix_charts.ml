@@ -172,10 +172,10 @@ module Overlay = struct
       | `Dashed -> (ch.grid_v_dashed, ch.grid_h_dashed)
       | `Dotted -> (ch.grid_v_dotted, ch.grid_h_dotted)
     in
-    (if px >= r.x && px < r.x + r.width then
-       for yy = r.y to r.y + r.height - 1 do
-         Render.draw_text grid ~x:px ~y:yy ~style glyph_v
-       done);
+    if px >= r.x && px < r.x + r.width then
+      for yy = r.y to r.y + r.height - 1 do
+        Render.draw_text grid ~x:px ~y:yy ~style glyph_v
+      done;
     if py >= r.y && py < r.y + r.height then
       for xx = r.x to r.x + r.width - 1 do
         Render.draw_text grid ~x:xx ~y:py ~style glyph_h
@@ -189,7 +189,9 @@ module Overlay = struct
       Render.draw_text grid ~x:px ~y:py ~style glyph
 
   let pad_lines lines =
-    let w = List.fold_left (fun acc s -> max acc (Layout.text_width s)) 0 lines in
+    let w =
+      List.fold_left (fun acc s -> max acc (Layout.text_width s)) 0 lines
+    in
     List.map
       (fun s ->
         let sw = Layout.text_width s in
@@ -213,8 +215,7 @@ module Overlay = struct
         + max 0 (y0 + box_h - (rect.y + rect.height))
       in
       let overlap =
-        if px >= x0 && px < x0 + box_w && py >= y0 && py < y0 + box_h
-        then 1000
+        if px >= x0 && px < x0 + box_w && py >= y0 && py < y0 + box_h then 1000
         else 0
       in
       clip + overlap
@@ -276,8 +277,8 @@ module Overlay = struct
       else
         let x0, y0 =
           match anchor with
-          | (`Left | `Right | `Top | `Bottom) as a ->
-              (match a with
+          | (`Left | `Right | `Top | `Bottom) as a -> (
+              match a with
               | `Right -> (px + 2, py - (box_h / 2))
               | `Left -> (px - box_w - 2, py - (box_h / 2))
               | `Top -> (px - (box_w / 2), py - box_h - 2)
@@ -316,16 +317,17 @@ module Overlay = struct
     let rect = Layout.plot_rect layout in
     let w = Layout.text_width label in
     let px =
-      match anchor with `Left -> px | `Center -> px - (w / 2) | `Right -> px - w
+      match anchor with
+      | `Left -> px
+      | `Center -> px - (w / 2)
+      | `Right -> px - w
     in
-    let py =
-      match v_anchor with `Top -> py | `Middle -> py | `Bottom -> py
-    in
+    let py = match v_anchor with `Top -> py | `Middle -> py | `Bottom -> py in
     if py >= rect.y && py < rect.y + rect.height then
       Render.draw_text grid ~x:px ~y:py ~style label
 
-  let arrow ?style ?(head = `Arrow) (layout : Layout.t) (grid : G.t) ~x1 ~y1
-      ~x2 ~y2 =
+  let arrow ?style ?(head = `Arrow) (layout : Layout.t) (grid : G.t) ~x1 ~y1 ~x2
+      ~y2 =
     let style = Option.value style ~default:layout.theme.labels in
     let ch = layout.theme.charset in
     let line_glyphs : G.line_glyphs =
@@ -339,8 +341,8 @@ module Overlay = struct
     let px1, py1 = Layout.px_of_data layout ~x:x1 ~y:y1 in
     let px2, py2 = Layout.px_of_data layout ~x:x2 ~y:y2 in
     let rect = Layout.plot_rect layout in
-    G.draw_line grid ~x1:px1 ~y1:py1 ~x2:px2 ~y2:py2 ~style
-      ~glyphs:line_glyphs ~kind:`Line ();
+    G.draw_line grid ~x1:px1 ~y1:py1 ~x2:px2 ~y2:py2 ~style ~glyphs:line_glyphs
+      ~kind:`Line ();
     if Layout.rect_contains rect ~x:px2 ~y:py2 then
       match head with
       | `None -> ()
@@ -392,7 +394,9 @@ module Legend = struct
   let items_of_layout (layout : Layout.t) : item list =
     let charset = layout.theme.charset in
     let extract_item ~label ~style ~marker =
-      match label with Some l -> Some { label = l; style; marker } | None -> None
+      match label with
+      | Some l -> Some { label = l; style; marker }
+      | None -> None
     in
     List.filter_map
       (fun (m : Mark.t) ->
@@ -402,15 +406,12 @@ module Legend = struct
             let marker = Option.value glyph ~default:charset.frame.h in
             extract_item ~label:m.label ~style ~marker
         | Mark.Scatter { glyph; _ } ->
-            let marker =
-              Option.value glyph ~default:charset.point_default
-            in
+            let marker = Option.value glyph ~default:charset.point_default in
             extract_item ~label:m.label ~style ~marker
         | Mark.Bar _ ->
             extract_item ~label:m.label ~style ~marker:charset.bar_fill
         | Mark.Area _ -> extract_item ~label:m.label ~style ~marker:"▒"
-        | Mark.Fill_between _ ->
-            extract_item ~label:m.label ~style ~marker:"▒"
+        | Mark.Fill_between _ -> extract_item ~label:m.label ~style ~marker:"▒"
         | Mark.Histogram _ ->
             extract_item ~label:m.label ~style ~marker:charset.bar_fill
         | _ -> None)
@@ -419,8 +420,10 @@ end
 
 (* {1 Chart} *)
 
-type frame_config = Layout.frame_config =
-  { margins : int * int * int * int; inner_padding : int }
+type frame_config = Layout.frame_config = {
+  margins : int * int * int * int;
+  inner_padding : int;
+}
 
 type frame = Layout.frame = Auto | Manual of frame_config
 type title = { text : string; style : Style.t option }
@@ -518,11 +521,16 @@ let add m t = { t with marks_rev = m :: t.marks_rev }
 (* {1 Convenience wrappers} *)
 
 let line ?id ?label ?style ?resolution ?pattern ?glyph ?y_axis ~x ~y data t =
-  add (Mark.line ?id ?label ?style ?resolution ?pattern ?glyph ?y_axis ~x ~y data) t
+  add
+    (Mark.line ?id ?label ?style ?resolution ?pattern ?glyph ?y_axis ~x ~y data)
+    t
 
 let line_gaps ?id ?label ?style ?resolution ?pattern ?glyph ?y_axis ~x ~y data t
     =
-  add (Mark.line_gaps ?id ?label ?style ?resolution ?pattern ?glyph ?y_axis ~x ~y data) t
+  add
+    (Mark.line_gaps ?id ?label ?style ?resolution ?pattern ?glyph ?y_axis ~x ~y
+       data)
+    t
 
 let scatter ?id ?label ?style ?glyph ?mode ?y_axis ~x ~y data t =
   add (Mark.scatter ?id ?label ?style ?glyph ?mode ?y_axis ~x ~y data) t
@@ -550,7 +558,6 @@ let circle ?id ?style ?resolution ?y_axis ~cx ~cy ~r data t =
   add (Mark.circle ?id ?style ?resolution ?y_axis ~cx ~cy ~r data) t
 
 let shade ?id ?style ~min ~max t = add (Mark.shade ?id ?style ~min ~max ()) t
-
 let column_bg ?id ?style x t = add (Mark.column_bg ?id ?style x) t
 
 let area ?id ?label ?style ?baseline ?resolution ?y_axis ~x ~y data t =

@@ -147,6 +147,7 @@ module Links = struct
             id)
 
   let resolve t id = Hashtbl.find_opt t.reverse id
+
   let resolve_direct t id =
     Option.value (Hashtbl.find_opt t.reverse id) ~default:""
 end
@@ -250,8 +251,8 @@ let[@inline] write_glyph t idx code =
     Buf.set_glyph t.chars idx code
   end
 
-(** Create a glyph copier for transferring complex glyphs between pools.
-    Caches by pool payload to avoid re-interning identical graphemes. *)
+(** Create a glyph copier for transferring complex glyphs between pools. Caches
+    by pool payload to avoid re-interning identical graphemes. *)
 let make_glyph_copier ~src_pool ~dst_pool =
   let cache = Hashtbl.create 64 in
   fun code ->
@@ -266,8 +267,7 @@ let make_glyph_copier ~src_pool ~dst_pool =
     in
     if Glyph.is_start code then start_glyph
     else
-      Glyph.make_continuation ~code:start_glyph
-        ~left:(Glyph.left_extent code)
+      Glyph.make_continuation ~code:start_glyph ~left:(Glyph.left_extent code)
         ~right:(Glyph.right_extent code)
 
 (* {1 Creation & lifecycle} *)
@@ -387,7 +387,9 @@ let clear ?color t =
   Buf.fill t.links no_link;
   Buf.fill t.fg 1.0;
   let br, bg, bb, ba =
-    match color with None -> (0., 0., 0., 0.) | Some c -> Ansi.Color.to_rgba_f c
+    match color with
+    | None -> (0., 0., 0., 0.)
+    | Some c -> Ansi.Color.to_rgba_f c
   in
   let len = t.width * t.height in
   for i = 0 to len - 1 do
@@ -452,9 +454,15 @@ let resize t ~width ~height =
     let copy_h = min old_h height in
     for y = 0 to copy_h - 1 do
       let src_off = y * old_w and dst_off = y * width in
-      Buf.blit (Buf.sub old_chars src_off copy_w) (Buf.sub new_chars dst_off copy_w);
-      Buf.blit (Buf.sub old_attrs src_off copy_w) (Buf.sub new_attrs dst_off copy_w);
-      Buf.blit (Buf.sub old_links src_off copy_w) (Buf.sub new_links dst_off copy_w);
+      Buf.blit
+        (Buf.sub old_chars src_off copy_w)
+        (Buf.sub new_chars dst_off copy_w);
+      Buf.blit
+        (Buf.sub old_attrs src_off copy_w)
+        (Buf.sub new_attrs dst_off copy_w);
+      Buf.blit
+        (Buf.sub old_links src_off copy_w)
+        (Buf.sub new_links dst_off copy_w);
       Buf.blit
         (Buf.sub old_fg (src_off * 4) (copy_w * 4))
         (Buf.sub new_fg (dst_off * 4) (copy_w * 4));
@@ -503,8 +511,8 @@ let current_opacity t = t.opacity_product
 
 (* {1 Core cell writing} *)
 
-(** Zero-alloc core cell writer. Takes unpacked colors to avoid tuple
-    allocation in hot loops. *)
+(** Zero-alloc core cell writer. Takes unpacked colors to avoid tuple allocation
+    in hot loops. *)
 let set_cell_internal t ~idx ~code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
     ~bg_a ~attrs ~link_id ~blending =
   (* Apply opacity stack *)
@@ -528,21 +536,21 @@ let set_cell_internal t ~idx ~code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
     in
 
     if preserve then begin
-      (* Preserve existing glyph; tint foreground. The overlay link always
-         wins since the overlay is conceptually in front. *)
+      (* Preserve existing glyph; tint foreground. The overlay link always wins
+         since the overlay is conceptually in front. *)
       Buf.set t.links idx link_id;
       if bg_a >= 0.999 then (
         Color_plane.set t.fg idx 0 bg_r;
         Color_plane.set t.fg idx 1 bg_g;
         Color_plane.set t.fg idx 2 bg_b)
-      else if bg_a > 0.001 then
+      else if bg_a > 0.001 then (
         let dr_fg = Color_plane.get t.fg idx 0 in
         let dg_fg = Color_plane.get t.fg idx 1 in
         let db_fg = Color_plane.get t.fg idx 2 in
         let pa = Color_plane.perceptual_alpha bg_a in
         Color_plane.set t.fg idx 0 (Color_plane.mix bg_r dr_fg pa);
         Color_plane.set t.fg idx 1 (Color_plane.mix bg_g dg_fg pa);
-        Color_plane.set t.fg idx 2 (Color_plane.mix bg_b db_fg pa)
+        Color_plane.set t.fg idx 2 (Color_plane.mix bg_b db_fg pa))
     end
     else begin
       (* Normal blended overwrite *)
@@ -555,8 +563,7 @@ let set_cell_internal t ~idx ~code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
         Color_plane.set t.fg idx 1 (Color_plane.mix fg_g dg_bg pa);
         Color_plane.set t.fg idx 2 (Color_plane.mix fg_b db_bg pa);
         Color_plane.set t.fg idx 3 da_bg)
-      else
-        Color_plane.write_rgba t.fg idx fg_r fg_g fg_b fg_a
+      else Color_plane.write_rgba t.fg idx fg_r fg_g fg_b fg_a
     end;
 
     (* Always blend BG over dest BG *)
@@ -677,16 +684,15 @@ let blit ~src ~dst =
         if Glyph.is_complex c then Grapheme_tracker.add dst.grapheme_tracker c
       done)
     else
-      let copy_glyph = make_glyph_copier ~src_pool:src.glyph_pool
-          ~dst_pool:dst.glyph_pool in
+      let copy_glyph =
+        make_glyph_copier ~src_pool:src.glyph_pool ~dst_pool:dst.glyph_pool
+      in
       Grapheme_tracker.clear dst.grapheme_tracker;
       Links.clear dst.link_registry;
       let len = src.width * src.height in
       for i = 0 to len - 1 do
         let src_c = Buf.get_glyph src.chars i in
-        let dst_c =
-          if Glyph.is_inline src_c then src_c else copy_glyph src_c
-        in
+        let dst_c = if Glyph.is_inline src_c then src_c else copy_glyph src_c in
         Buf.set_glyph dst.chars i dst_c;
         if Glyph.is_complex dst_c then
           Grapheme_tracker.add dst.grapheme_tracker dst_c;
@@ -792,7 +798,8 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
           (* General blit: cell-by-cell with cross-pool support *)
           let copy_glyph =
             if same_grid || src.glyph_pool == dst.glyph_pool then Fun.id
-            else make_glyph_copier ~src_pool:src.glyph_pool
+            else
+              make_glyph_copier ~src_pool:src.glyph_pool
                 ~dst_pool:dst.glyph_pool
           in
 
@@ -824,7 +831,8 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
               (* Detect orphan continuations whose start cell is outside the
                  copied region *)
               let is_orphan =
-                Glyph.is_continuation code && sx - Glyph.left_extent code < src_x
+                Glyph.is_continuation code
+                && sx - Glyph.left_extent code < src_x
               in
 
               let mapped_code =
@@ -853,7 +861,7 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
                   ~code:mapped_code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
                   ~bg_a ~attrs ~link_id ~blending;
 
-              k := !k + x_step
+                k := !k + x_step
             done;
             i := !i + y_step
           done
@@ -873,8 +881,8 @@ let scroll t ~top ~bottom n =
       let copy_h = region_h - abs_n in
       if n > 0 then (
         (* Scroll up: shift content up, blank at bottom *)
-        blit_region ~src:t ~dst:t ~src_x:0 ~src_y:(top + abs_n)
-          ~width:t.width ~height:copy_h ~dst_x:0 ~dst_y:top;
+        blit_region ~src:t ~dst:t ~src_x:0 ~src_y:(top + abs_n) ~width:t.width
+          ~height:copy_h ~dst_x:0 ~dst_y:top;
         fill_rect t ~x:0
           ~y:(bottom - abs_n + 1)
           ~width:t.width ~height:abs_n ~color:clear_c)
@@ -891,7 +899,9 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
   else
     let s = Option.value style ~default:Ansi.Style.default in
     let fg_r, fg_g, fg_b, fg_a =
-      match s.fg with Some c -> Ansi.Color.to_rgba_f c | None -> (1., 1., 1., 1.)
+      match s.fg with
+      | Some c -> Ansi.Color.to_rgba_f c
+      | None -> (1., 1., 1., 1.)
     in
     let explicit_bg =
       match s.bg with Some c -> Some (Ansi.Color.to_rgba_f c) | None -> None
@@ -917,9 +927,7 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
             fun x -> x >= x_min && x < x_max
       in
       let scissor_bounds =
-        match scissor with
-        | None -> None
-        | Some r -> Some (r.x, r.x + r.width)
+        match scissor with None -> None | Some r -> Some (r.x, r.x + r.width)
       in
 
       let resolve_bg idx =
@@ -934,14 +942,14 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
           let start_visible = cell_visible !cur_x in
           for _ = 1 to tabw do
             if !cur_x >= 0 && !cur_x < t.width then begin
-              if start_visible && cell_visible !cur_x then
+              if start_visible && cell_visible !cur_x then (
                 let idx = (y * t.width) + !cur_x in
                 let br, bg, bb, ba = resolve_bg idx in
                 let blending = fg_a < 0.999 || ba < 0.999 || t.respect_alpha in
                 set_cell_internal t ~idx ~code:space_cell ~fg_r ~fg_g ~fg_b
                   ~fg_a ~bg_r:br ~bg_g:bg ~bg_b:bb ~bg_a:ba ~attrs ~link_id
                   ~blending;
-              incr cur_x
+                incr cur_x)
             end
           done
         end
@@ -989,32 +997,32 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
       in
 
       let stop = ref false in
-      (try
-         Glyph.Pool.iter_grapheme_info ~width_method:t.width_method
-           ~tab_width:tabw
-           (fun ~offset ~len ~width:w ->
-             if !stop || w <= 0 then ()
-             else
-               let start_x = !cur_x in
-               let end_x = start_x + w in
-               if end_x <= 0 then cur_x := end_x
-               else if start_x >= t.width then (
-                 stop := true;
-                 raise Exit)
-               else if
-                 match scissor_bounds with
-                 | None -> false
-                 | Some (x_min, x_max) -> end_x <= x_min || start_x >= x_max
-               then cur_x := end_x
-               else
-                 let g =
-                   Glyph.Pool.intern_sub t.glyph_pool
-                     ~width_method:t.width_method ~tab_width:tabw text
-                     ~pos:offset ~len ~width:w
-                 in
-                 if not (Glyph.is_continuation g) then writer g)
-           text
-       with Exit -> ())
+      try
+        Glyph.Pool.iter_grapheme_info ~width_method:t.width_method
+          ~tab_width:tabw
+          (fun ~offset ~len ~width:w ->
+            if !stop || w <= 0 then ()
+            else
+              let start_x = !cur_x in
+              let end_x = start_x + w in
+              if end_x <= 0 then cur_x := end_x
+              else if start_x >= t.width then (
+                stop := true;
+                raise Exit)
+              else if
+                match scissor_bounds with
+                | None -> false
+                | Some (x_min, x_max) -> end_x <= x_min || start_x >= x_max
+              then cur_x := end_x
+              else
+                let g =
+                  Glyph.Pool.intern_sub t.glyph_pool
+                    ~width_method:t.width_method ~tab_width:tabw text
+                    ~pos:offset ~len ~width:w
+                in
+                if not (Glyph.is_continuation g) then writer g)
+          text
+      with Exit -> ()
 
 (* {1 Box drawing} *)
 
@@ -1037,9 +1045,7 @@ let draw_box t ~x ~y ~width ~height ?(border = Border.single)
         match fill with
         | Some c -> c
         | None -> (
-            match style.bg with
-            | Some c -> c
-            | None -> Ansi.Color.default)
+            match style.bg with Some c -> c | None -> Ansi.Color.default)
       in
       let open Border in
       let has side = List.mem side sides in
@@ -1068,8 +1074,9 @@ let draw_box t ~x ~y ~width ~height ?(border = Border.single)
       let b_attrs = Ansi.Attr.pack style.attrs in
 
       let draw_b bx by code =
-        if bx >= 0 && by >= 0 && bx < t.width && by < t.height
-           && not (is_clipped t bx by)
+        if
+          bx >= 0 && by >= 0 && bx < t.width && by < t.height
+          && not (is_clipped t bx by)
         then
           let cell = Glyph.of_uchar (Uchar.of_int code) in
           set_cell_internal t
@@ -1107,18 +1114,20 @@ let draw_box t ~x ~y ~width ~height ?(border = Border.single)
 
       (* Vertical borders — extend to corners when only one horizontal side or
          neither is present *)
-      let left_only = has `Left && not (has `Top) && not (has `Bottom) in
-      let right_only = has `Right && not (has `Top) && not (has `Bottom) in
+      let left_only = has `Left && (not (has `Top)) && not (has `Bottom) in
+      let right_only = has `Right && (not (has `Top)) && not (has `Bottom) in
       let bottom_with_verts =
-        has `Bottom && not (has `Top) && (has `Left || has `Right)
+        has `Bottom && (not (has `Top)) && (has `Left || has `Right)
       in
       let top_with_verts =
-        has `Top && not (has `Bottom) && (has `Left || has `Right)
+        has `Top && (not (has `Bottom)) && (has `Left || has `Right)
       in
       let extend_top = left_only || right_only || bottom_with_verts in
       let extend_bottom = left_only || right_only || top_with_verts in
       let vy_start = max sy (if extend_top then y else y + 1) in
-      let vy_end = min ey (if extend_bottom then y + height - 1 else y + height - 2) in
+      let vy_end =
+        min ey (if extend_bottom then y + height - 1 else y + height - 2)
+      in
 
       if vy_start <= vy_end then begin
         if has `Left && x >= 0 && x < t.width then
@@ -1134,7 +1143,7 @@ let draw_box t ~x ~y ~width ~height ?(border = Border.single)
       end;
 
       (* Title *)
-      (match title with
+      match title with
       | Some txt when has `Top && width >= 4 ->
           let w =
             Glyph.String.measure ~width_method:t.width_method ~tab_width:2 txt
@@ -1152,7 +1161,7 @@ let draw_box t ~x ~y ~width ~height ?(border = Border.single)
               | None -> Ansi.Style.make ?fg:style.fg ~bg:bg_color ()
             in
             draw_text t ~x:(x + pad) ~y ~text:txt ~style:title_s
-      | _ -> ())
+      | _ -> ()
     end
 
 (* {1 Line drawing} *)
@@ -1165,6 +1174,7 @@ type line_glyphs = {
 }
 
 let default_line_glyphs = { h = "─"; v = "│"; diag_up = "╱"; diag_down = "╲" }
+
 let ascii_line_glyphs = { h = "-"; v = "|"; diag_up = "/"; diag_down = "\\" }
 
 (* Precomputed braille lookup table: all 256 patterns as UTF-8 strings. *)
@@ -1202,8 +1212,14 @@ let decode_braille_bits t ~x ~y =
 
 let[@inline] braille_bit_pos bit_x bit_y =
   match (bit_x, bit_y) with
-  | 0, 0 -> 0 | 0, 1 -> 1 | 0, 2 -> 2 | 0, 3 -> 6
-  | 1, 0 -> 3 | 1, 1 -> 4 | 1, 2 -> 5 | 1, 3 -> 7
+  | 0, 0 -> 0
+  | 0, 1 -> 1
+  | 0, 2 -> 2
+  | 0, 3 -> 6
+  | 1, 0 -> 3
+  | 1, 1 -> 4
+  | 1, 2 -> 5
+  | 1, 3 -> 7
   | _ -> 0
 
 let draw_line t ~x1 ~y1 ~x2 ~y2 ?(style = Ansi.Style.default)
@@ -1227,8 +1243,12 @@ let draw_line t ~x1 ~y1 ~x2 ~y2 ?(style = Ansi.Style.default)
           else glyphs.v
         in
         draw_text t ~x:!x ~y:!y ~text:glyph ~style;
-        if move_x then (x := !x + sx; err := !err - dy);
-        if move_y then (y := !y + sy; err := !err + dx)
+        if move_x then (
+          x := !x + sx;
+          err := !err - dy);
+        if move_y then (
+          y := !y + sy;
+          err := !err + dx)
       done;
       let final_glyph =
         if dx = 0 && dy = 0 then glyphs.h
@@ -1237,7 +1257,6 @@ let draw_line t ~x1 ~y1 ~x2 ~y2 ?(style = Ansi.Style.default)
         else diag_glyph
       in
       draw_text t ~x:!x ~y:!y ~text:final_glyph ~style
-
   | `Braille ->
       let buffer = Hashtbl.create 32 in
       let set_dot px py =
@@ -1248,17 +1267,20 @@ let draw_line t ~x1 ~y1 ~x2 ~y2 ?(style = Ansi.Style.default)
           let bit_x = ((px mod 2) + 2) mod 2 in
           let bit_y = ((py mod 4) + 4) mod 4 in
           let key = (cell_x, cell_y) in
-          let current =
-            Option.value (Hashtbl.find_opt buffer key) ~default:0
-          in
-          Hashtbl.replace buffer key (current lor (1 lsl braille_bit_pos bit_x bit_y))
+          let current = Option.value (Hashtbl.find_opt buffer key) ~default:0 in
+          Hashtbl.replace buffer key
+            (current lor (1 lsl braille_bit_pos bit_x bit_y))
       in
       let x = ref x1 and y = ref y1 and err = ref (dx - dy) in
       while not (!x = x2 && !y = y2) do
         set_dot !x !y;
         let e2 = 2 * !err in
-        if e2 > -dy then (x := !x + sx; err := !err - dy);
-        if e2 < dx then (y := !y + sy; err := !err + dx)
+        if e2 > -dy then (
+          x := !x + sx;
+          err := !err - dy);
+        if e2 < dx then (
+          y := !y + sy;
+          err := !err + dx)
       done;
       set_dot x2 y2;
       Hashtbl.iter
@@ -1299,11 +1321,12 @@ let diff_cells prev curr =
       | true, true ->
           let p_idx = (y * prev.width) + x in
           let c_idx = (y * curr.width) + x in
-          if Buf.get_glyph prev.chars p_idx <> Buf.get_glyph curr.chars c_idx
-             || Buf.get prev.attrs p_idx <> Buf.get curr.attrs c_idx
-             || not (Color_plane.equal_eps prev.fg p_idx curr.fg c_idx)
-             || not (Color_plane.equal_eps prev.bg p_idx curr.bg c_idx)
-             || Buf.get prev.links p_idx <> Buf.get curr.links c_idx
+          if
+            Buf.get_glyph prev.chars p_idx <> Buf.get_glyph curr.chars c_idx
+            || Buf.get prev.attrs p_idx <> Buf.get curr.attrs c_idx
+            || (not (Color_plane.equal_eps prev.fg p_idx curr.fg c_idx))
+            || (not (Color_plane.equal_eps prev.bg p_idx curr.bg c_idx))
+            || Buf.get prev.links p_idx <> Buf.get curr.links c_idx
           then Dynarray.add_last diffs (x, y)
     done
   done;
@@ -1331,12 +1354,11 @@ let to_ansi ?(reset = true) t =
             let cw = Glyph.cell_width code in
 
             if cw > 0 then begin
-              Ansi.Sgr_state.update style w
-                ~fg_r:(get_fg_r t idx) ~fg_g:(get_fg_g t idx)
-                ~fg_b:(get_fg_b t idx) ~fg_a:(get_fg_a t idx)
-                ~bg_r:(get_bg_r t idx) ~bg_g:(get_bg_g t idx)
-                ~bg_b:(get_bg_b t idx) ~bg_a:(get_bg_a t idx)
-                ~attrs:(get_attrs t idx)
+              Ansi.Sgr_state.update style w ~fg_r:(get_fg_r t idx)
+                ~fg_g:(get_fg_g t idx) ~fg_b:(get_fg_b t idx)
+                ~fg_a:(get_fg_a t idx) ~bg_r:(get_bg_r t idx)
+                ~bg_g:(get_bg_g t idx) ~bg_b:(get_bg_b t idx)
+                ~bg_a:(get_bg_a t idx) ~attrs:(get_attrs t idx)
                 ~link:(hyperlink_url_direct t (get_link t idx));
 
               if Glyph.is_continuation code || Glyph.is_empty code then
@@ -1346,7 +1368,8 @@ let to_ansi ?(reset = true) t =
                 if len <= 0 then Ansi.emit (Ansi.char ' ') w
                 else begin
                   if len > Bytes.length !scratch then
-                    scratch := Bytes.create (max (Bytes.length !scratch * 2) len);
+                    scratch :=
+                      Bytes.create (max (Bytes.length !scratch * 2) len);
                   let written = Glyph.Pool.blit pool code !scratch ~pos:0 in
                   Ansi.emit (Ansi.bytes !scratch ~off:0 ~len:written) w
                 end

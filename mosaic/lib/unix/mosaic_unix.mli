@@ -5,8 +5,7 @@
     {!Matrix.create}.
 
     {[
-      let () =
-        Mosaic_unix.run { init; update; view; subscriptions }
+      let () = Mosaic_unix.run { init; update; view; subscriptions }
     ]} *)
 
 val run :
@@ -36,8 +35,8 @@ val run :
   ?initial_caps:Matrix.Terminal.capabilities ->
   ('model, 'msg) Mosaic.app ->
   unit
-(** [run app] creates a Matrix application, sets up Unix I/O, and runs the
-    TEA event loop until the application exits.
+(** [run app] creates a Matrix application, sets up Unix I/O, and runs the TEA
+    event loop until the application exits.
 
     Defaults to 60 FPS, alternate screen, raw mode, mouse and bracketed paste
     enabled, and Ctrl+C exits ([exit_on_ctrl_c] defaults to [true]). *)

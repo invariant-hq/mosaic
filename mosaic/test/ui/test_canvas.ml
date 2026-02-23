@@ -95,8 +95,8 @@ let%expect_test "canvas draw_box can limit sides" =
   render_boxed ~width:18 ~height:6
     (canvas ~id:"c" ~size:(size ~width:18 ~height:6)
        ~draw:(fun g ~width:_ ~height:_ ->
-         Grid.draw_box g ~x:1 ~y:1 ~width:16 ~height:4
-           ~sides:[ `Top; `Bottom ] ();
+         Grid.draw_box g ~x:1 ~y:1 ~width:16 ~height:4 ~sides:[ `Top; `Bottom ]
+           ();
          Grid.draw_text g ~x:6 ~y:2 ~text:"Only edges")
        ());
   [%expect_exact

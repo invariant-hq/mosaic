@@ -260,7 +260,8 @@ let compute_placeholder t maxw =
          (fun ~offset ~len ->
            let grapheme = String.sub placeholder offset len in
            let w =
-             Glyph.String.measure ~width_method:`Unicode ~tab_width:2 grapheme |> max 1
+             Glyph.String.measure ~width_method:`Unicode ~tab_width:2 grapheme
+             |> max 1
            in
            if !acc + w <= maxw then (
              acc := !acc + w;
@@ -505,8 +506,8 @@ let render_input t renderable grid ~delta:_ =
                 else t.props.text_color
               in
               Grid.set_cell grid ~x:dest_x ~y:dest_y
-                ~glyph:(Glyph.unsafe_of_int code) ~fg ~bg
-                ~attrs:Ansi.Attr.empty ~blend:true ();
+                ~glyph:(Glyph.unsafe_of_int code) ~fg ~bg ~attrs:Ansi.Attr.empty
+                ~blend:true ();
               loop (i + 1) (column + max 1 width))
         in
         loop t.view_offset 0)

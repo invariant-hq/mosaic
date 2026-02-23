@@ -87,9 +87,11 @@ let layout t =
             match line.style with
             | `Spacer -> acc
             | _ ->
-                (* Use Glyph.String.measure for correct Unicode width calculation *)
+                (* Use Glyph.String.measure for correct Unicode width
+                   calculation *)
                 let w =
-                  Glyph.String.measure ~width_method:`Unicode ~tab_width:2 line.text
+                  Glyph.String.measure ~width_method:`Unicode ~tab_width:2
+                    line.text
                 in
                 max acc w)
           0 lines

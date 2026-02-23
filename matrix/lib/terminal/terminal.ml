@@ -92,7 +92,10 @@ let unicode_off = Ansi.(to_string (disable Unicode))
 let reset_sgr = Ansi.(to_string reset)
 let erase_below = Ansi.(to_string erase_below_cursor)
 let cursor_default = Ansi.(to_string (cursor_style ~shape:`Default))
-let reset_cursor_color_fallback_seq = Ansi.(to_string reset_cursor_color_fallback)
+
+let reset_cursor_color_fallback_seq =
+  Ansi.(to_string reset_cursor_color_fallback)
+
 let reset_cursor_color_seq = Ansi.(to_string reset_cursor_color)
 let cursor_block = Ansi.(to_string (cursor_style ~shape:`Block))
 let cursor_block_blink = Ansi.(to_string (cursor_style ~shape:`Blinking_block))
@@ -153,7 +156,9 @@ let make ~output ?(tty = true) ?initial_caps ?parser () =
   let term = Sys.getenv_opt "TERM" |> Option.value ~default:"unknown" in
   let caps, terminal_info = Caps.initial ?provided:initial_caps ~term () in
   let env_overrides = Option.is_none initial_caps in
-  let parser = match parser with Some p -> p | None -> Input.Parser.create () in
+  let parser =
+    match parser with Some p -> p | None -> Input.Parser.create ()
+  in
   {
     output;
     tty;
@@ -349,7 +354,7 @@ let cursor_color_osc r g b =
   make_osc (Printf.sprintf "12;#%02X%02X%02X" r g b)
 
 let cursor_style_seq style blinking =
-  match style, blinking with
+  match (style, blinking) with
   | `Block, true -> cursor_block_blink
   | `Block, false -> cursor_block
   | `Line, true -> cursor_line_blink
@@ -453,7 +458,7 @@ let set_raw fd =
 
 let restore fd termios =
   Unix.tcsetattr fd Unix.TCSANOW termios;
-  (try Unix.clear_nonblock fd with Unix.Unix_error _ -> ())
+  try Unix.clear_nonblock fd with Unix.Unix_error _ -> ()
 
 let size fd = try get_size fd with _ -> (80, 24)
 let flush_input fd = try Unix.tcflush fd Unix.TCIFLUSH with _ -> ()

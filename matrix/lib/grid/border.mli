@@ -17,7 +17,8 @@
     Draw a box with a single-line border:
     {[
       Grid.draw_box grid ~x:5 ~y:2 ~width:40 ~height:10
-        ~fill:(Ansi.Color.of_rgb 20 20 20) ()
+        ~fill:(Ansi.Color.of_rgb 20 20 20)
+        ()
     ]}
 
     Customize a preset with different characters:

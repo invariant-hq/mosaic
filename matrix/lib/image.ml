@@ -537,8 +537,8 @@ let render ?hits ?(x = 0) ?(y = 0) grid t =
                   | None -> Ansi.Style.bg Color.black r.border_style
                 in
                 Grid.draw_box grid ~x:(x + r.x) ~y:(y + r.y) ~width:r.width
-                  ~height:r.height ~border:r.border ~sides:r.border_sides
-                  ~style ?fill:r.fill ()
+                  ~height:r.height ~border:r.border ~sides:r.border_sides ~style
+                  ?fill:r.fill ()
             in
             match clip with
             | None -> draw ()
