@@ -1,146 +1,150 @@
-(** Interactive single-line text input (code unit-based editing).
+(** Single-line text input widget.
 
-    Text_input provides a focusable single-line text field with cursor
-    navigation, placeholder text, and event callbacks for input, change, and
-    submission. Keyboard input is handled automatically with printable ASCII
-    keystrokes; programmatic updates can include any string. Mouse interactions
-    are not handled.
+    A text input provides keyboard-driven single-line editing with horizontal
+    scrolling, selection highlighting, cursor display, and placeholder text.
+    Supports undo/redo, word-level navigation, and configurable visual styling.
+    Newlines are always stripped from content.
 
-    {1 Overview}
+    The widget fires three callbacks:
+    - [on_input]: after every text change (keystroke-level).
+    - [on_change]: when the committed value differs on blur or submit. See
+      {!section:callbacks}.
+    - [on_submit]: when Enter is pressed.
 
-    Text_input uses a horizontal scrolling viewport to display text that exceeds
-    available width. The cursor is kept visible within the viewport. Text
-    editing operates on UTF-8 code units.
-
-    {1 Event Sequence}
-
-    - [on_input]: Fired on every keystroke
-    - [on_change]: Fired when focus is lost or Enter is pressed
-    - [on_submit]: Fired when Enter is pressed *)
-
-type cursor_style = [ `Block | `Line | `Underline ]
-
-module Props : sig
-  type t
-
-  val make :
-    ?background:Ansi.Color.t ->
-    ?text_color:Ansi.Color.t ->
-    ?focused_background:Ansi.Color.t ->
-    ?focused_text_color:Ansi.Color.t ->
-    ?placeholder:string ->
-    ?placeholder_color:Ansi.Color.t ->
-    ?cursor_color:Ansi.Color.t ->
-    ?cursor_style:cursor_style ->
-    ?cursor_blinking:bool ->
-    ?max_length:int ->
-    ?value:string ->
-    ?autofocus:bool ->
-    unit ->
-    t
-
-  val default : t
-  val equal : t -> t -> bool
-end
+    See {!Textarea} for multi-line editing. *)
 
 type t
+(** The type for single-line text inputs. *)
 
-val apply_props : t -> Props.t -> unit
-(** [apply_props input props] applies [props] to a mounted text input using its
-    setters, updating colors, placeholder, cursor appearance, length limits, and
-    value. *)
+(** {1:construction Construction} *)
 
-val mount : ?props:Props.t -> Renderable.t -> t
-(** [mount ?props node] configures [node] to render an interactive text input.
-*)
-
-(** {1 Accessors} *)
-
-val node : t -> Renderable.t
-(** [node t] returns the underlying renderable node. *)
-
-val value : t -> string
-(** [value t] returns the current text content. *)
-
-val cursor : t -> int
-(** [cursor t] returns the cursor position as a code-unit index. *)
-
-val hardware_cursor :
-  t -> (int * int * Ansi.Color.t * cursor_style * bool) option
-(** [hardware_cursor t] returns [(x, y, color, style, blinking)] for the
-    terminal cursor in 1-based coordinates if the input is focused and visible;
-    [None] otherwise. Intended for renderer integration. *)
-
-(** {1 Mutations} *)
-
-val set_value : t -> string -> unit
-(** [set_value t text] replaces content and preserves the cursor position
-    (clamped to bounds). Fires [on_input]. *)
-
-val set_placeholder : t -> string -> unit
-(** [set_placeholder t text] updates the placeholder text. *)
-
-val set_cursor : t -> int -> unit
-(** [set_cursor t index] moves the cursor to code-unit [index]. Clamped to valid
-    range. *)
-
-val set_max_length : t -> int -> unit
-(** [set_max_length t length] updates maximum code-unit count. Truncates current
-    text if needed. *)
-
-val set_background : t -> Ansi.Color.t -> unit
-(** [set_background t color] updates unfocused background color. *)
-
-val set_focused_background : t -> Ansi.Color.t -> unit
-(** [set_focused_background t color] updates focused background color. *)
-
-val set_text_color : t -> Ansi.Color.t -> unit
-(** [set_text_color t color] updates unfocused text color. *)
-
-val set_focused_text_color : t -> Ansi.Color.t -> unit
-(** [set_focused_text_color t color] updates focused text color. *)
-
-val set_placeholder_color : t -> Ansi.Color.t -> unit
-(** [set_placeholder_color t color] updates placeholder text color. *)
-
-val set_cursor_color : t -> Ansi.Color.t -> unit
-(** [set_cursor_color t color] updates cursor color. *)
-
-val set_cursor_style : t -> cursor_style -> unit
-(** [set_cursor_style t style] updates the cursor style. *)
-
-val set_cursor_blinking : t -> bool -> unit
-(** [set_cursor_blinking t blinking] updates whether the cursor blinks. *)
-
-(** {1 Event handlers} *)
-
-val set_callbacks :
-  t ->
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?value:string ->
+  ?placeholder:string ->
+  ?max_length:int ->
+  ?text_color:Ansi.Color.t ->
+  ?background_color:Ansi.Color.t ->
+  ?focused_text_color:Ansi.Color.t ->
+  ?focused_background_color:Ansi.Color.t ->
+  ?placeholder_color:Ansi.Color.t ->
+  ?selection_color:Ansi.Color.t ->
+  ?selection_fg:Ansi.Color.t ->
+  ?cursor_style:[ `Block | `Line | `Underline ] ->
+  ?cursor_color:Ansi.Color.t ->
+  ?cursor_blinking:bool ->
   ?on_input:(string -> unit) ->
   ?on_change:(string -> unit) ->
   ?on_submit:(string -> unit) ->
   unit ->
-  unit
-(** [set_callbacks t ~on_input ~on_change ~on_submit ()] replaces registered
-    callbacks. *)
+  t
+(** [create ~parent ()] is a text input attached to [parent] with:
+    - [value]: initial text content. Newlines are stripped. Defaults to [""].
+    - [placeholder]: text shown when empty. Defaults to [""].
+    - [max_length]: maximum grapheme cluster count. Defaults to [1000].
+    - [text_color]: unfocused text color. Defaults to {!Ansi.Color.White}.
+    - [background_color]: unfocused background. Defaults to
+      {!Ansi.Color.default}.
+    - [focused_text_color]: focused text color. Defaults to {!Ansi.Color.White}.
+    - [focused_background_color]: focused background. Defaults to
+      {!Ansi.Color.default}.
+    - [placeholder_color]: placeholder text color. Defaults to
+      {!Ansi.Color.Bright_black}.
+    - [selection_color]: selection background. Defaults to {!Ansi.Color.Blue}.
+    - [selection_fg]: selection foreground. When [None], uses the normal text
+      color. Defaults to [None].
+    - [cursor_style]: cursor shape when focused. Defaults to [`Block].
+    - [cursor_color]: cursor color when focused. Defaults to
+      {!Ansi.Color.White}.
+    - [cursor_blinking]: whether the cursor blinks. Defaults to [true].
+    - [on_input]: called after every text change.
+    - [on_change]: called when committed value changes (blur or submit).
+    - [on_submit]: called when Enter is pressed. *)
 
-val on_input : t -> (string -> unit) -> unit
-(** [on_input t handler] registers a callback fired on every text modification.
-*)
+(** {1:accessors Accessors} *)
 
-val on_change : t -> (string -> unit) -> unit
-(** [on_change t handler] registers a callback fired when focus is lost or Enter
-    is pressed, but only if text changed since last commit. *)
+val node : t -> Renderable.t
+(** [node t] is the underlying renderable. *)
 
-val on_submit : t -> (string -> unit) -> unit
-(** [on_submit t handler] registers a callback fired when Enter is pressed. *)
+val buffer : t -> Edit_buffer.t
+(** [buffer t] is the underlying edit buffer. *)
 
-(** {1 Event routing} *)
+(** {1:props Props} *)
 
-val focus : t -> bool
-(** [focus t] attempts to focus the input field. Returns [true] if successful.
-*)
+module Props : sig
+  type t
+  (** The type for declarative property bundles, used by the reconciler for
+      diffing. *)
 
-val blur : t -> unit
-(** [blur t] removes focus from input field. Fires [on_change] if text changed.
-*)
+  val make :
+    ?value:string ->
+    ?placeholder:string ->
+    ?max_length:int ->
+    ?text_color:Ansi.Color.t ->
+    ?background_color:Ansi.Color.t ->
+    ?focused_text_color:Ansi.Color.t ->
+    ?focused_background_color:Ansi.Color.t ->
+    ?placeholder_color:Ansi.Color.t ->
+    ?selection_color:Ansi.Color.t ->
+    ?selection_fg:Ansi.Color.t ->
+    ?cursor_style:[ `Block | `Line | `Underline ] ->
+    ?cursor_color:Ansi.Color.t ->
+    ?cursor_blinking:bool ->
+    unit ->
+    t
+  (** [make ()] is a property set with the same defaults as {!val-create}. *)
+
+  val default : t
+  (** [default] is [make ()]. *)
+
+  val equal : t -> t -> bool
+  (** [equal a b] is [true] iff [a] and [b] describe identical visual
+      properties. *)
+end
+
+val apply_props : t -> Props.t -> unit
+(** [apply_props t props] updates [t] to match [props]. When [value] differs,
+    the buffer content is replaced (newlines stripped). Requests a render. *)
+
+(** {1:value Value} *)
+
+val value : t -> string
+(** [value t] is the current text content. *)
+
+val set_value : t -> string -> unit
+(** [set_value t s] replaces the text content with [s] (newlines stripped).
+    Resets scroll to [0] and ensures cursor visibility. *)
+
+(** {1:callbacks Callbacks} *)
+
+val set_on_input : t -> (string -> unit) option -> unit
+(** [set_on_input t f] sets the keystroke-level input callback. [None] clears
+    it. *)
+
+val set_on_change : t -> (string -> unit) option -> unit
+(** [set_on_change t f] sets the committed-value change callback. [None] clears
+    it.
+
+    The callback fires on blur or submit, only when the value has changed since
+    focus was gained (or since the last [on_change] firing). *)
+
+val set_on_submit : t -> (string -> unit) option -> unit
+(** [set_on_submit t f] sets the Enter-key submit callback. [None] clears it.
+    Fires [on_change] before the submit callback. *)
+
+(** {1:paste Paste} *)
+
+val handle_paste : t -> string -> unit
+(** [handle_paste t text] inserts [text] as if pasted, stripping newlines. Fires
+    [on_input] if the buffer changed. *)
+
+(** {1:fmt Formatting} *)
+
+val pp : Format.formatter -> t -> unit
+(** [pp ppf t] formats [t] on [ppf] for debugging. *)

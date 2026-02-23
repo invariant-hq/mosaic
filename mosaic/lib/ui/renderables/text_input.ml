@@ -1,673 +1,439 @@
-type cursor_style = [ `Block | `Line | `Underline ]
+(* ───── Defaults ───── *)
 
-let default_max_length = 1000
+let default_text_color = Ansi.Color.White
+let default_background_color = Ansi.Color.default
+let default_focused_text_color = Ansi.Color.White
+let default_focused_background_color = Ansi.Color.default
+let default_placeholder_color = Ansi.Color.Bright_black
+let default_selection_color = Ansi.Color.Blue
+let default_cursor_style = `Block
+let default_cursor_color = Ansi.Color.White
+let default_cursor_blinking = true
+
+(* ───── Props ───── *)
 
 module Props = struct
   type t = {
-    background : Ansi.Color.t;
-    text_color : Ansi.Color.t;
-    focused_background : Ansi.Color.t;
-    focused_text_color : Ansi.Color.t;
-    placeholder : string;
-    placeholder_color : Ansi.Color.t;
-    cursor_color : Ansi.Color.t;
-    cursor_style : cursor_style;
-    cursor_blinking : bool;
-    max_length : int;
     value : string;
-    autofocus : bool;
+    placeholder : string;
+    max_length : int;
+    text_color : Ansi.Color.t;
+    background_color : Ansi.Color.t;
+    focused_text_color : Ansi.Color.t;
+    focused_background_color : Ansi.Color.t;
+    placeholder_color : Ansi.Color.t;
+    selection_color : Ansi.Color.t;
+    selection_fg : Ansi.Color.t option;
+    cursor_style : [ `Block | `Line | `Underline ];
+    cursor_color : Ansi.Color.t;
+    cursor_blinking : bool;
   }
 
-  let make ?background ?text_color ?focused_background ?focused_text_color
-      ?(placeholder = "") ?(placeholder_color = Ansi.Color.of_rgb 102 102 102)
-      ?(cursor_color = Ansi.Color.of_rgb 255 255 255)
-      ?(cursor_style = (`Block : cursor_style)) ?(cursor_blinking = true)
-      ?(max_length = default_max_length) ?(value = "") ?(autofocus = false) () =
-    let transparent = Ansi.Color.of_rgba 0 0 0 0 in
-    let white = Ansi.Color.of_rgb 255 255 255 in
-    let default_focused_bg = Ansi.Color.of_rgb 26 26 26 in
-    let background_val = Option.value background ~default:transparent in
-    let text_color_val = Option.value text_color ~default:white in
-    let focused_background_val =
-      match focused_background with
-      | Some c -> c
-      | None -> (
-          match background with Some c -> c | None -> default_focused_bg)
-    in
-    let focused_text_color_val =
-      match focused_text_color with
-      | Some c -> c
-      | None -> ( match text_color with Some c -> c | None -> white)
-    in
-    let max_length =
-      if max_length <= 0 then default_max_length else max_length
-    in
+  let make ?(value = "") ?(placeholder = "") ?(max_length = 1000)
+      ?(text_color = default_text_color)
+      ?(background_color = default_background_color)
+      ?(focused_text_color = default_focused_text_color)
+      ?(focused_background_color = default_focused_background_color)
+      ?(placeholder_color = default_placeholder_color)
+      ?(selection_color = default_selection_color) ?selection_fg
+      ?(cursor_style = default_cursor_style)
+      ?(cursor_color = default_cursor_color)
+      ?(cursor_blinking = default_cursor_blinking) () =
     {
-      background = background_val;
-      text_color = text_color_val;
-      focused_background = focused_background_val;
-      focused_text_color = focused_text_color_val;
-      placeholder;
-      placeholder_color;
-      cursor_color;
-      cursor_style;
-      cursor_blinking;
-      max_length;
       value;
-      autofocus;
+      placeholder;
+      max_length;
+      text_color;
+      background_color;
+      focused_text_color;
+      focused_background_color;
+      placeholder_color;
+      selection_color;
+      selection_fg;
+      cursor_style;
+      cursor_color;
+      cursor_blinking;
     }
 
   let default = make ()
 
   let equal a b =
-    Ansi.Color.equal a.background b.background
-    && Ansi.Color.equal a.text_color b.text_color
-    && Ansi.Color.equal a.focused_background b.focused_background
-    && Ansi.Color.equal a.focused_text_color b.focused_text_color
+    String.equal a.value b.value
     && String.equal a.placeholder b.placeholder
+    && a.max_length = b.max_length
+    && Ansi.Color.equal a.text_color b.text_color
+    && Ansi.Color.equal a.background_color b.background_color
+    && Ansi.Color.equal a.focused_text_color b.focused_text_color
+    && Ansi.Color.equal a.focused_background_color b.focused_background_color
     && Ansi.Color.equal a.placeholder_color b.placeholder_color
-    && Ansi.Color.equal a.cursor_color b.cursor_color
+    && Ansi.Color.equal a.selection_color b.selection_color
+    && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
     && a.cursor_style = b.cursor_style
-    && Bool.equal a.cursor_blinking b.cursor_blinking
-    && Int.equal a.max_length b.max_length
-    && String.equal a.value b.value
-    && Bool.equal a.autofocus b.autofocus
+    && Ansi.Color.equal a.cursor_color b.cursor_color
+    && a.cursor_blinking = b.cursor_blinking
 end
 
-let clamp v ~min ~max = if v < min then min else if v > max then max else v
-
-let grapheme_count s =
-  let count = ref 0 in
-  Glyph.String.iter_graphemes (fun ~offset:_ ~len:_ -> incr count) s;
-  !count
-
-let byte_offset_of_index s index =
-  if index <= 0 then 0
-  else
-    let len = String.length s in
-    let result = ref len in
-    let count = ref 0 in
-    try
-      Glyph.String.iter_graphemes
-        (fun ~offset ~len:_ ->
-          if !count = index then (
-            result := offset;
-            raise Exit)
-          else incr count)
-        s;
-      !result
-    with Exit -> !result
-
-let clamp_index s idx = clamp idx ~min:0 ~max:(grapheme_count s)
-
-let substring_by_graphemes s ~start ~stop =
-  if start >= stop then ""
-  else
-    let start = clamp_index s start in
-    let stop = clamp_index s stop in
-    if start >= stop then ""
-    else
-      let byte_start = byte_offset_of_index s start in
-      let byte_stop = byte_offset_of_index s stop in
-      String.sub s byte_start (byte_stop - byte_start)
-
-let insert_text_at s index text =
-  let index = clamp_index s index in
-  let prefix = substring_by_graphemes s ~start:0 ~stop:index in
-  let suffix = substring_by_graphemes s ~start:index ~stop:(grapheme_count s) in
-  prefix ^ text ^ suffix
-
-let remove_range s ~start ~stop =
-  let start = clamp_index s start in
-  let stop = clamp_index s stop in
-  if start >= stop then s
-  else
-    let prefix = substring_by_graphemes s ~start:0 ~stop:start in
-    let suffix =
-      substring_by_graphemes s ~start:stop ~stop:(grapheme_count s)
-    in
-    prefix ^ suffix
-
-let width_of_grapheme widths line idx =
-  let open Text_buffer.Virtual_line in
-  let big_idx = line.start_index + idx in
-  let width = Bigarray.Array1.unsafe_get widths big_idx in
-  if width <= 0 then 1 else width
-
-let rec width_between widths line start stop acc =
-  if start >= stop then acc
-  else
-    let w = width_of_grapheme widths line start in
-    width_between widths line (start + 1) stop (acc + w)
-
-let placeholder_style color =
-  Ansi.Style.make ~fg:color ~bg:(Ansi.Color.of_rgba 0 0 0 0) ()
-
-type callbacks = {
-  mutable on_input : (string -> unit) list;
-  mutable on_change : (string -> unit) list;
-  mutable on_submit : (string -> unit) list;
-}
-
-let callbacks () = { on_input = []; on_change = []; on_submit = [] }
-
-let notify handlers variant value =
-  let callbacks =
-    match variant with
-    | `Input -> handlers.on_input
-    | `Change -> handlers.on_change
-    | `Submit -> handlers.on_submit
-  in
-  List.iter (fun f -> f value) (List.rev callbacks)
+(* ───── Types ───── *)
 
 type t = {
-  surface : Text_surface.t;
+  node : Renderable.t;
+  buf : Edit_buffer.t;
   mutable props : Props.t;
-  (* Last value provided via props; used to detect external value changes. *)
-  mutable prop_value : string;
-  mutable value : string;
-  (* Cached grapheme count for the current [value] *)
-  mutable graphemes : int;
-  mutable cursor : int;
-  mutable view_offset : int;
-  mutable last_committed : string;
-  callbacks : callbacks;
+  mutable scroll_x : int;
   mutable was_focused : bool;
-  mutable buffer_dirty : bool;
-  (* Cached placeholder truncation for the last width *)
-  mutable placeholder_cached_source : string;
-  mutable placeholder_cached_width : int;
-  mutable placeholder_cached_text : string;
+  mutable last_committed_value : string;
+  mutable on_input : (string -> unit) option;
+  mutable on_change : (string -> unit) option;
+  mutable on_submit : (string -> unit) option;
 }
 
-let clamp_index_cached t idx = clamp idx ~min:0 ~max:t.graphemes
-let surface_node t = Text_surface.node t.surface
-let node t = surface_node t
-let request_render t = Text_surface.request_render t.surface
-let text_buffer t = Text_surface.buffer t.surface
-let text_view t = Text_surface.view t.surface
+(* ───── Accessors ───── *)
 
-let update_buffer t =
-  (* Refresh the underlying buffer content without triggering layout
-     recalculation. Keep this cheap for frequent edits. *)
-  let buffer = text_buffer t in
-  Text_buffer.reset buffer;
-  if t.value <> "" then (
-    let chunk =
-      Text_buffer.Chunk.
-        {
-          text = Bytes.of_string t.value;
-          fg = Some t.props.text_color;
-          bg = None;
-          attrs = Ansi.Attr.empty;
-          link = None;
-        }
-    in
-    ignore (Text_buffer.write_chunk buffer chunk);
-    t.buffer_dirty <- true)
+let node t = t.node
+let buffer t = t.buf
+let value t = Edit_buffer.text t.buf
 
-let measure t ~known_dimensions ~available_space ~style:_ =
-  ignore t;
-  (* Respect layout hints; avoid content-based width which causes reflow on
-     edits. *)
-  let width_hint =
-    match known_dimensions with
-    | Toffee.Geometry.Size.{ width = Some w; _ } when w > 0. -> Some w
-    | _ -> (
-        match available_space with
-        | Toffee.Geometry.Size.{ width; _ } ->
-            Toffee.Available_space.to_option width)
+(* ───── Callbacks ───── *)
+
+let set_on_input t h = t.on_input <- h
+let set_on_change t h = t.on_change <- h
+let set_on_submit t h = t.on_submit <- h
+let fire_on_input t = match t.on_input with Some f -> f (value t) | None -> ()
+
+(* on_change fires only when the value has actually changed since the last
+   commit point (focus-gain or previous on_change). This prevents duplicate
+   notifications when the user blurs without editing. *)
+let fire_on_change t =
+  let v = value t in
+  if not (String.equal v t.last_committed_value) then begin
+    t.last_committed_value <- v;
+    match t.on_change with Some f -> f v | None -> ()
+  end
+
+let fire_on_submit t =
+  fire_on_change t;
+  match t.on_submit with Some f -> f (value t) | None -> ()
+
+(* ───── Scroll ───── *)
+
+let ensure_cursor_visible t =
+  let w = Renderable.width t.node in
+  if w <= 0 then ()
+  else begin
+    let cursor_col = Edit_buffer.cursor_display_offset t.buf in
+    if cursor_col < t.scroll_x then t.scroll_x <- cursor_col
+    else if cursor_col >= t.scroll_x + w then t.scroll_x <- cursor_col - w + 1
+  end
+
+(* ───── Measure ───── *)
+
+let measure t ~known_dimensions ~available_space:_ ~style:_ =
+  let content_width = Edit_buffer.display_width t.buf in
+  let placeholder_width =
+    Glyph.String.measure ~width_method:`Unicode ~tab_width:2 t.props.placeholder
   in
-  let measured_width =
-    match width_hint with
-    | Some w when w > 0. -> Float.floor w |> int_of_float |> max 1
-    | _ -> 1
+  let intrinsic_width = Float.of_int (max content_width placeholder_width) in
+  let width =
+    match known_dimensions.Toffee.Geometry.Size.width with
+    | Some w -> w
+    | None -> intrinsic_width
   in
-  Toffee.Geometry.Size.{ width = float measured_width; height = 1. }
-
-let set_view_offset_for_cursor t line widths visible_width =
-  let open Text_buffer.Virtual_line in
-  let cursor = clamp t.cursor ~min:0 ~max:line.length in
-  let current_offset = clamp t.view_offset ~min:0 ~max:cursor in
-  let cursor_cells = width_between widths line 0 cursor 0 in
-  let offset_cells = width_between widths line 0 current_offset 0 in
-  let max_visible = max 1 visible_width in
-  let offset = ref current_offset in
-  let offset_cells_ref = ref offset_cells in
-  while cursor_cells < !offset_cells_ref && !offset > 0 do
-    offset := !offset - 1;
-    offset_cells_ref := width_between widths line 0 !offset 0
-  done;
-  while cursor_cells - !offset_cells_ref >= max_visible do
-    offset := !offset + 1;
-    offset_cells_ref := width_between widths line 0 !offset 0
-  done;
-  t.view_offset <- clamp !offset ~min:0 ~max:cursor
-
-let compute_placeholder t maxw =
-  if t.props.placeholder = "" || maxw <= 0 then ""
-  else if
-    t.placeholder_cached_width = maxw
-    && String.equal t.placeholder_cached_source t.props.placeholder
-  then t.placeholder_cached_text
-  else
-    (* Build a substring up to available cell width in O(n). *)
-    let placeholder = t.props.placeholder in
-    let acc = ref 0 in
-    let end_offset = ref 0 in
-    (try
-       Glyph.String.iter_graphemes
-         (fun ~offset ~len ->
-           let grapheme = String.sub placeholder offset len in
-           let w =
-             Glyph.String.measure ~width_method:`Unicode ~tab_width:2 grapheme
-             |> max 1
-           in
-           if !acc + w <= maxw then (
-             acc := !acc + w;
-             end_offset := offset + len)
-           else raise Exit)
-         placeholder
-     with Exit -> ());
-    let text = String.sub placeholder 0 !end_offset in
-    t.placeholder_cached_source <- placeholder;
-    t.placeholder_cached_width <- maxw;
-    t.placeholder_cached_text <- text;
-    text
-
-let draw_placeholder t ~x ~y ~width grid =
-  if t.props.placeholder = "" then ()
-  else
-    let style = placeholder_style t.props.placeholder_color in
-    let maxw = max 0 (width - 1) in
-    let text = compute_placeholder t maxw in
-    if text <> "" then Grid.draw_text ~style grid ~x ~y ~text
-
-let notify_input t = notify t.callbacks `Input t.value
-let notify_change t = notify t.callbacks `Change t.value
-let notify_submit t = notify t.callbacks `Submit t.value
-let focus t = Renderable.focus (surface_node t)
-
-let blur t =
-  (* Commit immediately on blur. *)
-  if String.compare t.value t.last_committed <> 0 then (
-    t.last_committed <- t.value;
-    notify_change t);
-  Renderable.blur (surface_node t)
-
-let max_length_limit t =
-  if t.props.max_length <= 0 then default_max_length else t.props.max_length
-
-let truncate_to_max t value =
-  let max_length = max_length_limit t in
-  substring_by_graphemes value ~start:0 ~stop:max_length
-
-let set_value_internal t value ~notify =
-  let value = truncate_to_max t value in
-  if String.equal value t.value then ()
-  else (
-    t.value <- value;
-    t.graphemes <- grapheme_count value;
-    (* Preserve caret; clamp within new bounds. *)
-    t.cursor <- clamp_index_cached t t.cursor;
-    update_buffer t;
-    request_render t;
-    if notify then notify_input t)
-
-let set_value t value =
-  (* Programmatic value set preserves caret (clamped). *)
-  set_value_internal t value ~notify:true
-
-let hardware_cursor t =
-  let rnode = surface_node t in
-  if not (Renderable.focused rnode) then None
-  else
-    let lx = Renderable.x rnode in
-    let ly = Renderable.y rnode in
-    let lw = Renderable.width rnode in
-    let lh = Renderable.height rnode in
-    if lw <= 0 || lh <= 0 then None
-    else if t.value = "" then
-      Some
-        ( lx + 1,
-          ly + 1,
-          t.props.cursor_color,
-          t.props.cursor_style,
-          t.props.cursor_blinking )
-    else
-      let buffer = text_buffer t in
-      Text_buffer.finalise buffer;
-      let lines = Text_buffer_view.virtual_lines (text_view t) in
-      if Array.length lines = 0 then
-        Some
-          ( lx + 1,
-            ly + 1,
-            t.props.cursor_color,
-            t.props.cursor_style,
-            t.props.cursor_blinking )
-      else
-        let open Text_buffer.Virtual_line in
-        let line = lines.(0) in
-        let widths = Text_buffer.drawing_widths buffer in
-        let cursor_index = clamp t.cursor ~min:0 ~max:line.length in
-        let cursor_column =
-          width_between widths line t.view_offset cursor_index 0
-        in
-        let dest_x = lx + cursor_column in
-        Some
-          ( dest_x + 1,
-            ly + 1,
-            t.props.cursor_color,
-            t.props.cursor_style,
-            t.props.cursor_blinking )
-
-let insert_text t text =
-  if text <> "" then
-    let current = t.graphemes in
-    let inserted = grapheme_count text in
-    let capacity =
-      let limit = max_length_limit t in
-      limit - current
-    in
-    if capacity <= 0 then ()
-    else
-      let to_insert = if inserted <= capacity then text else "" in
-      if to_insert <> "" then (
-        let new_value = insert_text_at t.value t.cursor to_insert in
-        set_value_internal t new_value ~notify:true;
-        t.cursor <- clamp_index_cached t (t.cursor + grapheme_count to_insert))
-
-let delete_backward t =
-  if t.cursor > 0 then (
-    let original_cursor = t.cursor in
-    let new_value =
-      remove_range t.value ~start:(original_cursor - 1) ~stop:original_cursor
-    in
-    set_value_internal t new_value ~notify:true;
-    t.cursor <- clamp_index_cached t (original_cursor - 1))
-
-let delete_forward t =
-  if t.cursor < t.graphemes then (
-    let new_value = remove_range t.value ~start:t.cursor ~stop:(t.cursor + 1) in
-    set_value_internal t new_value ~notify:true;
-    ())
-
-let commit_value t =
-  if String.compare t.value t.last_committed <> 0 then (
-    t.last_committed <- t.value;
-    notify_change t)
-
-let handle_key t (event : Event.key) =
-  let event = Event.Key.data event in
-  let is_ascii_printable s =
-    let len = String.length s in
-    if len <> 1 then false
-    else
-      let c = int_of_char s.[0] in
-      c >= 32 && c <= 126
+  let height =
+    match known_dimensions.Toffee.Geometry.Size.height with
+    | Some h -> h
+    | None -> 1.0
   in
-  (* Only handle Press/Repeat; ignore Release. *)
-  match event.event_type with
-  | Release -> false
-  | Press | Repeat -> (
-      match event.key with
-      | Char _uchar
-        when (not event.modifier.ctrl) && (not event.modifier.alt)
-             && (not event.modifier.meta)
-             && event.associated_text <> "" ->
-          if is_ascii_printable event.associated_text then
-            insert_text t event.associated_text;
-          true
-      | Char uchar
-        when (not event.modifier.ctrl) && (not event.modifier.alt)
-             && not event.modifier.meta ->
-          let buf = Stdlib.Buffer.create 4 in
-          Stdlib.Buffer.add_utf_8_uchar buf uchar;
-          let s = Stdlib.Buffer.contents buf in
-          if is_ascii_printable s then insert_text t s;
-          true
-      | Backspace ->
-          delete_backward t;
-          true
-      | Delete ->
-          delete_forward t;
-          true
-      | Left ->
-          t.cursor <- clamp_index_cached t (t.cursor - 1);
-          request_render t;
-          true
-      | Right ->
-          t.cursor <- clamp_index_cached t (t.cursor + 1);
-          request_render t;
-          true
-      | Home ->
-          t.cursor <- 0;
-          request_render t;
-          true
-      | End ->
-          t.cursor <- t.graphemes;
-          request_render t;
-          true
-      | Enter | KP_enter | Line_feed ->
-          commit_value t;
-          notify_submit t;
-          true
-      | _ -> false)
+  Toffee.Geometry.Size.make width height
 
-let render_input t renderable grid ~delta:_ =
-  (* Use local buffer coordinates (0,0) for buffered rendering. *)
-  let lx = 0 in
-  let ly = 0 in
-  let lw = Renderable.width renderable in
-  let lh = Renderable.height renderable in
-  if lw <= 0 || lh <= 0 then ()
-  else
-    let focused = Renderable.focused renderable in
-    if focused <> t.was_focused then (
-      if (not focused) && t.was_focused then commit_value t;
-      t.was_focused <- focused);
-    let buffer = text_buffer t in
-    let view = text_view t in
-    if t.buffer_dirty then (
-      Text_buffer_view.set_wrap_mode view `Char;
-      Text_buffer_view.set_wrap_width view None;
-      Text_buffer.finalise buffer;
-      t.buffer_dirty <- false);
-    (* Align buffer width method with grid when buffer is empty (safe to
-       change). *)
-    (if Text_buffer.length buffer = 0 then
-       let gwm = Grid.width_method grid in
-       Text_buffer.set_width_method buffer gwm);
+(* ───── Rendering ───── *)
+
+let render t _self grid ~delta:_ =
+  let w = Renderable.width t.node in
+  let h = Renderable.height t.node in
+  if w <= 0 || h <= 0 then ()
+  else begin
+    let x0 = Renderable.x t.node in
+    let y0 = Renderable.y t.node in
+    let focused = Renderable.focused t.node in
+    (* Commit-on-blur: snapshot the value on focus-gain so we can detect real
+       edits, and fire on_change on blur only if something changed. *)
+    if focused && not t.was_focused then t.last_committed_value <- value t
+    else if (not focused) && t.was_focused then fire_on_change t;
+    t.was_focused <- focused;
     let bg =
-      if focused then t.props.focused_background else t.props.background
+      if focused then t.props.focused_background_color
+      else t.props.background_color
     in
-    Grid.fill_rect grid ~x:lx ~y:ly ~width:lw ~height:lh ~color:bg;
-    if t.value = "" then draw_placeholder t ~x:lx ~y:ly ~width:lw grid
-    else
-      let lines = Text_buffer_view.virtual_lines view in
-      if Array.length lines > 0 then (
-        let open Text_buffer.Virtual_line in
-        let line = lines.(0) in
-        let widths = Text_buffer.drawing_widths buffer in
-        let content_width = max 0 (lw - 1) in
-        set_view_offset_for_cursor t line widths content_width;
-        let chars = Text_buffer.drawing_chars buffer in
-        let rec loop i column =
-          if i >= line.length || column >= content_width then ()
-          else
-            let idx = line.start_index + i in
-            let code = Bigarray.Array1.unsafe_get chars idx in
-            let width = width_of_grapheme widths line i in
-            let dest_x = lx + column in
-            let dest_y = ly in
-            if dest_x >= 0 && dest_x < Grid.width grid then (
-              let fg =
-                if focused then t.props.focused_text_color
-                else t.props.text_color
-              in
-              Grid.set_cell grid ~x:dest_x ~y:dest_y
-                ~glyph:(Glyph.unsafe_of_int code) ~fg ~bg ~attrs:Ansi.Attr.empty
-                ~blend:true ();
-              loop (i + 1) (column + max 1 width))
-        in
-        loop t.view_offset 0)
+    Grid.fill_rect grid ~x:x0 ~y:y0 ~width:w ~height:h ~color:bg;
+    let text = value t in
+    if String.length text = 0 && String.length t.props.placeholder > 0 then begin
+      let style = Ansi.Style.make ~fg:t.props.placeholder_color ~bg () in
+      Grid.clip grid { x = x0; y = y0; width = w; height = h } (fun () ->
+          Grid.draw_text ~style grid ~x:x0 ~y:y0 ~text:t.props.placeholder)
+    end
+    else if String.length text > 0 then begin
+      let fg =
+        if focused then t.props.focused_text_color else t.props.text_color
+      in
+      let sel = Edit_buffer.selection t.buf in
+      Grid.clip grid { x = x0; y = y0; width = w; height = h } (fun () ->
+          let draw_x = x0 - t.scroll_x in
+          match sel with
+          | None ->
+              let style = Ansi.Style.make ~fg ~bg () in
+              Grid.draw_text ~style grid ~x:draw_x ~y:y0 ~text
+          | Some (sel_start, sel_end) ->
+              (* Draw text in three segments: before selection, selection,
+                 after *)
+              let cache_ref = ref [] in
+              Glyph.String.iter_grapheme_info ~width_method:`Unicode
+                ~tab_width:2
+                (fun ~offset ~len ~width ->
+                  cache_ref := (offset, len, width) :: !cache_ref)
+                text;
+              let graphemes = Array.of_list (List.rev !cache_ref) in
+              let col = ref 0 in
+              for i = 0 to Array.length graphemes - 1 do
+                let offset, len, gwidth = graphemes.(i) in
+                let s = String.sub text offset len in
+                let in_selection = i >= sel_start && i < sel_end in
+                let style =
+                  if in_selection then
+                    let sel_fg =
+                      match t.props.selection_fg with Some c -> c | None -> fg
+                    in
+                    Ansi.Style.make ~fg:sel_fg ~bg:t.props.selection_color ()
+                  else Ansi.Style.make ~fg ~bg ()
+                in
+                Grid.draw_text ~style grid ~x:(draw_x + !col) ~y:y0 ~text:s;
+                col := !col + gwidth
+              done)
+    end
+  end
 
-let mount ?(props = Props.default) (rnode : Renderable.t) =
-  let default_style = Ansi.Style.make ~fg:props.text_color () in
-  let surface =
-    Text_surface.mount
-      ~props:(Text_surface.Props.make ~wrap_mode:`Char ~default_style ())
-      rnode
+(* ───── Cursor Provider ───── *)
+
+let cursor_provider t _self =
+  if Renderable.focused t.node then
+    let x0 = Renderable.x t.node in
+    let y0 = Renderable.y t.node in
+    let cursor_col = Edit_buffer.cursor_display_offset t.buf in
+    let screen_x = x0 + cursor_col - t.scroll_x in
+    let w = Renderable.width t.node in
+    if screen_x >= x0 && screen_x < x0 + w then
+      Some
+        {
+          Renderable.x = screen_x;
+          y = y0;
+          style = t.props.cursor_style;
+          color = t.props.cursor_color;
+          blinking = t.props.cursor_blinking;
+        }
+    else None
+  else None
+
+(* ───── Key Handling ───── *)
+
+let normalize_modified_char_code (m : Input.Key.modifier) c =
+  let code = Uchar.to_int c in
+  if
+    (m.ctrl || m.alt || m.super || m.meta || m.hyper)
+    && code >= Char.code 'A'
+    && code <= Char.code 'Z'
+  then code + 32
+  else code
+
+let handle_key t (ev : Event.key) =
+  let data = Event.Key.data ev in
+  if data.event_type = Release then ()
+  else if Event.Key.default_prevented ev then ()
+  else begin
+    let m = data.modifier in
+    let changed = ref false in
+    let handled = ref true in
+    (match data.key with
+    (* Cursor movement *)
+    | Left when m.super ->
+        ignore (Edit_buffer.move_home ~select:m.shift t.buf : bool)
+    | Left when m.ctrl || m.alt ->
+        ignore (Edit_buffer.move_word_backward ~select:m.shift t.buf : bool)
+    | Left -> ignore (Edit_buffer.move_left ~select:m.shift t.buf : bool)
+    | Right when m.super ->
+        ignore (Edit_buffer.move_end ~select:m.shift t.buf : bool)
+    | Right when m.ctrl || m.alt ->
+        ignore (Edit_buffer.move_word_forward ~select:m.shift t.buf : bool)
+    | Right -> ignore (Edit_buffer.move_right ~select:m.shift t.buf : bool)
+    | Up when m.super ->
+        ignore (Edit_buffer.move_home ~select:m.shift t.buf : bool)
+    | Down when m.super ->
+        ignore (Edit_buffer.move_end ~select:m.shift t.buf : bool)
+    | Home -> ignore (Edit_buffer.move_home ~select:m.shift t.buf : bool)
+    | End -> ignore (Edit_buffer.move_end ~select:m.shift t.buf : bool)
+    (* Deletion *)
+    | Backspace when m.ctrl || m.alt ->
+        changed := Edit_buffer.delete_word_backward t.buf
+    | Backspace -> changed := Edit_buffer.delete_backward t.buf
+    | Delete when m.ctrl || m.alt ->
+        changed := Edit_buffer.delete_word_forward t.buf
+    | Delete -> changed := Edit_buffer.delete_forward t.buf
+    (* Submit *)
+    | Enter | Line_feed -> fire_on_submit t
+    (* Char-based shortcuts *)
+    | Char c ->
+        let code = normalize_modified_char_code m c in
+        if m.super && code = 0x61 (* a *) then Edit_buffer.select_all t.buf
+        else if m.ctrl then begin
+          match code with
+          | 0x61 (* a *) ->
+              ignore (Edit_buffer.move_home ~select:m.shift t.buf : bool)
+          | 0x65 (* e *) ->
+              ignore (Edit_buffer.move_end ~select:m.shift t.buf : bool)
+          | 0x62 (* b *) ->
+              ignore (Edit_buffer.move_left ~select:m.shift t.buf : bool)
+          | 0x66 (* f *) ->
+              ignore (Edit_buffer.move_right ~select:m.shift t.buf : bool)
+          | 0x64 (* d *) when m.shift ->
+              changed := Edit_buffer.delete_line t.buf
+          | 0x64 (* d *) -> changed := Edit_buffer.delete_forward t.buf
+          | 0x6B (* k *) -> changed := Edit_buffer.delete_to_end t.buf
+          | 0x75 (* u *) -> changed := Edit_buffer.delete_to_start t.buf
+          | 0x77 (* w *) -> changed := Edit_buffer.delete_word_backward t.buf
+          | 0x2D (* - *) -> changed := Edit_buffer.undo t.buf
+          | 0x2E (* . *) -> changed := Edit_buffer.redo t.buf
+          | _ ->
+              if m.shift then begin
+                (* Ctrl+Shift shortcuts *)
+                match code with
+                | 0x7A (* z *) -> changed := Edit_buffer.redo t.buf
+                | _ -> handled := false
+              end
+              else begin
+                match code with
+                | 0x7A (* z *) -> changed := Edit_buffer.undo t.buf
+                | _ -> handled := false
+              end
+        end
+        else if m.alt then begin
+          match code with
+          | 0x62 (* b *) ->
+              ignore
+                (Edit_buffer.move_word_backward ~select:m.shift t.buf : bool)
+          | 0x66 (* f *) ->
+              ignore
+                (Edit_buffer.move_word_forward ~select:m.shift t.buf : bool)
+          | 0x64 (* d *) -> changed := Edit_buffer.delete_word_forward t.buf
+          | _ -> handled := false
+        end
+        else if m.super then begin
+          match code with
+          | 0x7A (* z *) when m.shift -> changed := Edit_buffer.redo t.buf
+          | 0x7A (* z *) -> changed := Edit_buffer.undo t.buf
+          | _ -> handled := false
+        end
+        else begin
+          (* Regular character input *)
+          let text_to_insert =
+            Edit_buffer.strip_newlines
+              (if String.length data.associated_text > 0 then
+                 data.associated_text
+               else
+                 let buf = Buffer.create 4 in
+                 Buffer.add_utf_8_uchar buf c;
+                 Buffer.contents buf)
+          in
+          changed := Edit_buffer.insert t.buf text_to_insert
+        end
+    | _ -> handled := false);
+    if !handled then begin
+      Event.Key.prevent_default ev;
+      ensure_cursor_visible t;
+      if !changed then fire_on_input t;
+      Renderable.request_render t.node
+    end
+  end
+
+(* ───── Paste Handling ───── *)
+
+let handle_paste t text =
+  let text = Edit_buffer.strip_newlines text in
+  if Edit_buffer.insert t.buf text then begin
+    ensure_cursor_visible t;
+    fire_on_input t;
+    Renderable.request_render t.node
+  end
+
+(* ───── Construction ───── *)
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
+    ?placeholder ?max_length ?text_color ?background_color ?focused_text_color
+    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
+    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
+    () =
+  let node =
+    Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
-  let callbacks = callbacks () in
-  let input =
+  let props =
+    Props.make ?value ?placeholder ?max_length ?text_color ?background_color
+      ?focused_text_color ?focused_background_color ?placeholder_color
+      ?selection_color ?selection_fg ?cursor_style ?cursor_color
+      ?cursor_blinking ()
+  in
+  let buf =
+    Edit_buffer.create ~max_length:props.max_length
+      (Edit_buffer.strip_newlines props.value)
+  in
+  let initial_value = Edit_buffer.text buf in
+  let t =
     {
-      surface;
+      node;
+      buf;
       props;
-      prop_value = props.value;
-      value = props.value;
-      graphemes = grapheme_count props.value;
-      cursor = grapheme_count props.value;
-      view_offset = 0;
-      last_committed = props.value;
-      callbacks;
+      scroll_x = 0;
       was_focused = false;
-      buffer_dirty = true;
-      placeholder_cached_source = "";
-      placeholder_cached_width = -1;
-      placeholder_cached_text = "";
+      last_committed_value = initial_value;
+      on_input;
+      on_change;
+      on_submit;
     }
   in
-  update_buffer input;
-  let renderable = surface_node input in
-  Renderable.set_render renderable (render_input input);
-  Renderable.set_measure renderable (Some (measure input));
-  Renderable.set_buffer renderable `Self;
-  Renderable.set_focusable renderable true;
-  (* Register the default key handler in the third tier so user on_key handlers
-     (tier 2) can call key_prevent_default to suppress it. When we handle a key,
-     mark the event as consumed via prevent_default so that TEA subscriptions
-     using on_key (not on_key_all) will skip it. *)
-  Renderable.set_default_key_handler renderable
-    (Some
-       (fun event ->
-         if handle_key input event then Event.Key.prevent_default event));
-  Renderable.set_hardware_cursor_provider renderable
-    (Some
-       (fun _ ->
-         match hardware_cursor input with
-         | None -> None
-         | Some (x, y, color, style, blinking) ->
-             Some { Renderable.x; y; color; style; blinking }));
-  (match input.props.autofocus with
-  | true -> ignore (Renderable.focus renderable)
-  | false -> ());
-  request_render input;
-  input
+  Renderable.set_render node (render t);
+  Renderable.set_measure node (Some (measure t));
+  Renderable.set_cursor_provider node (cursor_provider t);
+  Renderable.set_default_key_handler node (Some (handle_key t));
+  t
 
-let value t = t.value
-let cursor t = t.cursor
+(* ───── Value ───── *)
 
-let set_placeholder t placeholder =
-  if t.props.placeholder <> placeholder then (
-    t.props <- { t.props with placeholder };
-    (* Invalidate cached placeholder rendering *)
-    t.placeholder_cached_source <- "";
-    t.placeholder_cached_width <- -1;
-    t.placeholder_cached_text <- "";
-    request_render t)
+let set_value t s =
+  Edit_buffer.set_text t.buf (Edit_buffer.strip_newlines s);
+  t.scroll_x <- 0;
+  ensure_cursor_visible t;
+  Renderable.request_render t.node
 
-let set_cursor t index =
-  let index = clamp_index_cached t index in
-  if t.cursor <> index then (
-    t.cursor <- index;
-    request_render t)
-
-let set_max_length t max_length =
-  let normalized = if max_length <= 0 then default_max_length else max_length in
-  t.props <- { t.props with max_length = normalized };
-  if t.graphemes > normalized then
-    let truncated = substring_by_graphemes t.value ~start:0 ~stop:normalized in
-    (* Truncate without emitting INPUT. *)
-    set_value_internal t truncated ~notify:false
-
-let set_background t color =
-  if not (Ansi.Color.equal t.props.background color) then (
-    t.props <- { t.props with background = color };
-    request_render t)
-
-let set_focused_background t color =
-  if not (Ansi.Color.equal t.props.focused_background color) then (
-    t.props <- { t.props with focused_background = color };
-    request_render t)
-
-let set_text_color t color =
-  if not (Ansi.Color.equal t.props.text_color color) then (
-    t.props <- { t.props with text_color = color };
-    Text_surface.set_default_style t.surface (Ansi.Style.make ~fg:color ());
-    update_buffer t;
-    request_render t)
-
-let set_focused_text_color t color =
-  if not (Ansi.Color.equal t.props.focused_text_color color) then (
-    t.props <- { t.props with focused_text_color = color };
-    request_render t)
-
-let set_placeholder_color t color =
-  if not (Ansi.Color.equal t.props.placeholder_color color) then (
-    t.props <- { t.props with placeholder_color = color };
-    request_render t)
-
-let set_cursor_color t color =
-  if not (Ansi.Color.equal t.props.cursor_color color) then (
-    t.props <- { t.props with cursor_color = color };
-    (* Only request a render when focused, as cursor color affects the hardware
-       cursor. *)
-    if Renderable.focused (surface_node t) then request_render t)
-
-let set_cursor_style t style =
-  if t.props.cursor_style <> style then (
-    t.props <- { t.props with cursor_style = style };
-    (* Only request a render when focused. *)
-    if Renderable.focused (surface_node t) then request_render t)
-
-let set_cursor_blinking t blinking =
-  if t.props.cursor_blinking <> blinking then (
-    t.props <- { t.props with cursor_blinking = blinking };
-    (* Only request a render when focused. *)
-    if Renderable.focused (surface_node t) then request_render t)
-
-let set_callbacks t ?on_input ?on_change ?on_submit () =
-  let to_list = function None -> [] | Some f -> [ f ] in
-  t.callbacks.on_input <- to_list on_input;
-  t.callbacks.on_change <- to_list on_change;
-  t.callbacks.on_submit <- to_list on_submit
-
-let on_input t handler = t.callbacks.on_input <- handler :: t.callbacks.on_input
-
-let on_change t handler =
-  t.callbacks.on_change <- handler :: t.callbacks.on_change
-
-let on_submit t handler =
-  t.callbacks.on_submit <- handler :: t.callbacks.on_submit
+(* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
-  if t.props.autofocus <> props.autofocus then
-    t.props <- { t.props with autofocus = props.autofocus };
-  (* Colors and background *)
-  set_background t props.background;
-  set_text_color t props.text_color;
-  set_focused_background t props.focused_background;
-  set_focused_text_color t props.focused_text_color;
-  (* Placeholder and its color *)
-  set_placeholder t props.placeholder;
-  set_placeholder_color t props.placeholder_color;
-  (* Cursor appearance *)
-  set_cursor_color t props.cursor_color;
-  set_cursor_style t props.cursor_style;
-  set_cursor_blinking t props.cursor_blinking;
-  (* Length limit and value *)
-  set_max_length t props.max_length;
-  if not (String.equal props.value t.prop_value) then (
-    t.prop_value <- props.value;
-    set_value t props.value)
+  if not (String.equal t.props.value props.value) then begin
+    Edit_buffer.set_text t.buf (Edit_buffer.strip_newlines props.value);
+    t.scroll_x <- 0;
+    ensure_cursor_visible t
+  end;
+  if t.props.max_length <> props.max_length then
+    Edit_buffer.set_max_length t.buf props.max_length;
+  t.props <- props;
+  Renderable.request_render t.node
+
+(* ───── Pretty-printing ───── *)
+
+let pp ppf t =
+  Format.fprintf ppf "Input(%s" (Renderable.id t.node);
+  let v = value t in
+  if String.length v > 0 then begin
+    let display =
+      if String.length v > 20 then String.sub v 0 20 ^ "..." else v
+    in
+    Format.fprintf ppf ", %S" display
+  end;
+  if String.length t.props.placeholder > 0 then
+    Format.fprintf ppf ", placeholder=%S" t.props.placeholder;
+  Format.pp_print_char ppf ')'
