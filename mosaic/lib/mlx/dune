@@ -1,13 +1,4 @@
 (library
  (name mosaic_mlx)
  (public_name mosaic.mlx)
- (libraries
-  mosaic
-  mosaic.ui
-  mosaic.syntax
-  mosaic.markdown
-  matrix
-  matrix.ansi
-  matrix.grid
-  matrix.screen
-  toffee))
+ (libraries mosaic mosaic.ui))

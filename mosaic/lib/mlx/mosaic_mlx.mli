@@ -1,1124 +1,542 @@
-(** This module provides mlx compatible wrappers for Mosaic functions.Exposes
-    everything from Mosaic. *)
+(** MLX-compatible wrappers for {!Mosaic}.
 
-module Ansi = Matrix.Ansi
-module Event = Mosaic_ui.Event
+    This module re-exports the full {!Mosaic} API with child arguments changed
+    from positional to optional, matching the MLX JSX convention where children
+    are passed as [~children].
 
-(** {1 Views}
+    All types, modules, helpers, and non-overridden elements are inherited
+    unchanged from {!Mosaic}; see that module for their documentation. Only the
+    elements listed below are overridden. *)
 
-    TEA views are parameterized by a message type. Event handlers return
-    [Some msg] to dispatch a message, or [None] to ignore the event. This keeps
-    view functions pure - the runtime handles dispatch. *)
+include module type of Mosaic
 
-type 'msg t = 'msg option Mosaic.Vnode.t
-(** A view node parameterized by message type ['msg]. Handlers return
-    ['msg option] - [Some msg] to dispatch, [None] to ignore. *)
+(** {1:overrides Overridden elements}
 
-val map : ('a -> 'b) -> 'a t -> 'b t
-(** [map f view] transforms messages in a view using function [f]. Useful for
-    composing views with different message types. *)
+    Each element below replaces its {!Mosaic} counterpart solely to turn the
+    positional [children] argument into [?children] with a trailing [unit]. All
+    other arguments, defaults, and semantics are identical to {!Mosaic}; refer
+    to the corresponding entry there for details.
 
-(** {1 Commands}
-
-    Commands represent side effects to be performed by the runtime. *)
-
-module Cmd : sig
-  type 'msg t =
-    | None
-    | Batch of 'msg t list
-    | Perform of (('msg -> unit) -> unit)
-    | Quit
-    | Set_title of string
-    | Focus of string
-    | Static_write of string
-    | Static_print of string
-    | Static_clear  (** A command that may produce messages of type ['msg]. *)
-
-  val none : 'msg t
-  (** [none] is a command that does nothing. *)
-
-  val batch : 'msg t list -> 'msg t
-  (** [batch cmds] combines multiple commands into one. *)
-
-  val perform : (('msg -> unit) -> unit) -> 'msg t
-  (** [perform f] creates a command that calls [f] with a dispatch function. Use
-      this for async operations that produce messages. *)
-
-  val quit : 'msg t
-  (** [quit] exits the application. *)
-
-  val set_title : string -> 'msg t
-  (** [set_title title] sets the terminal window title. *)
-
-  val focus : string -> 'msg t
-  (** [focus id] focuses the node with the given ID. Does nothing if not found.
-  *)
-
-  val static_write : string -> 'msg t
-  (** [static_write text] writes text to the primary screen above the renderer.
-      Ignored in alternate screen mode. *)
-
-  val static_print : string -> 'msg t
-  (** [static_print text] writes text with a trailing newline to the primary
-      screen above the renderer. Ignored in alternate screen mode. *)
-
-  val static_clear : 'msg t
-  (** [static_clear] clears previously written static content. *)
-end
-
-(** {1 Subscriptions}
-
-    Subscriptions allow your application to listen to external events. *)
-
-module Sub : sig
-  type 'msg t =
-    | None
-    | Batch of 'msg t list
-    | Every of float * (unit -> 'msg)
-    | On_tick of (dt:float -> 'msg)
-    | On_key of (Event.key -> 'msg option)
-    | On_key_all of (Event.key -> 'msg option)
-    | On_mouse of (Event.mouse -> 'msg option)
-    | On_mouse_all of (Event.mouse -> 'msg option)
-    | On_paste of (Event.paste -> 'msg option)
-    | On_paste_all of (Event.paste -> 'msg option)
-    | On_resize of (width:int -> height:int -> 'msg)
-    | On_focus of 'msg
-    | On_blur of 'msg
-        (** A subscription that may produce messages of type ['msg]. *)
-
-  val none : 'msg t
-  (** [none] is a subscription that does nothing. *)
-
-  val batch : 'msg t list -> 'msg t
-  (** [batch subs] combines multiple subscriptions into one. *)
-
-  val every : float -> (unit -> 'msg) -> 'msg t
-  (** [every interval f] fires [f ()] every [interval] seconds. Useful for
-      periodic tasks like polling or auto-save. *)
-
-  val on_tick : (dt:float -> 'msg) -> 'msg t
-  (** [on_tick f] subscribes to frame ticks. [dt] is seconds since last frame.
-      Use for animations that need smooth timing. *)
-
-  val on_key : (Event.key -> 'msg option) -> 'msg t
-  (** [on_key f] subscribes to keyboard events that were NOT consumed by focused
-      components. Use this for application shortcuts that should not fire when
-      typing in a text input. Return [Some msg] to dispatch. *)
-
-  val on_key_all : (Event.key -> 'msg option) -> 'msg t
-  (** [on_key_all f] subscribes to ALL keyboard events regardless of whether
-      they were consumed by focused components. Use this for critical shortcuts
-      like Ctrl+C that must always work. Return [Some msg] to dispatch. *)
-
-  val on_mouse : (Event.mouse -> 'msg option) -> 'msg t
-  (** [on_mouse f] subscribes to mouse events that were NOT consumed by focused
-      components. Return [Some msg] to dispatch. *)
-
-  val on_mouse_all : (Event.mouse -> 'msg option) -> 'msg t
-  (** [on_mouse_all f] subscribes to ALL mouse events regardless of consumption.
-      Return [Some msg] to dispatch. *)
-
-  val on_paste : (Event.paste -> 'msg option) -> 'msg t
-  (** [on_paste f] subscribes to paste events that were NOT consumed by focused
-      components. Return [Some msg] to dispatch. *)
-
-  val on_paste_all : (Event.paste -> 'msg option) -> 'msg t
-  (** [on_paste_all f] subscribes to ALL paste events regardless of consumption.
-      Return [Some msg] to dispatch. *)
-
-  val on_resize : (width:int -> height:int -> 'msg) -> 'msg t
-  (** [on_resize f] subscribes to terminal resize events. *)
-
-  val on_focus : 'msg -> 'msg t
-  (** [on_focus msg] dispatches [msg] when the terminal window gains focus. *)
-
-  val on_blur : 'msg -> 'msg t
-  (** [on_blur msg] dispatches [msg] when the terminal window loses focus. *)
-end
-
-(** {1 Application}
-
-    The application record defines your TEA program. *)
-
-type ('model, 'msg) app = {
-  init : unit -> 'model * 'msg Cmd.t;
-      (** [init ()] returns the initial model and command. *)
-  update : 'msg -> 'model -> 'model * 'msg Cmd.t;
-      (** [update msg model] handles a message and returns new model and
-          command. *)
-  view : 'model -> 'msg t;
-      (** [view model] returns the view tree for the current model. *)
-  subscriptions : 'model -> 'msg Sub.t;
-      (** [subscriptions model] returns active subscriptions for current model.
-      *)
-}
-
-(** {1 Running} *)
-
-val run : matrix:Matrix.app -> ('model, 'msg) app -> unit
-(** [run ~matrix app] starts the TEA application and blocks until it exits.
-
-    The [matrix] app must already be attached to a runtime (e.g., via
-    {!Matrix_unix.setup}). For convenience, use [Mosaic_unix.run]. *)
-
-(** {1 Internal Modules}
-
-    These modules are exposed for testing and advanced use cases. *)
-
-module Vnode = Mosaic.Vnode
-(** Virtual node types for the view tree. *)
-
-module Reconciler = Mosaic.Reconciler
-(** The reconciler manages vnode-to-renderable mapping. *)
-
-(** {1 Dimension Helpers} *)
-
-val px : int -> Toffee.Style.dimension
-(** [px n] creates a pixel dimension from an integer. *)
-
-val pct : int -> Toffee.Style.dimension
-(** [pct n] creates a percentage dimension from an integer (0-100). *)
-
-val size :
-  width:int -> height:int -> Toffee.Style.dimension Toffee.Geometry.size
-(** [size ~width ~height] creates a size in pixels. *)
-
-val gap : int -> Toffee.Style.length_percentage Toffee.Geometry.size
-(** [gap n] creates a uniform gap size in pixels. *)
-
-val auto : Toffee.Style.dimension
-(** [auto] is the auto dimension value for flexible sizing. *)
-
-val padding : int -> Toffee.Style.length_percentage Toffee.Geometry.rect
-(** [padding n] creates uniform padding in pixels on all sides. *)
-
-val margin : int -> Toffee.Style.length_percentage_auto Toffee.Geometry.rect
-(** [margin n] creates uniform margin in pixels on all sides. *)
-
-val inset : int -> Toffee.Style.length_percentage_auto Toffee.Geometry.rect
-(** [inset n] creates uniform inset in pixels on all sides. *)
-
-(** {1 UI Elements}
-
-    Constructors for building the view tree. These return message-parameterized
-    views where event handlers produce [Some msg] to dispatch or [None] to
-    ignore. *)
-
-val null : 'msg t
-(** [null] renders nothing. Useful for conditional rendering. *)
+    For text-based elements ({!val-text}, {!val-code}, {!val-markdown})
+    [children] is [string list] whose items are concatenated. *)
 
 val fragment : ?children:'msg t list -> unit -> 'msg t
-(** [fragment ?children ()] groups multiple elements without a wrapper. *)
-
-val raw : Mosaic_ui.Renderable.t -> 'msg t
-(** [raw node] embeds an existing Renderable node into the view tree. *)
+(** Like {!Mosaic.fragment}. [children] defaults to [[]]. *)
 
 val box :
-  ?id:string ->
   ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
   ?visible:bool ->
   ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
   ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
   ?ref:(Mosaic_ui.Renderable.t -> unit) ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?background:Ansi.Color.t ->
   ?border:bool ->
-  ?border_sides:Grid.Border.side list ->
-  ?border_style:Grid.Border.t ->
+  ?border_style:Border.t ->
+  ?border_sides:Border.side list ->
   ?border_color:Ansi.Color.t ->
   ?focused_border_color:Ansi.Color.t ->
-  ?should_fill:bool ->
-  ?custom_border_chars:Grid.Border.t ->
+  ?background:Ansi.Color.t ->
+  ?fill:bool ->
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
   ?children:'msg t list ->
   unit ->
   'msg t
-(** [box ?children ()] creates a box container with optional border and
-    background. *)
+(** Like {!Mosaic.box}. [children] defaults to [[]]. *)
 
 val text :
-  ?id:string ->
   ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
+  ?style:Ansi.Style.t ->
   ?visible:bool ->
   ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
   ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
   ?ref:(Mosaic_ui.Renderable.t -> unit) ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?style:Ansi.Style.t ->
-  ?wrap_mode:[ `None | `Char | `Word ] ->
-  ?tab_indicator:int ->
-  ?tab_indicator_color:Ansi.Color.t ->
+  ?text_style:Ansi.Style.t ->
+  ?wrap:Text_surface.wrap ->
+  ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
-  ?selectable:bool ->
+  ?tab_width:int ->
+  ?truncate:bool ->
   ?children:string list ->
   unit ->
   'msg t
-(** [text ?children ()] creates a text element. *)
-
-val canvas :
-  ?id:string ->
-  ?key:string ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
-  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
-  ?on_mouse:(Event.mouse -> 'msg option) ->
-  ?on_key:(Event.key -> 'msg option) ->
-  ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?respect_alpha:bool ->
-  ?width_method:[ `Unicode | `Wcwidth | `No_zwj ] ->
-  ?initial_width:int ->
-  ?initial_height:int ->
-  ?draw:(Grid.t -> width:int -> height:int -> unit) ->
-  ?on_resize:(width:int -> height:int -> 'msg option) ->
-  unit ->
-  'msg t
-(** [canvas ()] creates a canvas for custom drawing.
-
-    The [draw] callback receives the underlying grid for direct drawing
-    operations. *)
-
-(** {2 Table} *)
-
-module Table : sig
-  type cell
-  (** A table cell. *)
-
-  val cell : ?style:Ansi.Style.t -> string -> cell
-  (** [cell ?style text] creates a cell with the given text. *)
-
-  type row
-  (** A table row. *)
-
-  val row : ?style:Ansi.Style.t -> cell list -> row
-  (** [row ?style cells] creates a row from cells. *)
-
-  type justify = [ `Left | `Center | `Right | `Full ]
-  (** Column justification. *)
-
-  type vertical_align = [ `Top | `Middle | `Bottom ]
-  (** Vertical alignment within cells. *)
-
-  type overflow = [ `Ellipsis | `Crop | `Fold ]
-  (** How to handle overflow text. *)
-
-  type padding = int * int * int * int
-  (** Table padding (top, right, bottom, left). *)
-
-  type box_style =
-    | No_box
-    | Simple
-    | Rounded
-    | Heavy
-    | Heavy_head
-    | Double
-    | Double_edge
-    | Ascii
-    | Minimal_heavy_head
-    | Minimal_double_head
-    | Minimal
-    | Square
-    | Square_double_head  (** Table border styles. *)
-
-  type column
-  (** A column definition. *)
-
-  val column :
-    ?header:cell ->
-    ?footer:cell ->
-    ?style:Ansi.Style.t ->
-    ?header_style:Ansi.Style.t ->
-    ?footer_style:Ansi.Style.t ->
-    ?justify:justify ->
-    ?vertical:vertical_align ->
-    ?overflow:overflow ->
-    ?width:[ `Fixed of int | `Auto ] ->
-    ?min_width:int ->
-    ?max_width:int ->
-    ?ratio:int ->
-    ?no_wrap:bool ->
-    string ->
-    column
-  (** [column name] creates a column definition. *)
-end
-
-val table :
-  ?id:string ->
-  ?key:string ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
-  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
-  ?on_mouse:(Event.mouse -> 'msg option) ->
-  ?on_key:(Event.key -> 'msg option) ->
-  ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?box_style:Table.box_style ->
-  ?safe_box:bool ->
-  ?table_padding:Table.padding ->
-  ?collapse_padding:bool ->
-  ?pad_edge:bool ->
-  ?expand:bool ->
-  ?show_header:bool ->
-  ?show_footer:bool ->
-  ?show_edge:bool ->
-  ?show_lines:bool ->
-  ?leading:int ->
-  ?cell_style:Ansi.Style.t ->
-  ?row_styles:Ansi.Style.t list ->
-  ?header_style:Ansi.Style.t ->
-  ?footer_style:Ansi.Style.t ->
-  ?border_style:Ansi.Style.t ->
-  ?title:Table.cell ->
-  ?title_style:Ansi.Style.t ->
-  ?title_justify:Table.justify ->
-  ?caption:Table.cell ->
-  ?caption_style:Ansi.Style.t ->
-  ?caption_justify:Table.justify ->
-  ?table_width:int ->
-  ?table_min_width:int ->
-  columns:Table.column list ->
-  rows:Table.row list ->
-  unit ->
-  'msg t
-(** [table ~columns ~rows ()] creates a table element. *)
-
-(** {2 Slider} *)
-
-module Slider : sig
-  type orientation = [ `Horizontal | `Vertical ]
-  (** Slider orientation. *)
-end
-
-val slider :
-  ?id:string ->
-  ?key:string ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
-  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
-  ?on_mouse:(Event.mouse -> 'msg option) ->
-  ?on_key:(Event.key -> 'msg option) ->
-  ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  orientation:Slider.orientation ->
-  ?min:float ->
-  ?max:float ->
-  ?value:float ->
-  ?viewport_size:float ->
-  ?track_color:Ansi.Color.t ->
-  ?thumb_color:Ansi.Color.t ->
-  ?on_change:(float -> 'msg option) ->
-  unit ->
-  'msg t
-(** [slider ~orientation ()] creates a slider element. *)
-
-(** {2 Select} *)
-
-module Select : sig
-  type item = { name : string; description : string option }
-  (** A select list item with name and optional description. *)
-end
-
-val select :
-  ?id:string ->
-  ?key:string ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
-  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
-  ?on_mouse:(Event.mouse -> 'msg option) ->
-  ?on_key:(Event.key -> 'msg option) ->
-  ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?background:Ansi.Color.t ->
-  ?text_color:Ansi.Color.t ->
-  ?focused_background:Ansi.Color.t ->
-  ?focused_text_color:Ansi.Color.t ->
-  ?selected_background:Ansi.Color.t ->
-  ?selected_text_color:Ansi.Color.t ->
-  ?description_color:Ansi.Color.t ->
-  ?selected_description_color:Ansi.Color.t ->
-  ?show_scroll_indicator:bool ->
-  ?wrap_selection:bool ->
-  ?show_description:bool ->
-  ?item_spacing:int ->
-  ?fast_scroll_step:int ->
-  ?selected_index:int ->
-  ?autofocus:bool ->
-  ?on_change:(int -> 'msg option) ->
-  ?on_activate:(int -> 'msg option) ->
-  Select.item list ->
-  'msg t
-(** [select options] creates a select list element. *)
-
-(** {2 Spinner} *)
-
-module Spinner : sig
-  type preset =
-    | Dots
-    | Line
-    | Circle
-    | Bounce
-    | Bar
-    | Arrow  (** Built-in spinner animation presets. *)
-end
-
-val spinner :
-  ?id:string ->
-  ?key:string ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
-  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
-  ?on_mouse:(Event.mouse -> 'msg option) ->
-  ?on_key:(Event.key -> 'msg option) ->
-  ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?preset:Spinner.preset ->
-  ?frames:string array ->
-  ?interval:float ->
-  ?autoplay:bool ->
-  ?color:Ansi.Color.t ->
-  ?spinner_background:Ansi.Color.t ->
-  unit ->
-  'msg t
-(** [spinner ()] creates an animated spinner element. *)
-
-(** {2 Tab Select} *)
-
-val tab_select :
-  ?id:string ->
-  ?key:string ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
-  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
-  ?on_mouse:(Event.mouse -> 'msg option) ->
-  ?on_key:(Event.key -> 'msg option) ->
-  ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?wrap_selection:bool ->
-  ?show_description:bool ->
-  ?show_underline:bool ->
-  ?show_scroll_arrows:bool ->
-  ?mouse_navigation:bool ->
-  ?autofocus:bool ->
-  ?tab_width:int ->
-  ?background:Ansi.Color.t ->
-  ?text_color:Ansi.Color.t ->
-  ?focused_background:Ansi.Color.t ->
-  ?focused_text:Ansi.Color.t ->
-  ?selected_background:Ansi.Color.t ->
-  ?selected_text:Ansi.Color.t ->
-  ?selected_description:Ansi.Color.t ->
-  ?on_change:(int -> 'msg option) ->
-  ?on_activate:(int -> 'msg option) ->
-  ?on_change_full:(int * (string * string option) -> 'msg option) ->
-  ?on_activate_full:(int * (string * string option) -> 'msg option) ->
-  (string * string option) list ->
-  'msg t
-(** [tab_select options] creates a tab selector element. *)
-
-(** {2 Scroll Bar} *)
-
-module Scroll_bar : sig
-  type arrow_chars = {
-    up : string;
-    down : string;
-    left : string;
-    right : string;
-  }
-  (** Custom arrow characters. *)
-
-  type arrow_style = {
-    foreground : Ansi.Color.t option;
-    background : Ansi.Color.t option;
-    attributes : Ansi.Attr.flag list option;
-    chars : arrow_chars option;
-  }
-  (** Arrow button styling. *)
-
-  type track_style = {
-    track_color : Ansi.Color.t option;
-    thumb_color : Ansi.Color.t option;
-  }
-  (** Track and thumb styling. *)
-end
-
-val scroll_bar :
-  ?id:string ->
-  ?key:string ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
-  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
-  ?on_mouse:(Event.mouse -> 'msg option) ->
-  ?on_key:(Event.key -> 'msg option) ->
-  ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  orientation:[ `Vertical | `Horizontal ] ->
-  ?show_arrows:bool ->
-  ?arrow_style:Scroll_bar.arrow_style ->
-  ?track_style:Scroll_bar.track_style ->
-  ?track_viewport_size:int ->
-  ?on_change:(int -> 'msg option) ->
-  ?autofocus:bool ->
-  unit ->
-  'msg t
-(** [scroll_bar ~orientation ()] creates a scroll bar element. *)
+(** Like {!Mosaic.text}. [children] is a [string list] whose items are
+    concatenated. Defaults to [[]]. *)
 
 val scroll_box :
-  ?id:string ->
   ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
   ?visible:bool ->
   ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
   ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
   ?ref:(Mosaic_ui.Renderable.t -> unit) ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?background:Ansi.Color.t ->
   ?scroll_x:bool ->
   ?scroll_y:bool ->
-  ?scroll_acceleration:[ `Linear | `MacOS ] ->
   ?sticky_scroll:bool ->
   ?sticky_start:[ `Top | `Bottom | `Left | `Right ] ->
-  ?viewport_culling:bool ->
-  ?autofocus:bool ->
+  ?background:Ansi.Color.t ->
   ?on_scroll:(x:int -> y:int -> 'msg option) ->
   ?children:'msg t list ->
   unit ->
   'msg t
-(** [scroll_box ?children ()] creates a scrollable container element. *)
+(** Like {!Mosaic.scroll_box}. [children] defaults to [[]]. *)
 
-(** {2 Text Input} *)
-
-val input :
-  ?id:string ->
+val code :
   ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
   ?visible:bool ->
   ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
   ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
   ?ref:(Mosaic_ui.Renderable.t -> unit) ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
+  ?highlights:span list ->
+  ?text_style:Ansi.Style.t ->
+  ?wrap:Text_surface.wrap ->
+  ?tab_width:int ->
+  ?selectable:bool ->
+  ?selection_bg:Ansi.Color.t ->
+  ?selection_fg:Ansi.Color.t ->
+  ?children:string list ->
+  unit ->
+  'msg t
+(** Like {!Mosaic.code}. [children] is a [string list] whose items are
+    concatenated. Defaults to [[]]. *)
+
+val markdown :
+  ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
   ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
   ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
   ?flex_grow:float ->
   ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?background:Ansi.Color.t ->
-  ?text_color:Ansi.Color.t ->
-  ?focused_background:Ansi.Color.t ->
-  ?focused_text_color:Ansi.Color.t ->
-  ?placeholder:string ->
-  ?placeholder_color:Ansi.Color.t ->
-  ?cursor_color:Ansi.Color.t ->
-  ?cursor_style:[ `Block | `Line | `Underline ] ->
-  ?cursor_blinking:bool ->
-  ?max_length:int ->
-  ?value:string ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
   ?autofocus:bool ->
+  ?buffered:bool ->
+  ?live:bool ->
+  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
+  ?on_mouse:(Event.mouse -> 'msg option) ->
+  ?on_key:(Event.key -> 'msg option) ->
+  ?on_paste:(Event.paste -> 'msg option) ->
+  ?md_style:Markdown.style ->
+  ?conceal:bool ->
+  ?streaming:bool ->
+  ?children:string list ->
+  unit ->
+  'msg t
+(** Like {!Mosaic.markdown}. [children] is a [string list] whose items are
+    concatenated. Defaults to [[]]. *)
+
+val input :
+  ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
+  ?live:bool ->
+  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
+  ?on_mouse:(Event.mouse -> 'msg option) ->
+  ?on_key:(Event.key -> 'msg option) ->
+  ?on_paste:(Event.paste -> 'msg option) ->
+  ?value:string ->
+  ?placeholder:string ->
+  ?max_length:int ->
+  ?text_color:Ansi.Color.t ->
+  ?background_color:Ansi.Color.t ->
+  ?focused_text_color:Ansi.Color.t ->
+  ?focused_background_color:Ansi.Color.t ->
+  ?placeholder_color:Ansi.Color.t ->
+  ?selection_color:Ansi.Color.t ->
+  ?selection_fg:Ansi.Color.t ->
+  ?cursor_style:[ `Block | `Line | `Underline ] ->
+  ?cursor_color:Ansi.Color.t ->
+  ?cursor_blinking:bool ->
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->
   ?children:'msg t list ->
   unit ->
   'msg t
-(** [text_input ()] creates a text input element. *)
+(** Like {!Mosaic.input}. [children] defaults to [[]]. *)
 
-(** {2 Code} *)
-
-module Code : sig
-  module Theme : sig
-    type t
-    (** Syntax highlighting theme configuration. *)
-
-    val create : base:Ansi.Style.t -> (string * Ansi.Style.t) list -> t
-    (** [create ~base rules] creates a theme from capture rules. *)
-
-    val default : ?base:Ansi.Style.t -> unit -> t
-    (** [default ()] returns the default syntax highlighting theme. *)
-  end
-end
-
-val code :
-  ?id:string ->
+val textarea :
   ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
   ?visible:bool ->
   ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
   ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
   ?ref:(Mosaic_ui.Renderable.t -> unit) ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?filetype:Mosaic_syntax.filetype ->
-  ?languages:Mosaic_syntax.Set.t ->
-  ?theme:Code.Theme.t ->
-  ?conceal:bool ->
-  ?draw_unstyled_text:bool ->
-  ?wrap_mode:[ `None | `Char | `Word ] ->
-  ?tab_width:int ->
-  ?tab_indicator:int ->
-  ?tab_indicator_color:Ansi.Color.t ->
-  ?selection_bg:Ansi.Color.t ->
+  ?value:string ->
+  ?placeholder:string ->
+  ?wrap:Text_surface.wrap ->
+  ?text_color:Ansi.Color.t ->
+  ?background_color:Ansi.Color.t ->
+  ?focused_text_color:Ansi.Color.t ->
+  ?focused_background_color:Ansi.Color.t ->
+  ?placeholder_color:Ansi.Color.t ->
+  ?selection_color:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
-  ?selectable:bool ->
-  ?children:string list ->
+  ?cursor_style:[ `Block | `Line | `Underline ] ->
+  ?cursor_color:Ansi.Color.t ->
+  ?cursor_blinking:bool ->
+  ?on_input:(string -> 'msg option) ->
+  ?on_change:(string -> 'msg option) ->
+  ?on_submit:(string -> 'msg option) ->
+  ?children:'msg t list ->
   unit ->
   'msg t
-(** [code ?children ()] creates a syntax-highlighted code element. *)
+(** Like {!Mosaic.textarea}. [children] defaults to [[]]. *)
 
-val markdown :
-  ?id:string ->
+val line_number :
   ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
   ?visible:bool ->
   ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
   ?live:bool ->
-  ?buffer:Mosaic_ui.Renderable.Props.buffer_mode ->
   ?ref:(Mosaic_ui.Renderable.t -> unit) ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?display:Toffee.Style.display ->
-  ?box_sizing:Toffee.Style.box_sizing ->
-  ?position:Toffee.Style.position ->
-  ?overflow:Toffee.Style.overflow Toffee.Geometry.point ->
-  ?scrollbar_width:float ->
-  ?inset:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?min_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?max_size:Toffee.Style.dimension Toffee.Geometry.size ->
-  ?aspect_ratio:float ->
-  ?margin:Toffee.Style.length_percentage_auto Toffee.Geometry.rect ->
-  ?padding:Toffee.Style.length_percentage Toffee.Geometry.rect ->
-  ?gap:Toffee.Style.length_percentage Toffee.Geometry.size ->
-  ?align_items:Toffee.Style.align_items ->
-  ?align_self:Toffee.Style.align_self ->
-  ?align_content:Toffee.Style.align_content ->
-  ?justify_items:Toffee.Style.justify_items ->
-  ?justify_self:Toffee.Style.justify_self ->
-  ?justify_content:Toffee.Style.justify_content ->
-  ?flex_direction:Toffee.Style.flex_direction ->
-  ?flex_wrap:Toffee.Style.flex_wrap ->
-  ?flex_grow:float ->
-  ?flex_shrink:float ->
-  ?flex_basis:Toffee.Style.dimension ->
-  ?grid_template_rows:Toffee.Style.grid_template_component list ->
-  ?grid_template_columns:Toffee.Style.grid_template_component list ->
-  ?grid_auto_rows:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_columns:Toffee.Style.track_sizing_function list ->
-  ?grid_auto_flow:Toffee.Style.grid_auto_flow ->
-  ?grid_template_areas:Toffee.Style.grid_template_area list ->
-  ?grid_row:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?grid_column:Toffee.Style.grid_placement Toffee.Geometry.line ->
-  ?style:Mosaic_markdown.Style.t ->
-  ?wrap_width:Mosaic_markdown.Props.wrap_width ->
-  ?paragraph_wrap:Mosaic_markdown.Props.wrap_mode ->
-  ?block_quote_wrap:Mosaic_markdown.Props.wrap_mode ->
-  ?headings:Mosaic_markdown.Props.headings ->
-  ?code_blocks:Mosaic_markdown.Props.code_blocks ->
-  ?raw_html:Mosaic_markdown.Props.raw_html ->
-  ?links:Mosaic_markdown.Props.link ->
-  ?images:Mosaic_markdown.Props.image ->
-  ?unknown_inline:Mosaic_markdown.Props.unknown ->
-  ?unknown_block:Mosaic_markdown.Props.unknown ->
-  ?languages:Mosaic_syntax.Set.t ->
-  ?children:string list ->
+  ?fg:Ansi.Color.t ->
+  ?bg:Ansi.Color.t ->
+  ?min_width:int ->
+  ?padding_right:int ->
+  ?show_line_numbers:bool ->
+  ?line_number_offset:int ->
+  ?line_colors:(int * Line_number.line_color) list ->
+  ?line_signs:(int * Line_number.line_sign) list ->
+  ?hidden_line_numbers:int list ->
+  ?children:'msg t list ->
   unit ->
   'msg t
-(** [markdown ?children ()] creates a markdown rendering element. *)
+(** Like {!Mosaic.line_number}. [children] defaults to [[]]; pass the wrapped
+    element (e.g. a {!val-code}) as a single-item list. *)
