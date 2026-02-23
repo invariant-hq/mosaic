@@ -5,7 +5,7 @@ A fast, full-featured, modern terminal UI library for OCaml.
 ## Why Matrix?
 
 - **Minimal dependencies** – Only depends on `uutf` for UTF-8 decoding. No transitive dependency bloat.
-- **High performance** – Designed for 60+ FPS rendering. Zero-allocation frame diffing, efficient glyph pooling, and double-buffered rendering minimize GC pressure.
+- **High performance** – Double-buffered rendering diffs cell changes to emit minimal ANSI output. Efficient glyph pooling minimises allocations on the hot path.
 - **Modular architecture** – Small, focused libraries (`matrix.ansi`, `matrix.grid`, `matrix.pty`, `matrix.vte`, etc.) that you can use independently or combine as needed.
 - **Immediate-mode API** – A simple render loop with `on_render`, `on_input`, and `on_resize` callbacks. No framework overhead—just draw your UI each frame.
 - **Native alpha blending** – RGBA colors with proper alpha compositing for translucent overlays and smooth visual effects.
@@ -98,7 +98,7 @@ API documentation is available in the corresponding `.mli` files under `lib/`.
 | Aspect              | Matrix                                                                                                                                        | Notty                                                                                                 |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Rendering model     | Immediate-mode, double-buffered grid with ANSI diffing; only changed cells emit bytes; built for high FPS.                                    | Declarative images; redraws full image on refresh; simpler, not diff-based.                           |
-| Performance tactics | Zero-allocation hot loops, glyph pooling, optional render thread, explicit-width output for graphemes.                                        | Allocates per render; no diffing or explicit-width negotiation.                                       |
+| Performance tactics | Double-buffered cell diffing, glyph pooling, explicit-width output for graphemes.                                                              | Allocates per render; no diffing or explicit-width negotiation.                                       |
 | Features            | RGBA with alpha blending, OSC8 hyperlinks, hit regions, inline/alt/split display modes, debug overlay, frame dumps.                           | Core fg/bg + styles; compact feature set; no alpha/hyperlinks or built-in diagnostics.                |
 | Protocols and input | Auto-negotiates Kitty keyboard, SGR/URXVT/X10 mouse, bracketed paste, focus, explicit width; separates capability responses from user events. | Minimal, broadly compatible protocols by design; no capability probing; basic key/mouse/paste events. |
 | Unicode handling    | Unicode width tables plus explicit-width negotiation to stay aligned with modern emoji/wide glyphs.                                           | Width hints only; no explicit-width negotiation.                                                      |
