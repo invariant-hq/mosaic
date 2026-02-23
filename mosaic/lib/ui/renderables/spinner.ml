@@ -1,206 +1,163 @@
-type preset = Dots | Line | Circle | Bounce | Bar | Arrow
+(* ───── Frame Sets ───── *)
 
-let frames_of_preset = function
-  | Dots -> [| "⠋"; "⠙"; "⠹"; "⠸"; "⠼"; "⠴"; "⠦"; "⠧"; "⠇"; "⠏" |]
-  | Line -> [| "-"; "\\"; "|"; "/" |]
-  | Circle -> [| "◐"; "◓"; "◑"; "◒" |]
-  | Bounce -> [| "⠁"; "⠂"; "⠄"; "⠂" |]
-  | Bar ->
-      [|
-        "[    ]";
-        "[=   ]";
-        "[==  ]";
-        "[=== ]";
-        "[====]";
-        "[ ===]";
-        "[  ==]";
-        "[   =]";
-      |]
-  | Arrow -> [| "←"; "↖"; "↑"; "↗"; "→"; "↘"; "↓"; "↙" |]
+type frame_set = { frames : string array; interval : float }
 
-let interval_of_preset = function
-  | Dots -> 0.08
-  | Line -> 0.1
-  | Circle -> 0.1
-  | Bounce -> 0.12
-  | Bar -> 0.1
-  | Arrow -> 0.1
-
-module Props = struct
-  type t = {
-    preset : preset;
-    frames : string array option;
-    interval : float;
-    autoplay : bool;
-    color : Ansi.Color.t;
-    background : Ansi.Color.t;
+let dots =
+  {
+    frames = [| "⠋"; "⠙"; "⠹"; "⠸"; "⠼"; "⠴"; "⠦"; "⠧"; "⠇"; "⠏" |];
+    interval = 80.;
   }
 
-  let make ?(preset = Dots) ?frames ?(interval = 0.08) ?(autoplay = true)
-      ?(color = Ansi.Color.white) ?(background = Ansi.Color.of_rgba 0 0 0 0) ()
-      =
-    { preset; frames; interval; autoplay; color; background }
+let line = { frames = [| "-"; "\\"; "|"; "/" |]; interval = 130. }
+
+let dots2 =
+  { frames = [| "⣾"; "⣽"; "⣻"; "⢿"; "⡿"; "⣟"; "⣯"; "⣷" |]; interval = 80. }
+
+let arc = { frames = [| "◜"; "◠"; "◝"; "◞"; "◡"; "◟" |]; interval = 100. }
+
+let bounce = { frames = [| "⠁"; "⠂"; "⠄"; "⠂" |]; interval = 120. }
+let circle = { frames = [| "◡"; "⊙"; "◠" |]; interval = 120. }
+let default_frame_set = dots
+
+(* ───── Props ───── *)
+
+module Props = struct
+  type t = { frame_set : frame_set; color : Ansi.Color.t }
+
+  let make ?(frame_set = default_frame_set) ?(color = Ansi.Color.White) () =
+    { frame_set; color }
 
   let default = make ()
 
-  let equal (a : t) (b : t) =
-    let frames_equal fa fb =
-      match (fa, fb) with
-      | None, None -> true
-      | Some xa, Some xb ->
-          Array.length xa = Array.length xb && Array.for_all2 String.equal xa xb
-      | _ -> false
-    in
-    a.preset = b.preset
-    && frames_equal a.frames b.frames
-    && Float.equal a.interval b.interval
-    && Bool.equal a.autoplay b.autoplay
+  let frames_equal a b =
+    let la = Array.length a and lb = Array.length b in
+    la = lb
+    &&
+    let rec loop i = i >= la || (String.equal a.(i) b.(i) && loop (i + 1)) in
+    loop 0
+
+  let equal a b =
+    Float.equal a.frame_set.interval b.frame_set.interval
+    && frames_equal a.frame_set.frames b.frame_set.frames
     && Ansi.Color.equal a.color b.color
-    && Ansi.Color.equal a.background b.background
 end
+
+(* ───── Types ───── *)
 
 type t = {
   node : Renderable.t;
-  mutable frames : string array;
-  mutable interval : float;
-  mutable color : Ansi.Color.t;
-  mutable background : Ansi.Color.t;
-  mutable current_frame : int;
-  mutable running : bool;
+  mutable props : Props.t;
+  mutable frame_index : int;
   mutable elapsed : float;
   mutable max_width : int;
 }
 
 let node t = t.node
 
+(* ───── Display Width ───── *)
+
 let compute_max_width frames =
   Array.fold_left
     (fun acc frame ->
-      max acc (Glyph.String.measure ~width_method:`Unicode ~tab_width:2 frame))
+      Int.max acc
+        (Glyph.String.measure ~width_method:`Unicode ~tab_width:2 frame))
     0 frames
 
-let request_render t = Renderable.request_render t.node
+(* ───── Measure ───── *)
 
-let measure t ~known_dimensions:_ ~available_space:_ ~style:_ =
-  Toffee.Geometry.Size.{ width = float t.max_width; height = 1. }
-
-let render t _renderable grid ~delta:_ =
-  let lx = Renderable.x t.node in
-  let ly = Renderable.y t.node in
-  let lw = Renderable.width t.node in
-  let lh = Renderable.height t.node in
-  if lw <= 0 || lh <= 0 then ()
-  else
-    let frame_idx = t.current_frame mod Array.length t.frames in
-    let frame = t.frames.(frame_idx) in
-    let style = Ansi.Style.make ~fg:t.color ~bg:t.background () in
-    Grid.draw_text ~style grid ~x:lx ~y:ly ~text:frame
-
-let on_frame t ~delta =
-  if not t.running then ()
-  else (
-    t.elapsed <- t.elapsed +. delta;
-    if t.elapsed >= t.interval then (
-      t.elapsed <- t.elapsed -. t.interval;
-      t.current_frame <- (t.current_frame + 1) mod Array.length t.frames;
-      request_render t))
-
-let start t =
-  if not t.running then (
-    t.running <- true;
-    Renderable.set_live t.node true;
-    request_render t)
-
-let stop t =
-  if t.running then (
-    t.running <- false;
-    Renderable.set_live t.node false)
-
-let reset t =
-  stop t;
-  t.current_frame <- 0;
-  t.elapsed <- 0.;
-  request_render t
-
-let is_running t = t.running
-
-let set_frames t frames =
-  if Array.length frames = 0 then ()
-  else (
-    t.frames <- frames;
-    t.max_width <- compute_max_width frames;
-    t.current_frame <- 0;
-    t.elapsed <- 0.;
-    ignore (Renderable.mark_layout_dirty t.node);
-    request_render t)
-
-let set_preset t preset =
-  let frames = frames_of_preset preset in
-  let interval = interval_of_preset preset in
-  t.frames <- frames;
-  t.interval <- interval;
-  t.max_width <- compute_max_width frames;
-  t.current_frame <- 0;
-  t.elapsed <- 0.;
-  ignore (Renderable.mark_layout_dirty t.node);
-  request_render t
-
-let set_interval t interval =
-  t.interval <- max 0.001 interval;
-  t.elapsed <- 0.
-
-let set_color t color =
-  if not (Ansi.Color.equal t.color color) then (
-    t.color <- color;
-    request_render t)
-
-let set_background t color =
-  if not (Ansi.Color.equal t.background color) then (
-    t.background <- color;
-    request_render t)
-
-let current_frame t = t.current_frame
-let frame_count t = Array.length t.frames
-
-let apply_props t (props : Props.t) =
-  (match props.frames with
-  | Some frames when Array.length frames > 0 -> set_frames t frames
-  | _ -> set_preset t props.preset);
-  let interval =
-    if props.interval > 0. then props.interval
-    else interval_of_preset props.preset
-  in
-  set_interval t interval;
-  set_color t props.color;
-  set_background t props.background;
-  if props.autoplay then start t else stop t
-
-let mount ?(props = Props.default) node =
-  let frames =
-    match props.frames with
-    | Some f when Array.length f > 0 -> f
-    | _ -> frames_of_preset props.preset
-  in
-  let interval =
-    if props.interval > 0. then props.interval
-    else interval_of_preset props.preset
-  in
-  let t =
+let measure t ~known_dimensions ~available_space:_ ~style:_ =
+  Toffee.Geometry.Size.
     {
-      node;
-      frames;
-      interval;
-      color = props.color;
-      background = props.background;
-      current_frame = 0;
-      running = false;
-      elapsed = 0.;
-      max_width = compute_max_width frames;
+      width =
+        (match known_dimensions.width with
+        | Some w -> w
+        | None -> Float.of_int (Int.max 1 t.max_width));
+      height = (match known_dimensions.height with Some h -> h | None -> 1.);
     }
+
+(* ───── Rendering ───── *)
+
+let render t _self grid ~delta:_ =
+  let w = Renderable.width t.node in
+  let h = Renderable.height t.node in
+  if w > 0 && h > 0 then
+    let n = Array.length t.props.frame_set.frames in
+    if n > 0 then
+      let frame = t.props.frame_set.frames.(t.frame_index) in
+      let style = Ansi.Style.make ~fg:t.props.color () in
+      Grid.draw_text ~style grid ~x:(Renderable.x t.node)
+        ~y:(Renderable.y t.node) ~text:frame
+
+(* ───── Animation ───── *)
+
+let on_frame t _node ~delta =
+  let interval = t.props.frame_set.interval in
+  if interval > 0. then (
+    let delta_ms = delta *. 1000. in
+    t.elapsed <- t.elapsed +. delta_ms;
+    if t.elapsed >= interval then
+      let n = Array.length t.props.frame_set.frames in
+      if n > 0 then (
+        let advance = int_of_float (t.elapsed /. interval) in
+        t.frame_index <- (t.frame_index + advance) mod n;
+        t.elapsed <- Float.rem t.elapsed interval;
+        Renderable.request_render t.node))
+
+(* ───── Construction ───── *)
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
+    ?(frame_set = default_frame_set) ?(color = Ansi.Color.White) () =
+  let node =
+    Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
+  let props = Props.make ~frame_set ~color () in
+  let max_width = compute_max_width frame_set.frames in
+  let t = { node; props; frame_index = 0; elapsed = 0.; max_width } in
   Renderable.set_render node (render t);
   Renderable.set_measure node (Some (measure t));
-  Renderable.set_on_frame node (Some (fun _n ~delta -> on_frame t ~delta));
-  if props.autoplay then start t;
-  request_render t;
+  Renderable.set_on_frame node (Some (on_frame t));
   t
+
+(* ───── Accessors ───── *)
+
+let frame_index t = t.frame_index
+let elapsed t = t.elapsed
+
+(* ───── Setters ───── *)
+
+let set_frame_set t fs =
+  t.props <- { t.props with frame_set = fs };
+  let n = Array.length fs.frames in
+  t.frame_index <- (if n > 0 then t.frame_index mod n else 0);
+  t.elapsed <- 0.;
+  t.max_width <- compute_max_width fs.frames;
+  Renderable.set_measure t.node (Some (measure t));
+  Renderable.request_render t.node
+
+let set_color t c =
+  if not (Ansi.Color.equal t.props.color c) then (
+    t.props <- { t.props with color = c };
+    Renderable.request_render t.node)
+
+(* ───── Apply Props ───── *)
+
+let apply_props t (props : Props.t) =
+  let reset_animation =
+    (not (Float.equal t.props.frame_set.interval props.frame_set.interval))
+    || not (Props.frames_equal t.props.frame_set.frames props.frame_set.frames)
+  in
+  t.props <- props;
+  if reset_animation then (
+    let n = Array.length props.frame_set.frames in
+    t.frame_index <- (if n > 0 then t.frame_index mod n else 0);
+    t.elapsed <- 0.);
+  t.max_width <- compute_max_width props.frame_set.frames;
+  Renderable.set_measure t.node (Some (measure t));
+  Renderable.request_render t.node
+
+(* ───── Pretty-printing ───── *)
+
+let pp ppf t =
+  Format.fprintf ppf "Spinner(%s, frame=%d/%d)" (Renderable.id t.node)
+    t.frame_index
+    (Array.length t.props.frame_set.frames)

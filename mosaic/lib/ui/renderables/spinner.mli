@@ -1,112 +1,114 @@
-(** Animated spinner indicator.
+(** Animated spinner cycling through configurable frame sets.
 
-    Spinner displays a cycling animation from a sequence of frames, commonly
-    used to indicate loading or processing states. Supports built-in spinner
-    presets and custom frame sequences.
+    A spinner cycles through an array of text frames at a fixed interval,
+    rendering the current frame with a configurable foreground color. Animation
+    advances on each tick: elapsed time accumulates and the frame index advances
+    by one or more steps when the interval threshold is reached.
 
-    {1 Overview}
+    Several built-in frame sets are provided ({!dots}, {!line}, {!arc}, etc.).
+    Custom frame sets can be constructed directly as {!type-frame_set} records.
+*)
 
-    A spinner cycles through frames at a configurable interval. The animation
-    runs via the renderer's frame callback, advancing one frame per interval.
-    Spinners can be started, stopped, and reset programmatically.
-
-    {1 Built-in Presets}
-
-    Several common spinner styles are provided:
-
-    - [Dots]: Classic braille dot pattern (default)
-    - [Line]: Simple rotating line
-    - [Circle]: Rotating circle quarters
-    - [Bounce]: Bouncing ball
-    - [Bar]: Growing/shrinking bar
-    - [Arrow]: Rotating arrow
-
-    Custom spinners can be created by providing a frame array directly. *)
-
-type preset =
-  | Dots
-  | Line
-  | Circle
-  | Bounce
-  | Bar
-  | Arrow  (** Built-in spinner animation styles. *)
+(** {1:types Types} *)
 
 type t
-(** Spinner state. *)
+(** The type for animated spinner widgets. *)
+
+type frame_set = {
+  frames : string array;  (** Frames to cycle through. *)
+  interval : float;  (** Time between frames, in milliseconds. *)
+}
+(** The type for animation frame sets. The spinner advances one frame each time
+    {!field-interval} milliseconds have elapsed. *)
+
+(** {1:frame_sets Built-in frame sets} *)
+
+val dots : frame_set
+(** Braille dot pattern (10 frames, 80 ms). *)
+
+val dots2 : frame_set
+(** Braille block pattern (8 frames, 80 ms). *)
+
+val line : frame_set
+(** ASCII line rotation (4 frames, 130 ms). *)
+
+val arc : frame_set
+(** Quarter-circle arc (6 frames, 100 ms). *)
+
+val bounce : frame_set
+(** Braille bounce (4 frames, 120 ms). *)
+
+val circle : frame_set
+(** Circle animation (3 frames, 120 ms). *)
+
+val default_frame_set : frame_set
+(** [default_frame_set] is {!dots}. *)
+
+(** {1:constructors Constructors} *)
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?frame_set:frame_set ->
+  ?color:Ansi.Color.t ->
+  unit ->
+  t
+(** [create ~parent ()] is a spinner attached to [parent], with:
+    - [frame_set] is the animation sequence. Defaults to {!default_frame_set}.
+    - [color] is the foreground color for the spinner glyphs. Defaults to
+      {!Ansi.Color.White}. *)
+
+val node : t -> Renderable.t
+(** [node t] is the underlying {!Renderable.t} of [t]. *)
+
+(** {1:props Properties} *)
 
 module Props : sig
   type t
+  (** The type for declarative property bundles used by the reconciler. *)
 
-  val make :
-    ?preset:preset ->
-    ?frames:string array ->
-    ?interval:float ->
-    ?autoplay:bool ->
-    ?color:Ansi.Color.t ->
-    ?background:Ansi.Color.t ->
-    unit ->
-    t
-  (** [make ?preset ?frames ?interval ?autoplay ?color ?background ()]
-      configures a spinner.
-
-      - [preset]: Built-in animation style (default: [Dots])
-      - [frames]: Custom frame sequence (overrides [preset] if provided)
-      - [interval]: Seconds between frames (default: 0.08)
-      - [autoplay]: Start animation on mount (default: true)
-      - [color]: Foreground color (default: white)
-      - [background]: Background color (default: transparent) *)
+  val make : ?frame_set:frame_set -> ?color:Ansi.Color.t -> unit -> t
+  (** [make ()] is a property set, with:
+      - [frame_set] is the animation sequence. Defaults to {!default_frame_set}.
+      - [color] is the foreground color. Defaults to {!Ansi.Color.White}. *)
 
   val default : t
+  (** [default] is [make ()]. *)
 
   val equal : t -> t -> bool
-  (** [equal a b] reports structural equality between spinner props. *)
+  (** [equal a b] is [true] iff [a] and [b] describe identical visual
+      properties. *)
 end
 
 val apply_props : t -> Props.t -> unit
-(** [apply_props spinner props] applies [props] to a mounted spinner using its
-    setters. *)
+(** [apply_props t props] replaces all properties of [t] with [props]. Wraps the
+    frame index when the frame set changes. Always triggers a re-render. *)
 
-val mount : ?props:Props.t -> Renderable.t -> t
-(** [mount ?props node] configures [node] to render an animated spinner. *)
+(** {1:accessors Accessors} *)
 
-val node : t -> Renderable.t
-(** [node t] returns the underlying renderable. *)
+val frame_index : t -> int
+(** [frame_index t] is the current zero-based frame index of [t]. *)
 
-(** {1 Animation Control} *)
+val elapsed : t -> float
+(** [elapsed t] is the accumulated time in milliseconds since the last frame
+    advance of [t]. *)
 
-val start : t -> unit
-(** [start t] begins or resumes the animation. *)
+(** {1:setters Setters} *)
 
-val stop : t -> unit
-(** [stop t] pauses the animation at the current frame. *)
-
-val reset : t -> unit
-(** [reset t] stops the animation and resets to the first frame. *)
-
-val is_running : t -> bool
-(** [is_running t] returns [true] if the animation is active. *)
-
-(** {1 Configuration} *)
-
-val set_preset : t -> preset -> unit
-(** [set_preset t preset] switches to a built-in animation style. *)
-
-val set_frames : t -> string array -> unit
-(** [set_frames t frames] sets a custom frame sequence. *)
-
-val set_interval : t -> float -> unit
-(** [set_interval t seconds] sets the frame duration. *)
+val set_frame_set : t -> frame_set -> unit
+(** [set_frame_set t fs] changes the frame set of [t] to [fs]. Resets elapsed
+    time to [0.] and wraps the frame index to the new frame count. *)
 
 val set_color : t -> Ansi.Color.t -> unit
-(** [set_color t color] sets the foreground color. *)
+(** [set_color t c] changes the foreground color of [t] to [c]. Re-renders only
+    if [c] differs from the current color. *)
 
-val set_background : t -> Ansi.Color.t -> unit
-(** [set_background t color] sets the background color. *)
+(** {1:fmt Formatting and inspecting} *)
 
-(** {1 State} *)
-
-val current_frame : t -> int
-(** [current_frame t] returns the current frame index (0-based). *)
-
-val frame_count : t -> int
-(** [frame_count t] returns the total number of frames. *)
+val pp : Format.formatter -> t -> unit
+(** [pp ppf t] formats [t] on [ppf] for debugging. *)
