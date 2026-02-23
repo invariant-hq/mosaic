@@ -101,7 +101,7 @@ let encode_bench name method_ text =
   let callback g =
     if G.is_continuation g then ()
     else
-      let w = G.width g in
+      let w = G.cell_width g in
       cols := !cols + w;
       if not (G.is_inline g) then (
         G.Pool.incref pool g;
