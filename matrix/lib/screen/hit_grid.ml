@@ -4,8 +4,7 @@ type t = {
   mutable width : int;
   mutable height : int;
   mutable capacity : int;
-  mutable data :
-    (int32, Bigarray.int32_elt, Bigarray.c_layout) Bigarray.Array1.t;
+  mutable data : (int, Bigarray.int_elt, Bigarray.c_layout) Bigarray.Array1.t;
   clip_stack : rect Dynarray.t;
 }
 
@@ -15,8 +14,7 @@ let ensure_capacity t cells =
   if cells > t.capacity then (
     (* Geometric growth to reduce allocation churn on frequent resizes *)
     let new_capacity = max cells (t.capacity * 2) in
-    t.data <-
-      Bigarray.Array1.create Bigarray.int32 Bigarray.c_layout new_capacity;
+    t.data <- Bigarray.Array1.create Bigarray.int Bigarray.c_layout new_capacity;
     t.capacity <- new_capacity)
 
 let linear_fill arr start len value =
@@ -30,7 +28,7 @@ let linear_fill arr start len value =
 
 let clear t =
   let len = t.width * t.height in
-  if len > 0 then linear_fill t.data 0 len 0l
+  if len > 0 then linear_fill t.data 0 len 0
 
 let resize t ~width ~height =
   let width = max 0 width in
@@ -48,7 +46,7 @@ let create ~width ~height =
       width = 0;
       height = 0;
       capacity = 0;
-      data = Bigarray.Array1.create Bigarray.int32 Bigarray.c_layout 0;
+      data = Bigarray.Array1.create Bigarray.int Bigarray.c_layout 0;
       clip_stack = Dynarray.create ();
     }
   in
@@ -104,12 +102,11 @@ let add t ~x ~y ~width ~height ~id =
   let x0, y0, x1, y1 = clip_region t ~x ~y ~width ~height in
   if x0 < x1 && y0 < y1 then
     let stride = t.width in
-    let id32 = Int32.of_int id in
     let row_width = x1 - x0 in
     let rec loop_rows row =
       if row < y1 then (
         let start = (row * stride) + x0 in
-        linear_fill t.data start row_width id32;
+        linear_fill t.data start row_width id;
         loop_rows (row + 1))
     in
     loop_rows y0
@@ -118,7 +115,7 @@ let get t ~x ~y =
   if x < 0 || y < 0 || x >= t.width || y >= t.height then empty_id
   else
     let idx = (y * t.width) + x in
-    Int32.to_int (Bigarray.Array1.unsafe_get t.data idx)
+    Bigarray.Array1.unsafe_get t.data idx
 
 let blit ~src ~dst =
   resize dst ~width:src.width ~height:src.height;

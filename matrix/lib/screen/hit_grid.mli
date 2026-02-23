@@ -1,78 +1,71 @@
-(** Spatial indexing for UI mouse interactions.
+(** Spatial indexing for mouse hit testing.
 
-    A Hit Grid maps screen coordinates to integer IDs. It allows O(1) lookup to
-    determine which UI element sits at a specific (x, y) coordinate.
+    A hit grid maps screen coordinates to integer element IDs. Lookup is [O(1)];
+    registration is [O(region area)].
 
-    {1 Constants} *)
+    {1:constants Constants} *)
 
 val empty_id : int
-(** [empty_id] (0) represents the absence of any element. *)
+(** [empty_id] is [0]. Represents the absence of any element. *)
 
-(** {1 Types} *)
+(** {1:types Types} *)
 
 type rect = { x : int; y : int; width : int; height : int }
-(** Rectangular area in cell coordinates. *)
+(** The type for rectangular areas in cell coordinates. *)
 
 type t
-(** The hit grid.
+(** The type for hit grids. Internally backed by an [int32] bigarray for cache
+    locality. *)
 
-    Internally backed by a specialized [int32] buffer for cache locality. *)
-
-(** {1 Lifecycle} *)
+(** {1:lifecycle Lifecycle} *)
 
 val create : width:int -> height:int -> t
-(** [create ~width ~height] creates a new grid initialized to {!empty_id}. *)
+(** [create ~width ~height] is a hit grid of the given dimensions with all cells
+    set to {!empty_id}. *)
 
 val resize : t -> width:int -> height:int -> unit
-(** [resize t ~width ~height] updates the grid dimensions.
-
-    **Behavior**: This operation invalidates the grid content. All cells are
-    reset to {!empty_id}. Internal storage is grown only if necessary,
-    minimizing allocation churn. *)
+(** [resize t ~width ~height] updates [t]'s dimensions to [width] and [height].
+    All cells are reset to {!empty_id}. Internal storage is grown only when
+    necessary. *)
 
 val clear : t -> unit
-(** [clear t] resets all cells in the current bounds to {!empty_id}. The clip
-    stack is preserved. *)
+(** [clear t] resets all cells to {!empty_id}. The clip stack is preserved. *)
 
-(** {1 Operations} *)
+(** {1:ops Operations} *)
 
 val add : t -> x:int -> y:int -> width:int -> height:int -> id:int -> unit
-(** [add t ~x ~y ~width ~height ~id] fills a rectangular region with [id].
-
-    - Overwrites any existing IDs in that region (painter's algorithm).
-    - Automatically clips the rectangle to the grid boundaries and the active
-      clip region.
-    - Zero or negative dimensions result in a no-op. *)
+(** [add t ~x ~y ~width ~height ~id] fills the rectangular region with [id]
+    (painter's algorithm: overwrites any existing IDs). The rectangle is clipped
+    to the grid bounds and the active clip region. Zero or negative dimensions
+    are a no-op. *)
 
 val get : t -> x:int -> y:int -> int
-(** [get t ~x ~y] returns the ID at the specified coordinates.
-
-    Returns {!empty_id} if the coordinates are out of bounds. *)
+(** [get t ~x ~y] is the element ID at [(x, y)], or {!empty_id} if the
+    coordinates are out of bounds. *)
 
 val blit : src:t -> dst:t -> unit
-(** [blit ~src ~dst] copies the content of [src] to [dst].
+(** [blit ~src ~dst] copies the content of [src] into [dst]. [dst] is resized to
+    match [src]. *)
 
-    [dst] is automatically resized to match [src]. *)
-
-(** {1 Clipping}
+(** {1:clipping Clipping}
 
     Hierarchical clipping for hit regions. When a clip is active, {!add}
-    operations are constrained to the intersection of the clip and the grid
-    bounds. This prevents elements inside overflow-hidden containers from
+    operations are constrained to the intersection of the clip rectangle and the
+    grid bounds. This prevents elements inside overflow-hidden containers from
     receiving mouse events outside their visible area.
 
     Push/pop pairs must be balanced. *)
 
 val push_clip : t -> rect -> unit
-(** Pushes a clipping region. The effective clip is the intersection of the new
-    region with the current clip (hierarchical narrowing). *)
+(** [push_clip t r] pushes a clipping rectangle. The effective clip is the
+    intersection of [r] with the current clip (hierarchical narrowing). *)
 
 val pop_clip : t -> unit
-(** Pops the most recent clip. No-op if the stack is empty. *)
+(** [pop_clip t] pops the most recent clip. No-op if the stack is empty. *)
 
 val clear_clip : t -> unit
-(** Removes all clipping regions. *)
+(** [clear_clip t] removes all clipping regions. *)
 
 val with_clip : t -> rect -> (unit -> 'a) -> 'a
-(** [with_clip t rect f] runs [f ()] with [rect] as the active clip, popping it
-    on return (even on exception). *)
+(** [with_clip t r f] runs [f ()] with [r] as the active clip and pops it on
+    return (even on exception). *)

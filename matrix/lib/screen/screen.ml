@@ -69,9 +69,10 @@ type t = {
   mutable use_explicit_cursor_positioning : bool;
   mutable hyperlinks_capable : bool;
   (* Post-processing *)
-  mutable post_process_fns : (Grid.t -> delta:float -> unit) list;
+  mutable post_process_fns : (int * (Grid.t -> delta:float -> unit)) list;
   mutable post_process_cache : (Grid.t -> delta:float -> unit) list;
   mutable post_process_dirty : bool;
+  mutable next_effect_id : int;
 }
 
 (* --- Constants & Inline Helpers --- *)
@@ -293,7 +294,7 @@ let[@inline] swap_buffers r =
 
 let post_processes r =
   if r.post_process_dirty then (
-    r.post_process_cache <- List.rev r.post_process_fns;
+    r.post_process_cache <- List.rev_map ~f:snd r.post_process_fns;
     r.post_process_dirty <- false);
   r.post_process_cache
 
@@ -436,6 +437,7 @@ let create ?glyph_pool ?width_method ?respect_alpha ?(mouse_enabled = true)
       post_process_fns = [];
       post_process_cache = [];
       post_process_dirty = false;
+      next_effect_id = 0;
       prefer_explicit_width = explicit_width;
       explicit_width_capable = true;
       use_explicit_width = explicit_width;
@@ -547,14 +549,18 @@ let set_width_method (t : t) (method_ : Glyph.width_method) =
   Grid.set_width_method t.current method_;
   Grid.set_width_method t.next method_
 
-let post_process f frame =
-  frame.post_process_fns <- f :: frame.post_process_fns;
-  frame.post_process_dirty <- true;
-  frame
+type effect_id = int
 
-let remove_post_process f frame =
+let post_process f frame =
+  let id = frame.next_effect_id in
+  frame.next_effect_id <- id + 1;
+  frame.post_process_fns <- (id, f) :: frame.post_process_fns;
+  frame.post_process_dirty <- true;
+  id
+
+let remove_post_process id frame =
   frame.post_process_fns <-
-    List.filter ~f:(fun e -> not (e == f)) frame.post_process_fns;
+    List.filter ~f:(fun (eid, _) -> eid <> id) frame.post_process_fns;
   frame.post_process_dirty <- true;
   frame
 
