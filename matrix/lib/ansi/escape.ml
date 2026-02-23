@@ -163,6 +163,13 @@ let to_string (t : t) =
     let bytes = Bytes.create n in
     let w = Writer.make bytes in
     t w;
+    let actual = Writer.len w in
+    if actual <> n then
+      invalid_arg
+        (Printf.sprintf
+           "Escape.to_string: stateful sequence detected (expected %d bytes, \
+            wrote %d)"
+           n actual);
     Bytes.unsafe_to_string bytes
 
 (* to_buffer: convenience wrapper via to_string (allocates intermediate
