@@ -2,11 +2,13 @@
  (name mosaic)
  (public_name mosaic)
  (libraries
-  mosaic.ui
-  mosaic.syntax
-  mosaic.markdown
+  toffee
   matrix
+  matrix.terminal
   matrix.ansi
   matrix.grid
+  matrix.glyph
   matrix.screen
-  toffee))
+  matrix.input
+  mosaic_ui
+  threads.posix))
