@@ -146,13 +146,13 @@ let draw_paused grid ~cols ~rows =
 let () =
   Random.self_init ();
   let tick_rate = 0.1 in
-  let config =
+  let app =
     Matrix.create ~target_fps:(Some 60.) ~mouse_enabled:false
       ~debug_overlay:false ()
   in
   let state = ref (initial_state ~cols:1 ~rows:1) in
   let last_tick = ref 0.0 in
-  Matrix_unix.run config
+  Matrix.run app
     ~on_frame:(fun _ ~dt ->
       last_tick := !last_tick +. dt;
       if !last_tick >= tick_rate then (

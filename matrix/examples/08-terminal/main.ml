@@ -4,7 +4,7 @@ open Matrix
 
 let shell_prog = try Sys.getenv "SHELL" with Not_found -> "/bin/sh"
 
-type state = { pty : Pty.t option; vte : Vte.t; cols : int; rows : int }
+type state = { mutable pty : Pty.t option; vte : Vte.t; cols : int; rows : int }
 
 let create_state ~cols ~rows =
   let vte = Vte.create ~rows ~cols () in
@@ -34,6 +34,9 @@ let read_pty_output state =
         | _ -> ()
         | exception Unix.Unix_error (Unix.EAGAIN, _, _) -> ()
         | exception Unix.Unix_error (Unix.EWOULDBLOCK, _, _) -> ()
+        | exception Unix.Unix_error (Unix.EIO, _, _) ->
+            Pty.close pty;
+            state.pty <- None
         | exception _ -> ()
       in
       read_loop ()
@@ -80,9 +83,13 @@ let send_key state (ke : Input.Key.event) =
         | _ -> None
       in
       match data with
-      | Some s ->
-          let _ = Pty.write_string pty s 0 (String.length s) in
-          ()
+      | Some s -> (
+          try
+            let _ = Pty.write_string pty s 0 (String.length s) in
+            ()
+          with Unix.Unix_error (Unix.EIO, _, _) ->
+            Pty.close pty;
+            state.pty <- None)
       | None -> ())
 
 let resize_state state ~cols ~rows =
@@ -129,13 +136,15 @@ let draw_no_pty grid ~cols ~rows =
     ~y:(rows / 2) ~text:msg
 
 let () =
-  let config =
+  let app =
     Matrix.create ~target_fps:(Some 30.) ~mouse_enabled:false
       ~debug_overlay:false ()
   in
   let state = ref (create_state ~cols:1 ~rows:1) in
-  Matrix_unix.run config
-    ~on_frame:(fun _ ~dt:_ -> read_pty_output !state)
+  Matrix.run app
+    ~on_frame:(fun app ~dt:_ ->
+      read_pty_output !state;
+      if !state.pty = None then Matrix.stop app)
     ~on_input:(fun app event ->
       match event with
       | Input.Key { key = Input.Key.Escape; _ } -> Matrix.stop app

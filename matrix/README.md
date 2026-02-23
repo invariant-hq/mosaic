@@ -56,7 +56,8 @@ let () =
         ~text:(Printf.sprintf "Frames: %d" !frames))
 ```
 
-Matrix switches the TTY to raw mode, negotiates terminal features, and restores everything on exit—even if a callback raises.
+`Matrix.run` switches the TTY to raw mode (when configured), negotiates
+terminal features, and restores everything on exit even if a callback raises.
 
 ### Display Modes
 

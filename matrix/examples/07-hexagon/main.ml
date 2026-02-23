@@ -172,7 +172,7 @@ let () =
       ~debug_overlay:true ()
   in
   let state = ref initial_state in
-  Matrix_unix.run app
+  Matrix.run app
     ~on_frame:(fun _ ~dt -> state := update ~dt !state)
     ~on_input:(fun app event ->
       match event with

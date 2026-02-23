@@ -155,9 +155,9 @@ let resize_state st ~cols ~rows =
 let () =
   let frame_interval = 0.1 in
   let target_fps = 1. /. frame_interval in
-  let config = Matrix.create ~target_fps:(Some target_fps) () in
+  let app = Matrix.create ~target_fps:(Some target_fps) () in
   let state = ref (initial_state ~cols:1 ~rows:1) in
-  Matrix_unix.run config
+  Matrix.run app
     ~on_frame:(fun _ ~dt:_ ->
       if not !state.paused then
         let w, h = !state.dim in

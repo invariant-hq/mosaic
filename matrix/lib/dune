@@ -7,4 +7,5 @@
   matrix.screen
   matrix.input
   matrix.terminal
-  matrix.glyph))
+  matrix.glyph
+  unix))

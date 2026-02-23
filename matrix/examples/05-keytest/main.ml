@@ -88,7 +88,7 @@ let draw_event_history grid ~y ~rows =
 
 let () =
   let app = Matrix.create ~target_fps:(Some 30.) ~debug_overlay:false () in
-  Matrix_unix.run app
+  Matrix.run app
     ~on_input:(fun app event ->
       match event with
       | Input.Key { key = Input.Key.Escape; _ } -> Matrix.stop app

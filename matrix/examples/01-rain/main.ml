@@ -126,12 +126,12 @@ let frame_interval = 0.075
 let target_fps = 1. /. frame_interval
 
 let () =
-  let config =
+  let app =
     Matrix.create ~target_fps:(Some target_fps) ~mouse_enabled:false
       ~debug_overlay:true ()
   in
   let state = ref (gen (1, 1)) in
-  Matrix_unix.run config
+  Matrix.run app
     ~on_frame:(fun _ ~dt:_ -> state := step !state)
     ~on_input:(fun app event ->
       match event with

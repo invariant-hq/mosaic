@@ -392,7 +392,7 @@ let () =
       ~debug_overlay:true ()
   in
   let state = create_state () in
-  Matrix_unix.run app
+  Matrix.run app
     ~on_input:(fun app event ->
       match handle_input state event with
       | `Quit -> Matrix.stop app

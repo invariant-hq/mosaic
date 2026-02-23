@@ -172,13 +172,13 @@ let handle_key state key modifier =
   | _ -> state
 
 let () =
-  let config =
+  let app =
     Matrix.create ~target_fps:(Some 60.) ~mouse_enabled:true ~respect_alpha:true
       ~debug_overlay:false ()
   in
   let state = ref initial_state in
   let canvas_grid = ref None in
-  Matrix_unix.run config
+  Matrix.run app
     ~on_input:(fun app event ->
       match event with
       | Input.Key { key = Input.Key.Escape; _ } -> Matrix.stop app

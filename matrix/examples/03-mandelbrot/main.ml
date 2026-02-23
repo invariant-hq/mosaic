@@ -391,9 +391,9 @@ let update app event st =
   | _ -> `Continue st
 
 let () =
-  let config = Matrix.create ~mouse_enabled:true () in
+  let app = Matrix.create ~mouse_enabled:true () in
   let state = ref (make_state ~cols:1 ~rows:1) in
-  Matrix_unix.run config
+  Matrix.run app
     ~on_input:(fun app event ->
       match update app event !state with
       | `Continue st' -> state := st'

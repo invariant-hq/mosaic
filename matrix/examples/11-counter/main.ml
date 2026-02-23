@@ -74,7 +74,7 @@ let () =
       ~debug_overlay:false ()
   in
   let state = ref initial_state in
-  Matrix_unix.run app
+  Matrix.run app
     ~on_input:(fun app event ->
       match event with
       | Input.Key { key = Input.Key.Escape; _ } -> Matrix.stop app

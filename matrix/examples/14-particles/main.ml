@@ -320,12 +320,12 @@ let create_state ~cols ~rows =
 
 let () =
   Random.self_init ();
-  let config =
+  let app =
     Matrix.create ~target_fps:(Some 60.) ~mouse_enabled:true ~debug_overlay:true
       ()
   in
   let state = create_state ~cols:1 ~rows:1 in
-  Matrix_unix.run config
+  Matrix.run app
     ~on_frame:(fun _ ~dt ->
       let dt = Float.min dt 0.1 in
       spawn_from_emitters state dt;

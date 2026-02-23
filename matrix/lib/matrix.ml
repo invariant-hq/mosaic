@@ -20,18 +20,6 @@ type control_state =
   | `Explicit_suspended
   | `Explicit_stopped ]
 
-type io = {
-  write_output : bytes -> int -> int -> unit;
-  now : unit -> float;
-  wake : unit -> unit;
-  terminal_size : unit -> int * int;
-  set_raw_mode : bool -> unit;
-  flush_input : unit -> unit;
-  read_events : timeout:float option -> on_event:(Input.t -> unit) -> unit;
-  query_cursor_position : timeout:float -> (int * int) option;
-  cleanup : unit -> unit;
-}
-
 type config = {
   mode : mode;
   raw_mode : bool;
@@ -47,19 +35,24 @@ type config = {
   respect_alpha : bool;
   mouse_enabled : bool;
   cursor_visible : bool;
-  debug_overlay : bool;
   debug_overlay_corner : debug_overlay_corner;
   debug_overlay_capacity : int;
-  frame_dump_every : int;
-  frame_dump_dir : string option;
-  frame_dump_pattern : string option;
-  frame_dump_hits : bool;
 }
 
 type app = {
-  io : io;
   terminal : Terminal.t;
+  parser : Input.Parser.t;
   config : config;
+  (* IO callbacks *)
+  write_output : bytes -> int -> int -> unit;
+  now : unit -> float;
+  wake : unit -> unit;
+  terminal_size : unit -> int * int;
+  set_raw_mode : bool -> unit;
+  flush_input : unit -> unit;
+  read_events : timeout:float option -> on_event:(Input.t -> unit) -> unit;
+  query_cursor_position : timeout:float -> (int * int) option;
+  cleanup : unit -> unit;
   screen : Screen.t;
   render_buffer : bytes;
   mutable running : bool;
@@ -69,11 +62,8 @@ type app = {
   (* Primary mode layout *)
   mutable render_offset : int;
   mutable tui_height : int;
-  mutable prev_render_offset : int;
-  mutable prev_tui_height : int;
   mutable static_needs_newline : bool;
   mutable static_queue : string list;
-  mutable in_submit : bool;
   mutable needs_region_clear : bool;
   (* Resize and frame timing *)
   mutable last_resize_apply_time : float;
@@ -96,13 +86,162 @@ type app = {
   mutable live_requests : int;
 }
 
+(* Unix I/O helpers *)
+
+let write_all fd buf off len =
+  let rec wait_writable () =
+    try ignore (Unix.select [] [ fd ] [] (-1.))
+    with Unix.Unix_error (Unix.EINTR, _, _) -> wait_writable ()
+  in
+  let rec go off remaining =
+    if remaining > 0 then
+      let n =
+        try Unix.write fd buf off remaining with
+        | Unix.Unix_error (Unix.EINTR, _, _) -> 0
+        | Unix.Unix_error (Unix.EAGAIN, _, _) ->
+            wait_writable ();
+            0
+      in
+      go (off + n) (remaining - n)
+  in
+  go off len
+
+let write_string fd s =
+  write_all fd (Bytes.unsafe_of_string s) 0 (String.length s)
+
+let wake_byte = Bytes.of_string "w"
+
+let wake_fd fd =
+  let (_ : int) =
+    try Unix.write fd wake_byte 0 1 with Unix.Unix_error _ -> 0
+  in
+  ()
+
+let drain_wakeup_fd fd =
+  let buf = Bytes.create 64 in
+  let rec go () =
+    match Unix.read fd buf 0 64 with
+    | n when n > 0 -> go ()
+    | _ -> ()
+    | exception Unix.Unix_error _ -> ()
+  in
+  go ()
+
+(* Shutdown handler registry *)
+
+let shutdown_handlers : (unit -> unit) list ref = ref []
+let shutdown_triggered = ref false
+
+let run_shutdown_handlers () =
+  if !shutdown_triggered then ()
+  else (
+    shutdown_triggered := true;
+    List.iter (fun f -> try f () with _ -> ()) !shutdown_handlers)
+
+let register_shutdown_handler fn = shutdown_handlers := fn :: !shutdown_handlers
+
+let deregister_shutdown_handler fn =
+  shutdown_handlers := List.filter (fun f -> f != fn) !shutdown_handlers
+
+let shutdown_signal_handler signum =
+  run_shutdown_handlers ();
+  exit (128 + signum)
+
+let signal_handlers_installed = ref false
+
+let try_set_signal sig_num handler =
+  try Sys.set_signal sig_num handler with Invalid_argument _ -> ()
+
+let install_signal_handlers () =
+  if not !signal_handlers_installed then (
+    signal_handlers_installed := true;
+    try_set_signal Sys.sigterm (Sys.Signal_handle shutdown_signal_handler);
+    try_set_signal Sys.sigint (Sys.Signal_handle shutdown_signal_handler);
+    try_set_signal Sys.sigquit (Sys.Signal_handle shutdown_signal_handler);
+    try_set_signal Sys.sigabrt (Sys.Signal_handle shutdown_signal_handler);
+    Printexc.set_uncaught_exception_handler (fun exn ->
+        prerr_endline (Printexc.to_string exn);
+        run_shutdown_handlers ();
+        exit 1))
+
+let () = at_exit run_shutdown_handlers
+
+(* SIGWINCH: global flag + wakeup pipe fd *)
+
+let winch_received = ref false
+
+let install_winch_handler wakeup_w =
+  let handler _ =
+    winch_received := true;
+    wake_fd wakeup_w
+  in
+  try_set_signal Sys.sigwinch (Sys.Signal_handle handler)
+
+(* Unix low-level I/O *)
+
+let wait_readable_fds ~input_fd ~wakeup_r ~timeout =
+  let fds = [ input_fd; wakeup_r ] in
+  let timeout_f = Option.value ~default:(-1.) timeout in
+  let readable, _, _ =
+    try Unix.select fds [] [] timeout_f
+    with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])
+  in
+  readable <> []
+
+let read_events_unix ~terminal ~parser ~input_fd ~wakeup_r ~output_fd
+    ~input_buffer ~timeout ~on_event =
+  let on_caps event = Terminal.apply_capability_event terminal event in
+  let has_input = wait_readable_fds ~input_fd ~wakeup_r ~timeout in
+  if has_input then (
+    drain_wakeup_fd wakeup_r;
+    if !winch_received then (
+      winch_received := false;
+      let cols, rows = Terminal.size output_fd in
+      on_event (Input.Resize (cols, rows)));
+    match Unix.read input_fd input_buffer 0 (Bytes.length input_buffer) with
+    | n when n > 0 ->
+        let now = Unix.gettimeofday () in
+        Input.Parser.feed parser input_buffer 0 n ~now ~on_event ~on_caps
+    | _ -> ()
+    | exception Unix.Unix_error _ -> ());
+  let now = Unix.gettimeofday () in
+  Input.Parser.drain parser ~now ~on_event ~on_caps
+
+let query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
+    ~input_buffer ~timeout =
+  Terminal.send terminal "\027[6n";
+  let result = ref None in
+  let on_caps = function
+    | Input.Caps.Cursor_position (row, col) -> result := Some (row, col)
+    | event -> Terminal.apply_capability_event terminal event
+  in
+  let deadline = Unix.gettimeofday () +. timeout in
+  let rec loop () =
+    if Option.is_some !result then ()
+    else
+      let remaining = deadline -. Unix.gettimeofday () in
+      if remaining <= 0. then ()
+      else if wait_readable_fds ~input_fd ~wakeup_r ~timeout:(Some remaining)
+      then (
+        drain_wakeup_fd wakeup_r;
+        (match
+           Unix.read input_fd input_buffer 0 (Bytes.length input_buffer)
+         with
+        | n when n > 0 ->
+            let now = Unix.gettimeofday () in
+            Input.Parser.feed parser input_buffer 0 n ~now
+              ~on_event:(fun _ -> ())
+              ~on_caps
+        | _ -> ()
+        | exception Unix.Unix_error _ -> ());
+        loop ())
+  in
+  loop ();
+  !result
+
 (* Small helpers *)
 
 let clamp lo hi v = max lo (min hi v)
-
-(* Config accessors *)
-
-let mode_of_config (c : config) = c.mode
 
 (* Interpret a CPR response as (render_offset, static_needs_newline). Emits a
    CRLF to scroll if the cursor is at the bottom row. *)
@@ -123,7 +262,7 @@ let apply_primary_region t ~render_offset ~resize =
   let tui_height = max 1 (height - render_offset) in
   t.render_offset <- render_offset;
   t.tui_height <- tui_height;
-  if render_offset > 0 then
+  if render_offset > 1 then
     Terminal.set_scroll_region t.terminal ~top:1 ~bottom:render_offset
   else Terminal.clear_scroll_region t.terminal;
   Screen.set_row_offset t.screen render_offset;
@@ -151,7 +290,7 @@ let request_redraw t =
   if t.closed then ()
   else if t.control_state <> `Explicit_suspended then (
     t.redraw_requested <- true;
-    t.io.wake ())
+    t.wake ())
 
 let refresh_capabilities t =
   let caps = Terminal.capabilities t.terminal in
@@ -177,11 +316,17 @@ let compute_loop_interval t =
   | Some fps when fps > 0. -> Some (1. /. fps)
   | _ -> None
 
-let set_loop_active t active =
+let update_loop_active t =
+  let active =
+    match t.control_state with
+    | `Explicit_started | `Auto_started -> true
+    | `Idle | `Explicit_paused | `Explicit_suspended | `Explicit_stopped ->
+        false
+  in
   if t.loop_active <> active then (
     t.loop_active <- active;
-    if not active then t.next_frame_deadline <- None
-    else t.next_frame_deadline <- Some (t.io.now ()))
+    if active then t.next_frame_deadline <- Some (t.now ())
+    else t.next_frame_deadline <- None)
 
 (* Static output (primary mode only) *)
 
@@ -252,36 +397,34 @@ let static_write_raw_immediate t text =
   else begin
     let prev_render_offset = t.render_offset in
     let prev_tui_height = t.tui_height in
-    let render_offset =
+    let base_render_offset =
       if t.config.mode = `Primary && t.render_offset = 0 then 1
       else t.render_offset
     in
-    apply_primary_region t ~render_offset ~resize:false;
-    if t.render_offset <> prev_render_offset || t.tui_height <> prev_tui_height
-    then (
-      t.needs_region_clear <- true;
-      t.force_full_next_frame <- true);
     let terminal = t.terminal in
     let text = if t.config.raw_mode then normalize_newlines text else text in
     let needs_leading_newline =
       t.static_needs_newline && not (starts_with_newline text)
     in
-    let payload =
-      if needs_leading_newline then sgr_reset ^ crlf ^ text
-      else sgr_reset ^ text
+    let payload_text = if needs_leading_newline then crlf ^ text else text in
+    let payload_newlines =
+      let n = ref 0 in
+      String.iter (fun c -> if Char.equal c '\n' then incr n) payload_text;
+      !n
     in
-    if t.render_offset > 0 then (
-      Terminal.move_cursor terminal ~row:t.render_offset ~col:1
-        ~visible:(Terminal.cursor_visible terminal);
-      Terminal.send terminal payload)
-    else (
-      Terminal.move_cursor terminal ~row:t.height ~col:1
-        ~visible:(Terminal.cursor_visible terminal);
-      Terminal.send terminal payload;
-      Screen.invalidate_presented t.screen;
-      invalidate_inline_state t);
-    t.static_needs_newline <- not (ends_with_newline text);
-    request_redraw t
+    let max_offset = max 0 (t.height - 1) in
+    let grow_by = min payload_newlines (max 0 (max_offset - base_render_offset)) in
+    let render_offset = base_render_offset + grow_by in
+    apply_primary_region t ~render_offset ~resize:false;
+    if t.render_offset <> prev_render_offset || t.tui_height <> prev_tui_height
+    then (
+      t.needs_region_clear <- true;
+      t.force_full_next_frame <- true);
+    let payload = sgr_reset ^ payload_text in
+    Terminal.move_cursor terminal ~row:base_render_offset ~col:1
+      ~visible:(Terminal.cursor_visible terminal);
+    Terminal.send terminal payload;
+    t.static_needs_newline <- not (ends_with_newline text)
   end
 
 let enqueue_static t text = t.static_queue <- text :: t.static_queue
@@ -295,10 +438,9 @@ let flush_static_queue t =
 
 let static_write_raw t text =
   if t.config.mode = `Alt || String.length text = 0 then ()
-  else if t.in_submit then (
+  else (
     enqueue_static t text;
     request_redraw t)
-  else static_write_raw_immediate t text
 
 let static_write t text = static_write_raw t text
 let static_print t text = static_write_raw t (strip_trailing_crlf text)
@@ -307,7 +449,7 @@ let static_clear t =
   if t.config.mode = `Alt then ()
   else (
     Terminal.send t.terminal Ansi.(to_string clear_and_home);
-    let cols, rows = t.io.terminal_size () in
+    let cols, rows = t.terminal_size () in
     t.width <- max 1 cols;
     t.height <- max 1 rows;
     t.render_offset <- 0;
@@ -324,32 +466,24 @@ let apply_config t =
   refresh_capabilities t;
   let terminal = t.terminal in
   let caps = Terminal.capabilities terminal in
-  (* Raw mode *)
-  t.io.set_raw_mode t.config.raw_mode;
-  (* Alt screen *)
+  t.set_raw_mode t.config.raw_mode;
   if t.config.mode = `Alt then (
     Terminal.enter_alternate_screen terminal;
     Screen.set_cursor_visible t.screen false)
   else Terminal.leave_alternate_screen terminal;
   t.force_full_next_frame <- true;
-  (* Mouse *)
   (match t.config.mouse_mode with
   | Some mode -> Terminal.set_mouse_mode terminal mode
   | None -> Terminal.set_mouse_mode terminal `Off);
-  (* Bracketed paste *)
   Terminal.enable_bracketed_paste terminal t.config.bracketed_paste;
-  (* Focus reporting *)
   Terminal.enable_focus_reporting terminal
     (caps.focus_tracking && t.config.focus_reporting);
-  (* Kitty keyboard *)
   (match t.config.kitty_keyboard with
   | `Disabled -> Terminal.enable_kitty_keyboard terminal false
   | `Auto -> Terminal.enable_kitty_keyboard terminal caps.kitty_keyboard
   | `Enabled flags -> Terminal.enable_kitty_keyboard ~flags terminal true);
-  (* ModifyOtherKeys: enable when kitty keyboard is not active *)
   Terminal.enable_modify_other_keys terminal
     (not (Terminal.kitty_keyboard_enabled terminal));
-  (* Unicode width *)
   Terminal.set_unicode_width terminal
     (if caps.unicode_width = `Unicode && not t.config.explicit_width then
        `Unicode
@@ -368,159 +502,166 @@ let prepare t =
 let grid t = Screen.grid t.screen
 let hits t = Screen.hit_grid t.screen
 
-let submit t =
+(* Recompute render_offset and tui_height for primary mode. Returns
+   (render_height_limit, row_offset_changed, clipped). *)
+let recompute_primary_layout t ~is_tty ~allow_scroll_up ~required_rows_hint =
+  let height = max 1 t.height in
+  let active_rows = max 1 (Screen.active_height t.screen) in
+  let hinted_rows =
+    match required_rows_hint with
+    | Some rows -> max 1 rows
+    | None -> 0
+  in
+  let required_rows = max active_rows hinted_rows in
+  let render_height_limit = ref None in
+  let row_offset_changed = ref false in
+  let clipped = ref false in
+  let max_ui_rows = max 1 height in
+  let target_rows = min required_rows max_ui_rows in
+  if required_rows > max_ui_rows then (
+    clipped := true;
+    render_height_limit := Some max_ui_rows);
+  let render_offset = clamp 0 (height - 1) t.render_offset in
+  if render_offset <> t.render_offset then (
+    t.render_offset <- render_offset;
+    t.tui_height <- max 1 (height - render_offset);
+    if render_offset > 1 then
+      Terminal.set_scroll_region t.terminal ~top:1 ~bottom:render_offset
+    else Terminal.clear_scroll_region t.terminal;
+    Screen.set_row_offset t.screen render_offset;
+    row_offset_changed := true);
+  if target_rows > t.tui_height then
+    if allow_scroll_up then (
+      let new_render_offset = height - target_rows in
+      let delta = t.render_offset - new_render_offset in
+      if delta > 0 && is_tty && t.render_offset > 1 then (
+        Terminal.set_scroll_region t.terminal ~top:1 ~bottom:t.render_offset;
+        Terminal.send t.terminal Ansi.(to_string (scroll_up ~n:delta)));
+      t.render_offset <- new_render_offset;
+      t.tui_height <- target_rows;
+      if new_render_offset > 1 then
+        Terminal.set_scroll_region t.terminal ~top:1 ~bottom:new_render_offset
+      else Terminal.clear_scroll_region t.terminal;
+      Screen.set_row_offset t.screen new_render_offset;
+      row_offset_changed := true)
+    else (
+      clipped := true;
+      render_height_limit := Some t.tui_height);
+  (!render_height_limit, !row_offset_changed, !clipped)
+
+(* Apply cursor position, style, and color after rendering. *)
+let apply_cursor_state t ~(cursor : Screen.cursor_info) ~cursor_max_row =
+  if cursor.has_position then
+    let row = clamp 1 cursor_max_row cursor.row in
+    Terminal.move_cursor t.terminal ~row:(t.render_offset + row)
+      ~col:(max 1 cursor.col) ~visible:cursor.visible
+  else if cursor.visible && t.config.mode = `Primary then
+    Terminal.move_cursor t.terminal
+      ~row:(t.render_offset + cursor_max_row)
+      ~col:1 ~visible:true
+  else Terminal.set_cursor_visible t.terminal cursor.visible;
+  Terminal.set_cursor_style t.terminal cursor.style ~blinking:cursor.blinking;
+  match cursor.color with
+  | Some (r, g, b) ->
+      let to_float v = Float.of_int v /. 255. in
+      Terminal.set_cursor_color t.terminal ~r:(to_float r) ~g:(to_float g)
+        ~b:(to_float b) ~a:1.
+  | None -> Terminal.reset_cursor_color t.terminal
+
+let submit ?primary_required_rows t =
   if not t.running then ()
   else
-    let io = t.io in
-    let overall_start = io.now () in
+    let overall_start = t.now () in
     let is_tty = Terminal.tty t.terminal in
-    t.in_submit <- true;
-    Fun.protect
-      ~finally:(fun () -> t.in_submit <- false)
-      (fun () ->
-        (* 1. Debug overlay *)
-        if t.debug_overlay_enabled then t.debug_overlay_cb t.screen;
-        let cursor = Screen.cursor_info t.screen in
+    if t.debug_overlay_enabled then t.debug_overlay_cb t.screen;
+    let cursor = Screen.cursor_info t.screen in
+    let caps = Terminal.capabilities t.terminal in
+    let use_sync = is_tty && caps.sync in
+    let send s = Terminal.send t.terminal s in
+    if use_sync then send Ansi.(to_string (enable Sync_output));
+    if Terminal.cursor_visible t.terminal then
+      Terminal.set_cursor_visible t.terminal false;
 
-        (* 2. Sync bracket *)
-        let caps = Terminal.capabilities t.terminal in
-        let use_sync = is_tty && caps.sync in
-        let send s = Terminal.send t.terminal s in
-        if use_sync then send Ansi.(to_string (enable Sync_output));
-        if Terminal.cursor_visible t.terminal then
-          Terminal.set_cursor_visible t.terminal false;
+    let pre_submit_render_offset = t.render_offset in
+    let pre_submit_tui_height = t.tui_height in
+    flush_static_queue t;
+    let static_layout_changed =
+      t.render_offset <> pre_submit_render_offset
+      || t.tui_height <> pre_submit_tui_height
+    in
 
-        flush_static_queue t;
+    let render_height_limit, row_offset_changed0, clipped =
+      match t.config.mode with
+      | `Primary ->
+          recompute_primary_layout t ~is_tty
+            ~allow_scroll_up:(not static_layout_changed)
+            ~required_rows_hint:primary_required_rows
+      | `Alt -> (None, false, false)
+    in
+    let row_offset_changed =
+      row_offset_changed0
+      || t.render_offset <> pre_submit_render_offset
+      || t.tui_height <> pre_submit_tui_height
+    in
 
-        let height = max 1 t.height in
-        let required_rows = max 1 (Grid.height (Screen.grid t.screen)) in
-        let render_height_limit = ref None in
-        let row_offset_changed = ref false in
-        let clipped = ref false in
+    if row_offset_changed then t.needs_region_clear <- true;
 
-        (match t.config.mode with
-        | `Primary ->
-            let max_ui_rows = max 1 height in
-            let target_rows = min required_rows max_ui_rows in
-            if required_rows > max_ui_rows then (
-              clipped := true;
-              render_height_limit := Some max_ui_rows);
-            let render_offset = clamp 0 (height - 1) t.render_offset in
-            if render_offset <> t.render_offset then (
-              t.render_offset <- render_offset;
-              t.tui_height <- max 1 (height - render_offset);
-              if render_offset > 0 then
-                Terminal.set_scroll_region t.terminal ~top:1
-                  ~bottom:render_offset
-              else Terminal.clear_scroll_region t.terminal;
-              Screen.set_row_offset t.screen render_offset;
-              row_offset_changed := true);
-            if target_rows > t.tui_height then (
-              let new_render_offset = height - target_rows in
-              let delta = t.render_offset - new_render_offset in
-              if delta > 0 && is_tty && t.render_offset > 0 then (
-                Terminal.set_scroll_region t.terminal ~top:1
-                  ~bottom:t.render_offset;
-                send Ansi.(to_string (scroll_up ~n:delta)));
-              t.render_offset <- new_render_offset;
-              t.tui_height <- target_rows;
-              if new_render_offset > 0 then
-                Terminal.set_scroll_region t.terminal ~top:1
-                  ~bottom:new_render_offset
-              else Terminal.clear_scroll_region t.terminal;
-              Screen.set_row_offset t.screen new_render_offset;
-              row_offset_changed := true)
-        | `Alt -> ());
+    (match t.config.mode with
+    | `Primary when t.needs_region_clear ->
+        if is_tty then (
+          let clear_lines ~start ~count =
+            for row = start to start + count - 1 do
+              Terminal.move_cursor t.terminal ~row ~col:1
+                ~visible:(Terminal.cursor_visible t.terminal);
+              send erase_entire_line
+            done
+          in
+          if
+            (not static_layout_changed)
+            && pre_submit_tui_height > 0
+            && t.render_offset > pre_submit_render_offset
+          then
+            clear_lines ~start:(pre_submit_render_offset + 1)
+              ~count:(t.render_offset - pre_submit_render_offset);
+          if t.tui_height > 0 then
+            clear_lines ~start:(t.render_offset + 1) ~count:t.tui_height);
+        Screen.invalidate_presented t.screen;
+        t.needs_region_clear <- false
+    | _ -> ());
 
-        if !row_offset_changed then t.needs_region_clear <- true;
+    let forced_full =
+      let ff = t.force_full_next_frame in
+      if ff then t.force_full_next_frame <- false;
+      ff || row_offset_changed || clipped
+    in
+    let len =
+      Screen.render_to_bytes ~full:forced_full ?height_limit:render_height_limit
+        t.screen t.render_buffer
+    in
 
-        (* 3. Clear stale region (primary mode) *)
-        (match t.config.mode with
-        | `Primary when t.needs_region_clear ->
-            if is_tty then (
-              let clear_lines ~start ~count =
-                for row = start to start + count - 1 do
-                  Terminal.move_cursor t.terminal ~row ~col:1
-                    ~visible:(Terminal.cursor_visible t.terminal);
-                  send erase_entire_line
-                done
-              in
-              if t.prev_tui_height > 0 && t.render_offset > t.prev_render_offset
-              then
-                clear_lines ~start:(t.prev_render_offset + 1)
-                  ~count:(t.render_offset - t.prev_render_offset);
-              if t.tui_height > 0 then
-                clear_lines ~start:(t.render_offset + 1) ~count:t.tui_height);
-            Screen.invalidate_presented t.screen;
-            t.needs_region_clear <- false
-        | _ -> ());
+    let stdout_start = t.now () in
+    if len > 0 then t.write_output t.render_buffer 0 len;
 
-        (* 4. Render to bytes *)
-        let forced_full =
-          let ff = t.force_full_next_frame in
-          if ff then t.force_full_next_frame <- false;
-          ff || !row_offset_changed || !clipped
-        in
-        let len =
-          Screen.render_to_bytes ~full:forced_full
-            ?height_limit:!render_height_limit t.screen t.render_buffer
-        in
+    let cursor_max_row =
+      match render_height_limit with
+      | Some limit -> max 1 limit
+      | None -> t.tui_height
+    in
+    apply_cursor_state t ~cursor ~cursor_max_row;
 
-        (* 5. Present *)
-        let stdout_start = io.now () in
-        if len > 0 then io.write_output t.render_buffer 0 len;
+    if use_sync then send Ansi.(to_string (disable Sync_output));
 
-        (* 6. Restore cursor *)
-        let cursor_max_row =
-          match !render_height_limit with
-          | Some limit -> max 1 limit
-          | None -> t.tui_height
-        in
-        if cursor.has_position then
-          let row = clamp 1 cursor_max_row cursor.row in
-          Terminal.move_cursor t.terminal ~row:(t.render_offset + row)
-            ~col:(max 1 cursor.col) ~visible:cursor.visible
-        else if cursor.visible && t.config.mode = `Primary then
-          Terminal.move_cursor t.terminal
-            ~row:(t.render_offset + cursor_max_row)
-            ~col:1 ~visible:true
-        else Terminal.set_cursor_visible t.terminal cursor.visible;
-        Terminal.set_cursor_style t.terminal cursor.style
-          ~blinking:cursor.blinking;
-        (match cursor.color with
-        | Some (r, g, b) ->
-            let to_float v = Float.of_int v /. 255. in
-            Terminal.set_cursor_color t.terminal ~r:(to_float r) ~g:(to_float g)
-              ~b:(to_float b) ~a:1.
-        | None -> Terminal.reset_cursor_color t.terminal);
+    let stdout_end = t.now () in
+    let stdout_ms = Float.max 0. ((stdout_end -. stdout_start) *. 1000.) in
+    let overall_frame_ms = Float.max 0. ((stdout_end -. overall_start) *. 1000.) in
 
-        (* End sync bracket *)
-        if use_sync then send Ansi.(to_string (disable Sync_output));
-
-        let stdout_end = io.now () in
-        let stdout_ms = Float.max 0. ((stdout_end -. stdout_start) *. 1000.) in
-        let overall_frame_ms =
-          Float.max 0. ((stdout_end -. overall_start) *. 1000.)
-        in
-
-        (* 7. Update inline tracking *)
-        (match t.config.mode with
-        | `Primary ->
-            t.prev_render_offset <- t.render_offset;
-            t.prev_tui_height <- t.tui_height
-        | `Alt ->
-            t.prev_render_offset <- 0;
-            t.prev_tui_height <- t.height);
-
-        (* 8. Metrics & dumps *)
-        Screen.record_runtime_metrics t.screen
-          ~frame_callback_ms:t.last_frame_callback_ms ~overall_frame_ms
-          ~stdout_ms;
-        if t.frame_dump_every > 0 then (
-          t.frame_dump_counter <- t.frame_dump_counter + 1;
-          if t.frame_dump_counter mod t.frame_dump_every = 0 then
-            Frame_dump.snapshot ?dir:t.frame_dump_dir
-              ?pattern:t.frame_dump_pattern ~hits:t.frame_dump_hits t.screen))
+    Screen.record_runtime_metrics t.screen
+      ~frame_callback_ms:t.last_frame_callback_ms ~overall_frame_ms ~stdout_ms;
+    if t.frame_dump_every > 0 then (
+      t.frame_dump_counter <- t.frame_dump_counter + 1;
+      if t.frame_dump_counter mod t.frame_dump_every = 0 then
+        Frame_dump.snapshot ?dir:t.frame_dump_dir ?pattern:t.frame_dump_pattern
+          ~hits:t.frame_dump_hits t.screen)
 
 (* Control state *)
 
@@ -528,10 +669,9 @@ let stop t =
   if not t.closed then (
     t.running <- false;
     t.control_state <- `Explicit_stopped;
-    set_loop_active t false;
-    t.next_frame_deadline <- None;
+    update_loop_active t;
     t.redraw_requested <- false;
-    t.io.wake ())
+    t.wake ())
 
 let request_live t =
   if t.closed then ()
@@ -539,35 +679,32 @@ let request_live t =
     t.live_requests <- t.live_requests + 1;
     if t.control_state = `Idle && t.live_requests > 0 then (
       t.control_state <- `Auto_started;
-      set_loop_active t true;
+      update_loop_active t;
       t.redraw_requested <- true;
-      t.io.wake ()))
+      t.wake ()))
 
 let drop_live t =
   t.live_requests <- max 0 (t.live_requests - 1);
   if t.control_state = `Auto_started && t.live_requests = 0 then (
     t.control_state <- `Idle;
-    set_loop_active t false)
+    update_loop_active t)
 
 let start t =
   if not t.closed then (
     t.control_state <- `Explicit_started;
-    set_loop_active t true;
+    update_loop_active t;
     if not t.running then t.running <- true;
     t.redraw_requested <- true;
-    t.io.wake ())
-
-let auto t = t.control_state <- (if t.loop_active then `Auto_started else `Idle)
+    t.wake ())
 
 let pause t =
   t.control_state <- `Explicit_paused;
-  set_loop_active t false
+  update_loop_active t
 
 let suspend t =
-  let io = t.io in
   t.previous_control_state <- t.control_state;
   t.control_state <- `Explicit_suspended;
-  set_loop_active t false;
+  update_loop_active t;
   t.redraw_requested <- false;
   invalidate_inline_state t;
   (try Terminal.set_mouse_mode t.terminal `Off with _ -> ());
@@ -575,18 +712,17 @@ let suspend t =
   (try Terminal.enable_focus_reporting t.terminal false with _ -> ());
   (try Terminal.enable_kitty_keyboard t.terminal false with _ -> ());
   (try Terminal.enable_modify_other_keys t.terminal false with _ -> ());
-  (try io.set_raw_mode false with _ -> ());
-  try io.flush_input () with _ -> ()
+  (try t.set_raw_mode false with _ -> ());
+  try t.flush_input () with _ -> ()
 
 let resume t =
   if t.control_state <> `Explicit_suspended then ()
-  else
-    let io = t.io in
-    (if t.config.raw_mode then try io.set_raw_mode true with _ -> ());
-    (try io.flush_input () with _ -> ());
+  else (
+    (if t.config.raw_mode then try t.set_raw_mode true with _ -> ());
+    (try t.flush_input () with _ -> ());
     (if t.config.mode = `Primary then
        let height = max 1 t.height in
-       match io.query_cursor_position ~timeout:0.1 with
+       match t.query_cursor_position ~timeout:0.1 with
        | Some (row, col) ->
            let render_offset, static_needs_newline =
              render_offset_of_cursor ~terminal:t.terminal ~height row col
@@ -594,27 +730,20 @@ let resume t =
            let tui_height = max 1 (height - render_offset) in
            t.render_offset <- render_offset;
            t.tui_height <- tui_height;
-           t.prev_render_offset <- render_offset;
-           t.prev_tui_height <- tui_height;
            t.static_needs_newline <- static_needs_newline
        | None -> ());
     invalidate_inline_state t;
     apply_config t;
     Grid.clear (Screen.grid t.screen);
     Screen.Hit_grid.clear (Screen.hit_grid t.screen);
-    let next_state = t.previous_control_state in
-    t.control_state <- next_state;
-    let should_run =
-      match next_state with
-      | `Explicit_started -> true
-      | `Auto_started -> t.live_requests > 0
-      | _ -> false
-    in
-    set_loop_active t should_run;
-    if should_run then (
+    t.control_state <- t.previous_control_state;
+    if t.control_state = `Auto_started && t.live_requests = 0 then
+      t.control_state <- `Idle;
+    update_loop_active t;
+    if t.loop_active then (
       t.redraw_requested <- true;
-      io.wake ())
-    else request_redraw t
+      t.wake ())
+    else request_redraw t)
 
 (* Cursor *)
 
@@ -670,7 +799,7 @@ let apply_resize t cols rows now =
     request_redraw t)
 
 let handle_resize t cols rows =
-  let now = t.io.now () in
+  let now = t.now () in
   match t.config.resize_debounce with
   | None -> apply_resize t cols rows now
   | Some window_s ->
@@ -683,7 +812,7 @@ let handle_resize t cols rows =
 let maybe_apply_pending_resize t =
   match (t.pending_resize, t.config.resize_debounce) with
   | Some (cols, rows), Some window_s ->
-      let now = t.io.now () in
+      let now = t.now () in
       if now -. t.last_resize_apply_time >= window_s then
         apply_resize t cols rows now
   | _ -> ()
@@ -714,7 +843,7 @@ let classify_event t evt =
       handle_resize t cols rows;
       Some (`Resize (cols, rows))
   | Input.Focus ->
-      Terminal.restore_modes t.terminal;
+      Terminal.restore_modes ~skip_focus:true t.terminal;
       let adjusted = adjust_event_for_offset t evt in
       Some (`Input adjusted)
   | evt ->
@@ -739,7 +868,7 @@ let close t =
     t.closed <- true;
     t.running <- false;
     t.control_state <- `Explicit_stopped;
-    set_loop_active t false;
+    update_loop_active t;
     let is_tty = Terminal.tty t.terminal in
     if t.config.mode = `Primary && is_tty then (
       let height = max 1 t.height in
@@ -755,22 +884,24 @@ let close t =
         Terminal.send t.terminal erase_entire_line
       done;
       Terminal.move_cursor t.terminal ~row:start_row ~col:1 ~visible:true);
-    (try t.io.flush_input () with _ -> ());
+    (* Flush pending mouse/input bytes both before and after mode teardown. This
+       avoids leaking trailing SGR mouse payloads back to the shell. *)
+    (try t.flush_input () with _ -> ());
     Terminal.close t.terminal;
-    (try t.io.set_raw_mode false with _ -> ());
-    try t.io.cleanup () with _ -> ())
+    (try t.flush_input () with _ -> ());
+    (try t.set_raw_mode false with _ -> ());
+    (try t.flush_input () with _ -> ());
+    try t.cleanup () with _ -> ())
 
-(* Constructor *)
+(* Internal config builder *)
 
-let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
+let make_config ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(respect_alpha = false) ?(mouse_enabled = true) ?(mouse = None)
     ?(bracketed_paste = true) ?(focus_reporting = true)
-    ?(kitty_keyboard = `Auto) ?(exit_on_ctrl_c = true) ?(debug_overlay = false)
+    ?(kitty_keyboard = `Auto) ?(exit_on_ctrl_c = true)
     ?(debug_overlay_corner = `Bottom_right) ?(debug_overlay_capacity = 120)
-    ?(frame_dump_every = 0) ?frame_dump_dir ?frame_dump_pattern
-    ?(frame_dump_hits = false) ?(cursor_visible = mode = `Alt)
-    ?(explicit_width = false) ?(input_timeout = None)
-    ?(resize_debounce = Some 0.1) () : config =
+    ?(cursor_visible = mode = `Alt) ?(explicit_width = false)
+    ?(input_timeout = None) ?(resize_debounce = Some 0.1) () =
   let effective_mouse_mode =
     if mouse_enabled then Some (Option.value ~default:`Sgr_any mouse) else None
   in
@@ -789,19 +920,16 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     respect_alpha;
     mouse_enabled;
     cursor_visible;
-    debug_overlay;
     debug_overlay_corner;
     debug_overlay_capacity;
-    frame_dump_every = max 0 frame_dump_every;
-    frame_dump_dir;
-    frame_dump_pattern;
-    frame_dump_hits;
   }
 
-(* Runtime integration *)
+(* Initialize a live app (internal) *)
 
-let attach (c : config) ~io ~terminal ~width ~height ?(render_offset = 0)
-    ?(static_needs_newline = false) () =
+let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
+    ~flush_input ~read_events ~query_cursor_position ~cleanup ~debug_overlay
+    ~frame_dump_every ~frame_dump_dir ~frame_dump_pattern ~frame_dump_hits
+    ~parser ~terminal ~width ~height ~render_offset ~static_needs_newline =
   let width = max 1 width in
   let height = max 1 height in
   let tui_height = max 1 (height - render_offset) in
@@ -811,7 +939,6 @@ let attach (c : config) ~io ~terminal ~width ~height ?(render_offset = 0)
       ~explicit_width:c.explicit_width ()
   in
   let render_buffer = Bytes.create (1024 * 1024 * 2) in
-  (* Update screen with real capabilities *)
   let caps = Terminal.capabilities terminal in
   let width_method : Glyph.width_method =
     match caps.unicode_width with `Unicode -> `Unicode | `Wcwidth -> `Wcwidth
@@ -823,9 +950,18 @@ let attach (c : config) ~io ~terminal ~width ~height ?(render_offset = 0)
   Screen.resize screen ~width ~height:tui_height;
   let t =
     {
-      io;
       terminal;
+      parser;
       config = c;
+      write_output;
+      now;
+      wake;
+      terminal_size;
+      set_raw_mode;
+      flush_input;
+      read_events;
+      query_cursor_position;
+      cleanup;
       screen;
       render_buffer;
       running = true;
@@ -834,29 +970,29 @@ let attach (c : config) ~io ~terminal ~width ~height ?(render_offset = 0)
       height;
       render_offset;
       tui_height;
-      prev_render_offset = render_offset;
-      prev_tui_height = tui_height;
       static_needs_newline;
       static_queue = [];
-      in_submit = false;
       needs_region_clear = false;
       last_resize_apply_time = 0.;
       pending_resize = None;
       force_full_next_frame = true;
       next_frame_deadline = None;
-      debug_overlay_enabled = c.debug_overlay;
+      debug_overlay_enabled = debug_overlay;
       debug_overlay_cb =
         Debug_overlay.on_frame ~corner:c.debug_overlay_corner
           ~capacity:c.debug_overlay_capacity ();
-      frame_dump_every = c.frame_dump_every;
-      frame_dump_dir = c.frame_dump_dir;
-      frame_dump_pattern = c.frame_dump_pattern;
-      frame_dump_hits = c.frame_dump_hits;
+      frame_dump_every = max 0 frame_dump_every;
+      frame_dump_dir;
+      frame_dump_pattern;
+      frame_dump_hits;
       frame_dump_counter = 0;
       last_frame_callback_ms = 0.;
       closed = false;
       loop_active = false;
-      control_state = `Idle;
+      control_state =
+        (match c.target_fps with
+        | Some fps when fps > 0. -> `Explicit_started
+        | _ -> `Idle);
       previous_control_state = `Idle;
       live_requests = 0;
     }
@@ -864,27 +1000,214 @@ let attach (c : config) ~io ~terminal ~width ~height ?(render_offset = 0)
   apply_config t;
   t
 
+(* Constructor: create a live app with Unix I/O *)
+
+let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
+    ?(respect_alpha = false) ?(mouse_enabled = true) ?(mouse = None)
+    ?(bracketed_paste = true) ?(focus_reporting = true)
+    ?(kitty_keyboard = `Auto) ?(exit_on_ctrl_c = true) ?(debug_overlay = false)
+    ?(debug_overlay_corner = `Bottom_right) ?(debug_overlay_capacity = 120)
+    ?(frame_dump_every = 0) ?frame_dump_dir ?frame_dump_pattern
+    ?(frame_dump_hits = false) ?(cursor_visible = mode = `Alt)
+    ?(explicit_width = false) ?(input_timeout = None)
+    ?(resize_debounce = Some 0.1) ?(output = `Stdout) ?(signal_handlers = true)
+    ?initial_caps () =
+  let config =
+    make_config ~mode ~raw_mode ~target_fps ~respect_alpha ~mouse_enabled ~mouse
+      ~bracketed_paste ~focus_reporting ~kitty_keyboard ~exit_on_ctrl_c
+      ~debug_overlay_corner ~debug_overlay_capacity ~cursor_visible
+      ~explicit_width ~input_timeout ~resize_debounce ()
+  in
+  let output_fd = match output with `Stdout -> Unix.stdout | `Fd fd -> fd in
+  let input_fd = Unix.stdin in
+  let output_is_tty = Terminal.is_tty output_fd in
+  let input_is_tty = Terminal.is_tty input_fd in
+  let wakeup_r, wakeup_w = Unix.pipe ~cloexec:true () in
+  Unix.set_nonblock wakeup_r;
+  Unix.set_nonblock wakeup_w;
+  let output_fn = write_string output_fd in
+  let terminal =
+    Terminal.make ~output:output_fn ~tty:output_is_tty ?initial_caps ()
+  in
+  let parser = Input.Parser.create () in
+  let original_termios = ref None in
+  if input_is_tty && raw_mode then
+    original_termios := Some (Terminal.set_raw input_fd);
+  let input_buffer = Bytes.create 4096 in
+  if input_is_tty && raw_mode then
+    Terminal.probe ~timeout:0.5
+      ~on_event:(fun _ -> ())
+      ~read_into:(fun buf off len ->
+        try Unix.read input_fd buf off len with Unix.Unix_error _ -> 0)
+      ~wait_readable:(fun ~timeout ->
+        let readable, _, _ =
+          try Unix.select [ input_fd ] [] [] timeout
+          with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])
+        in
+        readable <> [])
+      ~parser terminal;
+  let cols, rows = Terminal.size output_fd in
+  let width = max 1 cols in
+  let height = max 1 rows in
+  let render_offset, static_needs_newline =
+    if mode = `Primary && input_is_tty && raw_mode then
+      match
+        query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
+          ~input_buffer ~timeout:0.1
+      with
+      | Some (row, col) -> render_offset_of_cursor ~terminal ~height row col
+      | None -> (0, true)
+    else if mode = `Primary then (0, true)
+    else (0, false)
+  in
+  let shutdown_fn_ref = ref None in
+  let app =
+    init_app config ~write_output:(write_all output_fd) ~now:Unix.gettimeofday
+      ~wake:(fun () -> wake_fd wakeup_w)
+      ~terminal_size:(fun () -> Terminal.size output_fd)
+      ~set_raw_mode:(fun enabled ->
+        if enabled then (
+          match !original_termios with
+          | Some _ -> ()
+          | None ->
+              if input_is_tty then
+                original_termios := Some (Terminal.set_raw input_fd))
+        else
+          match !original_termios with
+          | Some saved ->
+              Terminal.restore input_fd saved;
+              original_termios := None
+          | None -> ())
+      ~flush_input:(fun () ->
+        if input_is_tty then Terminal.flush_input input_fd)
+      ~read_events:(fun ~timeout ~on_event ->
+        read_events_unix ~terminal ~parser ~input_fd ~wakeup_r ~output_fd
+          ~input_buffer ~timeout ~on_event)
+      ~query_cursor_position:(fun ~timeout ->
+        query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
+          ~input_buffer ~timeout)
+      ~cleanup:(fun () ->
+        (match !shutdown_fn_ref with
+        | Some fn -> deregister_shutdown_handler fn
+        | None -> ());
+        (try Unix.close wakeup_r with _ -> ());
+        try Unix.close wakeup_w with _ -> ())
+      ~debug_overlay ~frame_dump_every ~frame_dump_dir ~frame_dump_pattern
+      ~frame_dump_hits ~parser ~terminal ~width ~height ~render_offset
+      ~static_needs_newline
+  in
+  let shutdown_fn () = close app in
+  shutdown_fn_ref := Some shutdown_fn;
+  if signal_handlers then install_signal_handlers ();
+  register_shutdown_handler shutdown_fn;
+  install_winch_handler wakeup_w;
+  Terminal.query_pixel_resolution terminal;
+  app
+
+(* Attach: wire custom I/O for testing *)
+
+let attach ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
+    ?(respect_alpha = false) ?(mouse_enabled = true) ?(mouse = None)
+    ?(bracketed_paste = true) ?(focus_reporting = true)
+    ?(kitty_keyboard = `Auto) ?(exit_on_ctrl_c = true) ?(debug_overlay = false)
+    ?(debug_overlay_corner = `Bottom_right) ?(debug_overlay_capacity = 120)
+    ?(frame_dump_every = 0) ?frame_dump_dir ?frame_dump_pattern
+    ?(frame_dump_hits = false) ?(cursor_visible = mode = `Alt)
+    ?(explicit_width = false) ?(input_timeout = None)
+    ?(resize_debounce = Some 0.1) ~write_output ~now ~wake ~terminal_size
+    ~set_raw_mode ~flush_input ~read_events ~query_cursor_position ~cleanup
+    ~parser ~terminal ~width ~height ?(render_offset = 0)
+    ?(static_needs_newline = false) () =
+  let config =
+    make_config ~mode ~raw_mode ~target_fps ~respect_alpha ~mouse_enabled ~mouse
+      ~bracketed_paste ~focus_reporting ~kitty_keyboard ~exit_on_ctrl_c
+      ~debug_overlay_corner ~debug_overlay_capacity ~cursor_visible
+      ~explicit_width ~input_timeout ~resize_debounce ()
+  in
+  init_app config ~write_output ~now ~wake ~terminal_size ~set_raw_mode
+    ~flush_input ~read_events ~query_cursor_position ~cleanup ~debug_overlay
+    ~frame_dump_every ~frame_dump_dir ~frame_dump_pattern ~frame_dump_hits
+    ~parser ~terminal ~width ~height ~render_offset ~static_needs_newline
+
+(* Event loop helpers *)
+
+let min_timeout a b =
+  match (a, b) with
+  | None, x | x, None -> x
+  | Some x, Some y -> Some (Float.min x y)
+
+let should_honor_immediate_redraw t = t.redraw_requested && not t.loop_active
+
+let compute_timeout t ~now =
+  let pending_timeout =
+    match (t.pending_resize, t.config.resize_debounce) with
+    | Some _, Some window_s ->
+        let remaining = t.last_resize_apply_time +. window_s -. now in
+        if remaining > 0. then Some remaining else Some 0.
+    | _ -> None
+  in
+  let deadline_timeout =
+    match t.next_frame_deadline with
+    | Some dl ->
+        let dt = dl -. now in
+        if dt <= 0. then Some 0. else Some dt
+    | None -> None
+  in
+  let parser_timeout =
+    match Input.Parser.deadline t.parser with
+    | Some dl ->
+        let dt = dl -. now in
+        if dt <= 0. then Some 0. else Some dt
+    | None -> None
+  in
+  let immediate = if should_honor_immediate_redraw t then Some 0. else None in
+  min_timeout immediate
+    (min_timeout
+       (min_timeout deadline_timeout t.config.input_timeout)
+       (min_timeout pending_timeout parser_timeout))
+
+let should_render_now t ~now =
+  should_honor_immediate_redraw t
+  || t.loop_active
+     && match t.next_frame_deadline with Some dl -> now >= dl | None -> false
+
 (* Event loop *)
 
-let run ?on_frame ?on_input ?on_resize ~on_render t =
-  let io = t.io in
+let run ?on_frame ?on_input ?on_resize ?primary_required_rows ~on_render t =
   if not t.running then t.running <- true;
   (match t.control_state with
-  | `Idle | `Auto_started -> start t
-  | `Explicit_paused | `Explicit_suspended ->
-      t.redraw_requested <- true;
-      set_loop_active t true;
-      io.wake ()
-  | `Explicit_started | `Explicit_stopped -> ());
+  | `Auto_started when t.live_requests = 0 ->
+      t.control_state <- `Idle;
+      update_loop_active t
+  | _ -> update_loop_active t);
+  if
+    t.control_state <> `Explicit_suspended
+    && t.control_state <> `Explicit_stopped
+  then (
+    t.redraw_requested <- true;
+    t.wake ());
+  Option.iter
+    (fun f ->
+      let cols, rows = size t in
+      f t ~cols ~rows)
+    on_resize;
 
   let render_cycle ~now ~last_time =
     Option.iter (fun f -> f t ~dt:(now -. last_time)) on_frame;
     prepare t;
-    let user_start = io.now () in
+    let user_start = t.now () in
     on_render t;
-    let user_end = io.now () in
+    let user_end = t.now () in
     t.last_frame_callback_ms <- Float.max 0. ((user_end -. user_start) *. 1000.);
-    submit t;
+    let required_rows_hint =
+      match primary_required_rows with
+      | Some f -> (
+          match f t with
+          | Some rows when rows > 0 -> Some rows
+          | _ -> None)
+      | None -> None
+    in
+    submit ?primary_required_rows:required_rows_hint t;
     user_end
   in
 
@@ -902,83 +1225,36 @@ let run ?on_frame ?on_input ?on_resize ~on_render t =
           request_redraw t
   in
 
-  let compute_timeout ~now =
-    let min_opt a b =
-      match (a, b) with
-      | None, x | x, None -> x
-      | Some x, Some y -> Some (Float.min x y)
-    in
-    let pending_timeout =
-      match (t.pending_resize, t.config.resize_debounce) with
-      | Some _, Some window_s ->
-          let remaining = t.last_resize_apply_time +. window_s -. now in
-          if remaining > 0. then Some remaining else Some 0.
-      | _ -> None
-    in
-    let deadline_timeout =
-      match t.next_frame_deadline with
-      | Some dl ->
-          let dt = dl -. now in
-          if dt <= 0. then Some 0. else Some dt
-      | None -> None
-    in
-    let parser_timeout =
-      match Input.Parser.deadline (Terminal.parser t.terminal) with
-      | Some dl ->
-          let dt = dl -. now in
-          if dt <= 0. then Some 0. else Some dt
-      | None -> None
-    in
-    let immediate_redraw_timeout =
-      if t.redraw_requested && compute_loop_interval t = None then Some 0.
-      else None
-    in
-    min_opt immediate_redraw_timeout
-      (min_opt
-         (min_opt deadline_timeout t.config.input_timeout)
-         (min_opt pending_timeout parser_timeout))
-  in
-
-  let should_render_now ~now =
-    let deadline_due =
-      t.loop_active
-      && match t.next_frame_deadline with Some dl -> now >= dl | None -> false
-    in
-    let immediate_redraw =
-      t.redraw_requested && compute_loop_interval t = None
-    in
-    immediate_redraw || deadline_due
-  in
-
   let rec loop last_time =
     if not (running t) then ()
     else (
       maybe_apply_pending_resize t;
-      let now = io.now () in
-      let frame_interval =
-        if t.loop_active then compute_loop_interval t else None
-      in
-      t.next_frame_deadline <-
-        (match (frame_interval, t.loop_active) with
-        | None, _ | _, false -> None
-        | Some _, true -> (
-            match t.next_frame_deadline with
-            | Some dl when dl > now -> Some dl
-            | _ -> Some now));
-      let last_time =
-        if should_render_now ~now then (
-          t.next_frame_deadline <-
-            Option.map (fun iv -> io.now () +. iv) frame_interval;
-          render_cycle ~now ~last_time)
-        else last_time
-      in
-      let timeout = compute_timeout ~now in
-      io.read_events ~timeout ~on_event:handle_event;
-      loop last_time)
+      let now = t.now () in
+      if should_render_now t ~now then (
+        let frame_interval = compute_loop_interval t in
+        let last_time = render_cycle ~now ~last_time in
+        (* Schedule next frame deadline after rendering: delay =
+           target_frame_time - frame_elapsed. *)
+        let render_end = t.now () in
+        t.next_frame_deadline <-
+          (match frame_interval with
+          | Some iv ->
+              let elapsed = render_end -. now in
+              let delay = Float.max 0. (iv -. elapsed) in
+              Some (render_end +. delay)
+          | None -> None);
+        let timeout = compute_timeout t ~now:render_end in
+        t.read_events ~timeout ~on_event:handle_event;
+        loop last_time)
+      else
+        let timeout = compute_timeout t ~now in
+        t.read_events ~timeout ~on_event:handle_event;
+        loop last_time)
   in
-  let start_time = io.now () in
-  loop start_time;
-  if not t.closed then close t
+  let start_time = t.now () in
+  Fun.protect
+    (fun () -> loop start_time)
+    ~finally:(fun () -> if not t.closed then close t)
 
 (* Diagnostics *)
 
