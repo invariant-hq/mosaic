@@ -1,176 +1,253 @@
-(** Scrollable container with viewport clipping, sticky scrolling, and owned
-    scroll bars.
+(** Scrollable container with viewport clipping and scroll bars.
 
-    Scroll_box uses a three-node structure: a root container, an internal
-    viewport that owns clipping via [overflow = Hidden], and a content node that
-    is translated at render time to implement scrolling without triggering
-    relayout. It supports horizontal/vertical scrolling, keyboard/mouse
-    navigation, and optional sticky behavior. Horizontal and vertical scroll
-    bars are created as children (wrapper/viewport siblings) and bound
-    automatically; external bars can still be wired via {!bind_scroll_bars} when
-    needed.
+    A scroll box manages a content area larger than its visible viewport.
+    Internally it builds a multi-node hierarchy:
 
-    Children are attached to an internal content node rather than the root.
-    External code interacts with the root via {!node}, while the reconciler and
-    low-level wiring use {!content} as the parent for user children.
+    - {e root} -- flex-row container holding wrapper and the vertical bar.
+    - {e wrapper} -- flex-column holding viewport and the horizontal bar.
+    - {e viewport} -- overflow-hidden node that clips content.
+    - {e content} -- translated node holding user children.
 
-    Viewport culling can be enabled to only iterate and render children that
-    overlap the visible area, improving performance for long lists. *)
+    Children are routed to the content node via {!Renderable.set_child_target}.
+    Scrolling translates content without triggering relayout. *)
+
+(** {1:scroll_accel Scroll acceleration} *)
+
+module Scroll_accel : sig
+  type t
+  (** The type for scroll acceleration strategies.
+
+      {b Note.} Values are stateful: they track timing internally. *)
+
+  val linear : unit -> t
+  (** [linear ()] is an acceleration strategy that always returns a [1.0]
+      multiplier. No acceleration is applied. *)
+
+  val macos : ?a:float -> ?tau:float -> ?max_multiplier:float -> unit -> t
+  (** [macos ()] is a macOS-style exponential acceleration strategy with:
+      - [a] exponential coefficient. Defaults to [0.8].
+      - [tau] time constant in seconds. Defaults to [3.0].
+      - [max_multiplier] upper bound on the returned multiplier. Defaults to
+        [6.0]. *)
+
+  val tick : t -> now:float -> float
+  (** [tick t ~now] is the current multiplier given the monotonic timestamp
+      [now] in milliseconds. Call once per scroll event. Resets automatically on
+      timeout. *)
+
+  val reset : t -> unit
+  (** [reset t] clears the velocity history of [t]. *)
+end
+
+(** {1:props Props} *)
 
 module Props : sig
   type t
+  (** The type for scroll box property bundles used for reconciler diffing. *)
 
   val make :
-    ?background:Ansi.Color.t ->
     ?scroll_x:bool ->
     ?scroll_y:bool ->
-    ?scroll_acceleration:[ `Linear | `MacOS ] ->
     ?sticky_scroll:bool ->
     ?sticky_start:[ `Top | `Bottom | `Left | `Right ] ->
-    ?viewport_culling:bool ->
-    ?autofocus:bool ->
+    ?background:Ansi.Color.t ->
+    ?scrollbar_props:Scroll_bar.Props.t ->
+    ?vertical_bar_props:Scroll_bar.Props.t ->
+    ?horizontal_bar_props:Scroll_bar.Props.t ->
     unit ->
     t
+  (** [make ()] is a scroll box property bundle with:
+      - [scroll_x] enables horizontal scrolling. Defaults to [false].
+      - [scroll_y] enables vertical scrolling. Defaults to [true].
+      - [sticky_scroll] sticks to an edge as content grows. Defaults to [false].
+      - [sticky_start] selects the sticky edge. Defaults to [`Bottom].
+      - [background] fills the container background with a color.
+      - [scrollbar_props] is applied to both scroll bars.
+      - [vertical_bar_props] overrides [scrollbar_props] for the vertical bar.
+      - [horizontal_bar_props] overrides [scrollbar_props] for the horizontal
+        bar.
+
+      See also {!val-default}. *)
 
   val default : t
+  (** [default] is [make ()]. *)
+
   val equal : t -> t -> bool
+  (** [equal a b] is [true] iff [a] and [b] describe identical properties. *)
 end
 
+(** {1:types Types} *)
+
 type t
+(** The type for scroll box widgets backed by a {!Renderable.t}. *)
 
-val apply_props : t -> Props.t -> unit
-(** [apply_props box props] applies [props] to a mounted scroll box using its
-    setters for runtime-adjustable fields such as background, sticky scroll,
-    scroll acceleration, and viewport culling. Creation-time flags like
-    [scroll_x] and [scroll_y] remain unchanged. *)
+(** {1:constructors Constructors} *)
 
-val mount : ?props:Props.t -> ?renderer:Renderer.t -> Renderable.t -> t
-(** [mount ?props ?renderer node] configures [node] to behave as a scroll
-    container. [renderer], when provided, is used to request selection updates
-    during auto-scroll gestures. *)
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?scroll_x:bool ->
+  ?scroll_y:bool ->
+  ?sticky_scroll:bool ->
+  ?sticky_start:[ `Top | `Bottom | `Left | `Right ] ->
+  ?background:Ansi.Color.t ->
+  ?scroll_accel:Scroll_accel.t ->
+  ?scrollbar_props:Scroll_bar.Props.t ->
+  ?vertical_bar_props:Scroll_bar.Props.t ->
+  ?horizontal_bar_props:Scroll_bar.Props.t ->
+  ?on_scroll:(x:int -> y:int -> unit) ->
+  unit ->
+  t
+(** [create ~parent ()] is a new scroll box attached to [parent] with:
+    - [index] insertion index among [parent]'s children.
+    - [id] node identifier for debugging.
+    - [style] layout style. Defaults to the {!Toffee.Style.t} default.
+    - [visible] initial visibility. Defaults to [true].
+    - [z_index] stacking order. Defaults to [0].
+    - [opacity] node opacity. Defaults to [1.0].
+    - [scroll_x] enables horizontal scrolling. Defaults to [false].
+    - [scroll_y] enables vertical scrolling. Defaults to [true].
+    - [sticky_scroll] enables sticky edge tracking. Defaults to [false].
+    - [sticky_start] selects the sticky edge. Defaults to [`Bottom].
+    - [background] fills the container background.
+    - [scroll_accel] acceleration strategy. Defaults to {!Scroll_accel.linear}.
+    - [scrollbar_props] visual properties applied to both scroll bars.
+    - [vertical_bar_props] overrides [scrollbar_props] for the vertical bar.
+    - [horizontal_bar_props] overrides [scrollbar_props] for the horizontal bar.
+    - [on_scroll] callback invoked with the new scroll position whenever it
+      changes. *)
+
+(** {1:accessors Accessors} *)
 
 val node : t -> Renderable.t
-(** [node t] returns the root scrollable container node. *)
-
-val wrapper : t -> Renderable.t
-(** [wrapper t] returns the internal wrapper node that stacks viewport and
-    horizontal scroll bar. *)
+(** [node t] is the root {!Renderable.t} of [t]. *)
 
 val content : t -> Renderable.t
-(** [content t] returns the internal content node that holds user children. *)
+(** [content t] is the internal content node of [t] that holds user children. *)
 
-val horizontal_bar : t -> Scroll_bar.t option
-(** [horizontal_bar t] returns the internally managed horizontal scroll bar, if
-    created. *)
+val viewport : t -> Renderable.t
+(** [viewport t] is the internal viewport node of [t] that clips content. *)
 
-val vertical_bar : t -> Scroll_bar.t option
-(** [vertical_bar t] returns the internally managed vertical scroll bar, if
-    created. *)
+val vertical_bar : t -> Scroll_bar.t
+(** [vertical_bar t] is the vertical {!Scroll_bar.t} of [t]. *)
 
-val scroll_to : ?x:int -> ?y:int -> ?manual:bool -> t -> unit
-(** [scroll_to t ~x ~y ()] sets absolute scroll position in cells.
+val horizontal_bar : t -> Scroll_bar.t
+(** [horizontal_bar t] is the horizontal {!Scroll_bar.t} of [t]. *)
 
-    Position is clamped to scroll limits. If [manual] is [true], disables sticky
-    scroll behavior.
+(** {1:scroll_state Scroll state} *)
 
-    @param manual Marks scroll as user-initiated. Default is [true]. *)
+val scroll_top : t -> int
+(** [scroll_top t] is the vertical scroll offset of [t] in cells.
 
-val scroll_by : ?x:int -> ?y:int -> ?manual:bool -> t -> unit
-(** [scroll_by t ~x ~y ()] adjusts scroll position by relative offset.
+    See also {!val-set_scroll_top}. *)
 
-    @param manual Marks scroll as user-initiated. Default is [true]. *)
+val scroll_left : t -> int
+(** [scroll_left t] is the horizontal scroll offset of [t] in cells.
 
-val scroll_position : t -> int * int
-(** [scroll_position t] returns current [(scroll_x, scroll_y)] position. *)
+    See also {!val-set_scroll_left}. *)
 
-val scroll_limits : t -> int * int
-(** [scroll_limits t] returns maximum scroll [(max_x, max_y)] based on content
-    and viewport sizes. *)
+val set_scroll_top : t -> int -> unit
+(** [set_scroll_top t v] sets the vertical scroll offset of [t] to [v], clamped
+    to the valid range. Fires the [on_scroll] callback.
+
+    See also {!val-scroll_top}. *)
+
+val set_scroll_left : t -> int -> unit
+(** [set_scroll_left t v] sets the horizontal scroll offset of [t] to [v],
+    clamped to the valid range. Fires the [on_scroll] callback.
+
+    See also {!val-scroll_left}. *)
+
+val scroll_to : t -> ?x:int -> ?y:int -> unit -> unit
+(** [scroll_to t ~x ~y ()] sets the absolute scroll position of [t]. Each axis
+    is clamped to its valid range.
+
+    See also {!val-scroll_by}. *)
+
+val scroll_by : t -> ?x:int -> ?y:int -> unit -> unit
+(** [scroll_by t ~x ~y ()] adjusts the scroll position of [t] by a relative
+    offset.
+
+    See also {!val-scroll_to}. *)
+
+val scroll_by_unit :
+  t -> ?x:float -> ?y:float -> unit:Scroll_bar.scroll_unit -> unit -> unit
+(** [scroll_by_unit t ~x ~y ~unit ()] adjusts the scroll position of [t] by [x]
+    and [y] expressed in [unit]. Delegates to {!Scroll_bar.scroll_by} which
+    handles unit conversion and clamping.
+
+    See also {!val-scroll_by} and {!Scroll_bar.type-scroll_unit}. *)
 
 val scroll_width : t -> int
-(** [scroll_width t] returns content width in cells. *)
+(** [scroll_width t] is the total content width of [t] in cells. *)
 
 val scroll_height : t -> int
-(** [scroll_height t] returns content height in cells. *)
+(** [scroll_height t] is the total content height of [t] in cells. *)
 
-val viewport_size : t -> int * int
-(** [viewport_size t] returns [(width, height)] of visible area in cells. *)
+val viewport_width : t -> int
+(** [viewport_width t] is the visible area width of [t] in cells. *)
 
-val sticky_scroll_enabled : t -> bool
-(** [sticky_scroll_enabled t] returns current sticky scroll state. *)
+val viewport_height : t -> int
+(** [viewport_height t] is the visible area height of [t] in cells. *)
+
+(** {1:sticky_scroll Sticky scroll} *)
 
 val set_sticky_scroll : t -> bool -> unit
-(** [set_sticky_scroll t flag] enables or disables sticky scrolling and updates
-    sticky edge state. *)
+(** [set_sticky_scroll t v] enables ([true]) or disables ([false]) sticky
+    scrolling on [t].
+
+    See also {!val-reset_sticky}. *)
 
 val set_sticky_start : t -> [ `Top | `Bottom | `Left | `Right ] option -> unit
-(** [set_sticky_start t edge] changes the sticky edge. Reapplies sticky position
-    if enabled. *)
+(** [set_sticky_start t edge] sets the sticky edge of [t] to [edge]. [None]
+    removes the sticky edge. *)
 
 val reset_sticky : t -> unit
-(** [reset_sticky t] clears manual scroll flag and reapplies sticky positioning.
-*)
+(** [reset_sticky t] clears the manual scroll flag of [t] and reapplies sticky
+    positioning.
 
-val sticky_start : t -> [ `Top | `Bottom | `Left | `Right ] option
-(** [sticky_start t] returns the configured sticky edge, if any. *)
+    See also {!val-set_sticky_scroll}. *)
 
-val has_manual_scroll : t -> bool
-(** [has_manual_scroll t] returns whether the user has scrolled manually, which
-    disables automatic sticky adjustments until reset. *)
-
-val handle_key : t -> Event.key -> bool
-(** [handle_key t event] delegates keyboard navigation to bound scroll bars,
-    returning [true] when one consumes the event. *)
-
-val on_scroll : t -> (x:int -> y:int -> unit) -> unit
-(** [on_scroll t handler] registers a callback invoked when scroll position
-    changes. *)
-
-val set_on_scroll : t -> (x:int -> y:int -> unit) option -> unit
-(** [set_on_scroll t cb] replaces the scroll listeners with [cb] if provided, or
-    clears listeners when [None]. *)
+(** {1:appearance Appearance} *)
 
 val set_background : t -> Ansi.Color.t option -> unit
-(** [set_background t color] updates the container background color. *)
+(** [set_background t color] sets the container background color of [t] to
+    [color]. [None] removes the background. *)
 
-val append_child : t -> Renderable.t -> (unit, Renderable.error) result
-(** [append_child t child] adds [child] to the end of the content container. *)
+(** {1:callbacks Callbacks} *)
 
-val insert_child :
-  t -> index:int -> Renderable.t -> (unit, Renderable.error) result
-(** [insert_child t ~index child] inserts [child] at position [index] in the
-    content container. *)
+val set_on_scroll : t -> (x:int -> y:int -> unit) option -> unit
+(** [set_on_scroll t f] replaces the scroll callback of [t] with [f]. [None]
+    removes the callback. *)
 
-val remove_child : t -> Renderable.t -> (unit, Renderable.error) result
-(** [remove_child t child] removes [child] from the content container. *)
+val set_scroll_accel : t -> Scroll_accel.t -> unit
+(** [set_scroll_accel t accel] replaces the scroll acceleration strategy of [t]
+    with [accel].
 
-val bind_scroll_bars :
-  t -> ?horizontal:Scroll_bar.t -> ?vertical:Scroll_bar.t -> unit -> unit
-(** [bind_scroll_bars t ?horizontal ?vertical ()] wires external scroll bars to
-    the scroll box. Bars receive size updates and drive scroll when changed, in
-    addition to the internally managed scroll bars. *)
+    See also {!module-Scroll_accel}. *)
 
-val set_scroll_acceleration : t -> [ `Linear | `MacOS ] -> unit
-(** Set the scroll acceleration mode at runtime. *)
+(** {1:keyboard Keyboard} *)
 
-val set_viewport_culling : t -> bool -> unit
-(** Enable/disable viewport culling at runtime. *)
+val handle_key : t -> Event.key -> bool
+(** [handle_key t event] is [true] iff [event] was consumed by [t]. Delegates to
+    the internal scroll bars for directional arrows, Page Up/Down, and Home/End.
+*)
 
-val scroll_by_units :
-  ?x:float * [ `Absolute | `Viewport | `Content | `Step ] ->
-  ?y:float * [ `Absolute | `Viewport | `Content | `Step ] ->
-  ?manual:bool ->
-  t ->
-  unit
-(** Adjust scroll position by a delta expressed in logical units.
+(** {1:reconciler Reconciler} *)
 
-    - [`Absolute] multiplies by 1 cell
-    - [`Viewport] multiplies by the current viewport size on the axis
-    - [`Content] multiplies by the total content size on the axis
-    - [`Step] multiplies by the optional bound scroll bar's step or 1 if unset
+val apply_props : t -> Props.t -> unit
+(** [apply_props t props] replaces the visual properties of [t] with [props].
+    Creation-time fields ({!val-create}'s [scroll_x], [scroll_y]) remain
+    unchanged.
 
-    Defaults to [`Absolute] when not specified. *)
+    See also {!Props.make}. *)
 
-val set_scroll_acceleration_params :
-  t -> a:float -> tau:float -> max_multiplier:float -> unit
-(** Tune macOS-like scroll acceleration parameters. No-op for `Linear`. *)
+(** {1:fmt Formatting} *)
+
+val pp : Format.formatter -> t -> unit
+(** [pp] formats a scroll box value for debugging. *)
