@@ -1,228 +1,258 @@
-(** UI event wrappers for keyboard, paste, and mouse interactions.
+(** Keyboard, paste, and mouse UI events.
 
-    Wraps terminal input events from {!Input} with default prevention,
-    propagation control, and hit-testing metadata. *)
+    Each event type wraps terminal input from {!Input} with propagation control
+    and default-prevention flags used by the two-tier dispatch pipeline (global
+    handlers first, then focused-node handlers). Mouse events additionally carry
+    hit-testing metadata. *)
 
-(** {1 Keyboard Events} *)
+(** {1:keyboard Keyboard events} *)
 
 module Key : sig
   type t
-  (** Keyboard event with default prevention flag. *)
+  (** The type for keyboard events.
+
+      Wraps an {!Input.Key.event} with propagation and default-prevention flags
+      that the renderer inspects during two-tier dispatch (global handlers
+      first, then focused-node handlers). *)
 
   val of_input : Input.Key.event -> t
-  (** [of_input event] wraps a terminal keyboard event. *)
+  (** [of_input ev] is a keyboard event wrapping [ev]. Propagation and
+      default-prevention flags start as [false]. *)
 
   val data : t -> Input.Key.event
-  (** [data t] returns the wrapped terminal keyboard event. *)
+  (** [data t] is the underlying terminal key event. *)
+
+  val stop_propagation : t -> unit
+  (** [stop_propagation t] prevents [t] from reaching the focused-node handler
+      tier. When called in a global handler, the event is not dispatched to
+      focused-node handlers. *)
+
+  val propagation_stopped : t -> bool
+  (** [propagation_stopped t] is [true] iff {!stop_propagation} has been called
+      on [t]. *)
 
   val prevent_default : t -> unit
-  (** [prevent_default t] marks renderer-level default behavior as prevented.
-
-      When used with {!Renderer.handle_key}, this stops Tier-2/Tier-3 key
-      handling (focused renderable and its default handler) after global
-      handlers have run. *)
+  (** [prevent_default t] marks renderer-level default behaviour as prevented.
+      After all handlers run, the renderer skips its default key behaviour for
+      the focused node. *)
 
   val default_prevented : t -> bool
-  (** [default_prevented t] returns whether default was prevented. *)
+  (** [default_prevented t] is [true] iff {!prevent_default} has been called on
+      [t]. *)
+
+  val equal : t -> t -> bool
+  (** [equal a b] is [true] iff [a] and [b] wrap the same key event. Dispatch
+      control state is ignored. *)
+
+  val pp : Format.formatter -> t -> unit
+  (** [pp] formats a keyboard event for debugging. *)
 end
 
-(** {1 Paste Events} *)
+(** {1:paste Paste events} *)
 
 module Paste : sig
   type t
-  (** Text paste event with default prevention flag. *)
+  (** The type for text paste events.
+
+      Wraps pasted text with propagation and default-prevention flags. See
+      {!Key.t} for a description of the dispatch model. *)
 
   val of_text : string -> t
-  (** [of_text s] creates a paste event containing [s]. *)
+  (** [of_text s] is a paste event containing [s]. Propagation and
+      default-prevention flags start as [false]. *)
 
   val text : t -> string
-  (** [text t] returns the pasted text. *)
+  (** [text t] is the pasted text carried by [t]. *)
+
+  val stop_propagation : t -> unit
+  (** [stop_propagation t] prevents [t] from reaching the focused-node handler
+      tier. When called in a global handler, the event is not dispatched to
+      focused-node handlers. *)
+
+  val propagation_stopped : t -> bool
+  (** [propagation_stopped t] is [true] iff {!stop_propagation} has been called
+      on [t]. *)
 
   val prevent_default : t -> unit
-  (** [prevent_default t] marks renderer-level default behavior as prevented.
-
-      When used with {!Renderer.handle_paste}, this stops delivery to the
-      focused renderable after global paste handlers have run. *)
+  (** [prevent_default t] marks renderer-level default behaviour as prevented.
+      After global paste handlers run, delivery to the focused node is
+      suppressed. *)
 
   val default_prevented : t -> bool
-  (** [default_prevented t] returns whether default was prevented. *)
+  (** [default_prevented t] is [true] iff {!prevent_default} has been called on
+      [t]. *)
+
+  val equal : t -> t -> bool
+  (** [equal a b] is [true] iff [a] and [b] contain the same text. Dispatch
+      control state is ignored. *)
+
+  val pp : Format.formatter -> t -> unit
+  (** [pp] formats a paste event for debugging. *)
 end
 
-(** {1 Mouse Events} *)
+(** {1:mouse Mouse events} *)
 
 module Mouse : sig
   type t
-  (** Mouse event with coordinates, modifiers, propagation control, and
-      renderer-managed metadata. *)
+  (** The type for mouse events.
 
+      Carries cursor coordinates, modifier keys, propagation control, and
+      hit-testing metadata. Variant-specific data (button, source, scroll
+      direction) is accessed by pattern-matching on {!kind}.
+
+      Only {!stop_propagation} and {!prevent_default} mutate the event; all
+      other fields are immutable after construction. *)
+
+  (** {2:types Supporting types} *)
+
+  (** The type for mouse buttons. *)
+  type button =
+    | Left  (** Primary (left) button. *)
+    | Middle  (** Middle button. *)
+    | Right  (** Secondary (right) button. *)
+    | Button of int  (** Extended button with one-based index [n]. *)
+
+  val equal_button : button -> button -> bool
+  (** [equal_button a b] is [true] iff [a] and [b] are the same button. *)
+
+  val pp_button : Format.formatter -> button -> unit
+  (** [pp_button] formats a {!button} value. *)
+
+  type modifier = Input.Key.modifier = {
+    ctrl : bool;  (** Control key held. *)
+    alt : bool;  (** Alt / Option key held. *)
+    shift : bool;  (** Shift key held. *)
+    super : bool;  (** Super / Windows / Command key held. *)
+    hyper : bool;  (** Hyper key held. *)
+    meta : bool;  (** Meta key held. *)
+    caps_lock : bool;  (** Caps Lock active. *)
+    num_lock : bool;  (** Num Lock active. *)
+  }
+  (** The type for modifier key state. Re-exported from {!Input.Key.modifier}.
+  *)
+
+  val no_modifier : modifier
+  (** [no_modifier] is the modifier state with every field set to [false]. *)
+
+  val equal_modifier : modifier -> modifier -> bool
+  (** [equal_modifier a b] is [true] iff all modifier fields of [a] and [b] are
+      equal. *)
+
+  val pp_modifier : Format.formatter -> modifier -> unit
+  (** [pp_modifier] formats a {!modifier} value. *)
+
+  (** The type for scroll-wheel directions. Re-exported from
+      {!Input.Mouse.scroll_direction}. *)
   type scroll_direction = Input.Mouse.scroll_direction =
-    | Scroll_up
-    | Scroll_down
-    | Scroll_left
-    | Scroll_right
+    | Scroll_up  (** Scroll towards the top of the content. *)
+    | Scroll_down  (** Scroll towards the bottom of the content. *)
+    | Scroll_left  (** Scroll towards the left of the content. *)
+    | Scroll_right  (** Scroll towards the right of the content. *)
 
+  val equal_scroll_direction : scroll_direction -> scroll_direction -> bool
+  (** [equal_scroll_direction a b] is [true] iff [a] and [b] are the same
+      direction. *)
+
+  val pp_scroll_direction : Format.formatter -> scroll_direction -> unit
+  (** [pp_scroll_direction] formats a {!scroll_direction} value. *)
+
+  (** {2:kinds Event kinds}
+
+      Each variant carries exactly the data relevant to that kind of event.
+      Common fields (coordinates, modifiers, target) are accessed via {!x},
+      {!y}, {!modifiers}, and {!target}. *)
+
+  (** The type for mouse event kinds. *)
   type kind =
-    | Down
-    | Up
-    | Move
-    | Drag
-    | Drag_end
-    | Drop
-    | Over
-    | Out
-    | Scroll  (** Mouse event discriminator. *)
+    | Down of { button : button }  (** Button pressed. *)
+    | Up of { button : button; is_dragging : bool }
+        (** Button released. [is_dragging] is [true] iff a drag was in progress
+            when the button was released. *)
+    | Move  (** Cursor moved with no button pressed. *)
+    | Drag of { button : button; is_dragging : bool }
+        (** Cursor moved with [button] held. [is_dragging] is [true] iff the
+            drag threshold has been exceeded. *)
+    | Drag_end of { button : button }
+        (** Drag gesture ended; [button] was the dragging button. *)
+    | Drop of { button : button; source : int option }
+        (** Drop target reached. [source] is the node identifier of the drag
+            source, if known. *)
+    | Over of { source : int option }
+        (** Cursor moved over a potential drop target. [source] is the node
+            identifier of the drag source, if known. *)
+    | Out  (** Cursor left a node during a drag. *)
+    | Scroll of { direction : scroll_direction; delta : int }
+        (** Scroll-wheel event. [delta] is the number of steps in [direction].
+        *)
+
+  val equal_kind : kind -> kind -> bool
+  (** [equal_kind a b] is [true] iff [a] and [b] are the same constructor and
+      carry equal payloads. *)
+
+  val pp_kind : Format.formatter -> kind -> unit
+  (** [pp_kind] formats a {!kind} value. *)
+
+  (** {2:constructors Construction} *)
+
+  val make : x:int -> y:int -> modifiers:modifier -> ?target:int -> kind -> t
+  (** [make ~x ~y ~modifiers ?target kind] is a mouse event at [(x, y)] with
+      modifier state [modifiers], optional hit-test node [target], and event
+      kind [kind]. Propagation and default-prevention flags start as [false].
+
+      [target] defaults to [None]. *)
+
+  (** {2:accessors Accessors} *)
 
   val kind : t -> kind
-  (** [kind t] returns the event's kind. *)
-
-  (** {2 Constructors}
-
-      All constructors initialize target/source metadata to [None], default
-      prevented to [false], and propagation stopped to [false]. *)
-
-  val down :
-    x:int ->
-    y:int ->
-    button:Input.Mouse.button ->
-    modifiers:Input.Key.modifier ->
-    t
-  (** [down ~x ~y ~button ~modifiers] creates a mouse button press event. *)
-
-  val up :
-    x:int ->
-    y:int ->
-    button:Input.Mouse.button ->
-    modifiers:Input.Key.modifier ->
-    t
-  (** [up ~x ~y ~button ~modifiers] creates a mouse button release event. *)
-
-  val move : x:int -> y:int -> modifiers:Input.Key.modifier -> t
-  (** [move ~x ~y ~modifiers] creates a mouse motion event. *)
-
-  val drag :
-    x:int ->
-    y:int ->
-    button:Input.Mouse.button ->
-    modifiers:Input.Key.modifier ->
-    t
-  (** [drag ~x ~y ~button ~modifiers] creates a mouse drag event. *)
-
-  val drag_end :
-    x:int ->
-    y:int ->
-    button:Input.Mouse.button ->
-    modifiers:Input.Key.modifier ->
-    t
-  (** [drag_end ~x ~y ~button ~modifiers] creates a drag termination event. *)
-
-  val drop :
-    x:int ->
-    y:int ->
-    button:Input.Mouse.button ->
-    modifiers:Input.Key.modifier ->
-    t
-  (** [drop ~x ~y ~button ~modifiers] creates a drop event. *)
-
-  val over : x:int -> y:int -> modifiers:Input.Key.modifier -> t
-  (** [over ~x ~y ~modifiers] creates a mouse-over event. *)
-
-  val out : x:int -> y:int -> modifiers:Input.Key.modifier -> t
-  (** [out ~x ~y ~modifiers] creates a mouse-out event. *)
-
-  val scroll :
-    x:int ->
-    y:int ->
-    direction:scroll_direction ->
-    delta:int ->
-    modifiers:Input.Key.modifier ->
-    t
-  (** [scroll ~x ~y ~direction ~delta ~modifiers] creates a scroll event. *)
-
-  (** {2 Default and Propagation Control} *)
-
-  val stop_propagation : t -> unit
-  (** [stop_propagation t] prevents the event from reaching ancestor nodes.
-
-      Propagation only applies to mouse events; keyboard and paste events do not
-      bubble through the render tree. *)
-
-  val propagation_stopped : t -> bool
-  (** [propagation_stopped t] returns whether propagation was stopped. *)
-
-  val prevent_default : t -> unit
-  (** [prevent_default t] marks default behavior as prevented.
-
-      For mouse events, this only affects renderer-defined defaults (for
-      example, clearing selection on mouse down) and does not stop bubbling. Use
-      [stop_propagation] to stop bubbling to ancestors. *)
-
-  val default_prevented : t -> bool
-  (** [default_prevented t] returns whether default was prevented. *)
-
-  (** {2 Payload Accessors} *)
+  (** [kind t] is [t]'s event kind with its variant-specific payload. See
+      {!type-kind}. *)
 
   val x : t -> int
-  (** [x t] returns the horizontal cursor position. *)
+  (** [x t] is [t]'s horizontal cursor position (0-based column). *)
 
   val y : t -> int
-  (** [y t] returns the vertical cursor position. *)
+  (** [y t] is [t]'s vertical cursor position (0-based row). *)
 
-  val modifiers : t -> Input.Key.modifier
-  (** [modifiers t] returns the modifier key state. *)
+  val modifiers : t -> modifier
+  (** [modifiers t] is [t]'s modifier key state at the time of the event. *)
 
-  val button : t -> Input.Mouse.button option
-  (** [button t] returns the button for [Down], [Up], [Drag], [Drag_end], and
-      [Drop] events; [None] otherwise. *)
+  val target : t -> int option
+  (** [target t] is the hit-test target node identifier of [t], if any. *)
 
-  val scroll_delta : t -> (scroll_direction * int) option
-  (** [scroll_delta t] returns [(direction, delta)] for [Scroll] events; [None]
-      otherwise. *)
+  (** {2:dispatch Dispatch control} *)
 
-  val is_selecting : t -> bool
-  (** [is_selecting t] returns whether this event is part of a text selection.
+  val stop_propagation : t -> unit
+  (** [stop_propagation t] prevents [t] from bubbling to ancestor nodes. *)
 
-      Only [Drag] and [Up] events track selection state. *)
+  val propagation_stopped : t -> bool
+  (** [propagation_stopped t] is [true] iff {!stop_propagation} has been called
+      on [t]. *)
 
-  (** {2 Hit-Testing Metadata}
+  val prevent_default : t -> unit
+  (** [prevent_default t] marks renderer-level default behaviour as prevented.
+      This only suppresses renderer-defined defaults (for example, starting a
+      text selection on mouse-down); it does not stop bubbling. Use
+      {!stop_propagation} to prevent bubbling to ancestors. *)
 
-      Set by the renderer during hit-testing. Target identifies the node under
-      the cursor; source identifies the drag origin for [Over] and [Drop]. *)
+  val default_prevented : t -> bool
+  (** [default_prevented t] is [true] iff {!prevent_default} has been called on
+      [t]. *)
 
-  val target_id : t -> string option
-  (** [target_id t] returns the target node's string ID. *)
+  val equal : t -> t -> bool
+  (** [equal a b] is [true] iff [a] and [b] have the same kind, coordinates,
+      modifiers, and target. Dispatch control state is ignored. *)
 
-  val target_number : t -> int option
-  (** [target_number t] returns the target node's numeric ID. *)
-
-  val source_id : t -> string option
-  (** [source_id t] returns the drag source's string ID. *)
-
-  val source_number : t -> int option
-  (** [source_number t] returns the drag source's numeric ID. *)
-
-  (** {2 Internal}
-
-      Renderer-only mutation hooks. Applications should not call these. *)
-
-  module Internal : sig
-    val set_target : t -> id:string option -> number:int option -> unit
-    (** [set_target t ~id ~number] updates the target metadata. *)
-
-    val set_source : t -> id:string option -> number:int option -> unit
-    (** [set_source t ~id ~number] updates source metadata for [Over]/[Drop]. *)
-
-    val set_is_selecting : t -> bool -> unit
-    (** [set_is_selecting t flag] updates selection state for [Drag]/[Up]. *)
-  end
+  val pp : Format.formatter -> t -> unit
+  (** [pp] formats a mouse event for debugging. *)
 end
 
-(** {1 Type Aliases} *)
+(** {1:aliases Type aliases} *)
 
 type key = Key.t
-(** Alias for {!Key.t}. *)
+(** The type for keyboard events. Alias for {!Key.t}. *)
 
 type paste = Paste.t
-(** Alias for {!Paste.t}. *)
+(** The type for paste events. Alias for {!Paste.t}. *)
 
 type mouse = Mouse.t
-(** Alias for {!Mouse.t}. *)
+(** The type for mouse events. Alias for {!Mouse.t}. *)
