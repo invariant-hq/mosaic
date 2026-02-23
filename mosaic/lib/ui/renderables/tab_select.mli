@@ -1,164 +1,234 @@
-(** Horizontal tab selection widget with scrolling and descriptions.
+(** Horizontal tab navigation bar with scrolling and descriptions.
 
-    Tab_select provides a keyboard and mouse navigable tab bar with optional
-    descriptions, scroll indicators, and customizable appearance. Tabs can wrap
-    around when reaching edges and support activation callbacks.
+    A tab selector renders fixed-width tabs in a horizontal strip with keyboard
+    navigation and optional scroll arrows. Each tab has a label and an optional
+    description line displayed below the strip.
 
-    {1 Overview}
+    Selection state and scroll offset are managed internally. The built-in key
+    handler responds to:
+    - Left arrow and [\[] — move selection left.
+    - Right arrow and [\]] — move selection right.
+    - Enter — activate the selected tab.
 
-    Tab_select renders tabs horizontally with fixed width cells. When tab count
-    exceeds available space, it shows scroll arrows and provides keyboard/mouse
-    navigation. Each tab can have a label and optional description line.
+    Callbacks ({!set_on_change}, {!set_on_activate}) are not part of {!Props}
+    and must be set separately. *)
 
-    {1 Usage Basics}
+(** {1:items Items} *)
 
-    Mount a basic tab selector:
-    {[
-      let renderer = Renderer.create () in
-      let tabs =
-        [
-          ("Home", Some "Main page");
-          ("Settings", Some "Configure app");
-          ("Help", None);
-        ]
-      in
-      match Renderer.create_node renderer () with
-      | Error err -> failwith (Renderable.error_to_string err)
-      | Ok node ->
-          let props = Tab_select.Props.make ~options:tabs () in
-          let selector = Tab_select.mount ~props node in
-          Tab_select.set_on_change selector
-            (Some (fun index -> Printf.printf "Selected tab %d\n" index));
-          selector
-    ]}
+type item = { label : string; description : string }
+(** A tab entry. [label] is displayed in the tab strip; [description] appears
+    below the strip when {!set_show_description} is enabled. *)
 
-    {1 Navigation}
+val item : label:string -> ?description:string -> unit -> item
+(** [item ~label ?description ()] is a tab item. [description] defaults to [""].
+*)
 
-    - Keyboard: Left/Right arrows, [ and ], Home/End, Enter to activate
-    - Mouse: Click tabs, scroll wheel to navigate
-    - Wrapping: Enable with [wrap_selection] to cycle through edges *)
+(** {1:types Types} *)
 
 type t
+(** A tab selector backed by a {!Renderable.t}. *)
+
+(** {1:construction Construction} *)
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  options:item list ->
+  ?selected:int ->
+  ?tab_width:int ->
+  ?background:Ansi.Color.t ->
+  ?text_color:Ansi.Color.t ->
+  ?focused_background:Ansi.Color.t ->
+  ?focused_text_color:Ansi.Color.t ->
+  ?selected_background:Ansi.Color.t ->
+  ?selected_text_color:Ansi.Color.t ->
+  ?description_color:Ansi.Color.t ->
+  ?selected_description_color:Ansi.Color.t ->
+  ?show_underline:bool ->
+  ?show_description:bool ->
+  ?show_scroll_arrows:bool ->
+  ?wrap_selection:bool ->
+  ?on_change:(int -> unit) ->
+  ?on_activate:(int -> unit) ->
+  unit ->
+  t
+(** [create ~parent ~options ()] is a tab selector attached to [parent]. The
+    node is focusable and uses buffered rendering.
+
+    - [selected] defaults to [0], clamped to \[[0];[List.length options - 1]\].
+    - [tab_width] defaults to [12] (minimum [1]).
+    - [background] defaults to transparent (RGBA 0 0 0 0).
+    - [text_color] defaults to light gray (RGB 226 232 240).
+    - [focused_background] falls back to [background] if provided, otherwise
+      dark gray (RGB 26 26 26).
+    - [focused_text_color] falls back to [text_color].
+    - [selected_background] defaults to blue (RGB 59 130 246).
+    - [selected_text_color] defaults to white.
+    - [description_color] defaults to slate (RGB 203 213 225).
+    - [selected_description_color] defaults to light gray (RGB 204 204 204).
+    - [show_underline] defaults to [true].
+    - [show_description] defaults to [false].
+    - [show_scroll_arrows] defaults to [true].
+    - [wrap_selection] defaults to [false].
+    - [on_change] fires when the selected index changes via navigation or
+      {!set_selected}.
+    - [on_activate] fires when a tab is activated (Enter key or
+      {!select_current}). *)
+
+val node : t -> Renderable.t
+(** [node t] is the underlying renderable. *)
+
+(** {1:props Props} *)
 
 module Props : sig
   type t
+  (** Declarative property bundle for reconciler diffing. Contains visual state
+      only; callbacks are excluded. *)
 
   val make :
-    ?options:(string * string option) list ->
-    ?wrap_selection:bool ->
-    ?show_description:bool ->
-    ?show_underline:bool ->
-    ?show_scroll_arrows:bool ->
-    ?mouse_navigation:bool ->
-    ?autofocus:bool ->
+    options:item list ->
+    ?selected:int ->
     ?tab_width:int ->
     ?background:Ansi.Color.t ->
     ?text_color:Ansi.Color.t ->
     ?focused_background:Ansi.Color.t ->
-    ?focused_text:Ansi.Color.t ->
+    ?focused_text_color:Ansi.Color.t ->
     ?selected_background:Ansi.Color.t ->
-    ?selected_text:Ansi.Color.t ->
-    ?selected_description:Ansi.Color.t ->
+    ?selected_text_color:Ansi.Color.t ->
+    ?description_color:Ansi.Color.t ->
+    ?selected_description_color:Ansi.Color.t ->
+    ?show_underline:bool ->
+    ?show_description:bool ->
+    ?show_scroll_arrows:bool ->
+    ?wrap_selection:bool ->
     unit ->
     t
+  (** [make ~options ()] is a property set with the same defaults as
+      {!val-create}. *)
 
   val default : t
+  (** [default] is [make ~options:[] ()]. *)
+
   val equal : t -> t -> bool
+  (** [equal a b] is [true] iff [a] and [b] describe identical visual
+      properties. *)
 end
 
-val mount : ?props:Props.t -> Renderable.t -> t
-(** [mount ?props node] configures [node] to render a tab selector. *)
+val apply_props : t -> Props.t -> unit
+(** [apply_props t props] applies [props] to [t]. Individual property changes
+    trigger the minimum necessary layout and render updates. Fires
+    {!set_on_change} if the selected index changes. *)
 
-val node : t -> Renderable.t
-(** [node t] returns the underlying renderable node. *)
+(** {1:options Options} *)
 
-val options : t -> (string * string option) list
-(** [options t] returns current tab list. *)
+val options : t -> item list
+(** [options t] is the current tab list. *)
 
-val option_at : t -> int -> (string * string option) option
-(** [option_at t i] returns [Some (label, desc)] at index [i] or [None] if out
-    of bounds. *)
+val set_options : t -> item list -> unit
+(** [set_options t items] replaces the tab list. Clamps the selected index to
+    the new range, marks layout dirty, and re-renders. No-op if [items] is
+    structurally equal to the current list. *)
 
-val set_options : t -> (string * string option) list -> unit
-(** [set_options t tabs] replaces tab list. Clamps selected index to valid
-    range. *)
+(** {1:selection Selection} *)
 
 val selected_index : t -> int
-(** [selected_index t] returns current selection index. *)
+(** [selected_index t] is the zero-based index of the selected tab. [0] when the
+    tab list is empty. *)
 
-val selected_option : t -> (string * string option) option
-(** [selected_option t] returns the currently selected tab, if any. *)
-
-val set_selected_index : t -> int -> unit
-(** [set_selected_index t index] selects tab at [index]. Fires [on_change]
-    callback. *)
-
-val set_tab_width : t -> int -> unit
-(** [set_tab_width t width] updates fixed tab width. *)
-
-val set_wrap_selection : t -> bool -> unit
-(** [set_wrap_selection t flag] enables or disables edge wrapping. *)
-
-val set_show_description : t -> bool -> unit
-(** [set_show_description t flag] shows or hides description line. *)
-
-val set_show_underline : t -> bool -> unit
-(** [set_show_underline t flag] shows or hides selection underline. *)
-
-val set_show_scroll_arrows : t -> bool -> unit
-(** [set_show_scroll_arrows t flag] shows or hides scroll indicators. *)
-
-val set_extra_navigation : t -> bool -> unit
-(** [set_extra_navigation t flag] enables Home/End keys and mouse interactions.
-    Disabled by default to keep the minimal set of bindings; enable for
-    power-user shortcuts. *)
-
-val set_background : t -> Ansi.Color.t -> unit
-(** [set_background t color] updates unfocused background color. *)
-
-val set_text_color : t -> Ansi.Color.t -> unit
-(** [set_text_color t color] updates unfocused text color. *)
-
-val set_focused_background : t -> Ansi.Color.t -> unit
-(** [set_focused_background t color] updates focused background color. *)
-
-val set_focused_text : t -> Ansi.Color.t -> unit
-(** [set_focused_text t color] updates focused text color. *)
-
-val set_selected_background : t -> Ansi.Color.t -> unit
-(** [set_selected_background t color] updates selected tab background. *)
-
-val set_selected_text : t -> Ansi.Color.t -> unit
-(** [set_selected_text t color] updates selected tab text color. *)
-
-val set_selected_description_color : t -> Ansi.Color.t -> unit
-(** [set_selected_description_color t color] updates description text color. *)
-
-val set_on_change : t -> (int -> unit) option -> unit
-(** [set_on_change t callback] registers selection change handler. *)
-
-val set_on_activate : t -> (int -> unit) option -> unit
-(** [set_on_activate t callback] registers activation (Enter key) handler. *)
-
-val set_on_change_full :
-  t -> (int * (string * string option) -> unit) option -> unit
-(** [set_on_change_full t callback] registers selection change handler that
-    receives both index and tab. The index-only and full handlers both fire when
-    set. *)
-
-val set_on_activate_full :
-  t -> (int * (string * string option) -> unit) option -> unit
-(** [set_on_activate_full t callback] registers activation handler that receives
-    both index and tab. The index-only and full handlers both fire when set. *)
-
-val handle_key : t -> Event.key -> bool
-(** [handle_key t event] processes keyboard input. Returns [true] if consumed.
+val selected_item : t -> item option
+(** [selected_item t] is the selected tab, or [None] if the tab list is empty.
 *)
 
-val handle_mouse : t -> Event.mouse -> unit
-(** [handle_mouse t event] processes mouse input for clicks and scrolling. May
-    stop event propagation if consumed. *)
+val set_selected : t -> int -> unit
+(** [set_selected t i] selects the tab at index [i], clamped to
+    \[[0];[length - 1]\]. Fires [on_change] if the index changed. *)
 
-val apply_props : t -> Props.t -> unit
-(** [apply_props tabs props] applies [props] to a mounted tab selector using its
-    setters and internal recomputation helpers. *)
+(** {1:tab_width Tab width} *)
+
+val set_tab_width : t -> int -> unit
+(** [set_tab_width t w] sets the fixed width of each tab cell. Values below [1]
+    are ignored. *)
+
+(** {1:colors Colors} *)
+
+val set_background : t -> Ansi.Color.t -> unit
+(** [set_background t color] sets the unfocused background color. *)
+
+val set_text_color : t -> Ansi.Color.t -> unit
+(** [set_text_color t color] sets the unfocused text color. *)
+
+val set_focused_background : t -> Ansi.Color.t -> unit
+(** [set_focused_background t color] sets the focused background color. Only
+    re-renders when the node is focused. *)
+
+val set_focused_text_color : t -> Ansi.Color.t -> unit
+(** [set_focused_text_color t color] sets the focused text color. Only
+    re-renders when the node is focused. *)
+
+val set_selected_background : t -> Ansi.Color.t -> unit
+(** [set_selected_background t color] sets the selected-tab background. *)
+
+val set_selected_text_color : t -> Ansi.Color.t -> unit
+(** [set_selected_text_color t color] sets the selected-tab text color. *)
+
+val set_description_color : t -> Ansi.Color.t -> unit
+(** [set_description_color t color] sets the description line text color. Only
+    re-renders when descriptions are visible. *)
+
+val set_selected_description_color : t -> Ansi.Color.t -> unit
+(** [set_selected_description_color t color] sets the description text color for
+    the selected tab. Only re-renders when descriptions are visible. *)
+
+(** {1:display Display flags} *)
+
+val set_show_underline : t -> bool -> unit
+(** [set_show_underline t v] shows or hides the selection underline. Changes the
+    intrinsic height and marks layout dirty. *)
+
+val set_show_description : t -> bool -> unit
+(** [set_show_description t v] shows or hides the description line below tabs.
+    Changes the intrinsic height and marks layout dirty. *)
+
+val set_show_scroll_arrows : t -> bool -> unit
+(** [set_show_scroll_arrows t v] shows or hides scroll indicators when tabs
+    overflow. *)
+
+val set_wrap_selection : t -> bool -> unit
+(** [set_wrap_selection t v] enables or disables wraparound at edges. When
+    enabled, navigating past the last tab wraps to the first and vice versa. *)
+
+(** {1:callbacks Callbacks} *)
+
+val set_on_change : t -> (int -> unit) option -> unit
+(** [set_on_change t f] registers a handler called with the new index when the
+    selected index changes. [None] clears the handler. *)
+
+val set_on_activate : t -> (int -> unit) option -> unit
+(** [set_on_activate t f] registers a handler called with the index when a tab
+    is activated (Enter key or {!select_current}). [None] clears the handler. *)
+
+(** {1:navigation Navigation} *)
+
+val move_left : t -> unit
+(** [move_left t] moves the selection one tab to the left. Wraps to the last tab
+    if [wrap_selection] is enabled and the selection is at the first tab. No-op
+    if options are empty. Fires [on_change] if the index changed. *)
+
+val move_right : t -> unit
+(** [move_right t] moves the selection one tab to the right. Wraps to the first
+    tab if [wrap_selection] is enabled and the selection is at the last tab.
+    No-op if options are empty. Fires [on_change] if the index changed. *)
+
+val select_current : t -> unit
+(** [select_current t] activates the currently selected tab, firing
+    [on_activate]. No-op if options are empty. *)
+
+(** {1:fmt Formatting} *)
+
+val pp : Format.formatter -> t -> unit
+(** [pp] formats a tab selector for debugging. *)

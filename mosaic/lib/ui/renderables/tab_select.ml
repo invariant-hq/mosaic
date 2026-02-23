@@ -1,200 +1,156 @@
+(* ───── Item ───── *)
+
+type item = { label : string; description : string }
+
+let item ~label ?(description = "") () = { label; description }
+
+(* ───── Props ───── *)
+
 module Props = struct
   type t = {
-    options : (string * string option) list;
-    wrap_selection : bool;
-    show_description : bool;
-    show_underline : bool;
-    show_scroll_arrows : bool;
-    mouse_navigation : bool;
-    autofocus : bool;
+    options : item list;
+    selected : int;
     tab_width : int;
     background : Ansi.Color.t;
     text_color : Ansi.Color.t;
     focused_background : Ansi.Color.t;
-    focused_text : Ansi.Color.t;
+    focused_text_color : Ansi.Color.t;
     selected_background : Ansi.Color.t;
-    selected_text : Ansi.Color.t;
-    selected_description : Ansi.Color.t;
+    selected_text_color : Ansi.Color.t;
+    description_color : Ansi.Color.t;
+    selected_description_color : Ansi.Color.t;
+    show_underline : bool;
+    show_description : bool;
+    show_scroll_arrows : bool;
+    wrap_selection : bool;
   }
 
-  let make ?(options = []) ?(wrap_selection = false) ?(show_description = true)
-      ?(show_underline = true) ?(show_scroll_arrows = true)
-      ?(mouse_navigation = false) ?(autofocus = false) ?(tab_width = 20)
-      ?background ?text_color ?focused_background ?focused_text
-      ?(selected_background = Ansi.Color.of_rgb 51 68 85)
-      ?(selected_text = Ansi.Color.of_rgb 255 255 0)
-      ?(selected_description = Ansi.Color.of_rgb 204 204 204) () =
-    let background_opt = background in
-    let background =
-      Option.value background_opt ~default:(Ansi.Color.of_rgba 0 0 0 0)
-    in
+  let default_selected_background = Ansi.Color.of_rgb 59 130 246
+  let default_description_color = Ansi.Color.of_rgb 203 213 225
+  let default_selected_description_color = Ansi.Color.of_rgb 204 204 204
+
+  let make ~options ?(selected = 0) ?(tab_width = 12) ?background ?text_color
+      ?focused_background ?focused_text_color
+      ?(selected_background = default_selected_background)
+      ?(selected_text_color = Ansi.Color.White)
+      ?(description_color = default_description_color)
+      ?(selected_description_color = default_selected_description_color)
+      ?(show_underline = true) ?(show_description = false)
+      ?(show_scroll_arrows = true) ?(wrap_selection = false) () =
+    let transparent = Ansi.Color.of_rgba 0 0 0 0 in
+    let background' = Option.value ~default:transparent background in
     let text_color =
-      Option.value text_color ~default:(Ansi.Color.of_rgb 255 255 255)
+      Option.value ~default:(Ansi.Color.of_rgb 226 232 240) text_color
     in
     let focused_background =
       match focused_background with
       | Some c -> c
-      | None -> (
-          match background_opt with
-          | Some b -> b
-          | None -> Ansi.Color.of_rgb 26 26 26)
+      | None -> Option.value ~default:(Ansi.Color.of_rgb 26 26 26) background
     in
-    let focused_text = Option.value focused_text ~default:text_color in
+    let focused_text_color =
+      Option.value ~default:text_color focused_text_color
+    in
     {
       options;
-      wrap_selection;
-      show_description;
-      show_underline;
-      show_scroll_arrows;
-      mouse_navigation;
-      autofocus;
+      selected;
       tab_width = max 1 tab_width;
-      background;
+      background = background';
       text_color;
       focused_background;
-      focused_text;
+      focused_text_color;
       selected_background;
-      selected_text;
-      selected_description;
+      selected_text_color;
+      description_color;
+      selected_description_color;
+      show_underline;
+      show_description;
+      show_scroll_arrows;
+      wrap_selection;
     }
 
-  let default = make ()
+  let default = make ~options:[] ()
+  let equal_item a b = a.label = b.label && a.description = b.description
 
   let equal a b =
-    let tab_equal (label1, desc1) (label2, desc2) =
-      String.equal label1 label2 && Option.equal String.equal desc1 desc2
-    in
-    let rec list_eq eq xs ys =
-      match (xs, ys) with
-      | [], [] -> true
-      | x :: xs, y :: ys -> eq x y && list_eq eq xs ys
-      | _ -> false
-    in
-    list_eq tab_equal a.options b.options
-    && Bool.equal a.wrap_selection b.wrap_selection
-    && Bool.equal a.show_description b.show_description
-    && Bool.equal a.show_underline b.show_underline
-    && Bool.equal a.show_scroll_arrows b.show_scroll_arrows
-    && Bool.equal a.mouse_navigation b.mouse_navigation
-    && Bool.equal a.autofocus b.autofocus
-    && Int.equal a.tab_width b.tab_width
+    List.equal equal_item a.options b.options
+    && a.selected = b.selected && a.tab_width = b.tab_width
     && Ansi.Color.equal a.background b.background
     && Ansi.Color.equal a.text_color b.text_color
     && Ansi.Color.equal a.focused_background b.focused_background
-    && Ansi.Color.equal a.focused_text b.focused_text
+    && Ansi.Color.equal a.focused_text_color b.focused_text_color
     && Ansi.Color.equal a.selected_background b.selected_background
-    && Ansi.Color.equal a.selected_text b.selected_text
-    && Ansi.Color.equal a.selected_description b.selected_description
+    && Ansi.Color.equal a.selected_text_color b.selected_text_color
+    && Ansi.Color.equal a.description_color b.description_color
+    && Ansi.Color.equal a.selected_description_color
+         b.selected_description_color
+    && a.show_underline = b.show_underline
+    && a.show_description = b.show_description
+    && a.show_scroll_arrows = b.show_scroll_arrows
+    && a.wrap_selection = b.wrap_selection
 end
+
+(* ───── Types ───── *)
 
 type t = {
   node : Renderable.t;
   mutable props : Props.t;
-  mutable options : (string * string option) array;
   mutable selected_index : int;
   mutable scroll_offset : int;
-  mutable extra_navigation : bool;
   mutable on_change : (int -> unit) option;
   mutable on_activate : (int -> unit) option;
-  mutable on_change_full : (int * (string * string option) -> unit) option;
-  mutable on_activate_full : (int * (string * string option) -> unit) option;
 }
 
 let node t = t.node
-let request t = Renderable.request_render t.node
-let option_count t = Array.length t.options
 
-let clamp_index t idx =
-  let len = option_count t in
-  if len = 0 then 0 else max 0 (min (len - 1) idx)
+(* ───── Helpers ───── *)
 
-let base_height t =
-  let base = 1 in
-  let underline = if t.props.show_underline then 1 else 0 in
-  let desc = if t.props.show_description then 1 else 0 in
-  base + underline + desc
+let request_render t = Renderable.request_render t.node
+
+let clamp_selected props idx =
+  let n = List.length props.Props.options in
+  if n = 0 then 0 else max 0 (min idx (n - 1))
+
+let intrinsic_height props =
+  1
+  + (if props.Props.show_underline then 1 else 0)
+  + if props.Props.show_description then 1 else 0
+
+let compute_scroll_offset t =
+  let w = Renderable.width t.node in
+  let tw = t.props.tab_width in
+  let n = List.length t.props.options in
+  if tw <= 0 || w <= 0 then 0
+  else
+    let max_visible = max 1 (w / tw) in
+    let half = max_visible / 2 in
+    max 0 (min (t.selected_index - half) (max 0 (n - max_visible)))
+
+let update_scroll t =
+  let s = compute_scroll_offset t in
+  if s <> t.scroll_offset then (
+    t.scroll_offset <- s;
+    request_render t)
+
+let list_drop n l =
+  let rec loop n l =
+    if n <= 0 then l else match l with [] -> [] | _ :: xs -> loop (n - 1) xs
+  in
+  loop n l
 
 let truncate_text text max_width =
-  if String.length text = 0 then ""
-  else if max_width <= 0 then "…"
-  else if String.length text <= max_width then text
-  else if max_width = 1 then "…"
-  else String.sub text 0 (max_width - 1) ^ "…"
-
-let notify_change t =
-  (match t.on_change with None -> () | Some f -> f t.selected_index);
-  match t.on_change_full with
-  | None -> ()
-  | Some f ->
-      let idx = t.selected_index in
-      let len = option_count t in
-      if len > 0 && idx >= 0 && idx < len then f (idx, t.options.(idx))
-
-let notify_activate t =
-  (match t.on_activate with None -> () | Some f -> f t.selected_index);
-  match t.on_activate_full with
-  | None -> ()
-  | Some f ->
-      let idx = t.selected_index in
-      let len = option_count t in
-      if len > 0 && idx >= 0 && idx < len then f (idx, t.options.(idx))
-
-let update_scroll_offset t visible_count =
-  let len = option_count t in
-  if len = 0 then t.scroll_offset <- 0
+  if max_width <= 0 then ""
   else
-    let max_visible = max 1 visible_count in
-    let half = max 0 (max_visible / 2) in
-    let max_offset = max 0 (len - max_visible) in
-    let desired = t.selected_index - half in
-    let new_offset = max 0 (min desired max_offset) in
-    t.scroll_offset <- new_offset
+    let len = String.length text in
+    if len <= max_width then text
+    else if max_width <= 1 then "\xe2\x80\xa6"
+    else String.sub text 0 (max_width - 1) ^ "\xe2\x80\xa6"
 
-let calculate_visible_count t ~width =
-  let width = max 0 width in
-  let tab_width = max 1 t.props.tab_width in
-  max 1 (width / tab_width)
-
-let visible_count_from_layout t =
-  let w = Renderable.width t.node in
-  calculate_visible_count t ~width:w
-
-let set_selected_index_internal t idx visible_count =
-  let len = option_count t in
-  if len = 0 then ()
-  else
-    let idx = clamp_index t idx in
-    if idx <> t.selected_index then (
-      t.selected_index <- idx;
-      update_scroll_offset t visible_count;
-      notify_change t;
-      request t)
-
-let set_selected_index t idx =
-  let visible = visible_count_from_layout t in
-  set_selected_index_internal t idx visible
-
-let move_left t =
-  let len = option_count t in
-  if len = 0 then ()
-  else if t.selected_index > 0 then
-    set_selected_index_internal t (t.selected_index - 1)
-      (visible_count_from_layout t)
-  else if t.props.wrap_selection then
-    set_selected_index_internal t (len - 1) (visible_count_from_layout t)
-
-let move_right t =
-  let len = option_count t in
-  if len = 0 then ()
-  else if t.selected_index < len - 1 then
-    set_selected_index_internal t (t.selected_index + 1)
-      (visible_count_from_layout t)
-  else if t.props.wrap_selection then
-    set_selected_index_internal t 0 (visible_count_from_layout t)
+(* ───── Measure ───── *)
 
 let measure t ~known_dimensions ~available_space ~style:_ =
-  (* Content-based default: show all tabs if possible *)
-  let content_width = Float.of_int (option_count t * max 1 t.props.tab_width) in
+  let content_width =
+    Float.of_int (List.length t.props.Props.options * max 1 t.props.tab_width)
+  in
   let width =
     match known_dimensions.Toffee.Geometry.Size.width with
     | Some w when w > 0. -> w
@@ -206,302 +162,307 @@ let measure t ~known_dimensions ~available_space ~style:_ =
         | Some w when w > 0. -> w
         | _ -> content_width)
   in
-  let height = Float.of_int (base_height t) in
-  Toffee.Geometry.Size.{ width; height }
+  let h = Float.of_int (intrinsic_height t.props) in
+  Toffee.Geometry.Size.
+    {
+      width;
+      height = (match known_dimensions.height with Some h -> h | None -> h);
+    }
 
-let effective_background t focused =
-  if focused then t.props.focused_background else t.props.background
+(* ───── Rendering ───── *)
 
-let effective_text_color t focused =
-  if focused then t.props.focused_text else t.props.text_color
+let underline_char = "\xe2\x96\xac"
 
-let render t renderable grid ~delta:_ =
-  (* Draw into the local buffer coordinate space (0,0). Buffered nodes are
-     rendered to an offscreen grid which is later blitted at the node's absolute
-     position by the renderer. *)
-  let lx = 0 in
-  let ly = 0 in
-  let width = Renderable.width renderable in
-  let height = Renderable.height renderable in
-  if width <= 0 || height <= 0 then ()
+let rec render t _self grid ~delta:_ =
+  let w = Renderable.width t.node in
+  let h = Renderable.height t.node in
+  if w <= 0 || h <= 0 then ()
   else
-    let focused = Renderable.focused renderable in
-    let base_bg = effective_background t focused in
-    Grid.fill_rect grid ~x:lx ~y:ly ~width ~height ~color:base_bg;
-    let visible_count = calculate_visible_count t ~width in
-    update_scroll_offset t visible_count;
-    let max_visible = visible_count in
-    let end_index = min (option_count t) (t.scroll_offset + max_visible) in
-    let base_text = effective_text_color t focused in
-    let tab_width = max 1 t.props.tab_width in
-    for i = 0 to max_visible - 1 do
-      let actual_index = t.scroll_offset + i in
-      if actual_index < end_index then
-        let tab = t.options.(actual_index) in
-        let tab_x = lx + (i * tab_width) in
-        if tab_x < lx + width then
-          let available = min tab_width (width - (i * tab_width)) in
-          if available > 0 then (
-            let is_selected = actual_index = t.selected_index in
-            if is_selected then
-              Grid.fill_rect grid ~x:tab_x ~y:ly ~width:available ~height:1
-                ~color:t.props.selected_background;
-            let left_padding = if available > 0 then 1 else 0 in
-            let right_padding = if available - left_padding > 0 then 1 else 0 in
-            let label_width = available - left_padding - right_padding in
-            let label = truncate_text (fst tab) label_width in
-            let label_color =
-              if is_selected then t.props.selected_text else base_text
+    let props = t.props in
+    let focused = Renderable.focused t.node in
+    let bg = if focused then props.focused_background else props.background in
+    Grid.fill_rect grid ~x:0 ~y:0 ~width:w ~height:h ~color:bg;
+    let tw = props.tab_width in
+    let n = List.length props.options in
+    let max_visible = max 1 (w / tw) in
+    let scroll = t.scroll_offset in
+    let base_text_color =
+      if focused then props.focused_text_color else props.text_color
+    in
+    render_tabs t grid ~props ~w ~h ~tw ~max_visible ~scroll ~base_text_color;
+    render_scroll_arrows grid ~props ~w ~n ~max_visible ~scroll;
+    render_description grid ~props ~w ~h ~selected_index:t.selected_index
+
+and render_tabs t grid ~props ~w ~h ~tw ~max_visible ~scroll ~base_text_color =
+  let visible_opts = list_drop scroll props.Props.options in
+  let rec loop lst col =
+    if col >= max_visible then ()
+    else
+      match lst with
+      | [] -> ()
+      | item :: rest ->
+          let is_sel = scroll + col = t.selected_index in
+          let tab_x = col * tw in
+          let actual_tw = min tw (w - tab_x) in
+          if actual_tw > 0 then (
+            if is_sel then
+              Grid.fill_rect grid ~x:tab_x ~y:0 ~width:actual_tw ~height:1
+                ~color:props.selected_background;
+            let text_color =
+              if is_sel then props.selected_text_color else base_text_color
             in
-            if label <> "" then
-              Grid.draw_text
-                ~style:(Ansi.Style.make ~fg:label_color ())
-                grid ~x:(tab_x + left_padding) ~y:ly ~text:label;
-            if is_selected && t.props.show_underline && height >= 2 then
-              let underline_style =
-                Ansi.Style.make ~fg:label_color ~bg:t.props.selected_background
-                  ()
+            let label = truncate_text item.label (actual_tw - 2) in
+            Grid.draw_text
+              ~style:(Ansi.Style.make ~fg:text_color ())
+              grid ~x:(tab_x + 1) ~y:0 ~text:label;
+            if props.show_underline && is_sel && h >= 2 then
+              let ul_style =
+                Ansi.Style.make ~fg:text_color ~bg:props.selected_background ()
               in
-              let width = available in
-              let underline =
-                let buf = Buffer.create (width * 3) in
-                for _ = 1 to width do
-                  Buffer.add_string buf "▬"
-                done;
-                Buffer.contents buf
+              let ul_text =
+                String.concat "" (List.init actual_tw (fun _ -> underline_char))
               in
-              Grid.draw_text ~style:underline_style grid ~x:tab_x ~y:(ly + 1)
-                ~text:underline)
-    done;
-    (if
-       t.props.show_description
-       && height >= if t.props.show_underline then 3 else 2
-     then
-       if option_count t > 0 then
-         match snd t.options.(t.selected_index) with
-         | None -> ()
-         | Some desc ->
-             let row = ly + if t.props.show_underline then 2 else 1 in
-             let left_padding = if width > 0 then 1 else 0 in
-             let right_padding = if width - left_padding > 0 then 1 else 0 in
-             let available = width - left_padding - right_padding in
-             let text = truncate_text desc available in
-             if text <> "" then
-               Grid.draw_text
-                 ~style:(Ansi.Style.make ~fg:t.props.selected_description ())
-                 grid ~x:(lx + left_padding) ~y:row ~text);
-    if t.props.show_scroll_arrows && option_count t > max_visible then (
-      if t.scroll_offset > 0 then
-        Grid.draw_text
-          ~style:(Ansi.Style.make ~fg:(Ansi.Color.of_rgb 170 170 170) ())
-          grid ~x:lx ~y:ly ~text:"‹";
-      if t.scroll_offset + max_visible < option_count t then
-        Grid.draw_text
-          ~style:(Ansi.Style.make ~fg:(Ansi.Color.of_rgb 170 170 170) ())
-          grid
-          ~x:(lx + width - 1)
-          ~y:ly ~text:"›")
+              Grid.draw_text ~style:ul_style grid ~x:tab_x ~y:1 ~text:ul_text);
+          loop rest (col + 1)
+  in
+  loop visible_opts 0
 
-let request_layout_update t = ignore (Renderable.mark_layout_dirty t.node)
-let options t = Array.to_list t.options
+and render_scroll_arrows grid ~props ~w ~n ~max_visible ~scroll =
+  if props.Props.show_scroll_arrows then (
+    let arrow_style = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 170 170 170) () in
+    if scroll > 0 then
+      Grid.draw_text ~style:arrow_style grid ~x:0 ~y:0 ~text:"\xe2\x80\xb9";
+    if scroll + max_visible < n then
+      Grid.draw_text ~style:arrow_style grid ~x:(w - 1) ~y:0
+        ~text:"\xe2\x80\xba")
+
+and render_description grid ~props ~w ~h ~selected_index =
+  if props.Props.show_description then
+    let desc_y = 1 + if props.show_underline then 1 else 0 in
+    if desc_y < h then
+      match List.nth_opt props.options selected_index with
+      | Some item when item.description <> "" ->
+          let desc = truncate_text item.description (w - 1) in
+          Grid.draw_text
+            ~style:(Ansi.Style.make ~fg:props.selected_description_color ())
+            grid ~x:0 ~y:desc_y ~text:desc
+      | _ -> ()
+
+(* ───── Query ───── *)
+
 let selected_index t = t.selected_index
+let selected_item t = List.nth_opt t.props.options t.selected_index
+let options t = t.props.options
 
-let option_at t idx =
-  if idx < 0 || idx >= Array.length t.options then None
-  else Some t.options.(idx)
+(* ───── Navigation ───── *)
 
-let selected_option t = option_at t t.selected_index
+let move t ~next_index =
+  let n = List.length t.props.options in
+  if n > 0 then
+    let idx = t.selected_index in
+    let next = next_index ~n ~idx ~wrap:t.props.wrap_selection in
+    if next <> idx then (
+      t.selected_index <- next;
+      t.props <- { t.props with selected = next };
+      update_scroll t;
+      request_render t;
+      match t.on_change with Some f -> f next | None -> ())
 
-let set_options t options =
-  let arr = Array.of_list options in
-  t.options <- arr;
-  t.selected_index <- clamp_index t t.selected_index;
-  update_scroll_offset t (visible_count_from_layout t);
-  request t
+let move_left t =
+  move t ~next_index:(fun ~n ~idx ~wrap ->
+      if idx > 0 then idx - 1 else if wrap then n - 1 else idx)
 
-let set_wrap_selection t flag =
-  if t.props.wrap_selection <> flag then (
-    t.props <- { t.props with wrap_selection = flag };
-    request t)
+let move_right t =
+  move t ~next_index:(fun ~n ~idx ~wrap ->
+      if idx < n - 1 then idx + 1 else if wrap then 0 else idx)
 
-let set_tab_width t width =
-  if width > 0 && width <> t.props.tab_width then (
-    t.props <- { t.props with tab_width = width };
-    update_scroll_offset t (visible_count_from_layout t);
-    request t)
+let select_current t =
+  let n = List.length t.props.options in
+  if n > 0 then
+    match t.on_activate with Some f -> f t.selected_index | None -> ()
 
-let set_show_description t show =
-  if t.props.show_description <> show then (
-    t.props <- { t.props with show_description = show };
-    request_layout_update t;
-    request t)
+(* ───── Key Handler ───── *)
 
-let set_show_underline t show =
-  if t.props.show_underline <> show then (
-    t.props <- { t.props with show_underline = show };
-    request_layout_update t;
-    request t)
+let handle_key t (ev : Event.key) =
+  let data = Event.Key.data ev in
+  let key = data.Input.Key.key in
+  let n = List.length t.props.options in
+  if n = 0 then ()
+  else
+    let action =
+      match key with
+      | Input.Key.Left -> Some `Move_left
+      | Input.Key.Right -> Some `Move_right
+      | Input.Key.Enter | Input.Key.Line_feed -> Some `Activate
+      | Input.Key.Char u ->
+          let c = Uchar.to_int u in
+          if c = Char.code '[' then Some `Move_left
+          else if c = Char.code ']' then Some `Move_right
+          else None
+      | _ -> None
+    in
+    match action with
+    | None -> ()
+    | Some `Move_left ->
+        Event.Key.prevent_default ev;
+        move_left t
+    | Some `Move_right ->
+        Event.Key.prevent_default ev;
+        move_right t
+    | Some `Activate ->
+        Event.Key.prevent_default ev;
+        select_current t
 
-let set_show_scroll_arrows t show =
-  if t.props.show_scroll_arrows <> show then (
-    t.props <- { t.props with show_scroll_arrows = show };
-    request t)
+(* ───── Construction ───── *)
 
-let set_extra_navigation t flag = t.extra_navigation <- flag
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~options
+    ?selected ?tab_width ?background ?text_color ?focused_background
+    ?focused_text_color ?selected_background ?selected_text_color
+    ?description_color ?selected_description_color ?show_underline
+    ?show_description ?show_scroll_arrows ?wrap_selection ?on_change
+    ?on_activate () =
+  let node =
+    Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
+  in
+  let props =
+    Props.make ~options ?selected ?tab_width ?background ?text_color
+      ?focused_background ?focused_text_color ?selected_background
+      ?selected_text_color ?description_color ?selected_description_color
+      ?show_underline ?show_description ?show_scroll_arrows ?wrap_selection ()
+  in
+  let selected_index =
+    clamp_selected props (Option.value ~default:0 selected)
+  in
+  let t =
+    { node; props; selected_index; scroll_offset = 0; on_change; on_activate }
+  in
+  Renderable.set_render node (render t);
+  Renderable.set_measure node (Some (measure t));
+  Renderable.set_focusable node true;
+  Renderable.set_buffered node true;
+  Renderable.on_key node (handle_key t);
+  Renderable.set_on_resize node
+    (Some
+       (fun _node ->
+         update_scroll t;
+         request_render t));
+  update_scroll t;
+  t
+
+(* ───── Setters ───── *)
+
+let set_options t items =
+  if not (List.equal Props.equal_item t.props.options items) then (
+    t.props <- { t.props with options = items };
+    t.selected_index <- clamp_selected t.props t.selected_index;
+    update_scroll t;
+    Renderable.mark_dirty t.node;
+    request_render t)
+
+let set_selected t i =
+  let idx = clamp_selected t.props i in
+  if idx <> t.selected_index then (
+    t.selected_index <- idx;
+    t.props <- { t.props with selected = idx };
+    update_scroll t;
+    request_render t;
+    match t.on_change with Some f -> f idx | None -> ())
+
+let set_tab_width t w =
+  if w >= 1 && w <> t.props.tab_width then (
+    t.props <- { t.props with tab_width = w };
+    update_scroll t;
+    request_render t)
 
 let set_background t color =
   if not (Ansi.Color.equal t.props.background color) then (
     t.props <- { t.props with background = color };
-    request t)
+    request_render t)
 
 let set_text_color t color =
   if not (Ansi.Color.equal t.props.text_color color) then (
     t.props <- { t.props with text_color = color };
-    request t)
+    request_render t)
 
 let set_focused_background t color =
   if not (Ansi.Color.equal t.props.focused_background color) then (
     t.props <- { t.props with focused_background = color };
-    request t)
+    if Renderable.focused t.node then request_render t)
 
-let set_focused_text t color =
-  if not (Ansi.Color.equal t.props.focused_text color) then (
-    t.props <- { t.props with focused_text = color };
-    request t)
+let set_focused_text_color t color =
+  if not (Ansi.Color.equal t.props.focused_text_color color) then (
+    t.props <- { t.props with focused_text_color = color };
+    if Renderable.focused t.node then request_render t)
 
 let set_selected_background t color =
   if not (Ansi.Color.equal t.props.selected_background color) then (
     t.props <- { t.props with selected_background = color };
-    request t)
+    request_render t)
 
-let set_selected_text t color =
-  if not (Ansi.Color.equal t.props.selected_text color) then (
-    t.props <- { t.props with selected_text = color };
-    request t)
+let set_selected_text_color t color =
+  if not (Ansi.Color.equal t.props.selected_text_color color) then (
+    t.props <- { t.props with selected_text_color = color };
+    request_render t)
+
+let set_description_color t color =
+  if not (Ansi.Color.equal t.props.description_color color) then (
+    t.props <- { t.props with description_color = color };
+    if t.props.show_description then request_render t)
 
 let set_selected_description_color t color =
-  if not (Ansi.Color.equal t.props.selected_description color) then (
-    t.props <- { t.props with selected_description = color };
-    request t)
+  if not (Ansi.Color.equal t.props.selected_description_color color) then (
+    t.props <- { t.props with selected_description_color = color };
+    if t.props.show_description then request_render t)
 
-let set_on_change t cb = t.on_change <- cb
-let set_on_activate t cb = t.on_activate <- cb
-let set_on_change_full t cb = t.on_change_full <- cb
-let set_on_activate_full t cb = t.on_activate_full <- cb
+let set_show_underline t v =
+  if t.props.show_underline <> v then (
+    t.props <- { t.props with show_underline = v };
+    Renderable.mark_dirty t.node;
+    request_render t)
 
-let handle_key t event =
-  let kev = Event.Key.data event in
-  match kev.event_type with
-  | Release -> false
-  | Press | Repeat -> (
-      let w = Renderable.width t.node in
-      let visible_count = calculate_visible_count t ~width:w in
-      match kev.key with
-      | Left ->
-          move_left t;
-          true
-      | Right ->
-          move_right t;
-          true
-      | Char c when Uchar.equal c (Uchar.of_char '[') ->
-          move_left t;
-          true
-      | Char c when Uchar.equal c (Uchar.of_char ']') ->
-          move_right t;
-          true
-      | Home when t.extra_navigation ->
-          set_selected_index_internal t 0 visible_count;
-          true
-      | End when t.extra_navigation ->
-          let len = option_count t in
-          if len > 0 then (
-            set_selected_index_internal t (len - 1) visible_count;
-            true)
-          else true
-      | Enter | KP_enter ->
-          notify_activate t;
-          true
-      | _ -> false)
+let set_show_description t v =
+  if t.props.show_description <> v then (
+    t.props <- { t.props with show_description = v };
+    Renderable.mark_dirty t.node;
+    request_render t)
 
-let handle_mouse t (event : Event.mouse) =
-  let lx = Renderable.x t.node in
-  (* ly not used here; remove to avoid warnings *)
-  let lw = Renderable.width t.node in
-  let visible_count = calculate_visible_count t ~width:lw in
-  if not t.extra_navigation then ()
-  else
-    match Event.Mouse.kind event with
-    | Down -> (
-        match Event.Mouse.button event with
-        | Some Input.Mouse.Left ->
-            let x = Event.Mouse.x event in
-            if x >= lx && x < lx + lw then
-              let relative = x - lx in
-              let tab_width = max 1 t.props.tab_width in
-              let index = t.scroll_offset + (relative / tab_width) in
-              if index < option_count t then (
-                set_selected_index_internal t index visible_count;
-                Event.Mouse.stop_propagation event)
-        | _ -> ())
-    | Scroll -> (
-        match Event.Mouse.scroll_delta event with
-        | Some (direction, delta) ->
-            if
-              (direction = Event.Mouse.Scroll_left
-              || direction = Event.Mouse.Scroll_up)
-              && delta > 0
-            then (
-              ignore (move_left t);
-              Event.Mouse.stop_propagation event)
-            else if
-              (direction = Event.Mouse.Scroll_right
-              || direction = Event.Mouse.Scroll_down)
-              && delta > 0
-            then (
-              ignore (move_right t);
-              Event.Mouse.stop_propagation event)
-        | None -> ())
-    | _ -> ()
+let set_show_scroll_arrows t v =
+  if t.props.show_scroll_arrows <> v then (
+    t.props <- { t.props with show_scroll_arrows = v };
+    request_render t)
 
-let mount ?(props = Props.default) node =
-  let tabs =
-    {
-      node;
-      props;
-      options = Array.of_list props.options;
-      selected_index = 0;
-      scroll_offset = 0;
-      extra_navigation = props.mouse_navigation;
-      on_change = None;
-      on_activate = None;
-      on_change_full = None;
-      on_activate_full = None;
-    }
-  in
-  tabs.selected_index <- clamp_index tabs 0;
-  update_scroll_offset tabs (visible_count_from_layout tabs);
-  Renderable.set_render node (render tabs);
-  Renderable.set_measure node (Some (measure tabs));
-  Renderable.set_buffer node `Self;
-  Renderable.set_focusable node true;
-  Renderable.on_mouse node (fun ev ->
-      match Event.Mouse.kind ev with
-      | Down | Scroll -> handle_mouse tabs ev
-      | _ -> ());
-  Renderable.on_key_down node (fun evt -> ignore (handle_key tabs evt));
-  (match tabs.props.autofocus with
-  | true -> ignore (Renderable.focus node)
-  | false -> ());
-  request tabs;
-  tabs
+let set_wrap_selection t v =
+  if t.props.wrap_selection <> v then
+    t.props <- { t.props with wrap_selection = v }
+
+let set_on_change t f = t.on_change <- f
+let set_on_activate t f = t.on_activate <- f
+
+(* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
-  (* Options and navigation flags *)
-  if not (Props.equal t.props props) then (
-    t.props <- props;
-    t.options <- Array.of_list props.options;
-    t.extra_navigation <- props.mouse_navigation;
-    (* Selection and layout-related behaviour depends on
-       wrap/description/underline. *)
-    update_scroll_offset t (visible_count_from_layout t);
-    request t)
+  set_options t props.options;
+  if props.selected <> t.selected_index then set_selected t props.selected;
+  set_wrap_selection t props.wrap_selection;
+  set_tab_width t props.tab_width;
+  set_show_underline t props.show_underline;
+  set_show_description t props.show_description;
+  set_show_scroll_arrows t props.show_scroll_arrows;
+  set_background t props.background;
+  set_text_color t props.text_color;
+  set_focused_background t props.focused_background;
+  set_focused_text_color t props.focused_text_color;
+  set_selected_background t props.selected_background;
+  set_selected_text_color t props.selected_text_color;
+  set_description_color t props.description_color;
+  set_selected_description_color t props.selected_description_color
+
+(* ───── Pretty-printing ───── *)
+
+let pp ppf t =
+  let n = List.length t.props.options in
+  Format.fprintf ppf "Tab_select(%s, %d/%d" (Renderable.id t.node)
+    t.selected_index n;
+  if t.props.show_underline then Format.pp_print_string ppf ", underline";
+  if t.props.show_description then Format.pp_print_string ppf ", desc";
+  Format.pp_print_char ppf ')'
