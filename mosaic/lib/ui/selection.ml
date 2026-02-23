@@ -1,100 +1,83 @@
+(* ───── Points And Bounds ───── *)
+
 type point = { x : int; y : int }
 
-type local_bounds = {
-  anchor_x : int;
-  anchor_y : int;
-  focus_x : int;
-  focus_y : int;
-  is_active : bool;
-}
+let pp_point ppf p = Format.fprintf ppf "(%d, %d)" p.x p.y
+let equal_point a b = a.x = b.x && a.y = b.y
 
 type bounds = { x : int; y : int; width : int; height : int }
 
+let pp_bounds ppf b =
+  Format.fprintf ppf "{x=%d; y=%d; w=%d; h=%d}" b.x b.y b.width b.height
+
+let equal_bounds a b =
+  a.x = b.x && a.y = b.y && a.width = b.width && a.height = b.height
+
+type local_bounds = { anchor : point; focus : point }
+
+let pp_local_bounds ppf lb =
+  Format.fprintf ppf "{anchor=%a; focus=%a}" pp_point lb.anchor pp_point
+    lb.focus
+
+let equal_local_bounds a b =
+  equal_point a.anchor b.anchor && equal_point a.focus b.focus
+
+(* ───── Selections ───── *)
+
+(* anchor_position is a thunk rather than a plain point so that scrollable
+   containers can install a callback that recomputes the anchor relative to the
+   current scroll offset. set_anchor replaces it with a constant. *)
 type t = {
-  get_selected_text : unit -> string;
-  mutable anchor_provider : unit -> point;
-  mutable normalized_anchor : point;
-  mutable normalized_focus : point;
-  mutable original_focus : point;
+  mutable anchor_position : unit -> point;
+  mutable focus : point;
   mutable is_active : bool;
-  mutable is_selecting : bool;
+  mutable is_dragging : bool;
+  mutable is_start : bool;
 }
 
-let update_normalized t =
-  let anchor = t.anchor_provider () in
-  let focus = t.original_focus in
-  let anchor_before_focus =
-    anchor.y < focus.y || (anchor.y = focus.y && anchor.x <= focus.x)
+let pp ppf t =
+  Format.fprintf ppf "Selection(anchor=%a, focus=%a, active=%b, dragging=%b)"
+    pp_point (t.anchor_position ()) pp_point t.focus t.is_active t.is_dragging
+
+let create ?anchor_position ~anchor ~focus () =
+  let anchor_position =
+    Option.value anchor_position ~default:(fun () -> anchor)
   in
-  if anchor_before_focus then (
-    t.normalized_anchor <- anchor;
-    t.normalized_focus <- focus)
-  else (
-    t.normalized_anchor <- focus;
-    t.normalized_focus <- { x = anchor.x + 1; y = anchor.y })
+  {
+    anchor_position;
+    focus;
+    is_active = true;
+    is_dragging = true;
+    is_start = true;
+  }
 
-let create ?anchor_provider ~anchor ~focus ~get_selected_text () =
-  let anchor_provider =
-    Option.value anchor_provider ~default:(fun () -> anchor)
-  in
-  let t =
-    {
-      anchor_provider;
-      get_selected_text;
-      normalized_anchor = anchor;
-      normalized_focus = focus;
-      original_focus = focus;
-      is_active = true;
-      is_selecting = true;
-    }
-  in
-  update_normalized t;
-  t
+(* ───── Position ───── *)
 
-let refresh t = update_normalized t
-
-let anchor t =
-  refresh t;
-  t.normalized_anchor
-
-let focus t =
-  refresh t;
-  t.normalized_focus
-
-let set_focus t value =
-  t.original_focus <- value;
-  update_normalized t
-
-let set_anchor t value =
-  t.anchor_provider <- (fun () -> value);
-  update_normalized t
+let anchor t = t.anchor_position ()
+let focus t = t.focus
+let set_anchor t p = t.anchor_position <- (fun () -> p)
+let set_focus t p = t.focus <- p
 
 let bounds t =
   let a = anchor t and f = focus t in
-  let x0 = min a.x f.x in
-  let y0 = min a.y f.y in
-  let x1 = max a.x f.x in
-  let y1 = max a.y f.y in
-  { x = x0; y = y0; width = x1 - x0; height = y1 - y0 }
+  let x0 = min a.x f.x and y0 = min a.y f.y in
+  let x1 = max a.x f.x and y1 = max a.y f.y in
+  { x = x0; y = y0; width = x1 - x0 + 1; height = y1 - y0 + 1 }
+
+(* ───── State ───── *)
 
 let is_active t = t.is_active
-let set_is_active t value = t.is_active <- value
-let is_selecting t = t.is_selecting
-let set_is_selecting t value = t.is_selecting <- value
-let get_selected_text t = t.get_selected_text ()
+let set_is_active t v = t.is_active <- v
+let is_dragging t = t.is_dragging
+let set_is_dragging t v = t.is_dragging <- v
+let is_start t = t.is_start
+let set_is_start t v = t.is_start <- v
 
-let convert_global_to_local selection_opt ~local_origin_x ~local_origin_y =
-  match selection_opt with
-  | None -> None
-  | Some selection when not (is_active selection) -> None
-  | Some selection ->
-      let anchor = anchor selection in
-      let focus = focus selection in
-      Some
-        {
-          anchor_x = anchor.x - local_origin_x;
-          anchor_y = anchor.y - local_origin_y;
-          focus_x = focus.x - local_origin_x;
-          focus_y = focus.y - local_origin_y;
-          is_active = true;
-        }
+(* ───── Coordinate Transformation ───── *)
+
+let to_local t ~(origin : point) =
+  let a = anchor t and f = focus t in
+  {
+    anchor = { x = a.x - origin.x; y = a.y - origin.y };
+    focus = { x = f.x - origin.x; y = f.y - origin.y };
+  }
