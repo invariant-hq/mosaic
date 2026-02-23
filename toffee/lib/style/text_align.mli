@@ -22,19 +22,18 @@ type t =
           block children horizontally. *)
 
 val default : t
-(** [default] returns [Auto]. *)
+(** [default] is [Auto]. *)
 
 val to_string : t -> string
-(** [to_string align] converts [align] to its CSS string representation.
-
-    Returns ["auto"], ["legacy-left"], ["legacy-right"], or ["legacy-center"].
-*)
+(** [to_string align] is the CSS string representation of [align]: ["auto"],
+    ["legacy-left"], ["legacy-right"], or ["legacy-center"]. *)
 
 val equal : t -> t -> bool
-(** [equal a b] tests equality between [a] and [b]. *)
+(** [equal a b] is [true] iff [a] and [b] are the same alignment. *)
 
 val compare : t -> t -> int
-(** [compare a b] returns a total ordering of text alignment values. *)
+(** [compare a b] is a total order on alignment values, compatible with
+    {!equal}. *)
 
 val pp : Format.formatter -> t -> unit
-(** [pp fmt align] formats [align] for display using {!to_string}. *)
+(** [pp ppf align] formats [align] on [ppf] using {!to_string}. *)
