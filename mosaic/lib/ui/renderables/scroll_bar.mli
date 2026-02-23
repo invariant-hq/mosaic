@@ -1,173 +1,193 @@
-(** Scroll bar widget with arrows, slider track, and keyboard navigation.
+(** Scroll bar widget with optional arrow buttons and a proportional slider
+    thumb.
 
-    Scroll_bar provides a complete scrollbar control with optional arrow buttons
-    at each end and an internal slider for the track and thumb. It supports
-    keyboard navigation, repeated scrolling when arrow buttons are held, and
-    automatic visibility based on content overflow.
+    A scroll bar manages a scroll position within a range determined by
+    {!scroll_size} and {!viewport_size}. The slider thumb is sized
+    proportionally to the visible portion of content. Arrow buttons at each end
+    provide incremental scrolling with hold-to-repeat.
 
-    {1 Overview}
+    {2:coordinates Coordinate system}
 
-    A scroll bar manages scroll position within a range defined by [scroll_size]
-    and [viewport_size]. The thumb size automatically reflects the visible
-    portion of content. Arrow buttons provide incremental scrolling, and the
-    track allows direct position manipulation via mouse or keyboard.
+    The scroll coordinate space is expressed in cells:
+    - {e scroll_position} — current scroll offset.
+    - {e viewport_size} — size of the visible area.
+    - {e scroll_size} — total content size.
+    - Valid range: \[[0];[max(0, scroll_size - viewport_size)]\].
 
-    {1 Coordinate System}
+    {2:scroll_units Scroll units}
 
-    - [scroll_position]: Current scroll offset in cells
-    - [viewport_size]: Size of visible area in cells
-    - [scroll_size]: Total content size in cells
-    - Valid range: 0 to [max(0, scroll_size - viewport_size)]
-
-    {1 Scroll Units}
-
-    The [scroll_by] function supports four unit types:
-    - [`Absolute]: Multiply delta by 1 cell
-    - [`Viewport]: Multiply delta by viewport size
-    - [`Content]: Multiply delta by content size
-    - [`Step]: Multiply delta by custom step size (default 1 if unset) *)
+    {!scroll_by} supports four unit types:
+    - [`Absolute] — delta multiplied by 1.
+    - [`Viewport] — delta multiplied by viewport size.
+    - [`Content] — delta multiplied by content size.
+    - [`Step] — delta multiplied by the custom step size (default [1]). *)
 
 type orientation = [ `Vertical | `Horizontal ]
-(** Scroll bar orientation: vertical or horizontal layout. *)
+(** The type for scroll bar orientation. *)
 
 type scroll_unit = [ `Absolute | `Viewport | `Content | `Step ]
-(** Units for scroll delta calculations in {!scroll_by}. *)
+(** The type for scroll delta units used by {!scroll_by}. *)
 
-type arrow_chars = { up : string; down : string; left : string; right : string }
-(** Arrow button character overrides for each direction. *)
-
-type arrow_style = {
-  foreground : Ansi.Color.t option;
-  background : Ansi.Color.t option;
-  attributes : Ansi.Attr.flag list option;
-  chars : arrow_chars option;
-}
-(** Arrow button styling with optional character and color overrides.
-
-    When [foreground] is [None], uses [background] as foreground if available.
-    Default arrow characters are "▲", "▼", "◀", "▶". *)
-
-type track_style = {
-  track_color : Ansi.Color.t option;
-  thumb_color : Ansi.Color.t option;
-}
-(** Slider track and thumb color overrides. *)
+(** {1:props Props} *)
 
 module Props : sig
   type t
+  (** The type for the declarative property bundle used for reconciler diffing.
+  *)
 
   val make :
-    orientation:orientation ->
+    ?orientation:orientation ->
     ?show_arrows:bool ->
-    ?arrow_style:arrow_style ->
-    ?track_style:track_style ->
-    ?track_viewport_size:int ->
-    ?on_change:(int -> unit) ->
-    ?autofocus:bool ->
+    ?track_color:Ansi.Color.t ->
+    ?thumb_color:Ansi.Color.t ->
+    ?arrow_fg:Ansi.Color.t ->
+    ?arrow_bg:Ansi.Color.t ->
     unit ->
     t
-  (** [make ~orientation ()] constructs scroll bar properties.
+  (** [make ()] is a scroll bar property bundle. The optional parameters are:
+      - [orientation] — layout direction. Defaults to [`Vertical].
+      - [show_arrows] — display arrow buttons at each end. Defaults to [false].
+      - [track_color] — track background color.
+      - [thumb_color] — thumb foreground color.
+      - [arrow_fg] — arrow foreground color. Defaults to white.
+      - [arrow_bg] — arrow background color. Defaults to transparent. *)
 
-      @param orientation Layout direction (required)
-      @param show_arrows Display arrow buttons at each end. Default is [false].
-      @param arrow_style Arrow button styling. Default uses built-in characters.
-      @param track_style Track and thumb color overrides.
-      @param track_viewport_size
-        Initial logical viewport size for thumb sizing before real viewport is
-        set via {!set_viewport_size}.
-      @param on_change Callback fired when scroll position changes.
-      @param autofocus Request focus on mount. Default is [false]. *)
-
-  val default_vertical : t
-  (** [default_vertical] is the default vertical scroll bar properties. *)
-
-  val default_horizontal : t
-  (** [default_horizontal] is the default horizontal scroll bar properties. *)
+  val default : t
+  (** [default] is [make ()]. *)
 
   val equal : t -> t -> bool
-  (** [equal a b] checks structural equality of scroll bar properties. *)
+  (** [equal a b] is [true] iff [a] and [b] describe identical visual
+      properties. *)
 end
 
+(** {1:types Types} *)
+
 type t
-(** Scroll bar state. *)
+(** The type for scroll bar widgets backed by a {!Renderable.t}. *)
 
-val apply_props : t -> Props.t -> unit
-(** [apply_props bar props] applies [props] to a mounted scroll bar using its
-    setters where supported. Creation-time fields such as [orientation] remain
-    unchanged. *)
+(** {1:constructors Constructors} *)
 
-val mount : ?props:Props.t -> Renderable.t -> t
-(** [mount ?props node] configures [node] to render a scroll bar and marks it
-    focusable so it can receive keyboard scrolling events. Arrow buttons and
-    slider track are created as child renderables. *)
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?orientation:orientation ->
+  ?show_arrows:bool ->
+  ?track_color:Ansi.Color.t ->
+  ?thumb_color:Ansi.Color.t ->
+  ?arrow_fg:Ansi.Color.t ->
+  ?arrow_bg:Ansi.Color.t ->
+  ?on_change:(int -> unit) ->
+  unit ->
+  t
+(** [create ~parent ()] is a scroll bar attached to [parent]. The optional
+    parameters are:
+    - [orientation] — layout direction. Defaults to [`Vertical].
+    - [show_arrows] — display arrow buttons at each end. Defaults to [false].
+    - [on_change] — callback invoked with the new scroll position whenever it
+      changes. *)
 
 val node : t -> Renderable.t
-(** [node t] returns the root renderable node. *)
+(** [node t] is the underlying {!Renderable.t} for [t]. *)
 
-val set_on_change : t -> (int -> unit) option -> unit
-(** [set_on_change t callback] registers a callback triggered when scroll
-    position changes. Passes the new position as an integer. *)
+(** {1:scroll_state Scroll state} *)
 
 val scroll_position : t -> int
-(** [scroll_position t] returns current scroll offset in cells. *)
+(** [scroll_position t] is the current scroll offset of [t], clamped to
+    \[[0];[max(0, scroll_size - viewport_size)]\].
 
-val set_scroll_position : ?emit:bool -> t -> int -> unit
-(** [set_scroll_position ?emit bar value] sets the scroll position, clamped to
-    valid range [0, max(0, scroll_size - viewport_size)].
+    See also {!set_scroll_position}. *)
 
-    @param emit
-      When [true] (default), triggers [on_change] callback. Set to [false] for
-      programmatic updates without notifications. *)
+val set_scroll_position : t -> int -> unit
+(** [set_scroll_position t v] sets the scroll position of [t] to [v], clamped to
+    the valid range. Fires the [on_change] callback if the clamped value differs
+    from the current position.
+
+    See also {!scroll_position} and {!scroll_by}. *)
 
 val scroll_size : t -> int
-(** [scroll_size t] returns total content size in cells. *)
+(** [scroll_size t] is the total content size of [t] in cells.
+
+    See also {!set_scroll_size}. *)
 
 val set_scroll_size : t -> int -> unit
-(** [set_scroll_size t size] updates content size used to compute valid scroll
-    range. Clamps current position if needed. *)
+(** [set_scroll_size t v] sets the content size of [t] to [v] cells. Clamps the
+    scroll position to the updated valid range and recalculates thumb
+    visibility.
+
+    See also {!scroll_size}. *)
 
 val viewport_size : t -> int
-(** [viewport_size t] returns visible area size in cells. *)
+(** [viewport_size t] is the visible area size of [t] in cells.
+
+    See also {!set_viewport_size}. *)
 
 val set_viewport_size : t -> int -> unit
-(** [set_viewport_size t size] updates visible area size. Affects thumb sizing
-    and scroll range calculations. *)
+(** [set_viewport_size t v] sets the visible area size of [t] to [v] cells.
+    Affects thumb sizing and the scroll range.
 
-val set_show_arrows : t -> bool -> unit
-(** [set_show_arrows t flag] shows or hides arrow buttons. *)
-
-val update_arrow_style : t -> arrow_style -> unit
-(** [update_arrow_style t style] applies new styling to arrow buttons. *)
-
-val update_track_style : t -> track_style -> unit
-(** [update_track_style t style] applies new styling to slider track and thumb.
-*)
-
-val set_track_viewport_size : t -> int option -> unit
-(** [set_track_viewport_size t size] sets an initial logical viewport size used
-    to compute thumb size before a real [viewport_size] is provided via
-    {!set_viewport_size}. *)
-
-val set_scroll_step : t -> int option -> unit
-(** [set_scroll_step t step] sets optional logical step size used by
-    {!scroll_by} when [unit] is [`Step]. Default is 1 if unset. *)
+    See also {!viewport_size}. *)
 
 val scroll_by : t -> float -> unit:scroll_unit -> unit
-(** [scroll_by t delta ~unit] adjusts scroll position by [delta] expressed in
-    [unit]. The delta is multiplied by the unit's cell value and added to the
-    current position. Position is clamped to valid range after adjustment. *)
+(** [scroll_by t delta ~unit] adjusts the scroll position of [t] by [delta]
+    expressed in [unit]. The resulting position is clamped to the valid range.
+    See {!type-scroll_unit} for the meaning of each unit. *)
 
-val handle_key : t -> Event.key -> bool
-(** [handle_key t event] processes keyboard interactions for scrolling. Returns
-    [true] when the event is consumed, [false] otherwise. Supports Up/Down or
-    Left/Right depending on orientation. *)
+val set_scroll_step : t -> int option -> unit
+(** [set_scroll_step t step] sets the custom step size used when [unit] is
+    [`Step] in {!scroll_by}. [None] resets the step to the default of [1]. *)
 
-val reset_visibility_control : t -> unit
-(** [reset_visibility_control t] re-enables automatic visibility toggling based
-    on content overflow after manual visibility override via
-    {!set_visible_override}. *)
+(** {1:appearance Appearance} *)
+
+val set_show_arrows : t -> bool -> unit
+(** [set_show_arrows t v] shows ([true]) or hides ([false]) the arrow buttons of
+    [t]. *)
+
+val set_track_color : t -> Ansi.Color.t -> unit
+(** [set_track_color t c] sets the track background color of [t] to [c]. *)
+
+val set_thumb_color : t -> Ansi.Color.t -> unit
+(** [set_thumb_color t c] sets the thumb foreground color of [t] to [c]. *)
+
+(** {1:visibility Visibility} *)
 
 val set_visible_override : t -> bool -> unit
-(** [set_visible_override t visible] explicitly sets visibility and disables
-    automatic visibility control until {!reset_visibility_control} is called.
-    Useful for maintaining scroll bar visibility regardless of content state. *)
+(** [set_visible_override t v] sets the visibility of [t] to [v] and disables
+    automatic visibility control.
+
+    See also {!reset_visibility_control}. *)
+
+val reset_visibility_control : t -> unit
+(** [reset_visibility_control t] re-enables automatic visibility for [t] based
+    on content overflow, undoing any prior call to {!set_visible_override}. *)
+
+(** {1:callback Callback} *)
+
+val set_on_change : t -> (int -> unit) option -> unit
+(** [set_on_change t f] replaces the change callback of [t] with [f]. [None]
+    removes the callback. *)
+
+(** {1:applying Applying props} *)
+
+val apply_props : t -> Props.t -> unit
+(** [apply_props t props] replaces the visual properties of [t] with [props].
+    Creation-time fields such as orientation remain unchanged. Does not fire the
+    [on_change] callback.
+
+    See also {!Props.make}. *)
+
+(** {1:keyboard Keyboard interaction} *)
+
+val handle_key : t -> Event.key -> bool
+(** [handle_key t event] is [true] iff [event] was consumed by [t]. Handles
+    directional arrows, Page Up/Down, and Home/End to adjust the scroll
+    position. *)
+
+(** {1:fmt Formatting} *)
+
+val pp : Format.formatter -> t -> unit
+(** [pp] formats a scroll bar value for debugging. *)
