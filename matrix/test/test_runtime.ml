@@ -162,6 +162,23 @@ let test_primary_required_rows_ignored_in_alt_mode () =
   let _w, h = Matrix.size app in
   equal ~msg:"alt mode size remains full terminal height" int 24 h
 
+let test_initial_resize_fires_before_first_render () =
+  let app, _state =
+    make_app ~target_fps:None ~input_timeout:(Some 0.) ~stop_after_reads:5000 ()
+  in
+  let events = ref [] in
+  Matrix.run app
+    ~on_resize:(fun _app ~cols ~rows ->
+      events := ("resize", cols, rows) :: !events)
+    ~on_render:(fun app ->
+      events := ("render", 0, 0) :: !events;
+      Matrix.stop app);
+  match List.rev !events with
+  | [ ("resize", 80, 24); ("render", 0, 0) ] -> ()
+  | got ->
+      failf "expected resize(80,24) before first render, got: %d event(s)"
+        (List.length got)
+
 let () =
   run "matrix.runtime"
     [
@@ -186,5 +203,10 @@ let () =
             test_primary_required_rows_expands_primary_region;
           test "primary required rows ignored in alt mode"
             test_primary_required_rows_ignored_in_alt_mode;
+        ];
+      group "Resize"
+        [
+          test "initial resize fires before first render"
+            test_initial_resize_fires_before_first_render;
         ];
     ]
