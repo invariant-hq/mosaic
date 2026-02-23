@@ -26,8 +26,8 @@ val add : t -> Glyph.t -> unit
     global pool reference count is incremented.
 
     Start and continuation cells of the same grapheme share a single entry,
-    keyed by the pool payload (ID + generation), so wide graphemes only bump the
-    global refcount once per grid. *)
+    keyed by a stable pool key, so wide graphemes only bump the global refcount
+    once per grid. *)
 
 val remove : t -> Glyph.t -> unit
 (** [remove t id] decrements the local reference count for the given encoded
