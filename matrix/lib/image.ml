@@ -232,7 +232,7 @@ let rule_h ?style ~width () =
   let width = clamp_nonneg width in
   if width = 0 then empty
   else
-    let ch = Uchar.of_int Grid.Border.single.horizontal in
+    let ch = Grid.Border.single.horizontal in
     let line = repeat_uchar ch width in
     make_text ~style ~width_method:default_width_method [ line ]
 
@@ -241,7 +241,7 @@ let rule_v ?style ~height () =
   let height = clamp_nonneg height in
   if height = 0 then empty
   else
-    let ch = Uchar.of_int Grid.Border.single.vertical in
+    let ch = Grid.Border.single.vertical in
     let line = repeat_uchar ch 1 in
     let lines = List.init height (fun _ -> line) in
     make_text ~style ~width_method:default_width_method lines
@@ -514,13 +514,21 @@ let render ?hits ?(x = 0) ?(y = 0) grid t =
               merge_clip base_clip (shift_clip_opt r.clip ~dx:x ~dy:y)
             in
             let draw () =
-              let len = Array.length r.lines in
-              for i = 0 to len - 1 do
-                let line_y = y + r.y + i in
-                if line_y >= 0 && line_y < grid_height then
-                  Grid.draw_text grid ~x:(x + r.x) ~y:line_y ~text:r.lines.(i)
-                    ~style:r.style
-              done
+              let prev_width_method = Grid.width_method grid in
+              let restore_width_method () =
+                if prev_width_method <> r.width_method then
+                  Grid.set_width_method grid prev_width_method
+              in
+              if prev_width_method <> r.width_method then
+                Grid.set_width_method grid r.width_method;
+              Fun.protect ~finally:restore_width_method (fun () ->
+                  let len = Array.length r.lines in
+                  for i = 0 to len - 1 do
+                    let line_y = y + r.y + i in
+                    if line_y >= 0 && line_y < grid_height then
+                      Grid.draw_text grid ~x:(x + r.x) ~y:line_y
+                        ~text:r.lines.(i) ~style:r.style
+                  done)
             in
             match clip with
             | None -> draw ()
@@ -531,14 +539,9 @@ let render ?hits ?(x = 0) ?(y = 0) grid t =
             in
             let draw () =
               if r.width > 0 && r.height > 0 then
-                let style =
-                  match r.fill with
-                  | Some _ -> r.border_style
-                  | None -> Ansi.Style.bg Color.black r.border_style
-                in
                 Grid.draw_box grid ~x:(x + r.x) ~y:(y + r.y) ~width:r.width
-                  ~height:r.height ~border:r.border ~sides:r.border_sides ~style
-                  ?fill:r.fill ()
+                  ~height:r.height ~border:r.border ~sides:r.border_sides
+                  ~style:r.border_style ?fill:r.fill ()
             in
             match clip with
             | None -> draw ()

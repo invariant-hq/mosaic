@@ -1,196 +1,118 @@
-(** Declarative drawing API for terminal UIs.
+(** Declarative image composition and rendering.
 
-    Image provides a compositional interface for building complex terminal
-    layouts without manually managing grid coordinates or rendering order.
-    Images are immutable rectangular descriptions of drawing operations that
-    compile down to flat arrays of positioned primitives, enabling efficient
-    batch rendering to {!Grid}.
+    An {e image} is an immutable rectangular description of drawing primitives
+    (text, fills, boxes, hit regions). Images are pure values: composition
+    functions like {!hcat} and {!overlay} rearrange flat primitive arrays
+    without side effects. Only {!render} performs actual drawing by walking the
+    array and executing each primitive into a {!Grid.t}.
 
-    {1 Overview}
+    {1:quick_start Quick start}
 
-    An image is a width × height rectangle containing a sequence of drawing
-    primitives (text, fills, boxes, hit regions, custom operations). Images are
-    pure values: composition operations like {!hcat} and {!overlay} transform
-    primitive arrays without side effects. Only {!render} performs actual
-    drawing by walking the flat program and executing primitives into a {!Grid}.
-
-    This design separates layout logic from rendering, making it simple to
-    compose, transform, and cache UI elements. The library handles coordinate
-    translation, clipping, and primitive ordering automatically.
-
-    {1 Usage Basics}
-
-    Build images from primitives:
     {[
-      let greeting = Image.text "Hello, world!" in
-      let box = Image.box ~width:20 ~height:3 () in
-      let filled = Image.fill ~color:Ansi.Color.blue ~width:10 ~height:2 ()
-    ]}
-
-    Combine images with composition operators:
-    {[
-      let header = Image.hcat [
-        Image.text "Status: ";
-        Image.text ~style:(Ansi.Style.make ~fg:Ansi.Color.green ()) "OK"
-      ] in
-      let panel = Image.vcat [
-        header;
-        Image.rule_h ~width:20 ();
-        Image.text "System ready"
-      ]
-    ]}
-
-    Render to a grid for display:
-    {[
+      let header =
+        Image.hcat
+          [
+            Image.text "Status: ";
+            Image.text ~style:(Ansi.Style.make ~fg:Ansi.Color.green ()) "OK";
+          ]
+      in
+      let panel =
+        Image.vcat
+          [ header; Image.rule_h ~width:20 (); Image.text "System ready" ]
+      in
       let grid = Grid.create ~width:80 ~height:24 () in
       Image.render grid panel ~x:0 ~y:0
     ]}
 
-    {1 Key Concepts}
+    {1:coords Coordinate system}
 
-    {2 Immutability and Composition}
+    Images use standard grid coordinates: origin [(0, 0)] at the top-left, X
+    increasing rightward, Y increasing downward. All values are in terminal
+    cells.
 
-    Images are immutable values. Composition functions ({!hcat}, {!vcat},
-    {!overlay}) produce new images without modifying their inputs. Each
-    composition operation flattens nested primitives into a single array,
-    adjusting coordinates and clipping regions as needed.
+    {1:sizing Sizing}
 
-    Primitives are stored with absolute positions relative to the image's
-    top-left corner (0, 0). Composition shifts primitives by accumulating
-    offsets: {!hcat} accumulates horizontal displacement, {!vcat} accumulates
-    vertical displacement, and {!overlay} stacks without offset.
+    Dimensions are determined by content:
+    - {!hcat} sums widths, takes maximum height.
+    - {!vcat} sums heights, takes maximum width.
+    - {!overlay} takes maximums of both.
 
-    {2 Coordinate Systems}
+    Empty images (width or height [= 0]) are filtered during composition and
+    contribute nothing to layout.
 
-    Images use standard grid coordinates:
-    - Origin (0, 0) is the top-left corner
-    - X increases rightward, Y increases downward
-    - All coordinates are in terminal cells (not pixels or points)
+    {1:clipping Clipping}
 
-    Composition operations maintain this invariant by translating child image
-    coordinates into parent space. For example, {!hcat} shifts the second
-    image's primitives right by the width of the first image.
+    {!crop} sets a scissor rectangle on the resulting image. Composition merges
+    parent and child clips via intersection. During {!render}, clips translate
+    to {!Grid.push_clip} / {!Grid.pop_clip} pairs.
 
-    {2 Sizing and Alignment}
+    {1:hits Hit regions}
 
-    Image dimensions are determined by their content:
-    - Primitive constructors ({!text}, {!fill}, {!box}) calculate dimensions
-      from parameters or text width
-    - {!hcat} sums child widths and takes maximum height
-    - {!vcat} sums child heights and takes maximum width
-    - {!overlay} takes maximum width and height
+    Hit regions map screen coordinates to application-defined identifiers for
+    mouse interaction. Use {!with_hit} for a whole-image region or
+    {!with_hit_rect} for a sub-rectangle. Hit primitives write to the optional
+    {!Screen.Hit_grid.t} passed to {!render}.
 
-    Empty images (width or height = 0) are filtered during composition and
-    contribute nothing to layout or rendering.
-
-    Alignment is handled via {!pad}, {!crop}, {!hsnap}, and {!vsnap}:
-    - {!pad} adds transparent space around an image
-    - {!crop} removes edges, potentially clipping primitives
-    - {!hsnap} and {!vsnap} resize to exact dimensions, padding or cropping as
-      needed with configurable alignment
-
-    {2 Clipping Regions}
-
-    Images maintain optional scissor rectangles that constrain rendering.
-    Clipping is applied hierarchically:
-    - {!crop} sets a clip rectangle on the resulting image
-    - Composition merges parent and child clips via intersection
-    - {!render} translates clips to {!Grid.push_clip} calls
-
-    Primitives store their local clip (from {!crop} ancestors) separately from
-    position. During rendering, the image's base clip is merged with each
-    primitive's clip and shifted by the render offset [(x, y)].
-
-    {2 Rendering Semantics}
-
-    {!render} walks the primitive array in order, executing each operation:
-    - Text primitives call {!Grid.draw_text} per line
-    - Fill primitives call {!Grid.fill_rect}
-    - Box primitives call {!Grid.draw_box}
-    - Hit primitives register regions in the optional {!Screen.Hit_grid.t}
-    - Custom primitives invoke user-provided drawing functions
-
-    Primitives are drawn in array order (later primitives overdraw earlier
-    ones). Use {!overlay} to control z-order explicitly: the last image in the
-    list appears on top.
-
-    Rendering respects grid clips set via {!Grid.push_clip}. Clips are applied
-    by wrapping primitive execution in {!Grid.clip}, which ensures balanced
-    push/pop pairs even when primitives are skipped.
-
-    {2 Hit Regions}
-
-    Hit regions enable mouse interaction by mapping screen coordinates to
-    application-defined identifiers. Use {!with_hit} to associate an ID with an
-    entire image, or {!with_hit_rect} for precise sub-rectangles.
-
-    Hit primitives are rendered like any other, but write to the optional
-    {!Screen.Hit_grid.t} instead of the display grid. This allows hit testing
-    via {!Screen.Hit_grid.get} after rendering completes.
-
-    Hit IDs must be strictly positive; zero and negative values are ignored.
-    This convention reserves 0 for "no hit" in hit grid lookups.
-
-    {1 Performance Considerations}
-
-    - Image construction is O(total_primitives) across all children, as
-      primitives are flattened into a single array
-    - Primitive shifting and clipping updates are O(1) per primitive
-    - Rendering is O(primitives) for iteration plus the cost of each drawing
-      operation (see {!Grid} documentation for primitive costs)
-    - Text width calculation is O(grapheme_count) per {!text} call, using the
-      configured {!Glyph.width_method}
-
-    Composition does not perform rendering; it only reorganizes primitive
-    arrays. This makes it cheap to build complex layouts incrementally and cache
-    intermediate results. Rendering cost is proportional to the number of
-    primitives executed, not the depth of composition.
-
-    {1 Invariants}
-
-    - Image dimensions are non-negative; constructors clamp negative inputs to
-      zero
-    - Empty images (width = 0 or height = 0) contain no primitives
-    - Primitive positions are relative to the image's top-left (0, 0)
-    - Clip rectangles are expressed in image-local coordinates
-    - Hit IDs are strictly positive or ignored *)
+    {b Note.} Hit IDs must be strictly positive; zero and negative values are
+    ignored. *)
 
 module Color = Ansi.Color
 module Style = Ansi.Style
 
+(** {1:types Types} *)
+
 type style = Style.t
+(** The type for styles. Alias for {!Ansi.Style.t}. *)
+
 type h_align = [ `Left | `Center | `Right ]
+(** The type for horizontal alignments. *)
+
 type v_align = [ `Top | `Middle | `Bottom ]
+(** The type for vertical alignments. *)
+
 type hit_id = int
+(** The type for hit-region identifiers. A {e strictly positive} integer. *)
 
 type t
-(** Immutable image description: width x height rectangle of drawing primitives.
-*)
+(** The type for images. An immutable width-by-height rectangle of drawing
+    primitives. *)
+
+(** {1:constructors Constructors} *)
 
 val empty : t
-(** Empty image with zero width and height. *)
+(** [empty] is the empty image with zero dimensions. *)
 
 val void : int -> int -> t
-(** Image with dimensions but no drawing commands. Negative dimensions clamp to
-    zero. *)
+(** [void w h] is an image with dimensions [(w, h)] but no drawing primitives.
+    Negative dimensions are clamped to [0]. *)
+
+(** {1:accessors Accessors} *)
 
 val width : t -> int
-val height : t -> int
-val size : t -> int * int
+(** [width img] is [img]'s width in cells. *)
 
-(** {1 Primitive constructors} *)
+val height : t -> int
+(** [height img] is [img]'s height in cells. *)
+
+val size : t -> int * int
+(** [size img] is [(width img, height img)]. *)
+
+(** {1:primitives Primitives} *)
 
 val fill : ?color:Color.t -> width:int -> height:int -> unit -> t
-(** Solid rectangle of [color]. *)
+(** [fill ~width ~height ()] is a solid rectangle of [color]. [color] defaults
+    to the terminal default. *)
 
 val text : ?style:Style.t -> ?width_method:Glyph.width_method -> string -> t
-(** Multi-line text (splits on ['\n']). *)
+(** [text s] is a multi-line text image. Lines are split on ['\n']. Width is
+    computed from the widest line using [width_method] (defaults to the global
+    setting). *)
 
 val string : ?style:Style.t -> ?width_method:Glyph.width_method -> string -> t
-(** Alias for {!text}. *)
+(** [string] is {!text}. *)
 
 val line : ?style:Style.t -> ?width_method:Glyph.width_method -> string -> t
-(** Single-line alias for {!text}. *)
+(** [line] is {!text} for a single line. *)
 
 val box :
   ?border:Grid.Border.t ->
@@ -201,52 +123,83 @@ val box :
   height:int ->
   unit ->
   t
-(** Box primitive built on {!Grid.draw_box}. *)
+(** [box ~width ~height ()] is a box primitive rendered via {!Grid.draw_box}. *)
 
 val rule_h : ?style:Style.t -> width:int -> unit -> t
-(** Horizontal rule using single-line box characters. *)
+(** [rule_h ~width ()] is a horizontal rule of [width] cells. *)
 
 val rule_v : ?style:Style.t -> height:int -> unit -> t
-(** Vertical rule using single-line box characters. *)
+(** [rule_v ~height ()] is a vertical rule of [height] cells. *)
 
-(** {1 Composition} *)
+(** {1:composition Composition} *)
 
 val hcat : t list -> t
-val vcat : t list -> t
-val overlay : t list -> t
-val pad : ?left:int -> ?right:int -> ?top:int -> ?bottom:int -> t -> t
-val hpad : int -> int -> t -> t
-val vpad : int -> int -> t -> t
-val crop : ?l:int -> ?r:int -> ?t:int -> ?b:int -> t -> t
-val hcrop : int -> int -> t -> t
-val vcrop : int -> int -> t -> t
-val hsnap : ?align:h_align -> int -> t -> t
-val vsnap : ?align:v_align -> int -> t -> t
+(** [hcat imgs] concatenates [imgs] horizontally. Width is the sum of child
+    widths, height the maximum. *)
 
-(** {1 Hit regions} *)
+val vcat : t list -> t
+(** [vcat imgs] concatenates [imgs] vertically. Height is the sum of child
+    heights, width the maximum. *)
+
+val overlay : t list -> t
+(** [overlay imgs] stacks [imgs] at the same origin. Later images overdraw
+    earlier ones. Dimensions are the component-wise maximums. *)
+
+val pad : ?left:int -> ?right:int -> ?top:int -> ?bottom:int -> t -> t
+(** [pad img] adds transparent space around [img]. Each side defaults to [0]. *)
+
+val hpad : int -> int -> t -> t
+(** [hpad l r img] is [pad ~left:l ~right:r img]. *)
+
+val vpad : int -> int -> t -> t
+(** [vpad t b img] is [pad ~top:t ~bottom:b img]. *)
+
+val crop : ?l:int -> ?r:int -> ?t:int -> ?b:int -> t -> t
+(** [crop img] removes edges, potentially clipping primitives. Each side
+    defaults to [0]. *)
+
+val hcrop : int -> int -> t -> t
+(** [hcrop l r img] is [crop ~l ~r img]. *)
+
+val vcrop : int -> int -> t -> t
+(** [vcrop t b img] is [crop ~t ~b img]. *)
+
+val hsnap : ?align:h_align -> int -> t -> t
+(** [hsnap w img] resizes [img] to exactly [w] columns, padding or cropping
+    according to [align] (defaults to [`Left]). *)
+
+val vsnap : ?align:v_align -> int -> t -> t
+(** [vsnap h img] resizes [img] to exactly [h] rows, padding or cropping
+    according to [align] (defaults to [`Top]). *)
+
+(** {1:hit_regions Hit regions} *)
 
 val with_hit : id:hit_id -> t -> t
-(** Add a hit region covering the full image. Ignored when [id <= 0] or the
-    image is empty. *)
+(** [with_hit ~id img] registers a hit region covering all of [img]. Ignored
+    when [id <= 0] or [img] is empty. *)
 
 val with_hit_rect :
   id:hit_id -> x:int -> y:int -> width:int -> height:int -> t -> t
-(** Add a hit region for a sub-rectangle. Coordinates are relative to the image.
-*)
+(** [with_hit_rect ~id ~x ~y ~width ~height img] registers a hit region for the
+    sub-rectangle at [(x, y)] with dimensions [(width, height)]. Coordinates are
+    relative to [img]. *)
 
-(** {1 Rendering} *)
+(** {1:rendering Rendering} *)
 
 val render : ?hits:Screen.Hit_grid.t -> ?x:int -> ?y:int -> Grid.t -> t -> unit
-(** Render at [(x, y)] into [grid], registering hits when provided. *)
+(** [render grid img] draws [img] at [(x, y)] into [grid]. When [hits] is
+    provided, hit primitives are registered there. [x] and [y] default to [0].
+*)
 
 val draw : t -> Grid.t -> Screen.Hit_grid.t -> unit
-(** Convenience for [render ~hits ~x:0 ~y:0]. *)
+(** [draw img grid hits] is [render ~hits ~x:0 ~y:0 grid img]. *)
 
-(** {1 Low-level escape hatches} *)
+(** {1:low Low-level} *)
 
 val custom :
   width:int ->
   height:int ->
   (Grid.t -> Screen.Hit_grid.t option -> x:int -> y:int -> unit) ->
   t
-(** Arbitrary drawing while still integrating with {!render}. *)
+(** [custom ~width ~height f] is an image that invokes [f] during {!render}. [f]
+    receives the grid, the optional hit grid, and the render offset. *)
