@@ -1,8 +1,0 @@
-(library
- (name mosaic_syntax)
- (public_name mosaic.syntax)
- (libraries
-  threads
-  mosaic.tree-sitter
-  mosaic.tree-sitter.ocaml
-  mosaic.tree-sitter.json))
