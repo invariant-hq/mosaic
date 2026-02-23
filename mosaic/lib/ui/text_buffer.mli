@@ -34,12 +34,12 @@ module Highlight : sig
     ref_id:int ->
     unit ->
     t
-  (** [make ~start_offset ~end_offset ~style ~ref_id ()] is a highlight
-      covering grapheme offsets \[[start_offset];[end_offset)\].
+  (** [make ~start_offset ~end_offset ~style ~ref_id ()] is a highlight covering
+      grapheme offsets from [start_offset] (inclusive) to [end_offset]
+      (exclusive).
 
-      [priority] defaults to [0]. Higher values render on top. [ref_id]
-      groups related highlights for batch removal via
-      {!remove_highlights_by_ref}. *)
+      [priority] defaults to [0]. Higher values render on top. [ref_id] groups
+      related highlights for batch removal via {!remove_highlights_by_ref}. *)
 
   val start_offset : t -> int
   (** [start_offset h] is the inclusive start grapheme offset. *)
@@ -128,10 +128,10 @@ val line_spans : t -> int -> span list
     boundaries to avoid rescanning. Returns [[]] if [n] is out of range. *)
 
 val text_in_range : t -> start:int -> len:int -> string
-(** [text_in_range t ~start ~len] is the plain text for grapheme offsets
-    \[[start];[start+len)\]. If [start + len] exceeds {!grapheme_count}, the
-    result extends to the end of the buffer. Returns [""] if [start] is out
-    of bounds or [len <= 0]. *)
+(** [text_in_range t ~start ~len] is the plain text for grapheme offsets from
+    [start] (inclusive) to [start + len] (exclusive). If [start + len] exceeds
+    {!grapheme_count}, the result extends to the end of the buffer. Returns [""]
+    if [start] is out of bounds or [len <= 0]. *)
 
 (** {1:highlights_ops Highlight operations} *)
 
@@ -146,9 +146,9 @@ val clear_highlights : t -> unit
 (** [clear_highlights t] removes all highlights. *)
 
 val highlights_in_range : t -> start:int -> len:int -> Highlight.t list
-(** [highlights_in_range t ~start ~len] is the highlights intersecting
-    grapheme offsets \[[start];[start+len)\], sorted by ascending
-    {!Highlight.priority}. *)
+(** [highlights_in_range t ~start ~len] is the highlights intersecting grapheme
+    offsets from [start] (inclusive) to [start + len] (exclusive), sorted by
+    ascending {!Highlight.priority}. *)
 
 (** {1:tab_width Tab width} *)
 

@@ -485,7 +485,10 @@ let create ?glyph_pool ?width_method ?style () =
   let root_style =
     match style with
     | Some s -> s
-    | None -> Toffee.Style.set_size (Toffee.Style.Size_dim.pct ~w:100. ~h:100.) Toffee.Style.default
+    | None ->
+        Toffee.Style.set_size
+          (Toffee.Style.Size_dim.pct ~w:100. ~h:100.)
+          Toffee.Style.default
   in
   let root =
     Renderable.Private.create_root ctx ~style:root_style ~glyph_pool:pool

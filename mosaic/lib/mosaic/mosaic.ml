@@ -527,8 +527,7 @@ let run ?matrix
     | `Alt -> None
   in
   let renderer =
-    Renderer.create
-      ?style:renderer_style
+    Renderer.create ?style:renderer_style
       ~glyph_pool:(Matrix.Grid.glyph_pool base_grid)
       ~width_method:(Matrix.Grid.width_method base_grid)
       ()
@@ -561,12 +560,12 @@ let run ?matrix
   let frame_delta = ref 0. in
   let primary_required_rows (_app : Matrix.app) =
     match Matrix.mode matrix_app with
-    | `Primary -> Some (max 1 (Renderable.height (Renderer.root runtime.renderer)))
+    | `Primary ->
+        Some (max 1 (Renderable.height (Renderer.root runtime.renderer)))
     | `Alt -> None
   in
 
-  Matrix.run runtime.matrix_app
-    ~primary_required_rows
+  Matrix.run runtime.matrix_app ~primary_required_rows
     ~on_frame:(fun _app ~dt ->
       handle_tick runtime ~dt;
       handle_every_subs runtime ~dt;

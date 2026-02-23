@@ -413,7 +413,9 @@ let static_write_raw_immediate t text =
       !n
     in
     let max_offset = max 0 (t.height - 1) in
-    let grow_by = min payload_newlines (max 0 (max_offset - base_render_offset)) in
+    let grow_by =
+      min payload_newlines (max 0 (max_offset - base_render_offset))
+    in
     let render_offset = base_render_offset + grow_by in
     apply_primary_region t ~render_offset ~resize:false;
     if t.render_offset <> prev_render_offset || t.tui_height <> prev_tui_height
@@ -508,9 +510,7 @@ let recompute_primary_layout t ~is_tty ~allow_scroll_up ~required_rows_hint =
   let height = max 1 t.height in
   let active_rows = max 1 (Screen.active_height t.screen) in
   let hinted_rows =
-    match required_rows_hint with
-    | Some rows -> max 1 rows
-    | None -> 0
+    match required_rows_hint with Some rows -> max 1 rows | None -> 0
   in
   let required_rows = max active_rows hinted_rows in
   let render_height_limit = ref None in
@@ -621,7 +621,8 @@ let submit ?primary_required_rows t =
             && pre_submit_tui_height > 0
             && t.render_offset > pre_submit_render_offset
           then
-            clear_lines ~start:(pre_submit_render_offset + 1)
+            clear_lines
+              ~start:(pre_submit_render_offset + 1)
               ~count:(t.render_offset - pre_submit_render_offset);
           if t.tui_height > 0 then
             clear_lines ~start:(t.render_offset + 1) ~count:t.tui_height);
@@ -653,7 +654,9 @@ let submit ?primary_required_rows t =
 
     let stdout_end = t.now () in
     let stdout_ms = Float.max 0. ((stdout_end -. stdout_start) *. 1000.) in
-    let overall_frame_ms = Float.max 0. ((stdout_end -. overall_start) *. 1000.) in
+    let overall_frame_ms =
+      Float.max 0. ((stdout_end -. overall_start) *. 1000.)
+    in
 
     Screen.record_runtime_metrics t.screen
       ~frame_callback_ms:t.last_frame_callback_ms ~overall_frame_ms ~stdout_ms;
@@ -1202,9 +1205,7 @@ let run ?on_frame ?on_input ?on_resize ?primary_required_rows ~on_render t =
     let required_rows_hint =
       match primary_required_rows with
       | Some f -> (
-          match f t with
-          | Some rows when rows > 0 -> Some rows
-          | _ -> None)
+          match f t with Some rows when rows > 0 -> Some rows | _ -> None)
       | None -> None
     in
     submit ?primary_required_rows:required_rows_hint t;

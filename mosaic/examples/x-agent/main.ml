@@ -115,7 +115,9 @@ let turn_block ~role ~accent content =
     let t = trim content in
     if t = "" then "_(empty)_" else t
   in
-  text ~style:(Ansi.Style.make ~fg:accent ()) ~wrap:`Word
+  text
+    ~style:(Ansi.Style.make ~fg:accent ())
+    ~wrap:`Word
     ~size:{ width = pct 100; height = auto }
     (role ^ "> " ^ body)
 
@@ -269,7 +271,8 @@ let view model =
           box ~border:true ~title:"Prompt" ~padding:(padding 1)
             ~size:{ width = pct 100; height = auto }
             [
-              box ~flex_direction:Row ~align_items:Center ~size:{ width = pct 100; height = auto }
+              box ~flex_direction:Row ~align_items:Center
+                ~size:{ width = pct 100; height = auto }
                 [
                   text ~style:(Ansi.Style.make ~bold:true ()) "❯ ";
                   input ~autofocus:true ~value:model.input
@@ -277,7 +280,8 @@ let view model =
                       (match model.state with
                       | Idle -> "Ask anything"
                       | Responding -> "Assistant is responding..."
-                      | Waiting_for_confirmation -> "Waiting for confirmation (y/n)...")
+                      | Waiting_for_confirmation ->
+                          "Waiting for confirmation (y/n)...")
                     ~size:{ width = pct 100; height = px 1 }
                     ~on_input:(fun v -> Some (Set_input v))
                     ~on_submit:(fun v -> Some (Submit v))
