@@ -6,16 +6,19 @@
 
 (** Grapheme cluster segmenter.
 
-    Vendored from uuseg v17.0.0 with the following modifications:
-    - Added {!reset} function for segmenter reuse (zero allocation)
-    - Added [ignore_zwj] option to disable GB11 (emoji ZWJ sequences)
-    - Added {!set_ignore_zwj} to change the option after creation
-    - Added {!check_boundary} for zero-allocation direct boundary checks *)
+    Vendored from uuseg v17.0.0 with the following additions:
+    {ul
+    {- {!reset} for zero-allocation segmenter reuse.}
+    {- [ignore_zwj] option to disable rule GB11 (emoji ZWJ
+       sequences).}
+    {- {!set_ignore_zwj} to change the option after creation.}
+    {- {!check_boundary} and {!check_boundary_with_width} for
+       zero-allocation direct boundary checks.}} *)
 
-(** {1 Segmenter} *)
+(** {1:segmenter Segmenter} *)
 
 type t
-
+(** The type for grapheme cluster segmenters. *)
 
 val create : ?ignore_zwj:bool -> unit -> t
 (** [create ()] is a new grapheme cluster segmenter.
