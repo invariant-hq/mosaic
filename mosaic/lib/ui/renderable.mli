@@ -1,855 +1,531 @@
-(** Renderable nodes with Toffee layout integration.
+(** Mutable UI tree nodes with layout integration.
 
-    Renderable provides the core node abstraction for Mosaic's UI tree. Each
-    node combines layout state (managed by Toffee, a flexbox layout engine) with
-    rendering callbacks, event handlers, and lifecycle hooks. Nodes form a tree
-    hierarchy where parent-child relationships drive both layout computation and
-    rendering order.
+    A {!t} combines a layout node with rendering callbacks, event handlers,
+    focus state, and lifecycle hooks. Nodes form a mutable tree: parent-child
+    relationships drive both layout computation and rendering order.
 
-    The public API focuses on tree construction, styling, measurement, event
-    handling, and rendering. Internal renderer integration lives in {!Internal}.
+    Widgets create nodes with {!create}, configure them with setters, and render
+    content through callbacks. The renderer drives the pipeline through
+    {!Private}. *)
 
-    {1 Overview}
-
-    Create nodes with {!create_child}, style them with {!set_style}, attach
-    render callbacks with {!set_render}, and organize them hierarchically with
-    {!append_child} or {!insert_child}. The layout engine computes positions and
-    sizes; rendering traverses the tree in z-index order.
-
-    {1 Usage Basics}
-
-    Create a child node and attach it to a parent:
-    {[
-      let child =
-        Renderable.create_child ~parent
-          ~props:(Renderable.Props.make ~id:"my-node" ())
-          ()
-      in
-      match child with
-      | Ok child ->
-          Renderable.set_render child (fun _self grid ~delta ->
-              Grid.draw_text grid ~x:0 ~y:0 ~text:"Hello, world!");
-          let _ = Renderable.append_child ~parent ~child in
-          ()
-      | Error _ -> ()
-    ]}
-
-    Update styles dynamically:
-    {[
-      let open Toffee.Style in
-      let style =
-        default |> set_width (Length 80.) |> set_height (Length 24.)
-        |> set_flex_direction Flex_direction.Column
-      in
-      let _ = Renderable.set_style node style in
-      ()
-    ]}
-
-    {1 Key Concepts}
-
-    {2 Layout Integration}
-
-    Each renderable wraps a Toffee layout node. Toffee computes flexbox-based
-    positions and dimensions; {!val-x}, {!val-y}, {!width}, and {!height} expose
-    the computed layout. Modifications via {!set_style} or {!mark_layout_dirty}
-    trigger re-layout on the next frame.
-
-    {2 Rendering Pipeline}
-
-    Rendering proceeds in three phases per node:
-    + {i Before}: Optional [render_before_hook] for setup (e.g., clipping)
-    + {i Main}: The node's {!type-render} callback draws into a grid
-    + {i After}: Optional [render_after_hook] for cleanup or overlays
-
-    Children render recursively after the parent's main phase, sorted by
-    z-index. Nodes with [`Self] buffering render into an offscreen grid, then
-    blit to the parent.
-
-    {2 Event Handling}
-
-    Events flow in tiers:
-    + {b Tier 1}: Global handlers via renderer
-    + {b Tier 2}: Per-node {!on_key_down} or {!on_mouse} handlers
-    + {b Tier 3}: Default handler via {!set_default_key_handler}
-
-    Mouse events bubble up the tree unless {!Event.Mouse.stop_propagation} is
-    called. Keyboard and paste events do not bubble; they target the focused
-    node only.
-
-    {2 Focus Management}
-
-    Mark nodes focusable with {!set_focusable}. Call {!val-focus} to request
-    focus (delegated to the renderer's focus controller). Only one node is
-    focused at a time. Focused nodes receive keyboard and paste events.
-
-    {2 Lifecycle Hooks}
-
-    + {!set_on_frame}: Called every frame with delta time (ms)
-    + {!set_on_size_change}: Called when {!width} or {!height} changes
-    + {!set_on_lifecycle_pass}: Called during renderer's lifecycle pass
-
-    Lifecycle passes run for nodes with {!set_live} enabled or ancestor counts
-    propagated via {!Internal.live_count}.
-
-    {2 Selection Support}
-
-    Nodes provide text selection via {!set_selection}. Implement
-    {!Select.capability} to handle selection start, change, clear, and text
-    extraction. The renderer coordinates global selection state across nodes.
-
-    {1 Invariants}
-
-    - Every node belongs to exactly one Toffee tree (validated via
-      [Error.Tree_mismatch])
-    - A node's parent reference matches its position in the parent's child list
-    - Layout dirty flags propagate upward on style or hierarchy changes
-    - Sorted children caches (z-index, primary axis) rebuild lazily on access
-    - Buffered nodes maintain a framebuffer resized to match layout dimensions
-    - Live counts equal the sum of self-live (1 if live and visible, else 0)
-      plus all descendants' live counts
-    - Focused nodes are always focusable; blurring unfocusable nodes is a no-op
-
-    {1 Performance Considerations}
-
-    - Child sorting is O(n log n) via insertion sort, cached until z-index or
-      position changes
-    - Tree mutations ({!append_child}, {!detach}) are O(1) but invalidate caches
-    - Layout queries ({!val-x}, {!val-y}, {!width}, {!height}) are O(1) after
-      caching
-    - Viewport culling via {!Internal.children_in_viewport} uses binary search
-      for large child lists (>= 16)
-
-    {1 Standards and Compatibility}
-
-    Layout semantics align with Toffee's flexbox implementation, which follows
-    the CSS Flexible Box Layout specification. Refer to Toffee documentation for
-    flexbox properties and behavior. *)
+(** {1:types Types} *)
 
 type t
-(** Mutable renderable node.
-
-    Combines layout state (via Toffee), rendering callbacks, event handlers,
-    focus state, and hierarchy metadata. Nodes are mutable and stateful;
-    modifications trigger re-renders and layout updates. *)
+(** The type for mutable nodes in the UI tree. *)
 
 type render = t -> Grid.t -> delta:float -> unit
-(** [render self grid ~delta] draws the node into [grid].
-
-    [self] is the node being rendered; [grid] is the target framebuffer (either
-    the main grid or a node's buffered grid); [delta] is elapsed time in
-    milliseconds since the last frame.
-
-    Rendering operates within the node's computed layout bounds ({!val-x},
-    {!val-y}, {!width}, {!height}) but may draw outside if not clipped. Use
-    {!Grid.clip} or {!set_child_clip} for constrained rendering. *)
+(** The type for render callbacks. [render self grid ~delta] draws [self] into
+    [grid]. [delta] is the elapsed time in milliseconds since the last frame. *)
 
 type measure =
   known_dimensions:float option Toffee.Geometry.Size.t ->
   available_space:Toffee.Available_space.t Toffee.Geometry.Size.t ->
   style:Toffee.Style.t ->
   float Toffee.Geometry.Size.t
-(** [measure ~known_dimensions ~available_space ~style] computes intrinsic size.
+(** The type for intrinsic size computation callbacks. Called during layout when
+    a node lacks explicit dimensions. *)
 
-    Called by Toffee during layout when a node's dimensions are not explicitly
-    set. [known_dimensions] contains width/height if already resolved;
-    [available_space] describes constraints from the parent; [style] is the
-    node's current Toffee style.
-
-    Returns a size in layout units (typically terminal cells). Used for leaf
-    nodes like text or images that need content-based sizing.
-
-    @see <https://docs.rs/taffy/latest/taffy/tree/trait.LayoutTree.html#tymethod.measure_child>
-      Taffy measure_child documentation *)
-
-type 'a event_handler = 'a -> unit
-(** ['a event_handler] is a callback for events of type ['a].
-
-    Handlers run synchronously during event dispatch. For mouse events, multiple
-    handlers may run (bubbling); for keyboard events, handlers run until one
-    calls {!Event.Key.prevent_default}. *)
-
-type cursor_style = [ `Block | `Line | `Underline ]
-(** Cursor style variants used for hardware cursor control. *)
-
-type hardware_cursor = {
+type cursor = {
   x : int;
   y : int;
+  style : [ `Block | `Line | `Underline ];
   color : Ansi.Color.t;
-  style : cursor_style;
   blinking : bool;
 }
-(** Hardware cursor description in absolute, 1-based coordinates. *)
+(** The type for hardware cursor descriptions. Coordinates are absolute terminal
+    cell positions. *)
 
-module Props : sig
-  type t
-  (** Immutable properties for node initialization.
+val equal_cursor : cursor -> cursor -> bool
+(** [equal_cursor a b] is [true] iff all fields of [a] and [b] match. *)
 
-      Props bundle initial configuration: ID, style, visibility, z-index,
-      buffering mode, and live flag. Use {!make} to construct and accessors to
-      read. Props are copied into the node on creation; subsequent modifications
-      use direct setters like {!set_visible} or {!set_style}. *)
+val pp_cursor : Format.formatter -> cursor -> unit
+(** [pp_cursor ppf c] formats [c] on [ppf] for debugging. *)
 
-  type buffer_mode = [ `None | `Self ]
-  (** Buffering mode for offscreen rendering.
+(** {1:constructors Constructors} *)
 
-      [`None] renders directly into the parent's grid. [`Self] allocates a
-      framebuffer and renders the node (but not children) offscreen, then blits
-      to the parent. Useful for caching expensive rendering or applying effects.
-  *)
-
-  val make :
-    id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?buffer:buffer_mode ->
-    ?live:bool ->
-    unit ->
-    t
-  (** [make ~id ?style ?visible ?z_index ?buffer ?live ()] creates props.
-
-      [style] defaults to {!Toffee.Style.default}. [visible] defaults to [true].
-      [z_index] defaults to [0]. [buffer] defaults to [`None]. [live] defaults
-      to [false]. *)
-
-  val id : t -> string
-  (** [id t] returns the node's string identifier. *)
-
-  val visible : t -> bool
-  (** [visible t] returns whether the node is visible. *)
-
-  val z_index : t -> int
-  (** [z_index t] returns the rendering order. *)
-
-  val buffer : t -> buffer_mode
-  (** [buffer t] returns the buffering mode. *)
-
-  val live : t -> bool
-  (** [live t] returns whether lifecycle hooks are enabled. *)
-end
-
-type error =
-  | Layout_error of Toffee.Error.t
-  | Tree_mismatch
-      (** Errors from tree or layout operations.
-
-          [Layout_error e] wraps a Toffee layout engine error. [Tree_mismatch]
-          occurs when attaching nodes from different Toffee trees (each tree is
-          isolated). *)
-
-(** {1 Tree Construction} *)
-
-val create_child :
+val create :
   parent:t ->
+  ?index:int ->
   ?id:string ->
-  ?props:Props.t ->
-  ?on_frame:(t -> delta:float -> unit) ->
-  ?on_size_change:(t -> unit) ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?live:bool ->
   ?render:render ->
   unit ->
-  (t, error) result
-(** [create_child ~parent ?id ?props ?on_frame ?on_size_change ?render ()]
-    creates a detached child.
+  t
+(** [create ~parent ()] is a new node attached as a child of
+    [child_target parent]. When [index] is omitted the node is appended last;
+    otherwise it is inserted at the given position, clamped to
+    \[[0];[child_count]\].
 
-    The child belongs to the same Toffee tree and renderer as [parent] but is
-    not attached to any parent until {!append_child} or {!insert_child} is
-    called. [id] defaults to ["renderable-N"] where N is an internal counter.
-    [props] defaults to [Props.make ~id ()]. [render] defaults to a no-op.
+    Optional parameters:
+    - [id]: unique identifier string. Defaults to ["node-N"].
+    - [style]: flexbox style. Defaults to {!Toffee.Style.default}.
+    - [visible]: initial visibility. Defaults to [true].
+    - [z_index]: rendering order; higher values render on top. Defaults to [0].
+    - [opacity]: opacity clamped to \[[0.0];[1.0]\]. Defaults to [1.0].
+    - [live]: continuous rendering every frame. Defaults to [false].
 
-    The child inherits scheduling, focus, and lifecycle callbacks from [parent].
+    Raises [Invalid_argument] if the layout tree rejects the node. *)
 
-    Returns [Error Tree_mismatch] if [parent] is from a different Toffee tree
-    (should not occur in practice). *)
+val attach : parent:t -> ?index:int -> t -> unit
+(** [attach ~parent t] attaches [t] as a child of [child_target parent],
+    detaching [t] from any previous parent first. When [index] is omitted the
+    node is appended last.
 
-(** {1 Tree Mutation} *)
+    Raises [Invalid_argument] if [parent] and [t] belong to different trees, or
+    if either node is destroyed. *)
 
-val append_child : parent:t -> child:t -> (unit, error) result
-(** [append_child ~parent ~child] attaches [child] as the last child of
-    [parent].
+val detach : t -> unit
+(** [detach t] removes [t] from its parent. The node remains valid and can be
+    reattached with {!attach}. Blurs [t] if focused. No-op if already detached.
+*)
 
-    Detaches [child] from its current parent (if any) before attaching. Updates
-    the Toffee layout tree, marks layouts dirty, and invalidates sorted caches.
-    Live counts propagate upward.
+val destroy : t -> unit
+(** [destroy t] detaches [t], removes all children (clearing their parent
+    pointers and lifecycle registrations), frees its layout node, and clears all
+    handlers. The node becomes unusable. No-op if already destroyed.
 
-    @raise Tree_mismatch
-      if [child] belongs to a different Toffee tree than [parent]. *)
+    Children are removed but not themselves destroyed — they become orphaned
+    nodes that can be reattached elsewhere. Use {!destroy_recursively} to
+    destroy the entire subtree. *)
 
-val insert_child : parent:t -> index:int -> child:t -> (unit, error) result
-(** [insert_child ~parent ~index ~child] attaches [child] at position [index].
+val destroy_recursively : t -> unit
+(** [destroy_recursively t] destroys [t] and all descendants depth-first. See
+    also {!destroy}. *)
 
-    [index] is clamped to [[0, child_count]]. Detaches [child] from its current
-    parent first. Updates the Toffee layout tree, marks layouts dirty, and
-    invalidates sorted caches.
+val destroyed : t -> bool
+(** [destroyed t] is [true] iff {!destroy} has been called on [t]. *)
 
-    @raise Tree_mismatch
-      if [child] belongs to a different Toffee tree than [parent]. *)
-
-val detach : t -> (unit, error) result
-(** [detach t] removes [t] from its parent without destroying the Toffee node.
-
-    If [t] is focused, blurs it first. The node remains valid and can be
-    reattached. Marks the parent's layout dirty and updates live counts. Returns
-    [Ok ()] if [t] has no parent. *)
-
-val remove : t -> (unit, error) result
-(** [remove t] detaches [t] and destroys its Toffee node.
-
-    The node becomes unusable after removal. Use {!detach} if you plan to
-    reattach. *)
-
-(** {1 Introspection} *)
+(** {1:identity Identity} *)
 
 val id : t -> string
-(** [id t] returns [t]'s string identifier. *)
+(** [id t] is [t]'s string identifier. *)
 
 val parent : t -> t option
-(** [parent t] returns [t]'s parent, or [None] if detached or root. *)
+(** [parent t] is [t]'s parent, or [None] if [t] is detached or a root. *)
 
 val children : t -> t list
-(** [children t] returns [t]'s children in insertion order.
+(** [children t] is [t]'s children in insertion order. The list is a snapshot;
+    subsequent mutations are not reflected. *)
 
-    The returned list is a snapshot; subsequent mutations are not reflected. *)
+val child_target : t -> t
+(** [child_target t] is the node that receives children on behalf of [t].
+    Defaults to [t] itself. Composite widgets override this to redirect children
+    to an internal container (e.g. a scroll box routes children to its content
+    node).
 
-val set_child_sink :
-  t -> (child:t -> index:int option -> t * int option) option -> unit
-(** [set_child_sink t sink] installs an optional redirect for child mutations.
+    See also {!set_child_target}. *)
 
-    When set, calls to {!append_child} or {!insert_child} on [t] forward the
-    mutation to the target parent (and optional index) returned by [sink].
-    Useful for composite renderables (e.g. scroll boxes) whose logical children
-    live under an internal container instead of the root. *)
+val set_child_target : t -> t option -> unit
+(** [set_child_target t target] sets the node that receives children on behalf
+    of [t]. [None] resets to [t] itself. *)
 
-val reconcile_parent : t -> t
-(** [reconcile_parent t] returns the logical parent to use when reconciling
-    user-provided children. Defaults to [t] unless overridden via
-    {!set_reconcile_parent}. *)
+(** {1:layout Layout} *)
 
-val set_reconcile_parent : t -> t -> unit
-(** [set_reconcile_parent t p] sets [p] as the logical parent used by the
-    reconciler for child placement. *)
-
-val clear_reconcile_parent : t -> unit
-(** [clear_reconcile_parent t] removes any logical reconciliation parent, so
-    reconciliation uses [t] directly. *)
-
-(** {1 Rendering + Layout} *)
-
-val set_render : t -> render -> unit
-(** [set_render t fn] replaces [t]'s render callback.
-
-    Schedules a re-render. The callback is invoked during the renderer's draw
-    pass. *)
-
-val request_render : t -> unit
-(** [request_render t] schedules a re-render for [t] and its descendants.
-
-    The renderer processes pending renders on the next frame. This is a no-op if
-    [t] is detached (no renderer). *)
-
-val set_measure : t -> measure option -> unit
-(** [set_measure t fn] assigns a custom measure function for intrinsic sizing.
-
-    [fn] is called by Toffee when [t] lacks explicit width or height. Setting
-    [None] clears the measure function. Marks layout dirty. *)
-
-val mark_layout_dirty : t -> (unit, error) result
-(** [mark_layout_dirty t] flags [t] for re-layout on the next frame.
-
-    Invalidates cached layout and propagates dirty flags to the Toffee tree.
-    Returns [Error (Layout_error e)] if Toffee rejects the operation. *)
-
-val set_style : t -> Toffee.Style.t -> (unit, error) result
-(** [set_style t style] updates [t]'s flexbox style.
-
-    Applies a heuristic: if [style] has explicit width or height and
-    [flex_shrink] is 1.0, sets [flex_shrink] to 0.0 (prevents unexpected
-    shrinking). Marks layout dirty and schedules a re-render. Preserves the
-    display mode in [original_display] if not [Display.None].
-
-    Returns [Error (Layout_error e)] if Toffee rejects the style. *)
+val set_style : t -> Toffee.Style.t -> unit
+(** [set_style t style] updates [t]'s flexbox style, marks layout dirty, and
+    schedules a re-render. When explicit dimensions are present and
+    [flex_shrink] is still at its default [1.0], it is automatically set to
+    [0.0] to match terminal layout conventions. *)
 
 val style : t -> Toffee.Style.t
-(** [style t] returns [t]'s current Toffee style.
+(** [style t] is [t]'s current flexbox style. *)
 
-    Falls back to the cached style if Toffee queries fail (should not occur). *)
+val set_measure : t -> measure option -> unit
+(** [set_measure t fn] assigns a custom measure function for intrinsic sizing
+    and marks layout dirty. [None] clears it. *)
+
+val mark_dirty : t -> unit
+(** [mark_dirty t] flags [t] for re-layout on the next frame. *)
 
 val x : t -> int
-(** [x t] returns [t]'s absolute X position in terminal cells.
-
-    Computed from cached layout plus accumulated render offsets. Returns [0] if
-    layout is not cached. *)
+(** [x t] is [t]'s absolute horizontal position in terminal cells. *)
 
 val y : t -> int
-(** [y t] returns [t]'s absolute Y position in terminal cells.
-
-    Computed from cached layout plus accumulated render offsets. Returns [0] if
-    layout is not cached. *)
+(** [y t] is [t]'s absolute vertical position in terminal cells. *)
 
 val width : t -> int
-(** [width t] returns [t]'s layout width in terminal cells.
-
-    Returns [max 1 (floor cached_width)] if layout is cached, else [0]. *)
+(** [width t] is [t]'s layout width in terminal cells. Returns [0] when [t] is
+    hidden or layout has not yet been computed. *)
 
 val height : t -> int
-(** [height t] returns [t]'s layout height in terminal cells.
-
-    Returns [max 1 (floor cached_height)] if layout is cached, else [0]. *)
+(** [height t] is [t]'s layout height in terminal cells. Returns [0] when [t] is
+    hidden or layout has not yet been computed. *)
 
 val bounds : t -> Grid.region
-(** [bounds t] returns [t]'s bounding rectangle.
+(** [bounds t] is [{ x = x t; y = y t; width = width t; height = height t }]. *)
 
-    Equivalent to [{ x = x t; y = y t; width = width t; height = height t }]. *)
+val set_translate : t -> x:int -> y:int -> unit
+(** [set_translate t ~x ~y] shifts [t]'s rendering position by [(x, y)] without
+    affecting layout. Useful for scrolling. *)
 
-val set_render_offset : t -> x:int -> y:int -> unit
-(** [set_render_offset t ~x ~y] shifts [t]'s rendering position.
+val translate : t -> int * int
+(** [translate t] is [t]'s current translation offset as [(x, y)]. *)
 
-    Offsets are added to layout positions during rendering. Useful for scrolling
-    without modifying layout. Invalidates the parent's primary axis sort cache
-    and schedules a re-render. *)
+(** {1:rendering Rendering} *)
 
-val render_offset : t -> int * int
-(** [render_offset t] returns [t]'s current render offset as [(x, y)]. *)
+val set_render : t -> render -> unit
+(** [set_render t fn] replaces [t]'s render callback and schedules a re-render.
+*)
+
+val request_render : t -> unit
+(** [request_render t] schedules a re-render for [t]. *)
+
+val set_render_before : t -> render option -> unit
+(** [set_render_before t hook] assigns an optional pre-render hook. [None]
+    clears it. *)
+
+val set_render_after : t -> render option -> unit
+(** [set_render_after t hook] assigns an optional post-render hook. [None]
+    clears it. *)
 
 val set_child_clip : t -> (t -> Grid.region option) option -> unit
-(** [set_child_clip t fn] overrides child clipping for [t].
+(** [set_child_clip t fn] overrides the clipping rectangle applied to [t]'s
+    children. When set, the renderer calls [fn t] to obtain a scissor rectangle
+    before rendering children. Useful for scroll containers and bordered boxes.
+    [None] clears the override. *)
 
-    [fn] receives [t] and returns a clipping rectangle (or [None] for no clip).
-    Useful for scroll containers. The renderer applies the clip before rendering
-    children. *)
-
-val set_visible_children_selector : t -> (t -> int list) option -> unit
-(** [set_visible_children_selector t fn] filters visible children by index.
-
-    [fn] receives [t] and returns a list of indices (in insertion order) to
-    render. Children not in the list are skipped. Use for virtualized lists or
-    conditional rendering. *)
-
-(** {1 Props-like convenience setters} *)
+(** {1:visual Visual properties} *)
 
 val set_visible : t -> bool -> unit
-(** [set_visible t visible] shows or hides [t].
-
-    Updates the Toffee display mode ([Display.None] when hidden, restored
-    original mode when shown). Marks layout dirty and updates live counts. Blurs
-    [t] if hiding while focused. *)
+(** [set_visible t v] shows or hides [t]. Blurs [t] if it is focused while being
+    hidden. *)
 
 val visible : t -> bool
-(** [visible t] returns whether [t] is visible. *)
+(** [visible t] is [true] iff [t] is currently visible. *)
 
 val set_z_index : t -> int -> unit
-(** [set_z_index t z] changes [t]'s rendering order.
-
-    Higher z-index nodes render on top. Invalidates the parent's z-index sort
-    cache and schedules a re-render. *)
+(** [set_z_index t z] sets [t]'s rendering order. Higher values render on top.
+*)
 
 val z_index : t -> int
-(** [z_index t] returns [t]'s z-index. *)
+(** [z_index t] is [t]'s z-index. *)
 
-val set_buffer : t -> Props.buffer_mode -> unit
-(** [set_buffer t mode] changes [t]'s buffering mode.
+val set_opacity : t -> float -> unit
+(** [set_opacity t v] sets [t]'s opacity, clamped to \[[0.0];[1.0]\]. Values
+    below [1.0] cause the renderer to push an opacity context around [t] and its
+    descendants. *)
 
-    Setting [`None] releases the framebuffer. Setting [`Self] allocates a
-    framebuffer on the next render. Schedules a re-render. *)
+val opacity : t -> float
+(** [opacity t] is [t]'s opacity in \[[0.0];[1.0]\]. *)
 
-val buffer : t -> Props.buffer_mode
-(** [buffer t] returns [t]'s buffering mode. *)
+val set_buffered : t -> bool -> unit
+(** [set_buffered t v] enables or disables offscreen buffering. When [true], [t]
+    renders into a private grid that is blitted to the parent grid. *)
+
+val buffered : t -> bool
+(** [buffered t] is [true] iff offscreen buffering is enabled. *)
 
 val set_live : t -> bool -> unit
-(** [set_live t live] enables or disables lifecycle hooks.
-
-    When [live] is true and [t] is visible, increments live count (propagates to
-    ancestors). Lifecycle passes ({!set_on_lifecycle_pass}) run for live nodes.
+(** [set_live t v] enables or disables continuous rendering. When live, the
+    renderer runs [t]'s render callback every frame rather than only on request.
 *)
 
 val live : t -> bool
-(** [live t] returns whether [t] has lifecycle hooks enabled. *)
+(** [live t] is [true] iff continuous rendering is enabled. *)
 
-(** {1 Focus} *)
+(** {1:focus Focus} *)
 
 val set_focusable : t -> bool -> unit
-(** [set_focusable t focusable] marks [t] as focusable.
-
-    Focusable nodes can receive focus via {!val-focus} and accept keyboard/paste
-    events. *)
+(** [set_focusable t v] marks [t] as focusable or not. *)
 
 val focusable : t -> bool
-(** [focusable t] returns whether [t] can receive focus. *)
+(** [focusable t] is [true] iff [t] can receive focus. *)
 
 val focused : t -> bool
-(** [focused t] returns whether [t] currently has focus. *)
+(** [focused t] is [true] iff [t] currently holds focus. *)
 
 val focus : t -> bool
-(** [focus t] requests focus for [t].
-
-    Returns [false] if [t] is not focusable. Delegates to the renderer's focus
-    controller (if attached), which handles global focus state. Returns [true]
-    if focus was granted. *)
+(** [focus t] requests focus for [t]. Returns [false] if [t] is not focusable.
+    Delegates to the renderer's focus controller. *)
 
 val blur : t -> unit
-(** [blur t] removes focus from [t].
+(** [blur t] removes focus from [t]. No-op if [t] is not focused. *)
 
-    No-op if [t] is not focused. Delegates to the renderer's blur controller. *)
+val set_cursor_provider : t -> (t -> cursor option) -> unit
+(** [set_cursor_provider t f] registers a hardware cursor provider consulted
+    when [t] is focused. [f] is called with [t] and returns the desired cursor
+    state, or [None] to hide the cursor. *)
 
-val set_hardware_cursor_provider :
-  t -> (t -> hardware_cursor option) option -> unit
-(** [set_hardware_cursor_provider t provider] registers a hardware cursor
-    provider for [t].
+val clear_cursor_provider : t -> unit
+(** [clear_cursor_provider t] removes [t]'s cursor provider. *)
 
-    The provider is consulted when [t] is focused to position and style the
-    terminal cursor. Pass [None] to clear the provider. *)
+val cursor : t -> cursor option
+(** [cursor t] is the current hardware cursor state as reported by [t]'s cursor
+    provider, or [None] if no provider is set. *)
 
-val hardware_cursor : t -> hardware_cursor option
-(** [hardware_cursor t] returns the current hardware cursor state if a provider
-    is set and returns a value. *)
+(** {1:events Events} *)
 
-(** {1 Events} *)
+val on_mouse : t -> (Event.mouse -> unit) -> unit
+(** [on_mouse t handler] registers a mouse event handler on [t]. Handlers
+    accumulate and run newest-first. Mouse events bubble to ancestors unless
+    {!Event.Mouse.stop_propagation} is called. *)
 
-val on_mouse : t -> Event.mouse event_handler -> unit
-(** [on_mouse t handler] registers a mouse event handler.
-
-    [handler] is called for all mouse events targeting [t] or bubbling from
-    children. Multiple handlers accumulate (newest registered first). Handlers
-    run until one calls {!Event.Mouse.stop_propagation}. *)
-
-val on_key_down : t -> Event.key event_handler -> unit
-(** [on_key_down t handler] registers a keyboard event handler.
-
-    Runs when [t] is focused and a key is pressed. Multiple handlers accumulate
-    (newest registered first). If a handler calls {!Event.Key.prevent_default},
-    remaining handlers and the default handler (Tier-3) are skipped. *)
+val on_key : t -> (Event.key -> unit) -> unit
+(** [on_key t handler] registers a keyboard handler on [t]. Handlers accumulate
+    and run newest-first until one calls {!Event.Key.prevent_default}. *)
 
 val set_default_key_handler : t -> (Event.key -> unit) option -> unit
-(** [set_default_key_handler t handler] assigns a fallback key handler.
+(** [set_default_key_handler t handler] assigns a fallback key handler that runs
+    after {!on_key} handlers. Only one fallback handler per node. [None] clears
+    it. *)
 
-    Runs after {!on_key_down} handlers (Tier-3). Only one default handler per
-    node; setting [None] clears it. *)
+val set_paste_handler : t -> (Event.paste -> unit) option -> unit
+(** [set_paste_handler t handler] assigns a paste handler on [t]. Only one paste
+    handler per node. [None] clears it. *)
 
-val on_paste : t -> Event.paste event_handler -> unit
-(** [on_paste t handler] registers a paste event handler.
+(** {1:selection Selection} *)
 
-    Runs when [t] is focused and text is pasted. Multiple handlers are not
-    supported; last registration wins. *)
+val set_selection :
+  t ->
+  should_start:(x:int -> y:int -> bool) ->
+  on_change:(Selection.t option -> bool) ->
+  clear:(unit -> unit) ->
+  get_text:(unit -> string) ->
+  unit
+(** [set_selection t ~should_start ~on_change ~clear ~get_text] enables text
+    selection on [t]. The renderer calls these callbacks during mouse
+    interactions and clipboard operations. The contract is:
+    - [should_start ~x ~y] is [true] iff a selection drag starting at [(x, y)]
+      should be initiated.
+    - [on_change sel] is called when the selection changes; returns [true] to
+      accept the selection.
+    - [clear ()] discards any active selection state.
+    - [get_text ()] returns the currently selected text. *)
 
-(** {1 Selection Capability} *)
-
-module Select : sig
-  type capability = {
-    should_start : x:int -> y:int -> bool;
-        (** [should_start ~x ~y] returns whether selection should begin.
-
-            Called when the user presses a mouse button. [x] and [y] are global
-            terminal coordinates. Return [true] to start selecting. *)
-    on_change : Selection.t option -> bool;
-        (** [on_change selection] notifies the node of selection changes.
-
-            Called when selection bounds change or are cleared ([None]). Return
-            [true] if this node owns the selection (for renderer tracking). *)
-    clear : unit -> unit;
-        (** [clear ()] clears the node's internal selection state.
-
-            Called when the renderer clears global selection. *)
-    get_text : unit -> string;
-        (** [get_text ()] extracts the selected text.
-
-            Returns [""] if no selection. Used for clipboard operations. *)
-  }
-  (** Selection capability for text selection support.
-
-      Implement this interface and register via {!set_selection} to enable text
-      selection on a node. The renderer coordinates selection across nodes;
-      capabilities handle node-specific logic (hit-testing, bounds, text
-      extraction). *)
-end
-
-val set_selection : t -> Select.capability option -> unit
-(** [set_selection t cap] enables text selection on [t].
-
-    Setting [None] disables selection. The renderer calls [cap] methods during
-    mouse interactions and clipboard operations. *)
+val unset_selection : t -> unit
+(** [unset_selection t] disables text selection on [t]. *)
 
 val selectable : t -> bool
-(** [selectable t] returns whether [t] has selection capability. *)
+(** [selectable t] is [true] iff [t] has selection callbacks registered. *)
 
-(** {1 Runtime Hooks} *)
+(** {1:line_info Line information} *)
+
+type line_info = {
+  line_count : int;
+  display_line_count : int;
+  line_sources : int array;
+  line_wrap_indices : int array;
+  scroll_y : int;
+}
+(** The type for display line metrics used by line-numbering widgets.
+    - [line_count]: number of logical lines.
+    - [display_line_count]: number of visual lines after wrapping.
+    - [line_sources.(i)]: logical line index for display line [i].
+    - [line_wrap_indices.(i)]: sub-line index within the logical line — [0] for
+      the first display line, [1] for the first continuation, and so on.
+    - [scroll_y]: vertical scroll offset in display lines. *)
+
+val set_line_info_provider : t -> (unit -> line_info) option -> unit
+(** [set_line_info_provider t f] registers a function that supplies line metrics
+    for [t]. Used by composite widgets (e.g. line-number gutters) to read
+    display line information from a content child without coupling to its
+    concrete type. [None] clears the provider. *)
+
+val line_info : t -> line_info option
+(** [line_info t] is the current line metrics from [t]'s provider, or [None] if
+    no provider is registered. *)
+
+(** {1:lifecycle Lifecycle} *)
 
 val set_on_frame : t -> (t -> delta:float -> unit) option -> unit
 (** [set_on_frame t callback] registers a per-frame update hook.
+    [callback t ~delta] is called every frame with [delta] as the elapsed
+    milliseconds. [None] clears the hook. *)
 
-    [callback t ~delta] is called every frame with elapsed milliseconds since
-    the last frame. Use for animations, time-based updates, or polling. Setting
-    [None] clears the hook. *)
+val set_on_resize : t -> (t -> unit) option -> unit
+(** [set_on_resize t callback] registers a size-change hook. The callback is
+    called when {!width} or {!height} changes after layout. [None] clears the
+    hook. *)
 
-val set_on_size_change : t -> (t -> unit) option -> unit
-(** [set_on_size_change t callback] registers a size change hook.
+(** {1:fmt Formatting and inspecting} *)
 
-    [callback t] is called when {!width} or {!height} changes after layout.
-    Useful for resizing internal buffers or recomputing derived state. Setting
-    [None] clears the hook. *)
+val pp : Format.formatter -> t -> unit
+(** [pp ppf t] formats [t] on [ppf] for debugging. *)
 
-val set_on_lifecycle_pass : t -> (t -> unit) option -> unit
-(** [set_on_lifecycle_pass t callback] registers a lifecycle pass hook.
+(** {1:private Renderer integration}
 
-    [callback t] is called during the renderer's lifecycle pass. Lifecycle
-    passes run for nodes with {!set_live} enabled or descendants with live
-    counts > 0. Use for cleanup, state updates, or deferred operations. Setting
-    [None] clears the hook and unregisters from lifecycle passes. *)
+    Privileged operations used by the renderer during the render pipeline and
+    event dispatch. Widget authors must not call these directly. *)
 
-(** Renderer and reconciler integration (unstable).
+module Private : sig
+  (** {2:context Context} *)
 
-    Internal functions for renderer implementation. Applications should not use
-    these directly; they exist for renderer/reconciler plumbing and may change
-    between minor versions. *)
-module Internal : sig
-  (** Renderer-facing operations.
+  type context = {
+    tree : unit Toffee.tree;
+    schedule : unit -> unit;
+    focus : t -> bool;
+    blur : t -> unit;
+    register_lifecycle : t -> unit;
+    unregister_lifecycle : t -> unit;
+    alloc_num : unit -> int;
+    register : t -> unit;
+    unregister : t -> unit;
+  }
+  (** The type for renderer callbacks inherited by all nodes in a tree. *)
 
-      This module exposes lifecycle management, rendering pipeline hooks, event
-      emission, and low-level queries needed by the renderer. Public
-      applications should not depend on these functions; they are intended for
-      Mosaic's internal renderer and advanced custom renderers only. *)
+  (** {2:root Root construction} *)
 
-  type visible_children = [ `All | `Subset of int list ]
-  (** Visible children discriminator.
-
-      [`All] renders all children. [`Subset indices] renders only children at
-      the given indices (in insertion order). *)
-
-  val create :
-    layout:unit Toffee.tree ->
+  val create_root :
+    context ->
     ?id:string ->
-    ?props:Props.t ->
-    ?on_frame:(t -> delta:float -> unit) ->
-    ?on_size_change:(t -> unit) ->
-    ?render:render ->
-    ?render_before:render ->
-    ?render_after:render ->
+    ?style:Toffee.Style.t ->
     ?glyph_pool:Glyph.Pool.t ->
-    num:int ->
     unit ->
-    (t, error) result
-  (** [create ~layout ?id ?props ?on_frame ?on_size_change ?render
-       ?render_before ?render_after ?glyph_pool ~num ()] creates a root node.
+    t
+  (** [create_root ctx ()] is a new root node backed by [ctx]'s layout tree.
 
-      [layout] is the Toffee tree. [num] is a unique integer ID (managed by the
-      renderer). [render_before] and [render_after] are optional hooks for
-      pre/post rendering. [glyph_pool] is shared for character storage. *)
+      Optional parameters:
+      - [id]: identifier string. Defaults to ["node-N"].
+      - [style]: flexbox style. Defaults to {!Toffee.Style.default}.
+      - [glyph_pool]: glyph pool for text rendering. Defaults to none. *)
 
-  val node_id : t -> Toffee.Node_id.t
-  (** [node_id t] returns [t]'s Toffee node identifier. *)
+  (** {2:identity Identity} *)
 
-  val number : t -> int
-  (** [number t] returns [t]'s numeric ID (unique per renderer). *)
+  val num : t -> int
+  (** [num t] is [t]'s numeric identifier, unique within the renderer. *)
 
-  val set_schedule : t -> (unit -> unit) -> unit
-  (** [set_schedule t fn] assigns the scheduling callback.
-
-      [fn] is called to request re-renders (typically enqueues [t] for the next
-      frame). *)
-
-  val set_registration_hooks :
-    t -> register:(t -> unit) -> alloc_num:(unit -> int) -> unit
-  (** [set_registration_hooks t ~register ~alloc_num] configures node
-      registration.
-
-      [register] is called when a node is created via {!create_child}.
-      [alloc_num] allocates unique numeric IDs for children. *)
-
-  val register_with_renderer : t -> unit
-  (** [register_with_renderer t] registers [t] with the renderer.
-
-      Calls the [register] hook set by {!set_registration_hooks}. *)
-
-  val set_focus_controller : t -> focus:(t -> bool) -> blur:(t -> unit) -> unit
-  (** [set_focus_controller t ~focus ~blur] assigns focus delegation.
-
-      [focus] grants focus to [t]. [blur] removes focus. Used by the renderer to
-      enforce single-focus invariant. *)
-
-  val set_hardware_cursor_provider :
-    t -> (t -> hardware_cursor option) option -> unit
-  (** Internal setter for hardware cursor providers. *)
-
-  val hardware_cursor : t -> hardware_cursor option
-  (** Internal accessor for hardware cursor state. *)
-
-  val focus_direct : t -> bool
-  (** [focus_direct t] focuses [t] without delegation.
-
-      Returns [false] if [t] is not focusable. Does not notify the renderer; use
-      {!val-focus} for normal focus requests. *)
-
-  val blur_direct : t -> unit
-  (** [blur_direct t] blurs [t] without delegation.
-
-      Does not notify the renderer; use {!blur} for normal blur requests. *)
-
-  val set_lifecycle_controllers :
-    t -> register:(t -> unit) -> unregister:(t -> unit) -> unit
-  (** [set_lifecycle_controllers t ~register ~unregister] configures lifecycle
-      tracking.
-
-      [register] is called when [t] gains a lifecycle hook and is attached.
-      [unregister] is called when [t] loses lifecycle hooks or is detached. *)
+  val toffee_node : t -> Toffee.Node_id.t
+  (** [toffee_node t] is [t]'s layout node identifier. *)
 
   val set_is_root : t -> bool -> unit
-  (** [set_is_root t is_root] marks [t] as a root node.
+  (** [set_is_root t v] marks or unmarks [t] as a root node. *)
 
-      Root nodes are always attached (for lifecycle purposes). *)
-
-  val set_on_live_count_change : t -> (t -> unit) option -> unit
-  (** [set_on_live_count_change t callback] registers a live count observer.
-
-      [callback t] is called when {!live_count} changes. Used by the renderer to
-      track which subtrees need lifecycle passes. *)
-
-  val live_count : t -> int
-  (** [live_count t] returns the total live count for [t] and descendants.
-
-      Equals self-live (1 if live and visible, else 0) plus sum of children's
-      live counts. *)
+  (** {2:layout_cache Layout cache} *)
 
   val layout_dirty : t -> bool
-  (** [layout_dirty t] returns whether [t] needs re-layout. *)
+  (** [layout_dirty t] is [true] iff [t] needs re-layout. *)
 
   val clear_layout_dirty : t -> unit
-  (** [clear_layout_dirty t] clears [t]'s layout dirty flag.
+  (** [clear_layout_dirty t] clears [t]'s layout dirty flag. *)
 
-      Called by the renderer after computing layout. *)
-
-  val update_cached_layout :
+  val update_layout :
     t -> x:float -> y:float -> width:float -> height:float -> unit
-  (** [update_cached_layout t ~x ~y ~width ~height] caches Toffee layout
-      results.
+  (** [update_layout t ~x ~y ~width ~height] caches layout results for [t],
+      enabling O(1) queries via {!val-x}, {!val-y}, {!val-width}, and
+      {!val-height}. *)
 
-      Stores computed position and size for O(1) queries via {!val-x}, {!val-y},
-      {!width}, {!height}. Invalidates parent's primary axis cache if position
-      changed. *)
+  val measure : t -> measure option
+  (** [measure t] is [t]'s measure function, if any. *)
+
+  (** {2:render_pipeline Render pipeline} *)
 
   val pre_render_update : t -> delta:float -> unit
-  (** [pre_render_update t ~delta] runs pre-render lifecycle hooks.
-
-      Calls {!set_on_frame} and {!set_on_size_change} if conditions are met. The
-      renderer calls this before rendering [t]. *)
+  (** [pre_render_update t ~delta] runs [t]'s on-frame and resize hooks. *)
 
   val render : t -> Grid.t -> delta:float -> unit
-  (** [render t grid ~delta] invokes [t]'s render callback.
+  (** [render t grid ~delta] invokes [t]'s render callback. *)
 
-      Calls the function set by {!set_render}. The renderer calls this during
-      the draw pass. *)
+  val render_before : t -> render option
+  (** [render_before t] is [t]'s pre-render hook, if any. *)
+
+  val render_after : t -> render option
+  (** [render_after t] is [t]'s post-render hook, if any. *)
 
   val ensure_frame_buffer : t -> parent:Grid.t -> Grid.t option
-  (** [ensure_frame_buffer t ~parent] allocates or resizes [t]'s framebuffer.
-
-      Returns [Some buffer] if [t] has [`Self] buffering and dimensions > 0.
-      Returns [None] otherwise. Reuses existing buffer if size matches. *)
+  (** [ensure_frame_buffer t ~parent] is [Some buf] if [t] uses buffered
+      rendering and has positive dimensions, [None] otherwise. *)
 
   val blit_frame_buffer : t -> dst:Grid.t -> unit
-  (** [blit_frame_buffer t ~dst] copies [t]'s framebuffer to [dst].
+  (** [blit_frame_buffer t ~dst] copies [t]'s frame buffer into [dst]. *)
 
-      No-op if [t] has no buffer. Blits from [(0, 0)] in the buffer to
-      [(x t, y t)] in [dst]. *)
+  val render_full : t -> grid:Grid.t -> delta:float -> unit
+  (** [render_full t ~grid ~delta] runs the complete render sequence for [t]:
+      frame buffer selection, pre-render hook, render callback, post-render
+      hook, and frame buffer blit. *)
 
-  val render_before_hook : t -> render option
-  (** [render_before_hook t] returns [t]'s pre-render hook. *)
+  (** {2:children Children} *)
 
-  val render_after_hook : t -> render option
-  (** [render_after_hook t] returns [t]'s post-render hook. *)
+  val children_z : t -> t array
+  (** [children_z t] is [t]'s children sorted by z-index. The result is cached.
+  *)
 
-  val set_render_before : t -> render option -> unit
-  (** [set_render_before t hook] assigns a pre-render hook. *)
-
-  val set_render_after : t -> render option -> unit
-  (** [set_render_after t hook] assigns a post-render hook. *)
-
-  val sorted_children : t -> t array
-  (** [sorted_children t] returns [t]'s children sorted by z-index.
-
-      Cached via insertion sort (O(n^2) worst case, O(n) for sorted input).
-      Rebuilds when z-index changes or children mutate. *)
-
-  val iter_sorted_children : t -> (t -> unit) -> unit
-  (** [iter_sorted_children t f] applies [f] to each child in z-index order.
-
-      Equivalent to [Array.iter f (sorted_children t)] but avoids exposing the
-      array. *)
+  val iter_children_z : t -> (t -> unit) -> unit
+  (** [iter_children_z t f] applies [f] to each child of [t] in z-index order.
+  *)
 
   val children_in_viewport :
     parent:t -> viewport:Grid.region -> padding:int -> t list
-  (** [children_in_viewport ~parent ~viewport ~padding] returns visible
-      children.
+  (** [children_in_viewport ~parent ~viewport ~padding] is the children of
+      [parent] whose bounds intersect [viewport] expanded by [padding] cells,
+      sorted by z-index. *)
 
-      Filters [parent]'s children to those intersecting [viewport] (expanded by
-      [padding] in all directions). Uses binary search for large child lists (>=
-      16). Returns children sorted by z-index. *)
+  (** {2:focus Focus} *)
 
-  val child_clip_rect : t -> Grid.region option
-  (** [child_clip_rect t] computes the clip rectangle for [t]'s children.
+  val focus_direct : t -> bool
+  (** [focus_direct t] focuses [t] without delegating to the renderer. Returns
+      [false] if [t] is not focusable. *)
 
-      Calls the function set by {!set_child_clip}, or returns [None] if unset.
-  *)
+  val blur_direct : t -> unit
+  (** [blur_direct t] blurs [t] without delegating to the renderer. *)
 
-  val visible_children : t -> visible_children
-  (** [visible_children t] returns which children to render.
+  (** {2:lifecycle Lifecycle} *)
 
-      Calls the function set by {!set_visible_children_selector}, or returns
-      [`All] if unset. *)
+  val live_count : t -> int
+  (** [live_count t] is the total number of live-rendering nodes in [t]'s
+      subtree, including [t] itself. *)
+
+  val set_on_live_count_change : t -> (t -> unit) option -> unit
+  (** [set_on_live_count_change t cb] registers an observer called when
+      [live_count t] changes. [None] clears it. *)
+
+  val set_lifecycle_pass : t -> (t -> unit) option -> unit
+  (** [set_lifecycle_pass t callback] registers a lifecycle pass hook for [t].
+      [None] clears it. *)
 
   val run_lifecycle_pass : t -> unit
-  (** [run_lifecycle_pass t] invokes [t]'s lifecycle callback.
+  (** [run_lifecycle_pass t] invokes [t]'s lifecycle callback, if any. *)
 
-      Calls the function set by {!set_on_lifecycle_pass}, or no-op if unset. *)
+  (** {2:event_emission Event emission} *)
 
-  val measure_of : t -> measure option
-  (** [measure_of t] returns [t]'s measure function. *)
+  val emit_mouse : t -> Event.mouse -> unit
+  (** [emit_mouse t event] dispatches [event] to [t]'s mouse handlers, bubbling
+      to ancestors unless propagation is stopped via
+      {!Event.Mouse.stop_propagation}. *)
 
-  val set_glyph_pool : t -> Glyph.Pool.t -> unit
-  (** [set_glyph_pool t pool] assigns a glyph pool for text rendering. *)
+  val emit_key : t -> Event.key -> unit
+  (** [emit_key t event] dispatches [event] to [t]'s key handlers. *)
 
-  val glyph_pool : t -> Glyph.Pool.t option
-  (** [glyph_pool t] returns [t]'s glyph pool. *)
+  val emit_default_key : t -> Event.key -> unit
+  (** [emit_default_key t event] dispatches [event] to [t]'s default key
+      handler, if any. *)
 
-  val emit_mouse_event : t -> Event.mouse -> unit
-  (** [emit_mouse_event t event] dispatches a mouse event to [t]'s handlers.
+  val emit_paste : t -> Event.paste -> unit
+  (** [emit_paste t event] dispatches [event] to [t]'s paste handler, if any. *)
 
-      Runs all handlers registered via {!on_mouse}, then bubbles to [t]'s parent
-      unless {!Event.Mouse.stop_propagation} was called. *)
-
-  val emit_key_event : t -> Event.key -> unit
-  (** [emit_key_event t event] dispatches a key event to [t]'s handlers.
-
-      Runs handlers registered via {!on_key_down} in reverse registration order
-      until one calls {!Event.Key.prevent_default}. *)
-
-  val emit_default_key_event : t -> Event.key -> unit
-  (** [emit_default_key_event t event] dispatches to [t]'s default key handler.
-
-      Runs the handler set by {!set_default_key_handler}, or no-op if unset. *)
-
-  val emit_paste_event : t -> Event.paste -> unit
-  (** [emit_paste_event t event] dispatches a paste event to [t]'s handler.
-
-      Runs the handler registered via {!on_paste}, or no-op if unset. *)
+  (** {2:selection Selection} *)
 
   val emit_selection_changed : t -> Selection.t option -> bool
-  (** [emit_selection_changed t selection] notifies [t]'s selection capability.
+  (** [emit_selection_changed t sel] notifies [t]'s selection [on_change]
+      callback with [sel]. Returns [false] if no callback is registered. *)
 
-      Calls [on_change] from the capability set by {!set_selection}. Returns
-      [false] if [t] has no selection capability. *)
-
-  val clear_selection_by_node : t -> unit
-  (** [clear_selection_by_node t] clears [t]'s internal selection state.
-
-      Calls [clear] from the capability set by {!set_selection}. No-op if [t]
-      has no selection capability. *)
+  val clear_selection : t -> unit
+  (** [clear_selection t] calls [t]'s selection [clear] callback, if any. *)
 
   val should_start_selection : t -> x:int -> y:int -> bool
-  (** [should_start_selection t ~x ~y] queries whether selection should start.
-
-      Calls [should_start] from the capability set by {!set_selection}. Returns
-      [false] if [t] has no selection capability. *)
+  (** [should_start_selection t ~x ~y] is [true] iff [t]'s [should_start]
+      callback returns [true] for [(x, y)]. Returns [false] if no callback is
+      registered. *)
 
   val get_selected_text : t -> string
-  (** [get_selected_text t] extracts selected text from [t].
+  (** [get_selected_text t] calls [t]'s [get_text] callback and returns the
+      result, or [""] if no callback is registered. *)
 
-      Calls [get_text] from the capability set by {!set_selection}. Returns [""]
-      if [t] has no selection capability. *)
+  (** {2:clipping Child clipping} *)
+
+  val child_clip : t -> Grid.region option
+  (** [child_clip t] is the clipping rectangle for [t]'s children as returned by
+      [t]'s clip override, or [None] if no override is set. *)
+
+  (** {2:glyph_pool Glyph pool} *)
+
+  val set_glyph_pool : t -> Glyph.Pool.t -> unit
+  (** [set_glyph_pool t pool] assigns a glyph pool for text rendering by [t] and
+      its descendants. *)
+
+  val glyph_pool : t -> Glyph.Pool.t option
+  (** [glyph_pool t] is [t]'s glyph pool, or [None] if none is assigned. *)
 end
