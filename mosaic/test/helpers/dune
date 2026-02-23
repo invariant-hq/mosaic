@@ -1,0 +1,11 @@
+(library
+ (name test_harness)
+ (modules test_harness)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.glyph
+  matrix.ansi
+  matrix.input))

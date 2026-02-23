@@ -1,27 +1,76 @@
-(executables
- (names test_counter test_scroll_box)
+(library
+ (name expect_harness)
+ (modules expect_harness)
  (libraries
   windtrap
   mosaic
   mosaic.ui
-  matrix
+  toffee
   matrix.grid
   matrix.screen
+  matrix.ansi
+  matrix.input))
+
+(executables
+ (names
+  test_box
+  test_text
+  test_slider
+  test_text_input
+  test_textarea
+  test_canvas
+  test_select
+  test_markdown
+  test_tab_select
+  test_spinner
+  test_progress_bar
+  test_scroll_box
+  test_table
+  test_tree)
+ (modules :standard \ expect_harness)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.screen
+  matrix.ansi
   matrix.input
-  matrix.vte)
+  cmarkit
+  expect_harness)
  (preprocess
-  (pps windtrap.ppx)))
+  (pps ppx_windtrap)))
 
 (rule
  (alias runtest)
  (package mosaic)
  (action
   (progn
-   (setenv
-    WINDTRAP_PROMOTE
-    true
-    (progn
-     (run ./test_counter.exe)
-     (run ./test_scroll_box.exe)))
-   (diff? test_counter.ml test_counter.ml.corrected)
-   (diff? test_scroll_box.ml test_scroll_box.ml.corrected))))
+   (run ./test_box.exe)
+   (run ./test_text.exe)
+   (run ./test_slider.exe)
+   (run ./test_text_input.exe)
+   (run ./test_textarea.exe)
+   (run ./test_canvas.exe)
+   (run ./test_select.exe)
+   (run ./test_markdown.exe)
+   (run ./test_tab_select.exe)
+   (diff? test_box.ml test_box.ml.corrected)
+   (diff? test_text.ml test_text.ml.corrected)
+   (diff? test_slider.ml test_slider.ml.corrected)
+   (diff? test_text_input.ml test_text_input.ml.corrected)
+   (diff? test_textarea.ml test_textarea.ml.corrected)
+   (diff? test_canvas.ml test_canvas.ml.corrected)
+   (diff? test_select.ml test_select.ml.corrected)
+   (diff? test_markdown.ml test_markdown.ml.corrected)
+   (diff? test_tab_select.ml test_tab_select.ml.corrected)
+   (run ./test_spinner.exe)
+   (run ./test_progress_bar.exe)
+   (diff? test_spinner.ml test_spinner.ml.corrected)
+   (diff? test_progress_bar.ml test_progress_bar.ml.corrected)
+   (run ./test_scroll_box.exe)
+   (diff? test_scroll_box.ml test_scroll_box.ml.corrected)
+   (run ./test_table.exe)
+   (diff? test_table.ml test_table.ml.corrected)
+   (run ./test_tree.exe)
+   (diff? test_tree.ml test_tree.ml.corrected))))

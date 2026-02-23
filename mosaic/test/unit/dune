@@ -1,0 +1,222 @@
+(test
+ (name test_event)
+ (modules test_event)
+ (package mosaic)
+ (libraries windtrap mosaic.ui matrix.input))
+
+(test
+ (name test_selection)
+ (modules test_selection)
+ (package mosaic)
+ (libraries windtrap windtrap.prop mosaic.ui))
+
+(test
+ (name test_renderable)
+ (modules test_renderable)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.input matrix.ansi test_harness))
+
+(test
+ (name test_box)
+ (modules test_box)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.grid matrix.ansi test_harness))
+
+(test
+ (name test_text_buffer)
+ (modules test_text_buffer)
+ (package mosaic)
+ (libraries windtrap windtrap.prop mosaic.ui matrix.ansi matrix.glyph))
+
+(test
+ (name test_text_surface)
+ (modules test_text_surface)
+ (package mosaic)
+ (libraries
+  windtrap
+  windtrap.prop
+  mosaic.ui
+  toffee
+  matrix.ansi
+  matrix.glyph
+  test_harness))
+
+(test
+ (name test_text)
+ (modules test_text)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.ansi test_harness))
+
+(test
+ (name test_canvas)
+ (modules test_canvas)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.glyph
+  matrix.ansi
+  test_harness))
+
+(test
+ (name test_slider)
+ (modules test_slider)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.grid matrix.ansi test_harness))
+
+(test
+ (name test_edit_buffer)
+ (modules test_edit_buffer)
+ (package mosaic)
+ (libraries windtrap mosaic.ui matrix.glyph))
+
+(test
+ (name test_text_input)
+ (modules test_text_input)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.ansi
+  matrix.input
+  test_harness))
+
+(test
+ (name test_select)
+ (modules test_select)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.ansi
+  matrix.input
+  test_harness))
+
+(test
+ (name test_table)
+ (modules test_table)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.ansi
+  matrix.input
+  test_harness))
+
+(test
+ (name test_tab_select)
+ (modules test_tab_select)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.ansi
+  matrix.input
+  test_harness))
+
+(test
+ (name test_textarea)
+ (modules test_textarea)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.ansi
+  matrix.input
+  test_harness))
+
+(test
+ (name test_renderer)
+ (modules test_renderer)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.glyph
+  matrix.ansi
+  matrix.input
+  matrix.screen))
+
+(test
+ (name test_reconciler)
+ (modules test_reconciler)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.ansi
+  matrix.input
+  matrix.screen))
+
+(test
+ (name test_vnode)
+ (modules test_vnode)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.input test_harness))
+
+(test
+ (name test_markdown)
+ (modules test_markdown)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.ansi cmarkit test_harness))
+
+(test
+ (name test_spinner)
+ (modules test_spinner)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.grid matrix.ansi test_harness))
+
+(test
+ (name test_progress_bar)
+ (modules test_progress_bar)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.grid matrix.ansi test_harness))
+
+(test
+ (name test_scroll_bar)
+ (modules test_scroll_bar)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.grid matrix.ansi test_harness))
+
+(test
+ (name test_scroll_box)
+ (modules test_scroll_box)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.grid matrix.ansi test_harness))
+
+(test
+ (name test_tree)
+ (modules test_tree)
+ (package mosaic)
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.grid
+  matrix.ansi
+  matrix.input
+  test_harness))
+
+(test
+ (name test_subscriptions)
+ (modules test_subscriptions)
+ (package mosaic)
+ (libraries windtrap mosaic))

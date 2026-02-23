@@ -1,63 +1,91 @@
-open Mosaic
-module Renderable = Mosaic_ui.Renderable
-module Mouse = Mosaic_ui.Event.Mouse
-module Key = Matrix.Input.Key
+open Mosaic_ui
+open Expect_harness
 
-type model = { scroll : int }
-type msg = Scrolled of int
+(* ── Scroll box with vertical scrolling ── *)
 
-let init () = ({ scroll = 0 }, Cmd.none)
+let%expect_test "scroll box renders children in viewport" =
+  render ~width:20 ~height:8
+    (Vnode.scroll_box
+       ~style:
+         (Toffee.Style.default
+         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:8))
+       [ Vnode.text "Line 1"; Vnode.text "Line 2"; Vnode.text "Line 3" ]);
+  [%expect {|
+    Line 1
+    Line 2
+    Line 3 |}]
 
-let update (Scrolled y) model =
-  if model.scroll = y then (model, Cmd.none) else ({ scroll = y }, Cmd.none)
+(* ── Scroll box with border ── *)
 
-let items = List.init 20 (fun i -> text (Printf.sprintf "Row %02d" (i + 1)))
+let%expect_test "scroll box inside bordered box" =
+  render ~width:22 ~height:8
+    (Vnode.box ~border:true
+       [
+         Vnode.scroll_box
+           ~style:
+             (Toffee.Style.default
+             |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.)
+             |> Toffee.Style.set_height (Toffee.Style.Dimension.percent 1.))
+           [ Vnode.text "Hello"; Vnode.text "World" ];
+       ]);
+  [%expect
+    {|
+    ┌────────────────────┐
+    │Hello               │
+    │World               │
+    │                    │
+    │                    │
+    │                    │
+    │                    │
+    └────────────────────┘ |}]
 
-let view ~scroll_ref model =
-  let header =
-    box ~size:(size ~width:22 ~height:1)
-      [ text (Printf.sprintf "scroll=%d" model.scroll) ]
-  in
-  let scroll =
-    scroll_box
-      ~ref:(fun n -> scroll_ref := Some n)
-      ~flex_grow:1.
-      ~on_scroll:(fun ~x:_ ~y -> Some (Scrolled y))
-      items
-  in
-  let scroll_area =
-    box ~padding:(padding 1) ~flex_grow:1.
-      [ box ~border:true ~flex_grow:1. [ scroll ] ]
-  in
-  box ~flex_direction:Column
-    ~size:(size ~width:22 ~height:10)
-    [ header; scroll_area ]
+(* ── Reconciliation: vnode updates ── *)
 
-let scroll_event ~x ~y =
-  Mouse.scroll ~x ~y ~direction:Mouse.Scroll_down ~delta:1
-    ~modifiers:Key.no_modifier
+let%expect_test "scroll box reconciles children" =
+  let app = make_app () in
+  reconcile app
+    (Vnode.scroll_box
+       ~style:
+         (Toffee.Style.default
+         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:5))
+       [ Vnode.text "First" ]);
+  frame app ~width:20 ~height:5;
+  reconcile app
+    (Vnode.scroll_box
+       ~style:
+         (Toffee.Style.default
+         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:5))
+       [ Vnode.text "Second" ]);
+  frame app ~width:20 ~height:5;
+  [%expect {|
+    First
 
-let center_of_scroll_box scroll_ref =
-  match !scroll_ref with
-  | None -> failwith "scroll box ref was not set"
-  | Some node ->
-      let bounds = Renderable.bounds node in
-      (bounds.x + (bounds.width / 2), bounds.y + (bounds.height / 2))
 
-let%expect_test "nested scroll box should receive wheel events" =
-  let scroll_ref = ref None in
-  let t =
-    Harness.create ~width:22 ~height:10 ~init ~update
-      ~view:(view ~scroll_ref) ()
-  in
-  ignore (Harness.step t ~delta:0.0);
-  let before = (Harness.model t).scroll in
-  let x, y = center_of_scroll_box scroll_ref in
-  Harness.handle_mouse t (scroll_event ~x ~y);
-  ignore (Harness.step t ~delta:0.0);
-  let after = (Harness.model t).scroll in
-  Printf.printf "scroll before: %d\nscroll after: %d\n" before after;
-  [%expect_exact {|scroll before: 0
-scroll after: 1
-|}]
-[@@ocamlformat "disable"]
+
+
+    Second |}]
+
+let%expect_test "scroll box stays constrained in column flex layout" =
+  render ~width:20 ~height:8
+    (Vnode.box
+       ~style:
+         (Toffee.Style.default
+         |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column)
+       [
+         Vnode.text "head";
+         Vnode.scroll_box
+           ~style:(Toffee.Style.default |> Toffee.Style.set_flex_grow 1.)
+           (List.init 10 (fun i ->
+                Vnode.text (Printf.sprintf "line %d" (i + 1))));
+         Vnode.text "foot";
+       ]);
+  [%expect
+    {|
+    head
+    line 1
+    line 2
+    line 3
+    line 4
+    line 5
+    line 6
+    foot |}]
