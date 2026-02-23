@@ -13,6 +13,7 @@ depends: [
   "ocaml" {>= "5.1"}
   "dune" {>= "3.19"}
   "windtrap" {with-test}
+  "ppx_windtrap" {with-test}
   "odoc" {with-doc}
 ]
 build: [
