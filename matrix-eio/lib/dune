@@ -1,0 +1,4 @@
+(library
+ (name matrix_eio)
+ (public_name matrix-eio)
+ (libraries matrix eio eio.unix cstruct))

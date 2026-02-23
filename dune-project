@@ -47,6 +47,22 @@
   (css layout flexbox grid "css-grid" taffy "layout-engine")))
 
 (package
+ (name matrix-eio)
+ (allow_empty)
+ (synopsis "Eio-based runtime for the Matrix terminal library")
+ (description
+  "Provides an Eio-native event loop for Matrix terminal applications, replacing Unix.select with Eio fibers and structured concurrency.")
+ (depends
+  (ocaml
+   (>= 5.4))
+  dune
+  matrix
+  (eio
+   (>= 1.2)))
+ (tags
+  (terminal eio "structured-concurrency")))
+
+(package
  (name mosaic)
  (synopsis
   "A modern terminal UI framework for OCaml with React-inspired hooks")
