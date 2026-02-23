@@ -57,7 +57,6 @@ type t = {
   tty : bool;
   mutable caps : Caps.t;
   mutable terminal_info : Caps.terminal_info;
-  parser : Input.Parser.t;
   mutable mouse_mode : mouse_mode;
   mutable bracketed_paste_enabled : bool;
   mutable focus_enabled : bool;
@@ -141,7 +140,6 @@ let clamp_color_component x =
 
 let send t seq = if t.tty then t.output seq
 let tty t = t.tty
-let parser t = t.parser
 
 (* Idempotent toggle: checks current state, emits sequence, updates state *)
 let toggle t ~current ~set ~enable ~on_seq ~off_seq =
@@ -152,19 +150,15 @@ let toggle t ~current ~set ~enable ~on_seq ~off_seq =
 
 (* Constructor *)
 
-let make ~output ?(tty = true) ?initial_caps ?parser () =
+let make ~output ?(tty = true) ?initial_caps () =
   let term = Sys.getenv_opt "TERM" |> Option.value ~default:"unknown" in
   let caps, terminal_info = Caps.initial ?provided:initial_caps ~term () in
   let env_overrides = Option.is_none initial_caps in
-  let parser =
-    match parser with Some p -> p | None -> Input.Parser.create ()
-  in
   {
     output;
     tty;
     caps;
     terminal_info;
-    parser;
     mouse_mode = `Off;
     bracketed_paste_enabled = false;
     focus_enabled = false;
@@ -209,10 +203,10 @@ let apply_capability_event t (event : Input.Caps.event) =
 
 (* Probing *)
 
-let probe ?(timeout = 0.2) ~on_event ~read_into ~wait_readable t =
+let probe ?(timeout = 0.2) ~on_event ~read_into ~wait_readable ~parser t =
   let caps, info =
     Caps.probe ~timeout ~apply_env_overrides:t.env_overrides ~on_event
-      ~read_into ~wait_readable ~send:(send t) ~caps:t.caps
+      ~read_into ~wait_readable ~send:(send t) ~parser ~caps:t.caps
       ~info:t.terminal_info ()
   in
   t.caps <- caps;
@@ -298,8 +292,6 @@ let set_unicode_width t width =
 let enter_alternate_screen t =
   if not t.alt_screen then (
     send t alternate_on;
-    send t cursor_hide;
-    t.cursor.visible <- false;
     t.alt_screen <- true)
 
 let leave_alternate_screen t =
@@ -389,7 +381,7 @@ let query_pixel_resolution t = send t Ansi.(to_string (query Pixel_size))
 
 (* Mode restoration *)
 
-let restore_modes t =
+let restore_modes ?(skip_focus = false) t =
   (match t.mouse_mode with
   | `Off -> ()
   | `X10 -> send t mouse_x10
@@ -399,7 +391,7 @@ let restore_modes t =
   | `Sgr_normal -> send t sgr_normal_seq
   | `Sgr_button -> send t sgr_button_seq
   | `Sgr_any -> send t sgr_any_seq);
-  if t.focus_enabled then send t focus_on;
+  if t.focus_enabled && not skip_focus then send t focus_on;
   if t.bracketed_paste_enabled then send t paste_on;
   if t.kitty_keyboard_enabled then (
     send t kitty_kb_pop;

@@ -54,9 +54,19 @@ let detect_kitty ~term =
   Option.is_some (Sys.getenv_opt "KITTY_WINDOW_ID")
   || contains_substring (String.lowercase_ascii term) "kitty"
 
+(* Terminals known to support OSC 8 hyperlinks. *)
+let is_hyperlink_term name =
+  let lower = String.lowercase_ascii name in
+  contains_substring lower "ghostty"
+  || contains_substring lower "kitty"
+  || contains_substring lower "wezterm"
+  || contains_substring lower "alacritty"
+  || contains_substring lower "iterm"
+
 let make_initial_capabilities ~term =
   let rgb = detect_rgb () in
   let kitty = detect_kitty ~term in
+  let hyperlinks = is_hyperlink_term term || rgb in
   {
     term;
     rgb;
@@ -72,7 +82,7 @@ let make_initial_capabilities ~term =
     scaled_text = false;
     sixel = false;
     sync = false;
-    hyperlinks = false;
+    hyperlinks;
   }
 
 let with_env name f caps =
@@ -119,6 +129,10 @@ let apply_environment_overrides caps =
   let caps =
     with_env "TERM_PROGRAM"
       (fun prog caps ->
+        let caps =
+          if is_hyperlink_term prog then { caps with hyperlinks = true }
+          else caps
+        in
         match prog with
         | "vscode" ->
             {
@@ -134,7 +148,9 @@ let apply_environment_overrides caps =
   let caps =
     with_env "COLORTERM"
       (fun value caps ->
-        if colorterm_truecolor value then { caps with rgb = true } else caps)
+        if colorterm_truecolor value then
+          { caps with rgb = true; hyperlinks = true }
+        else caps)
       caps
   in
   let caps =
@@ -214,12 +230,12 @@ let parse_xtversion_payload info payload =
   if payload = "" then info
   else
     let len = String.length payload in
-    let find_char ch start =
-      try Some (String.index_from payload start ch) with Not_found -> None
-    in
-    match find_char '(' 0 with
+    match String.index_from_opt payload 0 '(' with
     | Some paren ->
-        let close = Option.value ~default:len (find_char ')' (paren + 1)) in
+        let close =
+          Option.value ~default:len
+            (String.index_from_opt payload (paren + 1) ')')
+        in
         let name = String.sub payload 0 paren |> String.trim in
         let version =
           if close > paren + 1 then
@@ -228,7 +244,7 @@ let parse_xtversion_payload info payload =
         in
         { name; version; from_xtversion = true }
     | None -> (
-        match find_char ' ' 0 with
+        match String.index_from_opt payload 0 ' ' with
         | Some space ->
             let name = String.sub payload 0 space |> String.trim in
             let rest_len = len - (space + 1) in
@@ -314,6 +330,7 @@ let apply_event_internal (caps, info) (event : Input.Caps.event) =
            so we can safely enable all Kitty capabilities *)
         if contains_substring (String.lowercase_ascii payload) "kitty" then
           mark_kitty_terminal caps
+        else if is_hyperlink_term payload then { caps with hyperlinks = true }
         else caps
       in
       (caps, info)
@@ -440,8 +457,7 @@ let build_probe_payload term =
   String.concat "" (queries @ [ cursor_restore ])
 
 let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
-    ~wait_readable ~send ~caps ~info () =
-  let parser = Input.Parser.create () in
+    ~wait_readable ~send ~parser ~caps ~info () =
   let payload = build_probe_payload caps.term in
   send payload;
   let buffer = Bytes.create 4096 in
