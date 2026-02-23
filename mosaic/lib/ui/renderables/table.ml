@@ -1,1297 +1,965 @@
-module Cell = struct
-  type t = { text : string; style : Ansi.Style.t option }
+(* ───── Column ───── *)
 
-  let empty = { text = ""; style = None }
-  let make ?style text = { text; style }
-end
-
-type cell = Cell.t
-type row = { cells : Cell.t list; style : Ansi.Style.t option }
-
-let cell = Cell.make
-let row ?style cells = { cells; style }
-
-type justify = [ `Left | `Center | `Right | `Full ]
-type vertical_align = [ `Top | `Middle | `Bottom ]
-type overflow = [ `Ellipsis | `Crop | `Fold ]
-type padding = int * int * int * int
-
-type box_style =
-  | No_box
-  | Simple
-  | Rounded
-  | Heavy
-  | Heavy_head
-  | Double
-  | Double_edge
-  | Ascii
-  | Minimal_heavy_head
-  | Minimal_double_head
-  | Minimal
-  | Square
-  | Square_double_head
+type alignment = [ `Left | `Center | `Right ]
+type width = [ `Fixed of int | `Auto | `Flex of float ]
+type overflow = [ `Ellipsis | `Crop ]
 
 type column = {
-  header : Cell.t option;
-  footer : Cell.t option;
-  header_style : Ansi.Style.t option;
-  footer_style : Ansi.Style.t option;
-  style : Ansi.Style.t option;
-  justify : justify;
-  vertical : vertical_align;
+  header : string;
+  width : width;
+  alignment : alignment;
   overflow : overflow;
-  width : int option;
   min_width : int option;
   max_width : int option;
-  ratio : int option;
-  no_wrap : bool;
 }
 
-let column ?header ?footer ?style ?header_style ?footer_style ?(justify = `Left)
-    ?(vertical = `Top) ?(overflow = `Ellipsis) ?width ?min_width ?max_width
-    ?ratio ?(no_wrap = false) _name =
-  let width =
-    match width with Some (`Fixed w) -> Some w | Some `Auto | None -> None
-  in
-  {
-    header;
-    footer;
-    header_style;
-    footer_style;
-    style;
-    justify;
-    vertical;
-    overflow;
-    width;
-    min_width;
-    max_width;
-    ratio;
-    no_wrap;
-  }
+let column ?(width = `Auto) ?(alignment = `Left) ?(overflow = `Ellipsis)
+    ?min_width ?max_width header =
+  { header; width; alignment; overflow; min_width; max_width }
 
-type options = {
-  columns : column list;
-  rows : row list;
-  title : Cell.t option;
-  caption : Cell.t option;
-  box_style : box_style;
-  safe_box : bool;
-  padding : padding;
-  collapse_padding : bool;
-  pad_edge : bool;
-  expand : bool;
-  show_header : bool;
-  show_footer : bool;
-  show_edge : bool;
-  show_lines : bool;
-  leading : int;
-  cell_style : Ansi.Style.t;
-  row_styles : Ansi.Style.t list;
-  header_style : Ansi.Style.t;
-  footer_style : Ansi.Style.t;
-  border_style : Ansi.Style.t;
-  title_style : Ansi.Style.t;
-  caption_style : Ansi.Style.t;
-  title_justify : justify;
-  caption_justify : justify;
-  width : int option;
-  min_width : int option;
-}
+let column_equal (a : column) (b : column) =
+  String.equal a.header b.header
+  && a.width = b.width && a.alignment = b.alignment && a.overflow = b.overflow
+  && Option.equal Int.equal a.min_width b.min_width
+  && Option.equal Int.equal a.max_width b.max_width
 
-type styled_line = (string * Ansi.Style.t) list
-type render_plan = styled_line list
+let rec columns_equal xs ys =
+  match (xs, ys) with
+  | [], [] -> true
+  | x :: xs, y :: ys -> column_equal x y && columns_equal xs ys
+  | _ -> false
 
-type t = {
-  surface : Text_surface.t;
-  mutable columns : column list;
-  mutable rows : row list;
-  mutable options : options;
-}
+(* ───── Cell ───── *)
 
-let node t = Text_surface.node t.surface
+type cell =
+  | Plain of { text : string; style : Ansi.Style.t option }
+  | Rich of Text.fragment list
 
-let width_of_string text =
-  Glyph.String.measure ~width_method:`Unicode ~tab_width:2 text
+let cell ?style s = Plain { text = s; style }
+let rich fs = Rich fs
 
-let merge_style base overlay =
-  match overlay with
-  | None -> base
-  | Some overlay -> Ansi.Style.merge ~base ~overlay
+let cell_equal a b =
+  match (a, b) with
+  | Plain a, Plain b ->
+      String.equal a.text b.text
+      && Option.equal Ansi.Style.equal a.style b.style
+  | Rich a, Rich b -> Text.fragments_equal a b
+  | _ -> false
 
-let merge_styles base overlays =
-  List.fold_left (fun acc style -> merge_style acc style) base overlays
+let cell_plain_text = function
+  | Plain { text; _ } -> text
+  | Rich fragments ->
+      let buf = Buffer.create 32 in
+      let rec collect = function
+        | [] -> ()
+        | Text.Text { text; _ } :: rest ->
+            Buffer.add_string buf text;
+            collect rest
+        | Text.Span { children; _ } :: rest ->
+            collect children;
+            collect rest
+      in
+      collect fragments;
+      Buffer.contents buf
 
-let default_options =
-  {
-    columns = [];
-    rows = [];
-    title = None;
-    caption = None;
-    box_style = Heavy_head;
-    safe_box = false;
-    padding = (0, 1, 0, 1);
-    collapse_padding = false;
-    pad_edge = true;
-    expand = false;
-    show_header = true;
-    show_footer = false;
-    show_edge = true;
-    show_lines = false;
-    leading = 0;
-    cell_style = Ansi.Style.default;
-    row_styles = [];
-    header_style = Ansi.Style.make ~bold:true ();
-    footer_style = Ansi.Style.default;
-    border_style = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 200 200 200) ();
-    title_style = Ansi.Style.default;
-    caption_style = Ansi.Style.default;
-    title_justify = `Center;
-    caption_justify = `Center;
-    width = None;
-    min_width = None;
-  }
+let row_equal (a : cell array) (b : cell array) =
+  let la = Array.length a and lb = Array.length b in
+  if la <> lb then false
+  else
+    let rec loop i = i >= la || (cell_equal a.(i) b.(i) && loop (i + 1)) in
+    loop 0
+
+let rec rows_equal xs ys =
+  match (xs, ys) with
+  | [], [] -> true
+  | x :: xs, y :: ys -> row_equal x y && rows_equal xs ys
+  | _ -> false
+
+(* ───── Props ───── *)
 
 module Props = struct
-  type t = options
+  type t = {
+    columns : column list;
+    rows : cell array list;
+    selected_row : int;
+    border : bool;
+    border_style : Grid.Border.t;
+    show_header : bool;
+    show_column_separator : bool;
+    show_row_separator : bool;
+    cell_padding : int;
+    header_color : Ansi.Color.t;
+    header_background : Ansi.Color.t;
+    text_color : Ansi.Color.t;
+    background : Ansi.Color.t;
+    selected_text_color : Ansi.Color.t;
+    selected_background : Ansi.Color.t;
+    focused_selected_text_color : Ansi.Color.t;
+    focused_selected_background : Ansi.Color.t;
+    row_styles : Ansi.Style.t list;
+    wrap_selection : bool;
+    fast_scroll_step : int;
+  }
 
-  let make ?box_style ?safe_box ?padding ?collapse_padding ?pad_edge ?expand
-      ?show_header ?show_footer ?show_edge ?show_lines ?leading ?cell_style
-      ?row_styles ?header_style ?footer_style ?border_style ?title ?title_style
-      ?title_justify ?caption ?caption_style ?caption_justify ?width ?min_width
-      ~columns ~rows () =
+  let make ?(columns = []) ?(rows = []) ?(selected_row = 0) ?(border = true)
+      ?(border_style = Grid.Border.single) ?(show_header = true)
+      ?(show_column_separator = false) ?(show_row_separator = false)
+      ?(cell_padding = 0) ?(header_color = Ansi.Color.of_rgb 255 255 255)
+      ?(header_background = Ansi.Color.of_rgb 51 51 51)
+      ?(text_color = Ansi.Color.of_rgb 255 255 255)
+      ?(background = Ansi.Color.of_rgba 0 0 0 0)
+      ?(selected_text_color = Ansi.Color.of_rgb 255 255 0)
+      ?(selected_background = Ansi.Color.of_rgb 51 68 85)
+      ?focused_selected_text_color ?focused_selected_background
+      ?(row_styles = []) ?(wrap_selection = false) ?(fast_scroll_step = 5) () =
+    let focused_selected_text_color =
+      match focused_selected_text_color with
+      | Some c -> c
+      | None -> selected_text_color
+    in
+    let focused_selected_background =
+      match focused_selected_background with
+      | Some c -> c
+      | None -> selected_background
+    in
     {
       columns;
       rows;
-      title;
-      caption;
-      box_style = Option.value box_style ~default:default_options.box_style;
-      safe_box = Option.value safe_box ~default:default_options.safe_box;
-      padding = Option.value padding ~default:default_options.padding;
-      collapse_padding =
-        Option.value collapse_padding ~default:default_options.collapse_padding;
-      pad_edge = Option.value pad_edge ~default:default_options.pad_edge;
-      expand = Option.value expand ~default:default_options.expand;
-      show_header =
-        Option.value show_header ~default:default_options.show_header;
-      show_footer =
-        Option.value show_footer ~default:default_options.show_footer;
-      show_edge = Option.value show_edge ~default:default_options.show_edge;
-      show_lines = Option.value show_lines ~default:default_options.show_lines;
-      leading = Option.value leading ~default:default_options.leading;
-      cell_style = Option.value cell_style ~default:default_options.cell_style;
-      row_styles = Option.value row_styles ~default:default_options.row_styles;
-      header_style =
-        Option.value header_style ~default:default_options.header_style;
-      footer_style =
-        Option.value footer_style ~default:default_options.footer_style;
-      border_style =
-        Option.value border_style ~default:default_options.border_style;
-      title_style =
-        Option.value title_style ~default:default_options.title_style;
-      caption_style =
-        Option.value caption_style ~default:default_options.caption_style;
-      title_justify =
-        Option.value title_justify ~default:default_options.title_justify;
-      caption_justify =
-        Option.value caption_justify ~default:default_options.caption_justify;
-      width;
-      min_width;
+      selected_row = max 0 selected_row;
+      border;
+      border_style;
+      show_header;
+      show_column_separator;
+      show_row_separator;
+      cell_padding = max 0 cell_padding;
+      header_color;
+      header_background;
+      text_color;
+      background;
+      selected_text_color;
+      selected_background;
+      focused_selected_text_color;
+      focused_selected_background;
+      row_styles;
+      wrap_selection;
+      fast_scroll_step = max 1 fast_scroll_step;
     }
 
+  let default = make ()
+
+  let rec styles_equal xs ys =
+    match (xs, ys) with
+    | [], [] -> true
+    | x :: xs, y :: ys -> Ansi.Style.equal x y && styles_equal xs ys
+    | _ -> false
+
   let equal a b =
-    let rec list_eq eq xs ys =
-      match (xs, ys) with
-      | [], [] -> true
-      | x :: xs, y :: ys -> eq x y && list_eq eq xs ys
-      | _ -> false
-    in
-    Option.equal
-      (fun (x : Cell.t) (y : Cell.t) ->
-        String.equal x.text y.text
-        && Option.equal Ansi.Style.equal x.style y.style)
-      a.title b.title
-    && Option.equal
-         (fun (x : Cell.t) (y : Cell.t) ->
-           String.equal x.text y.text
-           && Option.equal Ansi.Style.equal x.style y.style)
-         a.caption b.caption
-    && a.box_style = b.box_style
-    && Bool.equal a.safe_box b.safe_box
-    && a.padding = b.padding
-    && Bool.equal a.collapse_padding b.collapse_padding
-    && Bool.equal a.pad_edge b.pad_edge
-    && Bool.equal a.expand b.expand
+    columns_equal a.columns b.columns
+    && rows_equal a.rows b.rows
+    && Int.equal a.selected_row b.selected_row
+    && Bool.equal a.border b.border
+    && a.border_style = b.border_style
     && Bool.equal a.show_header b.show_header
-    && Bool.equal a.show_footer b.show_footer
-    && Bool.equal a.show_edge b.show_edge
-    && Bool.equal a.show_lines b.show_lines
-    && Int.equal a.leading b.leading
-    && Ansi.Style.equal a.cell_style b.cell_style
-    && list_eq Ansi.Style.equal a.row_styles b.row_styles
-    && Ansi.Style.equal a.header_style b.header_style
-    && Ansi.Style.equal a.footer_style b.footer_style
-    && Ansi.Style.equal a.border_style b.border_style
-    && Ansi.Style.equal a.title_style b.title_style
-    && Ansi.Style.equal a.caption_style b.caption_style
-    && a.title_justify = b.title_justify
-    && a.caption_justify = b.caption_justify
-    && Option.equal Int.equal a.width b.width
-    && Option.equal Int.equal a.min_width b.min_width
+    && Bool.equal a.show_column_separator b.show_column_separator
+    && Bool.equal a.show_row_separator b.show_row_separator
+    && Int.equal a.cell_padding b.cell_padding
+    && Ansi.Color.equal a.header_color b.header_color
+    && Ansi.Color.equal a.header_background b.header_background
+    && Ansi.Color.equal a.text_color b.text_color
+    && Ansi.Color.equal a.background b.background
+    && Ansi.Color.equal a.selected_text_color b.selected_text_color
+    && Ansi.Color.equal a.selected_background b.selected_background
+    && Ansi.Color.equal a.focused_selected_text_color
+         b.focused_selected_text_color
+    && Ansi.Color.equal a.focused_selected_background
+         b.focused_selected_background
+    && styles_equal a.row_styles b.row_styles
+    && Bool.equal a.wrap_selection b.wrap_selection
+    && Int.equal a.fast_scroll_step b.fast_scroll_step
 end
 
-type box_chars = {
-  head_left : string;
-  head_right : string;
-  head_vertical : string;
-  head_horizontal : string;
-  row_left : string;
-  row_right : string;
-  row_vertical : string;
-  row_horizontal : string;
-  mid_left : string;
-  mid_right : string;
-  mid_vertical : string;
-  mid_horizontal : string;
-  foot_left : string;
-  foot_right : string;
-  foot_vertical : string;
-  foot_horizontal : string;
-  vertical : string;
+(* ───── Types ───── *)
+
+type t = {
+  node : Renderable.t;
+  mutable props : Props.t;
+  mutable col_specs : column array;
+  mutable data_rows : cell array array;
+  mutable selected_row : int;
+  mutable scroll_offset : int;
+  mutable max_visible_rows : int;
+  mutable on_change : (int -> unit) option;
+  mutable on_activate : (int -> unit) option;
 }
 
-let empty_box_chars =
-  {
-    head_left = "";
-    head_right = "";
-    head_vertical = "";
-    head_horizontal = "";
-    row_left = "";
-    row_right = "";
-    row_vertical = "";
-    row_horizontal = "";
-    mid_left = "";
-    mid_right = "";
-    mid_vertical = "";
-    mid_horizontal = "";
-    foot_left = "";
-    foot_right = "";
-    foot_vertical = "";
-    foot_horizontal = "";
-    vertical = "";
-  }
+let node t = t.node
 
-let ascii_chars =
-  {
-    head_left = "+";
-    head_right = "+";
-    head_vertical = "+";
-    head_horizontal = "-";
-    row_left = "+";
-    row_right = "+";
-    row_vertical = "+";
-    row_horizontal = "-";
-    mid_left = "+";
-    mid_right = "+";
-    mid_vertical = "+";
-    mid_horizontal = "-";
-    foot_left = "+";
-    foot_right = "+";
-    foot_vertical = "+";
-    foot_horizontal = "-";
-    vertical = "|";
-  }
+(* ───── Internal Helpers ───── *)
 
-let minimal =
-  {
-    head_left = "";
-    head_right = "";
-    head_vertical = " ";
-    head_horizontal = "─";
-    row_left = "";
-    row_right = "";
-    row_vertical = " ";
-    row_horizontal = "";
-    mid_left = "";
-    mid_right = "";
-    mid_vertical = " ";
-    mid_horizontal = "";
-    foot_left = "";
-    foot_right = "";
-    foot_vertical = " ";
-    foot_horizontal = "";
-    vertical = " ";
-  }
+let request t = Renderable.request_render t.node
+let row_count t = Array.length t.data_rows
 
-let get_box_chars style safe =
-  let use_ascii = safe in
-  match style with
-  | No_box -> empty_box_chars
-  | Ascii -> ascii_chars
-  | Simple ->
-      if use_ascii then ascii_chars
-      else
-        {
-          ascii_chars with
-          head_horizontal = "─";
-          row_horizontal = "─";
-          mid_horizontal = "─";
-          foot_horizontal = "─";
-          vertical = "│";
-        }
-  | Rounded ->
-      if use_ascii then ascii_chars
-      else
-        {
-          head_left = "╭";
-          head_right = "╮";
-          head_vertical = "┬";
-          head_horizontal = "─";
-          row_left = "│";
-          row_right = "│";
-          row_vertical = "┼";
-          row_horizontal = "─";
-          mid_left = "├";
-          mid_right = "┤";
-          mid_vertical = "┼";
-          mid_horizontal = "─";
-          foot_left = "╰";
-          foot_right = "╯";
-          foot_vertical = "┴";
-          foot_horizontal = "─";
-          vertical = "│";
-        }
-  | Heavy ->
-      if use_ascii then ascii_chars
-      else
-        {
-          head_left = "┏";
-          head_right = "┓";
-          head_vertical = "┳";
-          head_horizontal = "━";
-          row_left = "┣";
-          row_right = "┫";
-          row_vertical = "╋";
-          row_horizontal = "━";
-          mid_left = "┣";
-          mid_right = "┫";
-          mid_vertical = "╋";
-          mid_horizontal = "━";
-          foot_left = "┗";
-          foot_right = "┛";
-          foot_vertical = "┻";
-          foot_horizontal = "━";
-          vertical = "┃";
-        }
-  | Heavy_head ->
-      if use_ascii then ascii_chars
-      else
-        {
-          head_left = "┏";
-          head_right = "┓";
-          head_vertical = "┳";
-          head_horizontal = "━";
-          row_left = "├";
-          row_right = "┤";
-          row_vertical = "┼";
-          row_horizontal = "─";
-          mid_left = "├";
-          mid_right = "┤";
-          mid_vertical = "┼";
-          mid_horizontal = "─";
-          foot_left = "└";
-          foot_right = "┘";
-          foot_vertical = "┴";
-          foot_horizontal = "─";
-          vertical = "│";
-        }
-  | Double ->
-      if use_ascii then ascii_chars
-      else
-        {
-          head_left = "╔";
-          head_right = "╗";
-          head_vertical = "╦";
-          head_horizontal = "═";
-          row_left = "╠";
-          row_right = "╣";
-          row_vertical = "╬";
-          row_horizontal = "═";
-          mid_left = "╠";
-          mid_right = "╣";
-          mid_vertical = "╬";
-          mid_horizontal = "═";
-          foot_left = "╚";
-          foot_right = "╝";
-          foot_vertical = "╩";
-          foot_horizontal = "═";
-          vertical = "║";
-        }
-  | Double_edge ->
-      if use_ascii then ascii_chars
-      else
-        {
-          head_left = "╔";
-          head_right = "╗";
-          head_vertical = "╤";
-          head_horizontal = "═";
-          row_left = "│";
-          row_right = "│";
-          row_vertical = "┼";
-          row_horizontal = "─";
-          mid_left = "├";
-          mid_right = "┤";
-          mid_vertical = "┼";
-          mid_horizontal = "─";
-          foot_left = "╚";
-          foot_right = "╝";
-          foot_vertical = "╧";
-          foot_horizontal = "═";
-          vertical = "║";
-        }
-  | Minimal_heavy_head ->
-      if use_ascii then ascii_chars
-      else { ascii_chars with head_horizontal = "━"; head_vertical = " " }
-  | Minimal_double_head ->
-      if use_ascii then minimal
-      else { minimal with head_horizontal = "═"; head_vertical = " " }
-  | Minimal -> minimal
-  | Square ->
-      if use_ascii then ascii_chars
-      else
-        {
-          head_left = "┌";
-          head_right = "┐";
-          head_vertical = "┬";
-          head_horizontal = "─";
-          row_left = "├";
-          row_right = "┤";
-          row_vertical = "┼";
-          row_horizontal = "─";
-          mid_left = "├";
-          mid_right = "┤";
-          mid_vertical = "┼";
-          mid_horizontal = "─";
-          foot_left = "└";
-          foot_right = "┘";
-          foot_vertical = "┴";
-          foot_horizontal = "─";
-          vertical = "│";
-        }
-  | Square_double_head ->
-      if use_ascii then ascii_chars
-      else
-        {
-          head_left = "╒";
-          head_right = "╕";
-          head_vertical = "╤";
-          head_horizontal = "═";
-          row_left = "╞";
-          row_right = "╡";
-          row_vertical = "╪";
-          row_horizontal = "═";
-          mid_left = "╞";
-          mid_right = "╡";
-          mid_vertical = "╪";
-          mid_horizontal = "═";
-          foot_left = "╘";
-          foot_right = "╛";
-          foot_vertical = "╧";
-          foot_horizontal = "═";
-          vertical = "│";
-        }
+let clamp_index t idx =
+  let len = row_count t in
+  if len = 0 then 0 else max 0 (min (len - 1) idx)
 
-type grapheme = { text : string; width : int }
+(* ───── Column Width Computation ───── *)
 
-let graphemes text =
-  let acc = ref [] in
-  Glyph.String.iter_graphemes
-    (fun ~offset:off ~len ->
-      let text = String.sub text off len in
-      let width =
-        Glyph.String.measure ~width_method:`Unicode ~tab_width:2 text
-      in
-      let width = if width < 0 then 0 else width in
-      acc := { text; width } :: !acc)
-    text;
-  List.rev !acc
+let text_width s = Glyph.String.measure ~width_method:`Unicode ~tab_width:2 s
 
-let rec take_width_with acc current target = function
-  | [] -> (List.rev acc, [])
-  | g :: rest ->
-      if current + g.width > target then (List.rev acc, g :: rest)
-      else take_width_with (g :: acc) (current + g.width) target rest
-
-let take_width acc target graphemes = take_width_with acc 0 target graphemes
-
-let take_string text width =
-  let items, _ = take_width [] width (graphemes text) in
-  String.concat "" (List.map (fun g -> g.text) items)
-
-let rec split_by_width acc width graphemes =
-  if graphemes = [] then List.rev acc
+let compute_column_widths t ~available_width =
+  let ncols = Array.length t.col_specs in
+  if ncols = 0 then [||]
   else
-    let taken, rest = take_width [] width graphemes in
-    let chunk = String.concat "" (List.map (fun g -> g.text) taken) in
-    split_by_width (chunk :: acc) width rest
-
-let truncate_with_suffix text width suffix =
-  let suffix_width = width_of_string suffix in
-  if width_of_string text <= width then text
-  else if width <= suffix_width then take_string text width
-  else
-    let target = width - suffix_width in
-    let prefix = take_string text target in
-    prefix ^ suffix
-
-let crop_to_width text width = take_string text width
-let chop text width = split_by_width [] width (graphemes text)
-
-let normalize_words text =
-  text |> String.split_on_char ' ' |> List.filter (fun w -> w <> "")
-
-let word_wrap text width =
-  if width <= 0 then [ "" ]
-  else
-    let words = normalize_words text in
-    let rec loop acc current current_width = function
-      | [] ->
-          let acc =
-            if current = [] then acc
-            else String.concat " " (List.rev current) :: acc
-          in
-          List.rev acc
-      | word :: rest ->
-          let word_width = width_of_string word in
-          let extra = if current = [] then 0 else 1 in
-          if word_width + current_width + extra <= width then
-            loop acc (word :: current) (current_width + word_width + extra) rest
-          else if word_width >= width then
-            let acc =
-              if current = [] then acc
-              else String.concat " " (List.rev current) :: acc
+    let widths = Array.make ncols 0 in
+    let pad = t.props.cell_padding in
+    let pad2 = 2 * pad in
+    (* Always reserve 1 char gap between adjacent columns *)
+    let gap_width = if ncols > 1 then ncols - 1 else 0 in
+    let border_width = if t.props.border then 2 else 0 in
+    let usable = max 0 (available_width - gap_width - border_width) in
+    let fixed_total = ref 0 in
+    let flex_total = ref 0.0 in
+    (* Pass 1: resolve Auto and Fixed (widths include padding) *)
+    Array.iteri
+      (fun i col ->
+        match col.width with
+        | `Fixed n ->
+            widths.(i) <- max 1 (n + pad2);
+            fixed_total := !fixed_total + widths.(i)
+        | `Auto ->
+            let header_w = text_width col.header in
+            let max_cell_w =
+              Array.fold_left
+                (fun acc row ->
+                  if i < Array.length row then
+                    max acc (text_width (cell_plain_text row.(i)))
+                  else acc)
+                0 t.data_rows
             in
-            let pieces = chop word width in
-            loop (List.rev_append pieces acc) [] 0 rest
-          else
-            loop
-              (String.concat " " (List.rev current) :: acc)
-              [ word ] word_width rest
-    in
-    loop [] [] 0 words
-
-let rec justify_string line width = function
-  | `Left ->
-      let pad = max 0 (width - width_of_string line) in
-      line ^ String.make pad ' '
-  | `Right ->
-      let pad = max 0 (width - width_of_string line) in
-      String.make pad ' ' ^ line
-  | `Center ->
-      let pad_total = max 0 (width - width_of_string line) in
-      let left = pad_total / 2 in
-      let right = pad_total - left in
-      String.make left ' ' ^ line ^ String.make right ' '
-  | `Full ->
-      let words = normalize_words line in
-      let word_count = List.length words in
-      if word_count <= 1 then justify_string line width `Left
-      else
-        let words_width =
-          List.fold_left (fun acc w -> acc + width_of_string w) 0 words
-        in
-        let remaining = max 0 (width - words_width) in
-        let gaps = word_count - 1 in
-        let base = remaining / gaps in
-        let extra = remaining mod gaps in
-        let _, result =
-          List.fold_left
-            (fun (idx, acc) word ->
-              let sep =
-                if idx = 0 then ""
-                else
-                  let fill = base + if idx <= extra then 1 else 0 in
-                  String.make fill ' '
+            let content_w = max header_w max_cell_w in
+            let w = max 1 (content_w + pad2) in
+            (* Apply min/max constraints *)
+            let w =
+              match col.min_width with Some m -> max w (m + pad2) | None -> w
+            in
+            let w =
+              match col.max_width with Some m -> min w (m + pad2) | None -> w
+            in
+            widths.(i) <- max 1 w;
+            fixed_total := !fixed_total + widths.(i)
+        | `Flex f -> flex_total := !flex_total +. f)
+      t.col_specs;
+    (* Pass 2: distribute remaining space among Flex columns *)
+    let remaining = max 0 (usable - !fixed_total) in
+    if !flex_total > 0.0 then
+      Array.iteri
+        (fun i col ->
+          match col.width with
+          | `Flex f ->
+              let w =
+                max 1 (int_of_float (float remaining *. f /. !flex_total))
               in
-              (idx + 1, acc ^ sep ^ word))
-            (0, "") words
-        in
-        result
+              let w = max w (pad2 + 1) in
+              let w =
+                match col.min_width with
+                | Some m -> max w (m + pad2)
+                | None -> w
+              in
+              let w =
+                match col.max_width with
+                | Some m -> min w (m + pad2)
+                | None -> w
+              in
+              widths.(i) <- w
+          | _ -> ())
+        t.col_specs;
+    widths
 
-type measurement = { min : int; max : int }
+(* ───── Scrolling ───── *)
 
-let max_word_width text =
-  match normalize_words text with
-  | [] -> 1
-  | words ->
-      List.fold_left (fun acc word -> max acc (width_of_string word)) 0 words
+let recalc_max_visible t ~content_height =
+  let row_height = if t.props.show_row_separator then 2 else 1 in
+  t.max_visible_rows <- max 1 ((content_height + row_height - 1) / row_height)
 
-let cell_measurement cell column =
-  let text = cell.Cell.text in
-  if text = "" then { min = 0; max = 0 }
+let update_scroll_offset t =
+  let len = row_count t in
+  if len = 0 then t.scroll_offset <- 0
   else
-    let lines = String.split_on_char '\n' text in
-    match column.overflow with
-    | `Crop | `Ellipsis ->
-        let width =
-          List.fold_left
-            (fun acc line -> max acc (width_of_string line))
-            0 lines
-        in
-        { min = width; max = width }
-    | `Fold ->
-        let measure_line line =
-          if column.no_wrap then { min = 1; max = width_of_string line }
-          else { min = max_word_width line; max = width_of_string line }
-        in
-        List.fold_left
-          (fun acc line ->
-            let m = measure_line line in
-            { min = max acc.min m.min; max = max acc.max m.max })
-          { min = 0; max = 0 } lines
+    let half = max 0 (t.max_visible_rows / 2) in
+    let max_off = max 0 (len - t.max_visible_rows) in
+    let desired = t.selected_row - half in
+    t.scroll_offset <- max 0 (min desired max_off)
 
-let ratio_distribute amount ratios mins =
-  let total_r = List.fold_left ( + ) 0 ratios in
-  if total_r = 0 then List.map (fun m -> m) mins
+let set_selected_row_internal t idx =
+  let len = row_count t in
+  if len = 0 then ()
   else
-    let parts = List.map (fun r -> r * amount / total_r) ratios in
-    let distributed = List.fold_left ( + ) 0 parts in
-    let remain = amount - distributed in
-    let parts = List.mapi (fun i p -> if i < remain then p + 1 else p) parts in
-    List.map2 max parts mins
+    let idx = clamp_index t idx in
+    if idx <> t.selected_row then (
+      t.selected_row <- idx;
+      update_scroll_offset t;
+      (match t.on_change with None -> () | Some f -> f t.selected_row);
+      request t)
 
-let ratio_reduce amount ratios maxs values =
-  let values = List.map2 min values maxs in
-  let total_r = List.fold_left ( + ) 0 ratios in
-  if total_r = 0 then values
+(* ───── Public Accessors ───── *)
+
+let columns t = Array.to_list t.col_specs
+let rows t = Array.to_list t.data_rows
+let selected_row t = t.selected_row
+
+(* ───── Data ───── *)
+
+let set_columns t cols =
+  t.col_specs <- Array.of_list cols;
+  Renderable.mark_dirty t.node;
+  request t
+
+let set_rows t data =
+  t.data_rows <- Array.of_list data;
+  t.selected_row <- clamp_index t t.selected_row;
+  update_scroll_offset t;
+  Renderable.mark_dirty t.node;
+  request t
+
+let set_selected_row t idx = set_selected_row_internal t idx
+
+(* ───── Navigation ───── *)
+
+let move_up ?(steps = 1) t =
+  let len = row_count t in
+  if len = 0 then ()
   else
-    let rec loop values excess =
-      if excess <= 0 then values
-      else
-        let total = List.fold_left ( + ) 0 values in
-        let excess = total - amount in
-        if excess <= 0 then values
-        else
-          let deductions = List.map (fun r -> r * excess / total_r) ratios in
-          let remaining = ref excess in
-          let adjusted =
-            List.mapi
-              (fun i v ->
-                let d = List.nth deductions i in
-                if d > 0 then (
-                  let new_v = max 0 (v - d) in
-                  remaining := !remaining - (v - new_v);
-                  new_v)
-                else v)
-              values
-          in
-          loop adjusted !remaining
-    in
-    let total = List.fold_left ( + ) 0 values in
-    loop values (total - amount)
+    let new_index = t.selected_row - steps in
+    if new_index >= 0 then set_selected_row_internal t new_index
+    else if t.props.wrap_selection then set_selected_row_internal t (len - 1)
+    else set_selected_row_internal t 0
 
-let collapse_widths widths wrapable max_width =
-  let total = List.fold_left ( + ) 0 widths in
-  let excess = total - max_width in
-  let rec loop widths excess =
-    if excess <= 0 || not (List.exists (fun b -> b) wrapable) then widths
-    else
-      let max_col =
-        List.fold_left2
-          (fun acc w wrappable -> if wrappable then max acc w else acc)
-          0 widths wrapable
-      in
-      let second =
-        List.fold_left2
-          (fun acc w wrappable ->
-            if wrappable && w <> max_col then max acc w else acc)
-          0 widths wrapable
-      in
-      let diff = max_col - second in
-      if diff <= 0 then widths
-      else
-        let ratios =
-          List.map2
-            (fun w wrappable -> if wrappable && w = max_col then 1 else 0)
-            widths wrapable
-        in
-        let reduced = ratio_reduce max_width ratios widths widths in
-        let new_total = List.fold_left ( + ) 0 reduced in
-        loop reduced (new_total - max_width)
-  in
-  loop widths excess
-
-let get_effective_padding top right bottom left is_first_col is_last_col
-    is_first_row is_last_row collapse pad_edge =
-  let e_top = ref top in
-  let e_right = ref right in
-  let e_bottom = ref bottom in
-  let e_left = ref left in
-  if collapse then (
-    if not is_first_col then e_left := 0;
-    if not is_first_row then e_top := 0);
-  if not pad_edge then (
-    if is_first_col then e_left := 0;
-    if is_last_col then e_right := 0;
-    if is_first_row then e_top := 0;
-    if is_last_row then e_bottom := 0);
-  (!e_top, !e_right, !e_bottom, !e_left)
-
-let column_measurement column idx show_header show_footer rows pad_width =
-  let measure_cell cell = cell_measurement cell column in
-  let header =
-    if show_header then
-      match column.header with
-      | None -> { min = 0; max = 0 }
-      | Some h -> measure_cell h
-    else { min = 0; max = 0 }
-  in
-  let footer =
-    if show_footer then
-      match column.footer with
-      | None -> { min = 0; max = 0 }
-      | Some f -> measure_cell f
-    else { min = 0; max = 0 }
-  in
-  let data =
-    List.map
-      (fun row ->
-        match List.nth_opt row.cells idx with
-        | Some cell -> measure_cell cell
-        | None -> { min = 0; max = 0 })
-      rows
-  in
-  let combined = header :: footer :: data in
-  let min_width =
-    List.fold_left (fun acc meas -> max acc meas.min) 0 combined + pad_width
-  in
-  let max_width =
-    List.fold_left (fun acc meas -> max acc meas.max) 0 combined + pad_width
-  in
-  match column.width with
-  | Some w -> { min = w; max = w }
-  | None ->
-      let min_width =
-        match column.min_width with
-        | Some v -> max min_width v
-        | None -> min_width
-      in
-      let max_width =
-        match column.max_width with
-        | Some v -> min max_width v
-        | None -> max_width
-      in
-      { min = min_width; max = max_width }
-
-let calculate_column_widths columns rows available show_header show_footer
-    expand box_style show_edge top right bottom left collapse pad_edge =
-  let column_count = List.length columns in
-  if column_count = 0 then []
+let move_down ?(steps = 1) t =
+  let len = row_count t in
+  if len = 0 then ()
   else
-    let extra =
-      if box_style = No_box then 0
-      else
-        let borders = if show_edge then 2 else 0 in
-        borders + max 0 (column_count - 1)
-    in
-    let available_columns = available - extra in
-    let measurements =
-      List.mapi
-        (fun idx column ->
-          let max_pad =
-            get_effective_padding top right bottom left (idx = 0)
-              (idx = column_count - 1)
-              true false collapse pad_edge
-            |> fun (_, pr, _, pl) -> pl + pr
-          in
-          column_measurement column idx show_header show_footer rows max_pad)
-        columns
-    in
-    let widths = List.map (fun m -> m.max) measurements in
-    let total_width = List.fold_left ( + ) 0 widths in
-    let flexible = List.map (fun col -> Option.is_some col.ratio) columns in
-    let widths =
-      if
-        total_width < available_columns
-        && expand
-        && List.exists (fun x -> x) flexible
-      then
-        let ratios =
-          List.map (fun column -> Option.value column.ratio ~default:0) columns
-        in
-        let mins =
-          List.map2
-            (fun m (col : column) ->
-              match col.width with None -> m.min | Some w -> w)
-            measurements columns
-        in
-        let fixed_total =
-          List.fold_left2
-            (fun acc measurement is_flex ->
-              if is_flex then acc else acc + measurement.max)
-            0 measurements flexible
-        in
-        let flex_available = max 0 (available_columns - fixed_total) in
-        let distributed = ratio_distribute flex_available ratios mins in
-        let idx = ref 0 in
-        List.mapi
-          (fun i measurement ->
-            if List.nth flexible i then (
-              let value = List.nth distributed !idx in
-              incr idx;
-              max measurement.min value)
-            else measurement.max)
-          measurements
-      else widths
-    in
-    let total = List.fold_left ( + ) 0 widths in
-    let widths =
-      if total > available_columns then
-        let wrapable =
-          List.map
-            (fun (column : column) -> column.width = None && not column.no_wrap)
-            columns
-        in
-        collapse_widths widths wrapable available_columns
-      else widths
-    in
-    let final_total = List.fold_left ( + ) 0 widths in
-    if final_total < available_columns && expand then
-      let extra_space = available_columns - final_total in
-      let growth =
-        ratio_distribute extra_space
-          (List.map (fun w -> w) widths)
-          (List.init column_count (fun _ -> 0))
-      in
-      List.map2 ( + ) widths growth
-    else widths
+    let new_index = t.selected_row + steps in
+    if new_index < len then set_selected_row_internal t new_index
+    else if t.props.wrap_selection then set_selected_row_internal t 0
+    else set_selected_row_internal t (len - 1)
 
-type prepared_cell = {
-  lines : string list;
-  padding_top : int;
-  padding_bottom : int;
-  padding_left : int;
-  padding_right : int;
-  width : int;
-  style : Ansi.Style.t;
-  vertical : vertical_align;
-}
+(* ───── Display Setters ───── *)
 
-let effective_cell_style options (column : column) cell overlays =
-  let base = options.cell_style in
-  let base = merge_style base column.style in
-  let base = merge_styles base overlays in
-  merge_style base cell.Cell.style
+let set_border t v =
+  if t.props.border <> v then (
+    t.props <- { t.props with border = v };
+    Renderable.mark_dirty t.node;
+    request t)
 
-let apply_overflow cell column width =
-  let text = cell.Cell.text in
-  match column.overflow with
-  | `Crop ->
-      text |> String.split_on_char '\n'
-      |> List.map (fun line -> crop_to_width line width)
-  | `Ellipsis ->
-      text |> String.split_on_char '\n'
-      |> List.map (fun line -> truncate_with_suffix line width "...")
-  | `Fold ->
-      let lines = String.split_on_char '\n' text in
-      List.concat
-        (List.map
-           (fun line ->
-             if column.no_wrap then chop line width else word_wrap line width)
-           lines)
+let set_border_style t s =
+  if t.props.border_style <> s then (
+    t.props <- { t.props with border_style = s };
+    request t)
 
-let distribute_line justify width is_last line =
-  let target =
-    if is_last then match justify with `Full -> `Left | other -> other
-    else justify
+let set_show_header t v =
+  if t.props.show_header <> v then (
+    t.props <- { t.props with show_header = v };
+    Renderable.mark_dirty t.node;
+    request t)
+
+let set_show_column_separator t v =
+  if t.props.show_column_separator <> v then (
+    t.props <- { t.props with show_column_separator = v };
+    request t)
+
+let set_show_row_separator t v =
+  if t.props.show_row_separator <> v then (
+    t.props <- { t.props with show_row_separator = v };
+    Renderable.mark_dirty t.node;
+    request t)
+
+(* ───── Color Setters ───── *)
+
+let set_header_color t c =
+  if not (Ansi.Color.equal t.props.header_color c) then (
+    t.props <- { t.props with header_color = c };
+    request t)
+
+let set_header_background t c =
+  if not (Ansi.Color.equal t.props.header_background c) then (
+    t.props <- { t.props with header_background = c };
+    request t)
+
+let set_text_color t c =
+  if not (Ansi.Color.equal t.props.text_color c) then (
+    t.props <- { t.props with text_color = c };
+    request t)
+
+let set_background t c =
+  if not (Ansi.Color.equal t.props.background c) then (
+    t.props <- { t.props with background = c };
+    request t)
+
+let set_selected_text_color t c =
+  if not (Ansi.Color.equal t.props.selected_text_color c) then (
+    t.props <- { t.props with selected_text_color = c };
+    request t)
+
+let set_selected_background t c =
+  if not (Ansi.Color.equal t.props.selected_background c) then (
+    t.props <- { t.props with selected_background = c };
+    request t)
+
+(* ───── Padding & Row Styles Setters ───── *)
+
+let set_cell_padding t n =
+  let n = max 0 n in
+  if t.props.cell_padding <> n then (
+    t.props <- { t.props with cell_padding = n };
+    Renderable.mark_dirty t.node;
+    request t)
+
+let set_row_styles t styles =
+  if not (Props.styles_equal t.props.row_styles styles) then (
+    t.props <- { t.props with row_styles = styles };
+    request t)
+
+(* ───── Behavior Setters ───── *)
+
+let set_wrap_selection t v =
+  if t.props.wrap_selection <> v then (
+    t.props <- { t.props with wrap_selection = v };
+    request t)
+
+let set_fast_scroll_step t n =
+  let n = max 1 n in
+  if t.props.fast_scroll_step <> n then (
+    t.props <- { t.props with fast_scroll_step = n };
+    request t)
+
+(* ───── Callbacks ───── *)
+
+let set_on_change t cb = t.on_change <- cb
+let set_on_activate t cb = t.on_activate <- cb
+
+(* ───── Key Handling ───── *)
+
+let handle_key t (event : Event.key) =
+  let kev = Event.Key.data event in
+  let shift = kev.modifier.shift in
+  let consumed =
+    match kev.key with
+    | Up ->
+        move_up ~steps:(if shift then t.props.fast_scroll_step else 1) t;
+        true
+    | Down ->
+        move_down ~steps:(if shift then t.props.fast_scroll_step else 1) t;
+        true
+    | Char c when Uchar.equal c (Uchar.of_char 'k') ->
+        move_up t;
+        true
+    | Char c when Uchar.equal c (Uchar.of_char 'j') ->
+        move_down t;
+        true
+    | Enter | KP_enter ->
+        (if row_count t > 0 then
+           match t.on_activate with None -> () | Some f -> f t.selected_row);
+        true
+    | _ -> false
   in
-  justify_string line width target
+  if consumed then Event.Key.prevent_default event
 
-let get_lines cell column width justify =
-  let lines = apply_overflow cell column width in
-  let total = List.length lines in
-  List.mapi
-    (fun idx line ->
-      let is_last = idx = total - 1 in
-      distribute_line justify width is_last line)
-    lines
+(* ───── Mouse Handling ───── *)
 
-let prepare_cell column cell column_width options ~is_first_col ~is_last_col
-    ~is_first_row ~is_last_row overlays =
-  let top, right, bottom, left =
-    let pt, pr, pb, pl = options.padding in
-    get_effective_padding pt pr pb pl is_first_col is_last_col is_first_row
-      is_last_row options.collapse_padding options.pad_edge
-  in
-  let content_width = column_width - left - right in
-  let justify = column.justify in
-  let style = effective_cell_style options column cell overlays in
-  let lines = get_lines cell column content_width justify in
-  {
-    lines;
-    padding_top = top;
-    padding_bottom = bottom;
-    padding_left = left;
-    padding_right = right;
-    width = column_width;
-    style;
-    vertical = column.vertical;
-  }
+let handle_mouse t (event : Event.mouse) =
+  let width = Renderable.width t.node in
+  let height = Renderable.height t.node in
+  let x = Event.Mouse.x event - Renderable.x t.node in
+  let y = Event.Mouse.y event - Renderable.y t.node in
+  match Event.Mouse.kind event with
+  | Down { button = Left } ->
+      if x >= 0 && x < width && y >= 0 && y < height then
+        (* Compute the y offset where data rows start *)
+        let border_top = if t.props.border then 1 else 0 in
+        let header_rows =
+          if t.props.show_header then 1 + if t.props.border then 1 else 0 else 0
+        in
+        let data_start = border_top + header_rows in
+        let row_y = y - data_start in
+        if row_y >= 0 then
+          let row_height = if t.props.show_row_separator then 2 else 1 in
+          let index = t.scroll_offset + (row_y / row_height) in
+          if index < row_count t then (
+            set_selected_row_internal t index;
+            Event.Mouse.stop_propagation event)
+  | Scroll { direction; delta } -> (
+      match direction with
+      | Input.Mouse.Scroll_up when delta > 0 ->
+          move_up t;
+          Event.Mouse.stop_propagation event
+      | Input.Mouse.Scroll_down when delta > 0 ->
+          move_down t;
+          Event.Mouse.stop_propagation event
+      | _ -> ())
+  | _ -> ()
 
-let add_padding line left right =
-  String.make left ' ' ^ line ^ String.make right ' '
+(* ───── Rendering Helpers ───── *)
 
-let realize_cell_lines cell row_height =
-  let content_height = List.length cell.lines in
-  let total_height = content_height + cell.padding_top + cell.padding_bottom in
-  let extra = max 0 (row_height - total_height) in
-  let top_extra, bottom_extra =
-    match cell.vertical with
-    | `Top -> (0, extra)
-    | `Bottom -> (extra, 0)
-    | `Middle ->
-        let top = extra / 2 in
-        (top, extra - top)
-  in
-  let top_pad = cell.padding_top + top_extra in
-  let bottom_pad = cell.padding_bottom + bottom_extra in
-  let blank = String.make cell.width ' ' in
-  let top_lines = List.init top_pad (fun _ -> blank) in
-  let bottom_lines = List.init bottom_pad (fun _ -> blank) in
-  let content_lines =
-    List.map
-      (fun line -> add_padding line cell.padding_left cell.padding_right)
-      cell.lines
-  in
-  top_lines @ content_lines @ bottom_lines
+let draw_glyph grid ~x ~y ~fg ~bg uch =
+  let glyph = Glyph.of_uchar uch in
+  Grid.set_cell grid ~x ~y ~glyph ~fg ~bg ~attrs:Ansi.Attr.empty ()
 
-let nth_row_style options idx =
-  match options.row_styles with
-  | [] -> None
-  | styles ->
-      let len = List.length styles in
-      let style = List.nth styles (idx mod len) in
-      Some style
-
-let prepare_header columns column_widths options =
-  if not options.show_header then None
-  else
-    let cells =
-      List.mapi
-        (fun idx column ->
-          let cell = Option.value column.header ~default:Cell.empty in
-          let overlays = [ Some options.header_style; column.header_style ] in
-          prepare_cell column cell
-            (List.nth column_widths idx)
-            options ~is_first_col:(idx = 0)
-            ~is_last_col:(idx = List.length columns - 1)
-            ~is_first_row:true ~is_last_row:false overlays)
-        columns
-    in
-    Some cells
-
-let prepare_footer columns column_widths options =
-  if not options.show_footer then None
-  else
-    let cells =
-      List.mapi
-        (fun idx column ->
-          let cell = Option.value column.footer ~default:Cell.empty in
-          let overlays = [ Some options.footer_style; column.footer_style ] in
-          prepare_cell column cell
-            (List.nth column_widths idx)
-            options ~is_first_col:(idx = 0)
-            ~is_last_col:(idx = List.length columns - 1)
-            ~is_first_row:false ~is_last_row:true overlays)
-        columns
-    in
-    Some cells
-
-let prepare_body columns column_widths options rows =
-  let column_count = List.length columns in
-  let total_rows = List.length rows in
-  List.mapi
-    (fun row_idx row ->
-      let row_cells = row.cells in
-      let options_row_style = nth_row_style options row_idx in
-      List.mapi
-        (fun col_idx column ->
-          let cell =
-            match List.nth_opt row_cells col_idx with
-            | Some cell -> cell
-            | None -> Cell.empty
-          in
-          let overlays = [ options_row_style; row.style ] in
-          prepare_cell column cell
-            (List.nth column_widths col_idx)
-            options ~is_first_col:(col_idx = 0)
-            ~is_last_col:(col_idx = column_count - 1)
-            ~is_first_row:(row_idx = 0 && not options.show_header)
-            ~is_last_row:(row_idx = total_rows - 1 && not options.show_footer)
-            overlays)
-        columns)
-    rows
-
-let row_height cells =
-  List.fold_left
-    (fun acc cell ->
-      max acc (cell.padding_top + cell.padding_bottom + List.length cell.lines))
-    0 cells
-
-let repeat_char ch count =
-  if ch = "" || count <= 0 then ""
-  else
-    let buf = Buffer.create (String.length ch * count) in
-    for _ = 1 to count do
-      Buffer.add_string buf ch
+let draw_hline grid ~border ~x ~y ~width ~left_cap ~right_cap ~cross
+    ~show_col_sep ~col_widths ~fg ~bg =
+  let right_edge = x + width - 1 in
+  let horiz = border.Grid.Border.horizontal in
+  draw_glyph grid ~x ~y ~fg ~bg left_cap;
+  let cx = ref (x + 1) in
+  let ncols = Array.length col_widths in
+  for c = 0 to ncols - 1 do
+    for _ = 1 to col_widths.(c) do
+      if !cx < right_edge then (
+        draw_glyph grid ~x:!cx ~y ~fg ~bg horiz;
+        incr cx)
     done;
-    Buffer.contents buf
+    (* Always draw a junction/horizontal between adjacent columns *)
+    if c < ncols - 1 && !cx < right_edge then (
+      draw_glyph grid ~x:!cx ~y ~fg ~bg (if show_col_sep then cross else horiz);
+      incr cx)
+  done;
+  while !cx < right_edge do
+    draw_glyph grid ~x:!cx ~y ~fg ~bg horiz;
+    incr cx
+  done;
+  draw_glyph grid ~x:right_edge ~y ~fg ~bg right_cap
 
-let horizontal_chars box_chars = function
-  | `Head ->
-      ( box_chars.head_left,
-        box_chars.head_right,
-        box_chars.head_vertical,
-        box_chars.head_horizontal )
-  | `Row ->
-      ( box_chars.row_left,
-        box_chars.row_right,
-        box_chars.row_vertical,
-        box_chars.row_horizontal )
-  | `Mid ->
-      ( box_chars.mid_left,
-        box_chars.mid_right,
-        box_chars.mid_vertical,
-        box_chars.mid_horizontal )
-  | `Foot ->
-      ( box_chars.foot_left,
-        box_chars.foot_right,
-        box_chars.foot_vertical,
-        box_chars.foot_horizontal )
+(* ───── Grapheme-Aware Text Truncation ───── *)
 
-let build_horizontal_line kind widths options box_chars =
-  let left, right, divider, horizontal = horizontal_chars box_chars kind in
-  if options.box_style = No_box then None
+let crop_to_width text target_width =
+  if target_width <= 0 then ""
   else
-    let segments =
-      let cells = List.map (fun width -> repeat_char horizontal width) widths in
-      let content =
-        if options.show_edge then
-          let inner = String.concat divider cells in
-          left ^ inner ^ right
-        else String.concat divider cells
-      in
-      Some [ (content, options.border_style) ]
-    in
-    segments
+    let result = Buffer.create (String.length text) in
+    let current_width = ref 0 in
+    let stop = ref false in
+    Glyph.String.iter_graphemes
+      (fun ~offset ~len ->
+        if not !stop then
+          let g = String.sub text offset len in
+          let gw = Glyph.String.measure ~width_method:`Unicode ~tab_width:2 g in
+          if !current_width + gw <= target_width then (
+            Buffer.add_string result g;
+            current_width := !current_width + gw)
+          else stop := true)
+      text;
+    Buffer.contents result
 
-let build_row_lines cells options (box_chars : box_chars) =
-  let height = row_height cells in
-  let realized =
-    List.map (fun cell -> (cell, realize_cell_lines cell height)) cells
-  in
-  List.init height (fun line_idx ->
-      let segments = ref [] in
-      if options.box_style <> No_box && options.show_edge then
-        segments := (box_chars.vertical, options.border_style) :: !segments;
-      List.iteri
-        (fun idx (cell, lines) ->
-          let content = List.nth lines line_idx in
-          segments := !segments @ [ (content, cell.style) ];
-          if options.box_style <> No_box && idx < List.length realized - 1 then
-            segments :=
-              !segments @ [ (box_chars.vertical, options.border_style) ])
-        realized;
-      if options.box_style <> No_box && options.show_edge then
-        segments := !segments @ [ (box_chars.vertical, options.border_style) ];
-      !segments)
-
-let blank_row_lines widths options (box_chars : box_chars) =
-  let total = List.fold_left ( + ) 0 widths in
-  if options.box_style = No_box then
-    [ [ (String.make total ' ', options.cell_style) ] ]
+let truncate_with_ellipsis text target_width =
+  let tw = text_width text in
+  if tw <= target_width then text
+  else if target_width <= 3 then crop_to_width text target_width
   else
-    let horizontal = String.make total ' ' in
-    let line =
-      let middle =
-        if options.show_edge then
-          (box_chars.vertical, options.border_style)
-          :: (horizontal, options.cell_style)
-          :: [ (box_chars.vertical, options.border_style) ]
-        else [ (horizontal, options.cell_style) ]
-      in
-      middle
-    in
-    [ line ]
+    let prefix = crop_to_width text (target_width - 3) in
+    prefix ^ "..."
 
-let total_extra_width options box_style column_count =
-  if box_style = No_box then 0
-  else if options.show_edge then 2 + max 0 (column_count - 1)
-  else max 0 (column_count - 1)
-
-let build_plan columns rows options =
-  let column_count = List.length columns in
-  let top, right, bottom, left = options.padding in
-  let max_width_for_measure =
-    match options.width with Some w -> w | None -> max_int
-  in
-  let natural_widths =
-    calculate_column_widths columns rows max_width_for_measure
-      options.show_header options.show_footer false options.box_style
-      options.show_edge top right bottom left options.collapse_padding
-      options.pad_edge
-  in
-  let box_chars = get_box_chars options.box_style options.safe_box in
-  let natural_inner = List.fold_left ( + ) 0 natural_widths in
-  let natural_total =
-    natural_inner + total_extra_width options options.box_style column_count
-  in
-  let target_width =
-    match options.width with Some w -> w | None -> natural_total
-  in
-  let target_width =
-    match options.min_width with
-    | Some min_w -> max target_width min_w
-    | None -> target_width
-  in
-  let final_widths =
-    calculate_column_widths columns rows target_width options.show_header
-      options.show_footer options.expand options.box_style options.show_edge top
-      right bottom left options.collapse_padding options.pad_edge
-  in
-  let content_inner = List.fold_left ( + ) 0 final_widths in
-  let total_width =
-    content_inner + total_extra_width options options.box_style column_count
-  in
-  let header_cells = prepare_header columns final_widths options in
-  let body_cells = prepare_body columns final_widths options rows in
-  let footer_cells = prepare_footer columns final_widths options in
-  let lines = ref [] in
-  let append_line line = lines := !lines @ [ line ] in
-  let append_lines new_lines = lines := !lines @ new_lines in
-  let append_horizontal kind =
-    match build_horizontal_line kind final_widths options box_chars with
-    | Some line -> append_line line
-    | None -> ()
-  in
-  Option.iter
-    (fun cell ->
-      let content =
-        justify_string cell.Cell.text total_width options.title_justify
-      in
-      let style = merge_style options.title_style cell.Cell.style in
-      append_line [ (content, style) ])
-    options.title;
-  if options.box_style <> No_box && options.show_edge then
-    append_horizontal `Head;
-  (match header_cells with
-  | Some cells ->
-      append_lines (build_row_lines cells options box_chars);
-      if options.box_style <> No_box then append_horizontal `Row
-  | None -> ());
-  let body_row_count = List.length body_cells in
-  List.iteri
-    (fun idx row ->
-      append_lines (build_row_lines row options box_chars);
-      if idx < body_row_count - 1 then (
-        (if options.leading > 0 then
-           let blank = blank_row_lines final_widths options box_chars in
-           for _ = 1 to options.leading do
-             append_lines blank
-           done);
-        if options.show_lines && options.box_style <> No_box then
-          append_horizontal `Row))
-    body_cells;
-  (match footer_cells with
-  | Some cells ->
-      if options.box_style <> No_box then append_horizontal `Row;
-      append_lines (build_row_lines cells options box_chars)
-  | None -> ());
-  if options.box_style <> No_box && options.show_edge then
-    append_horizontal `Foot;
-  Option.iter
-    (fun cell ->
-      let content =
-        justify_string cell.Cell.text total_width options.caption_justify
-      in
-      let style = merge_style options.caption_style cell.Cell.style in
-      append_line [ (content, style) ])
-    options.caption;
-  !lines
-
-let write_span buffer style text =
-  if text = "" then ()
+let apply_overflow ~overflow text target_width =
+  let tw = text_width text in
+  if tw <= target_width then text
   else
-    let chunk =
-      Text_buffer.Chunk.
-        {
-          text = Bytes.of_string text;
-          fg = style.Ansi.Style.fg;
-          bg = style.Ansi.Style.bg;
-          attrs = style.Ansi.Style.attrs;
-          link = style.Ansi.Style.link;
-        }
-    in
-    ignore (Text_buffer.write_chunk buffer chunk)
+    match overflow with
+    | `Ellipsis -> truncate_with_ellipsis text target_width
+    | `Crop -> crop_to_width text target_width
 
-let write_newline buffer =
-  let chunk =
-    Text_buffer.Chunk.
-      {
-        text = Bytes.of_string "\n";
-        fg = None;
-        bg = None;
-        attrs = Ansi.Attr.empty;
-        link = None;
-      }
+(* ───── Text Drawing ───── *)
+
+let draw_text_aligned grid ~x ~y ~width ~alignment ~overflow ~style ~text =
+  let clipped = apply_overflow ~overflow text width in
+  let tw = text_width clipped in
+  let offset =
+    match alignment with
+    | `Left -> 0
+    | `Center -> max 0 ((width - tw) / 2)
+    | `Right -> max 0 (width - tw)
   in
-  ignore (Text_buffer.write_chunk buffer chunk)
+  Grid.draw_text ~style grid ~x:(x + offset) ~y ~text:clipped
 
-let apply_plan t (plan : render_plan) =
-  Text_surface.replace_content t.surface (fun buffer ->
-      List.iteri
-        (fun idx line ->
-          if idx > 0 then write_newline buffer;
-          List.iter (fun (text, style) -> write_span buffer style text) line)
-        plan)
+let draw_cell_content grid ~x ~y ~col_width ~padding ~alignment ~overflow
+    ~default_style cell =
+  let content_width = max 0 (col_width - (2 * padding)) in
+  let content_x = x + padding in
+  match cell with
+  | Plain { text; style } ->
+      let st = Option.value style ~default:default_style in
+      draw_text_aligned grid ~x:content_x ~y ~width:content_width ~alignment
+        ~overflow ~style:st ~text
+  | Rich fragments ->
+      let plain = cell_plain_text (Rich fragments) in
+      let tw = text_width plain in
+      let base_x =
+        match alignment with
+        | `Left -> content_x
+        | `Center -> content_x + max 0 ((content_width - tw) / 2)
+        | `Right -> content_x + max 0 (content_width - tw)
+      in
+      let right_bound = content_x + content_width in
+      let cx = ref base_x in
+      let rec draw_fragments frags =
+        List.iter
+          (fun frag ->
+            match frag with
+            | Text.Text { text; style } ->
+                let st = Option.value style ~default:default_style in
+                let w = text_width text in
+                if !cx + w <= right_bound then (
+                  Grid.draw_text ~style:st grid ~x:!cx ~y ~text;
+                  cx := !cx + w)
+                else
+                  let avail = right_bound - !cx in
+                  if avail > 0 then (
+                    let truncated = crop_to_width text avail in
+                    Grid.draw_text ~style:st grid ~x:!cx ~y ~text:truncated;
+                    cx := right_bound)
+            | Text.Span { children; style } ->
+                let _parent_style = style in
+                draw_fragments children)
+          frags
+      in
+      draw_fragments fragments
 
-let rebuild t =
-  let plan = build_plan t.columns t.rows t.options in
-  Text_surface.set_default_style t.surface t.options.cell_style;
-  apply_plan t plan;
-  ignore (Renderable.mark_layout_dirty (node t));
-  Renderable.request_render (node t)
+(* ───── Rendering ───── *)
 
-let columns t = t.columns
-let rows t = t.rows
+let render t _self grid ~delta:_ =
+  let width = Renderable.width t.node in
+  let height = Renderable.height t.node in
+  if width <= 0 || height <= 0 then ()
+  else
+    let focused = Renderable.focused t.node in
+    let border = t.props.border in
+    let border_style = t.props.border_style in
+    let show_header = t.props.show_header in
+    let show_col_sep = t.props.show_column_separator in
+    let show_row_sep = t.props.show_row_separator in
+    let ncols = Array.length t.col_specs in
+    let col_widths = compute_column_widths t ~available_width:width in
+    let border_fg = Ansi.Color.of_rgb 229 229 229 in
+    let border_bg = t.props.background in
 
-let set_columns t columns =
-  if columns <> t.columns then (
-    t.columns <- columns;
-    rebuild t)
+    (* Background fill *)
+    Grid.fill_rect grid ~x:0 ~y:0 ~width ~height ~color:t.props.background;
 
-let set_rows t rows =
-  if rows <> t.rows then (
-    t.rows <- rows;
-    rebuild t)
+    (* Compute layout positions *)
+    let border_left = if border then 1 else 0 in
+    let cur_y = ref 0 in
+
+    (* Recompute scroll metrics *)
+    let header_total = if show_header then 1 + if border then 1 else 0 else 0 in
+    let border_v = if border then 2 else 0 in
+    let content_height = height - header_total - border_v in
+    recalc_max_visible t ~content_height;
+    update_scroll_offset t;
+
+    (* Top border *)
+    if border then (
+      draw_hline grid ~border:border_style ~x:0 ~y:!cur_y ~width
+        ~left_cap:border_style.top_left ~right_cap:border_style.top_right
+        ~cross:border_style.top_t ~show_col_sep ~col_widths ~fg:border_fg
+        ~bg:border_bg;
+      incr cur_y);
+
+    let pad = t.props.cell_padding in
+
+    (* Header row *)
+    if show_header && ncols > 0 then (
+      Grid.fill_rect grid ~x:border_left ~y:!cur_y
+        ~width:(width - (2 * border_left))
+        ~height:1 ~color:t.props.header_background;
+      if border then
+        draw_glyph grid ~x:0 ~y:!cur_y ~fg:border_fg ~bg:border_bg
+          border_style.vertical;
+      let cx = ref border_left in
+      for c = 0 to ncols - 1 do
+        if c < Array.length col_widths then (
+          let cw = col_widths.(c) in
+          draw_text_aligned grid ~x:(!cx + pad) ~y:!cur_y
+            ~width:(max 0 (cw - (2 * pad)))
+            ~alignment:t.col_specs.(c).alignment
+            ~overflow:t.col_specs.(c).overflow
+            ~style:(Ansi.Style.make ~fg:t.props.header_color ~bold:true ())
+            ~text:t.col_specs.(c).header;
+          cx := !cx + cw;
+          if c < ncols - 1 then (
+            if show_col_sep then
+              draw_glyph grid ~x:!cx ~y:!cur_y ~fg:border_fg ~bg:border_bg
+                border_style.vertical;
+            incr cx))
+      done;
+      if border then
+        draw_glyph grid ~x:(width - 1) ~y:!cur_y ~fg:border_fg ~bg:border_bg
+          border_style.vertical;
+      incr cur_y;
+      (* Header separator *)
+      if border then (
+        draw_hline grid ~border:border_style ~x:0 ~y:!cur_y ~width
+          ~left_cap:border_style.left_t ~right_cap:border_style.right_t
+          ~cross:border_style.cross ~show_col_sep ~col_widths ~fg:border_fg
+          ~bg:border_bg;
+        incr cur_y));
+
+    (* Data rows *)
+    let start_index = t.scroll_offset in
+    let end_index = min (row_count t) (start_index + t.max_visible_rows) in
+    let default_text_style = Ansi.Style.make ~fg:t.props.text_color () in
+    let row_styles = t.props.row_styles in
+    let n_row_styles = List.length row_styles in
+    for i = start_index to end_index - 1 do
+      if !cur_y < height - if border then 1 else 0 then (
+        let is_selected = i = t.selected_row in
+        let sel_bg =
+          if focused then t.props.focused_selected_background
+          else t.props.selected_background
+        in
+        let sel_fg =
+          if focused then t.props.focused_selected_text_color
+          else t.props.selected_text_color
+        in
+        (* Alternating row style *)
+        let alt_style =
+          if n_row_styles > 0 then
+            Some (List.nth row_styles (i mod n_row_styles))
+          else None
+        in
+        (* Row background: selection takes priority, then alternating style *)
+        (if is_selected then
+           Grid.fill_rect grid ~x:border_left ~y:!cur_y
+             ~width:(width - (2 * border_left))
+             ~height:1 ~color:sel_bg
+         else
+           match alt_style with
+           | Some s when Option.is_some s.Ansi.Style.bg ->
+               Grid.fill_rect grid ~x:border_left ~y:!cur_y
+                 ~width:(width - (2 * border_left))
+                 ~height:1
+                 ~color:(Option.get s.Ansi.Style.bg)
+           | _ -> ());
+        (* Left border *)
+        if border then
+          draw_glyph grid ~x:0 ~y:!cur_y ~fg:border_fg ~bg:border_bg
+            border_style.vertical;
+        (* Draw cells *)
+        let row = t.data_rows.(i) in
+        let cx = ref border_left in
+        for c = 0 to ncols - 1 do
+          if c < Array.length col_widths then (
+            let cw = col_widths.(c) in
+            let cell_content =
+              if c < Array.length row then row.(c)
+              else Plain { text = ""; style = None }
+            in
+            let row_style =
+              if is_selected then Ansi.Style.make ~fg:sel_fg ()
+              else
+                match alt_style with
+                | Some s -> Ansi.Style.merge ~base:default_text_style ~overlay:s
+                | None -> default_text_style
+            in
+            draw_cell_content grid ~x:!cx ~y:!cur_y ~col_width:cw ~padding:pad
+              ~alignment:t.col_specs.(c).alignment
+              ~overflow:t.col_specs.(c).overflow ~default_style:row_style
+              cell_content;
+            cx := !cx + cw;
+            if c < ncols - 1 then (
+              if show_col_sep then
+                draw_glyph grid ~x:!cx ~y:!cur_y ~fg:border_fg ~bg:border_bg
+                  border_style.vertical;
+              incr cx))
+        done;
+        (* Right border *)
+        if border then
+          draw_glyph grid ~x:(width - 1) ~y:!cur_y ~fg:border_fg ~bg:border_bg
+            border_style.vertical;
+        incr cur_y;
+        (* Row separator *)
+        if show_row_sep && i < end_index - 1 then
+          if !cur_y < height - if border then 1 else 0 then (
+            let left_cap =
+              if border then border_style.left_t else border_style.horizontal
+            in
+            let right_cap =
+              if border then border_style.right_t else border_style.horizontal
+            in
+            draw_hline grid ~border:border_style ~x:0 ~y:!cur_y ~width ~left_cap
+              ~right_cap ~cross:border_style.cross ~show_col_sep ~col_widths
+              ~fg:border_fg ~bg:border_bg;
+            incr cur_y))
+    done;
+
+    (* Bottom border *)
+    if border then
+      if !cur_y < height then
+        draw_hline grid ~border:border_style ~x:0 ~y:(height - 1) ~width
+          ~left_cap:border_style.bottom_left
+          ~right_cap:border_style.bottom_right ~cross:border_style.bottom_t
+          ~show_col_sep ~col_widths ~fg:border_fg ~bg:border_bg
+
+(* ───── Resize ───── *)
+
+let on_resize t _node =
+  let h = Renderable.height t.node in
+  let border_v = if t.props.border then 2 else 0 in
+  let header_total =
+    if t.props.show_header then 1 + if t.props.border then 1 else 0 else 0
+  in
+  let content_height = h - header_total - border_v in
+  recalc_max_visible t ~content_height;
+  update_scroll_offset t;
+  request t
+
+(* ───── Measure ───── *)
+
+let intrinsic_width t =
+  let ncols = Array.length t.col_specs in
+  if ncols = 0 then 0
+  else
+    let pad = t.props.cell_padding in
+    let pad2 = 2 * pad in
+    let gap_width = if ncols > 1 then ncols - 1 else 0 in
+    let border_width = if t.props.border then 2 else 0 in
+    let col_total = ref 0 in
+    Array.iteri
+      (fun i col ->
+        let w =
+          match col.width with
+          | `Fixed n -> max 1 (n + pad2)
+          | `Auto ->
+              let header_w = text_width col.header in
+              let max_cell_w =
+                Array.fold_left
+                  (fun best row ->
+                    if i < Array.length row then
+                      max best (text_width (cell_plain_text row.(i)))
+                    else best)
+                  0 t.data_rows
+              in
+              let content_w = max header_w max_cell_w in
+              let w = max 1 (content_w + pad2) in
+              let w =
+                match col.min_width with
+                | Some m -> max w (m + pad2)
+                | None -> w
+              in
+              let w =
+                match col.max_width with
+                | Some m -> min w (m + pad2)
+                | None -> w
+              in
+              max 1 w
+          | `Flex _ -> max 1 (pad2 + 1)
+        in
+        col_total := !col_total + w)
+      t.col_specs;
+    !col_total + gap_width + border_width
+
+let intrinsic_height t =
+  let nrows = Array.length t.data_rows in
+  let border_v = if t.props.border then 2 else 0 in
+  let header_rows =
+    if t.props.show_header then 1 + if t.props.border then 1 else 0 else 0
+  in
+  let row_sep =
+    if t.props.show_row_separator && nrows > 1 then nrows - 1 else 0
+  in
+  border_v + header_rows + nrows + row_sep
+
+let measure t ~known_dimensions ~available_space:_ ~style:_ =
+  Toffee.Geometry.Size.
+    {
+      width =
+        (match known_dimensions.width with
+        | Some w -> w
+        | None -> Float.of_int (intrinsic_width t));
+      height =
+        (match known_dimensions.height with
+        | Some h -> h
+        | None -> Float.of_int (intrinsic_height t));
+    }
+
+(* ───── Construction ───── *)
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?columns ?rows
+    ?selected_row ?border ?border_style ?show_header ?show_column_separator
+    ?show_row_separator ?cell_padding ?header_color ?header_background
+    ?text_color ?background ?selected_text_color ?selected_background
+    ?focused_selected_text_color ?focused_selected_background ?row_styles
+    ?wrap_selection ?fast_scroll_step () =
+  let node =
+    Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
+  in
+  let props =
+    Props.make ?columns ?rows ?selected_row ?border ?border_style ?show_header
+      ?show_column_separator ?show_row_separator ?cell_padding ?header_color
+      ?header_background ?text_color ?background ?selected_text_color
+      ?selected_background ?focused_selected_text_color
+      ?focused_selected_background ?row_styles ?wrap_selection ?fast_scroll_step
+      ()
+  in
+  let col_specs = Array.of_list props.columns in
+  let data_rows = Array.of_list props.rows in
+  let initial_selected =
+    let len = Array.length data_rows in
+    if len = 0 then 0 else max 0 (min (len - 1) props.selected_row)
+  in
+  let t =
+    {
+      node;
+      props;
+      col_specs;
+      data_rows;
+      selected_row = initial_selected;
+      scroll_offset = 0;
+      max_visible_rows = 1;
+      on_change = None;
+      on_activate = None;
+    }
+  in
+  Renderable.set_render node (render t);
+  Renderable.set_measure node (Some (measure t));
+  Renderable.set_buffered node true;
+  Renderable.set_focusable node true;
+  Renderable.on_key node (handle_key t);
+  Renderable.on_mouse node (handle_mouse t);
+  Renderable.set_on_resize node (Some (on_resize t));
+  request t;
+  t
+
+(* ───── Layout ───── *)
+
+let set_style t style = Renderable.set_style t.node style
+
+(* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
-  (* Update full options snapshot, including columns and rows, then rebuild the
-     render plan in a single pass. *)
-  t.options <- props;
-  t.columns <- props.columns;
-  t.rows <- props.rows;
-  rebuild t
+  if not (columns_equal (Array.to_list t.col_specs) props.columns) then
+    set_columns t props.columns;
+  if not (rows_equal (Array.to_list t.data_rows) props.rows) then
+    set_rows t props.rows;
+  if props.selected_row <> t.selected_row then
+    set_selected_row t props.selected_row;
+  set_border t props.border;
+  set_border_style t props.border_style;
+  set_show_header t props.show_header;
+  set_show_column_separator t props.show_column_separator;
+  set_show_row_separator t props.show_row_separator;
+  set_cell_padding t props.cell_padding;
+  set_header_color t props.header_color;
+  set_header_background t props.header_background;
+  set_text_color t props.text_color;
+  set_background t props.background;
+  set_selected_text_color t props.selected_text_color;
+  set_selected_background t props.selected_background;
+  set_row_styles t props.row_styles;
+  set_wrap_selection t props.wrap_selection;
+  set_fast_scroll_step t props.fast_scroll_step
 
-let mount ?(props = Props.make ~columns:[] ~rows:[] ()) node =
-  let surface =
-    Text_surface.mount
-      ~props:
-        (Text_surface.Props.make ~wrap_mode:`None
-           ~default_style:props.cell_style ())
-      node
-  in
-  let table =
-    { surface; columns = props.columns; rows = props.rows; options = props }
-  in
-  rebuild table;
-  table
+(* ───── Pretty-printing ───── *)
+
+let pp ppf t =
+  Format.fprintf ppf "Table(%s, %d/%d" (Renderable.id t.node) t.selected_row
+    (row_count t);
+  if t.props.border then Format.pp_print_string ppf ", border";
+  if t.props.wrap_selection then Format.pp_print_string ppf ", wrap";
+  Format.pp_print_char ppf ')'
