@@ -83,6 +83,7 @@
   matrix
   toffee
   cmarkit
+  tree-sitter
   (windtrap :with-test)
   (ppx_windtrap :with-test))
  (tags
