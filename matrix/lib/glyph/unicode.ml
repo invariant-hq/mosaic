@@ -1,8 +1,8 @@
 (* Unicode property lookups for grapheme segmentation and width calculation.
 
-   All properties are pre-computed at build time into a two-level page table
-   for O(1) lookup with zero initialization cost. The codepoint space is split
-   into 256-entry blocks; identical blocks share data via deduplication.
+   All properties are pre-computed at build time into a two-level page table for
+   O(1) lookup with zero initialization cost. The codepoint space is split into
+   256-entry blocks; identical blocks share data via deduplication.
 
    Layout per 16-bit entry: - bits 0-4: gcb (grapheme_cluster_break, values
    0-17) - bits 5-6: incb (indic_conjunct_break, values 0-3) - bit 7: extpic
@@ -12,7 +12,8 @@
 (* Surrogate packing: skip 0xD800-0xDFFF range *)
 let[@inline] pack_u u = if u > 0xd7ff then u - 0x800 else u
 
-(* Two-level page table lookup: index[block] → block_id, then data[block_id * 512 + offset * 2] *)
+(* Two-level page table lookup: index[block] → block_id, then data[block_id *
+   512 + offset * 2] *)
 let[@inline] get u =
   let packed = pack_u (Uchar.to_int u) in
   let block_id =
@@ -29,8 +30,8 @@ let[@inline] indic_conjunct_break u = (get u lsr 5) land 0x03
 let[@inline] is_extended_pictographic u = get u land 0x80 <> 0
 let[@inline] tty_width_hint u = ((get u lsr 8) land 0x03) - 1
 
-(* Combined lookup - returns packed (gcb, incb, extpic) in one access.
-   Returns: bits 0-4 = gcb, bits 5-6 = incb, bit 7 = extpic *)
+(* Combined lookup - returns packed (gcb, incb, extpic) in one access. Returns:
+   bits 0-4 = gcb, bits 5-6 = incb, bit 7 = extpic *)
 let[@inline] grapheme_props u = get u land 0xFF
 
 (* Full packed lookup - returns all properties including width in one access.
