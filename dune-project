@@ -17,9 +17,9 @@
 
 (package
  (name matrix)
- (synopsis "High-performance terminal infrastructure for OCaml")
+ (synopsis "Fast, modern terminal toolkit for OCaml")
  (description
-  "Matrix is a highly optimized terminal programming toolkit providing efficient grid representation with damage tracking, double-buffered rendering, and comprehensive Unicode support. It includes an incremental input parser supporting Kitty keyboard protocol, complete ANSI escape sequence generation, terminal control (TTY), pseudo-terminal operations (PTY), and a virtual terminal emulator (VTE). Features mouse support with X10/SGR/URXVT protocols.")
+  "Matrix is a terminal toolkit providing double-buffered rendering that diffs cell changes to emit minimal ANSI output, full Unicode support, Kitty keyboard protocol, SGR/X10/URXVT mouse tracking, bracketed paste, focus reporting, pseudo-terminal management (PTY), and a virtual terminal emulator (VTE). It offers both a mutable Grid API and a declarative Image DSL for compositional layouts.")
  (depends
   (ocaml
    (>= 5.4))
@@ -30,9 +30,9 @@
 
 (package
  (name toffee)
- (synopsis "Pure OCaml port of the Taffy CSS layout engine")
+ (synopsis "CSS layout engine for OCaml (Flexbox, Grid, Block)")
  (description
-  "Toffee is a high-performance CSS layout engine providing full CSS Grid Level 1, complete Flexbox algorithm, and traditional block layout with margin collapsing. It's a pure OCaml port of Taffy, enabling responsive terminal layouts with percentage-based sizing, calc() expressions, and the full CSS box model including padding, margin, and borders.")
+  "Toffee is a pure OCaml port of Taffy, a battle-tested Rust CSS layout library. It implements CSS Flexbox, Grid Level 1, and Block layout with margin collapsing. No C stubs, no runtime dependencies. Designed to be embedded in UI frameworks, terminal applications, or any project that needs 2D layout.")
  (depends
   (ocaml
    (>= 5.1))
@@ -72,10 +72,9 @@
 
 (package
  (name mosaic)
- (synopsis
-  "A modern terminal UI framework for OCaml with React-inspired hooks")
+ (synopsis "Terminal UI framework for OCaml with The Elm Architecture")
  (description
-  "Mosaic is a high-performance terminal UI framework that brings React's component model and hooks to terminal applications through OCaml 5's algebraic effects. It provides a direct-style API with hooks like use_state and use_effect, a rich component library, and supports both React-style and Elm Architecture patterns. Built on Matrix for terminal I/O and Toffee for CSS layouts.")
+  "Mosaic is a terminal UI framework implementing The Elm Architecture: state is a typed model, the UI is a pure function of the model, and side effects are explicit values. It provides composable widgets (text, input, select, table, tree, markdown, canvas, and more), CSS Flexbox and Grid layout via Toffee, and efficient rendering via Matrix.")
  (depends
   (ocaml
    (>= 5.1))
@@ -87,4 +86,4 @@
   (windtrap :with-test)
   (ppx_windtrap :with-test))
  (tags
-  (tui terminal react hooks "algebraic-effects" "user-interface")))
+  (tui terminal tea elm "user-interface")))
