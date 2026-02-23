@@ -7,14 +7,7 @@ type t = {
   mutable unique : int;
 }
 
-let[@inline] payload_key id =
-  if Glyph.is_inline id then None
-  else
-    let key = Glyph.pool_payload id in
-    (* Pool index 0 is never allocated (slots start at 1). A complex cell with
-       index 0 is a continuation of a simple wide glyph — no pool entry. *)
-    if Glyph.pool_index id = 0 then None else Some key
-
+let[@inline] payload_key id = Glyph.pool_key id
 let create pool = { counts = Hashtbl.create 128; pool; unique = 0 }
 
 let add t id =

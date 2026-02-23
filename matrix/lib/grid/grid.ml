@@ -172,8 +172,7 @@ type t = {
   link_registry : Links.t;
   grapheme_tracker : Grapheme_tracker.t;
   scissor_stack : Scissor_stack.t;
-  opacity_stack : float array;
-  mutable opacity_depth : int;
+  opacity_stack : float Dynarray.t;
   mutable opacity_product : float;
 }
 
@@ -205,7 +204,9 @@ let[@inline] clear_cell t idx =
     Grapheme_tracker.remove t.grapheme_tracker code;
     Buf.set_glyph t.chars idx space_cell;
     Buf.set t.attrs idx 0;
-    Buf.set t.links idx no_link)
+    Buf.set t.links idx no_link;
+    Color_plane.write_rgba t.fg idx 1.0 1.0 1.0 1.0;
+    Color_plane.write_rgba t.bg idx 0.0 0.0 0.0 0.0)
 
 (** Clean up grapheme spans when overwriting a cell. Replaces neighboring
     continuation/start cells with spaces and releases pool references. *)
@@ -252,23 +253,25 @@ let[@inline] write_glyph t idx code =
   end
 
 (** Create a glyph copier for transferring complex glyphs between pools. Caches
-    by pool payload to avoid re-interning identical graphemes. *)
+    by stable pool key to avoid re-interning identical graphemes. *)
 let make_glyph_copier ~src_pool ~dst_pool =
   let cache = Hashtbl.create 64 in
   fun code ->
-    let payload = Glyph.pool_payload code in
-    let start_glyph =
-      match Hashtbl.find_opt cache payload with
-      | Some g -> g
-      | None ->
-          let g = Glyph.Pool.copy ~src:src_pool code ~dst:dst_pool in
-          Hashtbl.add cache payload g;
-          g
-    in
-    if Glyph.is_start code then start_glyph
-    else
-      Glyph.make_continuation ~code:start_glyph ~left:(Glyph.left_extent code)
-        ~right:(Glyph.right_extent code)
+    match Glyph.pool_key code with
+    | None -> code
+    | Some key ->
+        let start_glyph =
+          match Hashtbl.find_opt cache key with
+          | Some g -> g
+          | None ->
+              let g = Glyph.Pool.copy ~src:src_pool code ~dst:dst_pool in
+              Hashtbl.add cache key g;
+              g
+        in
+        if Glyph.is_start code then start_glyph
+        else
+          Glyph.make_continuation ~code:start_glyph
+            ~left:(Glyph.left_extent code) ~right:(Glyph.right_extent code)
 
 (* {1 Creation & lifecycle} *)
 
@@ -303,8 +306,7 @@ let create ~width ~height ?glyph_pool ?width_method ?(respect_alpha = false) ()
       link_registry = Links.create ();
       grapheme_tracker = Grapheme_tracker.create pool;
       scissor_stack = Scissor_stack.create ();
-      opacity_stack = Array.make 32 1.0;
-      opacity_depth = 0;
+      opacity_stack = Dynarray.create ();
       opacity_product = 1.0;
     }
   in
@@ -493,19 +495,21 @@ let clip t rect f =
 
 let push_opacity t opacity =
   let clamped = Float.max 0.0 (Float.min 1.0 opacity) in
-  if t.opacity_depth < Array.length t.opacity_stack then (
-    t.opacity_stack.(t.opacity_depth) <- clamped;
-    t.opacity_depth <- t.opacity_depth + 1;
-    t.opacity_product <- t.opacity_product *. clamped)
+  Dynarray.add_last t.opacity_stack clamped;
+  t.opacity_product <- t.opacity_product *. clamped
 
 let pop_opacity t =
-  if t.opacity_depth > 0 then (
-    t.opacity_depth <- t.opacity_depth - 1;
-    let p = ref 1.0 in
-    for i = 0 to t.opacity_depth - 1 do
-      p := !p *. t.opacity_stack.(i)
-    done;
-    t.opacity_product <- !p)
+  match Dynarray.pop_last_opt t.opacity_stack with
+  | None -> ()
+  | Some _ ->
+      let depth = Dynarray.length t.opacity_stack in
+      if depth = 0 then t.opacity_product <- 1.0
+      else
+        let p = ref 1.0 in
+        for i = 0 to depth - 1 do
+          p := !p *. Dynarray.get t.opacity_stack i
+        done;
+        t.opacity_product <- !p
 
 let current_opacity t = t.opacity_product
 
@@ -611,18 +615,27 @@ let fill_rect t ~x ~y ~width ~height ~color =
       let y0 = r.Rect.y in
       let y1 = y0 + r.Rect.height - 1 in
 
-      if bg_a <= 0.001 then
-        (* Transparent: clear content but preserve background *)
+      if bg_a <= 0.001 then begin
+        (* Transparent: clear content but leave background untouched *)
+        let has_complex =
+          Grapheme_tracker.unique_count t.grapheme_tracker > 0
+        in
         for row = y0 to y1 do
-          let base = (row * t.width) + x0 in
-          for dx = 0 to w - 1 do
-            let idx = base + dx in
-            let cur_r, cur_g, cur_b, cur_a = Color_plane.read_rgba t.bg idx in
-            set_cell_internal t ~idx ~code:space_cell ~fg_r:1.0 ~fg_g:1.0
-              ~fg_b:1.0 ~fg_a:1.0 ~bg_r:cur_r ~bg_g:cur_g ~bg_b:cur_b
-              ~bg_a:cur_a ~attrs:0 ~link_id:no_link ~blending:false
-          done
+          let start_idx = (row * t.width) + x0 in
+          let end_idx = start_idx + w - 1 in
+          if has_complex then
+            for i = start_idx to end_idx do
+              let old = Buf.get_glyph t.chars i in
+              if not (Glyph.is_inline old) then (
+                cleanup_grapheme_at t i;
+                Grapheme_tracker.remove t.grapheme_tracker old)
+            done;
+          Buf.fill_glyph (Buf.sub t.chars start_idx w) space_cell;
+          Buf.fill (Buf.sub t.attrs start_idx w) 0;
+          Buf.fill (Buf.sub t.links start_idx w) no_link;
+          Buf.fill (Buf.sub t.fg (start_idx * 4) (w * 4)) 1.0
         done
+      end
       else if bg_a < 0.999 then
         (* Semi-transparent: per-cell alpha blending *)
         let fg_r, fg_g, fg_b, fg_a = Ansi.Color.to_rgba_f Ansi.Color.white in
@@ -817,8 +830,14 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
               let sidx = (sy * src.width) + sx in
 
               let code = Buf.get_glyph src.chars sidx in
-              let fg_r, fg_g, fg_b, fg_a = Color_plane.read_rgba src.fg sidx in
-              let bg_r, bg_g, bg_b, bg_a = Color_plane.read_rgba src.bg sidx in
+              let fg_r = Color_plane.get src.fg sidx 0 in
+              let fg_g = Color_plane.get src.fg sidx 1 in
+              let fg_b = Color_plane.get src.fg sidx 2 in
+              let fg_a = Color_plane.get src.fg sidx 3 in
+              let bg_r = Color_plane.get src.bg sidx 0 in
+              let bg_g = Color_plane.get src.bg sidx 1 in
+              let bg_b = Color_plane.get src.bg sidx 2 in
+              let bg_a = Color_plane.get src.bg sidx 3 in
               let attrs = Buf.get src.attrs sidx in
               let src_link = Buf.get src.links sidx in
 
@@ -910,6 +929,21 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
     let link_id = Links.intern t.link_registry s.link in
     let cur_x = ref x in
     let tabw = if tab_width <= 0 then 2 else tab_width in
+    let text =
+      if String.contains text '\t' then (
+        let len = String.length text in
+        let b = Buffer.create (len + (tabw * 4)) in
+        for i = 0 to len - 1 do
+          let c = String.unsafe_get text i in
+          if Char.equal c '\t' then
+            for _ = 1 to tabw do
+              Buffer.add_char b ' '
+            done
+          else Buffer.add_char b c
+        done;
+        Buffer.contents b)
+      else text
+    in
 
     let scissor = Scissor_stack.current t.scissor_stack in
     let row_visible =
@@ -926,34 +960,8 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
             let x_min = r.x and x_max = r.x + r.width in
             fun x -> x >= x_min && x < x_max
       in
-      let scissor_bounds =
-        match scissor with None -> None | Some r -> Some (r.x, r.x + r.width)
-      in
-
-      let resolve_bg idx =
-        match explicit_bg with
-        | Some bg -> bg
-        | None -> Color_plane.read_rgba t.bg idx
-      in
-
       let writer code =
-        if Glyph.is_inline code && Glyph.codepoint code = 9 then begin
-          (* Tab expansion *)
-          let start_visible = cell_visible !cur_x in
-          for _ = 1 to tabw do
-            if !cur_x >= 0 && !cur_x < t.width then begin
-              if start_visible && cell_visible !cur_x then (
-                let idx = (y * t.width) + !cur_x in
-                let br, bg, bb, ba = resolve_bg idx in
-                let blending = fg_a < 0.999 || ba < 0.999 || t.respect_alpha in
-                set_cell_internal t ~idx ~code:space_cell ~fg_r ~fg_g ~fg_b
-                  ~fg_a ~bg_r:br ~bg_g:bg ~bg_b:bb ~bg_a:ba ~attrs ~link_id
-                  ~blending;
-                incr cur_x)
-            end
-          done
-        end
-        else if !cur_x < t.width then
+        if !cur_x < t.width then
           let w = Glyph.cell_width code in
           if w > 0 then begin
             let bounds_ok = !cur_x + w <= t.width && !cur_x >= 0 in
@@ -961,7 +969,15 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
 
             if bounds_ok && start_visible then begin
               let idx = (y * t.width) + !cur_x in
-              let br, bg, bb, ba = resolve_bg idx in
+              let br, bg, bb, ba =
+                match explicit_bg with
+                | Some (r, g, b, a) -> (r, g, b, a)
+                | None ->
+                    ( Color_plane.get t.bg idx 0,
+                      Color_plane.get t.bg idx 1,
+                      Color_plane.get t.bg idx 2,
+                      Color_plane.get t.bg idx 3 )
+              in
               let blending = fg_a < 0.999 || ba < 0.999 || t.respect_alpha in
               set_cell_internal t ~idx ~code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r:br
                 ~bg_g:bg ~bg_b:bb ~bg_a:ba ~attrs ~link_id ~blending;
@@ -969,7 +985,15 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
                 let c_x = !cur_x + i in
                 if cell_visible c_x then
                   let c_idx = (y * t.width) + c_x in
-                  let br_c, bg_c, bb_c, ba_c = resolve_bg c_idx in
+                  let br_c, bg_c, bb_c, ba_c =
+                    match explicit_bg with
+                    | Some (r, g, b, a) -> (r, g, b, a)
+                    | None ->
+                        ( Color_plane.get t.bg c_idx 0,
+                          Color_plane.get t.bg c_idx 1,
+                          Color_plane.get t.bg c_idx 2,
+                          Color_plane.get t.bg c_idx 3 )
+                  in
                   let cont =
                     Glyph.make_continuation ~code ~left:i ~right:(w - 1 - i)
                   in
@@ -986,7 +1010,15 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
               for x_fill = !cur_x to t.width - 1 do
                 if cell_visible x_fill then
                   let idx = (y * t.width) + x_fill in
-                  let br, bg, bb, ba = resolve_bg idx in
+                  let br, bg, bb, ba =
+                    match explicit_bg with
+                    | Some (r, g, b, a) -> (r, g, b, a)
+                    | None ->
+                        ( Color_plane.get t.bg idx 0,
+                          Color_plane.get t.bg idx 1,
+                          Color_plane.get t.bg idx 2,
+                          Color_plane.get t.bg idx 3 )
+                  in
                   set_cell_internal t ~idx ~code:space_cell ~fg_r ~fg_g ~fg_b
                     ~fg_a ~bg_r:br ~bg_g:bg ~bg_b:bb ~bg_a:ba ~attrs ~link_id
                     ~blending:false
@@ -998,7 +1030,7 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
 
       let stop = ref false in
       try
-        Glyph.Pool.iter_grapheme_info ~width_method:t.width_method
+        Glyph.String.iter_grapheme_info ~width_method:t.width_method
           ~tab_width:tabw
           (fun ~offset ~len ~width:w ->
             if !stop || w <= 0 then ()
@@ -1009,11 +1041,6 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
               else if start_x >= t.width then (
                 stop := true;
                 raise Exit)
-              else if
-                match scissor_bounds with
-                | None -> false
-                | Some (x_min, x_max) -> end_x <= x_min || start_x >= x_max
-              then cur_x := end_x
               else
                 let g =
                   Glyph.Pool.intern_sub t.glyph_pool
@@ -1073,12 +1100,12 @@ let draw_box t ~x ~y ~width ~height ?(border = Border.single)
       let b_bg_r, b_bg_g, b_bg_b, b_bg_a = Ansi.Color.to_rgba_f bg_color in
       let b_attrs = Ansi.Attr.pack style.attrs in
 
-      let draw_b bx by code =
+      let draw_b bx by uch =
         if
           bx >= 0 && by >= 0 && bx < t.width && by < t.height
           && not (is_clipped t bx by)
         then
-          let cell = Glyph.of_uchar (Uchar.of_int code) in
+          let cell = Glyph.of_uchar uch in
           set_cell_internal t
             ~idx:((by * t.width) + bx)
             ~code:cell ~fg_r:b_fg_r ~fg_g:b_fg_g ~fg_b:b_fg_b ~fg_a:b_fg_a
