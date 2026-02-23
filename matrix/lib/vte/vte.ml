@@ -211,11 +211,14 @@ type t = {
   mutable cursor_key_mode : bool;
   mutable insert_mode : bool;
   mutable bracketed_paste : bool;
+  default_fg : Ansi.Color.t;
+  default_bg : Ansi.Color.t;
 }
 (* VTE instance *)
 
 let create ?(scrollback = 10000) ?glyph_pool ?width_method
-    ?(respect_alpha = false) ~rows ~cols () =
+    ?(respect_alpha = false) ?(default_fg = Ansi.Color.white)
+    ?(default_bg = Ansi.Color.black) ~rows ~cols () =
   let rows = max 1 rows in
   let cols = max 1 cols in
   let primary =
@@ -234,6 +237,8 @@ let create ?(scrollback = 10000) ?glyph_pool ?width_method
       let lines = Array.make scrollback empty_line in
       Some { lines; head = 0; count = 0; capacity = scrollback }
   in
+  Grid.clear ~color:default_bg primary;
+  Grid.clear ~color:default_bg alternate;
   {
     primary;
     alternate;
@@ -255,6 +260,8 @@ let create ?(scrollback = 10000) ?glyph_pool ?width_method
     cursor_key_mode = false;
     insert_mode = false;
     bracketed_paste = false;
+    default_fg;
+    default_bg;
   }
 
 (* Efficient destructive erase using the new Grid API: replace region with
@@ -264,9 +271,7 @@ let erase_region t ~x ~y ~width ~height =
   if width <= 0 || height <= 0 then ()
   else
     let base_bg =
-      match t.style.Ansi.Style.bg with
-      | Some c -> c
-      | None -> Ansi.Color.default
+      match t.style.Ansi.Style.bg with Some c -> c | None -> t.default_bg
     in
     let r, g, b, a = Ansi.Color.to_rgba base_bg in
     let bg_color = Ansi.Color.of_rgba r g b a in
@@ -317,8 +322,8 @@ let resize t ~rows ~cols =
     (* Resizing leaves existing content intact; terminals expect a clear grid
        after a size change so applications repaint. Explicitly clear both
        buffers. *)
-    Grid.clear t.primary;
-    Grid.clear t.alternate;
+    Grid.clear ~color:t.default_bg t.primary;
+    Grid.clear ~color:t.default_bg t.alternate;
 
     (* Scrollback doesn't need resize - it's already compressed text *)
     (* Width changes are handled automatically during decompression *)
@@ -405,7 +410,7 @@ let render_with_scrollback t ~offset dst =
         let dst_height = Grid.height dst in
 
         (* Clear destination grid up-front so we don't need per-row clearing. *)
-        Grid.clear dst;
+        Grid.clear ~color:t.default_bg dst;
 
         (* Calculate how many lines come from scrollback vs screen *)
         let scrollback_lines = min offset dst_height in
@@ -484,8 +489,8 @@ let scroll_down t n =
    string into pieces that fit in the current line, using an ASCII fast path and
    falling back to Grapheme_cluster + Glyph.String.measure for complex text. *)
 let put_text t text =
-  let fg = Option.value t.style.Ansi.Style.fg ~default:Ansi.Color.default in
-  let bg = Option.value t.style.Ansi.Style.bg ~default:Ansi.Color.default in
+  let fg = Option.value t.style.Ansi.Style.fg ~default:t.default_fg in
+  let bg = Option.value t.style.Ansi.Style.bg ~default:t.default_bg in
   let attrs = t.style.Ansi.Style.attrs in
   let style =
     Ansi.Style.default |> Ansi.Style.fg fg |> Ansi.Style.bg bg
@@ -712,7 +717,7 @@ let _switch_to_alternate t save_cursor =
       t.saved_cursor <- Some (t.cursor.row, t.cursor.col, t.cursor.visible);
       t.saved_style <- Some t.style);
     t.active_grid <- t.alternate;
-    Grid.clear t.active_grid;
+    Grid.clear ~color:t.default_bg t.active_grid;
     set_cursor_pos t ~row:0 ~col:0;
     t.scroll_region.top <- 0;
     t.scroll_region.bottom <- t.rows - 1;
@@ -882,7 +887,7 @@ let handle_control t ctrl =
           match t.saved_style with Some style -> t.style <- style | None -> ()))
   | Ansi.Parser.Reset ->
       t.style <- Ansi.Style.default;
-      Grid.clear t.active_grid;
+      Grid.clear ~color:t.default_bg t.active_grid;
       set_cursor_pos t ~row:0 ~col:0;
       mark_rows_dirty t 0 (t.rows - 1)
   | Ansi.Parser.Unknown seq -> (
@@ -929,8 +934,8 @@ let feed_string t str =
 
 let reset t =
   if t.active_grid == t.alternate then switch_to_primary t false;
-  Grid.clear t.primary;
-  Grid.clear t.alternate;
+  Grid.clear ~color:t.default_bg t.primary;
+  Grid.clear ~color:t.default_bg t.alternate;
   set_cursor_pos t ~row:0 ~col:0;
   t.style <- Ansi.Style.default;
   t.saved_cursor <- None;
