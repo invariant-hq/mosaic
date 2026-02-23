@@ -1,75 +1,90 @@
 (** Incremental tokenizer for terminal input.
 
-    The tokenizer matches {!Input}'s expectations by splitting the raw byte
-    stream into either complete escape/control sequences or contiguous runs of
-    non-escape bytes. Bracketed paste markers are detected eagerly so payload
-    bytes are buffered until the closing marker.
+    Splits a raw byte stream into complete escape sequences, contiguous runs of
+    non-escape bytes, and bracketed paste payloads. Tokens preserve input order.
 
-    Tokens always preserve input order. [Sequence] tokens begin with ESC and
-    contain exactly one complete OSC/CSI/DCS/SS3/etc. sequence. [Text] tokens
-    never contain ESC and may hold arbitrary UTF-8 (validation is deferred to
-    higher layers). The parser is incremental and not thread-safe; use one
-    instance per input source. *)
+    {!Sequence} tokens begin with ESC and contain exactly one complete CSI, OSC,
+    DCS, SS3, etc. sequence. {!Text} tokens never contain ESC and may hold
+    arbitrary UTF-8 (validation is deferred to higher layers). {!Paste} tokens
+    hold the complete bracketed paste payload with markers stripped.
 
+    {b Warning.} Not thread-safe; use one instance per input source.
+
+    {1:limits Safety limits}
+
+    The paste buffer is capped at 1 MB; payloads exceeding this limit are
+    silently truncated. The escape-sequence buffer is capped at 4 KB; if an
+    incomplete sequence grows beyond this limit the bytes are flushed as plain
+    text. *)
+
+(** {1:tokens Tokens} *)
+
+(** The type for tokens. *)
 type token =
   | Sequence of string
-      (** [Sequence seq] is a complete escape/control sequence. Invariants:
-          [seq.[0] = '\x1b'], start/end markers for bracketed paste are emitted
-          verbatim, and the sequence never contains trailing bytes from the next
-          token. *)
+      (** [Sequence seq] is a complete escape or control sequence.
+          [seq.[0] = '\\x1b']. Bracketed paste start and end markers are emitted
+          verbatim. *)
   | Text of string
-      (** [Text run] is a maximal run of bytes that contains no ESC. The run may
-          contain newline or multi-byte UTF-8 characters. *)
+      (** [Text run] is a maximal run of bytes containing no ESC. May contain
+          newlines or multi-byte UTF-8. *)
   | Paste of string
       (** [Paste payload] is the complete bracketed paste payload (markers
-          stripped). It is emitted after the start marker and before the closing
-          marker. *)
+          stripped). Emitted between the start and end marker {!Sequence}
+          tokens. *)
+
+(** {1:parsers Parsers} *)
 
 type parser
-(** Incremental tokenizer state. A parser accumulates partial sequences between
-    {!feed} calls and tracks whether a bracketed paste is currently open. *)
+(** The type for incremental tokenizer state. Accumulates partial sequences
+    between {!feed} calls and tracks whether a bracketed paste is currently
+    open. *)
 
 val create : unit -> parser
-(** [create ()] returns a tokenizer with empty buffers and paste tracking
-    disabled. *)
-
-val feed : parser -> bytes -> int -> int -> now:float -> token list
-(** [feed parser bytes off len ~now] ingests [len] bytes starting at [off] and
-    returns all tokens that can be emitted with the available data. [now] is the
-    current timestamp used for scheduling flush deadlines.
-
-    Token order matches the input order. Escape sequences are only emitted when
-    the full sequence (including OSC/DCS terminators) has been received. Text
-    tokens never cross escape boundaries. When a bracketed paste start marker is
-    seen, subsequent bytes are buffered until the matching end marker, at which
-    point the payload is returned as a single [Paste] token surrounded by
-    [Sequence "\x1b\[200~"] and [Sequence "\x1b\[201~"].
-
-    May return an empty list if the chunk ends in the middle of a sequence or
-    inside a paste payload. The function updates internal buffers but never
-    mutates [bytes]; the caller may reuse it after the call.
-
-    @raise Invalid_argument if [off] and [len] describe a slice outside [bytes]
+(** [create ()] is a tokenizer with empty buffers and paste tracking disabled.
 *)
 
-val pending : parser -> bytes
-(** [pending parser] returns a copy of the incomplete data buffered so far.
+(** {1:feeding Feeding} *)
 
-    The pending bytes include only ordinary escape/text state and exclude any
-    bytes read inside an open bracketed paste (those stay hidden until the end
-    marker). Use for diagnostics; the returned buffer should be treated as
-    immutable. *)
+val feed : parser -> bytes -> int -> int -> now:float -> token list
+(** [feed p buf off len ~now] ingests [len] bytes from [buf] starting at offset
+    [off] and returns all tokens that can be emitted.
 
-val reset : parser -> unit
-(** [reset parser] drops all buffered data, exits paste mode if necessary, and
-    returns the tokenizer to its initial state. *)
+    Token order matches input order. Escape sequences are only emitted once the
+    full sequence (including terminators) has been received. When a bracketed
+    paste start marker is seen, subsequent bytes are buffered until the matching
+    end marker, at which point the payload is returned as a single {!Paste}
+    token between the start and end {!Sequence} tokens.
+
+    Returns an empty list if [buf] ends in the middle of a sequence or inside a
+    paste payload. Does not mutate [buf]; the caller may reuse it.
+
+    [now] is the current time in seconds since the epoch, used to schedule flush
+    deadlines for partial sequences.
+
+    Raises [Invalid_argument] if [off] and [len] describe a range outside [buf].
+*)
+
+(** {1:flushing Flushing} *)
 
 val deadline : parser -> float option
-(** [deadline parser] returns the absolute time (in seconds since the epoch) at
-    which the tokenizer will flush its pending escape sequence, if any. [None]
-    means no flush is scheduled. *)
+(** [deadline p] is the absolute time (seconds since the epoch) at which the
+    tokenizer will flush its pending escape sequence, or [None] when no flush is
+    scheduled. *)
 
 val flush_expired : parser -> float -> token list
-(** [flush_expired parser now] emits any pending partial sequence if its flush
-    deadline is at or before [now]. Returns an empty list if nothing was
-    flushed. *)
+(** [flush_expired p now] emits any pending partial sequence whose deadline is
+    at or before [now]. Returns an empty list if nothing was flushed. *)
+
+(** {1:state State} *)
+
+val pending : parser -> bytes
+(** [pending p] is a copy of incomplete data buffered so far.
+
+    Excludes bytes inside an open bracketed paste (those stay hidden until the
+    end marker). The returned buffer should be treated as immutable. Useful for
+    diagnostics. *)
+
+val reset : parser -> unit
+(** [reset p] drops all buffered data, exits paste mode if active, and returns
+    the tokenizer to its initial state. *)

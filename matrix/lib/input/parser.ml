@@ -839,6 +839,156 @@ let parse_kitty_keyboard parser s start end_ =
 let[@inline] get_csi_param parser idx =
   if idx < parser.csi_param_count then parser.csi_param_values.(idx) else -1
 
+(* CSI dispatch helpers — grouped by function for readability. *)
+
+let parse_csi_cursor final_char modifier event_type : parsed option =
+  match final_char with
+  | 'A' -> Some (`User (make_key_event ~modifier ~event_type Up))
+  | 'B' -> Some (`User (make_key_event ~modifier ~event_type Down))
+  | 'C' -> Some (`User (make_key_event ~modifier ~event_type Right))
+  | 'D' -> Some (`User (make_key_event ~modifier ~event_type Left))
+  | 'E' -> Some (`User (make_key_event ~modifier ~event_type KP_5))
+  | 'a' ->
+      let modifier = ensure_shift modifier in
+      Some (`User (make_key_event ~modifier ~event_type Up))
+  | 'b' ->
+      let modifier = ensure_shift modifier in
+      Some (`User (make_key_event ~modifier ~event_type Down))
+  | 'd' ->
+      let modifier = ensure_shift modifier in
+      Some (`User (make_key_event ~modifier ~event_type Left))
+  | 'e' ->
+      let modifier = ensure_shift modifier in
+      Some (`User (make_key_event ~modifier ~event_type KP_5))
+  | 'H' -> Some (`User (make_key_event ~modifier ~event_type Home))
+  | 'F' -> Some (`User (make_key_event ~modifier ~event_type End))
+  | 'Z' ->
+      let modifier = ensure_shift modifier in
+      Some (`User (make_key_event ~modifier ~event_type Tab))
+  | _ -> None
+
+let parse_csi_tilde parser final_char modifier event_type csi_mod :
+    parsed option =
+  match final_char with
+  | ('$' | '^') as suffix ->
+      let n = get_csi_param parser 0 in
+      if parser.csi_param_count = 1 && n >= 0 then
+        match key_of_tilde_code n with
+        | Some key ->
+            let modifier =
+              if suffix = '$' then ensure_shift modifier
+              else ensure_ctrl modifier
+            in
+            Some (`User (make_key_event ~modifier ~event_type key))
+        | None -> None
+      else None
+  | '~' -> (
+      let p0 = get_csi_param parser 0 in
+      let p1 = get_csi_param parser 1 in
+      let p2 = get_csi_param parser 2 in
+      if parser.csi_param_count >= 3 && p0 = 27 && p1 >= 0 && p2 >= 0 then
+        let modifier = modifier_of_bits p1 in
+        let key_from_charcode = function
+          | 13 -> Key.Enter
+          | 27 -> Escape
+          | 9 -> Tab
+          | 32 -> Char (Uchar.of_int 32)
+          | 127 | 8 -> Backspace
+          | c when c > 0 -> Char (Uchar.of_int c)
+          | _ -> Char (Uchar.of_int 0)
+        in
+        Some (`User (make_key_event ~modifier (key_from_charcode p2)))
+      else
+        match csi_mod.code with
+        | Some 200 | Some 201 -> None
+        | Some n -> (
+            match key_of_tilde_code n with
+            | Some key ->
+                Some (`User (make_key_event ~modifier ~event_type key))
+            | None -> None)
+        | None -> None)
+  | _ -> None
+
+let parse_csi_capability parser s start params_end final_char modifier
+    event_type : parsed option =
+  match final_char with
+  | 'y' ->
+      let is_private =
+        start < params_end && s.[start] = '?' && start + 1 <= params_end
+      in
+      let params_start = if is_private then start + 1 else start in
+      parse_csi_params_into parser s params_start params_end;
+      let rec parse_pairs acc i =
+        if i + 1 >= parser.csi_param_count then List.rev acc
+        else
+          let mode = get_csi_param parser i in
+          let value = get_csi_param parser (i + 1) in
+          if mode >= 0 && value >= 0 then
+            parse_pairs ((mode, value) :: acc) (i + 2)
+          else List.rev acc
+      in
+      let modes = parse_pairs [] 0 in
+      Some (`Caps (Caps.Mode_report { Caps.is_private; modes }))
+  (* Color scheme DSR response: CSI ? 997 ; value n Response to CSI ? 996 n
+     query. Value 1 = dark, 2 = light. *)
+  | 'n' ->
+      if start < params_end && s.[start] = '?' then (
+        parse_csi_params_into parser s (start + 1) params_end;
+        if parser.csi_param_count >= 2 && get_csi_param parser 0 = 997 then
+          let value = get_csi_param parser 1 in
+          let scheme =
+            match value with 1 -> `Dark | 2 -> `Light | v -> `Unknown v
+          in
+          Some (`Caps (Caps.Color_scheme scheme))
+        else None)
+      else None
+  | 't' ->
+      let p0 = get_csi_param parser 0 in
+      let p1 = get_csi_param parser 1 in
+      let p2 = get_csi_param parser 2 in
+      if parser.csi_param_count = 3 && p0 = 8 && p1 >= 0 && p2 >= 0 then
+        Some (`User (Resize (p2, p1)))
+      else if parser.csi_param_count = 3 && p0 = 4 && p1 >= 0 && p2 >= 0 then
+        Some (`Caps (Caps.Pixel_resolution (p2, p1)))
+      else None
+  | 'R' ->
+      let row = get_csi_param parser 0 in
+      let col = get_csi_param parser 1 in
+      if parser.csi_param_count = 2 && row >= 0 && col >= 0 then
+        Some (`Caps (Caps.Cursor_position (row, col)))
+      else None
+  | 'c' ->
+      if start < params_end && s.[start] = '?' then (
+        parse_csi_params_into parser s (start + 1) params_end;
+        let rec collect_attrs acc i =
+          if i >= parser.csi_param_count then List.rev acc
+          else
+            let v = get_csi_param parser i in
+            if v >= 0 then collect_attrs (v :: acc) (i + 1)
+            else collect_attrs acc (i + 1)
+        in
+        Some (`Caps (Caps.Device_attributes (collect_attrs [] 0))))
+      else if parser.csi_param_count = 0 then
+        let modifier = ensure_shift modifier in
+        Some (`User (make_key_event ~modifier ~event_type Right))
+      else None
+  | _ -> None
+
+let parse_csi_mouse_event s start intermediate_end final_char params_end :
+    parsed option =
+  match final_char with
+  | 'M' | 'm' ->
+      if start < String.length s && s.[start] = '<' then
+        Option.map
+          (fun e -> `User e)
+          (parse_sgr_mouse s start (intermediate_end + 1))
+      else if params_end > start then
+        Option.map
+          (fun e -> `User e)
+          (parse_urxvt_mouse s start (intermediate_end + 1))
+      else None
+  | _ -> None
+
 let parse_csi parser s start end_ : parsed option =
   let params_end = ref start in
   while !params_end < end_ && is_csi_param s.[!params_end] do
@@ -864,164 +1014,32 @@ let parse_csi parser s start end_ : parsed option =
     let final_char = s.[!intermediate_end] in
     parse_csi_params_into parser s start !params_end;
 
-    (* Parse modifiers and event types from params for cursor keys *)
     let csi_mod = csi_mod_of_parsed parser s in
     let modifier = modifier_of_csi_mod csi_mod in
     let event_type = event_type_of_csi_mod csi_mod in
 
     match final_char with
-    (* Cursor movement - also handle keypad in numeric mode *)
-    | 'A' -> Some (`User (make_key_event ~modifier ~event_type Up))
-    | 'B' -> Some (`User (make_key_event ~modifier ~event_type Down))
-    | 'C' -> Some (`User (make_key_event ~modifier ~event_type Right))
-    | 'D' -> Some (`User (make_key_event ~modifier ~event_type Left))
-    | 'E' -> Some (`User (make_key_event ~modifier ~event_type KP_5))
-    | 'a' ->
-        let modifier = ensure_shift modifier in
-        Some (`User (make_key_event ~modifier ~event_type Up))
-    | 'b' ->
-        let modifier = ensure_shift modifier in
-        Some (`User (make_key_event ~modifier ~event_type Down))
-    | 'd' ->
-        let modifier = ensure_shift modifier in
-        Some (`User (make_key_event ~modifier ~event_type Left))
-    | 'e' ->
-        let modifier = ensure_shift modifier in
-        Some (`User (make_key_event ~modifier ~event_type KP_5))
-    (* Home/End *)
-    | 'H' -> Some (`User (make_key_event ~modifier ~event_type Home))
-    | 'F' -> Some (`User (make_key_event ~modifier ~event_type End))
-    (* Tab *)
-    | 'Z' ->
-        let modifier = ensure_shift modifier in
-        Some (`User (make_key_event ~modifier ~event_type Tab))
+    (* Cursor movement, Home/End, Tab *)
+    | 'A' | 'B' | 'C' | 'D' | 'E' | 'a' | 'b' | 'd' | 'e' | 'H' | 'F' | 'Z' ->
+        parse_csi_cursor final_char modifier event_type
     (* Focus events *)
     | 'I' -> Some (`User Focus)
     | 'O' -> Some (`User Blur)
-    (* Tilde sequences *)
-    | ('$' | '^') as suffix ->
-        let n = get_csi_param parser 0 in
-        if parser.csi_param_count = 1 && n >= 0 then
-          match key_of_tilde_code n with
-          | Some key ->
-              let modifier =
-                if suffix = '$' then ensure_shift modifier
-                else ensure_ctrl modifier
-              in
-              Some (`User (make_key_event ~modifier ~event_type key))
-          | None -> None
-        else None
-    | '~' -> (
-        let p0 = get_csi_param parser 0 in
-        let p1 = get_csi_param parser 1 in
-        let p2 = get_csi_param parser 2 in
-        if parser.csi_param_count >= 3 && p0 = 27 && p1 >= 0 && p2 >= 0 then
-          let modifier = modifier_of_bits p1 in
-          let key_from_charcode = function
-            | 13 -> Key.Enter
-            | 27 -> Escape
-            | 9 -> Tab
-            | 32 -> Char (Uchar.of_int 32)
-            | 127 | 8 -> Backspace
-            | c when c > 0 -> Char (Uchar.of_int c)
-            | _ -> Char (Uchar.of_int 0)
-          in
-          Some (`User (make_key_event ~modifier (key_from_charcode p2)))
-        else
-          match csi_mod.code with
-          | Some 200 | Some 201 -> None
-          | Some n -> (
-              match key_of_tilde_code n with
-              | Some key ->
-                  Some (`User (make_key_event ~modifier ~event_type key))
-              | None -> None)
-          | None -> None)
+    (* Tilde sequences and rxvt shift/ctrl variants *)
+    | '$' | '^' | '~' ->
+        parse_csi_tilde parser final_char modifier event_type csi_mod
     (* CSI-u format (modern keyboard protocol) *)
     | 'u' -> (
         match parse_kitty_keyboard parser s start (!intermediate_end + 1) with
         | None -> None
         | Some e -> Some (`User e))
-    | 'y' ->
-        let is_private =
-          start < !params_end && s.[start] = '?' && start + 1 <= !params_end
-        in
-        let params_start = if is_private then start + 1 else start in
-        parse_csi_params_into parser s params_start !params_end;
-        let rec parse_pairs acc i =
-          if i + 1 >= parser.csi_param_count then List.rev acc
-          else
-            let mode = get_csi_param parser i in
-            let value = get_csi_param parser (i + 1) in
-            if mode >= 0 && value >= 0 then
-              parse_pairs ((mode, value) :: acc) (i + 2)
-            else List.rev acc
-        in
-        let modes = parse_pairs [] 0 in
-        Some (`Caps (Caps.Mode_report { Caps.is_private; modes }))
-    (* Color scheme DSR response: CSI ? 997 ; value n Response to CSI ? 996 n
-       query. Value 1 = dark, 2 = light. *)
-    | 'n' ->
-        if start < !params_end && s.[start] = '?' then (
-          parse_csi_params_into parser s (start + 1) !params_end;
-          if parser.csi_param_count >= 2 && get_csi_param parser 0 = 997 then
-            let value = get_csi_param parser 1 in
-            let scheme =
-              match value with 1 -> `Dark | 2 -> `Light | v -> `Unknown v
-            in
-            Some (`Caps (Caps.Color_scheme scheme))
-          else None)
-        else None
-    (* Window manipulation *)
-    | 't' ->
-        let p0 = get_csi_param parser 0 in
-        let p1 = get_csi_param parser 1 in
-        let p2 = get_csi_param parser 2 in
-        if parser.csi_param_count = 3 && p0 = 8 && p1 >= 0 && p2 >= 0 then
-          (* CSI 8 ; height ; width t reports terminal size *)
-          Some (`User (Resize (p2, p1)))
-        else if parser.csi_param_count = 3 && p0 = 4 && p1 >= 0 && p2 >= 0 then
-          (* CSI 4 ; height ; width t reports pixel resolution *)
-          Some (`Caps (Caps.Pixel_resolution (p2, p1)))
-        else None
-    (* Cursor position report *)
-    | 'R' ->
-        let row = get_csi_param parser 0 in
-        let col = get_csi_param parser 1 in
-        if parser.csi_param_count = 2 && row >= 0 && col >= 0 then
-          (* CSI row ; col R reports cursor position *)
-          Some (`Caps (Caps.Cursor_position (row, col)))
-        else None
-    (* Device attributes *)
-    | 'c' ->
-        if start < !params_end && s.[start] = '?' then (
-          parse_csi_params_into parser s (start + 1) !params_end;
-          let rec collect_attrs acc i =
-            if i >= parser.csi_param_count then List.rev acc
-            else
-              let v = get_csi_param parser i in
-              if v >= 0 then collect_attrs (v :: acc) (i + 1)
-              else collect_attrs acc (i + 1)
-          in
-          Some (`Caps (Caps.Device_attributes (collect_attrs [] 0))))
-        else if parser.csi_param_count = 0 then
-          (* rxvt sends shifted arrows as CSI a/b/c/d/e. Keep support while
-             still treating CSI ?...c as device attributes. *)
-          let modifier = ensure_shift modifier in
-          Some (`User (make_key_event ~modifier ~event_type Right))
-        else None
+    (* Capability reports *)
+    | 'y' | 'n' | 't' | 'R' | 'c' ->
+        parse_csi_capability parser s start !params_end final_char modifier
+          event_type
     (* Mouse events *)
     | 'M' | 'm' ->
-        if start < String.length s && s.[start] = '<' then
-          (* SGR mouse format: ESC [ < params M/m *)
-          Option.map
-            (fun e -> `User e)
-            (parse_sgr_mouse s start (!intermediate_end + 1))
-        else if !params_end > start then
-          (* URXVT format: ESC [ params M/m (no '<') *)
-          Option.map
-            (fun e -> `User e)
-            (parse_urxvt_mouse s start (!intermediate_end + 1))
-        else None
+        parse_csi_mouse_event s start !intermediate_end final_char !params_end
     | _ -> None)
   else None
 

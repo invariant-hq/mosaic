@@ -17,12 +17,19 @@ let add_binding map binding = binding :: map
 let add ?ctrl ?alt ?shift ?super ?hyper ?meta map key data =
   add_binding map { key; ctrl; alt; shift; super; hyper; meta; data }
 
-let add_char ?ctrl ?alt ?shift ?super ?hyper ?meta map c data =
+let add_char ?(ctrl = false) ?(alt = false) ?(shift = false) ?(super = false)
+    ?(hyper = false) ?(meta = false) map c data =
   add_binding map
-    { key = Char (Uchar.of_char c); ctrl; alt; shift; super; hyper; meta; data }
-
-let add_key ?ctrl ?alt ?shift ?super ?hyper ?meta map key data =
-  add_binding map { key; ctrl; alt; shift; super; hyper; meta; data }
+    {
+      key = Char (Uchar.of_char c);
+      ctrl = Some ctrl;
+      alt = Some alt;
+      shift = Some shift;
+      super = Some super;
+      hyper = Some hyper;
+      meta = Some meta;
+      data;
+    }
 
 let matches_modifier (cond : _ binding) (actual : Event.Key.modifier) =
   let check_opt opt field =
@@ -35,14 +42,20 @@ let matches_modifier (cond : _ binding) (actual : Event.Key.modifier) =
   && check_opt cond.hyper actual.hyper
   && check_opt cond.meta actual.meta
 
-let find map = function
-  | Event.Key { key; modifier; _ } ->
-      let rec loop = function
-        | [] -> None
-        | b :: rest ->
-            if Event.Key.equal key b.key && matches_modifier b modifier then
-              Some b.data
-            else loop rest
-      in
-      loop map
+let default_event_type_filter = function
+  | Event.Key.Press | Event.Key.Repeat -> true
+  | Event.Key.Release -> false
+
+let find ?(event_type = default_event_type_filter) map = function
+  | Event.Key { key; modifier; event_type = et; _ } ->
+      if not (event_type et) then None
+      else
+        let rec loop = function
+          | [] -> None
+          | b :: rest ->
+              if Event.Key.equal key b.key && matches_modifier b modifier then
+                Some b.data
+              else loop rest
+        in
+        loop map
   | _ -> None

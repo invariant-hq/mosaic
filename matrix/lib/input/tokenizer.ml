@@ -4,6 +4,10 @@ let br_paste_end = "\x1b[201~"
 let br_paste_start_len = String.length br_paste_start
 let br_paste_end_len = String.length br_paste_end
 
+(* Hard caps to prevent unbounded buffer growth from malformed input. *)
+let max_paste_len = 1_048_576 (* 1 MB *)
+let max_sequence_len = 4_096 (* 4 KB *)
+
 let br_paste_end_failure =
   let len = br_paste_end_len in
   let fail = Array.make len 0 in
@@ -131,9 +135,12 @@ let rec advance_paste_match current c =
   else advance_paste_match br_paste_end_failure.(current - 1) c
 
 let add_paste_char t c =
-  ensure_paste_capacity t 1;
-  Bytes.unsafe_set t.paste_buffer t.paste_len c;
-  t.paste_len <- t.paste_len + 1;
+  if t.paste_len < max_paste_len then (
+    ensure_paste_capacity t 1;
+    Bytes.unsafe_set t.paste_buffer t.paste_len c;
+    t.paste_len <- t.paste_len + 1);
+  (* Always advance the KMP match state so we detect the end marker even when
+     the payload has been truncated. *)
   t.paste_match <- advance_paste_match t.paste_match c;
   t.paste_match = br_paste_end_len
 
@@ -252,14 +259,24 @@ let rec process t now acc =
     Buffer.clear t.buffer;
     let len = String.length buf_str in
     let start_idx = find_substring_from buf_str br_paste_start 0 in
-    if start_idx < 0 then (
+    if start_idx < 0 then
       let seqs, rem = extract_sequences_from buf_str in
-      if rem <> "" then (
-        Buffer.add_string t.buffer rem;
-        schedule_flush t now)
-      else t.flush_deadline <- None;
-      let acc = push_tokens acc seqs in
-      List.rev acc)
+      if rem <> "" then
+        if String.length rem > max_sequence_len then (
+          (* Incomplete sequence exceeded the safety cap — treat as plain text
+             rather than buffering without bound. *)
+          t.flush_deadline <- None;
+          let acc = push_tokens acc seqs in
+          List.rev (Text rem :: acc))
+        else (
+          Buffer.add_string t.buffer rem;
+          schedule_flush t now;
+          let acc = push_tokens acc seqs in
+          List.rev acc)
+      else (
+        t.flush_deadline <- None;
+        let acc = push_tokens acc seqs in
+        List.rev acc)
     else
       let before = String.sub buf_str 0 start_idx in
       let after_start = start_idx + br_paste_start_len in

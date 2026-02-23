@@ -277,7 +277,13 @@ module Key = struct
   let is_enter = function Enter -> true | _ -> false
   let is_arrow = function Up | Down | Left | Right -> true | _ -> false
   let is_function = function F _ -> true | _ -> false
-  let is_ctrl_char = function Char u -> Uchar.to_int u < 0x20 | _ -> false
+
+  let is_ctrl_char = function
+    | Char u ->
+        let c = Uchar.to_int u in
+        c < 0x20 || c = 0x7F
+    | _ -> false
+
   let ctrl (m : modifier) = m.ctrl
   let alt (m : modifier) = m.alt
   let shift (m : modifier) = m.shift
