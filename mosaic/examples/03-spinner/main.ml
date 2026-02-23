@@ -1,32 +1,26 @@
 (** Animated spinners with built-in presets. *)
 
 open Mosaic
-open Mosaic_unix
 
-type model = { preset : Spinner.preset; running : bool }
+type model = { preset_idx : int; running : bool }
 type msg = Next_preset | Toggle | Quit
 
-let presets = [| Spinner.Dots; Line; Circle; Bounce; Bar; Arrow |]
+let presets =
+  [|
+    (Spinner.dots, "Dots");
+    (Spinner.line, "Line");
+    (Spinner.circle, "Circle");
+    (Spinner.bounce, "Bounce");
+    (Spinner.arc, "Arc");
+  |]
 
-let preset_name = function
-  | Spinner.Dots -> "Dots"
-  | Line -> "Line"
-  | Circle -> "Circle"
-  | Bounce -> "Bounce"
-  | Bar -> "Bar"
-  | Arrow -> "Arrow"
-
-let init () = ({ preset = Spinner.Dots; running = true }, Cmd.none)
+let init () = ({ preset_idx = 0; running = true }, Cmd.none)
 
 let update msg model =
   match msg with
   | Next_preset ->
-      let idx =
-        Array.find_index (fun p -> p = model.preset) presets
-        |> Option.value ~default:0
-      in
-      let next_idx = (idx + 1) mod Array.length presets in
-      ({ model with preset = presets.(next_idx) }, Cmd.none)
+      let next_idx = (model.preset_idx + 1) mod Array.length presets in
+      ({ model with preset_idx = next_idx }, Cmd.none)
   | Toggle -> ({ model with running = not model.running }, Cmd.none)
   | Quit -> (model, Cmd.quit)
 
@@ -39,6 +33,7 @@ let hint = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) ()
 let accent = Ansi.Color.cyan
 
 let view model =
+  let frame_set, name = presets.(model.preset_idx) in
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = pct 100 }
     [
@@ -62,27 +57,26 @@ let view model =
               (* Current spinner with label *)
               box ~flex_direction:Row ~align_items:Center ~gap:(gap 2)
                 [
-                  spinner ~preset:model.preset ~autoplay:model.running
-                    ~color:accent ();
+                  spinner ~frame_set ~live:model.running ~color:accent ();
                   text
-                    (Printf.sprintf "%s %s" (preset_name model.preset)
+                    (Printf.sprintf "%s %s" name
                        (if model.running then "(running)" else "(stopped)"));
                 ];
               (* All presets in a row *)
               box ~flex_direction:Row ~gap:(gap 3)
                 (Array.to_list
-                   (Array.map
-                      (fun preset ->
+                   (Array.mapi
+                      (fun i (fs, fs_name) ->
                         box ~flex_direction:Column ~align_items:Center
                           ~gap:(gap 1)
                           [
-                            spinner ~preset ~autoplay:model.running ();
+                            spinner ~frame_set:fs ~live:model.running ();
                             text
                               ~style:
-                                (if preset = model.preset then
+                                (if i = model.preset_idx then
                                    Ansi.Style.make ~fg:accent ()
                                  else Ansi.Style.make ~dim:true ())
-                              (preset_name preset);
+                              fs_name;
                           ])
                       presets));
             ];
@@ -94,7 +88,7 @@ let view model =
 
 let subscriptions _model =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'n') -> Some Next_preset
       | Char c when Uchar.equal c (Uchar.of_char ' ') -> Some Toggle
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit

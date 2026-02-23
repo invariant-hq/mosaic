@@ -1,7 +1,6 @@
 (** Scrollable content with scroll bars. *)
 
 open Mosaic
-open Mosaic_unix
 
 type msg = Quit
 
@@ -36,11 +35,15 @@ let view () =
             ];
         ];
       (* Scrollable content *)
-      box ~flex_grow:1. ~padding:(padding 1)
+      box ~flex_grow:1.
+        ~min_size:{ width = px 0; height = px 0 }
+        ~padding:(padding 1)
         [
           box ~border:true ~border_color ~title:"Items" ~flex_grow:1.
+            ~min_size:{ width = px 0; height = px 0 }
             [
               scroll_box ~scroll_y:true ~scroll_x:false
+                ~min_size:{ width = px 0; height = px 0 }
                 ~size:{ width = pct 100; height = pct 100 }
                 (List.mapi
                    (fun i item ->
@@ -59,7 +62,7 @@ let view () =
 
 let subscriptions () =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape -> Some Quit
       | _ -> None)

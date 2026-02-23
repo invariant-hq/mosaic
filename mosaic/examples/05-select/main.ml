@@ -1,20 +1,19 @@
 (** Vertical list selection with keyboard navigation. *)
 
 open Mosaic
-open Mosaic_unix
 
 type msg = Quit
 
 let languages : Select.item list =
   [
-    { name = "OCaml"; description = Some "Functional, type-safe" };
-    { name = "Rust"; description = Some "Safe systems programming" };
-    { name = "Haskell"; description = Some "Pure functional" };
-    { name = "TypeScript"; description = Some "Typed JavaScript" };
-    { name = "Python"; description = Some "Easy to learn" };
-    { name = "Go"; description = Some "Fast compilation" };
-    { name = "Zig"; description = Some "Low-level control" };
-    { name = "Elixir"; description = Some "Concurrent, fault-tolerant" };
+    { label = "OCaml"; description = Some "Functional, type-safe" };
+    { label = "Rust"; description = Some "Safe systems programming" };
+    { label = "Haskell"; description = Some "Pure functional" };
+    { label = "TypeScript"; description = Some "Typed JavaScript" };
+    { label = "Python"; description = Some "Easy to learn" };
+    { label = "Go"; description = Some "Fast compilation" };
+    { label = "Zig"; description = Some "Low-level control" };
+    { label = "Elixir"; description = Some "Concurrent, fault-tolerant" };
   ]
 
 let init () = ((), Cmd.none)
@@ -51,9 +50,13 @@ let view () =
             [
               text ~style:(Ansi.Style.make ~bold:true ()) "Choose a language:";
               (* Select component *)
-              select ~show_description:true ~show_scroll_indicator:true
-                ~wrap_selection:true ~selected_background:accent
+              select ~autofocus:true ~show_description:true
+                ~show_scroll_indicator:true ~wrap_selection:true
+                ~selected_background:accent
                 ~selected_text_color:Ansi.Color.black
+                ~selected_description_color:(Ansi.Color.of_rgb 0 50 70)
+                ~description_color:(Ansi.Color.grayscale ~level:14)
+                ~focused_background:(Ansi.Color.of_rgb 20 30 40)
                 ~size:{ width = px 40; height = px 10 }
                 languages;
             ];
@@ -65,7 +68,7 @@ let view () =
 
 let subscriptions () =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape -> Some Quit
       | _ -> None)

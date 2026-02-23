@@ -1,7 +1,6 @@
 (** Text selection across renderables and scroll boxes. *)
 
 open Mosaic
-open Mosaic_unix
 
 type msg = Quit
 
@@ -158,7 +157,7 @@ let view () =
 
 let subscriptions () =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape -> Some Quit
       | _ -> None)

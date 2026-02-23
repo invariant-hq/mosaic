@@ -1,11 +1,9 @@
 (** Interactive charts demo: zoom, pan, hover tooltips for multiple chart types.
 *)
 
+module Cell_grid = Grid
 open Mosaic
-open Mosaic_unix
 open Matrix_charts
-module Canvas = Mosaic_ui.Canvas
-module Event = Mosaic_ui.Event
 
 (* --- Chart types --- *)
 
@@ -268,7 +266,6 @@ type model = {
   chart : chart_type;
   (* per-chart view persistence *)
   views : View.t array;
-  canvas_size : (int * int) option;
   hover : (int * int) option;
   dragging : drag option;
   show_grid : bool;
@@ -291,7 +288,6 @@ type model = {
 type msg =
   | Next_chart
   | Prev_chart
-  | Canvas_resized of int * int
   | Pointer_move of int * int
   | Pointer_leave
   | Pointer_down of int * int
@@ -319,7 +315,6 @@ let init () =
   ( {
       chart = Line;
       views = Array.init n (fun _ -> View.empty);
-      canvas_size = None;
       hover = None;
       dragging = None;
       show_grid = true;
@@ -546,16 +541,19 @@ let spec_for (m : model) (ct : chart_type) : Matrix_charts.t =
       |> line ~id:"price" ~label:"Price" ~style:price_style
            ~resolution:`Braille2x4 ~x:fst ~y:snd dual_axis_price_data
 
+(* Mutable ref to capture canvas size from draw callback for pointer handlers *)
+let canvas_size_ref : (int * int) ref = ref (0, 0)
+
 (* --- Layout helpers used in update (interaction) --- *)
 
 let with_layout_for (m : model) ~(view : View.t) (f : Layout.t -> model * 'a) :
     (model * 'a) option =
-  match m.canvas_size with
-  | None -> None
-  | Some (w, h) ->
-      let chart = spec_for m m.chart in
-      let layout = Matrix_charts.layout ~view chart ~width:w ~height:h in
-      Some (f layout)
+  let w, h = !canvas_size_ref in
+  if w = 0 || h = 0 then None
+  else
+    let chart = spec_for m m.chart in
+    let layout = Matrix_charts.layout ~view chart ~width:w ~height:h in
+    Some (f layout)
 
 let plot_center_px (layout : Layout.t) : int * int =
   let r = Layout.plot_rect layout in
@@ -681,9 +679,6 @@ let update (msg : msg) (m : model) =
   | Prev_chart ->
       ( { m with chart = prev_chart m.chart; hover = None; dragging = None },
         Cmd.none )
-  | Canvas_resized (w, h) ->
-      (* Store size; drop drag (canvas geometry changed) *)
-      ({ m with canvas_size = Some (w, h); dragging = None }, Cmd.none)
   | Pointer_leave -> ({ m with hover = None; dragging = None }, Cmd.none)
   | Pointer_up -> ({ m with dragging = None }, Cmd.none)
   | Pointer_down (px, py) -> (
@@ -813,7 +808,7 @@ let update (msg : msg) (m : model) =
 
 (* --- Drawing overlays (hover + help) --- *)
 
-let draw_hover_overlay (m : model) (layout : Layout.t) (grid : Grid.t) =
+let draw_hover_overlay (m : model) (layout : Layout.t) (grid : Cell_grid.t) =
   match m.hover with
   | None -> ()
   | Some (px, py) -> (
@@ -835,7 +830,7 @@ let draw_hover_overlay (m : model) (layout : Layout.t) (grid : Grid.t) =
                 Overlay.crosshair layout grid ~x ~y;
                 Overlay.tooltip ~anchor:`Right layout grid ~x ~y lines))
 
-let draw_help_overlay (m : model) (layout : Layout.t) (grid : Grid.t) =
+let draw_help_overlay (m : model) (layout : Layout.t) (grid : Cell_grid.t) =
   if not m.show_help then ()
   else
     let r = Layout.plot_rect layout in
@@ -884,7 +879,7 @@ let draw_help_overlay (m : model) (layout : Layout.t) (grid : Grid.t) =
         in
         Overlay.tooltip ~anchor:`Top layout grid ~x ~y lines
 
-let draw_legend (layout : Layout.t) (grid : Grid.t) =
+let draw_legend (layout : Layout.t) (grid : Cell_grid.t) =
   let items = Legend.items_of_layout layout in
   if items = [] then ()
   else
@@ -899,11 +894,13 @@ let draw_legend (layout : Layout.t) (grid : Grid.t) =
           let text = marker ^ " " ^ label in
           let w = String.length text in
           let x = max r.x (legend_x - w) in
-          Grid.draw_text grid ~x ~y ~style ~text:marker;
-          Grid.draw_text grid ~x:(x + String.length marker + 1) ~y ~text:label))
+          Cell_grid.draw_text grid ~x ~y ~style ~text:marker;
+          Cell_grid.draw_text grid
+            ~x:(x + String.length marker + 1)
+            ~y ~text:label))
       items
 
-let draw_chart (m : model) (grid : Grid.t) ~(width : int) ~(height : int) :
+let draw_chart (m : model) (grid : Cell_grid.t) ~(width : int) ~(height : int) :
     Layout.t =
   let chart = spec_for m m.chart in
   let view = get_view m in
@@ -970,26 +967,26 @@ let view (m : model) =
       (* Chart area *)
       box ~flex_grow:1. ~padding:(padding 1)
         [
-          canvas
-            ~on_resize:(fun ~width ~height ->
-              Some (Canvas_resized (width, height)))
+          canvas ~live:true
             ~on_mouse:(fun ev ->
               let px, py = (Event.Mouse.x ev, Event.Mouse.y ev) in
               match Event.Mouse.kind ev with
-              | Move | Drag -> Some (Pointer_move (px, py))
+              | Move | Drag _ -> Some (Pointer_move (px, py))
               | Out -> Some Pointer_leave
-              | Down -> Some (Pointer_down (px, py))
-              | Up | Drag_end -> Some Pointer_up
-              | Scroll -> (
-                  match Event.Mouse.scroll_delta ev with
-                  | Some (Scroll_up, _) -> Some (Scroll_zoom (px, py, `In))
-                  | Some (Scroll_down, _) -> Some (Scroll_zoom (px, py, `Out))
-                  | _ -> None)
+              | Down _ -> Some (Pointer_down (px, py))
+              | Up _ | Drag_end _ -> Some Pointer_up
+              | Scroll { direction = Scroll_up; _ } ->
+                  Some (Scroll_zoom (px, py, `In))
+              | Scroll { direction = Scroll_down; _ } ->
+                  Some (Scroll_zoom (px, py, `Out))
               | _ -> None)
-            ~draw:(fun grid ~width ~height ->
-              ignore (draw_chart m grid ~width ~height))
             ~size:{ width = pct 100; height = pct 100 }
-            ();
+            (fun c ~delta:_ ->
+              let w = Canvas.width c in
+              let h = Canvas.height c in
+              canvas_size_ref := (w, h);
+              Canvas.clear c;
+              ignore (draw_chart m (Canvas.grid c) ~width:w ~height:h));
         ];
       (* Footer *)
       box ~padding:(padding 1) ~background:footer_bg ~flex_direction:Column

@@ -1,8 +1,7 @@
-open Mosaic
-
-open Mosaic_unix
 (** System metrics panel UI. Uses Sysstat library for data collection. *)
 
+module Cell_grid = Grid
+open Mosaic
 module Charts = Matrix_charts
 
 (* ---------- Model ---------- *)
@@ -233,7 +232,7 @@ let draw_progress_bar grid ~width ~height ~value ~max_value ~fill_color =
   let bar_height = height in
   if bar_width > 0 && bar_height > 0 then (
     (* Draw background *)
-    Grid.fill_rect grid ~x:0 ~y:0 ~width:bar_width ~height:bar_height
+    Cell_grid.fill_rect grid ~x:0 ~y:0 ~width:bar_width ~height:bar_height
       ~color:(Ansi.Color.grayscale ~level:3);
     (* Draw filled portion *)
     let filled_width =
@@ -241,7 +240,7 @@ let draw_progress_bar grid ~width ~height ~value ~max_value ~fill_color =
     in
     let filled_width = max 0 (min bar_width filled_width) in
     if filled_width > 0 then
-      Grid.fill_rect grid ~x:0 ~y:0 ~width:filled_width ~height:bar_height
+      Cell_grid.fill_rect grid ~x:0 ~y:0 ~width:filled_width ~height:bar_height
         ~color:fill_color)
 
 (* ---------- View Components ---------- *)
@@ -320,12 +319,13 @@ let view_per_core_cpu (cpu_per_core : Sysstat.Cpu.stats array) =
                                 ];
                               (* Progress bar *)
                               canvas
-                                ~draw:(fun grid ~width ~height ->
-                                  draw_progress_bar grid ~width ~height
-                                    ~value:total_usage ~max_value:100.0
-                                    ~fill_color:bar_color)
                                 ~size:{ width = pct 100; height = px 1 }
-                                ();
+                                (fun c ~delta:_ ->
+                                  Canvas.clear c;
+                                  draw_progress_bar (Canvas.grid c)
+                                    ~width:(Canvas.width c)
+                                    ~height:(Canvas.height c) ~value:total_usage
+                                    ~max_value:100.0 ~fill_color:bar_color);
                             ];
                         ])
                     row))
@@ -473,11 +473,12 @@ let view_cpu_usage (cpu : Sysstat.Cpu.stats)
                 [
                   text ~style:muted "CPU Load:";
                   canvas
-                    ~draw:(fun canvas ~width ~height ->
-                      Charts.Sparkline.draw sparkline_cpu ~kind:`Braille canvas
-                        ~width ~height)
                     ~size:{ width = pct 100; height = px 8 }
-                    ();
+                    (fun c ~delta:_ ->
+                      Canvas.clear c;
+                      Charts.Sparkline.draw sparkline_cpu ~kind:`Braille
+                        (Canvas.grid c) ~width:(Canvas.width c)
+                        ~height:(Canvas.height c));
                 ];
             ];
           (* Bottom: Per-Core CPU Usage *)
@@ -721,11 +722,12 @@ let view_memory_usage (memory : Sysstat.Mem.t)
             [
               text ~style:muted "Memory Load:";
               canvas
-                ~draw:(fun canvas ~width ~height ->
-                  Charts.Sparkline.draw sparkline_memory ~kind:`Braille canvas
-                    ~width ~height)
                 ~size:{ width = pct 100; height = px 4 }
-                ();
+                (fun c ~delta:_ ->
+                  Canvas.clear c;
+                  Charts.Sparkline.draw sparkline_memory ~kind:`Braille
+                    (Canvas.grid c) ~width:(Canvas.width c)
+                    ~height:(Canvas.height c));
             ];
         ];
     ]
@@ -959,7 +961,7 @@ let subscriptions _model =
     [
       Sub.on_tick (fun ~dt -> Tick dt);
       Sub.on_key (fun ev ->
-          match (Mosaic_ui.Event.Key.data ev).key with
+          match (Event.Key.data ev).key with
           | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
           | Escape -> Some Quit
           | _ -> None);

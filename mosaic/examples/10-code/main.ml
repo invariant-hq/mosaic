@@ -1,7 +1,6 @@
-(** Syntax-highlighted code with Mosaic_syntax and Tree-sitter. *)
+(** Syntax-highlighted code with Tree-sitter. *)
 
 open Mosaic
-open Mosaic_unix
 
 type lang = OCaml | JSON
 type model = { lang : lang }
@@ -53,9 +52,10 @@ let json_sample =
 
 let lang_name = function OCaml -> "OCaml" | JSON -> "JSON"
 let lang_content = function OCaml -> ocaml_sample | JSON -> json_sample
-let lang_filetype = function OCaml -> "ocaml" | JSON -> "json"
-let languages = Mosaic_syntax.builtins ()
-let theme = Code.Theme.default ()
+
+let highlight_fn = function
+  | OCaml -> Tree_sitter_ocaml.highlight_ocaml
+  | JSON -> Tree_sitter_json.highlight
 
 (* Palette *)
 let header_bg = Ansi.Color.of_rgb 30 80 100
@@ -65,6 +65,11 @@ let muted = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:16) ()
 let hint = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) ()
 
 let view model =
+  let content = lang_content model.lang in
+  let highlights =
+    highlight_fn model.lang content
+    |> Syntax_theme.apply Syntax_theme.default ~content
+  in
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = pct 100 }
     [
@@ -86,9 +91,9 @@ let view model =
         [
           box ~border:true ~border_color ~flex_grow:1.
             [
-              code ~filetype:(lang_filetype model.lang) ~languages ~theme
+              code ~highlights
                 ~size:{ width = pct 100; height = pct 100 }
-                (lang_content model.lang);
+                content;
             ];
         ];
       (* Footer *)
@@ -98,7 +103,7 @@ let view model =
 
 let subscriptions _model =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'l') -> Some Toggle_lang
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape -> Some Quit

@@ -19,12 +19,4 @@
 (executable
  (name main)
  (modules main)
- (libraries
-  mosaic
-  mosaic.unix
-  mosaic.ui
-  matrix.charts
-  matrix.grid
-  matrix.ansi
-  sysstat
-  unix))
+ (libraries mosaic matrix.charts matrix.grid matrix.ansi sysstat unix))

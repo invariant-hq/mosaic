@@ -1,19 +1,18 @@
 (** Horizontal tab bar with navigation. *)
 
 open Mosaic
-open Mosaic_unix
 
 type model = { tab : int }
 type msg = Quit | Tab_changed of int
 
-let tabs =
+let tabs : Tab_select.item list =
   [
-    ("Home", Some "Main dashboard");
-    ("Files", Some "Browse files");
-    ("Settings", Some "Configure options");
-    ("Network", Some "Connection status");
-    ("Logs", Some "System logs");
-    ("Help", Some "Documentation");
+    { label = "Home"; description = "Main dashboard" };
+    { label = "Files"; description = "Browse files" };
+    { label = "Settings"; description = "Configure options" };
+    { label = "Network"; description = "Connection status" };
+    { label = "Logs"; description = "System logs" };
+    { label = "Help"; description = "Documentation" };
   ]
 
 let init () = ({ tab = 0 }, Cmd.none)
@@ -60,7 +59,7 @@ let view model =
         [
           tab_select ~autofocus:true ~show_description:true ~show_underline:true
             ~show_scroll_arrows:true ~wrap_selection:true ~tab_width:12
-            ~selected_background:accent ~selected_text:Ansi.Color.black
+            ~selected_background:accent ~selected_text_color:Ansi.Color.black
             ~on_change:(fun i -> Some (Tab_changed i))
             tabs;
         ];
@@ -72,7 +71,7 @@ let view model =
             [
               text
                 ~style:(Ansi.Style.make ~bold:true ())
-                (fst (List.nth tabs model.tab));
+                (List.nth tabs model.tab).label;
               text (content_for_tab model.tab);
             ];
         ];
@@ -83,7 +82,7 @@ let view model =
 
 let subscriptions _model =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape -> Some Quit
       | _ -> None)

@@ -1,7 +1,6 @@
 (** Markdown rendering demonstration. *)
 
 open Mosaic
-open Mosaic_unix
 
 type msg = Quit
 
@@ -163,7 +162,7 @@ let view () =
         [
           scroll_box ~scroll_y:true ~scroll_x:false
             ~size:{ width = pct 100; height = pct 100 }
-            [ markdown ~wrap_width:(`Columns 78) markdown_content ];
+            [ markdown markdown_content ];
         ];
       (* Footer *)
       box ~padding:(padding 1) ~background:footer_bg
@@ -172,7 +171,7 @@ let view () =
 
 let subscriptions () =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape -> Some Quit
       | _ -> None)

@@ -1,7 +1,6 @@
 (** Text input with cursor and placeholder. *)
 
 open Mosaic
-open Mosaic_unix
 
 type cursor_style = Block | Line | Underline
 type model = { value : string; cursor_style : cursor_style }
@@ -85,7 +84,7 @@ let subscriptions _model =
      focused text_input. Tab and Escape are not consumed by text_input, so they
      work even when the input is focused. *)
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Tab -> Some Cycle_cursor
       | Escape -> Some Quit
       | _ -> None)

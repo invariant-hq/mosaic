@@ -1,8 +1,6 @@
 (** Procedural drawing with shapes and braille lines. *)
 
 open Mosaic
-open Mosaic_unix
-module Canvas = Mosaic_ui.Canvas
 
 type line_mode = Normal | Braille
 type model = { mode : line_mode; angle : float }
@@ -28,19 +26,21 @@ let footer_bg = Ansi.Color.grayscale ~level:3
 let muted = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:16) ()
 let hint = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) ()
 
-let draw_canvas model grid ~width ~height =
+let draw_canvas model c =
+  let width = Canvas.width c in
+  let height = Canvas.height c in
   let cx = width / 2 in
   let cy = height / 2 in
   let radius = min cx cy - 2 in
 
   (* Draw border box *)
   let border_style = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:8) () in
-  Grid.draw_box grid ~x:0 ~y:0 ~width ~height ~style:border_style ();
+  Canvas.draw_box c ~x:0 ~y:0 ~width ~height ~style:border_style ();
 
   (* Draw coordinate axes *)
   let axis_style = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:8) () in
-  Grid.draw_line grid ~x1:1 ~y1:cy ~x2:(width - 2) ~y2:cy ~style:axis_style ();
-  Grid.draw_line grid ~x1:cx ~y1:1 ~x2:cx ~y2:(height - 2) ~style:axis_style ();
+  Canvas.draw_line c ~x1:1 ~y1:cy ~x2:(width - 2) ~y2:cy ~style:axis_style ();
+  Canvas.draw_line c ~x1:cx ~y1:1 ~x2:cx ~y2:(height - 2) ~style:axis_style ();
 
   (* Draw rotating lines from center *)
   let line_kind, x_scale, y_scale =
@@ -64,22 +64,22 @@ let draw_canvas model grid ~width ~height =
       | 4 -> Ansi.Color.blue
       | _ -> Ansi.Color.magenta
     in
-    Grid.draw_line grid ~x1:cx_scaled ~y1:cy_scaled ~x2 ~y2 ~kind:line_kind
+    Canvas.draw_line c ~x1:cx_scaled ~y1:cy_scaled ~x2 ~y2 ~kind:line_kind
       ~style:(Ansi.Style.make ~fg:color ())
       ()
   done;
 
   (* Draw some filled rectangles *)
-  Grid.fill_rect grid ~x:2 ~y:2 ~width:5 ~height:2 ~color:Ansi.Color.red;
-  Grid.fill_rect grid ~x:(width - 7) ~y:2 ~width:5 ~height:2
+  Canvas.fill_rect c ~x:2 ~y:2 ~width:5 ~height:2 ~color:Ansi.Color.red;
+  Canvas.fill_rect c ~x:(width - 7) ~y:2 ~width:5 ~height:2
     ~color:Ansi.Color.green;
-  Grid.fill_rect grid ~x:2 ~y:(height - 4) ~width:5 ~height:2
+  Canvas.fill_rect c ~x:2 ~y:(height - 4) ~width:5 ~height:2
     ~color:Ansi.Color.blue;
-  Grid.fill_rect grid ~x:(width - 7) ~y:(height - 4) ~width:5 ~height:2
+  Canvas.fill_rect c ~x:(width - 7) ~y:(height - 4) ~width:5 ~height:2
     ~color:Ansi.Color.yellow;
 
   (* Draw mode indicator *)
-  Grid.draw_text grid ~x:2 ~y:(height - 2)
+  Canvas.draw_text c ~x:2 ~y:(height - 2)
     ~style:(Ansi.Style.make ~dim:true ())
     ~text:(mode_name model.mode)
 
@@ -101,11 +101,11 @@ let view model =
       (* Canvas area *)
       box ~flex_grow:1. ~padding:(padding 1)
         [
-          canvas
-            ~draw:(fun canvas ~width ~height ->
-              draw_canvas model canvas ~width ~height)
+          canvas ~live:true
             ~size:{ width = pct 100; height = pct 100 }
-            ();
+            (fun c ~delta:_ ->
+              Canvas.clear c;
+              draw_canvas model c);
         ];
       (* Footer *)
       box ~padding:(padding 1) ~background:footer_bg
@@ -116,7 +116,7 @@ let subscriptions _model =
   Sub.batch
     [
       Sub.on_key (fun ev ->
-          match (Mosaic_ui.Event.Key.data ev).key with
+          match (Event.Key.data ev).key with
           | Char c when Uchar.equal c (Uchar.of_char 'm') -> Some Toggle_mode
           | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
           | Escape -> Some Quit

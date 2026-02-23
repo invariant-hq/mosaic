@@ -1,7 +1,6 @@
 (** Horizontal and vertical sliders with sub-cell precision. *)
 
 open Mosaic
-open Mosaic_unix
 
 type model = {
   h_value : float;
@@ -88,7 +87,7 @@ let view model =
                     ~value:model.h_value ~viewport_size:10.
                     ~track_color:(Ansi.Color.grayscale ~level:5)
                     ~thumb_color:accent
-                    ~on_change:(fun v -> Some (Set_h v))
+                    ~on_value_change:(fun v -> Some (Set_h v))
                     ~size:{ width = px 30; height = px 1 }
                     ();
                 ];
@@ -100,7 +99,7 @@ let view model =
                     ~value:model.v_value ~viewport_size:10.
                     ~track_color:(Ansi.Color.grayscale ~level:5)
                     ~thumb_color:Ansi.Color.green
-                    ~on_change:(fun v -> Some (Set_v v))
+                    ~on_value_change:(fun v -> Some (Set_v v))
                     ~size:{ width = px 1; height = px 8 }
                     ();
                 ];
@@ -118,7 +117,7 @@ let view model =
                             ~value:model.r
                             ~track_color:(Ansi.Color.grayscale ~level:3)
                             ~thumb_color:Ansi.Color.red
-                            ~on_change:(fun v -> Some (Set_r v))
+                            ~on_value_change:(fun v -> Some (Set_r v))
                             ~size:{ width = px 1; height = px 5 }
                             ();
                           text "R";
@@ -131,7 +130,7 @@ let view model =
                             ~value:model.g
                             ~track_color:(Ansi.Color.grayscale ~level:3)
                             ~thumb_color:Ansi.Color.green
-                            ~on_change:(fun v -> Some (Set_g v))
+                            ~on_value_change:(fun v -> Some (Set_g v))
                             ~size:{ width = px 1; height = px 5 }
                             ();
                           text "G";
@@ -144,7 +143,7 @@ let view model =
                             ~value:model.b
                             ~track_color:(Ansi.Color.grayscale ~level:3)
                             ~thumb_color:Ansi.Color.blue
-                            ~on_change:(fun v -> Some (Set_b v))
+                            ~on_value_change:(fun v -> Some (Set_b v))
                             ~size:{ width = px 1; height = px 5 }
                             ();
                           text "B";
@@ -167,7 +166,7 @@ let view model =
 
 let subscriptions _model =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'r') -> Some Reset
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape -> Some Quit

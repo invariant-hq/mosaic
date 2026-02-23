@@ -1,7 +1,6 @@
 (** Countdown timer with start/stop/reset controls. *)
 
 open Mosaic
-open Mosaic_unix
 
 type timer_state = Idle | Running | Paused
 
@@ -150,16 +149,16 @@ let view model =
                     ];
                   box ~border:true ~padding:(padding 1)
                     ~on_mouse:(fun ev ->
-                      match Mosaic_ui.Event.Mouse.kind ev with
-                      | Down -> Some Set_time
+                      match Event.Mouse.kind ev with
+                      | Down _ -> Some Set_time
                       | _ -> None)
                     [ text ~style:(Ansi.Style.make ~bold:true ()) "Set Time" ];
                   box ~flex_direction:Row ~gap:(gap 1)
                     [
                       box ~border:true ~padding:(padding 1)
                         ~on_mouse:(fun ev ->
-                          match Mosaic_ui.Event.Mouse.kind ev with
-                          | Down -> Some Start
+                          match Event.Mouse.kind ev with
+                          | Down _ -> Some Start
                           | _ -> None)
                         [
                           text
@@ -170,8 +169,8 @@ let view model =
                         ];
                       box ~border:true ~padding:(padding 1)
                         ~on_mouse:(fun ev ->
-                          match Mosaic_ui.Event.Mouse.kind ev with
-                          | Down -> Some Stop
+                          match Event.Mouse.kind ev with
+                          | Down _ -> Some Stop
                           | _ -> None)
                         [
                           text
@@ -181,8 +180,8 @@ let view model =
                         ];
                       box ~border:true ~padding:(padding 1)
                         ~on_mouse:(fun ev ->
-                          match Mosaic_ui.Event.Mouse.kind ev with
-                          | Down -> Some Reset
+                          match Event.Mouse.kind ev with
+                          | Down _ -> Some Reset
                           | _ -> None)
                         [
                           text
@@ -205,7 +204,7 @@ let subscriptions model =
     [
       Sub.on_tick (fun ~dt -> Tick dt);
       Sub.on_key (fun ev ->
-          match (Mosaic_ui.Event.Key.data ev).key with
+          match (Event.Key.data ev).key with
           | Char c when Uchar.equal c (Uchar.of_char ' ') ->
               Some (match model.state with Running -> Stop | _ -> Start)
           | Char c when Uchar.equal c (Uchar.of_char 'r') -> Some Reset

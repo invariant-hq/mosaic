@@ -1,7 +1,6 @@
 (** Multi-component form with focus management. *)
 
 open Mosaic
-open Mosaic_unix
 
 (* Field identifiers for focus management *)
 type field = Name | Email | Role
@@ -33,10 +32,10 @@ type msg =
 
 let roles =
   [
-    Select.{ name = "Developer"; description = Some "Write code" };
-    { name = "Designer"; description = Some "Create designs" };
-    { name = "Manager"; description = Some "Lead teams" };
-    { name = "Analyst"; description = Some "Analyze data" };
+    Select.{ label = "Developer"; description = Some "Write code" };
+    { label = "Designer"; description = Some "Create designs" };
+    { label = "Manager"; description = Some "Lead teams" };
+    { label = "Analyst"; description = Some "Analyze data" };
   ]
 
 let init () =
@@ -129,14 +128,14 @@ let view model =
                 [
                   box ~border:true ~border_color ~padding:(padding 1)
                     ~on_mouse:(fun ev ->
-                      match Mosaic_ui.Event.Mouse.kind ev with
-                      | Down -> Some Submit
+                      match Event.Mouse.kind ev with
+                      | Down _ -> Some Submit
                       | _ -> None)
                     [ text "Submit" ];
                   box ~border:true ~border_color ~padding:(padding 1)
                     ~on_mouse:(fun ev ->
-                      match Mosaic_ui.Event.Mouse.kind ev with
-                      | Down -> Some Reset
+                      match Event.Mouse.kind ev with
+                      | Down _ -> Some Reset
                       | _ -> None)
                     [ text "Reset" ];
                 ];
@@ -148,7 +147,7 @@ let view model =
                      text
                        ~style:(Ansi.Style.make ~fg:Ansi.Color.green ())
                        (Printf.sprintf "Submitted: %s <%s> as %s" model.name
-                          model.email (List.nth roles model.role).name);
+                          model.email (List.nth roles model.role).label);
                    ]
                else text ~style:hint "Fill in the form and click Submit");
             ];
@@ -162,7 +161,7 @@ let view model =
 
 let subscriptions _model =
   Sub.on_key (fun ev ->
-      let data = Mosaic_ui.Event.Key.data ev in
+      let data = Event.Key.data ev in
       match data.key with
       | Tab -> if data.modifier.shift then Some Focus_prev else Some Focus_next
       | Enter -> Some Submit

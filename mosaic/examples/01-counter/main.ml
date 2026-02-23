@@ -1,7 +1,6 @@
 (** Simple counter demonstrating TEA basics. *)
 
 open Mosaic
-open Mosaic_unix
 
 type msg = Increment | Decrement | Quit
 
@@ -54,7 +53,7 @@ let view model =
 
 let subscriptions _model =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char '+') -> Some Increment
       | Char c when Uchar.equal c (Uchar.of_char '-') -> Some Decrement
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit

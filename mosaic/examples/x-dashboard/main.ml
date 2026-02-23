@@ -3,7 +3,6 @@
     charts via Matrix_charts on a canvas. *)
 
 open Mosaic
-open Mosaic_unix
 module Charts = Matrix_charts
 
 (* ---------- Small utils ---------- *)
@@ -731,7 +730,7 @@ let tab_button (m : model) tab =
   let fg = if selected then Ansi.Color.white else Ansi.Color.bright_white in
   box ~border:true ~padding:(padding 1) ~background:bg
     ~on_mouse:(fun ev ->
-      match Event.Mouse.kind ev with Down -> Some (Set_tab tab) | _ -> None)
+      match Event.Mouse.kind ev with Down _ -> Some (Set_tab tab) | _ -> None)
     [
       box ~flex_direction:Column
         [
@@ -750,7 +749,7 @@ let run_row (m : model) (r : run) =
   box ~key:r.id ~padding:(padding 1) ~background:bg
     ~on_mouse:(fun ev ->
       match Event.Mouse.kind ev with
-      | Down -> Some (Select_run r.id)
+      | Down _ -> Some (Select_run r.id)
       | _ -> None)
     [
       box ~flex_direction:Row ~gap:(gap 1) ~align_items:Center
@@ -807,7 +806,7 @@ let run_panel (m : model) =
               box ~border:true ~padding:(padding 1)
                 ~on_mouse:(fun ev ->
                   match Event.Mouse.kind ev with
-                  | Down -> Some Toggle_stream
+                  | Down _ -> Some Toggle_stream
                   | _ -> None)
                 [
                   text
@@ -817,7 +816,7 @@ let run_panel (m : model) =
               box ~border:true ~padding:(padding 1)
                 ~on_mouse:(fun ev ->
                   match Event.Mouse.kind ev with
-                  | Down -> Some Reset_selected
+                  | Down _ -> Some Reset_selected
                   | _ -> None)
                 [
                   text
@@ -837,10 +836,11 @@ let sys_metric_card ~title ~value ~unit_ ~color ~spark =
             ~style:(Ansi.Style.make ~bold:true ~fg:color ())
             (Printf.sprintf "%5.1f%s" value unit_);
           canvas
-            ~draw:(fun grid ~width ~height ->
-              Charts.Sparkline.draw spark ~kind:`Bars grid ~width ~height)
             ~size:{ width = pct 100; height = px 4 }
-            ();
+            (fun c ~delta:_ ->
+              Canvas.clear c;
+              Charts.Sparkline.draw spark ~kind:`Bars (Canvas.grid c)
+                ~width:(Canvas.width c) ~height:(Canvas.height c));
         ];
     ]
 
@@ -856,7 +856,7 @@ let sys_panel (m : model) =
               text ~style:dim_style "Collector";
               box ~flex_direction:Row ~gap:(gap 1) ~align_items:Center
                 [
-                  spinner ~preset:Spinner.Dots ~autoplay:m.streaming
+                  spinner ~frame_set:Spinner.dots ~live:m.streaming
                     ~color:Ansi.Color.bright_white ();
                   text
                     ~style:
@@ -911,6 +911,9 @@ let summary_card ~title ~value ~style =
   box ~border:true ~padding:(padding 1) ~title [ text ~style value ]
 
 let scalars_tab (m : model) (r : run) =
+  let hidden_overflow : Overflow.t Mosaic.point =
+    { x = Overflow.Hidden; y = Overflow.Hidden }
+  in
   let latest xs = match xs with p :: _ -> p.y | [] -> 0.0 in
   let l = latest r.loss in
   let vl = latest r.val_loss in
@@ -936,124 +939,146 @@ let scalars_tab (m : model) (r : run) =
             ~style:(Ansi.Style.make ~bold:true ~fg:Ansi.Color.yellow ());
         ];
       box ~flex_direction:Row ~gap:(gap 1) ~flex_grow:1.
+        ~min_size:{ width = px 0; height = px 0 }
         [
           (* left charts *)
           box ~flex_direction:Column ~gap:(gap 1) ~flex_grow:1.
+            ~min_size:{ width = px 0; height = px 0 }
             [
               box ~border:true ~title:"Loss (cyan) + Val Loss (magenta)"
                 ~padding:(padding 1) ~flex_grow:1.
                 [
                   canvas
-                    ~draw:(fun grid ~width ~height ->
-                      draw_loss_plot m r grid ~width ~height)
                     ~size:{ width = pct 100; height = pct 100 }
-                    ();
+                    (fun c ~delta:_ ->
+                      Canvas.clear c;
+                      draw_loss_plot m r (Canvas.grid c) ~width:(Canvas.width c)
+                        ~height:(Canvas.height c));
                 ];
               box ~border:true ~title:"Accuracy (green) + LR x1000 (yellow)"
                 ~padding:(padding 1)
                 ~size:{ width = pct 100; height = px 10 }
                 [
                   canvas
-                    ~draw:(fun grid ~width ~height ->
-                      draw_acc_lr_plot m r grid ~width ~height)
                     ~size:{ width = pct 100; height = pct 100 }
-                    ();
+                    (fun c ~delta:_ ->
+                      Canvas.clear c;
+                      draw_acc_lr_plot m r (Canvas.grid c)
+                        ~width:(Canvas.width c) ~height:(Canvas.height c));
                 ];
             ];
           (* controls *)
           box ~border:true ~title:"Controls" ~padding:(padding 1)
             ~size:{ width = px 32; height = pct 100 }
+            ~min_size:{ width = px 0; height = px 0 }
+            ~overflow:hidden_overflow
             [
-              box ~flex_direction:Column ~gap:(gap 1)
+              scroll_box ~scroll_y:true ~scroll_x:false
+                ~size:{ width = pct 100; height = pct 100 }
                 [
-                  text ~style:(Ansi.Style.make ~bold:true ()) "Charts";
-                  box ~flex_direction:Row ~justify_content:Space_between
+                  box ~flex_direction:Column ~gap:(gap 1)
+                    ~size:{ width = pct 100; height = auto }
                     [
-                      text (Printf.sprintf "Window: %d" m.window);
-                      box ~border:true ~padding:(padding 1)
-                        ~on_mouse:(fun ev ->
-                          match Event.Mouse.kind ev with
-                          | Down -> Some Cycle_window
-                          | _ -> None)
-                        [ text ~style:dim_style "Cycle (w)" ];
-                    ];
-                  box ~flex_direction:Row ~justify_content:Space_between
-                    [
-                      text (Printf.sprintf "Smoothing: %d" m.smoothing);
+                      text ~style:(Ansi.Style.make ~bold:true ()) "Charts";
+                      box ~flex_direction:Row ~justify_content:Space_between
+                        [
+                          text (Printf.sprintf "Window: %d" m.window);
+                          box ~border:true ~padding:(padding 1)
+                            ~on_mouse:(fun ev ->
+                              match Event.Mouse.kind ev with
+                              | Down _ -> Some Cycle_window
+                              | _ -> None)
+                            [ text ~style:dim_style "Cycle (w)" ];
+                        ];
+                      box ~flex_direction:Row ~justify_content:Space_between
+                        [
+                          text (Printf.sprintf "Smoothing: %d" m.smoothing);
+                          box ~flex_direction:Row ~gap:(gap 1)
+                            [
+                              box ~border:true ~padding:(padding 1)
+                                ~on_mouse:(fun ev ->
+                                  match Event.Mouse.kind ev with
+                                  | Down _ -> Some Smoothing_down
+                                  | _ -> None)
+                                [
+                                  text
+                                    ~style:(Ansi.Style.make ~bold:true ())
+                                    "-";
+                                ];
+                              box ~border:true ~padding:(padding 1)
+                                ~on_mouse:(fun ev ->
+                                  match Event.Mouse.kind ev with
+                                  | Down _ -> Some Smoothing_up
+                                  | _ -> None)
+                                [
+                                  text
+                                    ~style:(Ansi.Style.make ~bold:true ())
+                                    "+";
+                                ];
+                            ];
+                        ];
+                      slider ~orientation:`Horizontal ~min:1. ~max:50.
+                        ~value:(Float.of_int m.smoothing) ~viewport_size:10.
+                        ~track_color:(Ansi.Color.grayscale ~level:5)
+                        ~thumb_color:Ansi.Color.cyan
+                        ~size:{ width = pct 100; height = px 1 }
+                        ();
                       box ~flex_direction:Row ~gap:(gap 1)
                         [
                           box ~border:true ~padding:(padding 1)
                             ~on_mouse:(fun ev ->
                               match Event.Mouse.kind ev with
-                              | Down -> Some Smoothing_down
+                              | Down _ -> Some Toggle_grid
                               | _ -> None)
-                            [ text ~style:(Ansi.Style.make ~bold:true ()) "-" ];
+                            [
+                              text
+                                (Printf.sprintf "[%s] Grid"
+                                   (if m.show_grid then "x" else " "));
+                            ];
                           box ~border:true ~padding:(padding 1)
                             ~on_mouse:(fun ev ->
                               match Event.Mouse.kind ev with
-                              | Down -> Some Smoothing_up
+                              | Down _ -> Some Toggle_axes
                               | _ -> None)
-                            [ text ~style:(Ansi.Style.make ~bold:true ()) "+" ];
-                        ];
-                    ];
-                  slider ~orientation:`Horizontal ~min:1. ~max:50.
-                    ~value:(Float.of_int m.smoothing) ~viewport_size:10.
-                    ~track_color:(Ansi.Color.grayscale ~level:5)
-                    ~thumb_color:Ansi.Color.cyan
-                    ~size:{ width = pct 100; height = px 1 }
-                    ();
-                  box ~flex_direction:Row ~gap:(gap 1)
-                    [
-                      box ~border:true ~padding:(padding 1)
-                        ~on_mouse:(fun ev ->
-                          match Event.Mouse.kind ev with
-                          | Down -> Some Toggle_grid
-                          | _ -> None)
-                        [
-                          text
-                            (Printf.sprintf "[%s] Grid"
-                               (if m.show_grid then "x" else " "));
+                            [
+                              text
+                                (Printf.sprintf "[%s] Axes"
+                                   (if m.show_axes then "x" else " "));
+                            ];
                         ];
                       box ~border:true ~padding:(padding 1)
-                        ~on_mouse:(fun ev ->
-                          match Event.Mouse.kind ev with
-                          | Down -> Some Toggle_axes
-                          | _ -> None)
+                        ~title:"(Bonus) Select widget"
                         [
-                          text
-                            (Printf.sprintf "[%s] Axes"
-                               (if m.show_axes then "x" else " "));
+                          (let opts : Select.item list =
+                             [
+                               {
+                                 label = "All scalars";
+                                 description = Some "loss/acc/lr";
+                               };
+                               {
+                                 label = "Training only";
+                                 description = Some "hide val";
+                               };
+                               {
+                                 label = "Validation only";
+                                 description = Some "val/loss";
+                               };
+                               {
+                                 label = "Custom view";
+                                 description = Some "demo";
+                               };
+                             ]
+                           in
+                           select ~show_description:true
+                             ~show_scroll_indicator:true ~wrap_selection:true
+                             ~selected_background:Ansi.Color.blue
+                             ~selected_text_color:Ansi.Color.white
+                             ~size:{ width = pct 100; height = px 6 }
+                             opts);
                         ];
+                      text ~style:dim_style ~wrap:`Word
+                        "Tip: / focuses run filter. ]/[ changes tab.";
                     ];
-                  box ~border:true ~padding:(padding 1)
-                    ~title:"(Bonus) Select widget"
-                    [
-                      (let opts : Select.item list =
-                         [
-                           {
-                             name = "All scalars";
-                             description = Some "loss/acc/lr";
-                           };
-                           {
-                             name = "Training only";
-                             description = Some "hide val";
-                           };
-                           {
-                             name = "Validation only";
-                             description = Some "val/loss";
-                           };
-                           { name = "Custom view"; description = Some "demo" };
-                         ]
-                       in
-                       select ~show_description:true ~show_scroll_indicator:true
-                         ~wrap_selection:true
-                         ~selected_background:Ansi.Color.blue
-                         ~selected_text_color:Ansi.Color.white
-                         ~size:{ width = pct 100; height = px 6 }
-                         opts);
-                    ];
-                  text ~style:dim_style
-                    "Tip: / focuses run filter. ]/[ changes tab.";
                 ];
             ];
         ];
@@ -1069,10 +1094,11 @@ let heatmap_tab (m : model) (r : run) =
             ~padding:(padding 1) ~flex_grow:1.
             [
               canvas
-                ~draw:(fun grid ~width ~height ->
-                  draw_confusion_heatmap m r grid ~width ~height)
                 ~size:{ width = pct 100; height = pct 100 }
-                ();
+                (fun c ~delta:_ ->
+                  Canvas.clear c;
+                  draw_confusion_heatmap m r (Canvas.grid c)
+                    ~width:(Canvas.width c) ~height:(Canvas.height c));
             ];
           box ~border:true ~title:"Notes" ~padding:(padding 1)
             ~size:{ width = px 32; height = pct 100 }
@@ -1080,11 +1106,11 @@ let heatmap_tab (m : model) (r : run) =
               box ~flex_direction:Column ~gap:(gap 1)
                 [
                   text ~style:(Ansi.Style.make ~bold:true ()) "Heatmap demo";
-                  text ~wrap_mode:`Word
+                  text ~wrap:`Word
                     "Use this panel to validate: heatmap aggregation, color \
                      scales, axes labels, and embedding multiple views in the \
                      same app.";
-                  text ~style:dim_style ~wrap_mode:`Word
+                  text ~style:dim_style ~wrap:`Word
                     "(In a real ML dashboard: attention maps, confusion \
                      matrices, per-layer activations.)";
                 ];
@@ -1100,10 +1126,11 @@ let embeddings_tab (_m : model) (r : run) =
         ~padding:(padding 1) ~flex_grow:1.
         [
           canvas
-            ~draw:(fun grid ~width ~height ->
-              draw_embeddings_plot _m r grid ~width ~height)
             ~size:{ width = pct 100; height = pct 100 }
-            ();
+            (fun c ~delta:_ ->
+              Canvas.clear c;
+              draw_embeddings_plot _m r (Canvas.grid c) ~width:(Canvas.width c)
+                ~height:(Canvas.height c));
         ];
       box ~border:true ~padding:(padding 1)
         [
@@ -1133,7 +1160,7 @@ let logs_tab (m : model) (r : run) =
               box ~border:true ~padding:(padding 1)
                 ~on_mouse:(fun ev ->
                   match Event.Mouse.kind ev with
-                  | Down -> Some (Focus Focus_log_filter)
+                  | Down _ -> Some (Focus Focus_log_filter)
                   | _ -> None)
                 [
                   text ~style:dim_style (if focused then "Focused" else "Focus");
@@ -1151,7 +1178,7 @@ let logs_tab (m : model) (r : run) =
                  box ~key:(string_of_int i) ~padding:(padding 1)
                    ~background:
                      (if i mod 2 = 0 then Ansi.Color.default else muted_bg)
-                   [ text ~wrap_mode:`Char line ])
+                   [ text ~wrap:`Char line ])
                logs);
         ];
     ]
@@ -1175,36 +1202,40 @@ let config_json (r : run) =
     r.id r.name (status_label r.status) r.step hp
 
 let config_tab (r : run) =
-  let languages = Mosaic_syntax.builtins () in
+  let hidden_overflow : Overflow.t Mosaic.point =
+    { x = Overflow.Hidden; y = Overflow.Hidden }
+  in
+  let json = config_json r in
+  let highlights =
+    Tree_sitter_json.highlight json
+    |> Syntax_theme.apply Syntax_theme.default ~content:json
+  in
   let columns =
     [
-      Table.column ~header:(Table.cell "Key") ~width:(`Fixed 16) ~justify:`Left
-        "k";
-      Table.column ~header:(Table.cell "Value") ~width:`Auto ~justify:`Left "v";
+      Table.column ~width:(`Fixed 16) ~alignment:`Left "Key";
+      Table.column ~width:`Auto ~alignment:`Left "Value";
     ]
   in
   let rows =
-    List.map (fun (k, v) -> Table.row [ Table.cell k; Table.cell v ]) r.hparams
+    List.map (fun (k, v) -> [| Table.cell k; Table.cell v |]) r.hparams
   in
   box ~flex_direction:Row ~gap:(gap 1)
     ~size:{ width = pct 100; height = pct 100 }
     [
       box ~border:true ~title:"Hyperparameters" ~padding:(padding 1)
+        ~overflow:hidden_overflow
         ~size:{ width = px 40; height = pct 100 }
         [
-          table ~columns ~rows ~box_style:Table.Rounded ~show_header:true
-            ~show_edge:true ~show_lines:true ~table_padding:(1, 1, 0, 0)
-            ~header_style:(Ansi.Style.make ~bold:true ())
+          table ~columns ~rows ~border_style:Border.rounded ~show_header:true
+            ~border:true ~show_row_separator:true ~cell_padding:1
+            ~min_size:{ width = px 0; height = px 0 }
+            ~size:{ width = pct 100; height = pct 100 }
             ~row_styles:[ Ansi.Style.default; Ansi.Style.make ~bg:muted_bg () ]
             ();
         ];
       box ~border:true ~title:"config.json (syntax highlighted)"
         ~padding:(padding 1) ~flex_grow:1.
-        [
-          code ~filetype:"json" ~languages ~theme:(Code.Theme.default ())
-            ~size:{ width = pct 100; height = pct 100 }
-            (config_json r);
-        ];
+        [ code ~highlights ~size:{ width = pct 100; height = pct 100 } json ];
     ]
 
 let help_markdown =
@@ -1250,7 +1281,7 @@ let help_tab () =
         [
           scroll_box ~scroll_y:true ~scroll_x:false
             ~size:{ width = pct 100; height = pct 100 }
-            [ markdown ~wrap_width:(`Columns 78) help_markdown ];
+            [ markdown help_markdown ];
         ];
     ]
 

@@ -1,7 +1,6 @@
 (** Styled text demonstration with colors and formatting. *)
 
 open Mosaic
-open Mosaic_unix
 
 type wrap_mode = None | Char | Word
 type model = { wrap : wrap_mode }
@@ -151,7 +150,7 @@ let view model =
             [
               text
                 ~size:{ width = pct 100; height = auto }
-                ~wrap_mode:(wrap_mode_to_prop model.wrap)
+                ~wrap:(wrap_mode_to_prop model.wrap)
                 "This is a longer text that demonstrates different wrapping \
                  behaviors. Press 'w' to cycle through wrap modes.";
             ];
@@ -163,7 +162,7 @@ let view model =
 
 let subscriptions _model =
   Sub.on_key (fun ev ->
-      match (Mosaic_ui.Event.Key.data ev).key with
+      match (Event.Key.data ev).key with
       | Char c when Uchar.equal c (Uchar.of_char 'w') -> Some Cycle_wrap
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape -> Some Quit
