@@ -1,28 +1,11 @@
-(** Text styling composition and management.
+(** Terminal text styles.
 
-    This module aggregates foreground color, background color, text attributes,
-    and hyperlinks into immutable [Style.t] objects.
+    A style aggregates foreground color, background color, text attributes, and
+    an optional hyperlink URL into an immutable value. Styles compose with
+    overlay semantics: colors and hyperlinks from the overlay replace those in
+    the base, while attributes are unioned. See {!merge}. *)
 
-    {1 Overview}
-
-    A style consists of four components:
-
-    - {b Colors}: Optional foreground and background. [None] inherits the
-      terminal's current color.
-    - {b Attributes}: A bitmask of flags (e.g., bold, italic).
-    - {b Hyperlink}: An optional OSC 8 hyperlink URL.
-
-    Styles are composed using overlay semantics: colors and hyperlinks from the
-    overlay replace those in the base, while attributes are unioned.
-
-    {1 Usage Basics}
-
-    Create and combine styles:
-    {[
-      let error = Style.make ~fg:Color.red ~bold:true ()
-      let base = Style.make ~bg:Color.white ()
-      let combined = base ++ error
-    ]} *)
+(** {1:styles Styles} *)
 
 type t = private {
   fg : Color.t option;
@@ -30,20 +13,14 @@ type t = private {
   attrs : Attr.t;
   link : string option;
 }
-(** The read-only style definition.
-
-    Fields are exposed for pattern matching but cannot be modified directly. Use
-    {!make} or the modifier functions to create new instances. *)
-
-(** {1 Predefined Styles} *)
+(** The type for styles. Fields are exposed for pattern matching but cannot be
+    modified directly. Use {!make} or the modifier functions to create new
+    instances. *)
 
 val default : t
-(** [default] is the empty style.
+(** [default] is the empty style: no colors, no attributes, no hyperlink. *)
 
-    It contains no colors, no attributes, and no hyperlink. Emitting this style
-    performs a reset if the previous style was different. *)
-
-(** {1 Construction} *)
+(** {1:constructors Constructors} *)
 
 val make :
   ?fg:Color.t ->
@@ -63,203 +40,141 @@ val make :
   ?link:string ->
   unit ->
   t
-(** [make ?fg ?bg ... ()] creates a new style with the specified properties.
+(** [make ?fg ?bg ... ()] is a style with the given properties. [fg] and [bg]
+    default to [None] (inherit terminal default). Boolean attributes default to
+    [false]. [link] defaults to [None]. *)
 
-    All parameters are optional:
-    - [fg] and [bg] default to [None] (inherit terminal default).
-    - All boolean attributes (e.g., [bold], [italic]) default to [false].
-    - [link] defaults to [None] (no hyperlink). *)
+(** {1:modifiers Modifiers} *)
 
-(** {1 Modifiers} *)
-
-(** {2 Colors} *)
+(** {2:mod_colors Colors} *)
 
 val fg : Color.t -> t -> t
-(** [fg color t] sets the foreground color of [t] to [color]. *)
+(** [fg c s] is [s] with foreground set to [c]. *)
 
 val bg : Color.t -> t -> t
-(** [bg color t] sets the background color of [t] to [color]. *)
+(** [bg c s] is [s] with background set to [c]. *)
 
 val with_no_fg : t -> t
-(** [with_no_fg t] removes the foreground color from [t].
-
-    The resulting style will inherit the terminal's default foreground. *)
+(** [with_no_fg s] is [s] with no foreground (inherits terminal default). *)
 
 val with_no_bg : t -> t
-(** [with_no_bg t] removes the background color from [t].
+(** [with_no_bg s] is [s] with no background (inherits terminal default). *)
 
-    The resulting style will inherit the terminal's default background. *)
-
-(** {2 Attributes} *)
+(** {2:mod_attrs Attributes} *)
 
 val with_attrs : Attr.t -> t -> t
-(** [with_attrs attrs t] replaces the attribute set of [t] with [attrs]. *)
+(** [with_attrs a s] is [s] with attributes replaced by [a]. *)
 
 val overlay_attrs : t -> Attr.t -> t
-(** [overlay_attrs t attrs] adds [attrs] to the existing attributes of [t].
-
-    Equivalent to taking the union of [t.attrs] and [attrs]. *)
+(** [overlay_attrs s a] is [s] with [a] unioned into its existing attributes. *)
 
 val add_attr : Attr.flag -> t -> t
-(** [add_attr flag t] enables the specific attribute [flag] in [t]. *)
+(** [add_attr f s] is [s] with [f] enabled. *)
 
 val remove_attr : Attr.flag -> t -> t
-(** [remove_attr flag t] disables the specific attribute [flag] in [t]. *)
+(** [remove_attr f s] is [s] with [f] disabled. *)
 
 val with_bold : bool -> t -> t
-(** [with_bold enabled t] sets or clears the bold attribute. *)
+(** [with_bold b s] sets or clears bold on [s]. *)
 
 val with_dim : bool -> t -> t
-(** [with_dim enabled t] sets or clears the dim attribute. *)
+(** [with_dim b s] sets or clears dim on [s]. *)
 
 val with_italic : bool -> t -> t
-(** [with_italic enabled t] sets or clears the italic attribute. *)
+(** [with_italic b s] sets or clears italic on [s]. *)
 
 val with_underline : bool -> t -> t
-(** [with_underline enabled t] sets or clears the underline attribute. *)
+(** [with_underline b s] sets or clears underline on [s]. *)
 
 val with_double_underline : bool -> t -> t
-(** [with_double_underline enabled t] sets or clears the double-underline
-    attribute. *)
+(** [with_double_underline b s] sets or clears double underline on [s]. *)
 
 val with_blink : bool -> t -> t
-(** [with_blink enabled t] sets or clears the blink attribute. *)
+(** [with_blink b s] sets or clears blink on [s]. *)
 
 val with_inverse : bool -> t -> t
-(** [with_inverse enabled t] sets or clears the inverse attribute (swap
-    foreground and background). *)
+(** [with_inverse b s] sets or clears inverse on [s]. *)
 
 val with_hidden : bool -> t -> t
-(** [with_hidden enabled t] sets or clears the hidden attribute. *)
+(** [with_hidden b s] sets or clears hidden on [s]. *)
 
 val with_strikethrough : bool -> t -> t
-(** [with_strikethrough enabled t] sets or clears the strikethrough attribute.
-*)
+(** [with_strikethrough b s] sets or clears strikethrough on [s]. *)
 
 val with_overline : bool -> t -> t
-(** [with_overline enabled t] sets or clears the overline attribute. *)
+(** [with_overline b s] sets or clears overline on [s]. *)
 
 val with_framed : bool -> t -> t
-(** [with_framed enabled t] sets or clears the framed attribute. *)
+(** [with_framed b s] sets or clears framed on [s]. *)
 
 val with_encircled : bool -> t -> t
-(** [with_encircled enabled t] sets or clears the encircled attribute. *)
+(** [with_encircled b s] sets or clears encircled on [s]. *)
 
-(** {2 Hyperlinks} *)
+(** {2:mod_links Hyperlinks} *)
 
 val hyperlink : string -> t -> t
-(** [hyperlink url t] sets the OSC 8 hyperlink URL of [t].
-
-    If [url] is empty, behavior depends on the terminal, but typically no link
-    is created. *)
+(** [hyperlink url s] is [s] with OSC 8 hyperlink set to [url]. *)
 
 val link : t -> string option
-(** [link t] returns the current hyperlink URL of [t], if any. *)
+(** [link s] is the hyperlink URL of [s], if any. *)
 
 val unlink : t -> t
-(** [unlink t] removes the hyperlink from [t]. *)
+(** [unlink s] is [s] with the hyperlink removed. *)
 
-(** {1 Composition} *)
+(** {1:composition Composition} *)
 
 val merge : base:t -> overlay:t -> t
-(** [merge ~base ~overlay] combines two styles.
-
-    The composition rules are:
-    - {b Colors}: [overlay] takes precedence. If [overlay.fg] is [None],
-      [base.fg] is kept.
-    - {b Link}: [overlay] takes precedence.
-    - {b Attributes}: The union of [base.attrs] and [overlay.attrs] is used. *)
+(** [merge ~base ~overlay] is the style combining [base] and [overlay]:
+    - Colors: [overlay] takes precedence. If [overlay.fg] is [None], [base.fg]
+      is kept.
+    - Attributes: union of [base] and [overlay] attributes.
+    - Link: [overlay] takes precedence. *)
 
 val ( ++ ) : t -> t -> t
-(** [base ++ overlay] is an infix alias for {!merge}.
-
-    Example:
-    {[
-      let s = Style.default ++ Style.make ~bold:true () ++ Style.fg Color.red
-    ]} *)
+(** [base ++ overlay] is [merge ~base ~overlay]. *)
 
 val resolve : t list -> t
-(** [resolve styles] merges a list of styles from left to right.
+(** [resolve ss] merges [ss] left to right starting from {!default}. *)
 
-    Starts with {!default} as the accumulator. *)
-
-(** {1 Comparison} *)
+(** {1:predicates Predicates and comparisons} *)
 
 val equal : t -> t -> bool
-(** [equal a b] tests structural equality.
-
-    Returns [true] if all colors, attributes, and links are identical. *)
+(** [equal a b] is [true] iff all colors, attributes, and links are identical.
+*)
 
 val compare : t -> t -> int
-(** [compare a b] returns a total ordering for styles.
-
-    {b Performance Note}: Comparison is optimized. It uses integer operations
-    for attributes and packed 64-bit integer comparisons for colors, avoiding
-    heavy structural recursion or float allocation.
-
-    This function is suitable for using styles as keys in [Map] or [Set]. *)
+(** [compare a b] orders [a] and [b]. The order is compatible with {!equal}. *)
 
 val hash : t -> int
-(** [hash t] computes a hash value for the style.
+(** [hash s] is a hash of [s]. Compatible with {!equal}. *)
 
-    Compatible with {!equal}. *)
-
-(** {1 Emission} *)
+(** {1:emission Emission} *)
 
 val to_sgr_codes : ?prev:t -> t -> int list
-(** [to_sgr_codes ?prev t] calculates the minimal list of SGR integer codes
-    required to transition from [prev] to [t].
-
-    {ul
-     {- If [prev] is omitted, it defaults to {!default}. }
-     {- Returns an empty list if [prev] and [t] are equal. }
-     {- If [t] is {!default}, returns [[0]] (reset). }
-     {- Otherwise, returns only the codes needed to:
-        - Disable attributes present in [prev] but not in [t]
-        - Change foreground color (or [[39]] to reset to default)
-        - Change background color (or [[49]] to reset to default)
-        - Enable attributes present in [t] but not in [prev]
-     }
-    }
-
-    {b Note}: Allocates a list. Use {!emit} for allocation-sensitive code. *)
+(** [to_sgr_codes ~prev s] is the minimal SGR codes needed to transition from
+    [prev] to [s]. [prev] defaults to {!default}. Returns [[]] if [prev] and [s]
+    are equal. Returns [[0]] if [s] is {!default}. *)
 
 val sgr_sequence : ?prev:t -> t -> string
-(** [sgr_sequence ?prev t] returns the ANSI escape sequence string for [t].
-
-    Equivalent to converting the result of {!to_sgr_codes} to a string. Returns
-    an empty string if no transition is required. *)
+(** [sgr_sequence ~prev s] is the ANSI escape string for
+    {!to_sgr_codes}[ ~prev s]. Returns [""] if no transition is needed. *)
 
 val emit : ?prev:t -> t -> Writer.t -> unit
-(** [emit ?prev t writer] writes the minimal SGR codes to [writer].
+(** [emit ~prev s w] writes the minimal SGR codes to [w] to transition from
+    [prev] (defaults to {!default}) to [s].
 
-    Computes the minimal state difference between [prev] (defaulting to
-    {!default}) and [t], emitting only the codes necessary to transition:
+    Handles shared disable codes correctly (Bold/Dim share 22,
+    Underline/Double_underline share 24, Framed/Encircled share 54).
 
-    - Attribute disable codes for attributes being removed
-    - Color codes only if colors changed (or [[39]]/[[49]] to reset to default)
-    - Attribute enable codes for attributes being added
-
-    Handles shared disable codes correctly: Bold/Dim share code 22,
-    Underline/Double_underline share 24, Framed/Encircled share 54.
-
-    {b Note}: This function emits SGR sequences only (colors/attributes). The
-    [link] field is not emitted here. For hyperlink support, use {!Ansi.render}
-    or {!Ansi.emit} which handle OSC 8 sequences.
-
-    {b Example}: Transitioning from [bold + red] to [italic + red] emits only
-    [[22;3]] (disable bold, enable italic), not [[0;3;38;2;255;0;0]]. *)
+    {b Note.} Emits SGR sequences only. The [link] field is not emitted here;
+    use {!Ansi.render} for hyperlink support. *)
 
 val styled : ?reset:bool -> t -> string -> string
-(** [styled ?reset t s] returns the string [s] wrapped in the escape codes for
-    [t].
+(** [styled ~reset s str] is [str] wrapped in the escape codes for [s]. If
+    [reset] is [true] (default [false]), appends a reset sequence. *)
 
-    If [reset] is [true] (default: [false]), the function appends a reset
-    sequence ([ESC\[0m]) to the end of the string. *)
-
-(** {1 Debugging} *)
+(** {1:fmt Formatting} *)
 
 val pp : Format.formatter -> t -> unit
-(** [pp fmt t] prints a human-readable representation of the style.
-
-    Example output: [Style{fg=#FF0000, attrs=[Bold, Underline]}] *)
+(** [pp] formats a style for inspection (e.g.
+    ["Style\{fg=#FF0000, attrs=[Bold, Underline]\}"]). *)

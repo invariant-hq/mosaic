@@ -1,128 +1,54 @@
 (** Streaming ANSI escape sequence parser.
 
-    Converts byte streams into high-level tokens representing ANSI escape
-    sequences, control codes, and plain text. Handles partial input gracefully,
-    preserving UTF-8 boundaries and buffering incomplete sequences across
-    chunks.
+    Converts byte streams into high-level {!token}s representing ANSI escape
+    sequences, SGR attributes, and plain text. The parser handles partial input:
+    incomplete escape sequences and UTF-8 multi-byte characters at chunk
+    boundaries are buffered until the next {!feed} call.
 
-    {1 Parser Overview}
+    Parsing never raises on malformed input. Unrecognized sequences become
+    {!Unknown} controls and invalid UTF-8 is replaced with U+FFFD. Maximum
+    sequence lengths ([max_escape_length] for CSI, [max_osc_length] for OSC)
+    prevent unbounded buffering. *)
 
-    The parser processes terminal output and extracts semantic tokens:
+(** {1:tokens Tokens} *)
 
-    - {b SGR (Select Graphic Rendition)}: Style attributes and colors
-    - {b CSI (Control Sequence Introducer)}: Cursor movement, screen
-      manipulation
-    - {b OSC (Operating System Command)}: Terminal title, hyperlinks (OSC 8)
-    - {b Plain text}: UTF-8 encoded text between escape sequences
-
-    The parser is stateful and reentrant, allowing incremental processing of
-    data arriving in arbitrary-sized chunks.
-
-    {1 Usage}
-
-    Create a parser and feed data incrementally:
-    {[
-      let parser = Parser.create () in
-      let tokens1 = Parser.feed parser bytes1 ~off:0 ~len:(Bytes.length bytes1) in
-      let tokens2 = Parser.feed parser bytes2 ~off:0 ~len:(Bytes.length bytes2) in
-      (* Process tokens... *)
-    ]}
-
-    For complete strings:
-    {[
-      let tokens = Parser.parse "\027[1;31mHello\027[0m World"
-      (* Returns: [SGR [`Bold; `Fg Red]; Text "Hello"; SGR [`Reset]; Text "
-         World"] *)
-    ]}
-
-    {1 UTF-8 Handling}
-
-    The parser preserves UTF-8 integrity by buffering incomplete multi-byte
-    sequences at chunk boundaries. Only complete UTF-8 characters are emitted as
-    {!Text} tokens. Malformed UTF-8 sequences are replaced with U+FFFD
-    (replacement character).
-
-    {1 Hyperlink Support}
-
-    OSC 8 hyperlink sequences are parsed into {!Hyperlink} control tokens:
-    - [ESC ] 8 ; ; ST\]: Close hyperlink -> [Hyperlink None]
-    - [ESC ] 8 ; params ; url ST\]: Open hyperlink ->
-      [Hyperlink (Some (params, url))]
-
-    Parameters are parsed as key=value pairs separated by colons.
-
-    {1 Contracts}
-
-    - The parser enforces conservative maximum lengths ([max_escape_length] for
-      CSI and [max_osc_length] for OSC) and emits {!Unknown} tokens if a
-      sequence exceeds those bounds, preventing unbounded buffering.
-    - It never raises on malformed input. All undecodable sequences become
-      {!Unknown} controls. Incomplete UTF-8 sequences at chunk boundaries are
-      buffered until they can be completed.
-
-    {1 Allocation Behavior}
-
-    Each {!Text} token allocates a new string via [Buffer.contents]. ASCII text
-    is processed with minimal overhead (single-byte copies). For streaming use
-    cases, buffers are reused between {!feed} calls.
-
-    {1 Control Character Handling}
-
-    C0 control characters (0x00-0x1F) except ESC are passed through in {!Text}
-    tokens. Applications must handle CR, LF, TAB, BEL, BS, etc. as needed. Only
-    ESC-initiated sequences are parsed into {!Control} tokens. *)
-
+(** The type for control sequences other than SGR. *)
 type control =
-  | CUU of int  (** Cursor Up by n lines. *)
-  | CUD of int  (** Cursor Down by n lines. *)
-  | CUF of int  (** Cursor Forward by n columns. *)
-  | CUB of int  (** Cursor Backward by n columns. *)
-  | CNL of int  (** Cursor Next Line (down n lines, column 1). *)
-  | CPL of int  (** Cursor Previous Line (up n lines, column 1). *)
-  | CHA of int  (** Cursor Horizontal Absolute to column n. *)
-  | VPA of int  (** Vertical Position Absolute to row n. *)
-  | CUP of int * int  (** Cursor Position to (row, col). *)
-  | ED of int
-      (** Erase in Display (0=cursor to end, 1=start to cursor, 2=all). *)
-  | EL of int  (** Erase in Line (0=cursor to end, 1=start to cursor, 2=all). *)
-  | IL of int  (** Insert n blank Lines at cursor. *)
-  | DL of int  (** Delete n Lines at cursor. *)
-  | DCH of int  (** Delete n Characters at cursor. *)
-  | ICH of int  (** Insert n blank Characters at cursor. *)
-  | OSC of int * string
-      (** Generic OSC (Operating System Command).
-
-          Format: [OSC code ; payload ST]. Common codes include 0 (set title), 8
-          (hyperlink). Unhandled OSC codes are preserved as generic OSC tokens.
-      *)
+  | CUU of int  (** Cursor Up by [n] lines. *)
+  | CUD of int  (** Cursor Down by [n] lines. *)
+  | CUF of int  (** Cursor Forward by [n] columns. *)
+  | CUB of int  (** Cursor Backward by [n] columns. *)
+  | CNL of int  (** Cursor Next Line (down [n], column 1). *)
+  | CPL of int  (** Cursor Previous Line (up [n], column 1). *)
+  | CHA of int  (** Cursor Horizontal Absolute to column [n]. *)
+  | VPA of int  (** Vertical Position Absolute to row [n]. *)
+  | CUP of int * int  (** Cursor Position to [(row, col)]. *)
+  | ED of int  (** Erase in Display. *)
+  | EL of int  (** Erase in Line. *)
+  | IL of int  (** Insert [n] blank Lines. *)
+  | DL of int  (** Delete [n] Lines. *)
+  | DCH of int  (** Delete [n] Characters. *)
+  | ICH of int  (** Insert [n] blank Characters. *)
+  | OSC of int * string  (** Generic OSC with code and payload. *)
   | Hyperlink of ((string * string) list * string) option
-      (** OSC 8 hyperlink control.
-
-          - [None]: Close current hyperlink ([ESC ] 8 ; ; ST\])
-          - [Some (params, url)]: Open hyperlink with optional key=value
-            parameters separated by colons (e.g., ["id=123:name=foo"])
-
-          Example: [ESC ] 8 ; id=123 ; https://ocaml.org ST\] parses to
-          [Hyperlink (Some ([("id", "123")], "https://ocaml.org"))]. *)
-  | Reset  (** RIS (Reset to Initial State) - [ESC c]. *)
-  | DECSC  (** Save Cursor Position - [ESC 7]. *)
-  | DECRC  (** Restore Cursor Position - [ESC 8]. *)
-  | Unknown of string
-      (** Unrecognized escape sequence.
-
-          Contains the raw sequence string for logging or debugging. Allows
-          forward compatibility with new escape sequences. *)
+      (** OSC 8 hyperlink. [None] closes the current hyperlink.
+          [Some (params, url)] opens one, where [params] are key=value pairs
+          from the parameter string. *)
+  | Reset  (** RIS — reset to initial state ([ESC c]). *)
+  | DECSC  (** Save cursor position ([ESC 7]). *)
+  | DECRC  (** Restore cursor position ([ESC 8]). *)
+  | Unknown of string  (** Unrecognized sequence, preserved as raw bytes. *)
 
 type sgr_attr =
-  [ `Reset  (** Reset all attributes to default. *)
+  [ `Reset
   | `Bold
   | `Dim
   | `Italic
   | `Underline
   | `Double_underline
   | `Blink
-  | `Inverse  (** Swap foreground and background. *)
-  | `Hidden  (** Hidden text. *)
+  | `Inverse
+  | `Hidden
   | `Strikethrough
   | `Overline
   | `Framed
@@ -138,89 +64,52 @@ type sgr_attr =
   | `No_overline
   | `No_framed
   | `No_encircled
-  | `Fg of Color.t  (** Set foreground color. *)
-  | `Bg of Color.t  (** Set background color. *) ]
-(** SGR (Select Graphic Rendition) attributes.
+  | `Fg of Color.t
+  | `Bg of Color.t ]
+(** The type for SGR (Select Graphic Rendition) attributes. Represents
+    individual style changes from a single SGR sequence. A sequence like
+    [ESC \[ 1 ; 31 m] produces [[`Bold; `Fg Red]]. *)
 
-    Represents individual style changes from a single SGR sequence. A sequence
-    like [ESC \[ 1 ; 31 m] produces [[`Bold; `Fg Red]]. *)
-
+(** The type for parsed tokens. *)
 type token =
   | Text of string
-      (** Plain UTF-8 text.
-
-          Contains text content between escape sequences. Always contains
-          complete UTF-8 characters; incomplete sequences are buffered until
-          more data arrives. Malformed UTF-8 is replaced with U+FFFD. *)
+      (** Plain UTF-8 text between escape sequences. Always contains complete
+          characters. *)
   | SGR of sgr_attr list
-      (** Select Graphic Rendition command.
+      (** SGR command. An empty list is equivalent to [[`Reset]]. *)
+  | Control of control  (** Non-SGR control sequence. *)
 
-          Contains all attributes from a single SGR sequence. Empty list
-          represents SGR with no parameters (equivalent to [`Reset]). *)
-  | Control of control
-      (** Other control sequences.
-
-          Includes cursor movement, screen manipulation, and OSC commands
-          excluding SGR. *)
+(** {1:parsers Parsers} *)
 
 type t
-(** Mutable parser state.
-
-    Maintains internal buffers for incomplete escape sequences and UTF-8
-    characters. Not thread-safe; use one parser per thread. *)
-
-(** {1 Parser Operations} *)
+(** The type for parsers. Mutable and not thread-safe. *)
 
 val create : unit -> t
-(** [create ()] creates a fresh parser.
-
-    Starts in the default state with empty buffers. *)
+(** [create ()] is a fresh parser in the default state. *)
 
 val reset : t -> unit
-(** [reset t] clears internal buffers and returns to the default state.
+(** [reset p] clears internal buffers and returns [p] to the default state.
+    Discards buffered partial sequences. *)
 
-    Discards any buffered partial sequences or UTF-8 bytes. Use when abandoning
-    a parse operation or starting fresh with the same parser instance. *)
-
-val has_pending : t -> bool
-(** [has_pending t] returns [true] if the parser has buffered data.
-
-    This includes incomplete escape sequences or pending UTF-8 bytes awaiting
-    more data. Useful for checking if more input is expected without allocating.
-*)
-
-val pending : t -> bytes
-(** [pending t] returns a copy of raw input bytes not yet fully processed.
-
-    These are bytes from the input stream that couldn't be consumed because they
-    may be part of an incomplete sequence (e.g., a lone ESC at chunk end). Note
-    that escape sequence bodies being accumulated (CSI parameters, OSC payloads)
-    are stored in separate internal buffers and are not included here.
-
-    Allocates a new bytes value. Use {!has_pending} if you only need to check
-    whether more input is expected. *)
+(** {1:feeding Feeding} *)
 
 val feed : t -> bytes -> off:int -> len:int -> (token -> unit) -> unit
-(** [feed t buf ~off ~len f] processes [len] bytes from [buf] starting at [off],
-    calling [f] for each complete token.
-
-    Incomplete escape sequences and UTF-8 multi-byte sequences at chunk
-    boundaries are buffered internally. The parser handles arbitrary chunk
-    sizes, including single-byte feeds.
-
-    Example:
-    {[
-      let p = Parser.create () in
-      Parser.feed p bytes ~off:0 ~len (fun tok ->
-          match tok with
-          | Text s -> print_string s
-          | SGR attrs -> apply_styles attrs
-          | Control c -> handle_control c)
-    ]} *)
+(** [feed p buf ~off ~len f] processes [len] bytes from [buf] starting at [off],
+    calling [f] for each complete token. Incomplete sequences are buffered until
+    the next call. *)
 
 val parse : string -> token list
-(** [parse s] parses a complete string.
+(** [parse s] parses a complete string into tokens. Creates a temporary parser.
+    Not suitable for streaming; use {!feed}. *)
 
-    Convenience function for one-shot parsing. Creates a temporary parser, feeds
-    the entire string, and returns all tokens. Not suitable for streaming; use
-    {!feed} for incremental parsing. *)
+(** {1:inspection Inspection} *)
+
+val has_pending : t -> bool
+(** [has_pending p] is [true] iff [p] has buffered data (incomplete escape
+    sequences or pending UTF-8 bytes). *)
+
+val pending : t -> bytes
+(** [pending p] is a copy of raw input bytes not yet consumed. Escape sequence
+    bodies being accumulated (CSI parameters, OSC payloads) are stored in
+    separate internal buffers and are not included. Use {!has_pending} to avoid
+    allocation when only checking for pending data. *)

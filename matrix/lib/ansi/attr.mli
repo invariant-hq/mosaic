@@ -1,117 +1,52 @@
-(** Text attribute flags for ANSI terminal styling.
+(** Text attribute flags.
 
-    Provides an efficient bit-flag representation for text attributes like bold,
-    italic, underline, etc. Attributes are stored as a compact integer bitmask,
+    A compact bit-flag representation for text attributes (bold, italic,
+    underline, etc.). Attributes are stored as a 12-bit integer bitmask,
     enabling fast set operations and minimal memory usage.
 
-    {1 Attribute Flags}
-
-    Text attributes modify how terminal text is displayed. Common attributes
-    include:
-
-    - {b Bold}: Increased weight/brightness (SGR 1)
-    - {b Dim}: Decreased brightness (SGR 2)
-    - {b Italic}: Slanted text (SGR 3)
-    - {b Underline}: Single underline (SGR 4)
-    - {b Double_underline}: Double underline (SGR 21)
-    - {b Blink}: Blinking text (SGR 5) - rarely supported
-    - {b Inverse}: Swap foreground/background (SGR 7)
-    - {b Hidden}: Invisible text (SGR 8)
-    - {b Strikethrough}: Line through text (SGR 9)
-    - {b Overline}: Line above text (SGR 53)
-    - {b Framed}: Framed text (SGR 51) - rarely supported
-    - {b Encircled}: Encircled text (SGR 52) - rarely supported
-
     Terminal support varies. Bold, underline, and inverse are widely supported.
-    Blink, framed, and encircled have limited support.
+    Blink, framed, and encircled have limited support; unsupported attributes
+    simply have no visible effect. *)
 
-    {1 Usage}
+(** {1:flags Flags} *)
 
-    Create attribute sets using predefined constants or combinators:
-    {[
-      let attrs1 = Attr.(union bold italic) in
-      let attrs2 = Attr.combine ~bold:true ~underline:true () in
-      let attrs3 = Attr.of_list [Attr.Bold; Attr.Underline]
-    ]}
-
-    Test and modify attributes:
-    {[
-      let has_bold = Attr.mem Attr.Bold attrs1 in
-      let with_italic = Attr.add Attr.Italic attrs2 in
-      let without_bold = Attr.remove Attr.Bold attrs1
-    ]}
-
-    Set operations:
-    {[
-      let combined = Attr.union attrs1 attrs2 in
-      let common = Attr.intersect attrs1 attrs2 in
-      let diff = Attr.diff attrs1 attrs2
-    ]}
-
-    {1 Allocation Behavior}
-
-    Most operations are zero-allocation:
-    - All set operations ([add], [remove], [union], [intersect], [diff], etc.)
-    - Iteration with [iter], [fold], [iter_sgr_codes], [fold_sgr_codes]
-    - Lookup functions ([mem], [is_empty], [cardinal])
-    - Printing with [pp]
-
-    Functions that allocate are explicitly noted in their documentation:
-    - [to_list] - allocates a list
-    - [to_sgr_codes] - allocates a list (use [iter_sgr_codes] instead)
-    - [of_list] - traverses caller-provided list only
-
-    {1 Contracts}
-
-    - The representation is a 12-bit mask.
-    - Idempotent setters ensure accidental duplication never changes results.
-    - Encodings follow the ANSI SGR standard; unsupported attributes simply have
-      no visible effect when rendered. *)
-
+(** The type for individual text attribute flags. *)
 type flag =
-  | Bold
-  | Dim
-  | Italic
-  | Underline
-  | Double_underline
-  | Blink
-  | Inverse
-  | Hidden
-  | Strikethrough
-  | Overline
-  | Framed
-  | Encircled
+  | Bold  (** Increased weight/brightness (SGR 1). *)
+  | Dim  (** Decreased brightness (SGR 2). *)
+  | Italic  (** Slanted text (SGR 3). *)
+  | Underline  (** Single underline (SGR 4). *)
+  | Double_underline  (** Double underline (SGR 21). *)
+  | Blink  (** Blinking text (SGR 5). *)
+  | Inverse  (** Swap foreground/background (SGR 7). *)
+  | Hidden  (** Invisible text (SGR 8). *)
+  | Strikethrough  (** Line through text (SGR 9). *)
+  | Overline  (** Line above text (SGR 53). *)
+  | Framed  (** Framed text (SGR 51). *)
+  | Encircled  (** Encircled text (SGR 52). *)
 
 val flag_to_sgr_code : flag -> int
-(** [flag_to_sgr_code flag] returns the SGR code to enable [flag].
-
-    Zero-allocation. Use with {!iter} for efficient SGR sequence generation. *)
+(** [flag_to_sgr_code f] is the SGR code to enable [f]. *)
 
 val flag_to_sgr_disable_code : flag -> int
-(** [flag_to_sgr_disable_code flag] returns the SGR code to disable [flag].
+(** [flag_to_sgr_disable_code f] is the SGR code to disable [f].
 
-    Note: Some flags share disable codes:
-    - Bold and Dim both use 22 (normal intensity)
-    - Underline and Double_underline both use 24
-    - Framed and Encircled both use 54
-
-    Zero-allocation. *)
+    {b Note.} Some flags share disable codes: Bold and Dim both use 22,
+    Underline and Double_underline both use 24, Framed and Encircled both use
+    54. *)
 
 val flag_to_string : flag -> string
-(** [flag_to_string flag] returns the string representation of [flag].
+(** [flag_to_string f] is the name of [f] as a string. *)
 
-    Zero-allocation (returns a static string). *)
+(** {1:sets Attribute sets} *)
 
 type t
-(** Opaque bitmask of attribute flags.
+(** The type for attribute sets. Internally a 12-bit integer bitmask. *)
 
-    Internally represented as an integer with one bit per flag. Efficient for
-    storage and set operations. *)
-
-(** {1 Predefined Attribute Sets} *)
+(** {2:predefined Predefined sets} *)
 
 val empty : t
-(** No attributes set. *)
+(** [empty] is the set with no attributes. *)
 
 val bold : t
 val dim : t
@@ -126,59 +61,49 @@ val overline : t
 val framed : t
 val encircled : t
 
-(** {1 Set Operations} *)
+(** {2:predicates Predicates} *)
 
 val is_empty : t -> bool
-(** [is_empty t] tests if no attributes are set. *)
+(** [is_empty s] is [true] iff [s] contains no flags. *)
 
 val mem : flag -> t -> bool
-(** [mem flag t] tests if [flag] is set in [t]. *)
+(** [mem f s] is [true] iff [f] is in [s]. *)
+
+(** {2:ops Set operations} *)
 
 val add : flag -> t -> t
-(** [add flag t] adds [flag] to [t].
-
-    Idempotent: adding an already-present flag has no effect. *)
+(** [add f s] is [s] with [f] added. Idempotent. *)
 
 val remove : flag -> t -> t
-(** [remove flag t] removes [flag] from [t].
-
-    Idempotent: removing an absent flag has no effect. *)
+(** [remove f s] is [s] with [f] removed. Idempotent. *)
 
 val toggle : flag -> t -> t
-(** [toggle flag t] toggles [flag] in [t].
-
-    Adds if absent, removes if present. *)
+(** [toggle f s] adds [f] if absent, removes it if present. *)
 
 val union : t -> t -> t
-(** [union a b] computes the union of [a] and [b].
-
-    Contains all flags present in either set. *)
+(** [union a b] is the set containing flags in either [a] or [b]. *)
 
 val intersect : t -> t -> t
-(** [intersect a b] computes the intersection of [a] and [b].
-
-    Contains only flags present in both sets. *)
+(** [intersect a b] is the set containing flags in both [a] and [b]. *)
 
 val diff : t -> t -> t
-(** [diff a b] computes the difference [a - b].
-
-    Contains flags in [a] that are not in [b]. *)
+(** [diff a b] is the set of flags in [a] not in [b]. *)
 
 val cardinal : t -> int
-(** [cardinal t] counts the number of flags set in [t]. *)
+(** [cardinal s] is the number of flags in [s]. *)
 
-(** {1 Construction and Conversion} *)
+val with_flag : flag -> bool -> t -> t
+(** [with_flag f enabled s] adds [f] if [enabled] is [true], removes it
+    otherwise. *)
+
+(** {1:converting Converting} *)
 
 val of_list : flag list -> t
-(** [of_list flags] creates an attribute set from a list.
-
-    Duplicate flags are ignored. Order-independent. *)
+(** [of_list fs] is a set from the list [fs]. Duplicates are ignored. *)
 
 val to_list : t -> flag list
-(** [to_list t] converts to a list of flags.
-
-    {b Allocates} a new list. Use {!iter} or {!fold} when allocation is
-    undesirable. Order is deterministic but unspecified. *)
+(** [to_list s] is the flags in [s] as a list. Order is deterministic but
+    unspecified. *)
 
 val combine :
   ?bold:bool ->
@@ -195,90 +120,51 @@ val combine :
   ?encircled:bool ->
   unit ->
   t
-(** [combine ?bold ?dim ... ()] creates attributes from labeled arguments.
+(** [combine ?bold ?dim ... ()] is a set from labelled arguments. Each parameter
+    defaults to [false]. *)
 
-    Each parameter defaults to [false]. Only flags set to [true] are included.
-    Rarely supported attributes like [framed] and [encircled] are included when
-    explicitly enabled. *)
-
-val with_flag : flag -> bool -> t -> t
-(** [with_flag flag enabled t] conditionally adds or removes [flag].
-
-    If [enabled] is [true], adds [flag]; otherwise removes it. *)
-
-(** {1 ANSI Escape Sequence Generation} *)
+(** {1:sgr ANSI SGR codes} *)
 
 val to_sgr_codes : t -> int list
-(** [to_sgr_codes t] converts to SGR parameter codes for enabling attributes.
-
-    {b Allocates} a new list. Use {!iter_sgr_codes} or {!fold_sgr_codes} when
-    allocation is undesirable.
-
-    Returns codes to enable all flags in [t]. Does not include reset codes.
-    Order is deterministic but unspecified.
-
-    Example: [{!bold} ∪ {!italic}] produces [[1; 3]]. *)
+(** [to_sgr_codes s] is the SGR enable codes for [s]. Use {!iter_sgr_codes} or
+    {!fold_sgr_codes} to avoid allocation. *)
 
 val iter_sgr_codes : (int -> unit) -> t -> unit
-(** [iter_sgr_codes f t] calls [f code] for each SGR enable code in [t].
-
-    Zero-allocation alternative to {!to_sgr_codes}. Order is unspecified. *)
+(** [iter_sgr_codes f s] calls [f code] for each SGR enable code in [s]. *)
 
 val iter_sgr_disable_codes : (int -> unit) -> t -> unit
-(** [iter_sgr_disable_codes f t] calls [f code] for each SGR disable code in
-    [t].
-
-    Automatically deduplicates shared codes (e.g., if both Bold and Dim are in
-    [t], code 22 is emitted only once).
-
-    Zero-allocation. Order is unspecified. *)
+(** [iter_sgr_disable_codes f s] calls [f code] for each SGR disable code in
+    [s]. Shared codes are deduplicated (e.g. if both Bold and Dim are in [s],
+    code 22 is emitted once). *)
 
 val fold_sgr_codes : (int -> 'a -> 'a) -> t -> 'a -> 'a
-(** [fold_sgr_codes f t init] folds over SGR codes for set flags.
+(** [fold_sgr_codes f s init] folds [f] over SGR enable codes of [s]. *)
 
-    Zero-allocation alternative to {!to_sgr_codes}. Order is unspecified. *)
-
-(** {1 Iteration and Folding} *)
+(** {1:iteration Iteration} *)
 
 val fold : (flag -> 'a -> 'a) -> t -> 'a -> 'a
-(** [fold f t init] folds over set flags.
-
-    Applies [f] to each flag in [t] from left to right (unspecified order),
-    threading an accumulator. *)
+(** [fold f s init] folds [f] over the flags in [s]. *)
 
 val iter : (flag -> unit) -> t -> unit
-(** [iter f t] iterates over set flags.
+(** [iter f s] calls [f] for each flag in [s]. *)
 
-    Applies [f] to each flag in [t]. Order is unspecified. *)
-
-(** {1 Comparison and Encoding} *)
+(** {1:predicates_cmp Comparisons} *)
 
 val equal : t -> t -> bool
-(** [equal a b] tests if [a] and [b] contain exactly the same flags.
-
-    More efficient than [compare a b = 0]. *)
+(** [equal a b] is [true] iff [a] and [b] contain the same flags. *)
 
 val compare : t -> t -> int
-(** [compare a b] compares attribute sets.
+(** [compare a b] orders [a] and [b]. The order is compatible with {!equal}. *)
 
-    Returns a value compatible with [Stdlib.compare]: negative if [a < b], zero
-    if equal, positive if [a > b]. Comparison is based on integer
-    representation. *)
+(** {1:encoding Binary encoding} *)
 
 val pack : t -> int
-(** [pack t] encodes to an integer for compact storage.
-
-    Direct exposure of internal representation. Only use when storing attribute
-    sets in custom tables; the value is stable across releases. *)
+(** [pack s] is the integer representation of [s]. Stable across releases. *)
 
 val unpack : int -> t
-(** [unpack n] decodes from an integer.
+(** [unpack n] is the attribute set from the integer [n]. Inverse of {!pack}. *)
 
-    Inverse of {!pack}. *)
-
-(** {1 Utilities} *)
+(** {1:fmt Formatting} *)
 
 val pp : Format.formatter -> t -> unit
-(** [pp fmt t] prints a human-readable representation.
-
-    Example output: ["[Bold, Italic]"]. Empty set prints as ["[]"]. *)
+(** [pp] formats an attribute set for inspection (e.g. ["[Bold, Italic]"]). *)

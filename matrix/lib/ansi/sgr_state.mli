@@ -1,69 +1,31 @@
-(** Terminal rendering state tracking.
+(** Terminal SGR state tracker.
 
-    This module manages the active rendering state (colors, attributes, and
-    hyperlinks) of the terminal output stream. It tracks what the terminal
-    "thinks" the current style is and only emits codes when the requested style
-    differs from that state.
+    Tracks the terminal's active rendering state (colors, attributes, hyperlink)
+    and emits escape codes only when the requested style differs. Designed for
+    hot render loops processing thousands of cells per frame.
 
-    {1 Overview}
-
-    Writing escape codes for every character cell is inefficient. This module
-    memoizes the last emitted style. When the style changes, it emits a full
-    reset (SGR 0) followed by the complete new style. This avoids per-cell
-    emission while ensuring correctness.
-
-    {1 Performance}
-
-    {!update} is {b zero-allocation}: it writes directly to the [Writer.t] using
+    {!update} is zero-allocation: it writes directly to a {!Writer.t} using
     low-level primitives. No closures, lists, or intermediate strings are
-    created. This makes it suitable for hot render loops processing thousands of
-    cells per frame.
+    created. *)
 
-    Typical allocation per frame: only the initial {!create} call (~16 words).
-
-    {1 Usage}
-
-    {[
-      let buf = Bytes.create 65536 in
-      let writer = Ansi.Writer.make buf in
-      let state = Sgr_state.create () in
-
-      (* In your render loop - zero allocations per cell: *)
-      for row = 0 to height - 1 do
-        for col = 0 to width - 1 do
-          Sgr_state.update state writer ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0
-            ~fg_a:1.0 (* Red *)
-            ~bg_r:0.0 ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 (* Transparent *)
-            ~attrs:(Attr.pack Attr.bold) ~link:"";
-          Ansi.emit (Ansi.char 'X') writer
-        done;
-        (* Reset at row end to prevent style bleed *)
-        Sgr_state.reset state
-      done
-    ]} *)
+(** {1:state State} *)
 
 type t
-(** The mutable state of the terminal's rendering settings (colors, attributes,
-    hyperlinks). *)
+(** The type for mutable SGR state trackers. Not thread-safe. *)
 
-(** {1 Lifecycle} *)
+(** {1:lifecycle Lifecycle} *)
 
 val create : unit -> t
-(** [create ()] creates a new state tracker.
-
-    The initial state is "unknown", guaranteeing that the first call to
-    {!update} will emit a full reset and style application to ensure
-    consistency. *)
+(** [create ()] is a new state tracker. The initial state is "unknown",
+    guaranteeing that the first {!update} emits a full reset and style
+    application. *)
 
 val reset : t -> unit
-(** [reset t] invalidates the state.
+(** [reset s] invalidates [s], forcing the next {!update} to emit a full reset
+    sequence. Use after external modifications to the output stream (e.g.
+    subprocesses) or non-contiguous cursor jumps. *)
 
-    Forces the next {!update} to emit a reset sequence and full style codes. Use
-    this when the output stream might have been modified externally (e.g., by a
-    subprocess) or when performing non-contiguous cursor jumps where style bleed
-    must be prevented. *)
-
-(** {1 Operations} *)
+(** {1:operations Operations} *)
 
 val update :
   t ->
@@ -79,25 +41,15 @@ val update :
   attrs:int ->
   link:string ->
   unit
-(** [update t w ...] synchronizes the terminal with the requested style values.
+(** [update s w ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b ~bg_a ~attrs ~link]
+    synchronizes the terminal with the requested style. Emits escape codes to
+    [w] and updates [s] only if the style changed. Hyperlink changes are emitted
+    first (OSC 8), then SGR codes if any component changed.
 
-    If the requested colors, attributes, or hyperlink differ from [t]'s current
-    state, this function emits the necessary escape codes to [w] and updates
-    [t].
-
-    {b Behavior}:
-    - Hyperlink changes are emitted first (OSC 8 sequences).
-    - If any SGR component changes, it emits a Reset ([0]) code then reapplies
-      the full style (Foreground, Background, Attributes).
-
-    {b Preconditions}:
-    - Color components (r, g, b, a) must be normalized floats in [0.0, 1.0].
-    - [attrs] must be a valid integer bitmask compatible with {!Attr.pack}.
-    - [link] is the hyperlink URL, or [""] for no link. Using empty string as
-      the sentinel avoids Option allocation in hot render loops. *)
+    Color components are normalized floats in \[0.0, 1.0\]. [attrs] is a bitmask
+    compatible with {!Attr.pack}. [link] is the hyperlink URL or [""] for none.
+*)
 
 val close_link : t -> Writer.t -> unit
-(** [close_link t w] closes any open hyperlink.
-
-    If a hyperlink is currently open, emits the OSC 8 close sequence and updates
-    [t]. Safe to call even if no link is open. *)
+(** [close_link s w] closes any open hyperlink. Safe to call when no link is
+    open. *)
