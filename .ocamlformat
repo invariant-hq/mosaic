@@ -12,4 +12,4 @@ profile = default
 parse-docstrings = true
 
 # Wrap comments and docstrings to fit within the 'max-width'
-wrap-comments = true
+# wrap-comments = true
