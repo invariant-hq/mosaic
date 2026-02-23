@@ -410,12 +410,14 @@ let invert color =
   of_rgb (255 - r) (255 - g) (255 - b)
 
 module Packed = struct
-  let tag_basic = Int64.shift_left 1L 61
-  let tag_extended = Int64.shift_left 2L 61
-  let tag_rgb = Int64.shift_left 3L 61
-  let tag_rgba = Int64.shift_left 4L 61
-  let tag_mask = Int64.shift_left 7L 61 (* top 3 bits reserved for tags *)
-  let data_mask = Int64.sub (Int64.shift_left 1L 61) 1L
+  let () = assert (Sys.int_size >= 62)
+  let tag_shift = 58
+  let tag_basic = 1 lsl tag_shift
+  let tag_extended = 2 lsl tag_shift
+  let tag_rgb = 3 lsl tag_shift
+  let tag_rgba = 4 lsl tag_shift
+  let tag_mask = 7 lsl tag_shift
+  let data_mask = (1 lsl tag_shift) - 1
 
   let encode color =
     match color with
@@ -423,21 +425,21 @@ module Packed = struct
     | Bright_black | Bright_red | Bright_green | Bright_yellow | Bright_blue
     | Bright_magenta | Bright_cyan | Bright_white ->
         let idx = palette_index color in
-        Int64.logor tag_basic (Int64.of_int idx)
-    | Extended idx -> Int64.logor tag_extended (Int64.of_int (clamp_byte idx))
+        tag_basic lor idx
+    | Extended idx -> tag_extended lor clamp_byte idx
     | Rgb { r; g; b } ->
         let data = (r lsl 16) lor (g lsl 8) lor b in
-        Int64.logor tag_rgb (Int64.of_int data)
+        tag_rgb lor data
     | Rgba { r; g; b; a } ->
         let data = (r lsl 24) lor (g lsl 16) lor (b lsl 8) lor a in
-        Int64.logor tag_rgba (Int64.of_int data)
+        tag_rgba lor data
 
   let decode packed =
-    let tag = Int64.logand packed tag_mask in
-    let data = Int64.logand packed data_mask |> Int64.to_int in
-    match Int64.to_int (Int64.shift_right_logical tag 61) with
+    let tag = packed land tag_mask in
+    let data = packed land data_mask in
+    match tag lsr tag_shift with
     | 0 -> Rgba { r = 0; g = 0; b = 0; a = 0 }
-    | 1 -> of_palette_index data (* Basics map to 0-15 *)
+    | 1 -> of_palette_index data
     | 2 -> Extended data
     | 3 ->
         let r = (data lsr 16) land 0xFF in

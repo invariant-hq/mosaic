@@ -1,84 +1,19 @@
-(** Color representations for ANSI terminal output.
+(** Terminal colors.
 
-    Provides a unified type for terminal colors supporting 16 basic ANSI colors,
-    256-color palette, and 24-bit truecolor with optional alpha channels.
-    Includes conversions between color spaces, color blending, terminal
-    capability detection, and compact binary encoding.
+    Colors are represented as a sum type supporting 16 basic ANSI colors,
+    256-color palette indices, and 24-bit truecolor with optional alpha.
+    Constructors clamp components to their valid ranges instead of raising.
 
-    {1 Color Representations}
+    The distinguished {!default} color is [Rgba \{r=0; g=0; b=0; a=0\}] (fully
+    transparent). Renderers treat alpha = 0 as "use terminal default" and emit
+    SGR 39/49.
 
-    Colors are represented using multiple schemes:
+    {b Note.} {!pack}/{!unpack} require a 64-bit platform
+    ([Sys.int_size >= 62]). *)
 
-    - {b 16 Basic Colors}: Standard ANSI colors (black, red, etc.) and their
-      bright variants
-    - {b 256-Color Palette}: Extended palette with 216 colors (6x6x6 cube) plus
-      24 grayscale levels
-    - {b Truecolor RGB/RGBA}: 24-bit color with optional alpha for transparency
+(** {1:colors Colors} *)
 
-    All color values are clamped to valid ranges automatically. RGB/RGBA
-    components use integer values 0-255. The 256-color extended palette uses
-    indices 0-255, where indices 232-255 represent grayscale levels.
-
-    {1 Usage Basics}
-
-    Create colors using constructor functions:
-    {[
-      let red = Color.red in
-      let custom = Color.of_rgb 100 150 200 in
-      let gray = Color.grayscale ~level:12 in
-      let from_hex = Color.of_hex_exn "#FF5733"
-    ]}
-
-    Convert between color spaces:
-    {[
-      let r, g, b = Color.to_rgb custom in
-      let h, s, l, a = Color.to_hsl red in
-      let downgraded = Color.downgrade ~level:`Ansi256 custom
-    ]}
-
-    {1 Color Blending}
-
-    Blend colors using linear or perceptual blending:
-    {[
-      let blended = Color.blend ~mode:`Perceptual ~src:fg ~dst:bg () in
-      (* Perceptual mode adjusts alpha to appear more natural to human vision *)
-    ]}
-
-    {1 Terminal Compatibility}
-
-    The library automatically detects terminal capabilities from environment
-    variables and can downgrade colors to supported levels. Use {!downgrade} to
-    explicitly convert colors to a target color depth, or rely on automatic
-    detection.
-
-    {1 Allocation Behavior}
-
-    Zero-allocation functions:
-    - Basic color constructors ([of_rgb], [of_rgba], [of_palette_index],
-      [grayscale])
-    - Comparison functions ({!equal}, {!hash}, {!alpha})
-    - SGR emission with {!emit_sgr_codes}
-    - Binary encoding with {!pack}/{!unpack}
-
-    Functions that allocate:
-    - {!to_rgb}, {!to_rgba}, {!to_rgba_f} - allocate tuples
-    - {!to_sgr_codes} - allocates a list
-    - {!to_hsl} - allocates a tuple
-    - {!of_hex}, {!of_hex_exn} - allocate strings for normalization
-    - {!to_hex} - allocates a string
-    - {!blend} - allocates float tuples internally
-
-    {1 Contracts}
-
-    - Constructors clamp components to their valid ranges instead of raising.
-    - The {!default} color is [Rgba \{r=0; g=0; b=0; a=0\}] (fully transparent).
-      Renderers treat alpha = 0 as "use terminal default."
-    - Palette indices are coerced into their supported range \[0,255\] to match
-      terminal behaviour.
-    - All conversion helpers preserve semantic equality: converting to packed
-      form and back through {!pack}/{!unpack} round-trips exactly, including
-      alpha and [{!Default}]'s sentinel value. *)
-
+(** The type for terminal colors. *)
 type t =
   | Black
   | Red
@@ -97,35 +32,21 @@ type t =
   | Bright_cyan
   | Bright_white
   | Extended of int
-      (** Extended palette color with index 0-255.
-
-          Indices map directly to the 256-color palette:
-          - 0-15: Basic 16 colors (same as {!Black} through {!Bright_white})
-          - 16-231: 6x6x6 RGB cube (r*36 + g*6 + b + 16 where r,g,b ∈ \[0,5\])
-          - 232-255: 24-level grayscale ramp
-
-          Values outside \[0, 255\] are clamped automatically. *)
+      (** Extended palette index in \[0, 255\]. Indices 0–15 are basic colors,
+          16–231 the 6×6×6 RGB cube ([r*36 + g*6 + b + 16] where [r],[g],[b] ∈
+          \[0,5\]), 232–255 a 24-level grayscale ramp. Out-of-range values are
+          clamped. *)
   | Rgb of { r : int; g : int; b : int }
-      (** Truecolor RGB.
-
-          Components are 8-bit values in \[0, 255\], clamped automatically.
-          Rendered using ANSI truecolor escape sequences (38;2;r;g;b for
-          foreground). *)
+      (** Truecolor RGB. Components in \[0, 255\], clamped. *)
   | Rgba of { r : int; g : int; b : int; a : int }
-      (** Truecolor RGBA with alpha channel.
+      (** Truecolor RGBA. Alpha in \[0, 255\] where 0 is fully transparent and
+          255 fully opaque. Alpha is used for blending but not directly emitted
+          to the terminal. *)
 
-          Alpha channel (a) represents opacity in \[0, 255\] where 0 is fully
-          transparent and 255 is fully opaque. Alpha is used for blending
-          operations but is not directly supported by terminal escape sequences.
-      *)
-
-(** {1 Basic Color Constructors} *)
+(** {1:constructors Constructors} *)
 
 val default : t
-(** Fully transparent color representing the terminal default.
-
-    Equivalent to [Rgba \{r=0; g=0; b=0; a=0\}]. When used as foreground or
-    background, renderers emit SGR 39/49 (reset to terminal default). *)
+(** [default] is [Rgba \{r=0; g=0; b=0; a=0\}]. *)
 
 val black : t
 val red : t
@@ -135,10 +56,7 @@ val blue : t
 val magenta : t
 val cyan : t
 val white : t
-
 val bright_black : t
-(** Often displayed as gray. *)
-
 val bright_red : t
 val bright_green : t
 val bright_yellow : t
@@ -147,243 +65,148 @@ val bright_magenta : t
 val bright_cyan : t
 val bright_white : t
 
-(** {1 Color Construction} *)
-
-val grayscale : level:int -> t
-(** [grayscale ~level] creates a grayscale color from the 24-level ramp.
-
-    @param level
-      Grayscale intensity in \[0, 23\] where 0 is darkest and 23 is lightest.
-      Values outside this range are clamped automatically.
-
-    Maps to Extended palette indices 232-255. *)
-
 val of_rgb : int -> int -> int -> t
-(** [of_rgb r g b] creates a truecolor RGB value.
-
-    All components are clamped to \[0, 255\]. Produces an opaque color (alpha =
-    255). *)
+(** [of_rgb r g b] is a truecolor RGB value. Components are clamped to \[0,
+    255\]. The result is opaque (alpha = 255). *)
 
 val of_rgba : int -> int -> int -> int -> t
-(** [of_rgba r g b a] creates a truecolor RGBA value with transparency.
-
-    All components are clamped to \[0, 255\]. *)
+(** [of_rgba r g b a] is a truecolor RGBA value. Components are clamped to \[0,
+    255\]. *)
 
 val of_rgba_f : float -> float -> float -> float -> t
-(** [of_rgba_f r g b a] creates a color from normalized RGBA floats in \[0.0,
-    1.0\].
-
-    Components are clamped to \[0.0, 1.0\] and converted to 8-bit integers.
-    Inverse of {!to_rgba_f}: [of_rgba_f] and {!to_rgba_f} round-trip within
-    rounding tolerance. *)
+(** [of_rgba_f r g b a] is a color from normalized RGBA floats in \[0.0, 1.0\].
+    Components are clamped and converted to 8-bit integers. Inverse of
+    {!to_rgba_f} within rounding tolerance. *)
 
 val of_palette_index : int -> t
-(** [of_palette_index idx] creates a color from 256-color palette index.
+(** [of_palette_index idx] is a color from the 256-color palette at [idx],
+    clamped to \[0, 255\]. Indices 0–15 return the corresponding basic color
+    variant. *)
 
-    @param idx Palette index in \[0, 255\], clamped automatically.
-
-    Indices 0-15 map to basic ANSI colors, 16-231 to the 6x6x6 RGB cube, and
-    232-255 to the 24-level grayscale ramp. Returns the most specific color
-    variant for the index. *)
+val grayscale : level:int -> t
+(** [grayscale ~level] is a grayscale color. [level] is in \[0, 23\] where 0 is
+    darkest and 23 lightest; out-of-range values are clamped. Maps to palette
+    indices 232–255. *)
 
 val of_hsl : h:float -> s:float -> l:float -> ?a:float -> unit -> t
-(** [of_hsl ~h ~s ~l ?a ()] creates a color from HSL values.
+(** [of_hsl ~h ~s ~l ?a ()] is a color from HSL values with:
+    - [h] is hue in degrees \[0.0, 360.0\), wrapped. Negative values are
+      normalized (e.g. [-10] becomes [350]).
+    - [s] is saturation in \[0.0, 1.0\], clamped.
+    - [l] is lightness in \[0.0, 1.0\], clamped.
+    - [a] is alpha in \[0.0, 1.0\], defaults to [1.0], clamped.
 
-    @param h
-      Hue in degrees \[0.0, 360.0\), wrapped automatically. Negative values are
-      normalized (e.g., -10 becomes 350).
-    @param s Saturation in \[0.0, 1.0\], clamped automatically.
-    @param l Lightness in \[0.0, 1.0\], clamped automatically.
-    @param a
-      Alpha in \[0.0, 1.0\], defaults to 1.0 (opaque), clamped automatically.
-
-    Returns {!Rgb} if alpha is 1.0, otherwise {!Rgba}. *)
-
-(** {1 Color Comparisons} *)
-
-val equal : t -> t -> bool
-(** [equal a b] tests equality based on RGBA components.
-
-    {b Zero-allocation}: uses packed integer comparison internally.
-
-    Colors with different representations but identical RGBA values are equal.
-    For example, [Extended 0] equals [Black] since both map to the same RGB. *)
-
-val compare : t -> t -> int
-(** [compare a b] returns a total ordering over colors based on RGBA components.
-
-    {b Zero-allocation}: uses packed integer comparison internally.
-
-    Consistent with {!equal}. Suitable for use as keys in [Map] or [Set]. *)
-
-val hash : t -> int
-(** [hash color] computes a hash from RGBA components.
-
-    {b Zero-allocation}: uses packed integer representation.
-
-    Suitable for hash tables. Consistent with {!equal}. *)
-
-(** {1 Color Properties} *)
-
-val alpha : t -> float
-(** [alpha color] returns the alpha channel as a float in \[0.0, 1.0\].
-
-    {b Zero-allocation}: uses direct pattern matching.
-
-    Non-RGBA colors (basic, extended and RGB variants) return 1.0 (fully
-    opaque). RGBA colors return their alpha component. The {!default} color
-    returns 0.0 (fully transparent). *)
-
-val to_rgba_f : t -> float * float * float * float
-(** [to_rgba_f color] converts to normalized RGBA floats in \[0.0, 1.0\].
-
-    {b Allocates} a 4-tuple. Fully transparent colors (such as {!default})
-    return [(0.0, 0.0, 0.0, 0.0)]. *)
-
-val with_rgba_f : t -> (float -> float -> float -> float -> 'a) -> 'a
-(** [with_rgba_f color f] calls [f r g b a] with normalized RGBA floats in
-    \[0.0, 1.0\].
-
-    {b Zero-allocation}: avoids the 4-tuple allocated by {!to_rgba_f}.
-    Equivalent to [let r, g, b, a = to_rgba_f color in f r g b a] but without
-    the intermediate tuple. *)
-
-val to_rgba : t -> int * int * int * int
-(** [to_rgba color] converts to RGBA integers in \[0, 255\].
-
-    {b Allocates} a 4-tuple. Non-RGBA colors return alpha = 255. Colors with
-    alpha = 0 (such as {!default}) are fully transparent; renderers typically
-    treat these as "use terminal default." *)
-
-val to_rgb : t -> int * int * int
-(** [to_rgb color] converts to RGB integers in \[0, 255\], discarding alpha.
-
-    {b Allocates} a 3-tuple. Fully transparent colors (such as {!default}) map
-    to [(0, 0, 0)]; use {!alpha} or {!to_rgba} to distinguish them from an
-    explicit black. *)
-
-val to_hsl : t -> float * float * float * float
-(** [to_hsl color] converts to HSL color space.
-
-    {b Allocates} a 4-tuple.
-
-    @return
-      [(h, s, l, a)] where h is hue in \[0.0, 360.0\), s and l are in \[0.0,
-      1.0\], and a is alpha in \[0.0, 1.0\]. Achromatic colors (grays) have hue
-      = 0. *)
-
-(** {1 Color Operations} *)
-
-val blend : ?mode:[ `Linear | `Perceptual ] -> src:t -> dst:t -> unit -> t
-(** [blend ~mode ~src ~dst ()] alpha-blends [src] over [dst].
-
-    @param mode
-      Blending algorithm:
-      - [`Linear]: Standard alpha compositing
-      - [`Perceptual]: Adjusts alpha using perceptual curves for more natural
-        appearance, especially for semi-transparent overlays
-
-    If [src] has alpha ≥ 0.999, returns [src] RGB (fully opaque). If alpha ≤ ε,
-    returns [dst] unchanged. The resulting alpha is
-    [src_a + dst_a * (1 - src_a)].
-
-    @return
-      A {!Rgb} or {!Rgba} color depending on the blended alpha channel. The
-      destination is left untouched so it can be reused. *)
-
-val downgrade : ?level:[ `Ansi16 | `Ansi256 | `Truecolor ] -> t -> t
-(** [downgrade ~level color] converts to the specified color depth.
-
-    @param level
-      Target color level. If omitted, detects from environment variables
-      (COLORTERM, TERM).
-
-    Uses nearest-neighbor matching in RGB space (squared Euclidean distance).
-    [`Truecolor] returns the color unchanged. Color quantization may be visually
-    inaccurate for gradients; dithering not supported. *)
-
-val invert : t -> t
-(** [invert color] inverts RGB components.
-
-    Maps each component [c] to [255 - c]. The result is always an opaque RGB
-    color; any existing alpha channel is discarded. Use {!blend} if you need to
-    keep transparency while inverting colors. *)
-
-(** {1 ANSI Escape Sequence Generation} *)
-
-val to_sgr_codes : bg:bool -> t -> int list
-(** [to_sgr_codes ~bg color] converts to SGR parameter codes.
-
-    {b Allocates} a list. Use {!emit_sgr_codes} for a zero-allocation
-    alternative.
-
-    @param bg
-      If [true], generates background codes; if [false], foreground codes.
-
-    Emits the most efficient SGR sequence for each color type:
-    - Basic colors: single code (30-37 / 40-47 for normal, 90-97 / 100-107 for
-      bright)
-    - Extended palette: 38;5;idx / 48;5;idx
-    - RGB/RGBA: truecolor 38;2;r;g;b / 48;2;r;g;b *)
-
-val emit_sgr_codes : bg:bool -> (int -> unit) -> t -> unit
-(** [emit_sgr_codes ~bg push color] emits SGR codes via a push callback.
-
-    {b Zero-allocation}: pattern matching is inlined to avoid constructing
-    intermediate tuples or lists. Calls the [push] function for each SGR
-    parameter code.
-
-    @param bg If [true], emits background codes; if [false], foreground codes.
-    @param push Callback function called for each SGR code *)
-
-(** {1 Binary Encoding} *)
-
-val pack : t -> int64
-(** [pack color] encodes to a 64-bit integer for compact storage.
-
-    Encoding uses tagged representation:
-    - Default: 0
-    - Basic colors (Black-Bright_white): tag 1 + index
-    - Extended: tag 2 + clamped index
-    - RGB: tag 3 + 24-bit RGB value
-    - RGBA: tag 4 + 32-bit RGBA value
-
-    Invariant: [equal color (unpack (pack color))].
-
-    The legacy tag 0 (previously used for [Default]) is decoded as
-    [Rgba \{r=0; g=0; b=0; a=0\}] for backward compatibility. *)
-
-val unpack : int64 -> t
-(** [unpack bits] decodes a packed color.
-
-    Invalid tags decode to {!Default}. *)
-
-(** {1 String Conversions} *)
-
-val pp : Format.formatter -> t -> unit
-(** [pp fmt color] prints a human-readable representation.
-
-    Examples: ["Red"], ["Rgb(100,150,200)"], ["Extended(42)"]. *)
-
-val to_hex : t -> string
-(** [to_hex color] converts to a hex color string.
-
-    @return ["#RRGGBB"] format (always 6 hex digits). Alpha channel is ignored.
-*)
+    Returns {!Rgb} if alpha is [1.0], {!Rgba} otherwise. *)
 
 val of_hex : string -> t option
-(** [of_hex hex] parses a hex color string.
+(** [of_hex s] parses a hex color string. Accepted formats (with or without
+    ['#'] prefix):
+    - 3 digits: ["RGB"] expanded to ["RRGGBB"].
+    - 4 digits: ["RGBA"] expanded to ["RRGGBBAA"].
+    - 6 digits: ["RRGGBB"] (opaque).
+    - 8 digits: ["RRGGBBAA"] (with alpha).
 
-    Accepted formats (with or without '#' prefix):
-    - 3 digits: ["RGB"] expands to ["RRGGBB"]
-    - 4 digits: ["RGBA"] expands to ["RRGGBBAA"]
-    - 6 digits: ["RRGGBB"] (opaque)
-    - 8 digits: ["RRGGBBAA"] (with alpha)
-
-    @return [None] if parsing fails due to invalid format or non-hex characters.
-*)
+    Returns [None] on invalid format or non-hex characters. *)
 
 val of_hex_exn : string -> t
-(** [of_hex_exn hex] parses a hex color string.
+(** [of_hex_exn s] is like {!of_hex} but raises [Invalid_argument] on failure.
+*)
 
-    Raises [Invalid_argument] if parsing fails. *)
+(** {1:predicates Predicates and comparisons} *)
+
+val equal : t -> t -> bool
+(** [equal a b] is [true] iff [a] and [b] have identical RGBA components. Colors
+    with different representations but identical RGBA values are equal (e.g.
+    [Extended 0] equals [Black]). *)
+
+val compare : t -> t -> int
+(** [compare a b] orders [a] and [b] by RGBA components. The order is compatible
+    with {!equal}. *)
+
+val hash : t -> int
+(** [hash c] is a hash of [c]'s RGBA components. Compatible with {!equal}. *)
+
+(** {1:properties Properties} *)
+
+val alpha : t -> float
+(** [alpha c] is the alpha channel of [c] as a float in \[0.0, 1.0\]. Non-RGBA
+    variants return [1.0]. {!default} returns [0.0]. *)
+
+val to_rgb : t -> int * int * int
+(** [to_rgb c] is the RGB components of [c] in \[0, 255\], discarding alpha.
+    {!default} maps to [(0, 0, 0)]; use {!alpha} or {!to_rgba} to distinguish it
+    from explicit black. *)
+
+val to_rgba : t -> int * int * int * int
+(** [to_rgba c] is the RGBA components of [c] in \[0, 255\]. Non-RGBA variants
+    return alpha = 255. *)
+
+val to_rgba_f : t -> float * float * float * float
+(** [to_rgba_f c] is the RGBA components of [c] as normalized floats in \[0.0,
+    1.0\]. *)
+
+val with_rgba_f : t -> (float -> float -> float -> float -> 'a) -> 'a
+(** [with_rgba_f c f] calls [f r g b a] with normalized RGBA floats. Avoids the
+    tuple allocation of {!to_rgba_f}. *)
+
+val to_hsl : t -> float * float * float * float
+(** [to_hsl c] is [(h, s, l, a)] where [h] is hue in \[0.0, 360.0\), [s] and [l]
+    are in \[0.0, 1.0\], and [a] is alpha in \[0.0, 1.0\]. Achromatic colors
+    have hue = 0. *)
+
+(** {1:operations Operations} *)
+
+val blend : ?mode:[ `Linear | `Perceptual ] -> src:t -> dst:t -> unit -> t
+(** [blend ~mode ~src ~dst ()] alpha-blends [src] over [dst] with:
+    - [`Linear] standard alpha compositing.
+    - [`Perceptual] adjusts alpha using perceptual curves for more natural
+      appearance on semi-transparent overlays.
+
+    If [src] alpha ≥ 0.999, returns [src] RGB unchanged. If alpha ≤ ε, returns
+    [dst] unchanged. *)
+
+val downgrade : ?level:[ `Ansi16 | `Ansi256 | `Truecolor ] -> t -> t
+(** [downgrade ~level c] converts [c] to the specified color depth using
+    nearest-neighbor matching in RGB space (squared Euclidean distance). [level]
+    defaults to detection from environment variables ([COLORTERM], [TERM]).
+    [`Truecolor] returns [c] unchanged. Transparent colors ({!default}) pass
+    through unchanged. *)
+
+val invert : t -> t
+(** [invert c] maps each RGB component [v] to [255 - v]. The result is always
+    opaque {!Rgb}; alpha is discarded. *)
+
+(** {1:sgr ANSI SGR codes} *)
+
+val to_sgr_codes : bg:bool -> t -> int list
+(** [to_sgr_codes ~bg c] is the SGR parameter codes for [c]. If [bg] is [true],
+    generates background codes; otherwise foreground codes. Uses the most
+    compact encoding for each color variant. *)
+
+val emit_sgr_codes : bg:bool -> (int -> unit) -> t -> unit
+(** [emit_sgr_codes ~bg push c] emits SGR codes for [c] via the [push] callback.
+    Zero-allocation alternative to {!to_sgr_codes}. *)
+
+(** {1:encoding Binary encoding} *)
+
+val pack : t -> int
+(** [pack c] encodes [c] to an unboxed integer for compact storage. Uses a
+    tagged representation (3 tag bits + data).
+
+    [equal c (unpack (pack c))] holds for all [c].
+
+    {b Note.} Requires a 64-bit platform. *)
+
+val unpack : int -> t
+(** [unpack bits] decodes a packed color. Invalid tags decode to {!default}. *)
+
+(** {1:converting Converting} *)
+
+val to_hex : t -> string
+(** [to_hex c] is the ["#RRGGBB"] hex string for [c]. Alpha is ignored. *)
+
+(** {1:fmt Formatting} *)
+
+val pp : Format.formatter -> t -> unit
+(** [pp] formats a color for inspection (e.g. ["Red"], ["Rgb(100,150,200)"],
+    ["Extended(42)"]). *)
