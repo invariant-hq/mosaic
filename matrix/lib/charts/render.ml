@@ -198,12 +198,14 @@ let heatmap_color_fun ~color_scale ~vmin ~vmax =
     color_scale.(idx)
 
 let heatmap_color_idx ~len ~vmin ~vmax v =
-  let t =
-    if Float.equal vmin vmax then 0.
-    else Layout.clamp01 ((v -. vmin) /. Float.max 1e-12 (vmax -. vmin))
-  in
-  let raw = int_of_float (t *. float len) in
-  Layout.clamp_int 0 (len - 1) raw
+  if len <= 0 then 0
+  else
+    let t =
+      if Float.equal vmin vmax then 0.
+      else Layout.clamp01 ((v -. vmin) /. Float.max 1e-12 (vmax -. vmin))
+    in
+    let raw = int_of_float (t *. float len) in
+    Layout.clamp_int 0 (len - 1) raw
 
 (* {1 Draw Text Helper} *)
 
@@ -1854,6 +1856,11 @@ let draw_marks (layout : Layout.t) (grid : G.t) =
 
   let rec draw_heatmap ~color_scale ~value_range ~auto_value_range ~agg ~render
       ~xa ~ya ~va =
+    let color_scale =
+      if Array.length color_scale > 0 then color_scale
+      else if Array.length layout.theme.palette > 0 then layout.theme.palette
+      else [| Color.default |]
+    in
     let n = Array.length xa in
     let vmin, vmax =
       match value_range with
