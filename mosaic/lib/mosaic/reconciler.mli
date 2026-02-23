@@ -1,25 +1,45 @@
-(** React-style reconciler for Mosaic.
+(** Reconciler for diffing and patching {!Vnode.t} trees.
 
-    The reconciler manages the mapping between virtual nodes (vnodes) and actual
-    Renderable instances. It diffs vnode trees and applies minimal mutations to
-    the underlying Renderable tree. *)
+    The reconciler bridges the declarative {!Vnode.t} tree produced by a [view]
+    function and the imperative {!Renderable.t} tree. On each {!val-render} call
+    it flattens the vnode tree, matches fibers by key (preferred) then by
+    position, reuses or creates {!Box} and {!Text} nodes, destroys unmatched
+    fibers, and commits child placement. {!Vnode.Embed} nodes are attached but
+    bypass the reconciler lifecycle.
+
+    Fiber tracking and instance management are internal; this module exposes
+    only the container, render, and unmount operations. *)
+
+open Mosaic_ui
+
+(** {1:types Types} *)
 
 type t
-(** The reconciler state, tracking the current fiber tree. *)
+(** The type for a mutable reconciler bound to a container node. Tracks the
+    current fiber tree between {!val-render} calls. *)
 
-val create : Mosaic_ui.Renderer.t -> container:Mosaic_ui.Renderable.t -> t
-(** [create renderer ~container] creates a reconciler that will render into the
-    given container node. *)
+(** {1:constructors Constructors} *)
 
-val renderer : t -> Mosaic_ui.Renderer.t
-(** [renderer t] returns the underlying renderer. *)
+val create : container:Renderable.t -> t
+(** [create ~container] is a reconciler that manages children of [container].
+    The reconciler starts with an empty fiber tree; existing children of
+    [container] are not adopted. *)
 
-val container : t -> Mosaic_ui.Renderable.t
-(** [container t] returns the root container node. *)
+(** {1:accessors Accessors} *)
+
+val container : t -> Renderable.t
+(** [container r] is the container node of [r]. *)
+
+(** {1:reconciliation Reconciliation} *)
 
 val render : t -> unit Vnode.t -> unit
-(** [render t vnode] reconciles the vnode tree against the current state and
-    applies minimal mutations to update the Renderable tree. *)
+(** [render r vnode] reconciles [vnode] against the previous fiber tree,
+    applying minimal mutations to the renderable tree rooted at [container r].
+    Fibers unmatched in the new tree are destroyed and their renderable nodes
+    removed. Ref callbacks ({!Vnode.attrs.ref}) fire for newly created elements.
+    Requests a render on [container r] after reconciliation completes. *)
 
 val unmount : t -> unit
-(** [unmount t] removes all rendered content and cleans up fibers. *)
+(** [unmount r] destroys all fibers and detaches all embedded nodes, leaving
+    [container r] empty. Requests a render on [container r] after cleanup. [r]
+    may be reused after unmounting. *)
