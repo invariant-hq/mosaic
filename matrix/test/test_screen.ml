@@ -275,12 +275,12 @@ let test_post_process_receives_delta () =
   let delta_received = ref None in
 
   let frame1 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
-  let frame2 =
+  let _id =
     Screen.post_process
       (fun _grid ~delta -> delta_received := Some delta)
       frame1
   in
-  let _output = Screen.render frame2 in
+  let _output = Screen.render frame1 in
 
   is_true ~msg:"delta was received" (Option.is_some !delta_received);
   let delta = Option.get !delta_received in
@@ -291,18 +291,16 @@ let test_post_process_chain () =
   let r = Screen.create () in
   let calls = ref [] in
 
-  let frame1 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
-  let frame2 =
-    Screen.post_process
-      (fun _grid ~delta:_ -> calls := "first" :: !calls)
-      frame1
+  let frame = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let _id1 =
+    Screen.post_process (fun _grid ~delta:_ -> calls := "first" :: !calls) frame
   in
-  let frame3 =
+  let _id2 =
     Screen.post_process
       (fun _grid ~delta:_ -> calls := "second" :: !calls)
-      frame2
+      frame
   in
-  let _output = Screen.render frame3 in
+  let _output = Screen.render frame in
 
   (* Should be called in order (reversed because we cons) *)
   equal ~msg:"call order" (list string) [ "second"; "first" ] !calls
@@ -314,7 +312,7 @@ let test_post_process_persists_across_frames () =
   let effect_ _grid ~delta:_ = incr call_count in
 
   let frame1 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
-  let frame1 = Screen.post_process effect_ frame1 in
+  let _id = Screen.post_process effect_ frame1 in
   let _ = Screen.render frame1 in
 
   let frame2 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
@@ -328,10 +326,10 @@ let test_remove_post_process () =
   let effect_ _grid ~delta:_ = incr call_count in
 
   let frame = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
-  let frame = Screen.post_process effect_ frame in
+  let id = Screen.post_process effect_ frame in
   let _ = Screen.render frame in
 
-  let _frame = Screen.remove_post_process effect_ frame in
+  let _frame = Screen.remove_post_process id frame in
   let frame2 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _ = Screen.render frame2 in
 
@@ -343,11 +341,9 @@ let test_clear_post_processes () =
   let effect1 _grid ~delta:_ = incr call_count in
   let effect2 _grid ~delta:_ = incr call_count in
 
-  let frame =
-    Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ())
-    |> Screen.post_process effect1
-    |> Screen.post_process effect2
-  in
+  let frame = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let _id1 = Screen.post_process effect1 frame in
+  let _id2 = Screen.post_process effect2 frame in
   let _ = Screen.render frame in
   equal ~msg:"both effects ran" int 2 !call_count;
 
@@ -756,8 +752,8 @@ let test_zero_allocation_frame_building () =
 
   (* Build and post_process should work without errors *)
   let f1 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
-  let f2 = Screen.post_process (fun _grid ~delta:_ -> ()) f1 in
-  let _output = Screen.render f2 in
+  let _id = Screen.post_process (fun _grid ~delta:_ -> ()) f1 in
+  let _output = Screen.render f1 in
   (* If we get here without errors, the zero-allocation API works *)
   is_true ~msg:"api works" true
 
@@ -794,18 +790,18 @@ let test_pipeline_composition () =
     Screen.build r ~width:5 ~height:5 (fun _grid _hits ->
         call_order := "build" :: !call_order)
   in
-  let f2 =
+  let _id1 =
     Screen.post_process
       (fun _grid ~delta:_ -> call_order := "post1" :: !call_order)
       f1
   in
-  let f3 =
+  let _id2 =
     Screen.post_process
       (fun _grid ~delta:_ -> call_order := "post2" :: !call_order)
-      f2
+      f1
   in
-  let f4 = Screen.add_hit_region f3 ~x:0 ~y:0 ~width:1 ~height:1 ~id:1 in
-  let output = Screen.render f4 in
+  let f2 = Screen.add_hit_region f1 ~x:0 ~y:0 ~width:1 ~height:1 ~id:1 in
+  let output = Screen.render f2 in
 
   is_true ~msg:"pipeline executed" (String.length output >= 0);
   is_true ~msg:"build called" (List.mem "build" !call_order);

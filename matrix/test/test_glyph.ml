@@ -267,7 +267,8 @@ let no_zwj_segmentation () =
   equal ~msg:"four cells" int 4 (List.length cells);
   let total =
     List.fold_left
-      (fun acc g -> if is_start g then acc + width ~tab_width:8 g else acc)
+      (fun acc g ->
+        if is_start g then acc + grapheme_width ~tab_width:8 g else acc)
       0 cells
   in
   check_width "total width preserved (starts only)" 4 total
@@ -302,7 +303,7 @@ let zero_length_intern () =
   let pool = Pool.create () in
   let g = Pool.intern pool "" in
   is_true ~msg:"empty glyph" (is_empty g);
-  equal ~msg:"empty width" int 0 (width g);
+  equal ~msg:"empty width" int 0 (grapheme_width g);
   (* Empty maps to a NUL sentinel: zero width, single-byte payload *)
   equal ~msg:"empty len" int 1 (Pool.length pool g);
   equal ~msg:"empty string" string "\000" (Pool.to_string pool g)
@@ -316,14 +317,14 @@ let complex_clustering_behavior () =
 
   match cells with
   | [ na; _ma; ste_start; ste_cont ] ->
-      check_width "Na width" 1 (width na);
+      check_width "Na width" 1 (grapheme_width na);
       is_true ~msg:"Na simple (single codepoint)" (is_inline na);
 
-      check_width "Ste width" 2 (width ste_start);
+      check_width "Ste width" 2 (grapheme_width ste_start);
       is_true ~msg:"Ste start" (is_start ste_start);
 
       is_true ~msg:"Ste cont flag" (is_continuation ste_cont);
-      check_width "Ste cont width" 2 (width ste_cont);
+      check_width "Ste cont width" 2 (grapheme_width ste_cont);
 
       (* Verify visual re-assembly *)
       let buf = Bytes.create 32 in
@@ -340,9 +341,27 @@ let malformed_utf8_resilience () =
     let cells =
       encode_to_list pool ~width_method:`Unicode ~tab_width:2 invalid
     in
-    let w = List.fold_left (fun acc g -> acc + width g) 0 cells in
+    let w = List.fold_left (fun acc g -> acc + grapheme_width g) 0 cells in
     is_true ~msg:"produced output without crash" (w >= 0)
   with _ -> fail "Crashed on invalid UTF-8"
+
+let malformed_utf8_intern_replaces_with_ufffd () =
+  let pool = Pool.create () in
+  let invalid = "\xC3" in
+  let ufffd = uchar_to_utf8 0xFFFD in
+
+  let g = Pool.intern pool invalid in
+  equal ~msg:"intern malformed byte -> U+FFFD" string ufffd
+    (Pool.to_string pool g);
+  equal ~msg:"intern malformed width" int 1 (grapheme_width g);
+
+  let g_sub =
+    Pool.intern_sub pool ~width_method:`Unicode ~tab_width:2 invalid ~pos:0
+      ~len:1 ~width:1
+  in
+  equal ~msg:"intern_sub malformed byte -> U+FFFD" string ufffd
+    (Pool.to_string pool g_sub);
+  equal ~msg:"intern_sub malformed width" int 1 (grapheme_width g_sub)
 
 (* 4. Lifecycle & Pool *)
 
@@ -420,6 +439,52 @@ let decref_deduplicates_free_list () =
   (* Stale reference should return empty *)
   equal ~msg:"stale g empty" string "" (Pool.to_string pool g)
 
+let pool_capacity_reuse () =
+  (* Regression: alloc_string used to overwrite capacity with actual length,
+     causing storage fragmentation when a freed slot was reused for shorter data
+     then freed again for medium-length data. Verify that repeated
+     alloc-free-reuse cycles produce correct content. *)
+  let pool = Pool.create () in
+  (* Intern a long complex string (forces pool allocation) *)
+  let long = Pool.intern pool "ABCDEFGH\u{0301}" in
+  is_false ~msg:"long is complex" (is_inline long);
+  equal ~msg:"long content" string "ABCDEFGH\u{0301}" (Pool.to_string pool long);
+  Pool.decref pool long;
+  (* Slot is freed. Intern a short complex string to reuse the slot. *)
+  let short = Pool.intern pool "xy\u{0302}" in
+  is_false ~msg:"short is complex" (is_inline short);
+  equal ~msg:"short content" string "xy\u{0302}" (Pool.to_string pool short);
+  Pool.decref pool short;
+  (* Freed again. Now intern a medium-length string that fits the original
+     capacity but is longer than the short string. If capacities are tracked
+     correctly, the medium string should reuse the original allocation. *)
+  let medium = Pool.intern pool "ABCDE\u{0303}" in
+  is_false ~msg:"medium is complex" (is_inline medium);
+  equal ~msg:"medium content" string "ABCDE\u{0303}"
+    (Pool.to_string pool medium);
+  (* Repeat the cycle many times to stress capacity tracking *)
+  Pool.decref pool medium;
+  for i = 0 to 9 do
+    let s = Printf.sprintf "%d\u{0301}" i in
+    let g = Pool.intern pool s in
+    equal
+      ~msg:(Printf.sprintf "cycle %d content" i)
+      string s (Pool.to_string pool g);
+    Pool.decref pool g
+  done
+
+let iter_graphemes_ignore_zwj () =
+  (* Woman astronaut ZWJ sequence: woman + ZWJ + rocket *)
+  let zwj_seq = "\u{1F469}\u{200D}\u{1F680}" in
+  let count_default = ref 0 in
+  String.iter_graphemes (fun ~offset:_ ~len:_ -> incr count_default) zwj_seq;
+  let count_no_zwj = ref 0 in
+  String.iter_graphemes ~ignore_zwj:true
+    (fun ~offset:_ ~len:_ -> incr count_no_zwj)
+    zwj_seq;
+  equal ~msg:"default: 1 grapheme (ZWJ joins)" int 1 !count_default;
+  equal ~msg:"ignore_zwj: 2 graphemes (ZWJ breaks)" int 2 !count_no_zwj
+
 (* 5. API Surface *)
 
 let tab_expansion_mechanics () =
@@ -429,7 +494,7 @@ let tab_expansion_mechanics () =
     encode_to_list pool ~width_method:`Unicode ~tab_width:2 "a\tb"
   in
   let w_2 =
-    List.fold_left (fun acc g -> acc + width ~tab_width:2 g) 0 cells_2
+    List.fold_left (fun acc g -> acc + grapheme_width ~tab_width:2 g) 0 cells_2
   in
   equal ~msg:"width with tab=2" int (1 + 2 + 1) w_2;
 
@@ -437,15 +502,16 @@ let tab_expansion_mechanics () =
     encode_to_list pool ~width_method:`Unicode ~tab_width:4 "a\tb"
   in
   let w_4 =
-    List.fold_left (fun acc g -> acc + width ~tab_width:4 g) 0 cells_4
+    List.fold_left (fun acc g -> acc + grapheme_width ~tab_width:4 g) 0 cells_4
   in
   equal ~msg:"width with tab=4" int (1 + 4 + 1) w_4;
 
   (* Ensure the tab glyph itself reports the correct width dynamically *)
   let tab_glyph = List.nth cells_4 1 in
-  equal ~msg:"tab glyph dynamic width" int 4 (width ~tab_width:4 tab_glyph);
+  equal ~msg:"tab glyph dynamic width" int 4
+    (grapheme_width ~tab_width:4 tab_glyph);
   equal ~msg:"tab glyph dynamic width re-check" int 8
-    (width ~tab_width:8 tab_glyph)
+    (grapheme_width ~tab_width:8 tab_glyph)
 
 let tab_cache_offsets () =
   let pool = Pool.create () in
@@ -456,8 +522,8 @@ let tab_cache_offsets () =
   | [ _a; tab1; _b; tab2; _c ] ->
       is_true ~msg:"tab1 simple" (is_inline tab1);
       is_true ~msg:"tab2 simple" (is_inline tab2);
-      equal ~msg:"tab1 width" int 4 (width ~tab_width:4 tab1);
-      equal ~msg:"tab2 width" int 4 (width ~tab_width:4 tab2)
+      equal ~msg:"tab1 width" int 4 (grapheme_width ~tab_width:4 tab1);
+      equal ~msg:"tab2 width" int 4 (grapheme_width ~tab_width:4 tab2)
   | _ -> fail "Expected five glyphs with tabs at positions 1 and 3"
 
 let max_width_clamping () =
@@ -467,7 +533,7 @@ let max_width_clamping () =
     Pool.intern_sub pool ~width_method:`Unicode ~tab_width:2 "ab" ~pos:0 ~len:2
       ~width:10
   in
-  equal ~msg:"clamps large width" int 4 (width g)
+  equal ~msg:"clamps large width" int 4 (grapheme_width g)
 
 let continuation_width_encoding () =
   let pool = Pool.create () in
@@ -475,10 +541,10 @@ let continuation_width_encoding () =
   (* CJK wide character -> width 2 and a continuation cell *)
   match cells with
   | [ start; cont ] ->
-      check_width "start width" 2 (width start);
+      check_width "start width" 2 (grapheme_width start);
       is_true ~msg:"start is start" (is_start start);
       is_true ~msg:"cont flag" (is_continuation cont);
-      check_width "cont width matches" 2 (width cont)
+      check_width "cont width matches" 2 (grapheme_width cont)
   | _ -> fail "Expected start+continuation for wide glyph"
 
 (* 6. Text Segmentation (wrap_breaks / line_breaks) *)
@@ -491,8 +557,16 @@ type line_break = { pos : int; kind : line_break_kind }
 let wrap_breaks ?(width_method = `Unicode) s =
   let acc = ref [] in
   String.iter_wrap_breaks ~width_method
-    (fun ~byte_offset ~grapheme_offset ->
-      acc := { byte_offset; grapheme_offset } :: !acc)
+    (fun ~break_byte_offset:_ ~next_byte_offset ~grapheme_offset ->
+      acc := { byte_offset = next_byte_offset; grapheme_offset } :: !acc)
+    s;
+  Array.of_list (List.rev !acc)
+
+let wrap_break_points ?(width_method = `Unicode) s =
+  let acc = ref [] in
+  String.iter_wrap_breaks ~width_method
+    (fun ~break_byte_offset ~next_byte_offset:_ ~grapheme_offset ->
+      acc := { byte_offset = break_byte_offset; grapheme_offset } :: !acc)
     s;
   Array.of_list (List.rev !acc)
 
@@ -622,6 +696,30 @@ let wrap_breaks_width_method_no_zwj () =
   (* The grapheme count will differ though *)
   equal ~msg:"no_zwj: still no breaks (ZWJ not a wrap break char)" int 0
     (Array.length breaks_no_zwj)
+
+let wrap_break_points_ascii_space () =
+  let points = wrap_break_points "a b" in
+  let resumes = wrap_breaks "a b" in
+  equal ~msg:"one break point for one ASCII space" int 1 (Array.length points);
+  equal ~msg:"point offset at space grapheme" wrap_break_testable
+    { byte_offset = 1; grapheme_offset = 1 }
+    points.(0);
+  equal ~msg:"resume offset starts next grapheme" wrap_break_testable
+    { byte_offset = 2; grapheme_offset = 1 }
+    resumes.(0)
+
+let wrap_break_points_unicode_space () =
+  let nbsp = "\xC2\xA0" in
+  let s = "a" ^ nbsp ^ "b" in
+  let points = wrap_break_points s in
+  let resumes = wrap_breaks s in
+  equal ~msg:"one break point for one NBSP" int 1 (Array.length points);
+  equal ~msg:"point offset at NBSP grapheme start" wrap_break_testable
+    { byte_offset = 1; grapheme_offset = 1 }
+    points.(0);
+  equal ~msg:"resume offset after NBSP grapheme" wrap_break_testable
+    { byte_offset = 3; grapheme_offset = 1 }
+    resumes.(0)
 
 let line_breaks_lf () =
   let breaks = line_breaks_to_list "a\nb\nc" in
@@ -768,6 +866,8 @@ let () =
           test "wrap breaks: empty string" wrap_breaks_empty_string;
           test "wrap breaks: width_method No_zwj"
             wrap_breaks_width_method_no_zwj;
+          test "wrap break points: ASCII space" wrap_break_points_ascii_space;
+          test "wrap break points: Unicode NBSP" wrap_break_points_unicode_space;
           test "line breaks: LF" line_breaks_lf;
           test "line breaks: CR" line_breaks_cr;
           test "line breaks: CRLF" line_breaks_crlf;
@@ -789,6 +889,8 @@ let () =
           test "zero length intern" zero_length_intern;
           test "complex clustering" complex_clustering_behavior;
           test "malformed utf8" malformed_utf8_resilience;
+          test "malformed utf8 intern replacement"
+            malformed_utf8_intern_replaces_with_ufffd;
         ];
       group "Lifecycle & Pool"
         [
@@ -796,6 +898,8 @@ let () =
           test "pool resize" pool_resize_stress;
           test "copy safety" copy_safety;
           test "decref deduplication" decref_deduplicates_free_list;
+          test "capacity reuse" pool_capacity_reuse;
+          test "iter_graphemes ignore_zwj" iter_graphemes_ignore_zwj;
         ];
       group "API Surface"
         [

@@ -148,25 +148,26 @@ let overlap_blit_direction_correctness () =
 
 let box_title_left_aligned () =
   let grid = Grid.create ~width:12 ~height:3 () in
+  let u = Uchar.of_int in
   let border_chars : Grid.Border.t =
     {
-      top_left = 0x250C;
+      top_left = u 0x250C;
       (* ┌ *)
-      top_right = 0x2510;
+      top_right = u 0x2510;
       (* ┐ *)
-      bottom_left = 0x2514;
+      bottom_left = u 0x2514;
       (* └ *)
-      bottom_right = 0x2518;
+      bottom_right = u 0x2518;
       (* ┘ *)
-      horizontal = 0x2500;
+      horizontal = u 0x2500;
       (* ─ *)
-      vertical = 0x2502;
+      vertical = u 0x2502;
       (* │ *)
-      top_t = 0;
-      bottom_t = 0;
-      left_t = 0;
-      right_t = 0;
-      cross = 0;
+      top_t = u 0;
+      bottom_t = u 0;
+      left_t = u 0;
+      right_t = u 0;
+      cross = u 0;
     }
   in
   let style = Ansi.Style.default in
@@ -371,19 +372,20 @@ let draw_text_skips_newline () =
 
 let draw_box_left_border_spans_full_height () =
   let grid = Grid.create ~width:3 ~height:4 () in
+  let u = Uchar.of_int in
   let border_chars : Grid.Border.t =
     {
-      top_left = 0;
-      top_right = 0;
-      bottom_left = 0;
-      bottom_right = 0;
-      horizontal = 0;
-      vertical = 0x2502;
-      top_t = 0;
-      bottom_t = 0;
-      left_t = 0;
-      right_t = 0;
-      cross = 0;
+      top_left = u 0;
+      top_right = u 0;
+      bottom_left = u 0;
+      bottom_right = u 0;
+      horizontal = u 0;
+      vertical = u 0x2502;
+      top_t = u 0;
+      bottom_t = u 0;
+      left_t = u 0;
+      right_t = u 0;
+      cross = u 0;
     }
   in
   Grid.draw_box grid ~x:0 ~y:0 ~width:3 ~height:4 ~border:border_chars
@@ -395,7 +397,7 @@ let draw_box_left_border_spans_full_height () =
   equal ~msg:"middle cell" int pipe (read_char grid 0 1);
   equal ~msg:"bottom cell" int pipe (read_char grid 0 3)
 
-let set_cell_alpha_honours_blending () =
+let set_cell_honours_blending () =
   let grid = Grid.create ~width:1 ~height:1 ~respect_alpha:true () in
   Grid.set_cell ~blend:true grid ~x:0 ~y:0
     ~glyph:(Glyph.of_uchar (Uchar.of_char 'B'))
@@ -435,7 +437,7 @@ let set_cell_alpha_honours_blending () =
   equal ~msg:"fg blended" rgba expected_fg actual_fg;
   equal ~msg:"bg blended" rgba expected_bg actual_bg
 
-let set_cell_alpha_without_respect_skips_blend () =
+let set_cell_without_respect_still_blends () =
   let grid = Grid.create ~width:1 ~height:1 () in
   let semi_red = Ansi.Color.of_rgba 255 0 0 128 in
   Grid.set_cell ~blend:true grid ~x:0 ~y:0
@@ -540,6 +542,26 @@ let replace_wide_grapheme_clears_continuations () =
     ~fg:Ansi.Color.white ~bg:Ansi.Color.black ~attrs:Ansi.Attr.empty ();
   equal ~msg:"continuation cleared to space" int 32 (read_char grid 1 0);
   equal ~msg:"continuation width reset" int 1 (read_width grid 1 0)
+
+let replace_wide_grapheme_clears_continuation_colors () =
+  let grid = Grid.create ~width:3 ~height:1 () in
+  let style =
+    Ansi.Style.make
+      ~bg:(Ansi.Color.of_rgb 120 40 10)
+      ~fg:(Ansi.Color.of_rgb 10 200 240)
+      ()
+  in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"😊" ~style;
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"A";
+  equal ~msg:"continuation cleared to space" int 32 (read_char grid 1 0);
+  equal ~msg:"continuation bg reset" rgba
+    (0, (0, (0, 0)))
+    (let r, g, b, a = read_bg grid 1 0 in
+     (r, (g, (b, a))));
+  equal ~msg:"continuation fg reset" rgba
+    (255, (255, (255, 255)))
+    (let r, g, b, a = read_fg grid 1 0 in
+     (r, (g, (b, a))))
 
 let fill_rect_alpha_preserves_glyph () =
   let grid = Grid.create ~width:1 ~height:1 ~respect_alpha:true () in
@@ -842,6 +864,42 @@ let draw_text_ascii_respects_scissor () =
   equal ~msg:"x=3 l" int (Char.code 'l') (read_char grid 3 0);
   equal ~msg:"x=4 o" int (Char.code 'o') (read_char grid 4 0)
 
+let draw_text_tab_partially_visible_respects_scissor () =
+  let base = Grid.create ~width:6 ~height:1 () in
+  let grid = Grid.create ~width:6 ~height:1 () in
+  let tab_bg = Ansi.Color.of_rgb 10 20 30 in
+  let style = Ansi.Style.make ~bg:tab_bg ~bold:true () in
+  let as_rgba (r, g, b, a) = (r, (g, (b, a))) in
+  Grid.draw_text ~style ~tab_width:4 base ~x:0 ~y:0 ~text:"\t";
+  let tr, tg, tb, ta = Ansi.Color.to_rgba tab_bg in
+  equal ~msg:"base x=0 tab writes bg" rgba
+    (tr, (tg, (tb, ta)))
+    (as_rgba (read_bg base 0 0));
+  equal ~msg:"base x=3 tab writes bg" rgba
+    (tr, (tg, (tb, ta)))
+    (as_rgba (read_bg base 3 0));
+  equal ~msg:"base x=4 untouched bg" rgba
+    (0, (0, (0, 0)))
+    (as_rgba (read_bg base 4 0));
+  Grid.push_clip grid { x = 2; y = 0; width = 3; height = 1 };
+  Grid.draw_text ~style ~tab_width:4 grid ~x:0 ~y:0 ~text:"\t";
+  Grid.pop_clip grid;
+  equal ~msg:"x=0 untouched bg" rgba
+    (0, (0, (0, 0)))
+    (as_rgba (read_bg grid 0 0));
+  equal ~msg:"x=1 untouched bg" rgba
+    (0, (0, (0, 0)))
+    (as_rgba (read_bg grid 1 0));
+  equal ~msg:"x=2 styled tab space bg" rgba
+    (tr, (tg, (tb, ta)))
+    (as_rgba (read_bg grid 2 0));
+  equal ~msg:"x=3 styled tab space bg" rgba
+    (tr, (tg, (tb, ta)))
+    (as_rgba (read_bg grid 3 0));
+  equal ~msg:"x=4 untouched bg" rgba
+    (0, (0, (0, 0)))
+    (as_rgba (read_bg grid 4 0))
+
 let fill_rect_respects_scissor () =
   let grid = Grid.create ~width:4 ~height:2 () in
   Grid.push_clip grid { x = 1; y = 0; width = 2; height = 2 };
@@ -885,6 +943,20 @@ let blit_region_respects_scissor () =
   equal ~msg:"dst(1)=B" int (Char.code 'B') (read_char dst 1 0);
   equal ~msg:"dst(2)=C" int (Char.code 'C') (read_char dst 2 0)
 
+let opacity_stack_grows_beyond_initial_capacity () =
+  let grid = Grid.create ~width:1 ~height:1 () in
+  for _ = 1 to 40 do
+    Grid.push_opacity grid 0.5
+  done;
+  let expected = Float.pow 0.5 40. in
+  is_true ~msg:"opacity product tracks all pushes"
+    (Float.abs (Grid.current_opacity grid -. expected) < 1e-18);
+  for _ = 1 to 40 do
+    Grid.pop_opacity grid
+  done;
+  is_true ~msg:"opacity restores to 1 after balanced pops"
+    (Float.abs (Grid.current_opacity grid -. 1.0) < 1e-18)
+
 let clear_preserves_scissor_state () =
   let grid = Grid.create ~width:3 ~height:1 () in
   Grid.push_clip grid { x = 1; y = 0; width = 1; height = 1 };
@@ -917,12 +989,14 @@ let tests =
     test "draw text inherits background" draw_text_inherits_existing_background;
     test "draw text skips newline" draw_text_skips_newline;
     test "clear scissor" clear_scissor_allows_future_writes;
-    test "set cell alpha blends" set_cell_alpha_honours_blending;
-    test "set cell alpha without respect"
-      set_cell_alpha_without_respect_skips_blend;
+    test "set cell blends" set_cell_honours_blending;
+    test "set cell without respect_alpha still blends"
+      set_cell_without_respect_still_blends;
     test "fill rect" fill_rect_fills_region;
     test "replace wide grapheme clears continuations"
       replace_wide_grapheme_clears_continuations;
+    test "replace wide grapheme clears continuation colors"
+      replace_wide_grapheme_clears_continuation_colors;
     test "fill rect alpha preserves glyph" fill_rect_alpha_preserves_glyph;
     test "fill rect transparent preserves background"
       fill_rect_transparent_preserves_background;
@@ -954,8 +1028,12 @@ let tests =
     test "box drawing characters render" box_drawing_characters_render;
     (* Scissor for fast paths *)
     test "draw_text ASCII respects scissor" draw_text_ascii_respects_scissor;
+    test "draw_text tab partially visible respects scissor"
+      draw_text_tab_partially_visible_respects_scissor;
     test "fill_rect respects scissor" fill_rect_respects_scissor;
     test "blit_region respects scissor" blit_region_respects_scissor;
+    test "opacity stack grows beyond initial capacity"
+      opacity_stack_grows_beyond_initial_capacity;
     test "inherit bg on unwritten ascii" inherit_bg_on_unwritten_ascii;
     test "unicode inherit bg on unwritten cell"
       unicode_inherit_bg_on_unwritten_cell;
@@ -1025,13 +1103,17 @@ let tests =
         Grid.draw_box grid ~x:(-1) ~y:0 ~width:4 ~height:3 ~border:border_chars
           ();
         (* Box is clipped on left, so no left corners are drawn *)
-        equal ~msg:"horizontal at (0,0)" int border_chars.horizontal
+        equal ~msg:"horizontal at (0,0)" int
+          (Uchar.to_int border_chars.horizontal)
           (read_char grid 0 0);
-        equal ~msg:"top-right corner at (2,0)" int border_chars.top_right
+        equal ~msg:"top-right corner at (2,0)" int
+          (Uchar.to_int border_chars.top_right)
           (read_char grid 2 0);
-        equal ~msg:"horizontal at (0,2)" int border_chars.horizontal
+        equal ~msg:"horizontal at (0,2)" int
+          (Uchar.to_int border_chars.horizontal)
           (read_char grid 0 2);
-        equal ~msg:"bottom-right corner at (2,2)" int border_chars.bottom_right
+        equal ~msg:"bottom-right corner at (2,2)" int
+          (Uchar.to_int border_chars.bottom_right)
           (read_char grid 2 2));
     test "box partially off top edge extends verticals down" (fun () ->
         let grid = Grid.create ~width:3 ~height:3 () in
@@ -1039,32 +1121,41 @@ let tests =
         Grid.draw_box grid ~x:0 ~y:(-1) ~width:3 ~height:4 ~border:border_chars
           ~sides:[ `Top; `Left ] ();
         (* Top not drawn, so verticals should extend to top of screen *)
-        equal ~msg:"left border at (0,0)" int border_chars.vertical
+        equal ~msg:"left border at (0,0)" int
+          (Uchar.to_int border_chars.vertical)
           (read_char grid 0 0);
-        equal ~msg:"left border at (0,1)" int border_chars.vertical
+        equal ~msg:"left border at (0,1)" int
+          (Uchar.to_int border_chars.vertical)
           (read_char grid 0 1);
-        equal ~msg:"left border at (0,2)" int border_chars.vertical
+        equal ~msg:"left border at (0,2)" int
+          (Uchar.to_int border_chars.vertical)
           (read_char grid 0 2));
     test "box partially off right edge uses correct right corners" (fun () ->
         let grid = Grid.create ~width:3 ~height:3 () in
         let border_chars = Grid.Border.single in
         Grid.draw_box grid ~x:1 ~y:0 ~width:3 ~height:3 ~border:border_chars ();
         (* Box extends beyond right edge, so no right corners are drawn *)
-        equal ~msg:"horizontal at (2,0)" int border_chars.horizontal
+        equal ~msg:"horizontal at (2,0)" int
+          (Uchar.to_int border_chars.horizontal)
           (read_char grid 2 0);
-        equal ~msg:"horizontal at (2,2)" int border_chars.horizontal
+        equal ~msg:"horizontal at (2,2)" int
+          (Uchar.to_int border_chars.horizontal)
           (read_char grid 2 2));
     test "box fully inside grid works normally" (fun () ->
         let grid = Grid.create ~width:5 ~height:5 () in
         let border_chars = Grid.Border.single in
         Grid.draw_box grid ~x:1 ~y:1 ~width:3 ~height:3 ~border:border_chars ();
-        equal ~msg:"top-left corner" int border_chars.top_left
+        equal ~msg:"top-left corner" int
+          (Uchar.to_int border_chars.top_left)
           (read_char grid 1 1);
-        equal ~msg:"top-right corner" int border_chars.top_right
+        equal ~msg:"top-right corner" int
+          (Uchar.to_int border_chars.top_right)
           (read_char grid 3 1);
-        equal ~msg:"bottom-left corner" int border_chars.bottom_left
+        equal ~msg:"bottom-left corner" int
+          (Uchar.to_int border_chars.bottom_left)
           (read_char grid 1 3);
-        equal ~msg:"bottom-right corner" int border_chars.bottom_right
+        equal ~msg:"bottom-right corner" int
+          (Uchar.to_int border_chars.bottom_right)
           (read_char grid 3 3));
     (* Diff tests *)
     test "diff identical grids produces no diffs" (fun () ->

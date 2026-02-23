@@ -39,3 +39,13 @@
  (name test_screen)
  (package matrix)
  (libraries windtrap str screen grid glyph ansi terminal unix input))
+
+(test
+ (name test_runtime)
+ (package matrix)
+ (libraries windtrap matrix))
+
+(test
+ (name test_image)
+ (package matrix)
+ (libraries windtrap matrix))
