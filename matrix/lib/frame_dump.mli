@@ -1,9 +1,8 @@
-(** Frame dumping helpers.
+(** Frame dumping to disk.
 
-    These helpers serialize the current {!Screen.t} grid to ANSI files and can
-    optionally dump the hit grid used for pointer picking. They are used by the
-    Matrix runtime when periodic dumps are configured but remain callable
-    directly for bespoke tooling. *)
+    Serializes {!Screen.t} grids to ANSI files and optionally dumps the hit
+    grid. Used by the Matrix runtime when periodic dumps are configured (see
+    {!Matrix.configure_frame_dump}) but callable directly for custom tooling. *)
 
 val on_frame :
   ?dir:string ->
@@ -13,13 +12,12 @@ val on_frame :
   unit ->
   Screen.t ->
   unit
-(** [on_frame ?dir ?pattern ?hits ~every ()] builds a callback that dumps every
-    [every] frames. The callback may be reused across frames and keeps its own
-    index counter. Set [hits] to request the auxiliary files described above.
+(** [on_frame ~every ()] is a callback that dumps every [every]th frame. The
+    callback keeps its own index counter and may be reused across frames. [hits]
+    includes the hit grid when [true] (defaults to [false]).
 
-    @raise Invalid_argument if [every <= 0]. *)
+    Raises [Invalid_argument] if [every <= 0]. *)
 
 val snapshot : ?dir:string -> ?pattern:string -> ?hits:bool -> Screen.t -> unit
-(** [snapshot ?dir ?pattern ?hits screen] writes a single dump immediately. It
-    shares the same global index as {!on_frame}-built callbacks, which keeps
-    filenames monotonic even when mixed. *)
+(** [snapshot screen] writes a single dump immediately. Shares the global frame
+    index with {!on_frame} callbacks so filenames remain monotonic. *)

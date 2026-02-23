@@ -1,19 +1,22 @@
-(** Debug overlay with built-in runtime telemetry.
+(** Debug overlay with runtime telemetry.
 
-    The overlay paints a box in any corner of the screen, reports the most
-    recent frame metrics from {!Screen.last_metrics}, keeps rolling averages for
-    frame time and interval, and samples GC statistics on every frame using
-    {!Gc.quick_stat}.
+    Paints a semi-transparent box in a screen corner showing frame metrics from
+    {!Screen.last_metrics}, rolling averages for frame time and interval, and
+    per-frame GC statistics from {!Gc.quick_stat}.
 
-    The default theme uses semi-transparent background colors (alpha=200). For
-    transparency to render correctly, ensure [respect_alpha=true] is passed to
-    {!Matrix.create}; otherwise the overlay background will appear opaque.
+    Wired into the Matrix runtime via {!Matrix.set_debug_overlay} but usable
+    standalone in custom render pipelines.
 
-    It is wired into the Matrix runtime (see {!Matrix.set_debug_overlay}) but
-    remains available as a standalone callback for custom render pipelines. *)
+    {b Note.} The default theme uses alpha=200 backgrounds. Set
+    [respect_alpha=true] in {!Matrix.create} for correct transparency; otherwise
+    the overlay renders opaque. *)
+
+(** {1:types Types} *)
 
 type corner = [ `Top_left | `Top_right | `Bottom_left | `Bottom_right ]
-(** Screen corners that can host the overlay. *)
+(** The type for overlay anchor corners. *)
+
+(** {1:rendering Rendering} *)
 
 val on_frame :
   ?corner:corner ->
@@ -23,7 +26,12 @@ val on_frame :
   unit ->
   Screen.t ->
   unit
-(** [on_frame ?corner ?padding ?gap ?capacity () screen] draws the overlay onto
-    [screen]'s grid. Call it once per frame after your UI has painted. The
-    function keeps internal state across frames (rolling averages and GC delta
-    tracking), so reuse the returned callback for the overlay's lifetime. *)
+(** [on_frame ()] is a callback that draws the overlay onto [screen]'s grid.
+    Call once per frame after the UI has painted.
+
+    The callback keeps internal state (rolling averages, GC deltas); reuse the
+    same callback for the overlay's lifetime.
+    - [corner] anchor position. Defaults to [`Bottom_right].
+    - [padding] outer padding in cells.
+    - [gap] gap between metric lines.
+    - [capacity] maximum number of metric samples retained. *)
