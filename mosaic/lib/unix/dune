@@ -1,4 +1,0 @@
-(library
- (name mosaic_unix)
- (public_name mosaic.unix)
- (libraries mosaic matrix matrix.unix unix))
