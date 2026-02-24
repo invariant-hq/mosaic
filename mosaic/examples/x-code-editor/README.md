@@ -15,12 +15,11 @@ dune exec ./mosaic/examples/x-code-editor/main.exe
 - `Esc` &mdash; dismiss completion popup.
 - `Ctrl+Space` &mdash; open completion list at cursor.
 - `Ctrl+N` / `Ctrl+P` &mdash; next / previous completion.
-- `F2` &mdash; toggle language (`OCaml`/`JSON`).
 - `q` or `Esc` &mdash; quit.
 
 ## Features
 
 - Editable `textarea` wrapped with `line_number` gutter.
 - Syntax highlighting rendered directly in the editable textarea.
-- Language-aware completion pool (keywords + identifiers from current buffer).
+- OCaml completion pool (keywords + identifiers from current buffer).
 - Keyboard-only completion workflow (trigger, navigate, accept, dismiss).

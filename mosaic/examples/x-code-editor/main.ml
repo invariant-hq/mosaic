@@ -3,8 +3,6 @@
 
 open Mosaic
 
-type lang = OCaml | JSON
-
 type completion = {
   prefix : string;
   cursor_byte : int;
@@ -13,7 +11,6 @@ type completion = {
 }
 
 type model = {
-  lang : lang;
   code : string;
   cursor : int;
   selection : (int * int) option;
@@ -31,7 +28,6 @@ type msg =
   | Prev_completion
   | Accept_completion
   | Dismiss_completion
-  | Toggle_lang
   | Quit
 
 let ocaml_sample =
@@ -48,17 +44,6 @@ let () =
   greet "Mosaic";
   Printf.printf "total=%d\n" total|}
 
-let json_sample =
-  {|{
-  "name": "mosaic",
-  "version": "0.1.0",
-  "features": ["editor", "line-numbers", "autocomplete"],
-  "active": true,
-  "retries": 3
-}|}
-
-let lang_label = function OCaml -> "OCaml" | JSON -> "JSON"
-let sample_for_lang = function OCaml -> ocaml_sample | JSON -> json_sample
 let clamp lo hi x = if x < lo then lo else if x > hi then hi else x
 
 let lowercase_codepoint i =
@@ -103,58 +88,44 @@ let collect_identifiers s =
   done;
   Hashtbl.fold (fun key () acc -> key :: acc) tbl []
 
-let keywords_for_lang = function
-  | OCaml ->
-      [
-        "and";
-        "as";
-        "begin";
-        "class";
-        "done";
-        "else";
-        "end";
-        "exception";
-        "external";
-        "false";
-        "for";
-        "fun";
-        "function";
-        "if";
-        "in";
-        "include";
-        "let";
-        "match";
-        "module";
-        "mutable";
-        "of";
-        "open";
-        "rec";
-        "sig";
-        "struct";
-        "then";
-        "true";
-        "try";
-        "type";
-        "val";
-        "when";
-        "with";
-      ]
-  | JSON ->
-      [
-        "false";
-        "null";
-        "true";
-        "name";
-        "version";
-        "description";
-        "features";
-        "active";
-        "retries";
-        "dependencies";
-      ]
+let ocaml_keywords =
+  [
+    "and";
+    "as";
+    "begin";
+    "class";
+    "done";
+    "else";
+    "end";
+    "exception";
+    "external";
+    "false";
+    "for";
+    "fun";
+    "function";
+    "if";
+    "in";
+    "include";
+    "let";
+    "match";
+    "module";
+    "mutable";
+    "of";
+    "open";
+    "rec";
+    "sig";
+    "struct";
+    "then";
+    "true";
+    "try";
+    "type";
+    "val";
+    "when";
+    "with";
+  ]
 
-let completion_pool lang code =
-  unique_sorted (keywords_for_lang lang @ collect_identifiers code)
+let completion_pool code =
+  unique_sorted (ocaml_keywords @ collect_identifiers code)
 
 let grapheme_byte_offsets s =
   let n = Glyph.String.grapheme_count s in
@@ -217,14 +188,14 @@ let cycle_completion c delta =
   if len = 0 then c
   else { c with selected = (c.selected + delta + len) mod len }
 
-let build_completion ?(force = false) lang code ~cursor ~selection =
+let build_completion ?(force = false) code ~cursor ~selection =
   match find_prefix_at_cursor code ~cursor ~selection with
   | None -> None
   | Some (_, cursor_byte, prefix) -> (
       if (not force) && String.length prefix = 0 then None
       else
         let items =
-          completion_pool lang code
+          completion_pool code
           |> List.filter (fun item ->
               (String.length prefix = 0 || starts_with ~prefix item)
               && not (String.equal item prefix))
@@ -247,7 +218,7 @@ let preserve_selection prev next =
 let recompute_completion model =
   let force = model.popup_open in
   let next =
-    build_completion ~force model.lang model.code ~cursor:model.cursor
+    build_completion ~force model.code ~cursor:model.cursor
       ~selection:model.selection
   in
   { model with completion = preserve_selection model.completion next }
@@ -293,14 +264,13 @@ let apply_completion model c choice =
     let code = insert_at_byte model.code ~byte:c.cursor_byte suffix in
     let cursor = model.cursor + Glyph.String.grapheme_count suffix in
     {
-      model with
       code;
       cursor;
       selection = None;
       cursor_override = Some cursor;
       popup_open = false;
-      status = Printf.sprintf "Completed: %s" choice;
       completion = None;
+      status = Printf.sprintf "Completed: %s" choice;
     }
     |> recompute_completion
 
@@ -357,7 +327,6 @@ let init () =
   let code = ocaml_sample in
   let cursor = Glyph.String.grapheme_count code in
   ( {
-      lang = OCaml;
       code;
       cursor;
       selection = None;
@@ -431,22 +400,6 @@ let update msg model =
       ( { model with popup_open = false; status = "Completion dismissed." }
         |> recompute_completion,
         Cmd.none )
-  | Toggle_lang ->
-      let lang = match model.lang with OCaml -> JSON | JSON -> OCaml in
-      let code = sample_for_lang lang in
-      let cursor = Glyph.String.grapheme_count code in
-      ( {
-          lang;
-          code;
-          cursor;
-          selection = None;
-          cursor_override = Some cursor;
-          popup_open = false;
-          completion = None;
-          status = Printf.sprintf "Language switched to %s." (lang_label lang);
-        }
-        |> recompute_completion,
-        Cmd.none )
   | Quit -> (model, Cmd.quit)
 
 (* Palette *)
@@ -494,16 +447,12 @@ let completion_panel model =
                     (prefix ^ item)));
           ]
 
-let highlight_for_lang lang code =
-  let ranges =
-    match lang with
-    | OCaml -> Tree_sitter_ocaml.highlight_ocaml code
-    | JSON -> Tree_sitter_json.highlight code
-  in
+let highlight_ocaml code =
+  let ranges = Tree_sitter_ocaml.highlight_ocaml code in
   Syntax_theme.apply Syntax_theme.default ~content:code ranges
 
 let view model =
-  let highlights = highlight_for_lang model.lang model.code in
+  let highlights = highlight_ocaml model.code in
   let ghost_text = ghost_text model in
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = pct 100 }
@@ -516,7 +465,7 @@ let view model =
             [
               text
                 ~style:(Ansi.Style.make ~bold:true ())
-                (Printf.sprintf "▸ x-code-editor (%s)" (lang_label model.lang));
+                "▸ x-code-editor (OCaml)";
               text ~style:muted
                 "inline completion + editable highlighting + line numbers";
             ];
@@ -547,8 +496,7 @@ let view model =
           text ~style:hint
             "Tab trigger/accept  •  Shift+Tab previous  •  Enter accept  •  \
              Esc dismiss";
-          text ~style:hint
-            "Ctrl+Space open list  •  Ctrl+N/P cycle  •  F2 switch language";
+          text ~style:hint "Ctrl+Space open list  •  Ctrl+N/P cycle";
           text ~style:hint "q or Esc quit";
           text ~style:muted model.status;
         ];
@@ -557,7 +505,6 @@ let view model =
 let subscriptions model =
   Sub.on_key (fun ev ->
       match (Event.Key.data ev).key with
-      | F 2 -> Some Toggle_lang
       | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
       | Escape when not model.popup_open -> Some Quit
       | _ -> None)
