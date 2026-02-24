@@ -1,4 +1,4 @@
-// This file only compiles on Unix platforms (Linux, macOS)
+// This file only compiles on Unix platforms.
 // Windows PTY support is in pty_win32.c
 #ifndef _WIN32
 
@@ -24,8 +24,9 @@
 #include <caml/mlvalues.h>
 #include <caml/unixsupport.h>
 
-// This implementation will work for both Linux and macOS (Darwin)
-#if defined(__linux__) || defined(__APPLE__)
+// POSIX PTY implementation for Unix targets with posix_openpt/grantpt/unlockpt.
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || \
+    defined(__DragonFly__) || defined(__NetBSD__) || defined(__OpenBSD__)
 
 // A C struct to hold the file descriptor pair.
 struct pty_fds {
@@ -202,6 +203,6 @@ CAMLprim value ocaml_raise_fork_error(value unit) {
   return Val_unit;
 }
 
-#endif  // !defined(__linux__) && !defined(__APPLE__)
+#endif  // supported Unix PTY targets
 
 #endif  // _WIN32 - Windows implementations are in pty_win32.c

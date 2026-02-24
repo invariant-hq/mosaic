@@ -6,8 +6,8 @@
     (connected to a child process as its controlling terminal).
 
     {b Warning.} {!spawn} and {!with_spawn} use [Unix.fork] and are only
-    available on POSIX systems (Linux, macOS). {!open_pty} works on Windows 10
-    1809+ via ConPTY with {{!platform}limitations}.
+    available on POSIX systems (Linux, macOS, BSD). {!open_pty} works on Windows
+    10 1809+ via ConPTY with {{!platform}limitations}.
 
     {1:creating Creating}
 
@@ -44,7 +44,7 @@
 
     {1:platform Platform notes}
 
-    {2 POSIX (Linux, macOS)}
+    {2 POSIX (Linux, macOS, BSD)}
 
     Full support via [posix_openpt], [grantpt], [unlockpt]. File descriptors are
     real Unix file descriptors; [Unix.select] and [Unix.poll] work as expected.

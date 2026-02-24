@@ -50,6 +50,27 @@ let write_all_with_select pty data timeout =
   done;
   !written
 
+let pty_test_supported =
+  if Sys.os_type = "Win32" then false
+  else
+    try
+      let master, slave = Pty.open_pty () in
+      Pty.close master;
+      Pty.close slave;
+      true
+    with
+    | Unix.Unix_error (Unix.ENOENT, "open_pty", _)
+    | Unix.Unix_error (Unix.ENOSYS, "open_pty", _)
+    ->
+      false
+
+let test_pty_unavailable () =
+  is_true
+    ~msg:
+      "PTY backend unavailable on this platform/environment; PTY integration \
+       tests skipped"
+    true
+
 (* Basic PTY Operations *)
 
 let test_open_pty () =
@@ -257,28 +278,31 @@ let test_pty_close () =
 (* Test Suite *)
 
 let tests =
-  [
-    (* Basic Operations *)
-    test "open pty" test_open_pty;
-    test "open pty with winsize" test_open_pty_with_winsize;
-    test "with_pty" test_with_pty;
-    (* Window Size *)
-    test "winsize operations" test_winsize_operations;
-    test "resize" test_resize;
-    test "inherit size" test_inherit_size;
-    (* Process Spawning *)
-    test "spawn echo" test_spawn_echo;
-    test "spawn cat" test_spawn_cat;
-    test "spawn sh" test_spawn_sh;
-    test "spawn with env" test_spawn_with_env;
-    test "spawn with cwd" test_spawn_with_cwd;
-    (* Non-blocking I/O *)
-    test "nonblocking io" test_nonblocking_io;
-    test "multiple writes" test_multiple_writes;
-    (* Edge Cases *)
-    test "close idempotent" test_close_idempotent;
-    test "eof on close" test_eof_on_close;
-    test "pty close" test_pty_close;
-  ]
+  if not pty_test_supported then
+    [ test "pty unavailable (skipped)" test_pty_unavailable ]
+  else
+    [
+      (* Basic Operations *)
+      test "open pty" test_open_pty;
+      test "open pty with winsize" test_open_pty_with_winsize;
+      test "with_pty" test_with_pty;
+      (* Window Size *)
+      test "winsize operations" test_winsize_operations;
+      test "resize" test_resize;
+      test "inherit size" test_inherit_size;
+      (* Process Spawning *)
+      test "spawn echo" test_spawn_echo;
+      test "spawn cat" test_spawn_cat;
+      test "spawn sh" test_spawn_sh;
+      test "spawn with env" test_spawn_with_env;
+      test "spawn with cwd" test_spawn_with_cwd;
+      (* Non-blocking I/O *)
+      test "nonblocking io" test_nonblocking_io;
+      test "multiple writes" test_multiple_writes;
+      (* Edge Cases *)
+      test "close idempotent" test_close_idempotent;
+      test "eof on close" test_eof_on_close;
+      test "pty close" test_pty_close;
+    ]
 
 let () = run "matrix.pty" [ group "pty" tests ]
