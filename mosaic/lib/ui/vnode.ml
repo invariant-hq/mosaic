@@ -54,6 +54,7 @@ type 'msg widget_callbacks =
       on_input : (string -> 'msg) option;
       on_change : (string -> 'msg) option;
       on_submit : (string -> 'msg) option;
+      on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
   | Table_callbacks of {
       on_change : (int -> 'msg) option;
@@ -418,16 +419,18 @@ let scroll_box ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 let textarea ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = true) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?value
-    ?highlights ?placeholder ?wrap ?text_color ?background_color
-    ?focused_text_color ?focused_background_color ?placeholder_color
-    ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?on_input ?on_change ?on_submit () =
+    ?cursor ?highlights ?ghost_text ?ghost_text_color ?placeholder ?wrap
+    ?text_color ?background_color ?focused_text_color ?focused_background_color
+    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
+    ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor ()
+    =
   let kind =
     Textarea
-      (Textarea.Props.make ?value ?highlights ?placeholder ?wrap ?text_color
-         ?background_color ?focused_text_color ?focused_background_color
-         ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-         ?cursor_color ?cursor_blinking ())
+      (Textarea.Props.make ?value ?cursor ?highlights ?ghost_text
+         ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
+         ?focused_text_color ?focused_background_color ?placeholder_color
+         ?selection_color ?selection_fg ?cursor_style ?cursor_color
+         ?cursor_blinking ())
   in
   let attrs =
     {
@@ -444,7 +447,9 @@ let textarea ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     }
   in
   let handlers = { on_mouse; on_key; on_paste } in
-  let callbacks = Textarea_callbacks { on_input; on_change; on_submit } in
+  let callbacks =
+    Textarea_callbacks { on_input; on_change; on_submit; on_cursor }
+  in
   Element { kind; key; attrs; handlers; callbacks; children = [] }
 
 let table ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
@@ -648,12 +653,16 @@ let map_callbacks (f : 'a -> 'b) : 'a widget_callbacks -> 'b widget_callbacks =
   | Scroll_box_callbacks { on_scroll } ->
       Scroll_box_callbacks
         { on_scroll = Option.map (fun g ~x ~y -> f (g ~x ~y)) on_scroll }
-  | Textarea_callbacks { on_input; on_change; on_submit } ->
+  | Textarea_callbacks { on_input; on_change; on_submit; on_cursor } ->
       Textarea_callbacks
         {
           on_input = Option.map (fun g s -> f (g s)) on_input;
           on_change = Option.map (fun g s -> f (g s)) on_change;
           on_submit = Option.map (fun g s -> f (g s)) on_submit;
+          on_cursor =
+            Option.map
+              (fun g ~cursor ~selection -> f (g ~cursor ~selection))
+              on_cursor;
         }
   | Table_callbacks { on_change; on_activate } ->
       Table_callbacks

@@ -9,10 +9,12 @@ dune exec ./mosaic/examples/x-code-editor/main.exe
 
 ## Controls
 
-- `Tab` &mdash; open completion or cycle forward.
-- `Shift+Tab` &mdash; cycle backward.
+- `Tab` &mdash; trigger/accept inline completion.
+- `Shift+Tab` &mdash; select previous completion.
 - `Enter` &mdash; accept selected completion.
 - `Esc` &mdash; dismiss completion popup.
+- `Ctrl+Space` &mdash; open completion list at cursor.
+- `Ctrl+N` / `Ctrl+P` &mdash; next / previous completion.
 - `F2` &mdash; toggle language (`OCaml`/`JSON`).
 - `q` or `Esc` &mdash; quit.
 

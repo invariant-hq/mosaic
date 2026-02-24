@@ -29,7 +29,10 @@ val create :
   ?z_index:int ->
   ?opacity:float ->
   ?value:string ->
+  ?cursor:int ->
   ?highlights:Text_buffer.span list ->
+  ?ghost_text:string ->
+  ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->
   ?wrap:Text_surface.wrap ->
   ?text_color:Ansi.Color.t ->
@@ -45,12 +48,17 @@ val create :
   ?on_input:(string -> unit) ->
   ?on_change:(string -> unit) ->
   ?on_submit:(string -> unit) ->
+  ?on_cursor:(cursor:int -> selection:(int * int) option -> unit) ->
   unit ->
   t
 (** [create ~parent ()] is a textarea attached to [parent] with:
     - [value]: initial text content. Defaults to [""].
+    - [cursor]: optional initial cursor grapheme offset. Defaults to end.
     - [highlights]: optional styled spans used for syntax highlighting. The span
       text must match [value]. Defaults to [[]].
+    - [ghost_text]: optional inline ghost completion rendered at the cursor.
+      Defaults to [None].
+    - [ghost_text_color]: ghost text foreground color. Defaults to a dim gray.
     - [placeholder]: text shown when empty. Defaults to [""].
     - [wrap]: line wrapping mode. Defaults to [`Word].
     - [text_color]: unfocused text color. Defaults to {!Ansi.Color.White}.
@@ -70,7 +78,8 @@ val create :
     - [cursor_blinking]: whether the cursor blinks. Defaults to [true].
     - [on_input]: called after every text change.
     - [on_change]: called when committed value changes (blur or submit).
-    - [on_submit]: called when Cmd+Enter or Ctrl+Enter is pressed. *)
+    - [on_submit]: called when Cmd+Enter or Ctrl+Enter is pressed.
+    - [on_cursor]: called when cursor position or selection changes. *)
 
 (** {1:accessors Accessors} *)
 
@@ -91,7 +100,10 @@ module Props : sig
 
   val make :
     ?value:string ->
+    ?cursor:int ->
     ?highlights:Text_buffer.span list ->
+    ?ghost_text:string ->
+    ?ghost_text_color:Ansi.Color.t ->
     ?placeholder:string ->
     ?wrap:Text_surface.wrap ->
     ?text_color:Ansi.Color.t ->
@@ -125,6 +137,13 @@ val apply_props : t -> Props.t -> unit
 val value : t -> string
 (** [value t] is the current text content. *)
 
+val cursor : t -> int
+(** [cursor t] is the current cursor grapheme offset. *)
+
+val selection : t -> (int * int) option
+(** [selection t] is the active selection as normalized grapheme offsets, if
+    any. *)
+
 val set_value : t -> string -> unit
 (** [set_value t s] replaces the text content with [s]. Resets scroll and cursor
     visibility. *)
@@ -139,6 +158,11 @@ val set_on_change : t -> (string -> unit) option -> unit
 
 val set_on_submit : t -> (string -> unit) option -> unit
 (** [set_on_submit t handler] sets the Cmd/Ctrl+Enter submit callback. *)
+
+val set_on_cursor :
+  t -> (cursor:int -> selection:(int * int) option -> unit) option -> unit
+(** [set_on_cursor t handler] sets the cursor/selection change callback. It
+    fires when cursor position or selection changes. *)
 
 (** {1:paste Paste} *)
 

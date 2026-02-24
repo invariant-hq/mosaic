@@ -71,6 +71,7 @@ type 'msg widget_callbacks =
       on_input : (string -> 'msg) option;
       on_change : (string -> 'msg) option;
       on_submit : (string -> 'msg) option;
+      on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
   | Table_callbacks of {
       on_change : (int -> 'msg) option;
@@ -666,7 +667,10 @@ val textarea :
   ?on_key:(Event.key -> 'msg) ->
   ?on_paste:(Event.paste -> 'msg) ->
   ?value:string ->
+  ?cursor:int ->
   ?highlights:Text_buffer.span list ->
+  ?ghost_text:string ->
+  ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->
   ?wrap:Text_surface.wrap ->
   ?text_color:Ansi.Color.t ->
@@ -682,6 +686,7 @@ val textarea :
   ?on_input:(string -> 'msg) ->
   ?on_change:(string -> 'msg) ->
   ?on_submit:(string -> 'msg) ->
+  ?on_cursor:(cursor:int -> selection:(int * int) option -> 'msg) ->
   unit ->
   'msg t
 (** [textarea ()] is a multi-line text editing leaf element. Textarea does not
@@ -691,8 +696,11 @@ val textarea :
     - [focusable] controls whether the node can receive focus. Defaults to
       [true].
     - [value] is the initial text content. Defaults to [""].
+    - [cursor] is an optional controlled cursor grapheme offset.
     - [highlights] is optional styled spans used for syntax highlighting. When
       provided, the span text must match [value].
+    - [ghost_text] is optional inline ghost completion rendered at the cursor.
+    - [ghost_text_color] is the ghost text color.
     - [placeholder] is the text shown when the textarea is empty, regardless of
       focus. Defaults to [""].
     - [wrap] is the line-wrapping mode. Defaults to [`Word].
@@ -715,7 +723,8 @@ val textarea :
     - [on_input] is called after every text change at keystroke-level.
     - [on_change] is called when the committed value changes (on blur or
       submit).
-    - [on_submit] is called when Cmd+Enter or Ctrl+Enter is pressed. *)
+    - [on_submit] is called when Cmd+Enter or Ctrl+Enter is pressed.
+    - [on_cursor] is called when cursor position or selection changes. *)
 
 val table :
   ?key:string ->

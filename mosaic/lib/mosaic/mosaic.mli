@@ -1905,7 +1905,10 @@ val textarea :
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
   ?value:string ->
+  ?cursor:int ->
   ?highlights:span list ->
+  ?ghost_text:string ->
+  ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->
   ?wrap:Text_surface.wrap ->
   ?text_color:Ansi.Color.t ->
@@ -1921,16 +1924,21 @@ val textarea :
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->
+  ?on_cursor:(cursor:int -> selection:(int * int) option -> 'msg option) ->
   unit ->
   'msg t
 (** [textarea ()] is a multi-line text editing area. It shares its optional
     argument set with {!val-input}; see that entry for argument descriptions.
 
     Textarea-specific optional arguments not present on {!val-input}:
+    - [cursor] -- optional controlled cursor grapheme offset.
     - [highlights] -- optional styled spans used for syntax highlighting. When
       provided, the span text must match [value].
+    - [ghost_text] -- optional inline ghost completion rendered at the cursor.
+    - [ghost_text_color] -- color used for [ghost_text].
     - [wrap] -- line-wrapping mode within the editing area. Defaults to the
-      surface default. *)
+      surface default.
+    - [on_cursor] -- fired when cursor position or selection changes. *)
 
 val code :
   ?key:string ->

@@ -386,6 +386,8 @@ type callback_refs =
       textarea_input_ref : (string -> unit) option ref;
       textarea_change_ref : (string -> unit) option ref;
       textarea_submit_ref : (string -> unit) option ref;
+      textarea_cursor_ref :
+        (cursor:int -> selection:(int * int) option -> unit) option ref;
     }
   | Table_callback_refs of {
       table_change_ref : (int -> unit) option ref;
@@ -531,10 +533,11 @@ let create_callback_refs (instance : instance)
                  match !scroll_ref with Some h -> h ~x ~y | None -> ()))
       | _ -> ());
       Scroll_box_callback_refs { scroll_ref }
-  | Vnode.Textarea_callbacks { on_input; on_change; on_submit } ->
+  | Vnode.Textarea_callbacks { on_input; on_change; on_submit; on_cursor } ->
       let textarea_input_ref = ref on_input in
       let textarea_change_ref = ref on_change in
       let textarea_submit_ref = ref on_submit in
+      let textarea_cursor_ref = ref on_cursor in
       (match instance with
       | Textarea_instance textarea ->
           Textarea.set_on_input textarea
@@ -548,10 +551,21 @@ let create_callback_refs (instance : instance)
           Textarea.set_on_submit textarea
             (Some
                (fun s ->
-                 match !textarea_submit_ref with Some h -> h s | None -> ()))
+                 match !textarea_submit_ref with Some h -> h s | None -> ()));
+          Textarea.set_on_cursor textarea
+            (Some
+               (fun ~cursor ~selection ->
+                 match !textarea_cursor_ref with
+                 | Some h -> h ~cursor ~selection
+                 | None -> ()))
       | _ -> ());
       Textarea_callback_refs
-        { textarea_input_ref; textarea_change_ref; textarea_submit_ref }
+        {
+          textarea_input_ref;
+          textarea_change_ref;
+          textarea_submit_ref;
+          textarea_cursor_ref;
+        }
   | Vnode.Table_callbacks { on_change; on_activate } ->
       let table_change_ref = ref on_change in
       let table_activate_ref = ref on_activate in
@@ -659,11 +673,17 @@ let update_callback_refs (callback_refs : callback_refs)
   | Scroll_box_callback_refs { scroll_ref }, Vnode.Scroll_box_callbacks e ->
       scroll_ref := e.on_scroll
   | ( Textarea_callback_refs
-        { textarea_input_ref; textarea_change_ref; textarea_submit_ref },
+        {
+          textarea_input_ref;
+          textarea_change_ref;
+          textarea_submit_ref;
+          textarea_cursor_ref;
+        },
       Vnode.Textarea_callbacks e ) ->
       textarea_input_ref := e.on_input;
       textarea_change_ref := e.on_change;
-      textarea_submit_ref := e.on_submit
+      textarea_submit_ref := e.on_submit;
+      textarea_cursor_ref := e.on_cursor
   | ( Table_callback_refs { table_change_ref; table_activate_ref },
       Vnode.Table_callbacks e ) ->
       table_change_ref := e.on_change;

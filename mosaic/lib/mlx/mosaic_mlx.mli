@@ -456,7 +456,10 @@ val textarea :
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
   ?value:string ->
+  ?cursor:int ->
   ?highlights:Mosaic.span list ->
+  ?ghost_text:string ->
+  ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->
   ?wrap:Text_surface.wrap ->
   ?text_color:Ansi.Color.t ->
@@ -472,6 +475,7 @@ val textarea :
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->
+  ?on_cursor:(cursor:int -> selection:(int * int) option -> 'msg option) ->
   ?children:'msg t list ->
   unit ->
   'msg t

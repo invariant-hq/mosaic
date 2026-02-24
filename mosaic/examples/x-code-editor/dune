@@ -1,3 +1,8 @@
 (executable
  (name main)
- (libraries mosaic tree-sitter.ocaml tree-sitter.json matrix.ansi))
+ (libraries
+  mosaic
+  tree-sitter.ocaml
+  tree-sitter.json
+  matrix.ansi
+  matrix.glyph))

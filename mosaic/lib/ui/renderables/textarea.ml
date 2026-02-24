@@ -9,13 +9,17 @@ let default_selection_color = Ansi.Color.Blue
 let default_cursor_style = `Block
 let default_cursor_color = Ansi.Color.White
 let default_cursor_blinking = true
+let default_ghost_text_color = Ansi.Color.grayscale ~level:12
 
 (* ───── Props ───── *)
 
 module Props = struct
   type t = {
     value : string;
+    cursor : int option;
     highlights : Text_buffer.span list;
+    ghost_text : string option;
+    ghost_text_color : Ansi.Color.t;
     placeholder : string;
     wrap : Text_surface.wrap;
     text_color : Ansi.Color.t;
@@ -30,8 +34,9 @@ module Props = struct
     cursor_blinking : bool;
   }
 
-  let make ?(value = "") ?(highlights = []) ?(placeholder = "") ?(wrap = `Word)
-      ?(text_color = default_text_color)
+  let make ?(value = "") ?cursor ?(highlights = []) ?ghost_text
+      ?(ghost_text_color = default_ghost_text_color) ?(placeholder = "")
+      ?(wrap = `Word) ?(text_color = default_text_color)
       ?(background_color = default_background_color)
       ?(focused_text_color = default_focused_text_color)
       ?(focused_background_color = default_focused_background_color)
@@ -42,7 +47,10 @@ module Props = struct
       ?(cursor_blinking = default_cursor_blinking) () =
     {
       value;
+      cursor;
       highlights;
+      ghost_text;
+      ghost_text_color;
       placeholder;
       wrap;
       text_color;
@@ -68,7 +76,10 @@ module Props = struct
 
   let equal a b =
     String.equal a.value b.value
+    && Option.equal Int.equal a.cursor b.cursor
     && spans_equal a.highlights b.highlights
+    && Option.equal String.equal a.ghost_text b.ghost_text
+    && Ansi.Color.equal a.ghost_text_color b.ghost_text_color
     && String.equal a.placeholder b.placeholder
     && a.wrap = b.wrap
     && Ansi.Color.equal a.text_color b.text_color
@@ -97,6 +108,10 @@ type t = {
   mutable on_input : (string -> unit) option;
   mutable on_change : (string -> unit) option;
   mutable on_submit : (string -> unit) option;
+  mutable on_cursor :
+    (cursor:int -> selection:(int * int) option -> unit) option;
+  mutable last_cursor : int;
+  mutable last_selection : (int * int) option;
 }
 
 (* ───── Accessors ───── *)
@@ -105,6 +120,8 @@ let node t = t.node
 let buffer t = t.buf
 let surface t = t.surface
 let value t = Edit_buffer.text t.buf
+let cursor t = Edit_buffer.cursor t.buf
+let selection t = Edit_buffer.selection t.buf
 
 (* ───── Line Info Provider ───── *)
 
@@ -126,6 +143,7 @@ let register_line_info t =
 let set_on_input t h = t.on_input <- h
 let set_on_change t h = t.on_change <- h
 let set_on_submit t h = t.on_submit <- h
+let set_on_cursor t h = t.on_cursor <- h
 let fire_on_input t = match t.on_input with Some f -> f (value t) | None -> ()
 
 let fire_on_change t =
@@ -138,6 +156,17 @@ let fire_on_change t =
 let fire_on_submit t =
   fire_on_change t;
   match t.on_submit with Some f -> f (value t) | None -> ()
+
+let fire_on_cursor t =
+  let c = cursor t in
+  let s = selection t in
+  if c <> t.last_cursor || s <> t.last_selection then begin
+    t.last_cursor <- c;
+    t.last_selection <- s;
+    (match t.on_cursor with Some f -> f ~cursor:c ~selection:s | None -> ());
+    true
+  end
+  else false
 
 (* ───── Sync ───── *)
 
@@ -295,6 +324,36 @@ let render_before t _self grid ~delta:_ =
         ignore (Text_surface.set_selection t.surface ~start:lo ~end_:hi : bool)
     | None -> Text_surface.reset_selection t.surface
   end
+
+let render_after t _self grid ~delta:_ =
+  if not (Renderable.focused t.node) then ()
+  else
+    match t.props.ghost_text with
+    | None -> ()
+    | Some ghost
+      when String.length ghost = 0
+           || Option.is_some (Edit_buffer.selection t.buf) ->
+        ()
+    | Some ghost ->
+        let dl = find_cursor_display_line t in
+        let sy = Text_surface.scroll_y t.surface in
+        let sx = Text_surface.scroll_x t.surface in
+        let row = dl - sy in
+        let col = cursor_visual_col t dl - sx in
+        let x0 = Renderable.x t.node in
+        let y0 = Renderable.y t.node in
+        let w = Renderable.width t.node in
+        let h = Renderable.height t.node in
+        if row >= 0 && row < h && col >= 0 && col < w then
+          let bg =
+            if Renderable.focused t.node then t.props.focused_background_color
+            else t.props.background_color
+          in
+          let style =
+            Ansi.Style.make ~fg:t.props.ghost_text_color ~bg ~italic:true ()
+          in
+          Grid.clip grid { x = x0; y = y0; width = w; height = h } (fun () ->
+              Grid.draw_text ~style grid ~x:(x0 + col) ~y:(y0 + row) ~text:ghost)
 
 (* ───── Cursor Provider ───── *)
 
@@ -491,8 +550,9 @@ let handle_key t (ev : Event.key) =
     if !handled then begin
       Event.Key.prevent_default ev;
       if !changed then sync t;
-      if !changed || !moved then ensure_cursor_visible t;
       if !changed then fire_on_input t;
+      let cursor_changed = fire_on_cursor t in
+      if !changed || !moved || cursor_changed then ensure_cursor_visible t;
       let is_vertical = match data.key with Up | Down -> true | _ -> false in
       if not is_vertical then t.preferred_col <- None;
       Renderable.request_render t.node
@@ -504,33 +564,38 @@ let handle_key t (ev : Event.key) =
 let handle_paste t text =
   if Edit_buffer.insert t.buf text then begin
     sync t;
-    ensure_cursor_visible t;
     fire_on_input t;
+    ignore (fire_on_cursor t : bool);
+    ensure_cursor_visible t;
     t.preferred_col <- None;
     Renderable.request_render t.node
   end
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
-    ?highlights ?placeholder ?wrap ?text_color ?background_color
-    ?focused_text_color ?focused_background_color ?placeholder_color
-    ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?on_input ?on_change ?on_submit () =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
+    ?highlights ?ghost_text ?ghost_text_color ?placeholder ?wrap ?text_color
+    ?background_color ?focused_text_color ?focused_background_color
+    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
+    ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor ()
+    =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ?value ?highlights ?placeholder ?wrap ?text_color
-      ?background_color ?focused_text_color ?focused_background_color
-      ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-      ?cursor_color ?cursor_blinking ()
+    Props.make ?value ?cursor ?highlights ?ghost_text ?ghost_text_color
+      ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
+      ?focused_background_color ?placeholder_color ?selection_color
+      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ()
   in
   let buf = Edit_buffer.create ~max_length:max_int props.value in
+  Option.iter (Edit_buffer.set_cursor buf) props.cursor;
   let text_buf = Text_buffer.create () in
   let surface = Text_surface.create node text_buf in
   Text_surface.set_wrap surface props.wrap;
   let initial_value = Edit_buffer.text buf in
+  let initial_cursor = Edit_buffer.cursor buf in
+  let initial_selection = Edit_buffer.selection buf in
   let t =
     {
       node;
@@ -544,9 +609,13 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
       on_input;
       on_change;
       on_submit;
+      on_cursor;
+      last_cursor = initial_cursor;
+      last_selection = initial_selection;
     }
   in
   Renderable.set_render_before node (Some (render_before t));
+  Renderable.set_render_after node (Some (render_after t));
   Renderable.set_cursor_provider node (cursor_provider t);
   Renderable.set_default_key_handler node (Some (handle_key t));
   register_line_info t;
@@ -557,6 +626,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
 
 let set_value t s =
   Edit_buffer.set_text t.buf s;
+  ignore (fire_on_cursor t : bool);
   sync t;
   ensure_cursor_visible t;
   t.preferred_col <- None;
@@ -568,18 +638,27 @@ let apply_props t (props : Props.t) =
   let highlights_changed =
     not (Props.spans_equal t.props.highlights props.highlights)
   in
+  let value_replaced = ref false in
   if
     (not (String.equal t.props.value props.value))
     && not (String.equal (Edit_buffer.text t.buf) props.value)
   then begin
     Edit_buffer.set_text t.buf props.value;
-    sync t;
-    ensure_cursor_visible t;
+    value_replaced := true;
     t.preferred_col <- None
   end;
+  let cursor_changed =
+    match props.cursor with
+    | Some c when Edit_buffer.cursor t.buf <> c ->
+        Edit_buffer.set_cursor t.buf c;
+        true
+    | _ -> false
+  in
   if t.props.wrap <> props.wrap then Text_surface.set_wrap t.surface props.wrap;
   t.props <- props;
-  if highlights_changed then sync t;
+  if !value_replaced || highlights_changed then sync t;
+  if !value_replaced || cursor_changed then ensure_cursor_visible t;
+  ignore (fire_on_cursor t : bool);
   Renderable.request_render t.node
 
 (* ───── Pretty-printing ───── *)

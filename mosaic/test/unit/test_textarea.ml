@@ -7,14 +7,15 @@ open Test_harness
 let make_textarea ?value ?placeholder ?wrap ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
     ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?on_input ?on_change ?on_submit () =
+    ?on_input ?on_change ?on_submit ?on_cursor () =
   let t = make_ctx () in
   let root = make_root t in
   let ta =
     Textarea.create ~parent:root ?value ?placeholder ?wrap ?text_color
       ?background_color ?focused_text_color ?focused_background_color
       ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-      ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ()
+      ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor
+      ()
   in
   (t, ta)
 
@@ -222,6 +223,47 @@ let set_on_change_none_disables () =
   send_char ta 'z';
   blur_textarea ta;
   ignore (render_textarea ta ~width:20 ~height:5 : Grid.t);
+  equal ~msg:"disabled" int 0 !count
+
+(* ── Callbacks — on_cursor ── *)
+
+let on_cursor_fires_on_cursor_movement () =
+  let fired = ref [] in
+  let t, ta =
+    make_textarea ~value:"abc"
+      ~on_cursor:(fun ~cursor ~selection ->
+        fired := (cursor, selection) :: !fired)
+      ()
+  in
+  focus_textarea t ta;
+  send_key ta Input.Key.Left;
+  is_true ~msg:"cursor callback fired" (List.length !fired >= 1)
+
+let on_cursor_fires_on_selection_change () =
+  let fired = ref [] in
+  let t, ta =
+    make_textarea ~value:"abc"
+      ~on_cursor:(fun ~cursor ~selection ->
+        fired := (cursor, selection) :: !fired)
+      ()
+  in
+  focus_textarea t ta;
+  send_key_with_mod ta ~modifier:shift_mod Input.Key.Left;
+  let has_selection =
+    List.exists (fun (_cursor, selection) -> Option.is_some selection) !fired
+  in
+  is_true ~msg:"selection reported" has_selection
+
+let set_on_cursor_none_disables () =
+  let count = ref 0 in
+  let t, ta =
+    make_textarea ~value:"abc"
+      ~on_cursor:(fun ~cursor:_ ~selection:_ -> incr count)
+      ()
+  in
+  focus_textarea t ta;
+  Textarea.set_on_cursor ta None;
+  send_key ta Input.Key.Left;
   equal ~msg:"disabled" int 0 !count
 
 (* ── Callbacks — on_submit ── *)
@@ -752,6 +794,12 @@ let () =
           test "does not fire when unchanged"
             on_change_does_not_fire_when_unchanged;
           test "set_on_change None disables" set_on_change_none_disables;
+        ];
+      group "Callbacks -- on_cursor"
+        [
+          test "fires on cursor movement" on_cursor_fires_on_cursor_movement;
+          test "fires on selection change" on_cursor_fires_on_selection_change;
+          test "set_on_cursor None disables" set_on_cursor_none_disables;
         ];
       group "Callbacks -- on_submit"
         [
