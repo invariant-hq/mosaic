@@ -1,7 +1,7 @@
 (test
  (package toffee)
  (name test_runner)
- (libraries toffee toffee.style toffee.geometry windtrap)
+ (libraries toffee toffee.style toffee.geometry toffee.tree windtrap)
  (modules
   gentest_helpers
   test_block_absolute_aspect_ratio_aspect_ratio_overrides_height_of_full_inset

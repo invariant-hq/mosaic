@@ -1345,7 +1345,7 @@ let () =
       const duneContent = `(test
  (package toffee)
  (name test_runner)
- (libraries toffee toffee.style toffee.geometry windtrap)
+ (libraries toffee toffee.style toffee.geometry toffee.tree windtrap)
  (modules ${moduleList}))
 `;
 
