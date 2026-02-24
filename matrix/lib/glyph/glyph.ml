@@ -40,8 +40,8 @@ type pool = {
    59-60: right_extent (distance to end), bits 57-58: left_extent (distance to
    start), bits 18-24: generation (7 bits), bits 0-17: pool index (18 bits) *)
 
-let flag_grapheme = 0x4000000000000000
-let flag_continuation = 0x2000000000000000
+let flag_grapheme = if Sys.word_size = 64 then 1 lsl 62 else 0
+let flag_continuation = if Sys.word_size = 64 then 1 lsl 61 else 0
 let shift_right_extent = 59
 let shift_left_extent = 57
 let shift_generation = 18

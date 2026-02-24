@@ -9,6 +9,7 @@ license: "ISC"
 tags: ["terminal" "ansi" "input" "grid" "rendering" "unicode" "pty" "vte"]
 homepage: "https://github.com/tmattio/mosaic"
 bug-reports: "https://github.com/tmattio/mosaic/issues"
+available: [arch != "arm32" & arch != "x86_32" & arch != "ppc32"]
 depends: [
   "ocaml" {>= "5.4"}
   "dune" {>= "3.19"}

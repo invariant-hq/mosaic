@@ -25,56 +25,28 @@ let write_subbytes = Writer.write_subbytes
 
 let[@inline] digit_char n = Char.unsafe_chr (char_0 + n)
 
-(* Powers of 10 lookup table - avoids overflow in magnitude computation *)
+(* Powers of 10 lookup table sized for the host int range. *)
 let pow10 =
-  [|
-    1;
-    10;
-    100;
-    1000;
-    10000;
-    100000;
-    1000000;
-    10000000;
-    100000000;
-    1000000000;
-    10000000000;
-    100000000000;
-    1000000000000;
-    10000000000000;
-    100000000000000;
-    1000000000000000;
-    10000000000000000;
-    100000000000000000;
-    1000000000000000000;
-  |]
+  let rec max_digits p d =
+    if p > max_int / 10 then d else max_digits (p * 10) (d + 1)
+  in
+  let len = max_digits 1 1 in
+  let tbl = Array.make len 1 in
+  for i = 1 to len - 1 do
+    tbl.(i) <- tbl.(i - 1) * 10
+  done;
+  tbl
 
 (* Write unsigned integer - fully iterative, no stack allocation *)
 let add_uint w n =
   if n = 0 then write_char w '0'
   else
-    (* Find number of digits via binary search on pow10 *)
-    let digits =
-      if n < pow10.(10) then
-        if n < pow10.(5) then
-          if n < pow10.(3) then
-            if n < pow10.(1) then 1 else if n < pow10.(2) then 2 else 3
-          else if n < pow10.(4) then 4
-          else 5
-        else if n < pow10.(7) then if n < pow10.(6) then 6 else 7
-        else if n < pow10.(8) then 8
-        else if n < pow10.(9) then 9
-        else 10
-      else if n < pow10.(15) then
-        if n < pow10.(12) then if n < pow10.(11) then 11 else 12
-        else if n < pow10.(13) then 13
-        else if n < pow10.(14) then 14
-        else 15
-      else if n < pow10.(17) then if n < pow10.(16) then 16 else 17
-      else if n < pow10.(18) then 18
-      else 19
-    in
-    for i = digits - 1 downto 0 do
+    let digits = ref 1 in
+    let max_digits = Array.length pow10 in
+    while !digits < max_digits && n >= pow10.(!digits) do
+      incr digits
+    done;
+    for i = !digits - 1 downto 0 do
       write_char w (digit_char (n / pow10.(i) mod 10))
     done
 
