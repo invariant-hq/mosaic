@@ -61,6 +61,8 @@ let pty_test_supported =
     with
     | Unix.Unix_error (Unix.ENOENT, "open_pty", _)
     | Unix.Unix_error (Unix.ENOSYS, "open_pty", _)
+    | Unix.Unix_error (Unix.EPERM, "open_pty", _)
+    | Unix.Unix_error (Unix.EACCES, "open_pty", _)
     ->
       false
 
