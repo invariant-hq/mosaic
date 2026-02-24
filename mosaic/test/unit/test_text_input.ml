@@ -7,14 +7,15 @@ open Test_harness
 let make_input ?value ?placeholder ?max_length ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
     ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?on_input ?on_change ?on_submit () =
+    ?cursor ?selection ?on_input ?on_change ?on_submit ?on_cursor () =
   let t = make_ctx () in
   let root = make_root t in
   let input =
     Text_input.create ~parent:root ?value ?placeholder ?max_length ?text_color
       ?background_color ?focused_text_color ?focused_background_color
       ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-      ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ()
+      ?cursor_color ?cursor_blinking ?cursor ?selection ?on_input ?on_change
+      ?on_submit ?on_cursor ()
   in
   (t, input)
 
@@ -212,6 +213,47 @@ let set_on_input_none_disables () =
   focus_input t input;
   Text_input.set_on_input input None;
   send_char input 'a';
+  equal ~msg:"disabled" int 0 !count
+
+(* ── Callbacks — on_cursor ── *)
+
+let on_cursor_fires_on_cursor_movement () =
+  let fired = ref [] in
+  let t, input =
+    make_input ~value:"abc"
+      ~on_cursor:(fun ~cursor ~selection ->
+        fired := (cursor, selection) :: !fired)
+      ()
+  in
+  focus_input t input;
+  send_key input Input.Key.Left;
+  is_true ~msg:"cursor callback fired" (List.length !fired >= 1)
+
+let on_cursor_fires_on_selection_change () =
+  let fired = ref [] in
+  let t, input =
+    make_input ~value:"abc"
+      ~on_cursor:(fun ~cursor ~selection ->
+        fired := (cursor, selection) :: !fired)
+      ()
+  in
+  focus_input t input;
+  send_key_with_mod input ~modifier:shift_mod Input.Key.Left;
+  let has_selection =
+    List.exists (fun (_cursor, selection) -> Option.is_some selection) !fired
+  in
+  is_true ~msg:"selection reported" has_selection
+
+let set_on_cursor_none_disables () =
+  let count = ref 0 in
+  let t, input =
+    make_input ~value:"abc"
+      ~on_cursor:(fun ~cursor:_ ~selection:_ -> incr count)
+      ()
+  in
+  focus_input t input;
+  Text_input.set_on_cursor input None;
+  send_key input Input.Key.Left;
   equal ~msg:"disabled" int 0 !count
 
 (* ── Callbacks — on_change ── *)
@@ -720,6 +762,27 @@ let apply_props_max_length_change_updates_buffer () =
   let buf = Text_input.buffer input in
   equal ~msg:"max_length updated" int 5 (Edit_buffer.max_length buf)
 
+let apply_props_cursor_change_updates_buffer () =
+  let _t, input = make_input ~value:"hello" () in
+  let props = Text_input.Props.make ~value:"hello" ~cursor:2 () in
+  Text_input.apply_props input props;
+  equal ~msg:"cursor updated" int 2 (Text_input.cursor input)
+
+let apply_props_selection_change_updates_buffer () =
+  let _t, input = make_input ~value:"hello" () in
+  let props =
+    Text_input.Props.make ~value:"hello" ~selection:(Some (1, 4)) ()
+  in
+  Text_input.apply_props input props;
+  some ~msg:"selection updated" (pair int int) (1, 4)
+    (Text_input.selection input)
+
+let apply_props_selection_none_clears_buffer_selection () =
+  let _t, input = make_input ~value:"hello" ~selection:(Some (1, 4)) () in
+  Text_input.apply_props input
+    (Text_input.Props.make ~value:"hello" ~selection:None ());
+  is_none ~msg:"selection cleared" (Text_input.selection input)
+
 let apply_props_schedules_render () =
   let t, input = make_input () in
   let before = !(t.schedule_count) in
@@ -840,6 +903,12 @@ let () =
             on_input_does_not_fire_on_cursor_movement;
           test "set_on_input None disables" set_on_input_none_disables;
         ];
+      group "Callbacks -- on_cursor"
+        [
+          test "fires on cursor movement" on_cursor_fires_on_cursor_movement;
+          test "fires on selection change" on_cursor_fires_on_selection_change;
+          test "set_on_cursor None disables" set_on_cursor_none_disables;
+        ];
       group "Callbacks -- on_change"
         [
           test "fires on blur when changed" on_change_fires_on_blur_when_changed;
@@ -948,6 +1017,12 @@ let () =
             apply_props_value_change_updates_buffer;
           test "max_length change updates buffer"
             apply_props_max_length_change_updates_buffer;
+          test "cursor change updates buffer"
+            apply_props_cursor_change_updates_buffer;
+          test "selection change updates buffer"
+            apply_props_selection_change_updates_buffer;
+          test "selection None clears buffer selection"
+            apply_props_selection_none_clears_buffer_selection;
           test "schedules render" apply_props_schedules_render;
         ];
       group "Edge cases"

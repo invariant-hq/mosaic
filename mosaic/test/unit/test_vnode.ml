@@ -96,6 +96,32 @@ let map_transforms_widget_callbacks () =
       equal ~msg:"callback ran" (list int) [ 3 ] !log
   | _ -> fail "expected Slider_callbacks with on_value_change"
 
+let map_transforms_input_on_cursor_callback () =
+  let v : int Vnode.t =
+    Vnode.input ~on_cursor:(fun ~cursor ~selection:_ -> cursor) ()
+  in
+  let log = ref [] in
+  let mapped : unit Vnode.t = Vnode.map (fun n -> log := n :: !log) v in
+  match mapped with
+  | Vnode.Element
+      { callbacks = Vnode.Input_callbacks { on_cursor = Some cb; _ }; _ } ->
+      cb ~cursor:7 ~selection:None;
+      equal ~msg:"on_cursor mapped" (list int) [ 7 ] !log
+  | _ -> fail "expected Input_callbacks with on_cursor"
+
+let map_transforms_code_on_selection_callback () =
+  let v : int Vnode.t =
+    Vnode.code ~on_selection:(function Some (a, b) -> a + b | None -> 0) "x"
+  in
+  let log = ref [] in
+  let mapped : unit Vnode.t = Vnode.map (fun n -> log := n :: !log) v in
+  match mapped with
+  | Vnode.Element
+      { callbacks = Vnode.Code_callbacks { on_selection = Some cb }; _ } ->
+      cb (Some (2, 3));
+      equal ~msg:"on_selection mapped" (list int) [ 5 ] !log
+  | _ -> fail "expected Code_callbacks with on_selection"
+
 (* map on Embed must return the same node unchanged — embeds have no handlers to
    transform. *)
 let map_embed_identity () =
@@ -174,6 +200,10 @@ let () =
         [
           test "transforms on_key" map_transforms_on_key;
           test "transforms widget callbacks" map_transforms_widget_callbacks;
+          test "transforms input on_cursor callback"
+            map_transforms_input_on_cursor_callback;
+          test "transforms code on_selection callback"
+            map_transforms_code_on_selection_callback;
           test "embed unchanged" map_embed_identity;
         ];
     ]

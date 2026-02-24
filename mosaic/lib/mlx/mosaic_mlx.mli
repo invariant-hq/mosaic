@@ -269,6 +269,7 @@ val code :
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
+  ?on_selection:((int * int) option -> 'msg option) ->
   ?children:string list ->
   unit ->
   'msg t
@@ -385,6 +386,8 @@ val input :
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
   ?value:string ->
+  ?cursor:int ->
+  ?selection:(int * int) option ->
   ?placeholder:string ->
   ?max_length:int ->
   ?text_color:Ansi.Color.t ->
@@ -400,6 +403,7 @@ val input :
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->
+  ?on_cursor:(cursor:int -> selection:(int * int) option -> 'msg option) ->
   ?children:'msg t list ->
   unit ->
   'msg t
@@ -457,6 +461,7 @@ val textarea :
   ?on_paste:(Event.paste -> 'msg option) ->
   ?value:string ->
   ?cursor:int ->
+  ?selection:(int * int) option ->
   ?highlights:Mosaic.span list ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->

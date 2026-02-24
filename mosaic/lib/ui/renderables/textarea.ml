@@ -17,6 +17,7 @@ module Props = struct
   type t = {
     value : string;
     cursor : int option;
+    selection : (int * int) option option;
     highlights : Text_buffer.span list;
     ghost_text : string option;
     ghost_text_color : Ansi.Color.t;
@@ -34,7 +35,7 @@ module Props = struct
     cursor_blinking : bool;
   }
 
-  let make ?(value = "") ?cursor ?(highlights = []) ?ghost_text
+  let make ?(value = "") ?cursor ?selection ?(highlights = []) ?ghost_text
       ?(ghost_text_color = default_ghost_text_color) ?(placeholder = "")
       ?(wrap = `Word) ?(text_color = default_text_color)
       ?(background_color = default_background_color)
@@ -48,6 +49,7 @@ module Props = struct
     {
       value;
       cursor;
+      selection;
       highlights;
       ghost_text;
       ghost_text_color;
@@ -77,6 +79,9 @@ module Props = struct
   let equal a b =
     String.equal a.value b.value
     && Option.equal Int.equal a.cursor b.cursor
+    && Option.equal
+         (Option.equal (fun (a1, a2) (b1, b2) -> a1 = b1 && a2 = b2))
+         a.selection b.selection
     && spans_equal a.highlights b.highlights
     && Option.equal String.equal a.ghost_text b.ghost_text
     && Ansi.Color.equal a.ghost_text_color b.ghost_text_color
@@ -167,6 +172,25 @@ let fire_on_cursor t =
     true
   end
   else false
+
+let apply_selection t sel_range =
+  let len = Edit_buffer.length t.buf in
+  let normalize (a, b) =
+    let clamp x = Int.max 0 (Int.min len x) in
+    let lo = clamp (Int.min a b) in
+    let hi = clamp (Int.max a b) in
+    if lo < hi then Some (lo, hi) else None
+  in
+  let before_cursor = cursor t in
+  let before_selection = selection t in
+  (match normalize sel_range with
+  | None ->
+      if Option.is_some before_selection then
+        Edit_buffer.set_cursor t.buf before_cursor
+  | Some (lo, hi) ->
+      Edit_buffer.set_cursor t.buf lo;
+      Edit_buffer.set_cursor_offset ~select:true t.buf hi);
+  before_cursor <> cursor t || before_selection <> selection t
 
 (* ───── Sync ───── *)
 
@@ -574,8 +598,8 @@ let handle_paste t text =
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
-    ?highlights ?ghost_text ?ghost_text_color ?placeholder ?wrap ?text_color
-    ?background_color ?focused_text_color ?focused_background_color
+    ?selection ?highlights ?ghost_text ?ghost_text_color ?placeholder ?wrap
+    ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
     ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor ()
     =
@@ -583,13 +607,25 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ?value ?cursor ?highlights ?ghost_text ?ghost_text_color
-      ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
-      ?focused_background_color ?placeholder_color ?selection_color
-      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ()
+    Props.make ?value ?cursor ?selection ?highlights ?ghost_text
+      ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
+      ?focused_text_color ?focused_background_color ?placeholder_color
+      ?selection_color ?selection_fg ?cursor_style ?cursor_color
+      ?cursor_blinking ()
   in
   let buf = Edit_buffer.create ~max_length:max_int props.value in
   Option.iter (Edit_buffer.set_cursor buf) props.cursor;
+  (match props.selection with
+  | None | Some None -> ()
+  | Some (Some (a, b)) ->
+      let len = Edit_buffer.length buf in
+      let clamp x = Int.max 0 (Int.min len x) in
+      let lo = clamp (Int.min a b) in
+      let hi = clamp (Int.max a b) in
+      if lo < hi then begin
+        Edit_buffer.set_cursor buf lo;
+        Edit_buffer.set_cursor_offset ~select:true buf hi
+      end);
   let text_buf = Text_buffer.create () in
   let surface = Text_surface.create node text_buf in
   Text_surface.set_wrap surface props.wrap;
@@ -654,11 +690,21 @@ let apply_props t (props : Props.t) =
         true
     | _ -> false
   in
+  let selection_changed =
+    match props.selection with
+    | None -> false
+    | Some None ->
+        let had_selection = Option.is_some (selection t) in
+        if had_selection then Edit_buffer.set_cursor t.buf (cursor t);
+        had_selection
+    | Some (Some sel) -> apply_selection t sel
+  in
   if t.props.wrap <> props.wrap then Text_surface.set_wrap t.surface props.wrap;
   t.props <- props;
   if !value_replaced || highlights_changed then sync t;
-  if !value_replaced || cursor_changed then ensure_cursor_visible t;
-  ignore (fire_on_cursor t : bool);
+  let state_changed = fire_on_cursor t in
+  if !value_replaced || cursor_changed || selection_changed || state_changed
+  then ensure_cursor_visible t;
   Renderable.request_render t.node
 
 (* ───── Pretty-printing ───── *)

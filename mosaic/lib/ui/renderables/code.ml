@@ -55,6 +55,8 @@ type t = {
   surface : Text_surface.t;
   mutable props : Props.t;
   mutable has_highlights : bool;
+  mutable on_selection : ((int * int) option -> unit) option;
+  mutable last_selection : (int * int) option;
 }
 
 (* ───── Accessors ───── *)
@@ -62,6 +64,16 @@ type t = {
 let node t = t.node
 let buffer t = t.buf
 let surface t = t.surface
+let set_on_selection t h = t.on_selection <- h
+
+let fire_on_selection t =
+  let selection = Text_surface.selection t.surface in
+  if selection <> t.last_selection then begin
+    t.last_selection <- selection;
+    (match t.on_selection with Some f -> f selection | None -> ());
+    true
+  end
+  else false
 
 (* ───── Line Info Provider ───── *)
 
@@ -93,6 +105,7 @@ let register_selection t =
         match sel with
         | None ->
             Text_surface.reset_selection t.surface;
+            ignore (fire_on_selection t : bool);
             true
         | Some sel ->
             let nx = Renderable.x t.node in
@@ -110,16 +123,23 @@ let register_selection t =
                   ~anchor_y:ay ~focus_x:fx ~focus_y:fy
             in
             if changed then Renderable.request_render t.node;
+            ignore (fire_on_selection t : bool);
             Text_surface.has_selection t.surface)
-      ~clear:(fun () -> Text_surface.reset_selection t.surface)
+      ~clear:(fun () ->
+        Text_surface.reset_selection t.surface;
+        ignore (fire_on_selection t : bool))
       ~get_text:(fun () -> Text_surface.selected_text t.surface)
-  else Renderable.unset_selection t.node
+  else begin
+    Text_surface.reset_selection t.surface;
+    ignore (fire_on_selection t : bool);
+    Renderable.unset_selection t.node
+  end
 
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
     ?highlights ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
-    ?selection_fg () =
+    ?selection_fg ?on_selection () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -132,7 +152,17 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
       ~tab_width:props.tab_width ()
   in
   let surface = Text_surface.create node buf in
-  let t = { node; buf; surface; props; has_highlights = false } in
+  let t =
+    {
+      node;
+      buf;
+      surface;
+      props;
+      has_highlights = false;
+      on_selection;
+      last_selection = None;
+    }
+  in
   (* Set initial content or highlights *)
   if props.highlights <> [] then begin
     Text_buffer.set_styled_text buf props.highlights;

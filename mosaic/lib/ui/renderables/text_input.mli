@@ -5,11 +5,12 @@
     Supports undo/redo, word-level navigation, and configurable visual styling.
     Newlines are always stripped from content.
 
-    The widget fires three callbacks:
+    The widget fires four callbacks:
     - [on_input]: after every text change (keystroke-level).
     - [on_change]: when the committed value differs on blur or submit. See
       {!section:callbacks}.
     - [on_submit]: when Enter is pressed.
+    - [on_cursor]: when cursor position or selection changes.
 
     See {!Textarea} for multi-line editing. *)
 
@@ -27,6 +28,8 @@ val create :
   ?z_index:int ->
   ?opacity:float ->
   ?value:string ->
+  ?cursor:int ->
+  ?selection:(int * int) option ->
   ?placeholder:string ->
   ?max_length:int ->
   ?text_color:Ansi.Color.t ->
@@ -42,10 +45,14 @@ val create :
   ?on_input:(string -> unit) ->
   ?on_change:(string -> unit) ->
   ?on_submit:(string -> unit) ->
+  ?on_cursor:(cursor:int -> selection:(int * int) option -> unit) ->
   unit ->
   t
 (** [create ~parent ()] is a text input attached to [parent] with:
     - [value]: initial text content. Newlines are stripped. Defaults to [""].
+    - [cursor]: optional controlled cursor grapheme offset.
+    - [selection]: optional controlled selection range. When provided as
+      [Some (lo, hi)], selection is normalized/clamped.
     - [placeholder]: text shown when empty. Defaults to [""].
     - [max_length]: maximum grapheme cluster count. Defaults to [1000].
     - [text_color]: unfocused text color. Defaults to {!Ansi.Color.White}.
@@ -65,7 +72,8 @@ val create :
     - [cursor_blinking]: whether the cursor blinks. Defaults to [true].
     - [on_input]: called after every text change.
     - [on_change]: called when committed value changes (blur or submit).
-    - [on_submit]: called when Enter is pressed. *)
+    - [on_submit]: called when Enter is pressed.
+    - [on_cursor]: called when cursor position or selection changes. *)
 
 (** {1:accessors Accessors} *)
 
@@ -84,6 +92,8 @@ module Props : sig
 
   val make :
     ?value:string ->
+    ?cursor:int ->
+    ?selection:(int * int) option ->
     ?placeholder:string ->
     ?max_length:int ->
     ?text_color:Ansi.Color.t ->
@@ -117,6 +127,13 @@ val apply_props : t -> Props.t -> unit
 val value : t -> string
 (** [value t] is the current text content. *)
 
+val cursor : t -> int
+(** [cursor t] is the current cursor grapheme offset. *)
+
+val selection : t -> (int * int) option
+(** [selection t] is the active selection as normalized grapheme offsets, if
+    any. *)
+
 val set_value : t -> string -> unit
 (** [set_value t s] replaces the text content with [s] (newlines stripped).
     Resets scroll to [0] and ensures cursor visibility. *)
@@ -137,6 +154,11 @@ val set_on_change : t -> (string -> unit) option -> unit
 val set_on_submit : t -> (string -> unit) option -> unit
 (** [set_on_submit t f] sets the Enter-key submit callback. [None] clears it.
     Fires [on_change] before the submit callback. *)
+
+val set_on_cursor :
+  t -> (cursor:int -> selection:(int * int) option -> unit) option -> unit
+(** [set_on_cursor t f] sets the cursor/selection change callback. [None] clears
+    it. *)
 
 (** {1:paste Paste} *)
 

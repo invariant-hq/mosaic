@@ -71,6 +71,7 @@ val create :
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
+  ?on_selection:((int * int) option -> unit) ->
   unit ->
   t
 (** [create ~parent ()] is a new code display renderable attached to [parent]
@@ -114,6 +115,10 @@ val set_content : t -> string -> unit
 val set_highlights : t -> Text_buffer.span list -> unit
 (** [set_highlights t spans] sets pre-computed highlighted spans. These override
     plain content display. *)
+
+val set_on_selection : t -> ((int * int) option -> unit) option -> unit
+(** [set_on_selection t f] sets the selection-change callback used when
+    [selectable = true]. [None] clears it. *)
 
 (** {1:props_application Props application} *)
 

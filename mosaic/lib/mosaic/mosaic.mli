@@ -1274,6 +1274,8 @@ val input :
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
   ?value:string ->
+  ?cursor:int ->
+  ?selection:(int * int) option ->
   ?placeholder:string ->
   ?max_length:int ->
   ?text_color:Ansi.Color.t ->
@@ -1289,6 +1291,7 @@ val input :
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->
+  ?on_cursor:(cursor:int -> selection:(int * int) option -> 'msg option) ->
   unit ->
   'msg t
 (** [input ()] is a single-line text input field.
@@ -1297,6 +1300,8 @@ val input :
 
     Input-specific optional arguments:
     - [value] -- current content of the field. Defaults to [""].
+    - [cursor] -- optional controlled cursor grapheme offset.
+    - [selection] -- optional controlled selection range.
     - [placeholder] -- hint text shown when the field is empty. Defaults to
       [""].
     - [max_length] -- maximum number of characters accepted. Defaults to [1000].
@@ -1320,7 +1325,8 @@ val input :
     - [on_change] -- fired when the value changes after editing; semantics may
       differ from [on_input] depending on the component.
     - [on_submit] -- fired when the user presses Enter; receives the current
-      value. *)
+      value.
+    - [on_cursor] -- fired when cursor position or selection changes. *)
 
 val select :
   ?key:string ->
@@ -1906,6 +1912,7 @@ val textarea :
   ?on_paste:(Event.paste -> 'msg option) ->
   ?value:string ->
   ?cursor:int ->
+  ?selection:(int * int) option ->
   ?highlights:span list ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->
@@ -1932,6 +1939,7 @@ val textarea :
 
     Textarea-specific optional arguments not present on {!val-input}:
     - [cursor] -- optional controlled cursor grapheme offset.
+    - [selection] -- optional controlled selection range.
     - [highlights] -- optional styled spans used for syntax highlighting. When
       provided, the span text must match [value].
     - [ghost_text] -- optional inline ghost completion rendered at the cursor.
@@ -1997,6 +2005,7 @@ val code :
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
+  ?on_selection:((int * int) option -> 'msg option) ->
   string ->
   'msg t
 (** [code s] is a read-only code display element that renders [s] with optional
@@ -2014,7 +2023,8 @@ val code :
     - [selectable] -- when [true] the user can select text with the mouse.
       Defaults to [true].
     - [selection_bg] -- background color of selected text.
-    - [selection_fg] -- foreground color of selected text. *)
+    - [selection_fg] -- foreground color of selected text.
+    - [on_selection] -- fired when the current selection changes. *)
 
 val line_number :
   ?key:string ->

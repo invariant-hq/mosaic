@@ -38,6 +38,7 @@ type 'msg widget_callbacks =
       on_input : (string -> 'msg) option;
       on_change : (string -> 'msg) option;
       on_submit : (string -> 'msg) option;
+      on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
   | Select_callbacks of {
       on_change : (int -> 'msg) option;
@@ -56,6 +57,7 @@ type 'msg widget_callbacks =
       on_submit : (string -> 'msg) option;
       on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
+  | Code_callbacks of { on_selection : ((int * int) option -> 'msg) option }
   | Table_callbacks of {
       on_change : (int -> 'msg) option;
       on_activate : (int -> 'msg) option;
@@ -190,16 +192,16 @@ let slider ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 let input ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = true) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?value
-    ?placeholder ?max_length ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
-    () =
+    ?cursor ?selection ?placeholder ?max_length ?text_color ?background_color
+    ?focused_text_color ?focused_background_color ?placeholder_color
+    ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
+    ?on_input ?on_change ?on_submit ?on_cursor () =
   let kind =
     Text_input
-      (Text_input.Props.make ?value ?placeholder ?max_length ?text_color
-         ?background_color ?focused_text_color ?focused_background_color
-         ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-         ?cursor_color ?cursor_blinking ())
+      (Text_input.Props.make ?value ?cursor ?selection ?placeholder ?max_length
+         ?text_color ?background_color ?focused_text_color
+         ?focused_background_color ?placeholder_color ?selection_color
+         ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ())
   in
   let attrs =
     {
@@ -216,7 +218,9 @@ let input ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     }
   in
   let handlers = { on_mouse; on_key; on_paste } in
-  let callbacks = Input_callbacks { on_input; on_change; on_submit } in
+  let callbacks =
+    Input_callbacks { on_input; on_change; on_submit; on_cursor }
+  in
   Element { kind; key; attrs; handlers; callbacks; children = [] }
 
 let select ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
@@ -419,14 +423,14 @@ let scroll_box ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 let textarea ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = true) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?value
-    ?cursor ?highlights ?ghost_text ?ghost_text_color ?placeholder ?wrap
-    ?text_color ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor ()
-    =
+    ?cursor ?selection ?highlights ?ghost_text ?ghost_text_color ?placeholder
+    ?wrap ?text_color ?background_color ?focused_text_color
+    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
+    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
+    ?on_cursor () =
   let kind =
     Textarea
-      (Textarea.Props.make ?value ?cursor ?highlights ?ghost_text
+      (Textarea.Props.make ?value ?cursor ?selection ?highlights ?ghost_text
          ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
          ?focused_text_color ?focused_background_color ?placeholder_color
          ?selection_color ?selection_fg ?cursor_style ?cursor_color
@@ -492,7 +496,7 @@ let code ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste
     ?highlights ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
-    ?selection_fg content =
+    ?selection_fg ?on_selection content =
   let kind =
     Code
       (Code.Props.make ~content ?highlights ?text_style ?wrap ?tab_width
@@ -513,8 +517,8 @@ let code ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     }
   in
   let handlers = { on_mouse; on_key; on_paste } in
-  Element
-    { kind; key; attrs; handlers; callbacks = No_callbacks; children = [] }
+  let callbacks = Code_callbacks { on_selection } in
+  Element { kind; key; attrs; handlers; callbacks; children = [] }
 
 let line_number ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
@@ -627,12 +631,16 @@ let map_callbacks (f : 'a -> 'b) : 'a widget_callbacks -> 'b widget_callbacks =
   | Slider_callbacks { on_value_change } ->
       Slider_callbacks
         { on_value_change = Option.map (fun g v -> f (g v)) on_value_change }
-  | Input_callbacks { on_input; on_change; on_submit } ->
+  | Input_callbacks { on_input; on_change; on_submit; on_cursor } ->
       Input_callbacks
         {
           on_input = Option.map (fun g s -> f (g s)) on_input;
           on_change = Option.map (fun g s -> f (g s)) on_change;
           on_submit = Option.map (fun g s -> f (g s)) on_submit;
+          on_cursor =
+            Option.map
+              (fun g ~cursor ~selection -> f (g ~cursor ~selection))
+              on_cursor;
         }
   | Select_callbacks { on_change; on_activate } ->
       Select_callbacks
@@ -664,6 +672,9 @@ let map_callbacks (f : 'a -> 'b) : 'a widget_callbacks -> 'b widget_callbacks =
               (fun g ~cursor ~selection -> f (g ~cursor ~selection))
               on_cursor;
         }
+  | Code_callbacks { on_selection } ->
+      Code_callbacks
+        { on_selection = Option.map (fun g sel -> f (g sel)) on_selection }
   | Table_callbacks { on_change; on_activate } ->
       Table_callbacks
         {

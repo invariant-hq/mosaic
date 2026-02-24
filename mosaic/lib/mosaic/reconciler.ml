@@ -364,6 +364,8 @@ type callback_refs =
       input_ref : (string -> unit) option ref;
       change_ref : (string -> unit) option ref;
       submit_ref : (string -> unit) option ref;
+      cursor_ref :
+        (cursor:int -> selection:(int * int) option -> unit) option ref;
     }
   | Select_callback_refs of {
       select_change_ref : (int -> unit) option ref;
@@ -388,6 +390,9 @@ type callback_refs =
       textarea_submit_ref : (string -> unit) option ref;
       textarea_cursor_ref :
         (cursor:int -> selection:(int * int) option -> unit) option ref;
+    }
+  | Code_callback_refs of {
+      code_selection_ref : ((int * int) option -> unit) option ref;
     }
   | Table_callback_refs of {
       table_change_ref : (int -> unit) option ref;
@@ -456,10 +461,11 @@ let create_callback_refs (instance : instance)
                  match !value_change_ref with Some h -> h v | None -> ()))
       | _ -> ());
       Slider_callback_refs { value_change_ref }
-  | Vnode.Input_callbacks { on_input; on_change; on_submit } ->
+  | Vnode.Input_callbacks { on_input; on_change; on_submit; on_cursor } ->
       let input_ref = ref on_input in
       let change_ref = ref on_change in
       let submit_ref = ref on_submit in
+      let cursor_ref = ref on_cursor in
       (match instance with
       | Text_input_instance input ->
           Text_input.set_on_input input
@@ -467,9 +473,15 @@ let create_callback_refs (instance : instance)
           Text_input.set_on_change input
             (Some (fun s -> match !change_ref with Some h -> h s | None -> ()));
           Text_input.set_on_submit input
-            (Some (fun s -> match !submit_ref with Some h -> h s | None -> ()))
+            (Some (fun s -> match !submit_ref with Some h -> h s | None -> ()));
+          Text_input.set_on_cursor input
+            (Some
+               (fun ~cursor ~selection ->
+                 match !cursor_ref with
+                 | Some h -> h ~cursor ~selection
+                 | None -> ()))
       | _ -> ());
-      Input_callback_refs { input_ref; change_ref; submit_ref }
+      Input_callback_refs { input_ref; change_ref; submit_ref; cursor_ref }
   | Vnode.Select_callbacks { on_change; on_activate } ->
       let select_change_ref = ref on_change in
       let select_activate_ref = ref on_activate in
@@ -566,6 +578,18 @@ let create_callback_refs (instance : instance)
           textarea_submit_ref;
           textarea_cursor_ref;
         }
+  | Vnode.Code_callbacks { on_selection } ->
+      let code_selection_ref = ref on_selection in
+      (match instance with
+      | Code_instance code ->
+          Code.set_on_selection code
+            (Some
+               (fun selection ->
+                 match !code_selection_ref with
+                 | Some h -> h selection
+                 | None -> ()))
+      | _ -> ());
+      Code_callback_refs { code_selection_ref }
   | Vnode.Table_callbacks { on_change; on_activate } ->
       let table_change_ref = ref on_change in
       let table_activate_ref = ref on_activate in
@@ -652,11 +676,12 @@ let update_callback_refs (callback_refs : callback_refs)
   match (callback_refs, callbacks) with
   | Slider_callback_refs { value_change_ref }, Vnode.Slider_callbacks e ->
       value_change_ref := e.on_value_change
-  | ( Input_callback_refs { input_ref; change_ref; submit_ref },
+  | ( Input_callback_refs { input_ref; change_ref; submit_ref; cursor_ref },
       Vnode.Input_callbacks e ) ->
       input_ref := e.on_input;
       change_ref := e.on_change;
-      submit_ref := e.on_submit
+      submit_ref := e.on_submit;
+      cursor_ref := e.on_cursor
   | ( Select_callback_refs { select_change_ref; select_activate_ref },
       Vnode.Select_callbacks e ) ->
       select_change_ref := e.on_change;
@@ -684,6 +709,8 @@ let update_callback_refs (callback_refs : callback_refs)
       textarea_change_ref := e.on_change;
       textarea_submit_ref := e.on_submit;
       textarea_cursor_ref := e.on_cursor
+  | Code_callback_refs { code_selection_ref }, Vnode.Code_callbacks e ->
+      code_selection_ref := e.on_selection
   | ( Table_callback_refs { table_change_ref; table_activate_ref },
       Vnode.Table_callbacks e ) ->
       table_change_ref := e.on_change;

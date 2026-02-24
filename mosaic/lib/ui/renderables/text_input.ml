@@ -15,6 +15,8 @@ let default_cursor_blinking = true
 module Props = struct
   type t = {
     value : string;
+    cursor : int option;
+    selection : (int * int) option option;
     placeholder : string;
     max_length : int;
     text_color : Ansi.Color.t;
@@ -29,8 +31,8 @@ module Props = struct
     cursor_blinking : bool;
   }
 
-  let make ?(value = "") ?(placeholder = "") ?(max_length = 1000)
-      ?(text_color = default_text_color)
+  let make ?(value = "") ?cursor ?selection ?(placeholder = "")
+      ?(max_length = 1000) ?(text_color = default_text_color)
       ?(background_color = default_background_color)
       ?(focused_text_color = default_focused_text_color)
       ?(focused_background_color = default_focused_background_color)
@@ -41,6 +43,8 @@ module Props = struct
       ?(cursor_blinking = default_cursor_blinking) () =
     {
       value;
+      cursor;
+      selection;
       placeholder;
       max_length;
       text_color;
@@ -59,6 +63,10 @@ module Props = struct
 
   let equal a b =
     String.equal a.value b.value
+    && Option.equal Int.equal a.cursor b.cursor
+    && Option.equal
+         (Option.equal (fun (a1, a2) (b1, b2) -> a1 = b1 && a2 = b2))
+         a.selection b.selection
     && String.equal a.placeholder b.placeholder
     && a.max_length = b.max_length
     && Ansi.Color.equal a.text_color b.text_color
@@ -85,6 +93,10 @@ type t = {
   mutable on_input : (string -> unit) option;
   mutable on_change : (string -> unit) option;
   mutable on_submit : (string -> unit) option;
+  mutable on_cursor :
+    (cursor:int -> selection:(int * int) option -> unit) option;
+  mutable last_cursor : int;
+  mutable last_selection : (int * int) option;
 }
 
 (* ───── Accessors ───── *)
@@ -92,12 +104,15 @@ type t = {
 let node t = t.node
 let buffer t = t.buf
 let value t = Edit_buffer.text t.buf
+let cursor t = Edit_buffer.cursor t.buf
+let selection t = Edit_buffer.selection t.buf
 
 (* ───── Callbacks ───── *)
 
 let set_on_input t h = t.on_input <- h
 let set_on_change t h = t.on_change <- h
 let set_on_submit t h = t.on_submit <- h
+let set_on_cursor t h = t.on_cursor <- h
 let fire_on_input t = match t.on_input with Some f -> f (value t) | None -> ()
 
 (* on_change fires only when the value has actually changed since the last
@@ -113,6 +128,36 @@ let fire_on_change t =
 let fire_on_submit t =
   fire_on_change t;
   match t.on_submit with Some f -> f (value t) | None -> ()
+
+let fire_on_cursor t =
+  let c = cursor t in
+  let s = selection t in
+  if c <> t.last_cursor || s <> t.last_selection then begin
+    t.last_cursor <- c;
+    t.last_selection <- s;
+    (match t.on_cursor with Some f -> f ~cursor:c ~selection:s | None -> ());
+    true
+  end
+  else false
+
+let apply_selection t sel_range =
+  let len = Edit_buffer.length t.buf in
+  let normalize (a, b) =
+    let clamp x = Int.max 0 (Int.min len x) in
+    let lo = clamp (Int.min a b) in
+    let hi = clamp (Int.max a b) in
+    if lo < hi then Some (lo, hi) else None
+  in
+  let before_cursor = cursor t in
+  let before_selection = selection t in
+  (match normalize sel_range with
+  | None ->
+      if Option.is_some before_selection then
+        Edit_buffer.set_cursor t.buf before_cursor
+  | Some (lo, hi) ->
+      Edit_buffer.set_cursor t.buf lo;
+      Edit_buffer.set_cursor_offset ~select:true t.buf hi);
+  before_cursor <> cursor t || before_selection <> selection t
 
 (* ───── Scroll ───── *)
 
@@ -346,8 +391,9 @@ let handle_key t (ev : Event.key) =
     | _ -> handled := false);
     if !handled then begin
       Event.Key.prevent_default ev;
-      ensure_cursor_visible t;
       if !changed then fire_on_input t;
+      let cursor_changed = fire_on_cursor t in
+      if !changed || cursor_changed then ensure_cursor_visible t;
       Renderable.request_render t.node
     end
   end
@@ -359,30 +405,45 @@ let handle_paste t text =
   if Edit_buffer.insert t.buf text then begin
     ensure_cursor_visible t;
     fire_on_input t;
+    ignore (fire_on_cursor t : bool);
     Renderable.request_render t.node
   end
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
-    ?placeholder ?max_length ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
-    () =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
+    ?selection ?placeholder ?max_length ?text_color ?background_color
+    ?focused_text_color ?focused_background_color ?placeholder_color
+    ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
+    ?on_input ?on_change ?on_submit ?on_cursor () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ?value ?placeholder ?max_length ?text_color ?background_color
-      ?focused_text_color ?focused_background_color ?placeholder_color
-      ?selection_color ?selection_fg ?cursor_style ?cursor_color
-      ?cursor_blinking ()
+    Props.make ?value ?cursor ?selection ?placeholder ?max_length ?text_color
+      ?background_color ?focused_text_color ?focused_background_color
+      ?placeholder_color ?selection_color ?selection_fg ?cursor_style
+      ?cursor_color ?cursor_blinking ()
   in
   let buf =
     Edit_buffer.create ~max_length:props.max_length
       (Edit_buffer.strip_newlines props.value)
   in
+  Option.iter (Edit_buffer.set_cursor buf) props.cursor;
+  (match props.selection with
+  | None | Some None -> ()
+  | Some (Some (a, b)) ->
+      let len = Edit_buffer.length buf in
+      let clamp x = Int.max 0 (Int.min len x) in
+      let lo = clamp (Int.min a b) in
+      let hi = clamp (Int.max a b) in
+      if lo < hi then begin
+        Edit_buffer.set_cursor buf lo;
+        Edit_buffer.set_cursor_offset ~select:true buf hi
+      end);
   let initial_value = Edit_buffer.text buf in
+  let initial_cursor = Edit_buffer.cursor buf in
+  let initial_selection = Edit_buffer.selection buf in
   let t =
     {
       node;
@@ -394,6 +455,9 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
       on_input;
       on_change;
       on_submit;
+      on_cursor;
+      last_cursor = initial_cursor;
+      last_selection = initial_selection;
     }
   in
   Renderable.set_render node (render t);
@@ -406,6 +470,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
 
 let set_value t s =
   Edit_buffer.set_text t.buf (Edit_buffer.strip_newlines s);
+  ignore (fire_on_cursor t : bool);
   t.scroll_x <- 0;
   ensure_cursor_visible t;
   Renderable.request_render t.node
@@ -413,14 +478,35 @@ let set_value t s =
 (* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
+  let value_replaced = ref false in
   if not (String.equal t.props.value props.value) then begin
     Edit_buffer.set_text t.buf (Edit_buffer.strip_newlines props.value);
+    value_replaced := true;
     t.scroll_x <- 0;
     ensure_cursor_visible t
   end;
+  let cursor_changed =
+    match props.cursor with
+    | Some c when Edit_buffer.cursor t.buf <> c ->
+        Edit_buffer.set_cursor t.buf c;
+        true
+    | _ -> false
+  in
+  let selection_changed =
+    match props.selection with
+    | None -> false
+    | Some None ->
+        let had_selection = Option.is_some (selection t) in
+        if had_selection then Edit_buffer.set_cursor t.buf (cursor t);
+        had_selection
+    | Some (Some sel) -> apply_selection t sel
+  in
   if t.props.max_length <> props.max_length then
     Edit_buffer.set_max_length t.buf props.max_length;
   t.props <- props;
+  let state_changed = fire_on_cursor t in
+  if !value_replaced || cursor_changed || selection_changed || state_changed
+  then ensure_cursor_visible t;
   Renderable.request_render t.node
 
 (* ───── Pretty-printing ───── *)

@@ -7,15 +7,15 @@ open Test_harness
 let make_textarea ?value ?placeholder ?wrap ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
     ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?on_input ?on_change ?on_submit ?on_cursor () =
+    ?cursor ?selection ?on_input ?on_change ?on_submit ?on_cursor () =
   let t = make_ctx () in
   let root = make_root t in
   let ta =
     Textarea.create ~parent:root ?value ?placeholder ?wrap ?text_color
       ?background_color ?focused_text_color ?focused_background_color
       ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-      ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor
-      ()
+      ?cursor_color ?cursor_blinking ?cursor ?selection ?on_input ?on_change
+      ?on_submit ?on_cursor ()
   in
   (t, ta)
 
@@ -106,6 +106,11 @@ let props_detects_highlights_diff () =
     Textarea.Props.make ~highlights:[ { Text_buffer.text = "let"; style } ] ()
   in
   let b = Textarea.Props.make ~highlights:[] () in
+  is_false ~msg:"different" (Textarea.Props.equal a b)
+
+let props_detects_selection_diff () =
+  let a = Textarea.Props.make ~selection:(Some (0, 2)) () in
+  let b = Textarea.Props.make ~selection:None () in
   is_false ~msg:"different" (Textarea.Props.equal a b)
 
 (* ── Construction ── *)
@@ -689,6 +694,20 @@ let apply_props_echoed_value_preserves_cursor () =
   equal ~msg:"cursor preserved after echoed value reconcile" int cursor_before
     (Edit_buffer.cursor buf)
 
+let apply_props_selection_change_updates_buffer () =
+  let _t, ta = make_textarea ~value:"hello\nworld" () in
+  Textarea.apply_props ta
+    (Textarea.Props.make ~value:"hello\nworld" ~selection:(Some (1, 5)) ());
+  some ~msg:"selection updated" (pair int int) (1, 5) (Textarea.selection ta)
+
+let apply_props_selection_none_clears_buffer_selection () =
+  let _t, ta =
+    make_textarea ~value:"hello\nworld" ~selection:(Some (1, 5)) ()
+  in
+  Textarea.apply_props ta
+    (Textarea.Props.make ~value:"hello\nworld" ~selection:None ());
+  is_none ~msg:"selection cleared" (Textarea.selection ta)
+
 let apply_props_schedules_render () =
   let t, ta = make_textarea () in
   let before = !(t.schedule_count) in
@@ -763,6 +782,7 @@ let () =
           test "detects cursor_style diff" props_detects_cursor_style_diff;
           test "detects cursor_blinking diff" props_detects_cursor_blinking_diff;
           test "detects highlights diff" props_detects_highlights_diff;
+          test "detects selection diff" props_detects_selection_diff;
         ];
       group "Construction"
         [
@@ -897,6 +917,10 @@ let () =
           test "value change updates buffer" apply_props_value_change;
           test "echoed value preserves cursor"
             apply_props_echoed_value_preserves_cursor;
+          test "selection change updates buffer"
+            apply_props_selection_change_updates_buffer;
+          test "selection None clears buffer selection"
+            apply_props_selection_none_clears_buffer_selection;
           test "schedules render" apply_props_schedules_render;
         ];
       group "Rendering"

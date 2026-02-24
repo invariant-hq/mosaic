@@ -7,10 +7,11 @@
     undo/redo, word-level and line-level navigation, and configurable visual
     styling.
 
-    The widget fires three callbacks:
+    The widget fires four callbacks:
     - [on_input]: after every text change (keystroke-level).
     - [on_change]: when the committed value differs on blur or submit.
     - [on_submit]: when Cmd+Enter or Ctrl+Enter is pressed.
+    - [on_cursor]: when cursor position or selection changes.
 
     See {!Text_input} for single-line editing and {!Text} for read-only display.
 *)
@@ -30,6 +31,7 @@ val create :
   ?opacity:float ->
   ?value:string ->
   ?cursor:int ->
+  ?selection:(int * int) option ->
   ?highlights:Text_buffer.span list ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->
@@ -54,6 +56,8 @@ val create :
 (** [create ~parent ()] is a textarea attached to [parent] with:
     - [value]: initial text content. Defaults to [""].
     - [cursor]: optional initial cursor grapheme offset. Defaults to end.
+    - [selection]: optional controlled selection range. When provided as
+      [Some (lo, hi)], selection is normalized/clamped.
     - [highlights]: optional styled spans used for syntax highlighting. The span
       text must match [value]. Defaults to [[]].
     - [ghost_text]: optional inline ghost completion rendered at the cursor.
@@ -101,6 +105,7 @@ module Props : sig
   val make :
     ?value:string ->
     ?cursor:int ->
+    ?selection:(int * int) option ->
     ?highlights:Text_buffer.span list ->
     ?ghost_text:string ->
     ?ghost_text_color:Ansi.Color.t ->

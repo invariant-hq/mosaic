@@ -55,6 +55,7 @@ type 'msg widget_callbacks =
       on_input : (string -> 'msg) option;
       on_change : (string -> 'msg) option;
       on_submit : (string -> 'msg) option;
+      on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
   | Select_callbacks of {
       on_change : (int -> 'msg) option;
@@ -73,6 +74,7 @@ type 'msg widget_callbacks =
       on_submit : (string -> 'msg) option;
       on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
+  | Code_callbacks of { on_selection : ((int * int) option -> 'msg) option }
   | Table_callbacks of {
       on_change : (int -> 'msg) option;
       on_activate : (int -> 'msg) option;
@@ -297,6 +299,8 @@ val input :
   ?on_key:(Event.key -> 'msg) ->
   ?on_paste:(Event.paste -> 'msg) ->
   ?value:string ->
+  ?cursor:int ->
+  ?selection:(int * int) option ->
   ?placeholder:string ->
   ?max_length:int ->
   ?text_color:Ansi.Color.t ->
@@ -312,6 +316,7 @@ val input :
   ?on_input:(string -> 'msg) ->
   ?on_change:(string -> 'msg) ->
   ?on_submit:(string -> 'msg) ->
+  ?on_cursor:(cursor:int -> selection:(int * int) option -> 'msg) ->
   unit ->
   'msg t
 (** [input ()] is a single-line text input leaf element. Input does not accept
@@ -321,6 +326,8 @@ val input :
     - [focusable] controls whether the node can receive focus. Defaults to
       [true].
     - [value] is the initial text content. Defaults to [""].
+    - [cursor] is an optional controlled cursor grapheme offset.
+    - [selection] is an optional controlled selection range.
     - [placeholder] is the text shown when the input is empty, regardless of
       focus. Defaults to [""].
     - [max_length] is the maximum grapheme cluster count. Defaults to [1000].
@@ -343,7 +350,8 @@ val input :
     - [on_input] is called after every text change at keystroke-level.
     - [on_change] is called when the committed value changes (on blur or
       submit).
-    - [on_submit] is called when Enter is pressed. *)
+    - [on_submit] is called when Enter is pressed.
+    - [on_cursor] is called when cursor position or selection changes. *)
 
 val select :
   ?key:string ->
@@ -668,6 +676,7 @@ val textarea :
   ?on_paste:(Event.paste -> 'msg) ->
   ?value:string ->
   ?cursor:int ->
+  ?selection:(int * int) option ->
   ?highlights:Text_buffer.span list ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->
@@ -697,6 +706,7 @@ val textarea :
       [true].
     - [value] is the initial text content. Defaults to [""].
     - [cursor] is an optional controlled cursor grapheme offset.
+    - [selection] is an optional controlled selection range.
     - [highlights] is optional styled spans used for syntax highlighting. When
       provided, the span text must match [value].
     - [ghost_text] is optional inline ghost completion rendered at the cursor.
@@ -826,6 +836,7 @@ val code :
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
+  ?on_selection:((int * int) option -> 'msg) ->
   string ->
   'msg t
 (** [code content] is a code display leaf element showing [content]. Code does
@@ -843,7 +854,8 @@ val code :
     - [selectable] controls whether text can be mouse-selected. Defaults to
       [true].
     - [selection_bg] is the selection background color.
-    - [selection_fg] is the selection foreground color. *)
+    - [selection_fg] is the selection foreground color.
+    - [on_selection] is called when the current selection changes. *)
 
 val line_number :
   ?key:string ->
