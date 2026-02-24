@@ -418,13 +418,13 @@ let scroll_box ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 let textarea ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = true) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?value
-    ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
-    () =
+    ?highlights ?placeholder ?wrap ?text_color ?background_color
+    ?focused_text_color ?focused_background_color ?placeholder_color
+    ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
+    ?on_input ?on_change ?on_submit () =
   let kind =
     Textarea
-      (Textarea.Props.make ?value ?placeholder ?wrap ?text_color
+      (Textarea.Props.make ?value ?highlights ?placeholder ?wrap ?text_color
          ?background_color ?focused_text_color ?focused_background_color
          ?placeholder_color ?selection_color ?selection_fg ?cursor_style
          ?cursor_color ?cursor_blinking ())

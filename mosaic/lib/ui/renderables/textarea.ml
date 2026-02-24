@@ -15,6 +15,7 @@ let default_cursor_blinking = true
 module Props = struct
   type t = {
     value : string;
+    highlights : Text_buffer.span list;
     placeholder : string;
     wrap : Text_surface.wrap;
     text_color : Ansi.Color.t;
@@ -29,7 +30,7 @@ module Props = struct
     cursor_blinking : bool;
   }
 
-  let make ?(value = "") ?(placeholder = "") ?(wrap = `Word)
+  let make ?(value = "") ?(highlights = []) ?(placeholder = "") ?(wrap = `Word)
       ?(text_color = default_text_color)
       ?(background_color = default_background_color)
       ?(focused_text_color = default_focused_text_color)
@@ -41,6 +42,7 @@ module Props = struct
       ?(cursor_blinking = default_cursor_blinking) () =
     {
       value;
+      highlights;
       placeholder;
       wrap;
       text_color;
@@ -57,8 +59,16 @@ module Props = struct
 
   let default = make ()
 
+  let spans_equal a b =
+    List.compare_length_with a (List.length b) = 0
+    && List.for_all2
+         (fun (a : Text_buffer.span) (b : Text_buffer.span) ->
+           String.equal a.text b.text && Ansi.Style.equal a.style b.style)
+         a b
+
   let equal a b =
     String.equal a.value b.value
+    && spans_equal a.highlights b.highlights
     && String.equal a.placeholder b.placeholder
     && a.wrap = b.wrap
     && Ansi.Color.equal a.text_color b.text_color
@@ -96,6 +106,21 @@ let buffer t = t.buf
 let surface t = t.surface
 let value t = Edit_buffer.text t.buf
 
+(* ───── Line Info Provider ───── *)
+
+let register_line_info t =
+  Renderable.set_line_info_provider t.node
+    (Some
+       (fun () ->
+         let di = Text_surface.display_info t.surface in
+         {
+           Renderable.line_count = Edit_buffer.line_count t.buf;
+           display_line_count = Array.length di.lines;
+           line_sources = di.line_sources;
+           line_wrap_indices = di.line_wrap_indices;
+           scroll_y = Text_surface.scroll_y t.surface;
+         }))
+
 (* ───── Callbacks ───── *)
 
 let set_on_input t h = t.on_input <- h
@@ -116,8 +141,28 @@ let fire_on_submit t =
 
 (* ───── Sync ───── *)
 
+let spans_text_equals spans text =
+  let total =
+    List.fold_left
+      (fun acc (span : Text_buffer.span) -> acc + String.length span.text)
+      0 spans
+  in
+  if total <> String.length text then false
+  else
+    let buf = Buffer.create total in
+    List.iter
+      (fun (span : Text_buffer.span) -> Buffer.add_string buf span.text)
+      spans;
+    String.equal (Buffer.contents buf) text
+
+let sync_content t =
+  let text = Edit_buffer.text t.buf in
+  if t.props.highlights <> [] && spans_text_equals t.props.highlights text then
+    Text_buffer.set_styled_text t.text_buf t.props.highlights
+  else Text_buffer.set_text t.text_buf text
+
 let sync t =
-  Text_buffer.set_text t.text_buf (Edit_buffer.text t.buf);
+  sync_content t;
   Text_surface.invalidate t.surface
 
 let sync_style t ~focused =
@@ -127,7 +172,7 @@ let sync_style t ~focused =
     else t.props.background_color
   in
   Text_buffer.set_default_style t.text_buf (Ansi.Style.make ~fg ~bg ());
-  Text_buffer.set_text t.text_buf (Edit_buffer.text t.buf);
+  sync_content t;
   Text_surface.invalidate t.surface
 
 (* ───── Display line mapping ───── *)
@@ -468,18 +513,18 @@ let handle_paste t text =
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
-    ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
-    () =
+    ?highlights ?placeholder ?wrap ?text_color ?background_color
+    ?focused_text_color ?focused_background_color ?placeholder_color
+    ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
+    ?on_input ?on_change ?on_submit () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ?value ?placeholder ?wrap ?text_color ?background_color
-      ?focused_text_color ?focused_background_color ?placeholder_color
-      ?selection_color ?selection_fg ?cursor_style ?cursor_color
-      ?cursor_blinking ()
+    Props.make ?value ?highlights ?placeholder ?wrap ?text_color
+      ?background_color ?focused_text_color ?focused_background_color
+      ?placeholder_color ?selection_color ?selection_fg ?cursor_style
+      ?cursor_color ?cursor_blinking ()
   in
   let buf = Edit_buffer.create ~max_length:max_int props.value in
   let text_buf = Text_buffer.create () in
@@ -504,6 +549,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value
   Renderable.set_render_before node (Some (render_before t));
   Renderable.set_cursor_provider node (cursor_provider t);
   Renderable.set_default_key_handler node (Some (handle_key t));
+  register_line_info t;
   sync_style t ~focused:false;
   t
 
@@ -519,6 +565,9 @@ let set_value t s =
 (* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
+  let highlights_changed =
+    not (Props.spans_equal t.props.highlights props.highlights)
+  in
   if
     (not (String.equal t.props.value props.value))
     && not (String.equal (Edit_buffer.text t.buf) props.value)
@@ -530,6 +579,7 @@ let apply_props t (props : Props.t) =
   end;
   if t.props.wrap <> props.wrap then Text_surface.set_wrap t.surface props.wrap;
   t.props <- props;
+  if highlights_changed then sync t;
   Renderable.request_render t.node
 
 (* ───── Pretty-printing ───── *)

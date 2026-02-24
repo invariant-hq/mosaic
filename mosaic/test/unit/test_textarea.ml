@@ -99,6 +99,14 @@ let props_detects_cursor_blinking_diff () =
   let b = Textarea.Props.make ~cursor_blinking:false () in
   is_false ~msg:"different" (Textarea.Props.equal a b)
 
+let props_detects_highlights_diff () =
+  let style = Ansi.Style.make ~fg:Ansi.Color.cyan () in
+  let a =
+    Textarea.Props.make ~highlights:[ { Text_buffer.text = "let"; style } ] ()
+  in
+  let b = Textarea.Props.make ~highlights:[] () in
+  is_false ~msg:"different" (Textarea.Props.equal a b)
+
 (* ── Construction ── *)
 
 let create_attaches_to_parent () =
@@ -125,6 +133,14 @@ let create_surface_accessible () =
   let _t, ta = make_textarea () in
   let _surface = Textarea.surface ta in
   is_true ~msg:"surface accessible" true
+
+let create_registers_line_info_provider () =
+  let _t, ta = make_textarea ~value:"one\ntwo\nthree" () in
+  match Renderable.line_info (Textarea.node ta) with
+  | None -> fail "expected line info provider"
+  | Some info ->
+      equal ~msg:"line count" int 3 info.Renderable.line_count;
+      is_true ~msg:"has display lines" (info.display_line_count >= 3)
 
 (* ── Value ── *)
 
@@ -704,6 +720,7 @@ let () =
           test "detects text_color diff" props_detects_text_color_diff;
           test "detects cursor_style diff" props_detects_cursor_style_diff;
           test "detects cursor_blinking diff" props_detects_cursor_blinking_diff;
+          test "detects highlights diff" props_detects_highlights_diff;
         ];
       group "Construction"
         [
@@ -712,6 +729,8 @@ let () =
           test "default value is empty" create_default_value_is_empty;
           test "buffer accessible" create_buffer_accessible;
           test "surface accessible" create_surface_accessible;
+          test "registers line info provider"
+            create_registers_line_info_provider;
         ];
       group "Value"
         [

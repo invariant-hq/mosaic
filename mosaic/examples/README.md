@@ -34,6 +34,7 @@ dune exec ./mosaic/examples/<name>/main.exe
 | `21-line-number` | Line number gutter with signs and colors        |
 | `22-layout`    | CSS Grid layout with responsive switching         |
 | `23-resize`    | Terminal resize and focus events                  |
+| `x-code-editor` | Editable code editor with completion + line numbers |
 | `x-agent`      | Agent-style primary-screen semantics demo         |
 | `x-dashboard`  | Component composition with TEA `map`             |
 | `x-syspanel`  | System metrics monitor with CPU, memory, disk, and processes |
@@ -175,6 +176,13 @@ Terminal-aware info panel using `Sub.on_resize`, `Sub.on_focus`, and
 `Sub.on_blur`. Displays live terminal dimensions, a focused/blurred
 indicator, resize event history, and content that adapts between wide,
 normal, and narrow column layouts based on terminal width.
+
+### `x-code-editor` – Editor workflow demo
+
+Interactive code-editor demo with a `textarea` wrapped in `line_number`,
+showing editable gutters, inline syntax highlighting, and language-aware
+completion. Demonstrates completion trigger/cycle/accept and language
+switching between OCaml and JSON while editing.
 
 ### `x-agent` – Agent-style TUI semantics
 

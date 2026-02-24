@@ -147,8 +147,8 @@ let textarea ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?focusable ?autofocus ?buffered ?live ?ref
-    ?on_mouse ?on_key ?on_paste ?value ?placeholder ?wrap ?text_color
-    ?background_color ?focused_text_color ?focused_background_color
+    ?on_mouse ?on_key ?on_paste ?value ?highlights ?placeholder ?wrap
+    ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
     ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?children:_
     () =
@@ -160,10 +160,11 @@ let textarea ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?focusable ?autofocus
-    ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?value ?placeholder ?wrap
-    ?text_color ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ()
+    ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?value ?highlights
+    ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
+    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
+    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
+    ()
 
 let line_number ?key ?id ?display ?box_sizing ?position ?overflow
     ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap

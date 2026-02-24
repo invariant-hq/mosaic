@@ -1905,6 +1905,7 @@ val textarea :
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
   ?value:string ->
+  ?highlights:span list ->
   ?placeholder:string ->
   ?wrap:Text_surface.wrap ->
   ?text_color:Ansi.Color.t ->
@@ -1926,6 +1927,8 @@ val textarea :
     argument set with {!val-input}; see that entry for argument descriptions.
 
     Textarea-specific optional arguments not present on {!val-input}:
+    - [highlights] -- optional styled spans used for syntax highlighting. When
+      provided, the span text must match [value].
     - [wrap] -- line-wrapping mode within the editing area. Defaults to the
       surface default. *)
 

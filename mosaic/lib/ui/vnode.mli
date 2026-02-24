@@ -666,6 +666,7 @@ val textarea :
   ?on_key:(Event.key -> 'msg) ->
   ?on_paste:(Event.paste -> 'msg) ->
   ?value:string ->
+  ?highlights:Text_buffer.span list ->
   ?placeholder:string ->
   ?wrap:Text_surface.wrap ->
   ?text_color:Ansi.Color.t ->
@@ -690,6 +691,8 @@ val textarea :
     - [focusable] controls whether the node can receive focus. Defaults to
       [true].
     - [value] is the initial text content. Defaults to [""].
+    - [highlights] is optional styled spans used for syntax highlighting. When
+      provided, the span text must match [value].
     - [placeholder] is the text shown when the textarea is empty, regardless of
       focus. Defaults to [""].
     - [wrap] is the line-wrapping mode. Defaults to [`Word].

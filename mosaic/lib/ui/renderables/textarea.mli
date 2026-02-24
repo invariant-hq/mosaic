@@ -29,6 +29,7 @@ val create :
   ?z_index:int ->
   ?opacity:float ->
   ?value:string ->
+  ?highlights:Text_buffer.span list ->
   ?placeholder:string ->
   ?wrap:Text_surface.wrap ->
   ?text_color:Ansi.Color.t ->
@@ -48,6 +49,8 @@ val create :
   t
 (** [create ~parent ()] is a textarea attached to [parent] with:
     - [value]: initial text content. Defaults to [""].
+    - [highlights]: optional styled spans used for syntax highlighting. The span
+      text must match [value]. Defaults to [[]].
     - [placeholder]: text shown when empty. Defaults to [""].
     - [wrap]: line wrapping mode. Defaults to [`Word].
     - [text_color]: unfocused text color. Defaults to {!Ansi.Color.White}.
@@ -88,6 +91,7 @@ module Props : sig
 
   val make :
     ?value:string ->
+    ?highlights:Text_buffer.span list ->
     ?placeholder:string ->
     ?wrap:Text_surface.wrap ->
     ?text_color:Ansi.Color.t ->
