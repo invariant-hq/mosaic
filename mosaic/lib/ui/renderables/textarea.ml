@@ -672,6 +672,16 @@ let set_value t s =
   t.preferred_col <- None;
   Renderable.request_render t.node
 
+let edit t f =
+  if f t.buf then begin
+    sync t;
+    fire_on_input t;
+    ignore (fire_on_cursor t : bool);
+    ensure_cursor_visible t;
+    t.preferred_col <- None;
+    Renderable.request_render t.node
+  end
+
 (* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =

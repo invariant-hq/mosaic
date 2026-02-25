@@ -153,6 +153,13 @@ val set_value : t -> string -> unit
 (** [set_value t s] replaces the text content with [s]. Resets scroll and cursor
     visibility. *)
 
+val edit : t -> (Edit_buffer.t -> bool) -> unit
+(** [edit t f] runs [f] on the underlying buffer. If [f] returns [true]
+    (indicating the buffer changed), syncs the display, fires [on_input] and
+    [on_cursor] callbacks, and scrolls to keep the cursor visible. Use this for
+    programmatic edits such as snippet insertion, indentation, or LSP-driven
+    text changes. *)
+
 (** {1:callbacks Callbacks} *)
 
 val set_on_input : t -> (string -> unit) option -> unit
