@@ -644,7 +644,13 @@ let submit ?primary_required_rows t =
             clear_lines
               ~start:(pre_submit_render_offset + 1)
               ~count:(t.render_offset - pre_submit_render_offset);
-          if t.tui_height > 0 then (
+          (* Skip erase_below_cursor when a static flush just changed the
+             layout: force_full_next_frame is set and the render height cap
+             guarantees the full render covers every dynamic-region row, so
+             the erase would just cause a redundant clear-then-repaint. *)
+          if
+            (not static_layout_changed) && t.tui_height > 0
+          then (
             Terminal.move_cursor t.terminal ~row:(t.render_offset + 1) ~col:1
               ~visible:(Terminal.cursor_visible t.terminal);
             send Ansi.(to_string erase_below_cursor)));
