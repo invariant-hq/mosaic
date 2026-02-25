@@ -159,12 +159,8 @@ let active_turn_view model =
 
 let init () =
   let banner =
-    Cmd.batch
-      [
-        Cmd.static_print "✻ x-agent";
-        Cmd.static_print "  primary screen · seamless static commit";
-        Cmd.static_print "";
-      ]
+    Cmd.static_commit
+      (text "✻ x-agent\n  primary screen · seamless static commit\n")
   in
   (initial_model, banner)
 

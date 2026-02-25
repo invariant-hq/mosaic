@@ -650,15 +650,10 @@ module Cmd : sig
     | Focus of string
         (** Move keyboard focus to the element identified by the given [id]. Has
             no effect if no element carries that [id]. *)
-    | Static_write of string
-        (** Write a string to the terminal above the interactive UI area,
-            without a trailing newline. *)
-    | Static_print of string
-        (** Write a string to the terminal above the interactive UI area, with a
-            trailing newline. *)
     | Static_commit of 'msg option Vnode.t
         (** Render a vnode snapshot and write it to the static area with ANSI
-            styling preserved. *)
+            styling preserved. The row count is computed automatically from the
+            rendered grid. *)
     | Static_clear  (** Clear all previously written static content. *)
 
   val none : 'msg t
@@ -687,15 +682,6 @@ module Cmd : sig
   val focus : string -> 'msg t
   (** [focus id] moves keyboard focus to the element whose [id] attribute equals
       [id]. Has no effect when no matching element exists. *)
-
-  val static_write : string -> 'msg t
-  (** [static_write s] writes [s] above the interactive UI area without a
-      trailing newline. Static output persists across renders. See also
-      {!val-static_print} and {!val-static_clear}. *)
-
-  val static_print : string -> 'msg t
-  (** [static_print s] writes [s] above the interactive UI area with a trailing
-      newline. See also {!val-static_write}. *)
 
   val static_commit : 'msg option Vnode.t -> 'msg t
   (** [static_commit view] renders [view] offscreen at the current terminal

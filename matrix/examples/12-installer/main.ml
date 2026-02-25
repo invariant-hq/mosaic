@@ -189,10 +189,10 @@ let () =
         List.iter
           (fun pkg ->
             let msg =
-              Printf.sprintf "✓ %s %s installed (%dKB)" pkg.name pkg.version
+              Printf.sprintf "✓ %s %s installed (%dKB)\n" pkg.name pkg.version
                 pkg.size
             in
-            Matrix.static_print app msg)
+            Matrix.static_write app ~rows:1 msg)
           just_completed;
         last_completed := curr_completed);
       (* Stop when all done after a brief delay *)

@@ -118,8 +118,6 @@ module Cmd = struct
     | Quit
     | Set_title of string
     | Focus of string
-    | Static_write of string
-    | Static_print of string
     | Static_commit of 'msg option Vnode.t
     | Static_clear
 
@@ -129,8 +127,6 @@ module Cmd = struct
   let quit = Quit
   let set_title title = Set_title title
   let focus id = Focus id
-  let static_write text = Static_write text
-  let static_print text = Static_print text
   let static_commit view = Static_commit view
   let static_clear = Static_clear
 
@@ -142,8 +138,6 @@ module Cmd = struct
     | Quit -> Quit
     | Set_title title -> Set_title title
     | Focus id -> Focus id
-    | Static_write text -> Static_write text
-    | Static_print text -> Static_print text
     | Static_commit view -> Static_commit (Vnode.map (Option.map f) view)
     | Static_clear -> Static_clear
 end
@@ -326,11 +320,9 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
       if not (try_focus runtime id) then (
         enqueue_focus runtime id;
         Matrix.request_redraw runtime.matrix_app)
-  | Cmd.Static_write text -> Matrix.static_write runtime.matrix_app text
-  | Cmd.Static_print text -> Matrix.static_print runtime.matrix_app text
   | Cmd.Static_commit view ->
-      let text, _rows = render_static_view runtime view in
-      Matrix.static_write runtime.matrix_app text
+      let text, rows = render_static_view runtime view in
+      Matrix.static_write runtime.matrix_app ~rows text
   | Cmd.Static_clear -> Matrix.static_clear runtime.matrix_app
 
 let rec collect_subs runtime (sub : _ Sub.t) =

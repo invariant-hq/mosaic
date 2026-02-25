@@ -64,7 +64,7 @@ type app = {
   mutable render_offset : int;
   mutable tui_height : int;
   mutable static_needs_newline : bool;
-  mutable static_queue : string list;
+  mutable static_queue : (string * int) list;
   mutable needs_region_clear : bool;
   (* Resize and frame timing *)
   mutable last_resize_apply_time : float;
@@ -338,17 +338,6 @@ let crlf = "\r\n"
 let erase_entire_line = Ansi.(to_string (erase_line ~mode:`All))
 let sgr_reset = Ansi.(to_string reset)
 
-let strip_trailing_crlf s =
-  let len = String.length s in
-  if
-    len >= 2
-    && Char.equal (String.unsafe_get s (len - 2)) '\r'
-    && Char.equal (String.unsafe_get s (len - 1)) '\n'
-  then String.sub s 0 (len - 2)
-  else if len >= 1 && Char.equal (String.unsafe_get s (len - 1)) '\n' then
-    String.sub s 0 (len - 1)
-  else s
-
 let starts_with_newline s =
   let len = String.length s in
   if len = 0 then false
@@ -396,7 +385,7 @@ let normalize_newlines s =
     fill 0 0;
     Bytes.unsafe_to_string bytes
 
-let static_write_raw_immediate t text =
+let static_write_immediate t ~rows text =
   if t.config.mode = `Alt || String.length text = 0 then ()
   else begin
     let prev_render_offset = t.render_offset in
@@ -411,15 +400,11 @@ let static_write_raw_immediate t text =
       t.static_needs_newline && not (starts_with_newline text)
     in
     let payload_text = if needs_leading_newline then crlf ^ text else text in
-    let payload_newlines =
-      let n = ref 0 in
-      String.iter (fun c -> if Char.equal c '\n' then incr n) payload_text;
-      !n
-    in
+    let payload_rows = rows + (if needs_leading_newline then 1 else 0) in
     let min_h = max 1 t.config.min_tui_height in
     let max_offset = max 0 (t.height - min_h) in
     let grow_by =
-      min payload_newlines (max 0 (max_offset - base_render_offset))
+      min payload_rows (max 0 (max_offset - base_render_offset))
     in
     let render_offset = base_render_offset + grow_by in
     apply_primary_region t ~render_offset ~resize:false;
@@ -434,23 +419,20 @@ let static_write_raw_immediate t text =
     t.static_needs_newline <- not (ends_with_newline text)
   end
 
-let enqueue_static t text = t.static_queue <- text :: t.static_queue
-
 let flush_static_queue t =
   match t.static_queue with
   | [] -> ()
   | rev ->
       t.static_queue <- [];
-      List.iter (fun text -> static_write_raw_immediate t text) (List.rev rev)
+      List.iter
+        (fun (text, rows) -> static_write_immediate t ~rows text)
+        (List.rev rev)
 
-let static_write_raw t text =
+let static_write t ~rows text =
   if t.config.mode = `Alt || String.length text = 0 then ()
   else (
-    enqueue_static t text;
+    t.static_queue <- (text, rows) :: t.static_queue;
     request_redraw t)
-
-let static_write t text = static_write_raw t text
-let static_print t text = static_write_raw t (strip_trailing_crlf text)
 
 let static_clear t =
   if t.config.mode = `Alt then ()

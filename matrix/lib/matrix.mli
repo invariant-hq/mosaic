@@ -255,13 +255,11 @@ val capabilities : app -> Terminal.capabilities
     These functions write to the primary screen above the renderer. They are
     ignored in [`Alt] mode. *)
 
-val static_write : app -> string -> unit
-(** [static_write app s] writes [s] to the static area. *)
-
-val static_print : app -> string -> unit
-(** [static_print app s] writes [s] as a complete line. Trailing newlines are
-    stripped; line separation between consecutive calls is handled
-    automatically. *)
+val static_write : app -> rows:int -> string -> unit
+(** [static_write app ~rows s] writes [s] to the static area, using [rows] as
+    the exact number of terminal rows consumed. The caller is responsible for
+    computing [rows] accurately (e.g. from {!Grid.active_height} after
+    rendering to a grid). *)
 
 val static_clear : app -> unit
 (** [static_clear app] clears static content and resets the primary scroll
