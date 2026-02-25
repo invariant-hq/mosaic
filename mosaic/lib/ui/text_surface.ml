@@ -513,8 +513,10 @@ let update_local_selection t ~anchor_x ~anchor_y ~focus_x ~focus_y =
   changed
 
 let reset_selection t =
-  t.selection.active <- false;
-  Renderable.request_render t.node
+  if t.selection.active then begin
+    t.selection.active <- false;
+    Renderable.request_render t.node
+  end
 
 let has_selection t = t.selection.active
 
