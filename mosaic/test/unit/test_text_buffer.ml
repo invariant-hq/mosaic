@@ -97,6 +97,31 @@ let append_multiple () =
   Text_buffer.append buf "c";
   equal ~msg:"plain_text" string "abc" (Text_buffer.plain_text buf)
 
+let append_after_read () =
+  let buf = Text_buffer.create () in
+  Text_buffer.append buf "a";
+  (* Force ensure_span_order via plain_text *)
+  equal ~msg:"after first" string "a" (Text_buffer.plain_text buf);
+  Text_buffer.append buf "b";
+  equal ~msg:"after second" string "ab" (Text_buffer.plain_text buf);
+  Text_buffer.append buf "c";
+  equal ~msg:"after third" string "abc" (Text_buffer.plain_text buf)
+
+let append_styled_after_read () =
+  let buf = Text_buffer.create () in
+  Text_buffer.set_text buf "start";
+  (* Read to force forward order *)
+  ignore (Text_buffer.plain_text buf : string);
+  Text_buffer.append_styled buf
+    [ { Text_buffer.text = " mid"; style = red_style } ];
+  (* Read again to force forward order *)
+  equal ~msg:"after first append" string "start mid"
+    (Text_buffer.plain_text buf);
+  Text_buffer.append_styled buf
+    [ { Text_buffer.text = " end"; style = green_style } ];
+  equal ~msg:"after second append" string "start mid end"
+    (Text_buffer.plain_text buf)
+
 let append_styled_to_existing () =
   let buf = Text_buffer.create () in
   Text_buffer.set_text buf "start";
@@ -438,7 +463,9 @@ let () =
         [
           test "append to existing" append_to_existing;
           test "multiple appends" append_multiple;
+          test "append after read" append_after_read;
           test "append_styled" append_styled_to_existing;
+          test "append_styled after read" append_styled_after_read;
         ];
       group "Content — clear"
         [

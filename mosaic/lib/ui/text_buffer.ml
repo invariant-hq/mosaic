@@ -80,6 +80,12 @@ let ensure_span_order t =
     t.spans_rev <- false
   end
 
+let ensure_spans_rev t =
+  if not t.spans_rev then begin
+    t.spans <- List.rev t.spans;
+    t.spans_rev <- true
+  end
+
 (* ───── Content ───── *)
 
 let set_text t s =
@@ -93,13 +99,13 @@ let set_styled_text t spans =
   invalidate t
 
 let append t s =
+  ensure_spans_rev t;
   t.spans <- { text = s; style = t.default_style } :: t.spans;
-  t.spans_rev <- true;
   invalidate t
 
 let append_styled t new_spans =
+  ensure_spans_rev t;
   t.spans <- List.rev_append new_spans t.spans;
-  t.spans_rev <- true;
   invalidate t
 
 let clear t =
