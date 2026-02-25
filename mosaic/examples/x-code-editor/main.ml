@@ -129,15 +129,13 @@ let completion_pool code =
 
 let grapheme_byte_offsets s =
   let n = Glyph.String.grapheme_count s in
-  let offsets = Array.make (n + 1) 0 in
+  let offsets = Array.make (n + 1) (String.length s) in
   let i = ref 0 in
-  Glyph.String.iter_grapheme_info ~width_method:`Unicode ~tab_width:2
-    (fun ~offset ~len ~width:_ ->
+  Glyph.String.iter_graphemes
+    (fun ~offset ~len:_ ->
       offsets.(!i) <- offset;
-      incr i;
-      offsets.(!i) <- offset + len)
+      incr i)
     s;
-  offsets.(n) <- String.length s;
   offsets
 
 let cursor_byte_of code cursor =
