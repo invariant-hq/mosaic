@@ -427,13 +427,31 @@ let prev_word_boundary t =
 
 (* ───── Word deletion ───── *)
 
+(* Collect the set of grapheme offsets that are wrap-break characters. *)
+let break_set t =
+  let s = Hashtbl.create 16 in
+  Glyph.String.iter_wrap_breaks
+    (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
+      Hashtbl.replace s grapheme_offset ())
+    t.content;
+  s
+
 let delete_word_backward t =
   if has_selection t then delete_selection t
   else if t.cursor_pos = 0 then false
   else begin
-    let target = prev_word_boundary t in
+    let breaks = break_set t in
+    let pos = ref t.cursor_pos in
+    (* Phase 1: skip backward over consecutive break characters *)
+    while !pos > 0 && Hashtbl.mem breaks (!pos - 1) do
+      decr pos
+    done;
+    (* Phase 2: skip backward over non-break characters (the word) *)
+    while !pos > 0 && not (Hashtbl.mem breaks (!pos - 1)) do
+      decr pos
+    done;
     save_undo t;
-    delete_grapheme_range t target t.cursor_pos;
+    delete_grapheme_range t !pos t.cursor_pos;
     true
   end
 
@@ -443,9 +461,18 @@ let delete_word_forward t =
     let c = ensure_cache t in
     if t.cursor_pos >= c.count then false
     else begin
-      let target = next_word_boundary t in
+      let breaks = break_set t in
+      let pos = ref t.cursor_pos in
+      (* Phase 1: skip forward over non-break characters (the word) *)
+      while !pos < c.count && not (Hashtbl.mem breaks !pos) do
+        incr pos
+      done;
+      (* Phase 2: skip forward over consecutive break characters *)
+      while !pos < c.count && Hashtbl.mem breaks !pos do
+        incr pos
+      done;
       save_undo t;
-      delete_grapheme_range t t.cursor_pos target;
+      delete_grapheme_range t t.cursor_pos !pos;
       true
     end
 

@@ -318,6 +318,17 @@ let delete_word_backward_repeated () =
   is_true ~msg:"changed2" changed;
   equal ~msg:"after second" string "hello " (Edit_buffer.text buf)
 
+let delete_word_backward_multiple_spaces () =
+  (* Cursor after spaces: skip breaks then word (readline-style) *)
+  let buf = Edit_buffer.create "hello   world" in
+  let changed = Edit_buffer.delete_word_backward buf in
+  is_true ~msg:"changed" changed;
+  equal ~msg:"after first" string "hello   " (Edit_buffer.text buf);
+  (* Now cursor is right after spaces — should skip all spaces + word *)
+  let changed = Edit_buffer.delete_word_backward buf in
+  is_true ~msg:"changed2" changed;
+  equal ~msg:"after second" string "" (Edit_buffer.text buf)
+
 let delete_word_backward_at_start () =
   let buf = Edit_buffer.create "hello" in
   Edit_buffer.set_cursor buf 0;
@@ -988,6 +999,8 @@ let () =
           test "delete_forward with selection" delete_forward_with_selection;
           test "delete_word_backward basic" delete_word_backward_basic;
           test "delete_word_backward repeated" delete_word_backward_repeated;
+          test "delete_word_backward multiple spaces"
+            delete_word_backward_multiple_spaces;
           test "delete_word_backward at start" delete_word_backward_at_start;
           test "delete_word_forward basic" delete_word_forward_basic;
           test "delete_word_forward at end" delete_word_forward_at_end;
