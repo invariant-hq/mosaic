@@ -17,13 +17,24 @@ val strip_newlines : string -> string
 
 (** {1:constructors Constructors} *)
 
-val create : ?max_length:int -> string -> t
-(** [create ?max_length initial] is a buffer whose initial content is [initial],
-    with cursor at the end.
+val create :
+  ?max_length:int ->
+  ?width_method:Glyph.width_method ->
+  ?tab_width:int ->
+  string ->
+  t
+(** [create ?max_length ?width_method ?tab_width initial] is a buffer whose
+    initial content is [initial], with cursor at the end.
 
     [max_length] is the maximum number of grapheme clusters the buffer may hold.
     [initial] is truncated to [max_length] grapheme clusters if it exceeds that
     limit. [max_length] defaults to [1000] and is clamped to [>= 0].
+
+    [width_method] controls how grapheme display widths are computed. Defaults
+    to [`Unicode].
+
+    [tab_width] is the display width of tab characters. Defaults to [2] and is
+    clamped to [>= 1].
 
     See also {!set_max_length}. *)
 

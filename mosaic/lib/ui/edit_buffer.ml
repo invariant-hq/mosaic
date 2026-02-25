@@ -18,13 +18,13 @@ let strip_newlines s =
   done;
   if Buffer.length buf = len then s else Buffer.contents buf
 
-let truncate_graphemes s max_graphemes =
+let truncate_graphemes ~width_method ~tab_width s max_graphemes =
   if max_graphemes <= 0 then ""
   else
     let result_end = ref 0 in
     let idx = ref 0 in
     let truncated = ref false in
-    Glyph.String.iter_grapheme_info ~width_method:`Unicode ~tab_width:2
+    Glyph.String.iter_grapheme_info ~width_method ~tab_width
       (fun ~offset:_ ~len ~width:_ ->
         if !idx < max_graphemes then result_end := !result_end + len
         else truncated := true;
@@ -53,11 +53,13 @@ type t = {
   mutable undo_stack : snapshot list;
   mutable redo_stack : snapshot list;
   mutable cache : cache option;
+  tab_width : int;
+  width_method : Glyph.width_method;
 }
 
 (* ───── Cache ───── *)
 
-let build_cache content =
+let build_cache ~width_method ~tab_width content =
   let n = Glyph.String.grapheme_count content in
   let offsets = Array.make n 0 in
   let widths = Array.make n 0 in
@@ -71,7 +73,7 @@ let build_cache content =
       let i = !idx in
       offsets.(i) <- offset;
       let w =
-        Glyph.String.measure_sub ~width_method:`Unicode ~tab_width:2 content
+        Glyph.String.measure_sub ~width_method ~tab_width content
           ~pos:offset ~len
       in
       widths.(i) <- w;
@@ -96,7 +98,10 @@ let ensure_cache t =
   match t.cache with
   | Some c -> c
   | None ->
-      let c = build_cache t.content in
+      let c =
+        build_cache ~width_method:t.width_method ~tab_width:t.tab_width
+          t.content
+      in
       t.cache <- Some c;
       c
 
@@ -118,9 +123,11 @@ let byte_offset_of_grapheme_in_content t cache i =
 
 (* ───── Construction ───── *)
 
-let create ?(max_length = 1000) initial =
+let create ?(max_length = 1000) ?(width_method = `Unicode) ?(tab_width = 2)
+    initial =
   let max_length = Int.max 0 max_length in
-  let content = truncate_graphemes initial max_length in
+  let tab_width = Int.max 1 tab_width in
+  let content = truncate_graphemes ~width_method ~tab_width initial max_length in
   let t =
     {
       content;
@@ -130,6 +137,8 @@ let create ?(max_length = 1000) initial =
       undo_stack = [];
       redo_stack = [];
       cache = None;
+      tab_width;
+      width_method;
     }
   in
   let c = ensure_cache t in
@@ -141,7 +150,10 @@ let create ?(max_length = 1000) initial =
 let text t = t.content
 
 let set_text t s =
-  let content = truncate_graphemes s t.max_length in
+  let content =
+    truncate_graphemes ~width_method:t.width_method ~tab_width:t.tab_width s
+      t.max_length
+  in
   t.content <- content;
   invalidate_cache t;
   let c = ensure_cache t in
@@ -304,8 +316,8 @@ let truncate_to_fit t s =
     else begin
       let result_end = ref 0 in
       let idx = ref 0 in
-      Glyph.String.iter_grapheme_info ~width_method:`Unicode ~tab_width:2
-        (fun ~offset:_ ~len ~width:_ ->
+      Glyph.String.iter_grapheme_info ~width_method:t.width_method
+        ~tab_width:t.tab_width (fun ~offset:_ ~len ~width:_ ->
           if !idx < remaining then begin
             result_end := !result_end + len;
             incr idx
