@@ -23,7 +23,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(frame_dump_every = 0) ?frame_dump_dir ?frame_dump_pattern
     ?(frame_dump_hits = false) ?(cursor_visible = mode = `Alt)
     ?(explicit_width = false) ?(input_timeout = None)
-    ?(resize_debounce = Some 0.1) ?(min_tui_height = 1)
+    ?(resize_debounce = Some 0.1) ?(min_tui_height = 1) ?(start_idle = false)
     ?(signal_handlers = true) ?initial_caps ~sw ~clock ~stdin ~stdout () =
   let input_eio_fd = Eio_unix.Resource.fd stdin in
   let output_eio_fd = Eio_unix.Resource.fd stdout in
@@ -193,7 +193,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
       ~debug_overlay ~debug_overlay_corner ~debug_overlay_capacity
       ~frame_dump_every ?frame_dump_dir ?frame_dump_pattern ~frame_dump_hits
       ~cursor_visible ~explicit_width ~input_timeout ~resize_debounce
-      ~min_tui_height ~write_output ~now ~wake ~terminal_size ~set_raw_mode
+      ~min_tui_height ~start_idle ~write_output ~now ~wake ~terminal_size ~set_raw_mode
       ~flush_input ~read_events ~query_cursor_position ~cleanup:ignore ~parser
       ~terminal ~width ~height ~render_offset ~static_needs_newline ()
   in

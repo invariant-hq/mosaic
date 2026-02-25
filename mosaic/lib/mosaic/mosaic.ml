@@ -213,6 +213,7 @@ type ('model, 'msg) runtime = {
   mutable every_subs : (float * float * (unit -> 'msg)) list;
   mutable focus_sub : 'msg option;
   mutable blur_sub : 'msg option;
+  mutable sub_live_active : bool;
 }
 
 let rec find_by_id_in (node : Renderable.t) (id : string) : Renderable.t option
@@ -366,7 +367,18 @@ let update_subscriptions runtime =
             0. prev_every
         in
         (interval, prev_elapsed, f))
-      runtime.every_subs
+      runtime.every_subs;
+  (* Track subscription-driven liveness: tick and every subscriptions
+     require the render cadence to be running. *)
+  let has_live_subs =
+    runtime.tick_sub <> None || runtime.every_subs <> []
+  in
+  if has_live_subs && not runtime.sub_live_active then (
+    runtime.sub_live_active <- true;
+    Matrix.request_live runtime.matrix_app)
+  else if (not has_live_subs) && runtime.sub_live_active then (
+    runtime.sub_live_active <- false;
+    Matrix.drop_live runtime.matrix_app)
 
 let dispatch runtime msg =
   let model', cmd = runtime.app.update msg runtime.model in
@@ -511,7 +523,9 @@ let run ?matrix
   let matrix_app =
     match matrix with
     | Some matrix -> matrix
-    | None -> Matrix.create ~target_fps:(Some 60.) ~cursor_visible:false ()
+    | None ->
+        Matrix.create ~target_fps:(Some 60.) ~cursor_visible:false
+          ~start_idle:true ()
   in
   let model, init_cmd = app.init () in
   let base_grid = Matrix.grid matrix_app in
@@ -550,10 +564,28 @@ let run ?matrix
       every_subs = [];
       focus_sub = None;
       blur_sub = None;
+      sub_live_active = false;
     }
   in
   process_cmd runtime init_cmd;
   update_subscriptions runtime;
+
+  (* Drive Matrix loop activity from Renderable.live_count: start the
+     render cadence when any node needs continuous rendering, stop when
+     none do. *)
+  let root = Renderer.root renderer in
+  let live_was_positive = ref false in
+  Renderable.Private.set_on_live_count_change root
+    (Some
+       (fun _node ->
+         let count = Renderable.Private.live_count root in
+         let is_positive = count > 0 in
+         if is_positive && not !live_was_positive then (
+           live_was_positive := true;
+           Matrix.request_live matrix_app)
+         else if (not is_positive) && !live_was_positive then (
+           live_was_positive := false;
+           Matrix.drop_live matrix_app)));
 
   let frame_delta = ref 0. in
   let primary_required_rows (_app : Matrix.app) =

@@ -38,6 +38,7 @@ type config = {
   debug_overlay_corner : debug_overlay_corner;
   debug_overlay_capacity : int;
   min_tui_height : int;
+  start_idle : bool;
 }
 
 type app = {
@@ -893,7 +894,7 @@ let make_config ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(debug_overlay_corner = `Bottom_right) ?(debug_overlay_capacity = 120)
     ?(cursor_visible = mode = `Alt) ?(explicit_width = false)
     ?(input_timeout = None) ?(resize_debounce = Some 0.1)
-    ?(min_tui_height = 1) () =
+    ?(min_tui_height = 1) ?(start_idle = false) () =
   let effective_mouse_mode =
     if mouse_enabled then Some (Option.value ~default:`Sgr_any mouse) else None
   in
@@ -915,6 +916,7 @@ let make_config ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     debug_overlay_corner;
     debug_overlay_capacity;
     min_tui_height;
+    start_idle;
   }
 
 (* Initialize a live app (internal) *)
@@ -985,9 +987,11 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
       closed = false;
       loop_active = false;
       control_state =
-        (match c.target_fps with
-        | Some fps when fps > 0. -> `Explicit_started
-        | _ -> `Idle);
+        (if c.start_idle then `Idle
+         else
+           match c.target_fps with
+           | Some fps when fps > 0. -> `Explicit_started
+           | _ -> `Idle);
       previous_control_state = `Idle;
       live_requests = 0;
     }
@@ -1006,12 +1010,13 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(frame_dump_hits = false) ?(cursor_visible = mode = `Alt)
     ?(explicit_width = false) ?(input_timeout = None)
     ?(resize_debounce = Some 0.1) ?(output = `Stdout) ?(signal_handlers = true)
-    ?initial_caps ?(min_tui_height = 1) () =
+    ?initial_caps ?(min_tui_height = 1) ?(start_idle = false) () =
   let config =
     make_config ~mode ~raw_mode ~target_fps ~respect_alpha ~mouse_enabled ~mouse
       ~bracketed_paste ~focus_reporting ~kitty_keyboard ~exit_on_ctrl_c
       ~debug_overlay_corner ~debug_overlay_capacity ~cursor_visible
-      ~explicit_width ~input_timeout ~resize_debounce ~min_tui_height ()
+      ~explicit_width ~input_timeout ~resize_debounce ~min_tui_height
+      ~start_idle ()
   in
   let output_fd = match output with `Stdout -> Unix.stdout | `Fd fd -> fd in
   let input_fd = Unix.stdin in
@@ -1109,15 +1114,16 @@ let attach ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(frame_dump_every = 0) ?frame_dump_dir ?frame_dump_pattern
     ?(frame_dump_hits = false) ?(cursor_visible = mode = `Alt)
     ?(explicit_width = false) ?(input_timeout = None)
-    ?(resize_debounce = Some 0.1) ?(min_tui_height = 1) ~write_output ~now ~wake
-    ~terminal_size ~set_raw_mode ~flush_input ~read_events
-    ~query_cursor_position ~cleanup ~parser ~terminal ~width ~height
+    ?(resize_debounce = Some 0.1) ?(min_tui_height = 1) ?(start_idle = false)
+    ~write_output ~now ~wake ~terminal_size ~set_raw_mode ~flush_input
+    ~read_events ~query_cursor_position ~cleanup ~parser ~terminal ~width ~height
     ?(render_offset = 0) ?(static_needs_newline = false) () =
   let config =
     make_config ~mode ~raw_mode ~target_fps ~respect_alpha ~mouse_enabled ~mouse
       ~bracketed_paste ~focus_reporting ~kitty_keyboard ~exit_on_ctrl_c
       ~debug_overlay_corner ~debug_overlay_capacity ~cursor_visible
-      ~explicit_width ~input_timeout ~resize_debounce ~min_tui_height ()
+      ~explicit_width ~input_timeout ~resize_debounce ~min_tui_height
+      ~start_idle ()
   in
   init_app config ~write_output ~now ~wake ~terminal_size ~set_raw_mode
     ~flush_input ~read_events ~query_cursor_position ~cleanup ~debug_overlay

@@ -88,6 +88,7 @@ val create :
   ?signal_handlers:bool ->
   ?initial_caps:Terminal.capabilities ->
   ?min_tui_height:int ->
+  ?start_idle:bool ->
   unit ->
   app
 (** [create ()] is a live application with Unix I/O wired in.
@@ -115,6 +116,10 @@ val create :
     {b Primary mode:}
     - [min_tui_height] minimum height in rows reserved for the dynamic TUI
       region. Static content will not grow past this floor. Defaults to [1].
+    - [start_idle] when [true], the render loop starts in idle state even when
+      [target_fps] is set. The loop begins running only when {!request_live}
+      is called. One-shot redraws via {!request_redraw} still work while idle.
+      Defaults to [false].
 
     {b Input:}
     - [mouse_enabled] whether to enable mouse tracking. Defaults to [true].
@@ -335,6 +340,7 @@ val attach :
   ?input_timeout:float option ->
   ?resize_debounce:float option ->
   ?min_tui_height:int ->
+  ?start_idle:bool ->
   write_output:(bytes -> int -> int -> unit) ->
   now:(unit -> float) ->
   wake:(unit -> unit) ->

@@ -45,6 +45,7 @@ val create :
   ?input_timeout:float option ->
   ?resize_debounce:float option ->
   ?min_tui_height:int ->
+  ?start_idle:bool ->
   ?signal_handlers:bool ->
   ?initial_caps:Matrix.Terminal.capabilities ->
   sw:Eio.Switch.t ->
