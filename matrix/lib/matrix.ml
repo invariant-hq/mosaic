@@ -408,6 +408,15 @@ let static_write_immediate t ~rows text =
       min payload_rows (max 0 (max_offset - base_render_offset))
     in
     let render_offset = base_render_offset + grow_by in
+    (* Clear the rows being claimed from the dynamic region before extending
+       the scroll region, so stale dynamic content cannot be scrolled into
+       the static area. *)
+    if render_offset > base_render_offset then
+      for row = base_render_offset + 1 to render_offset do
+        Terminal.move_cursor terminal ~row ~col:1
+          ~visible:(Terminal.cursor_visible terminal);
+        Terminal.send terminal erase_entire_line
+      done;
     apply_primary_region t ~render_offset ~resize:false;
     if t.render_offset <> prev_render_offset || t.tui_height <> prev_tui_height
     then (
