@@ -657,6 +657,17 @@ let submit ?primary_required_rows t =
       if ff then t.force_full_next_frame <- false;
       ff || row_offset_changed || clipped
     in
+    (* When the grid was sized to the pre-flush tui_height but the flush grew
+       render_offset, the grid is taller than the current tui_height. Cap the
+       render height so cursor positions don't exceed the terminal bottom. *)
+    let render_height_limit =
+      match t.config.mode with
+      | `Primary ->
+          let grid_h = Grid.height (Screen.grid t.screen) in
+          if grid_h > t.tui_height then Some t.tui_height
+          else render_height_limit
+      | `Alt -> render_height_limit
+    in
     let len =
       Screen.render_to_bytes ~full:forced_full ?height_limit:render_height_limit
         t.screen t.render_buffer
