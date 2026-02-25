@@ -613,8 +613,10 @@ let submit ?primary_required_rows t =
             clear_lines
               ~start:(pre_submit_render_offset + 1)
               ~count:(t.render_offset - pre_submit_render_offset);
-          if t.tui_height > 0 then
-            clear_lines ~start:(t.render_offset + 1) ~count:t.tui_height);
+          if t.tui_height > 0 then (
+            Terminal.move_cursor t.terminal ~row:(t.render_offset + 1) ~col:1
+              ~visible:(Terminal.cursor_visible t.terminal);
+            send Ansi.(to_string erase_below_cursor)));
         Screen.invalidate_presented t.screen;
         t.needs_region_clear <- false
     | _ -> ());
