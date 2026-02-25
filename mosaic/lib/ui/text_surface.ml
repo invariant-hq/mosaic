@@ -387,6 +387,7 @@ let set_wrap_width t w =
   if t.wrap_width <> w then begin
     t.wrap_width <- w;
     t.cached_display_info <- None;
+    t.measure_cache <- None;
     Renderable.mark_dirty t.node;
     Renderable.request_render t.node
   end
@@ -397,6 +398,7 @@ let set_truncate t v =
   if t.truncate <> v then begin
     t.truncate <- v;
     t.cached_display_info <- None;
+    t.measure_cache <- None;
     Renderable.mark_dirty t.node;
     Renderable.request_render t.node
   end
