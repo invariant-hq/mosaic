@@ -604,3 +604,30 @@ let set_cursor_offset ?(select = false) t pos =
   let c = ensure_cache t in
   let pos = Int.max 0 (Int.min pos c.count) in
   ignore (update_cursor_with_selection t ~select pos : bool)
+
+(* ───── Offset conversions ───── *)
+
+let line_of_offset t pos =
+  let c = ensure_cache t in
+  let pos = Int.max 0 (Int.min pos c.count) in
+  find_line c pos
+
+let col_of_offset t pos =
+  let c = ensure_cache t in
+  let pos = Int.max 0 (Int.min pos c.count) in
+  let line = find_line c pos in
+  pos - c.line_starts.(line)
+
+let line_start t line =
+  let c = ensure_cache t in
+  let line = Int.max 0 (Int.min line (c.line_count - 1)) in
+  c.line_starts.(line)
+
+let line_end t line =
+  let c = ensure_cache t in
+  let line = Int.max 0 (Int.min line (c.line_count - 1)) in
+  if line + 1 < c.line_count then c.line_starts.(line + 1) - 1 else c.count
+
+let byte_offset t ~grapheme =
+  let c = ensure_cache t in
+  byte_offset_of_grapheme_in_content t c grapheme

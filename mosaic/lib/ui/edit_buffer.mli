@@ -250,3 +250,27 @@ val set_max_length : t -> int -> unit
     is truncated to fit.
 
     See also {!create}. *)
+
+(** {1:offsets Offset conversions} *)
+
+val line_of_offset : t -> int -> int
+(** [line_of_offset t pos] is the 0-based logical line containing grapheme
+    offset [pos]. [pos] is clamped to \[[0];[length t]\]. *)
+
+val col_of_offset : t -> int -> int
+(** [col_of_offset t pos] is the grapheme column of [pos] within its logical
+    line. [pos] is clamped to \[[0];[length t]\]. *)
+
+val line_start : t -> int -> int
+(** [line_start t line] is the grapheme offset of the first character on
+    [line]. [line] is clamped to \[[0];[line_count t - 1]\]. *)
+
+val line_end : t -> int -> int
+(** [line_end t line] is the grapheme offset past the last character on [line],
+    before the newline (or at buffer end for the last line). [line] is clamped
+    to \[[0];[line_count t - 1]\]. *)
+
+val byte_offset : t -> grapheme:int -> int
+(** [byte_offset t ~grapheme] is the byte offset of grapheme cluster [grapheme]
+    in the buffer's content string. Returns [String.length (text t)] when
+    [grapheme >= length t]. *)
