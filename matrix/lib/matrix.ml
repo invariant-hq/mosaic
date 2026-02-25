@@ -429,6 +429,28 @@ let flush_static_queue t =
         (fun (text, rows) -> static_write_immediate t ~rows text)
         (List.rev rev)
 
+let effective_size t =
+  match t.config.mode with
+  | `Alt -> (t.width, t.height)
+  | `Primary -> (
+      match t.static_queue with
+      | [] -> (t.width, t.tui_height)
+      | rev ->
+          let min_h = max 1 t.config.min_tui_height in
+          let max_offset = max 0 (t.height - min_h) in
+          let offset, _ =
+            List.fold_left
+              (fun (offset, snl) (text, rows) ->
+                let base = if offset = 0 then 1 else offset in
+                let needs_nl = snl && not (starts_with_newline text) in
+                let payload_rows = rows + (if needs_nl then 1 else 0) in
+                let grow = min payload_rows (max 0 (max_offset - base)) in
+                (base + grow, not (ends_with_newline text)))
+              (t.render_offset, t.static_needs_newline)
+              (List.rev rev)
+          in
+          (t.width, max min_h (t.height - offset)))
+
 let static_write t ~rows text =
   if t.config.mode = `Alt || String.length text = 0 then ()
   else (
@@ -1197,10 +1219,6 @@ let run ?on_frame ?on_input ?on_resize ?primary_required_rows ~on_render t =
 
   let render_cycle ~now ~last_time =
     Option.iter (fun f -> f t ~dt:(now -. last_time)) on_frame;
-    (* Flush static writes before prepare so that on_render sees the
-       post-commit tui_height. A second flush in submit catches any
-       stragglers enqueued during on_render. *)
-    flush_static_queue t;
     prepare t;
     let user_start = t.now () in
     on_render t;

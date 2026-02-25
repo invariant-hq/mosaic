@@ -606,7 +606,7 @@ let run ?matrix
       handle_resize runtime ~width:cols ~height:rows)
     ~on_render:(fun _app ->
       render runtime;
-      let width, height = Matrix.size runtime.matrix_app in
+      let width, height = Matrix.effective_size runtime.matrix_app in
       Renderer.render_frame runtime.renderer ~width ~height ~delta:!frame_delta;
       let renderer_screen = Renderer.screen runtime.renderer in
       let renderer_grid = Matrix.Screen.grid renderer_screen in

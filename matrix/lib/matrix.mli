@@ -245,6 +245,13 @@ val full_size : app -> int * int
     ignoring the primary-mode render offset. In [`Alt] mode this is
     identical to {!size}. *)
 
+val effective_size : app -> int * int
+(** [effective_size app] is the dynamic-region dimensions [(cols, rows)]
+    that will be in effect once pending static writes are flushed. In
+    [`Alt] mode or when the static queue is empty this equals {!size}.
+    Use this in [on_render] to lay out the dynamic UI against the
+    post-commit geometry. *)
+
 val pixel_resolution : app -> (int * int) option
 (** [pixel_resolution app] is the last known pixel resolution as
     [(width, height)], or [None] if the terminal has not reported one. *)
