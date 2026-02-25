@@ -46,6 +46,7 @@ type t = {
   mutable cached_plain_text : string option;
   mutable cached_lines : line_cache option;
   mutable cached_grapheme_count : int option;
+  mutable cached_grapheme_offsets : int array option;
   mutable version : int;
 }
 
@@ -61,6 +62,7 @@ let create ?(default_style = Ansi.Style.default) ?(width_method = `Unicode)
     cached_plain_text = None;
     cached_lines = None;
     cached_grapheme_count = None;
+    cached_grapheme_offsets = None;
     version = 0;
   }
 
@@ -70,6 +72,7 @@ let invalidate t =
   t.cached_plain_text <- None;
   t.cached_lines <- None;
   t.cached_grapheme_count <- None;
+  t.cached_grapheme_offsets <- None;
   t.version <- t.version + 1
 
 (* ───── Span Order ───── *)
@@ -131,17 +134,29 @@ let plain_text t =
       t.cached_plain_text <- Some s;
       s
 
+let ensure_grapheme_offsets t =
+  match t.cached_grapheme_offsets with
+  | Some offsets -> offsets
+  | None ->
+      let full = plain_text t in
+      let n = Glyph.String.grapheme_count full in
+      let offsets = Array.make (n + 1) (String.length full) in
+      let idx = ref 0 in
+      Glyph.String.iter_graphemes
+        (fun ~offset ~len:_ ->
+          offsets.(!idx) <- offset;
+          incr idx)
+        full;
+      t.cached_grapheme_offsets <- Some offsets;
+      t.cached_grapheme_count <- Some n;
+      offsets
+
 let grapheme_count t =
   match t.cached_grapheme_count with
   | Some n -> n
   | None ->
-      let n =
-        List.fold_left
-          (fun acc s -> acc + Glyph.String.grapheme_count s.text)
-          0 t.spans
-      in
-      t.cached_grapheme_count <- Some n;
-      n
+      let offsets = ensure_grapheme_offsets t in
+      Array.length offsets - 1
 
 (* ───── Default Style ───── *)
 
@@ -265,21 +280,17 @@ let line_spans t line_idx =
 let text_in_range t ~start ~len =
   if len <= 0 then ""
   else
-    let full = plain_text t in
-    let text_len = String.length full in
-    if text_len = 0 then ""
+    let offsets = ensure_grapheme_offsets t in
+    let n = Array.length offsets - 1 in
+    if start >= n then ""
     else
-      let byte_start = ref (-1) in
-      let byte_end = ref text_len in
-      let gi = ref 0 in
-      Glyph.String.iter_graphemes
-        (fun ~offset ~len:_ ->
-          if !gi = start then byte_start := offset;
-          if !gi = start + len then byte_end := offset;
-          incr gi)
-        full;
-      if !byte_start < 0 then ""
-      else String.sub full !byte_start (!byte_end - !byte_start)
+      let full = plain_text t in
+      let byte_start = offsets.(start) in
+      let byte_end =
+        if start + len >= n then String.length full
+        else offsets.(start + len)
+      in
+      String.sub full byte_start (byte_end - byte_start)
 
 (* ───── Highlights ───── *)
 
