@@ -87,6 +87,7 @@ val create :
   ?output:[ `Stdout | `Fd of Unix.file_descr ] ->
   ?signal_handlers:bool ->
   ?initial_caps:Terminal.capabilities ->
+  ?min_tui_height:int ->
   unit ->
   app
 (** [create ()] is a live application with Unix I/O wired in.
@@ -110,6 +111,10 @@ val create :
       uncapped.
     - [resize_debounce] debounce window in seconds for resize events. Defaults
       to [Some 0.1].
+
+    {b Primary mode:}
+    - [min_tui_height] minimum height in rows reserved for the dynamic TUI
+      region. Static content will not grow past this floor. Defaults to [1].
 
     {b Input:}
     - [mouse_enabled] whether to enable mouse tracking. Defaults to [true].
@@ -230,6 +235,11 @@ val mode : app -> mode
 val size : app -> int * int
 (** [size app] is the current dynamic-region dimensions as [(cols, rows)]. *)
 
+val full_size : app -> int * int
+(** [full_size app] is the full terminal dimensions [(cols, rows)],
+    ignoring the primary-mode render offset. In [`Alt] mode this is
+    identical to {!size}. *)
+
 val pixel_resolution : app -> (int * int) option
 (** [pixel_resolution app] is the last known pixel resolution as
     [(width, height)], or [None] if the terminal has not reported one. *)
@@ -326,6 +336,7 @@ val attach :
   ?explicit_width:bool ->
   ?input_timeout:float option ->
   ?resize_debounce:float option ->
+  ?min_tui_height:int ->
   write_output:(bytes -> int -> int -> unit) ->
   now:(unit -> float) ->
   wake:(unit -> unit) ->

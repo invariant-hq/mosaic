@@ -37,6 +37,7 @@ type config = {
   cursor_visible : bool;
   debug_overlay_corner : debug_overlay_corner;
   debug_overlay_capacity : int;
+  min_tui_height : int;
 }
 
 type app = {
@@ -258,8 +259,9 @@ let render_offset_of_cursor ~terminal ~height row col =
 
 let apply_primary_region t ~render_offset ~resize =
   let height = max 1 t.height in
-  let render_offset = clamp 0 (height - 1) render_offset in
-  let tui_height = max 1 (height - render_offset) in
+  let min_h = max 1 t.config.min_tui_height in
+  let render_offset = clamp 0 (height - min_h) render_offset in
+  let tui_height = max min_h (height - render_offset) in
   t.render_offset <- render_offset;
   t.tui_height <- tui_height;
   if render_offset > 1 then
@@ -278,6 +280,8 @@ let size t =
   match t.config.mode with
   | `Alt -> (t.width, t.height)
   | `Primary -> (t.width, t.tui_height)
+
+let full_size t = (t.width, t.height)
 
 let mode t = t.config.mode
 let mouse_offset t = if t.config.mode = `Primary then t.render_offset else 0
@@ -412,7 +416,8 @@ let static_write_raw_immediate t text =
       String.iter (fun c -> if Char.equal c '\n' then incr n) payload_text;
       !n
     in
-    let max_offset = max 0 (t.height - 1) in
+    let min_h = max 1 t.config.min_tui_height in
+    let max_offset = max 0 (t.height - min_h) in
     let grow_by =
       min payload_newlines (max 0 (max_offset - base_render_offset))
     in
@@ -516,15 +521,16 @@ let recompute_primary_layout t ~is_tty ~allow_scroll_up ~required_rows_hint =
   let render_height_limit = ref None in
   let row_offset_changed = ref false in
   let clipped = ref false in
-  let max_ui_rows = max 1 height in
+  let min_h = max 1 t.config.min_tui_height in
+  let max_ui_rows = max min_h height in
   let target_rows = min required_rows max_ui_rows in
   if required_rows > max_ui_rows then (
     clipped := true;
     render_height_limit := Some max_ui_rows);
-  let render_offset = clamp 0 (height - 1) t.render_offset in
+  let render_offset = clamp 0 (height - min_h) t.render_offset in
   if render_offset <> t.render_offset then (
     t.render_offset <- render_offset;
-    t.tui_height <- max 1 (height - render_offset);
+    t.tui_height <- max min_h (height - render_offset);
     if render_offset > 1 then
       Terminal.set_scroll_region t.terminal ~top:1 ~bottom:render_offset
     else Terminal.clear_scroll_region t.terminal;
@@ -904,7 +910,8 @@ let make_config ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(kitty_keyboard = `Auto) ?(exit_on_ctrl_c = true)
     ?(debug_overlay_corner = `Bottom_right) ?(debug_overlay_capacity = 120)
     ?(cursor_visible = mode = `Alt) ?(explicit_width = false)
-    ?(input_timeout = None) ?(resize_debounce = Some 0.1) () =
+    ?(input_timeout = None) ?(resize_debounce = Some 0.1)
+    ?(min_tui_height = 1) () =
   let effective_mouse_mode =
     if mouse_enabled then Some (Option.value ~default:`Sgr_any mouse) else None
   in
@@ -925,6 +932,7 @@ let make_config ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     cursor_visible;
     debug_overlay_corner;
     debug_overlay_capacity;
+    min_tui_height;
   }
 
 (* Initialize a live app (internal) *)
@@ -935,7 +943,9 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
     ~parser ~terminal ~width ~height ~render_offset ~static_needs_newline =
   let width = max 1 width in
   let height = max 1 height in
-  let tui_height = max 1 (height - render_offset) in
+  let min_h = max 1 c.min_tui_height in
+  let render_offset = min render_offset (max 0 (height - min_h)) in
+  let tui_height = max min_h (height - render_offset) in
   let screen =
     Screen.create ~width_method:`Wcwidth ~respect_alpha:c.respect_alpha
       ~mouse_enabled:c.mouse_enabled ~cursor_visible:c.cursor_visible
@@ -1014,12 +1024,12 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(frame_dump_hits = false) ?(cursor_visible = mode = `Alt)
     ?(explicit_width = false) ?(input_timeout = None)
     ?(resize_debounce = Some 0.1) ?(output = `Stdout) ?(signal_handlers = true)
-    ?initial_caps () =
+    ?initial_caps ?(min_tui_height = 1) () =
   let config =
     make_config ~mode ~raw_mode ~target_fps ~respect_alpha ~mouse_enabled ~mouse
       ~bracketed_paste ~focus_reporting ~kitty_keyboard ~exit_on_ctrl_c
       ~debug_overlay_corner ~debug_overlay_capacity ~cursor_visible
-      ~explicit_width ~input_timeout ~resize_debounce ()
+      ~explicit_width ~input_timeout ~resize_debounce ~min_tui_height ()
   in
   let output_fd = match output with `Stdout -> Unix.stdout | `Fd fd -> fd in
   let input_fd = Unix.stdin in
@@ -1117,15 +1127,15 @@ let attach ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(frame_dump_every = 0) ?frame_dump_dir ?frame_dump_pattern
     ?(frame_dump_hits = false) ?(cursor_visible = mode = `Alt)
     ?(explicit_width = false) ?(input_timeout = None)
-    ?(resize_debounce = Some 0.1) ~write_output ~now ~wake ~terminal_size
-    ~set_raw_mode ~flush_input ~read_events ~query_cursor_position ~cleanup
-    ~parser ~terminal ~width ~height ?(render_offset = 0)
-    ?(static_needs_newline = false) () =
+    ?(resize_debounce = Some 0.1) ?(min_tui_height = 1) ~write_output ~now ~wake
+    ~terminal_size ~set_raw_mode ~flush_input ~read_events
+    ~query_cursor_position ~cleanup ~parser ~terminal ~width ~height
+    ?(render_offset = 0) ?(static_needs_newline = false) () =
   let config =
     make_config ~mode ~raw_mode ~target_fps ~respect_alpha ~mouse_enabled ~mouse
       ~bracketed_paste ~focus_reporting ~kitty_keyboard ~exit_on_ctrl_c
       ~debug_overlay_corner ~debug_overlay_capacity ~cursor_visible
-      ~explicit_width ~input_timeout ~resize_debounce ()
+      ~explicit_width ~input_timeout ~resize_debounce ~min_tui_height ()
   in
   init_app config ~write_output ~now ~wake ~terminal_size ~set_raw_mode
     ~flush_input ~read_events ~query_cursor_position ~cleanup ~debug_overlay

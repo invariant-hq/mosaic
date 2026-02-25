@@ -44,6 +44,7 @@ val create :
   ?explicit_width:bool ->
   ?input_timeout:float option ->
   ?resize_debounce:float option ->
+  ?min_tui_height:int ->
   ?signal_handlers:bool ->
   ?initial_caps:Matrix.Terminal.capabilities ->
   sw:Eio.Switch.t ->

@@ -289,18 +289,24 @@ let serialize_grid_rows (grid : Matrix.Grid.t) ~rows =
       Matrix.Grid.to_ansi ~reset:false cropped
 
 let render_static_view runtime (view : _ t) =
-  let width, dynamic_height = Matrix.size runtime.matrix_app in
+  let width, _ = Matrix.size runtime.matrix_app in
+  let _, full_height = Matrix.full_size runtime.matrix_app in
   let width = max 1 width in
-  let height = max 1 dynamic_height in
-  let renderer = Renderer.create () in
-  let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
-  let vnode = compile ~dispatch:(fun _ -> ()) view in
-  set_renderer_viewport renderer ~width ~height;
-  Reconciler.render reconciler vnode;
-  Renderer.render_frame renderer ~width ~height ~delta:0.;
-  let grid = Matrix.Screen.grid (Renderer.screen renderer) in
-  let used_rows = Matrix.Grid.active_height grid in
-  serialize_grid_rows grid ~rows:used_rows
+  let max_height = 100_000 in
+  let rec render_with_height height =
+    let renderer = Renderer.create () in
+    let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
+    let vnode = compile ~dispatch:(fun _ -> ()) view in
+    set_renderer_viewport renderer ~width ~height;
+    Reconciler.render reconciler vnode;
+    Renderer.render_frame renderer ~width ~height ~delta:0.;
+    let grid = Matrix.Screen.grid (Renderer.screen renderer) in
+    let used_rows = Matrix.Grid.active_height grid in
+    if used_rows >= height && height < max_height then
+      render_with_height (min (height * 2) max_height)
+    else (serialize_grid_rows grid ~rows:used_rows, used_rows)
+  in
+  render_with_height (max 1 full_height)
 
 let rec process_cmd runtime (cmd : _ Cmd.t) =
   match cmd with
@@ -323,7 +329,7 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
   | Cmd.Static_write text -> Matrix.static_write runtime.matrix_app text
   | Cmd.Static_print text -> Matrix.static_print runtime.matrix_app text
   | Cmd.Static_commit view ->
-      let text = render_static_view runtime view in
+      let text, _rows = render_static_view runtime view in
       Matrix.static_write runtime.matrix_app text
   | Cmd.Static_clear -> Matrix.static_clear runtime.matrix_app
 
