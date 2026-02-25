@@ -1189,6 +1189,10 @@ let run ?on_frame ?on_input ?on_resize ?primary_required_rows ~on_render t =
 
   let render_cycle ~now ~last_time =
     Option.iter (fun f -> f t ~dt:(now -. last_time)) on_frame;
+    (* Flush static writes before prepare so that on_render sees the
+       post-commit tui_height. A second flush in submit catches any
+       stragglers enqueued during on_render. *)
+    flush_static_queue t;
     prepare t;
     let user_start = t.now () in
     on_render t;
