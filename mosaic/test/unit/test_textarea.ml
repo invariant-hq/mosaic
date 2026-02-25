@@ -100,12 +100,12 @@ let props_detects_cursor_blinking_diff () =
   let b = Textarea.Props.make ~cursor_blinking:false () in
   is_false ~msg:"different" (Textarea.Props.equal a b)
 
-let props_detects_highlights_diff () =
+let props_detects_spans_diff () =
   let style = Ansi.Style.make ~fg:Ansi.Color.cyan () in
   let a =
-    Textarea.Props.make ~highlights:[ { Text_buffer.text = "let"; style } ] ()
+    Textarea.Props.make ~spans:[ { Text_buffer.text = "let"; style } ] ()
   in
-  let b = Textarea.Props.make ~highlights:[] () in
+  let b = Textarea.Props.make ~spans:[] () in
   is_false ~msg:"different" (Textarea.Props.equal a b)
 
 let props_detects_selection_diff () =
@@ -781,7 +781,7 @@ let () =
           test "detects text_color diff" props_detects_text_color_diff;
           test "detects cursor_style diff" props_detects_cursor_style_diff;
           test "detects cursor_blinking diff" props_detects_cursor_blinking_diff;
-          test "detects highlights diff" props_detects_highlights_diff;
+          test "detects spans diff" props_detects_spans_diff;
           test "detects selection diff" props_detects_selection_diff;
         ];
       group "Construction"

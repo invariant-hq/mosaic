@@ -18,7 +18,7 @@ module Props = struct
     value : string;
     cursor : int option;
     selection : (int * int) option option;
-    highlights : Text_buffer.span list;
+    spans : Text_buffer.span list;
     ghost_text : string option;
     ghost_text_color : Ansi.Color.t;
     placeholder : string;
@@ -35,7 +35,7 @@ module Props = struct
     cursor_blinking : bool;
   }
 
-  let make ?(value = "") ?cursor ?selection ?(highlights = []) ?ghost_text
+  let make ?(value = "") ?cursor ?selection ?(spans = []) ?ghost_text
       ?(ghost_text_color = default_ghost_text_color) ?(placeholder = "")
       ?(wrap = `Word) ?(text_color = default_text_color)
       ?(background_color = default_background_color)
@@ -50,7 +50,7 @@ module Props = struct
       value;
       cursor;
       selection;
-      highlights;
+      spans;
       ghost_text;
       ghost_text_color;
       placeholder;
@@ -82,7 +82,7 @@ module Props = struct
     && Option.equal
          (Option.equal (fun (a1, a2) (b1, b2) -> a1 = b1 && a2 = b2))
          a.selection b.selection
-    && spans_equal a.highlights b.highlights
+    && spans_equal a.spans b.spans
     && Option.equal String.equal a.ghost_text b.ghost_text
     && Ansi.Color.equal a.ghost_text_color b.ghost_text_color
     && String.equal a.placeholder b.placeholder
@@ -210,8 +210,8 @@ let spans_text_equals spans text =
 
 let sync_content t =
   let text = Edit_buffer.text t.buf in
-  if t.props.highlights <> [] && spans_text_equals t.props.highlights text then
-    Text_buffer.set_styled_text t.text_buf t.props.highlights
+  if t.props.spans <> [] && spans_text_equals t.props.spans text then
+    Text_buffer.set_styled_text t.text_buf t.props.spans
   else Text_buffer.set_text t.text_buf text
 
 let sync t =
@@ -602,7 +602,7 @@ let handle_paste t text =
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
-    ?selection ?highlights ?ghost_text ?ghost_text_color ?placeholder ?wrap
+    ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder ?wrap
     ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
     ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor ()
@@ -611,7 +611,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ?value ?cursor ?selection ?highlights ?ghost_text
+    Props.make ?value ?cursor ?selection ?spans ?ghost_text
       ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
       ?focused_text_color ?focused_background_color ?placeholder_color
       ?selection_color ?selection_fg ?cursor_style ?cursor_color
@@ -675,8 +675,8 @@ let set_value t s =
 (* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
-  let highlights_changed =
-    not (Props.spans_equal t.props.highlights props.highlights)
+  let spans_changed =
+    not (Props.spans_equal t.props.spans props.spans)
   in
   let value_replaced = ref false in
   if
@@ -705,7 +705,7 @@ let apply_props t (props : Props.t) =
   in
   if t.props.wrap <> props.wrap then Text_surface.set_wrap t.surface props.wrap;
   t.props <- props;
-  if !value_replaced || highlights_changed then sync t;
+  if !value_replaced || spans_changed then sync t;
   let state_changed = fire_on_cursor t in
   if !value_replaced || cursor_changed || selection_changed || state_changed
   then ensure_cursor_visible t;

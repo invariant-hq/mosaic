@@ -32,7 +32,7 @@ val create :
   ?value:string ->
   ?cursor:int ->
   ?selection:(int * int) option ->
-  ?highlights:Text_buffer.span list ->
+  ?spans:Text_buffer.span list ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->
@@ -58,7 +58,7 @@ val create :
     - [cursor]: optional initial cursor grapheme offset. Defaults to end.
     - [selection]: optional controlled selection range. When provided as
       [Some (lo, hi)], selection is normalized/clamped.
-    - [highlights]: optional styled spans used for syntax highlighting. The span
+    - [spans]: optional styled spans used for syntax highlighting. The span
       text must match [value]. Defaults to [[]].
     - [ghost_text]: optional inline ghost completion rendered at the cursor.
       Defaults to [None].
@@ -106,7 +106,7 @@ module Props : sig
     ?value:string ->
     ?cursor:int ->
     ?selection:(int * int) option ->
-    ?highlights:Text_buffer.span list ->
+    ?spans:Text_buffer.span list ->
     ?ghost_text:string ->
     ?ghost_text_color:Ansi.Color.t ->
     ?placeholder:string ->

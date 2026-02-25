@@ -3,7 +3,7 @@
 module Props = struct
   type t = {
     content : string;
-    highlights : Text_buffer.span list;
+    spans : Text_buffer.span list;
     text_style : Ansi.Style.t;
     wrap : Text_surface.wrap;
     tab_width : int;
@@ -13,12 +13,12 @@ module Props = struct
     selection_fg : Ansi.Color.t option;
   }
 
-  let make ?(content = "") ?(highlights = []) ?(text_style = Ansi.Style.default)
+  let make ?(content = "") ?(spans = []) ?(text_style = Ansi.Style.default)
       ?(wrap = `None) ?(tab_width = 4) ?(truncate = false) ?(selectable = true)
       ?selection_bg ?selection_fg () =
     {
       content;
-      highlights;
+      spans;
       text_style;
       wrap;
       tab_width;
@@ -39,7 +39,7 @@ module Props = struct
 
   let equal a b =
     String.equal a.content b.content
-    && spans_equal a.highlights b.highlights
+    && spans_equal a.spans b.spans
     && Ansi.Style.equal a.text_style b.text_style
     && a.wrap = b.wrap && a.tab_width = b.tab_width && a.truncate = b.truncate
     && a.selectable = b.selectable
@@ -54,7 +54,7 @@ type t = {
   buf : Text_buffer.t;
   surface : Text_surface.t;
   mutable props : Props.t;
-  mutable has_highlights : bool;
+  mutable has_spans : bool;
   mutable on_selection : ((int * int) option -> unit) option;
   mutable last_selection : (int * int) option;
 }
@@ -138,13 +138,13 @@ let register_selection t =
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
-    ?highlights ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
+    ?spans ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
     ?selection_fg ?on_selection () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ?content ?highlights ?text_style ?wrap ?tab_width ?truncate
+    Props.make ?content ?spans ?text_style ?wrap ?tab_width ?truncate
       ?selectable ?selection_bg ?selection_fg ()
   in
   let buf =
@@ -158,16 +158,16 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
       buf;
       surface;
       props;
-      has_highlights = false;
+      has_spans = false;
       on_selection;
       last_selection = None;
     }
   in
-  (* Set initial content or highlights *)
-  if props.highlights <> [] then begin
-    Text_buffer.set_styled_text buf props.highlights;
+  (* Set initial content or styled spans *)
+  if props.spans <> [] then begin
+    Text_buffer.set_styled_text buf props.spans;
     Text_surface.invalidate surface;
-    t.has_highlights <- true
+    t.has_spans <- true
   end
   else if props.content <> "" then begin
     Text_buffer.set_text buf props.content;
@@ -189,29 +189,29 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
 (* ───── Content ───── *)
 
 let set_content t s =
-  t.has_highlights <- false;
+  t.has_spans <- false;
   Text_buffer.set_text t.buf s;
   Text_surface.invalidate t.surface
 
-let set_highlights t spans =
-  t.has_highlights <- true;
+let set_spans t spans =
+  t.has_spans <- true;
   Text_buffer.set_styled_text t.buf spans;
   Text_surface.invalidate t.surface
 
 (* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
-  (* Highlights take priority over plain content *)
-  if props.highlights <> [] then begin
-    if not (Props.spans_equal t.props.highlights props.highlights) then begin
-      t.has_highlights <- true;
-      Text_buffer.set_styled_text t.buf props.highlights;
+  (* Styled spans take priority over plain content *)
+  if props.spans <> [] then begin
+    if not (Props.spans_equal t.props.spans props.spans) then begin
+      t.has_spans <- true;
+      Text_buffer.set_styled_text t.buf props.spans;
       Text_surface.invalidate t.surface
     end
   end
-  else if t.has_highlights then begin
-    (* Switching from highlights to plain content *)
-    t.has_highlights <- false;
+  else if t.has_spans then begin
+    (* Switching from styled spans to plain content *)
+    t.has_spans <- false;
     Text_buffer.set_text t.buf props.content;
     Text_surface.invalidate t.surface
   end

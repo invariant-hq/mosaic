@@ -76,7 +76,7 @@ let code ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?focusable ?autofocus ?buffered ?live ?ref
-    ?on_mouse ?on_key ?on_paste ?highlights ?text_style ?wrap ?tab_width
+    ?on_mouse ?on_key ?on_paste ?spans ?text_style ?wrap ?tab_width
     ?selectable ?selection_bg ?selection_fg ?on_selection ?(children = []) () =
   Mosaic.code ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
@@ -86,7 +86,7 @@ let code ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?focusable ?autofocus ?buffered ?live ?ref
-    ?on_mouse ?on_key ?on_paste ?highlights ?text_style ?wrap ?tab_width
+    ?on_mouse ?on_key ?on_paste ?spans ?text_style ?wrap ?tab_width
     ?selectable ?selection_bg ?selection_fg ?on_selection
     (String.concat "" children)
 
@@ -147,7 +147,7 @@ let textarea ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?focusable ?autofocus ?buffered ?live ?ref
-    ?on_mouse ?on_key ?on_paste ?value ?cursor ?selection ?highlights
+    ?on_mouse ?on_key ?on_paste ?value ?cursor ?selection ?spans
     ?ghost_text ?ghost_text_color ?placeholder ?wrap ?text_color
     ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
@@ -162,7 +162,7 @@ let textarea ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?focusable ?autofocus
     ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?value ?cursor ?selection
-    ?highlights ?ghost_text ?ghost_text_color ?placeholder ?wrap ?text_color
+    ?spans ?ghost_text ?ghost_text_color ?placeholder ?wrap ?text_color
     ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
     ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor ()

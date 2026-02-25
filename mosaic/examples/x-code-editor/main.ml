@@ -452,7 +452,7 @@ let highlight_ocaml code =
   Syntax_theme.apply Syntax_theme.default ~content:code ranges
 
 let view model =
-  let highlights = highlight_ocaml model.code in
+  let spans = highlight_ocaml model.code in
   let ghost_text = ghost_text model in
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = pct 100 }
@@ -479,7 +479,7 @@ let view model =
                 ~line_colors:(active_line_colors model.code model.cursor)
                 ~flex_grow:1.
                 (textarea ~autofocus:true ~value:model.code
-                   ?cursor:model.cursor_override ~highlights ?ghost_text
+                   ?cursor:model.cursor_override ~spans ?ghost_text
                    ~ghost_text_color:(Ansi.Color.grayscale ~level:10)
                    ~wrap:`None ~cursor_style:`Line
                    ~size:{ width = pct 100; height = pct 100 }

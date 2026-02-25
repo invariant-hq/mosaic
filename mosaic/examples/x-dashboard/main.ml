@@ -1206,7 +1206,7 @@ let config_tab (r : run) =
     { x = Overflow.Hidden; y = Overflow.Hidden }
   in
   let json = config_json r in
-  let highlights =
+  let spans =
     Tree_sitter_json.highlight json
     |> Syntax_theme.apply Syntax_theme.default ~content:json
   in
@@ -1235,7 +1235,7 @@ let config_tab (r : run) =
         ];
       box ~border:true ~title:"config.json (syntax highlighted)"
         ~padding:(padding 1) ~flex_grow:1.
-        [ code ~highlights ~size:{ width = pct 100; height = pct 100 } json ];
+        [ code ~spans ~size:{ width = pct 100; height = pct 100 } json ];
     ]
 
 let help_markdown =

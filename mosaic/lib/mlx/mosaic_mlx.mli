@@ -262,7 +262,7 @@ val code :
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?highlights:span list ->
+  ?spans:span list ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
@@ -462,7 +462,7 @@ val textarea :
   ?value:string ->
   ?cursor:int ->
   ?selection:(int * int) option ->
-  ?highlights:Mosaic.span list ->
+  ?spans:Mosaic.span list ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->

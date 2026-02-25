@@ -66,7 +66,7 @@ let hint = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) ()
 
 let view model =
   let content = lang_content model.lang in
-  let highlights =
+  let spans =
     highlight_fn model.lang content
     |> Syntax_theme.apply Syntax_theme.default ~content
   in
@@ -91,7 +91,7 @@ let view model =
         [
           box ~border:true ~border_color ~flex_grow:1.
             [
-              code ~highlights
+              code ~spans
                 ~size:{ width = pct 100; height = pct 100 }
                 content;
             ];

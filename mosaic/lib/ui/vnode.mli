@@ -677,7 +677,7 @@ val textarea :
   ?value:string ->
   ?cursor:int ->
   ?selection:(int * int) option ->
-  ?highlights:Text_buffer.span list ->
+  ?spans:Text_buffer.span list ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->
@@ -707,7 +707,7 @@ val textarea :
     - [value] is the initial text content. Defaults to [""].
     - [cursor] is an optional controlled cursor grapheme offset.
     - [selection] is an optional controlled selection range.
-    - [highlights] is optional styled spans used for syntax highlighting. When
+    - [spans] is optional styled spans used for syntax highlighting. When
       provided, the span text must match [value].
     - [ghost_text] is optional inline ghost completion rendered at the cursor.
     - [ghost_text_color] is the ghost text color.
@@ -828,7 +828,7 @@ val code :
   ?on_mouse:(Event.mouse -> 'msg) ->
   ?on_key:(Event.key -> 'msg) ->
   ?on_paste:(Event.paste -> 'msg) ->
-  ?highlights:Text_buffer.span list ->
+  ?spans:Text_buffer.span list ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
@@ -843,7 +843,7 @@ val code :
     not accept children.
 
     Code-specific attributes:
-    - [highlights] is the list of pre-computed syntax highlighting spans.
+    - [spans] is the list of pre-computed syntax highlighting spans.
       Defaults to [[]].
     - [text_style] is the base ANSI style applied to the text. Defaults to
       {!Ansi.Style.default}.

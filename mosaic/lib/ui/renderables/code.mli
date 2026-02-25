@@ -5,8 +5,8 @@
     {!Text_surface.t} for rendering.
 
     [Code] differs from {!Text} in its defaults: wrapping defaults to [`None],
-    tab width defaults to [4], it accepts pre-computed highlights as styled
-    spans, and it registers as a {!type:Renderable.line_info} provider. *)
+    tab width defaults to [4], it accepts pre-computed styled spans, and it
+    registers as a {!type:Renderable.line_info} provider. *)
 
 (** {1:types Types} *)
 
@@ -21,7 +21,7 @@ module Props : sig
 
   val make :
     ?content:string ->
-    ?highlights:Text_buffer.span list ->
+    ?spans:Text_buffer.span list ->
     ?text_style:Ansi.Style.t ->
     ?wrap:Text_surface.wrap ->
     ?tab_width:int ->
@@ -33,9 +33,9 @@ module Props : sig
     t
   (** [make ()] is a code props value with:
       - [content] is the plain source code text. Defaults to [""].
-      - [highlights] are pre-computed styled spans ({!Text_buffer.span} list).
-        When present, these override the plain [content] display. Typically
-        produced by a syntax highlighter. Defaults to [[]].
+      - [spans] are pre-computed styled spans ({!Text_buffer.span} list). When
+        present, these override the plain [content] display. Typically produced
+        by a syntax highlighter. Defaults to [[]].
       - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
       - [wrap] is the wrapping mode. Defaults to [`None].
       - [tab_width] is the tab stop width in columns. Defaults to [4].
@@ -63,7 +63,7 @@ val create :
   ?z_index:int ->
   ?opacity:float ->
   ?content:string ->
-  ?highlights:Text_buffer.span list ->
+  ?spans:Text_buffer.span list ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
@@ -83,7 +83,7 @@ val create :
     - [z_index] is the stacking order.
     - [opacity] is the opacity. Defaults to [1.0].
     - [content] is the plain source code text. Defaults to [""].
-    - [highlights] are pre-computed styled spans. Defaults to [[]].
+    - [spans] are pre-computed styled spans. Defaults to [[]].
     - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
     - [wrap] is the wrapping mode. Defaults to [`None].
     - [tab_width] is the tab stop width in columns. Defaults to [4].
@@ -110,11 +110,11 @@ val surface : t -> Text_surface.t
 
 val set_content : t -> string -> unit
 (** [set_content t s] sets the plain code content to [s]. Clears any existing
-    highlights. *)
+    styled spans. *)
 
-val set_highlights : t -> Text_buffer.span list -> unit
-(** [set_highlights t spans] sets pre-computed highlighted spans. These override
-    plain content display. *)
+val set_spans : t -> Text_buffer.span list -> unit
+(** [set_spans t spans] sets pre-computed styled spans. These override plain
+    content display. *)
 
 val set_on_selection : t -> ((int * int) option -> unit) option -> unit
 (** [set_on_selection t f] sets the selection-change callback used when
@@ -123,7 +123,7 @@ val set_on_selection : t -> ((int * int) option -> unit) option -> unit
 (** {1:props_application Props application} *)
 
 val apply_props : t -> Props.t -> unit
-(** [apply_props t props] applies [props] to [t], updating content, highlights,
+(** [apply_props t props] applies [props] to [t], updating content, spans,
     style, and wrapping as specified. *)
 
 (** {1:query Query} *)

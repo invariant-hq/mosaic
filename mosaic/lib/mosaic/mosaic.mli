@@ -205,7 +205,7 @@ type length_percentage_auto = Toffee.Style.Length_percentage_auto.t
 
 type span = Mosaic_ui.Text_buffer.span = { text : string; style : Ansi.Style.t }
 (** A contiguous run of text with a single visual style. Used by {!val-code} for
-    syntax highlighting via its [~highlights] argument. *)
+    syntax highlighting via its [~spans] argument. *)
 
 (** {1:layout_enums Layout enum modules} *)
 
@@ -1913,7 +1913,7 @@ val textarea :
   ?value:string ->
   ?cursor:int ->
   ?selection:(int * int) option ->
-  ?highlights:span list ->
+  ?spans:span list ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->
@@ -1940,7 +1940,7 @@ val textarea :
     Textarea-specific optional arguments not present on {!val-input}:
     - [cursor] -- optional controlled cursor grapheme offset.
     - [selection] -- optional controlled selection range.
-    - [highlights] -- optional styled spans used for syntax highlighting. When
+    - [spans] -- optional styled spans used for syntax highlighting. When
       provided, the span text must match [value].
     - [ghost_text] -- optional inline ghost completion rendered at the cursor.
     - [ghost_text_color] -- color used for [ghost_text].
@@ -1998,7 +1998,7 @@ val code :
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?highlights:span list ->
+  ?spans:span list ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
@@ -2014,7 +2014,7 @@ val code :
     Wrap with {!val-line_number} to add a gutter with line numbers.
 
     Code-specific optional arguments:
-    - [highlights] -- list of {!type-span} values that apply syntax-highlighting
+    - [spans] -- list of {!type-span} values that apply syntax-highlighting
       styles to ranges of the text.
     - [text_style] -- base ANSI style applied to unstyled text.
     - [wrap] -- line-wrapping mode. Defaults to no wrap.
