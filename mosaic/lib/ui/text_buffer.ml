@@ -170,40 +170,36 @@ let compute_lines t =
       (fun ~pos ~kind -> breaks := (pos, kind) :: !breaks)
       full_text;
     let breaks = List.rev !breaks in
-    let lines = ref [] in
-    let bounds = ref [] in
+    let bounds_rev = ref [] in
     let line_start = ref 0 in
     List.iter
       (fun (brk_pos, kind) ->
-        (* For CRLF, the CR precedes the LF at brk_pos; exclude it *)
         let line_end =
           match kind with `CRLF -> brk_pos - 1 | `LF | `CR -> brk_pos
         in
-        let line = String.sub full_text !line_start (line_end - !line_start) in
-        lines := line :: !lines;
-        bounds := (!line_start, line_end) :: !bounds;
+        bounds_rev := (!line_start, line_end) :: !bounds_rev;
         line_start := brk_pos + 1)
       breaks;
-    let last =
-      if !line_start < text_len then
-        String.sub full_text !line_start (text_len - !line_start)
-      else ""
-    in
-    lines := last :: !lines;
-    bounds := (!line_start, text_len) :: !bounds;
-    let lines = Array.of_list (List.rev !lines) in
-    let bounds = Array.of_list (List.rev !bounds) in
+    bounds_rev := (!line_start, text_len) :: !bounds_rev;
+    let bounds = Array.of_list (List.rev !bounds_rev) in
     let width_method = t.width_method in
-    let widths =
-      Array.map
-        (fun line -> Glyph.String.measure ~width_method ~tab_width line)
-        lines
-    in
-    let max_w = Array.fold_left max 0 widths in
+    let n = Array.length bounds in
+    let widths = Array.make n 0 in
+    let max_w = ref 0 in
+    for i = 0 to n - 1 do
+      let pos, end_ = bounds.(i) in
+      let len = end_ - pos in
+      let w =
+        if len = 0 then 0
+        else Glyph.String.measure_sub ~width_method ~tab_width full_text ~pos ~len
+      in
+      widths.(i) <- w;
+      if w > !max_w then max_w := w
+    done;
     {
-      line_count = Array.length widths;
+      line_count = n;
       line_widths = widths;
-      max_line_width = max_w;
+      max_line_width = !max_w;
       bounds;
     }
   end
