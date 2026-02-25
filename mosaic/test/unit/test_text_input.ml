@@ -379,7 +379,7 @@ let key_ctrl_w_deletes_word_backward () =
   let t, input = make_input ~value:"hello world" () in
   focus_input t input;
   send_char_with_mod input ~modifier:ctrl_mod 'w';
-  equal ~msg:"word deleted" string "hello" (Text_input.value input)
+  equal ~msg:"word deleted" string "hello " (Text_input.value input)
 
 let key_ctrl_k_deletes_to_end () =
   let t, input = make_input ~value:"hello world" () in
@@ -485,7 +485,7 @@ let alt_b_moves_word_backward () =
   focus_input t input;
   let buf = Text_input.buffer input in
   send_char_with_mod input ~modifier:alt_mod 'b';
-  equal ~msg:"moved to word boundary" int 5 (Edit_buffer.cursor buf)
+  equal ~msg:"moved to word boundary" int 6 (Edit_buffer.cursor buf)
 
 let alt_f_moves_word_forward () =
   let t, input = make_input ~value:"hello world" () in
@@ -493,7 +493,7 @@ let alt_f_moves_word_forward () =
   let buf = Text_input.buffer input in
   ignore (Edit_buffer.move_home buf : bool);
   send_char_with_mod input ~modifier:alt_mod 'f';
-  equal ~msg:"moved to word end" int 5 (Edit_buffer.cursor buf)
+  equal ~msg:"moved to word end" int 6 (Edit_buffer.cursor buf)
 
 let alt_d_deletes_word_forward () =
   let t, input = make_input ~value:"hello world" () in
@@ -501,13 +501,13 @@ let alt_d_deletes_word_forward () =
   let buf = Text_input.buffer input in
   ignore (Edit_buffer.move_home buf : bool);
   send_char_with_mod input ~modifier:alt_mod 'd';
-  equal ~msg:"word deleted forward" string " world" (Text_input.value input)
+  equal ~msg:"word deleted forward" string "world" (Text_input.value input)
 
 let alt_backspace_deletes_word_backward () =
   let t, input = make_input ~value:"hello world" () in
   focus_input t input;
   send_key_with_mod input ~modifier:alt_mod Input.Key.Backspace;
-  equal ~msg:"word deleted backward" string "hello" (Text_input.value input)
+  equal ~msg:"word deleted backward" string "hello " (Text_input.value input)
 
 (* ── Ctrl/Alt+Arrow Word Movement ── *)
 
@@ -516,7 +516,7 @@ let ctrl_left_moves_word_backward () =
   focus_input t input;
   let buf = Text_input.buffer input in
   send_key_with_mod input ~modifier:ctrl_mod Input.Key.Left;
-  equal ~msg:"moved to word boundary" int 5 (Edit_buffer.cursor buf)
+  equal ~msg:"moved to word boundary" int 6 (Edit_buffer.cursor buf)
 
 let ctrl_right_moves_word_forward () =
   let t, input = make_input ~value:"hello world" () in
@@ -524,7 +524,7 @@ let ctrl_right_moves_word_forward () =
   let buf = Text_input.buffer input in
   ignore (Edit_buffer.move_home buf : bool);
   send_key_with_mod input ~modifier:ctrl_mod Input.Key.Right;
-  equal ~msg:"moved to word end" int 5 (Edit_buffer.cursor buf)
+  equal ~msg:"moved to word end" int 6 (Edit_buffer.cursor buf)
 
 (* ── Super+Arrow Keybindings ── *)
 

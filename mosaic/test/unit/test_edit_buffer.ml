@@ -307,7 +307,16 @@ let delete_word_backward_basic () =
   let buf = Edit_buffer.create "hello world" in
   let changed = Edit_buffer.delete_word_backward buf in
   is_true ~msg:"changed" changed;
-  equal ~msg:"text" string "hello" (Edit_buffer.text buf)
+  equal ~msg:"text" string "hello " (Edit_buffer.text buf)
+
+let delete_word_backward_repeated () =
+  let buf = Edit_buffer.create "hello world test" in
+  let changed = Edit_buffer.delete_word_backward buf in
+  is_true ~msg:"changed1" changed;
+  equal ~msg:"after first" string "hello world " (Edit_buffer.text buf);
+  let changed = Edit_buffer.delete_word_backward buf in
+  is_true ~msg:"changed2" changed;
+  equal ~msg:"after second" string "hello " (Edit_buffer.text buf)
 
 let delete_word_backward_at_start () =
   let buf = Edit_buffer.create "hello" in
@@ -320,10 +329,7 @@ let delete_word_forward_basic () =
   Edit_buffer.set_cursor buf 0;
   let changed = Edit_buffer.delete_word_forward buf in
   is_true ~msg:"changed" changed;
-  (* Should delete up to the next word boundary *)
-  let remaining = Edit_buffer.text buf in
-  is_true ~msg:"deleted something"
-    (String.length remaining < String.length "hello world")
+  equal ~msg:"text" string "world" (Edit_buffer.text buf)
 
 let delete_word_forward_at_end () =
   let buf = Edit_buffer.create "hello" in
@@ -981,6 +987,7 @@ let () =
           test "delete_forward at end" delete_forward_at_end;
           test "delete_forward with selection" delete_forward_with_selection;
           test "delete_word_backward basic" delete_word_backward_basic;
+          test "delete_word_backward repeated" delete_word_backward_repeated;
           test "delete_word_backward at start" delete_word_backward_at_start;
           test "delete_word_forward basic" delete_word_forward_basic;
           test "delete_word_forward at end" delete_word_forward_at_end;

@@ -437,7 +437,7 @@ let alt_b_moves_word_backward () =
   focus_textarea t ta;
   let buf = Textarea.buffer ta in
   send_char_with_mod ta ~modifier:alt_mod 'b';
-  equal ~msg:"moved to word boundary" int 5 (Edit_buffer.cursor buf)
+  equal ~msg:"moved to word boundary" int 6 (Edit_buffer.cursor buf)
 
 let alt_f_moves_word_forward () =
   let t, ta = make_textarea ~value:"hello world" () in
@@ -445,7 +445,7 @@ let alt_f_moves_word_forward () =
   let buf = Textarea.buffer ta in
   ignore (Edit_buffer.move_home buf : bool);
   send_char_with_mod ta ~modifier:alt_mod 'f';
-  equal ~msg:"moved to word end" int 5 (Edit_buffer.cursor buf)
+  equal ~msg:"moved to word end" int 6 (Edit_buffer.cursor buf)
 
 let alt_d_deletes_word_forward () =
   let t, ta = make_textarea ~value:"hello world" () in
@@ -453,7 +453,7 @@ let alt_d_deletes_word_forward () =
   let buf = Textarea.buffer ta in
   ignore (Edit_buffer.move_home buf : bool);
   send_char_with_mod ta ~modifier:alt_mod 'd';
-  equal ~msg:"word deleted forward" string " world" (Textarea.value ta)
+  equal ~msg:"word deleted forward" string "world" (Textarea.value ta)
 
 (* ── Super+Arrow Keybindings ── *)
 

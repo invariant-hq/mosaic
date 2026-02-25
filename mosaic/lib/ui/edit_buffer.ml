@@ -408,8 +408,9 @@ let next_word_boundary t =
   let found = ref false in
   Glyph.String.iter_wrap_breaks
     (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
-      if (not !found) && grapheme_offset > t.cursor_pos then begin
-        result := grapheme_offset;
+      let after = grapheme_offset + 1 in
+      if (not !found) && after > t.cursor_pos then begin
+        result := after;
         found := true
       end)
     t.content;
@@ -419,7 +420,8 @@ let prev_word_boundary t =
   let result = ref 0 in
   Glyph.String.iter_wrap_breaks
     (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
-      if grapheme_offset < t.cursor_pos then result := grapheme_offset)
+      let after = grapheme_offset + 1 in
+      if after < t.cursor_pos then result := after)
     t.content;
   !result
 
