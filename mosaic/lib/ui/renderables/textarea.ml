@@ -255,7 +255,9 @@ let cursor_visual_col t display_line =
     let text =
       Text_buffer.text_in_range t.text_buf ~start:line_start ~len:count
     in
-    Glyph.String.measure ~width_method:`Unicode ~tab_width:2 text
+    let tab_width = Text_buffer.tab_width t.text_buf in
+    let width_method = Text_buffer.width_method t.text_buf in
+    Glyph.String.measure ~width_method ~tab_width text
 
 let display_line_end_offset t display_line =
   let di = Text_surface.display_info t.surface in
@@ -280,9 +282,11 @@ let offset_at_col t target_line target_col =
     let text =
       Text_buffer.text_in_range t.text_buf ~start:line_start ~len:count
     in
+    let tab_width = Text_buffer.tab_width t.text_buf in
+    let width_method = Text_buffer.width_method t.text_buf in
     let result = ref line_start in
     let col = ref 0 in
-    Glyph.String.iter_grapheme_info ~width_method:`Unicode ~tab_width:2
+    Glyph.String.iter_grapheme_info ~width_method ~tab_width
       (fun ~offset:_ ~len:_ ~width ->
         if !col + width <= target_col then begin
           col := !col + width;
