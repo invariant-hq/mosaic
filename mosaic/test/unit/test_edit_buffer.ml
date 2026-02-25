@@ -496,13 +496,28 @@ let undo_restores_cursor () =
   let _ = Edit_buffer.undo buf in
   equal ~msg:"cursor after undo" int 2 (Edit_buffer.cursor buf)
 
-let undo_clears_selection () =
+let undo_restores_no_selection () =
   let buf = Edit_buffer.create "hello" in
   let _ = Edit_buffer.insert buf " world" in
   Edit_buffer.select_all buf;
   is_true ~msg:"has selection" (Edit_buffer.has_selection buf);
   let _ = Edit_buffer.undo buf in
   is_false ~msg:"no selection after undo" (Edit_buffer.has_selection buf)
+
+let undo_restores_selection () =
+  let buf = Edit_buffer.create "hello world" in
+  (* Select "world" (offsets 6..11) *)
+  Edit_buffer.set_cursor buf 6;
+  Edit_buffer.set_cursor_offset ~select:true buf 11;
+  is_true ~msg:"has selection before insert" (Edit_buffer.has_selection buf);
+  (* Delete selection via insert (saves undo with selection) *)
+  let _ = Edit_buffer.insert buf "earth" in
+  is_false ~msg:"no selection after insert" (Edit_buffer.has_selection buf);
+  (* Undo should restore the selection *)
+  let _ = Edit_buffer.undo buf in
+  is_true ~msg:"selection restored after undo" (Edit_buffer.has_selection buf);
+  equal ~msg:"selection range" (option (pair int int))
+    (Some (6, 11)) (Edit_buffer.selection buf)
 
 let redo_after_undo () =
   let buf = Edit_buffer.create "hello" in
@@ -1000,7 +1015,8 @@ let () =
           test "undo with no history" undo_no_history;
           test "insert then undo" insert_then_undo;
           test "undo restores cursor" undo_restores_cursor;
-          test "undo clears selection" undo_clears_selection;
+          test "undo restores no selection" undo_restores_no_selection;
+          test "undo restores selection" undo_restores_selection;
           test "redo after undo" redo_after_undo;
           test "redo with no history" redo_no_history;
           test "edit after undo clears redo" edit_after_undo_clears_redo;

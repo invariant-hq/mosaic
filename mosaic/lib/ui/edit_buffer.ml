@@ -34,7 +34,11 @@ let truncate_graphemes ~width_method ~tab_width s max_graphemes =
 
 (* ───── Types ───── *)
 
-type snapshot = { content : string; cursor_pos : int }
+type snapshot = {
+  content : string;
+  cursor_pos : int;
+  selection_anchor : int option;
+}
 
 type cache = {
   offsets : int array;
@@ -234,7 +238,9 @@ let select_all t =
 
 let save_undo t =
   t.undo_stack <-
-    { content = t.content; cursor_pos = t.cursor_pos } :: t.undo_stack;
+    { content = t.content; cursor_pos = t.cursor_pos;
+      selection_anchor = t.selection_anchor }
+    :: t.undo_stack;
   t.redo_stack <- []
 
 let undo t =
@@ -243,11 +249,13 @@ let undo t =
   | snap :: rest ->
       let old_content = t.content in
       t.redo_stack <-
-        { content = t.content; cursor_pos = t.cursor_pos } :: t.redo_stack;
+        { content = t.content; cursor_pos = t.cursor_pos;
+          selection_anchor = t.selection_anchor }
+        :: t.redo_stack;
       t.undo_stack <- rest;
       t.content <- snap.content;
       t.cursor_pos <- snap.cursor_pos;
-      t.selection_anchor <- None;
+      t.selection_anchor <- snap.selection_anchor;
       invalidate_cache t;
       not (String.equal old_content snap.content)
 
@@ -257,11 +265,13 @@ let redo t =
   | snap :: rest ->
       let old_content = t.content in
       t.undo_stack <-
-        { content = t.content; cursor_pos = t.cursor_pos } :: t.undo_stack;
+        { content = t.content; cursor_pos = t.cursor_pos;
+          selection_anchor = t.selection_anchor }
+        :: t.undo_stack;
       t.redo_stack <- rest;
       t.content <- snap.content;
       t.cursor_pos <- snap.cursor_pos;
-      t.selection_anchor <- None;
+      t.selection_anchor <- snap.selection_anchor;
       invalidate_cache t;
       not (String.equal old_content snap.content)
 
