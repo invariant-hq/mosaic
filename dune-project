@@ -50,7 +50,8 @@
  (depends
   (ocaml
    (>= 5.1))
-  dune)
+  dune
+  (windtrap :with-test))
  (tags
   (tree-sitter parsing syntax-highlighting incremental)))
 
