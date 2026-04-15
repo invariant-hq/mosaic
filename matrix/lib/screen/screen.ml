@@ -352,7 +352,25 @@ let finalize_frame r ~now ~delta_seconds ~elapsed_ms ~cells ~output_len =
 
 (* --- Public API --- *)
 
-let submit ~(mode : render_mode) ?height_limit ~(writer : Ansi.writer) r =
+type scroll_hint = { top : int; bottom : int; delta : int }
+
+let apply_scroll_hint ~(writer : Ansi.writer) ~current hint =
+  let { top; bottom; delta } = hint in
+  if delta <> 0 && top >= 0 && bottom > top then begin
+    (* Shift the previous buffer to match the hardware scroll. After this,
+       the diff loop sees only the newly-revealed edge rows as changes. *)
+    Grid.scroll current ~top ~bottom delta;
+    (* Tell the terminal to perform the same shift via DECSTBM. *)
+    Ansi.emit (Ansi.set_scrolling_region ~top:(top + 1) ~bottom:(bottom + 1))
+      writer;
+    (if delta > 0 then Ansi.emit (Ansi.scroll_up ~n:delta) writer
+     else Ansi.emit (Ansi.scroll_down ~n:(-delta)) writer);
+    Ansi.emit Ansi.reset_scrolling_region writer;
+    Ansi.emit Ansi.home writer
+  end
+
+let submit ~(mode : render_mode) ?scroll_hint ?height_limit
+    ~(writer : Ansi.writer) r =
   let now, delta_seconds = prepare_frame r in
   (* Use Fun.protect to guarantee SGR cleanup even if render raises. *)
   let cells = ref 0 in
@@ -364,6 +382,12 @@ let submit ~(mode : render_mode) ?height_limit ~(writer : Ansi.writer) r =
     (fun () ->
       let scratch = ref r.scratch_bytes in
       let render_start = Unix.gettimeofday () in
+      (* Apply DECSTBM scroll hint before diffing. The hint shifts the
+         previous buffer and emits hardware scroll sequences so the diff
+         loop only sees the newly-revealed rows as changes. *)
+      (match (mode, scroll_hint) with
+      | `Diff, Some hint -> apply_scroll_hint ~writer ~current:r.current hint
+      | _ -> ());
       let prev = match mode with `Diff -> Some r.current | `Full -> None in
 
       cells :=
@@ -380,15 +404,15 @@ let submit ~(mode : render_mode) ?height_limit ~(writer : Ansi.writer) r =
   finalize_frame r ~now ~delta_seconds ~elapsed_ms:!elapsed_ms ~cells:!cells
     ~output_len
 
-let render_to_bytes ?(full = false) ?height_limit frame bytes =
+let render_to_bytes ?(full = false) ?scroll_hint ?height_limit frame bytes =
   let writer = Ansi.Writer.make bytes in
   let mode = if full then `Full else `Diff in
-  submit frame ~mode ?height_limit ~writer;
+  submit frame ~mode ?scroll_hint ?height_limit ~writer;
   Ansi.Writer.len writer
 
-let render ?(full = false) ?height_limit frame =
+let render ?(full = false) ?scroll_hint ?height_limit frame =
   let bytes = Bytes.create 65536 in
-  let len = render_to_bytes ~full ?height_limit frame bytes in
+  let len = render_to_bytes ~full ?scroll_hint ?height_limit frame bytes in
   Bytes.sub_string bytes ~pos:0 ~len
 
 let glyph_pool t = t.glyph_pool

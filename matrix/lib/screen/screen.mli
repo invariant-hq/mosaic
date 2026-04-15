@@ -149,21 +149,42 @@ val add_hit_region :
 
 (** {1:rendering Rendering} *)
 
-val render : ?full:bool -> ?height_limit:int -> t -> string
-(** [render ~full ~height_limit t] is the ANSI output for the current frame.
+type scroll_hint = {
+  top : int;  (** First row of the scroll region (0-indexed). *)
+  bottom : int;  (** Last row of the scroll region (0-indexed, inclusive). *)
+  delta : int;
+      (** Rows to shift. Positive shifts content up (user scrolled down). *)
+}
+(** A scroll optimisation hint from a scrollable container. When provided, the
+    renderer shifts the previous buffer and emits DECSTBM + hardware scroll
+    sequences so only the newly-revealed edge rows need cell-level diffing.
+    Without the hint, scrolling rewrites every row in the viewport. *)
+
+val render :
+  ?full:bool -> ?scroll_hint:scroll_hint -> ?height_limit:int -> t -> string
+(** [render ~full ~scroll_hint ~height_limit t] is the ANSI output for the
+    current frame.
 
     Applies post-processors, diffs next against current (or renders all cells
     when [full] is [true]), then swaps buffers. Hit regions registered during
     this frame become queryable via {!query_hit}.
     - [full] renders all cells regardless of changes. Defaults to [false].
+    - [scroll_hint] when provided, emits DECSTBM hardware scroll before
+      diffing. Only useful in alternate-screen mode.
     - [height_limit] limits rendering to the first [height_limit] rows.
 
     See also {!render_to_bytes}. *)
 
-val render_to_bytes : ?full:bool -> ?height_limit:int -> t -> Bytes.t -> int
-(** [render_to_bytes ~full ~height_limit t buf] is like {!render} but writes
-    into [buf] and is the number of bytes written. [buf] must be large enough
-    for the output. *)
+val render_to_bytes :
+  ?full:bool ->
+  ?scroll_hint:scroll_hint ->
+  ?height_limit:int ->
+  t ->
+  Bytes.t ->
+  int
+(** [render_to_bytes ~full ~scroll_hint ~height_limit t buf] is like {!render}
+    but writes into [buf] and is the number of bytes written. [buf] must be
+    large enough for the output. *)
 
 (** {1:screen_state Screen state} *)
 

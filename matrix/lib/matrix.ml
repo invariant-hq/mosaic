@@ -66,7 +66,8 @@ type app = {
   mutable tui_height : int;
   mutable static_needs_newline : bool;
   mutable static_queue : (string * int) list;
-  mutable needs_region_clear : bool;
+  (* Scroll optimisation *)
+  mutable scroll_hint : Screen.scroll_hint option;
   (* Resize and frame timing *)
   mutable last_resize_apply_time : float;
   mutable pending_resize : (int * int) option;
@@ -258,22 +259,17 @@ let render_offset_of_cursor ~terminal ~height row col =
 
 (* Layout *)
 
-let apply_primary_region t ~render_offset ~resize =
+let update_primary_layout t ~render_offset ~resize =
   let height = max 1 t.height in
   let min_h = max 1 t.config.min_tui_height in
   let render_offset = clamp 0 (height - min_h) render_offset in
   let tui_height = max min_h (height - render_offset) in
   t.render_offset <- render_offset;
   t.tui_height <- tui_height;
-  if render_offset > 1 then
-    Terminal.set_scroll_region t.terminal ~top:1 ~bottom:render_offset
-  else Terminal.clear_scroll_region t.terminal;
   Screen.set_row_offset t.screen render_offset;
   if resize then Screen.resize t.screen ~width:t.width ~height:tui_height
 
-let invalidate_inline_state t =
-  t.force_full_next_frame <- true;
-  t.needs_region_clear <- true
+let force_full_redraw t = t.force_full_next_frame <- true
 
 (* Accessors *)
 
@@ -306,13 +302,12 @@ let refresh_capabilities t =
 let refresh_render_region t =
   match t.config.mode with
   | `Alt ->
-      Terminal.clear_scroll_region t.terminal;
       t.render_offset <- 0;
       t.tui_height <- t.height;
       Screen.set_row_offset t.screen 0;
       Screen.resize t.screen ~width:t.width ~height:t.height
   | `Primary ->
-      apply_primary_region t ~render_offset:t.render_offset ~resize:true
+      update_primary_layout t ~render_offset:t.render_offset ~resize:true
 
 (* Frame timing *)
 
@@ -386,57 +381,46 @@ let normalize_newlines s =
     fill 0 0;
     Bytes.unsafe_to_string bytes
 
-let static_write_immediate t ~rows text =
-  if t.config.mode = `Alt || String.length text = 0 then ()
-  else begin
-    let prev_render_offset = t.render_offset in
-    let prev_tui_height = t.tui_height in
-    let base_render_offset =
-      if t.config.mode = `Primary && t.render_offset = 0 then 1
-      else t.render_offset
-    in
-    let terminal = t.terminal in
-    let text = if t.config.raw_mode then normalize_newlines text else text in
-    let needs_leading_newline =
-      t.static_needs_newline && not (starts_with_newline text)
-    in
-    let payload_text = if needs_leading_newline then crlf ^ text else text in
-    let payload_rows = rows + (if needs_leading_newline then 1 else 0) in
-    let min_h = max 1 t.config.min_tui_height in
-    let max_offset = max 0 (t.height - min_h) in
-    let grow_by =
-      min payload_rows (max 0 (max_offset - base_render_offset))
-    in
-    let render_offset = base_render_offset + grow_by in
-    (* Clear the rows being claimed from the dynamic region before extending
-       the scroll region, so stale dynamic content cannot be scrolled into
-       the static area. *)
-    if render_offset > base_render_offset then
-      for row = base_render_offset + 1 to render_offset do
-        Terminal.move_cursor terminal ~row ~col:1
-          ~visible:(Terminal.cursor_visible terminal);
-        Terminal.send terminal erase_entire_line
-      done;
-    apply_primary_region t ~render_offset ~resize:false;
-    if t.render_offset <> prev_render_offset || t.tui_height <> prev_tui_height
-    then (
-      t.needs_region_clear <- true;
-      t.force_full_next_frame <- true);
-    let payload = sgr_reset ^ payload_text in
-    Terminal.move_cursor terminal ~row:base_render_offset ~col:1
-      ~visible:(Terminal.cursor_visible terminal);
-    Terminal.send terminal payload;
-    t.static_needs_newline <- not (ends_with_newline text)
-  end
+(* Write a single static entry: position cursor, emit payload, advance
+   render_offset. Called within flush_static_queue after the dynamic area
+   has been erased. *)
+let write_static_entry t ~send ~max_offset text rows =
+  let base = if t.render_offset = 0 then 1 else t.render_offset in
+  let text = if t.config.raw_mode then normalize_newlines text else text in
+  let needs_leading =
+    t.static_needs_newline && not (starts_with_newline text)
+  in
+  let payload =
+    if needs_leading then sgr_reset ^ crlf ^ text else sgr_reset ^ text
+  in
+  let payload_rows = rows + (if needs_leading then 1 else 0) in
+  let grow_by = min payload_rows (max 0 (max_offset - base)) in
+  Terminal.move_cursor t.terminal ~row:base ~col:1
+    ~visible:(Terminal.cursor_visible t.terminal);
+  send payload;
+  t.render_offset <- base + grow_by;
+  t.static_needs_newline <- not (ends_with_newline text)
 
+(* Erase the dynamic area, write queued static text into scrollback, and
+   force a full re-render so the cell-diff baseline stays in sync. *)
 let flush_static_queue t =
   match t.static_queue with
   | [] -> ()
   | rev ->
+      let queue = List.rev rev in
       t.static_queue <- [];
+      let send s = Terminal.send t.terminal s in
+      Terminal.move_cursor t.terminal ~row:(t.render_offset + 1) ~col:1
+        ~visible:(Terminal.cursor_visible t.terminal);
+      send Ansi.(to_string erase_below_cursor);
+      Screen.invalidate_presented t.screen;
+      let min_h = max 1 t.config.min_tui_height in
+      let max_offset = max 0 (t.height - min_h) in
       List.iter
-        (fun (text, rows) -> static_write_immediate t ~rows text)
-        (List.rev rev)
+        (fun (text, rows) -> write_static_entry t ~send ~max_offset text rows)
+        queue;
+      update_primary_layout t ~render_offset:t.render_offset ~resize:true;
+      t.force_full_next_frame <- true
 
 let effective_size t =
   match t.config.mode with
@@ -477,9 +461,11 @@ let static_clear t =
     t.tui_height <- t.height;
     t.static_queue <- [];
     t.static_needs_newline <- false;
-    invalidate_inline_state t;
+    force_full_redraw t;
     refresh_render_region t;
     request_redraw t)
+
+let set_scroll_hint t hint = t.scroll_hint <- Some hint
 
 (* Protocol configuration *)
 
@@ -523,51 +509,39 @@ let prepare t =
 let grid t = Screen.grid t.screen
 let hits t = Screen.hit_grid t.screen
 
-(* Recompute render_offset and tui_height for primary mode. Returns
-   (render_height_limit, row_offset_changed, clipped). *)
-let recompute_primary_layout t ~is_tty ~allow_scroll_up ~required_rows_hint =
+(* Ensure render_offset and tui_height stay consistent. Grows the dynamic
+   region when content or hints require more rows than tui_height. Returns a
+   height limit when the grid still exceeds the available space. *)
+let adjust_primary_layout t ~required_rows_hint =
   let height = max 1 t.height in
+  let min_h = max 1 t.config.min_tui_height in
+  (* Clamp render_offset after resize. *)
+  let render_offset = clamp 0 (height - min_h) t.render_offset in
+  if render_offset <> t.render_offset then
+    update_primary_layout t ~render_offset ~resize:false;
   let active_rows = max 1 (Screen.active_height t.screen) in
   let hinted_rows =
     match required_rows_hint with Some rows -> max 1 rows | None -> 0
   in
-  let required_rows = max active_rows hinted_rows in
-  let render_height_limit = ref None in
-  let row_offset_changed = ref false in
-  let clipped = ref false in
-  let min_h = max 1 t.config.min_tui_height in
-  let max_ui_rows = max min_h height in
-  let target_rows = min required_rows max_ui_rows in
-  if required_rows > max_ui_rows then (
-    clipped := true;
-    render_height_limit := Some max_ui_rows);
-  let render_offset = clamp 0 (height - min_h) t.render_offset in
-  if render_offset <> t.render_offset then (
-    t.render_offset <- render_offset;
-    t.tui_height <- max min_h (height - render_offset);
-    if render_offset > 1 then
-      Terminal.set_scroll_region t.terminal ~top:1 ~bottom:render_offset
-    else Terminal.clear_scroll_region t.terminal;
-    Screen.set_row_offset t.screen render_offset;
-    row_offset_changed := true);
-  if target_rows > t.tui_height then
-    if allow_scroll_up then (
-      let new_render_offset = height - target_rows in
-      let delta = t.render_offset - new_render_offset in
-      if delta > 0 && is_tty && t.render_offset > 1 then (
-        Terminal.set_scroll_region t.terminal ~top:1 ~bottom:t.render_offset;
-        Terminal.send t.terminal Ansi.(to_string (scroll_up ~n:delta)));
-      t.render_offset <- new_render_offset;
-      t.tui_height <- target_rows;
-      if new_render_offset > 1 then
-        Terminal.set_scroll_region t.terminal ~top:1 ~bottom:new_render_offset
-      else Terminal.clear_scroll_region t.terminal;
-      Screen.set_row_offset t.screen new_render_offset;
-      row_offset_changed := true)
-    else (
-      clipped := true;
-      render_height_limit := Some t.tui_height);
-  (!render_height_limit, !row_offset_changed, !clipped)
+  let required = max active_rows hinted_rows in
+  (* Grow the dynamic region if required rows exceed current tui_height. *)
+  let new_offset = max 0 (height - required) in
+  if required > t.tui_height && new_offset < t.render_offset then begin
+    let send s = Terminal.send t.terminal s in
+    for row = new_offset + 1 to t.render_offset do
+      Terminal.move_cursor t.terminal ~row ~col:1
+        ~visible:(Terminal.cursor_visible t.terminal);
+      send erase_entire_line
+    done;
+    update_primary_layout t ~render_offset:new_offset ~resize:true;
+    Screen.invalidate_presented t.screen;
+    t.force_full_next_frame <- true
+  end;
+  let max_rows = max min_h height in
+  if required > max_rows then Some max_rows
+  else
+    let grid_h = Grid.height (Screen.grid t.screen) in
+    if grid_h > t.tui_height then Some t.tui_height else None
 
 (* Apply cursor position, style, and color after rendering. *)
 let apply_cursor_state t ~(cursor : Screen.cursor_info) ~cursor_max_row =
@@ -592,101 +566,61 @@ let submit ?primary_required_rows t =
   if not t.running then ()
   else
     let overall_start = t.now () in
-    let is_tty = Terminal.tty t.terminal in
     if t.debug_overlay_enabled then t.debug_overlay_cb t.screen;
     let cursor = Screen.cursor_info t.screen in
     let caps = Terminal.capabilities t.terminal in
-    let use_sync = is_tty && caps.sync in
+    let use_sync = Terminal.tty t.terminal && caps.sync in
     let send s = Terminal.send t.terminal s in
     if use_sync then send Ansi.(to_string (enable Sync_output));
     if Terminal.cursor_visible t.terminal then
       Terminal.set_cursor_visible t.terminal false;
 
-    let pre_submit_render_offset = t.render_offset in
-    let pre_submit_tui_height = t.tui_height in
-    flush_static_queue t;
-    let static_layout_changed =
-      t.render_offset <> pre_submit_render_offset
-      || t.tui_height <> pre_submit_tui_height
-    in
+    (match t.config.mode with
+    | `Primary ->
+        (* Static content: erase dynamic area, write static text, force full. *)
+        flush_static_queue t
+    | `Alt ->
+        (* Anchor cursor at (0,0). Self-healing: even if the cursor drifted
+           (tmux, resize), the next frame starts from a known position. *)
+        send Ansi.(to_string home));
 
-    let render_height_limit, row_offset_changed0, clipped =
+    (* Adjust layout and compute height limit. *)
+    let render_height_limit =
       match t.config.mode with
       | `Primary ->
-          recompute_primary_layout t ~is_tty
-            ~allow_scroll_up:(not static_layout_changed)
-            ~required_rows_hint:primary_required_rows
-      | `Alt -> (None, false, false)
+          adjust_primary_layout t ~required_rows_hint:primary_required_rows
+      | `Alt -> None
     in
-    let row_offset_changed =
-      row_offset_changed0
-      || t.render_offset <> pre_submit_render_offset
-      || t.tui_height <> pre_submit_tui_height
-    in
-
-    if row_offset_changed then t.needs_region_clear <- true;
-
-    (match t.config.mode with
-    | `Primary when t.needs_region_clear ->
-        if is_tty then (
-          let clear_lines ~start ~count =
-            for row = start to start + count - 1 do
-              Terminal.move_cursor t.terminal ~row ~col:1
-                ~visible:(Terminal.cursor_visible t.terminal);
-              send erase_entire_line
-            done
-          in
-          if
-            (not static_layout_changed)
-            && pre_submit_tui_height > 0
-            && t.render_offset > pre_submit_render_offset
-          then
-            clear_lines
-              ~start:(pre_submit_render_offset + 1)
-              ~count:(t.render_offset - pre_submit_render_offset);
-          (* Skip erase_below_cursor when a static flush just changed the
-             layout: force_full_next_frame is set and the render height cap
-             guarantees the full render covers every dynamic-region row, so
-             the erase would just cause a redundant clear-then-repaint. *)
-          if
-            (not static_layout_changed) && t.tui_height > 0
-          then (
-            Terminal.move_cursor t.terminal ~row:(t.render_offset + 1) ~col:1
-              ~visible:(Terminal.cursor_visible t.terminal);
-            send Ansi.(to_string erase_below_cursor)));
-        Screen.invalidate_presented t.screen;
-        t.needs_region_clear <- false
-    | _ -> ());
 
     let forced_full =
       let ff = t.force_full_next_frame in
       if ff then t.force_full_next_frame <- false;
-      ff || row_offset_changed || clipped
+      ff
     in
-    (* When the grid was sized to the pre-flush tui_height but the flush grew
-       render_offset, the grid is taller than the current tui_height. Cap the
-       render height so cursor positions don't exceed the terminal bottom. *)
-    let render_height_limit =
-      match t.config.mode with
-      | `Primary ->
-          let grid_h = Grid.height (Screen.grid t.screen) in
-          if grid_h > t.tui_height then Some t.tui_height
-          else render_height_limit
-      | `Alt -> render_height_limit
+    let scroll_hint =
+      let h = t.scroll_hint in
+      t.scroll_hint <- None;
+      match t.config.mode with `Alt -> h | `Primary -> None
     in
     let len =
-      Screen.render_to_bytes ~full:forced_full ?height_limit:render_height_limit
-        t.screen t.render_buffer
+      Screen.render_to_bytes ~full:forced_full ?scroll_hint
+        ?height_limit:render_height_limit t.screen t.render_buffer
     in
 
     let stdout_start = t.now () in
     if len > 0 then t.write_output t.render_buffer 0 len;
 
     let cursor_max_row =
-      match render_height_limit with
-      | Some limit -> max 1 limit
-      | None -> t.tui_height
+      match t.config.mode with
+      | `Primary -> (
+          match render_height_limit with
+          | Some limit -> max 1 limit
+          | None -> t.tui_height)
+      | `Alt -> t.height
     in
+    (* In Alt mode, park cursor at the bottom row after rendering. *)
+    if t.config.mode = `Alt then
+      send Ansi.(to_string (cursor_position ~row:t.height ~col:1));
     apply_cursor_state t ~cursor ~cursor_max_row;
 
     if use_sync then send Ansi.(to_string (disable Sync_output));
@@ -748,7 +682,7 @@ let suspend t =
   t.control_state <- `Explicit_suspended;
   update_loop_active t;
   t.redraw_requested <- false;
-  invalidate_inline_state t;
+  force_full_redraw t;
   (try Terminal.set_mouse_mode t.terminal `Off with _ -> ());
   (try Terminal.enable_bracketed_paste t.terminal false with _ -> ());
   (try Terminal.enable_focus_reporting t.terminal false with _ -> ());
@@ -774,7 +708,7 @@ let resume t =
            t.tui_height <- tui_height;
            t.static_needs_newline <- static_needs_newline
        | None -> ());
-    invalidate_inline_state t;
+    force_full_redraw t;
     apply_config t;
     Grid.clear (Screen.grid t.screen);
     Screen.Hit_grid.clear (Screen.hit_grid t.screen);
@@ -834,7 +768,7 @@ let apply_resize t cols rows now =
     t.width <- cols;
     t.height <- rows;
     Terminal.query_pixel_resolution t.terminal;
-    invalidate_inline_state t;
+    force_full_redraw t;
     refresh_render_region t;
     t.last_resize_apply_time <- now;
     t.pending_resize <- None;
@@ -919,7 +853,6 @@ let close t =
         if t.static_needs_newline then render_offset + 1
         else max 1 render_offset
       in
-      Terminal.clear_scroll_region t.terminal;
       for row = start_row to height do
         Terminal.move_cursor t.terminal ~row ~col:1
           ~visible:(Terminal.cursor_visible t.terminal);
@@ -1019,7 +952,7 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
       tui_height;
       static_needs_newline;
       static_queue = [];
-      needs_region_clear = false;
+      scroll_hint = None;
       last_resize_apply_time = 0.;
       pending_resize = None;
       force_full_next_frame = true;

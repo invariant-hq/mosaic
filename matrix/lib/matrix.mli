@@ -277,6 +277,18 @@ val static_clear : app -> unit
 (** [static_clear app] clears static content and resets the primary scroll
     region. *)
 
+(** {1:scroll Scroll optimisation} *)
+
+val set_scroll_hint : app -> Screen.scroll_hint -> unit
+(** [set_scroll_hint app hint] sets a scroll hint for the current frame.
+    Consumed by the next {!submit} call. Only effective in [`Alt] mode; the
+    hint is silently discarded in [`Primary] mode.
+
+    Use this when a scrollable container's viewport shifts: the renderer
+    applies DECSTBM hardware scroll so only the newly-revealed edge rows
+    need cell-level diffing. Without the hint, scrolling rewrites every row
+    in the viewport. *)
+
 (** {1:cursor Cursor control} *)
 
 val set_cursor : ?visible:bool -> ?style:Terminal.cursor_style -> app -> unit
