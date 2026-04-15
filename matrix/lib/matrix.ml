@@ -381,10 +381,18 @@ let normalize_newlines s =
     fill 0 0;
     Bytes.unsafe_to_string bytes
 
-(* Write a single static entry: position cursor, emit payload, advance
+(* Helpers for buffered frame output. All frame content is accumulated into
+   a Buffer.t and flushed as a single write in submit. *)
+
+let buf_cursor_position buf ~row ~col =
+  Buffer.add_string buf Ansi.(to_string (cursor_position ~row:(max 1 row) ~col:(max 1 col)))
+
+let buf_erase_line buf = Buffer.add_string buf erase_entire_line
+
+(* Write a single static entry into the frame buffer, advancing
    render_offset. Called within flush_static_queue after the dynamic area
    has been erased. *)
-let write_static_entry t ~send ~max_offset text rows =
+let write_static_entry t ~buf ~max_offset text rows =
   let base = if t.render_offset = 0 then 1 else t.render_offset in
   let text = if t.config.raw_mode then normalize_newlines text else text in
   let needs_leading =
@@ -395,29 +403,26 @@ let write_static_entry t ~send ~max_offset text rows =
   in
   let payload_rows = rows + (if needs_leading then 1 else 0) in
   let grow_by = min payload_rows (max 0 (max_offset - base)) in
-  Terminal.move_cursor t.terminal ~row:base ~col:1
-    ~visible:(Terminal.cursor_visible t.terminal);
-  send payload;
+  buf_cursor_position buf ~row:base ~col:1;
+  Buffer.add_string buf payload;
   t.render_offset <- base + grow_by;
   t.static_needs_newline <- not (ends_with_newline text)
 
 (* Erase the dynamic area, write queued static text into scrollback, and
    force a full re-render so the cell-diff baseline stays in sync. *)
-let flush_static_queue t =
+let flush_static_queue t ~buf =
   match t.static_queue with
   | [] -> ()
   | rev ->
       let queue = List.rev rev in
       t.static_queue <- [];
-      let send s = Terminal.send t.terminal s in
-      Terminal.move_cursor t.terminal ~row:(t.render_offset + 1) ~col:1
-        ~visible:(Terminal.cursor_visible t.terminal);
-      send Ansi.(to_string erase_below_cursor);
+      buf_cursor_position buf ~row:(t.render_offset + 1) ~col:1;
+      Buffer.add_string buf Ansi.(to_string erase_below_cursor);
       Screen.invalidate_presented t.screen;
       let min_h = max 1 t.config.min_tui_height in
       let max_offset = max 0 (t.height - min_h) in
       List.iter
-        (fun (text, rows) -> write_static_entry t ~send ~max_offset text rows)
+        (fun (text, rows) -> write_static_entry t ~buf ~max_offset text rows)
         queue;
       update_primary_layout t ~render_offset:t.render_offset ~resize:true;
       t.force_full_next_frame <- true
@@ -512,7 +517,7 @@ let hits t = Screen.hit_grid t.screen
 (* Ensure render_offset and tui_height stay consistent. Grows the dynamic
    region when content or hints require more rows than tui_height. Returns a
    height limit when the grid still exceeds the available space. *)
-let adjust_primary_layout t ~required_rows_hint =
+let adjust_primary_layout t ~buf ~required_rows_hint =
   let height = max 1 t.height in
   let min_h = max 1 t.config.min_tui_height in
   (* Clamp render_offset after resize. *)
@@ -524,14 +529,19 @@ let adjust_primary_layout t ~required_rows_hint =
     match required_rows_hint with Some rows -> max 1 rows | None -> 0
   in
   let required = max active_rows hinted_rows in
-  (* Grow the dynamic region if required rows exceed current tui_height. *)
+  (* Grow the dynamic region if required rows exceed current tui_height.
+     Emit newlines to scroll the terminal first so the static content at the
+     claimed rows enters scrollback rather than being erased in place. *)
   let new_offset = max 0 (height - required) in
   if required > t.tui_height && new_offset < t.render_offset then begin
-    let send s = Terminal.send t.terminal s in
+    let rows_to_claim = t.render_offset - new_offset in
+    buf_cursor_position buf ~row:height ~col:1;
+    for _ = 1 to rows_to_claim do
+      Buffer.add_string buf "\r\n"
+    done;
     for row = new_offset + 1 to t.render_offset do
-      Terminal.move_cursor t.terminal ~row ~col:1
-        ~visible:(Terminal.cursor_visible t.terminal);
-      send erase_entire_line
+      buf_cursor_position buf ~row ~col:1;
+      buf_erase_line buf
     done;
     update_primary_layout t ~render_offset:new_offset ~resize:true;
     Screen.invalidate_presented t.screen;
@@ -543,17 +553,20 @@ let adjust_primary_layout t ~required_rows_hint =
     let grid_h = Grid.height (Screen.grid t.screen) in
     if grid_h > t.tui_height then Some t.tui_height else None
 
-(* Apply cursor position, style, and color after rendering. *)
-let apply_cursor_state t ~(cursor : Screen.cursor_info) ~cursor_max_row =
-  if cursor.has_position then
+(* Apply cursor position, style, and color. Writes to the frame buffer
+   for position/visibility; cursor style and color go to the terminal
+   directly (they are stateful DEC commands, not frame content). *)
+let apply_cursor_state t ~buf ~(cursor : Screen.cursor_info) ~cursor_max_row =
+  if cursor.has_position then begin
     let row = clamp 1 cursor_max_row cursor.row in
-    Terminal.move_cursor t.terminal ~row:(t.render_offset + row)
-      ~col:(max 1 cursor.col) ~visible:cursor.visible
-  else if cursor.visible && t.config.mode = `Primary then
-    Terminal.move_cursor t.terminal
-      ~row:(t.render_offset + cursor_max_row)
-      ~col:1 ~visible:true
-  else Terminal.set_cursor_visible t.terminal cursor.visible;
+    buf_cursor_position buf ~row:(t.render_offset + row) ~col:(max 1 cursor.col);
+    if cursor.visible then
+      Buffer.add_string buf Ansi.(to_string (enable Cursor_visible))
+  end else if cursor.visible && t.config.mode = `Primary then begin
+    buf_cursor_position buf ~row:(t.render_offset + cursor_max_row) ~col:1;
+    Buffer.add_string buf Ansi.(to_string (enable Cursor_visible))
+  end else if not cursor.visible then
+    Buffer.add_string buf Ansi.(to_string (disable Cursor_visible));
   Terminal.set_cursor_style t.terminal cursor.style ~blinking:cursor.blinking;
   match cursor.color with
   | Some (r, g, b) ->
@@ -562,6 +575,9 @@ let apply_cursor_state t ~(cursor : Screen.cursor_info) ~cursor_max_row =
         ~b:(to_float b) ~a:1.
   | None -> Terminal.reset_cursor_color t.terminal
 
+(* All frame output is accumulated into a single buffer and flushed as one
+   write, matching the forked Ink pattern of "buffer all writes into a single
+   string to avoid multiple write calls". *)
 let submit ?primary_required_rows t =
   if not t.running then ()
   else
@@ -570,25 +586,22 @@ let submit ?primary_required_rows t =
     let cursor = Screen.cursor_info t.screen in
     let caps = Terminal.capabilities t.terminal in
     let use_sync = Terminal.tty t.terminal && caps.sync in
-    let send s = Terminal.send t.terminal s in
-    if use_sync then send Ansi.(to_string (enable Sync_output));
-    if Terminal.cursor_visible t.terminal then
-      Terminal.set_cursor_visible t.terminal false;
+    let buf = Buffer.create 4096 in
+
+    if use_sync then
+      Buffer.add_string buf Ansi.(to_string (enable Sync_output));
+    Buffer.add_string buf Ansi.(to_string (disable Cursor_visible));
 
     (match t.config.mode with
     | `Primary ->
-        (* Static content: erase dynamic area, write static text, force full. *)
-        flush_static_queue t
+        flush_static_queue t ~buf
     | `Alt ->
-        (* Anchor cursor at (0,0). Self-healing: even if the cursor drifted
-           (tmux, resize), the next frame starts from a known position. *)
-        send Ansi.(to_string home));
+        Buffer.add_string buf Ansi.(to_string home));
 
-    (* Adjust layout and compute height limit. *)
     let render_height_limit =
       match t.config.mode with
       | `Primary ->
-          adjust_primary_layout t ~required_rows_hint:primary_required_rows
+          adjust_primary_layout t ~buf ~required_rows_hint:primary_required_rows
       | `Alt -> None
     in
 
@@ -606,9 +619,7 @@ let submit ?primary_required_rows t =
       Screen.render_to_bytes ~full:forced_full ?scroll_hint
         ?height_limit:render_height_limit t.screen t.render_buffer
     in
-
-    let stdout_start = t.now () in
-    if len > 0 then t.write_output t.render_buffer 0 len;
+    if len > 0 then Buffer.add_subbytes buf t.render_buffer 0 len;
 
     let cursor_max_row =
       match t.config.mode with
@@ -618,12 +629,20 @@ let submit ?primary_required_rows t =
           | None -> t.tui_height)
       | `Alt -> t.height
     in
-    (* In Alt mode, park cursor at the bottom row after rendering. *)
     if t.config.mode = `Alt then
-      send Ansi.(to_string (cursor_position ~row:t.height ~col:1));
-    apply_cursor_state t ~cursor ~cursor_max_row;
+      Buffer.add_string buf
+        Ansi.(to_string (cursor_position ~row:t.height ~col:1));
+    apply_cursor_state t ~buf ~cursor ~cursor_max_row;
 
-    if use_sync then send Ansi.(to_string (disable Sync_output));
+    if use_sync then
+      Buffer.add_string buf Ansi.(to_string (disable Sync_output));
+
+    (* Single write for the entire frame. *)
+    let stdout_start = t.now () in
+    let frame_bytes = Buffer.contents buf in
+    let frame_len = String.length frame_bytes in
+    if frame_len > 0 then
+      t.write_output (Bytes.unsafe_of_string frame_bytes) 0 frame_len;
 
     let stdout_end = t.now () in
     let stdout_ms = Float.max 0. ((stdout_end -. stdout_start) *. 1000.) in
