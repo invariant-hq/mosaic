@@ -68,6 +68,9 @@ type app = {
   mutable static_queue : (string * int) list;
   (* Scroll optimisation *)
   mutable scroll_hint : Screen.scroll_hint option;
+  (* Cursor state tracking — only emit style/color when changed. *)
+  mutable last_cursor_shape : Ansi.cursor_shape;
+  mutable last_cursor_color : (int * int * int) option;
   (* Resize and frame timing *)
   mutable last_resize_apply_time : float;
   mutable pending_resize : (int * int) option;
@@ -455,6 +458,8 @@ let static_write t ~rows text =
     t.static_queue <- (text, rows) :: t.static_queue;
     request_redraw t)
 
+(* Immediate action, not part of the frame pipeline — the direct
+   Terminal.send is intentional (clears the screen before the next frame). *)
 let static_clear t =
   if t.config.mode = `Alt then ()
   else (
@@ -553,31 +558,43 @@ let adjust_primary_layout t ~buf ~required_rows_hint =
     let grid_h = Grid.height (Screen.grid t.screen) in
     if grid_h > t.tui_height then Some t.tui_height else None
 
-(* Apply cursor position, style, and color. Writes to the frame buffer
-   for position/visibility; cursor style and color go to the terminal
-   directly (they are stateful DEC commands, not frame content). *)
+(* Apply cursor position, style, and color into the frame buffer.
+   Style and color are only emitted when they differ from the last frame. *)
 let apply_cursor_state t ~buf ~(cursor : Screen.cursor_info) ~cursor_max_row =
   if cursor.has_position then begin
     let row = clamp 1 cursor_max_row cursor.row in
-    buf_cursor_position buf ~row:(t.render_offset + row) ~col:(max 1 cursor.col);
+    buf_cursor_position buf ~row:(t.render_offset + row)
+      ~col:(max 1 cursor.col);
     if cursor.visible then
       Buffer.add_string buf Ansi.(to_string (enable Cursor_visible))
   end else if cursor.visible && t.config.mode = `Primary then begin
     buf_cursor_position buf ~row:(t.render_offset + cursor_max_row) ~col:1;
     Buffer.add_string buf Ansi.(to_string (enable Cursor_visible))
-  end else if not cursor.visible then
-    Buffer.add_string buf Ansi.(to_string (disable Cursor_visible));
-  Terminal.set_cursor_style t.terminal cursor.style ~blinking:cursor.blinking;
-  match cursor.color with
-  | Some (r, g, b) ->
-      let to_float v = Float.of_int v /. 255. in
-      Terminal.set_cursor_color t.terminal ~r:(to_float r) ~g:(to_float g)
-        ~b:(to_float b) ~a:1.
-  | None -> Terminal.reset_cursor_color t.terminal
+  end;
+  let shape : Ansi.cursor_shape =
+    match cursor.style, cursor.blinking with
+    | `Block, true -> `Blinking_block
+    | `Block, false -> `Block
+    | `Line, true -> `Blinking_bar
+    | `Line, false -> `Bar
+    | `Underline, true -> `Blinking_underline
+    | `Underline, false -> `Underline
+  in
+  if shape <> t.last_cursor_shape then begin
+    Buffer.add_string buf Ansi.(to_string (cursor_style ~shape));
+    t.last_cursor_shape <- shape
+  end;
+  if cursor.color <> t.last_cursor_color then begin
+    (match cursor.color with
+    | Some (r, g, b) ->
+        Buffer.add_string buf Ansi.(to_string (cursor_color ~r ~g ~b))
+    | None ->
+        Buffer.add_string buf Ansi.(to_string reset_cursor_color));
+    t.last_cursor_color <- cursor.color
+  end
 
 (* All frame output is accumulated into a single buffer and flushed as one
-   write, matching the forked Ink pattern of "buffer all writes into a single
-   string to avoid multiple write calls". *)
+   write. Skips the write entirely when nothing changed. *)
 let submit ?primary_required_rows t =
   if not t.running then ()
   else
@@ -588,15 +605,16 @@ let submit ?primary_required_rows t =
     let use_sync = Terminal.tty t.terminal && caps.sync in
     let buf = Buffer.create 4096 in
 
+    (* Preamble: BSU + cursor hide. *)
     if use_sync then
       Buffer.add_string buf Ansi.(to_string (enable Sync_output));
     Buffer.add_string buf Ansi.(to_string (disable Cursor_visible));
+    let preamble_len = Buffer.length buf in
 
+    (* Mode-specific pre-render work. *)
     (match t.config.mode with
-    | `Primary ->
-        flush_static_queue t ~buf
-    | `Alt ->
-        Buffer.add_string buf Ansi.(to_string home));
+    | `Primary -> flush_static_queue t ~buf
+    | `Alt -> Buffer.add_string buf Ansi.(to_string home));
 
     let render_height_limit =
       match t.config.mode with
@@ -621,37 +639,37 @@ let submit ?primary_required_rows t =
     in
     if len > 0 then Buffer.add_subbytes buf t.render_buffer 0 len;
 
-    let cursor_max_row =
-      match t.config.mode with
-      | `Primary -> (
-          match render_height_limit with
-          | Some limit -> max 1 limit
-          | None -> t.tui_height)
-      | `Alt -> t.height
-    in
-    if t.config.mode = `Alt then
-      Buffer.add_string buf
-        Ansi.(to_string (cursor_position ~row:t.height ~col:1));
-    apply_cursor_state t ~buf ~cursor ~cursor_max_row;
+    (* Skip the write when nothing beyond the preamble was produced. *)
+    let stdout_ms = ref 0. in
+    if Buffer.length buf > preamble_len then begin
+      let cursor_max_row =
+        match t.config.mode with
+        | `Primary -> (
+            match render_height_limit with
+            | Some limit -> max 1 limit
+            | None -> t.tui_height)
+        | `Alt -> t.height
+      in
+      if t.config.mode = `Alt then
+        Buffer.add_string buf
+          Ansi.(to_string (cursor_position ~row:t.height ~col:1));
+      apply_cursor_state t ~buf ~cursor ~cursor_max_row;
+      if use_sync then
+        Buffer.add_string buf Ansi.(to_string (disable Sync_output));
 
-    if use_sync then
-      Buffer.add_string buf Ansi.(to_string (disable Sync_output));
+      let write_start = t.now () in
+      let frame_bytes = Buffer.contents buf in
+      t.write_output (Bytes.unsafe_of_string frame_bytes) 0
+        (String.length frame_bytes);
+      stdout_ms := Float.max 0. ((t.now () -. write_start) *. 1000.)
+    end;
 
-    (* Single write for the entire frame. *)
-    let stdout_start = t.now () in
-    let frame_bytes = Buffer.contents buf in
-    let frame_len = String.length frame_bytes in
-    if frame_len > 0 then
-      t.write_output (Bytes.unsafe_of_string frame_bytes) 0 frame_len;
-
-    let stdout_end = t.now () in
-    let stdout_ms = Float.max 0. ((stdout_end -. stdout_start) *. 1000.) in
     let overall_frame_ms =
-      Float.max 0. ((stdout_end -. overall_start) *. 1000.)
+      Float.max 0. ((t.now () -. overall_start) *. 1000.)
     in
-
     Screen.record_runtime_metrics t.screen
-      ~frame_callback_ms:t.last_frame_callback_ms ~overall_frame_ms ~stdout_ms;
+      ~frame_callback_ms:t.last_frame_callback_ms ~overall_frame_ms
+      ~stdout_ms:!stdout_ms;
     if t.frame_dump_every > 0 then (
       t.frame_dump_counter <- t.frame_dump_counter + 1;
       if t.frame_dump_counter mod t.frame_dump_every = 0 then
@@ -972,6 +990,8 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
       static_needs_newline;
       static_queue = [];
       scroll_hint = None;
+      last_cursor_shape = `Blinking_block;
+      last_cursor_color = None;
       last_resize_apply_time = 0.;
       pending_resize = None;
       force_full_next_frame = true;
