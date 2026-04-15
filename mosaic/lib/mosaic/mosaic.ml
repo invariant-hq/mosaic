@@ -631,7 +631,6 @@ let run ?matrix
             ~r:(Float.of_int r /. 255.)
             ~g:(Float.of_int g /. 255.)
             ~b:(Float.of_int b /. 255.)
-            ~a:1.
       | None -> ());
       ignore (Renderer.render runtime.renderer : string);
       process_pending_focus runtime)

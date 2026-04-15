@@ -302,8 +302,8 @@ val set_cursor_position : app -> row:int -> col:int -> unit
 (** [set_cursor_position app ~row ~col] moves the cursor to 1-based coordinates
     within the dynamic render region. *)
 
-val set_cursor_color : app -> r:float -> g:float -> b:float -> a:float -> unit
-(** [set_cursor_color app ~r ~g ~b ~a] sets the cursor color. Components are in
+val set_cursor_color : app -> r:float -> g:float -> b:float -> unit
+(** [set_cursor_color app ~r ~g ~b] sets the cursor color. Components are in
     \[[0.];[1.]\]. *)
 
 (** {1:diagnostics Diagnostics} *)

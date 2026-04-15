@@ -780,21 +780,19 @@ let resume t =
 
 (* Cursor *)
 
+(* Cursor setters update Screen state only. The actual terminal output
+   is deferred to submit's apply_cursor_state, which writes everything
+   into the frame buffer as a single write. *)
+
 let set_cursor ?visible ?style t =
-  Option.iter
-    (fun v ->
-      Terminal.set_cursor_visible t.terminal v;
-      Screen.set_cursor_visible t.screen v)
-    visible;
+  Option.iter (Screen.set_cursor_visible t.screen) visible;
   Option.iter
     (fun style ->
       let _, blinking = Terminal.cursor_style_state t.terminal in
-      Terminal.set_cursor_style t.terminal style ~blinking;
       Screen.set_cursor_style t.screen ~style ~blinking)
     style
 
 let set_cursor_style t ~style ~blinking =
-  Terminal.set_cursor_style t.terminal style ~blinking;
   Screen.set_cursor_style t.screen ~style ~blinking
 
 let set_cursor_position t ~row ~col =
@@ -802,19 +800,16 @@ let set_cursor_position t ~row ~col =
     if t.config.mode = `Primary then max 1 t.tui_height else max 1 t.height
   in
   let row = clamp 1 max_row row in
-  let target_row = mouse_offset t + row in
-  let target_col = max 1 col in
-  Screen.set_cursor_position t.screen ~row ~col:target_col;
-  Terminal.move_cursor t.terminal ~row:target_row ~col:target_col
-    ~visible:(Terminal.cursor_visible t.terminal)
+  let col = max 1 col in
+  Screen.set_cursor_position t.screen ~row ~col
 
-let set_cursor_color t ~r ~g ~b ~a =
+let set_cursor_color t ~r ~g ~b =
   let clamp_01 f = Float.max 0. (Float.min 1. f) in
-  let r_f = clamp_01 r and g_f = clamp_01 g and b_f = clamp_01 b in
-  Terminal.set_cursor_color t.terminal ~r:r_f ~g:g_f ~b:b_f ~a:(clamp_01 a);
   let to_byte f = int_of_float (Float.round (f *. 255.)) |> clamp 0 255 in
-  Screen.set_cursor_color t.screen ~r:(to_byte r_f) ~g:(to_byte g_f)
-    ~b:(to_byte b_f)
+  Screen.set_cursor_color t.screen
+    ~r:(to_byte (clamp_01 r))
+    ~g:(to_byte (clamp_01 g))
+    ~b:(to_byte (clamp_01 b))
 
 (* Resize *)
 
