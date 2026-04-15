@@ -1,19 +1,27 @@
-(** Agent-style TUI demo.
+(** Agent-style TUI modelled after Claude Code's non-fullscreen layout.
 
-    This example focuses on interaction semantics:
-    - committed transcript written as static content (primary screen),
-    - dynamic pending output in the live UI,
-    - explicit states (idle/responding/waiting confirmation),
-    - resize-aware layout with constrained/expanded live area. *)
+    Stress-tests Mosaic's primary-screen rendering with markdown, code blocks,
+    tool calls, and streaming content. *)
 
 open Mosaic
 
-type stream_state = Idle | Responding | Waiting_for_confirmation
+(* ── Model ── *)
+
+type tool_status = Running | Done [@@warning "-37"]
+
+type tool_call = {
+  name : string;
+  args : string;
+  output : string option;
+  status : tool_status;
+}
+
+type stream_state = Idle | Streaming | Waiting_confirmation of string
 
 type step =
   | Emit of string
-  | Tool_start of string
-  | Tool_finish of string
+  | Tool_start of { name : string; args : string }
+  | Tool_finish of { output : string }
   | Need_confirmation of {
       prompt : string;
       on_yes : step list;
@@ -30,7 +38,7 @@ type waiting = {
 type model = {
   input : string;
   pending_text : string;
-  pending_tool : string option;
+  tools : tool_call list;
   last_user : string option;
   queue : step list;
   waiting : waiting option;
@@ -49,7 +57,7 @@ let initial_model =
   {
     input = "";
     pending_text = "";
-    pending_tool = None;
+    tools = [];
     last_user = None;
     queue = [];
     waiting = None;
@@ -57,110 +65,274 @@ let initial_model =
     committed_turns = 0;
   }
 
-let trim = String.trim
+(* ── Scenarios ── *)
 
-let string_contains ~needle hay =
-  if needle = "" then true
-  else
-    let hay = String.lowercase_ascii hay in
-    let needle = String.lowercase_ascii needle in
-    let n = String.length needle in
-    let m = String.length hay in
+let read_file_output =
+  {|```ocaml
+type t = {
+  mutable render_offset : int;
+  mutable tui_height : int;
+  mutable static_queue : (string * int) list;
+  mutable scroll_hint : Screen.scroll_hint option;
+  mutable force_full_next_frame : bool;
+}
+```|}
+
+let test_output =
+  {|```
+Testing matrix.runtime.
+
+........
+
+All tests passed in 18ms. 8 tests run.
+```|}
+
+let complex_plan =
+  [
+    Emit "I'll look at the project structure first.\n\n";
+    Need_confirmation
+      {
+        prompt = "Read file: matrix/lib/matrix.ml";
+        on_yes =
+          [
+            Tool_start { name = "Read"; args = "matrix/lib/matrix.ml" };
+            Tool_finish { output = read_file_output };
+            Emit
+              "I can see the `app` type has been simplified. The key fields \
+               are:\n\n\
+               - `render_offset` \xe2\x80\x94 where the dynamic area starts\n\
+               - `tui_height` \xe2\x80\x94 height of the dynamic region\n\
+               - `scroll_hint` \xe2\x80\x94 DECSTBM optimisation for ScrollBox\n\
+               - `force_full_next_frame` \xe2\x80\x94 forces full re-render\n\n\
+               The static content handling now uses **erase-and-rewrite** \
+               instead of DECSTBM scroll regions. Let me verify the tests \
+               pass.\n\n";
+            Need_confirmation
+              {
+                prompt = "Run: dune exec matrix/test/test_runtime.exe";
+                on_yes =
+                  [
+                    Tool_start
+                      {
+                        name = "Bash";
+                        args = "dune exec matrix/test/test_runtime.exe";
+                      };
+                    Tool_finish { output = test_output };
+                    Emit
+                      "All **8 tests pass**. The refactoring is working \
+                       correctly.\n\n\
+                       Here's a summary of what changed:\n\n\
+                       | Component | Before | After |\n\
+                       |-----------|--------|-------|\n\
+                       | Static content | DECSTBM scroll regions | \
+                       Erase-and-rewrite |\n\
+                       | Scroll regions | Used in Primary mode | Removed \
+                       from Primary |\n\
+                       | Frame output | Multiple I/O calls | Single \
+                       buffered write |\n\
+                       | Alt mode | No cursor anchor | CSI H self-healing \
+                       |\n\n\
+                       The net change is **-12 lines** with cleaner \
+                       separation of concerns.\n";
+                  ];
+                on_no = [ Emit "Skipping test run.\n" ];
+              };
+          ];
+        on_no = [ Emit "OK, I'll work from the context I have.\n" ];
+      };
+    Emit "\nLet me know if you'd like me to make any further changes.\n";
+  ]
+
+let simple_plan =
+  [
+    Emit "Sure, I can help with that.\n\n";
+    Emit
+      "Here are a few approaches we could take:\n\n\
+       1. **Direct implementation** \xe2\x80\x94 write the code inline, \
+       simple and fast\n\
+       2. **Module extraction** \xe2\x80\x94 separate the logic into its \
+       own module with a clean `.mli`\n\
+       3. **Test-driven** \xe2\x80\x94 write the tests first, then \
+       implement to pass them\n\n\
+       For a change this size, I'd recommend option 2. The module boundary \
+       gives us:\n\n\
+       - Type safety at the interface\n\
+       - Easier testing in isolation\n\
+       - Clear documentation via the `.mli`\n\n\
+       ```ocaml\n\
+       (* proposed signature *)\n\
+       val create : ?mode:mode -> unit -> t\n\
+       val submit : t -> unit\n\
+       val set_scroll_hint : t -> Screen.scroll_hint -> unit\n\
+       ```\n\n\
+       Want me to proceed with this approach?\n";
+  ]
+
+let has_tool_intent prompt =
+  let p = String.lowercase_ascii prompt in
+  let has s =
+    let n = String.length s in
+    let m = String.length p in
     let rec loop i =
       if i + n > m then false
-      else if String.sub hay i n = needle then true
+      else if String.sub p i n = s then true
       else loop (i + 1)
     in
     loop 0
-
-let append_chunk text chunk = if text = "" then chunk else text ^ chunk
-let append_line text line = if text = "" then line else text ^ "\n" ^ line
-
-let has_tool_intent prompt =
-  string_contains ~needle:"file" prompt
-  || string_contains ~needle:"files" prompt
-  || string_contains ~needle:"list" prompt
-  || string_contains ~needle:"ls" prompt
-  || string_contains ~needle:"read" prompt
+  in
+  has "file" || has "read" || has "matrix" || has "test" || has "code"
 
 let plan_for_prompt prompt =
-  if has_tool_intent prompt then
-    [
-      Emit "I should inspect local workspace context. ";
-      Need_confirmation
-        {
-          prompt = "Allow tool call: list_directory \".\" ?";
-          on_yes =
-            [
-              Tool_start "list_directory \".\"";
-              Emit "Running tool... ";
-              Tool_finish "Tool result: found example files and source folders.";
-              Emit "Using that context, I can summarize next steps. ";
-            ];
-          on_no =
-            [ Emit "Skipping tool call; answering from prompt context only. " ];
-        };
-      Emit "Done.";
-    ]
-  else
-    [
-      Emit "Drafting response";
-      Emit "... ";
-      Emit "done. ";
-      Emit "No external tool needed for this request.";
-    ]
+  if has_tool_intent prompt then complex_plan else simple_plan
 
-let turn_block ~role ~accent content =
-  let body =
-    let t = trim content in
-    if t = "" then "_(empty)_" else t
-  in
-  text
-    ~style:(Ansi.Style.make ~fg:accent ())
-    ~wrap:`Word
+(* ── Theme ── *)
+
+let subtle = Ansi.Color.grayscale ~level:14
+let dim_style = Ansi.Style.make ~fg:subtle ()
+let user_msg_bg = Ansi.Color.of_rgb 55 55 55
+let green = Ansi.Color.of_rgb 77 217 128
+let yellow = Ansi.Color.yellow
+let rule_color = Ansi.Color.grayscale ~level:8
+
+(* ── Symbols ── *)
+
+let s_prompt = "\xe2\x9d\xaf"       (* ❯ *)
+let s_circle = "\xe2\x8f\xba"       (* ⏺ *)
+let s_check = "\xe2\x9c\x93"        (* ✓ *)
+
+(* ── Views ── *)
+
+let user_message_view prompt =
+  box ~flex_direction:Column
+    ~margin:(margin_lrtb 0 0 1 0) ~padding:(padding_lrtb 0 1 0 0)
+    ~background:user_msg_bg
     ~size:{ width = pct 100; height = auto }
-    (role ^ "> " ^ body)
+    [
+      box ~flex_direction:Row
+        [ text ~style:(Ansi.Style.make ~fg:subtle ())
+            (s_prompt ^ " ");
+          text ~wrap:`Word prompt ];
+    ]
 
-let assistant_text model =
-  let t = trim model.pending_text in
-  if t <> "" then model.pending_text
-  else if model.state = Idle then "(no response)"
-  else "Assistant output will stream here..."
+let tool_call_view tc =
+  let indicator, label_style =
+    match tc.status with
+    | Running ->
+        ( spinner ~color:green
+            ~size:{ width = px 2; height = px 1 } (),
+          Ansi.Style.make ~bold:true () )
+    | Done ->
+        ( text ~style:(Ansi.Style.make ~fg:green ())
+            (s_check ^ " "),
+          Ansi.Style.make ~bold:true ~dim:true () )
+  in
+  let header =
+    box ~flex_direction:Row ~gap:(gap 1)
+      [ indicator;
+        text ~style:label_style tc.name;
+        text ~style:dim_style tc.args ]
+  in
+  let output_view =
+    match tc.output with
+    | None -> empty
+    | Some out ->
+        markdown ~size:{ width = pct 100; height = auto }
+          ~margin:(margin_lrtb 2 0 0 0) out
+  in
+  box ~flex_direction:Column ~margin:(margin_lrtb 0 0 1 0)
+    ~size:{ width = pct 100; height = auto }
+    [ header; output_view ]
+
+let assistant_text_view ?(streaming = false) content =
+  if String.length (String.trim content) = 0 then empty
+  else
+    box ~flex_direction:Row ~margin:(margin_lrtb 0 0 1 0)
+      ~size:{ width = pct 100; height = auto }
+      [
+        text ~style:(Ansi.Style.make ~fg:(Ansi.Color.white) ())
+          (s_circle ^ " ");
+        markdown ~streaming
+          ~size:{ width = pct 100; height = auto } content;
+      ]
+
+let confirmation_view prompt =
+  box ~flex_direction:Row ~gap:(gap 1) ~margin:(margin_lrtb 0 0 1 0)
+    ~size:{ width = pct 100; height = auto }
+    [
+      text ~style:(Ansi.Style.make ~fg:yellow ~bold:true ()) prompt;
+      text ~style:dim_style "(y/n)";
+    ]
 
 let active_turn_view model =
   match model.last_user with
   | None -> empty
   | Some prompt ->
-      box ~display:Display.Block ~flex_direction:Column ~gap:(gap 1)
+      box ~flex_direction:Column
         ~size:{ width = pct 100; height = auto }
+        (List.concat
+           [
+             [ user_message_view prompt ];
+             List.map tool_call_view model.tools;
+             [ assistant_text_view
+                 ~streaming:(model.state = Streaming)
+                 model.pending_text ];
+             (match model.waiting with
+             | None -> []
+             | Some w -> [ confirmation_view w.prompt ]);
+           ])
+
+let input_view model =
+  box ~border:true ~border_sides:[ `Top; `Bottom ]
+    ~border_color:rule_color
+    ~size:{ width = pct 100; height = auto }
+    [
+      box ~flex_direction:Row ~align_items:Center
+        ~size:{ width = pct 100; height = px 1 }
         [
-          turn_block ~role:"user" ~accent:Ansi.Color.cyan prompt;
-          (match model.pending_tool with
-          | None -> empty
-          | Some label ->
-              box ~flex_direction:Row ~gap:(gap 1)
-                [ spinner ~color:Ansi.Color.cyan (); text ("Tool: " ^ label) ]);
-          turn_block ~role:"assistant" ~accent:Ansi.Color.green
-            (assistant_text model);
-          (match model.waiting with
-          | None -> empty
-          | Some w ->
-              box ~padding:(padding 1) ~border:true
-                ~border_color:Ansi.Color.yellow
-                [
-                  text
-                    ~style:(Ansi.Style.make ~fg:Ansi.Color.yellow ~bold:true ())
-                    ("Action required: " ^ w.prompt);
-                  text
-                    ~style:(Ansi.Style.make ~dim:true ())
-                    "Press y to approve, n to deny.";
-                ]);
-        ]
+          text ~style:(Ansi.Style.make ~bold:true ~fg:green ())
+            (s_prompt ^ " ");
+          input ~autofocus:true ~value:model.input
+            ~placeholder:
+              (match model.state with
+              | Idle -> ""
+              | Streaming -> ""
+              | Waiting_confirmation _ -> "")
+            ~size:{ width = pct 100; height = px 1 }
+            ~on_input:(fun v -> Some (Set_input v))
+            ~on_submit:(fun v -> Some (Submit v))
+            ();
+        ];
+    ]
+
+let footer_view model =
+  let status =
+    match model.state with
+    | Idle -> ""
+    | Streaming -> "streaming"
+    | Waiting_confirmation _ -> "awaiting confirmation"
+  in
+  let left =
+    if status = "" then
+      Printf.sprintf "  turns: %d" model.committed_turns
+    else
+      Printf.sprintf "  %s \xc2\xb7 turns: %d" status model.committed_turns
+  in
+  text ~style:dim_style left
+
+(* ── Init / Update ── *)
 
 let init () =
   let banner =
     Cmd.static_commit
-      (text "✻ x-agent\n  primary screen · seamless static commit\n")
+      (box ~flex_direction:Column
+         ~size:{ width = pct 100; height = auto }
+         [
+           text ~style:(Ansi.Style.make ~bold:true ())
+             "x-agent";
+           text ~style:dim_style
+             "Primary screen \xc2\xb7 erase-and-rewrite static commits";
+           text "";
+         ])
   in
   (initial_model, banner)
 
@@ -170,10 +342,9 @@ let finalize_turn m =
     | None -> Cmd.none
     | Some _ -> Cmd.static_commit (active_turn_view m)
   in
-  ( {
-      m with
+  ( { m with
       pending_text = "";
-      pending_tool = None;
+      tools = [];
       last_user = None;
       queue = [];
       waiting = None;
@@ -185,48 +356,52 @@ let finalize_turn m =
 let update msg model =
   match msg with
   | Set_input value -> ({ model with input = value }, Cmd.none)
-  | Submit raw_prompt ->
-      let prompt = trim raw_prompt in
+  | Submit raw ->
+      let prompt = String.trim raw in
       if model.state <> Idle || prompt = "" then (model, Cmd.none)
       else
-        let queue = plan_for_prompt prompt in
-        ( {
-            model with
+        ( { model with
             input = "";
             pending_text = "";
-            pending_tool = None;
+            tools = [];
             last_user = Some prompt;
-            queue;
+            queue = plan_for_prompt prompt;
             waiting = None;
-            state = Responding;
+            state = Streaming;
           },
           Cmd.none )
   | Tick -> (
       match (model.state, model.waiting, model.queue) with
-      | Responding, None, [] -> finalize_turn model
-      | Responding, None, step :: tail -> (
+      | Streaming, None, [] -> finalize_turn model
+      | Streaming, None, step :: tail -> (
           match step with
           | Emit chunk ->
-              ( {
-                  model with
-                  pending_text = append_chunk model.pending_text chunk;
+              ( { model with
+                  pending_text = model.pending_text ^ chunk;
                   queue = tail;
                 },
                 Cmd.none )
-          | Tool_start label ->
-              ({ model with pending_tool = Some label; queue = tail }, Cmd.none)
-          | Tool_finish result ->
-              ( {
-                  model with
-                  pending_tool = None;
-                  pending_text = append_line model.pending_text result;
+          | Tool_start { name; args } ->
+              ( { model with
+                  tools =
+                    model.tools
+                    @ [ { name; args; output = None; status = Running } ];
                   queue = tail;
                 },
                 Cmd.none )
+          | Tool_finish { output } ->
+              let tools =
+                List.map
+                  (fun tc ->
+                    if tc.status = Running then
+                      { tc with status = Done; output = Some output }
+                    else tc)
+                  model.tools
+              in
+              ({ model with tools; queue = tail }, Cmd.none)
           | Need_confirmation { prompt; on_yes; on_no } ->
-              ( {
-                  model with
-                  state = Waiting_for_confirmation;
+              ( { model with
+                  state = Waiting_confirmation prompt;
                   waiting = Some { prompt; on_yes; on_no; tail };
                 },
                 Cmd.none ))
@@ -236,84 +411,55 @@ let update msg model =
       | None -> (model, Cmd.none)
       | Some w ->
           let next = (if allowed then w.on_yes else w.on_no) @ w.tail in
-          ( {
-              model with
+          ( { model with
               queue = next;
               waiting = None;
-              state = Responding;
+              state = Streaming;
               pending_text =
-                append_line model.pending_text
-                  (if allowed then "User approved tool execution."
-                   else "User denied tool execution.");
+                model.pending_text
+                ^ (if allowed then "" else "_Denied._\n\n");
             },
             Cmd.none ))
   | Quit -> (model, Cmd.quit)
 
+(* ── View ── *)
+
 let view model =
-  let subtle = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) () in
-  let hint = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) () in
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = auto }
     [
       active_turn_view model;
-      box ~flex_direction:Column ~padding:(padding 1) ~gap:(gap 1)
-        ~size:{ width = pct 100; height = auto }
-        [
-          text ~style:subtle
-            (match model.state with
-            | Idle -> "idle"
-            | Responding -> "responding"
-            | Waiting_for_confirmation -> "waiting_for_confirmation");
-          box ~border:true ~title:"Prompt" ~padding:(padding 1)
-            ~size:{ width = pct 100; height = auto }
-            [
-              box ~flex_direction:Row ~align_items:Center
-                ~size:{ width = pct 100; height = auto }
-                [
-                  text ~style:(Ansi.Style.make ~bold:true ()) "❯ ";
-                  input ~autofocus:true ~value:model.input
-                    ~placeholder:
-                      (match model.state with
-                      | Idle -> "Ask anything"
-                      | Responding -> "Assistant is responding..."
-                      | Waiting_for_confirmation ->
-                          "Waiting for confirmation (y/n)...")
-                    ~size:{ width = pct 100; height = px 1 }
-                    ~on_input:(fun v -> Some (Set_input v))
-                    ~on_submit:(fun v -> Some (Submit v))
-                    ();
-                ];
-            ];
-          text ~style:hint
-            (Printf.sprintf "Enter submit · y/n confirm · q quit · committed=%d"
-               model.committed_turns);
-        ];
+      input_view model;
+      footer_view model;
     ]
 
+(* ── Subscriptions ── *)
+
 let subscriptions model =
-  let tick_sub =
+  let tick =
     match model.state with
-    | Responding -> Sub.every 0.08 (fun () -> Tick)
+    | Streaming -> Sub.every 0.05 (fun () -> Tick)
     | _ -> Sub.none
   in
   Sub.batch
     [
-      tick_sub;
+      tick;
       Sub.on_key_all (fun ev ->
-          let key = (Event.Key.data ev).key in
-          match key with
+          match (Event.Key.data ev).key with
           | Escape -> Some Quit
-          | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
           | Char c
-            when model.state = Waiting_for_confirmation
-                 && Uchar.equal c (Uchar.of_char 'y') ->
+            when Uchar.equal c (Uchar.of_char 'q') && model.state = Idle ->
+              Some Quit
+          | Char c
+            when model.state <> Idle && Uchar.equal c (Uchar.of_char 'y') ->
               Some (Confirm true)
           | Char c
-            when model.state = Waiting_for_confirmation
-                 && Uchar.equal c (Uchar.of_char 'n') ->
+            when model.state <> Idle && Uchar.equal c (Uchar.of_char 'n') ->
               Some (Confirm false)
           | _ -> None);
     ]
+
+(* ── Entry point ── *)
 
 let () =
   let matrix =
