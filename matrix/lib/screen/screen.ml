@@ -241,9 +241,9 @@ let render_generic ~pool ~row_offset ~use_explicit_width
         let new_x = write_run y x in
         let cells_in_run = new_x - start_x in
 
-        (* Reset style at end of run to prevent bleed to skipped cells *)
+        (* Close active hyperlink. SGR state is preserved across the gap
+           so the next run on this row skips re-emission when unchanged. *)
         Ansi.Sgr_state.close_link sgr_state writer;
-        Ansi.Sgr_state.reset sgr_state;
 
         process_cols y new_x (row_cells + cells_in_run))
       else process_cols y (x + width_step curr_width) row_cells

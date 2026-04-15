@@ -633,11 +633,31 @@ let submit ?primary_required_rows t =
       t.scroll_hint <- None;
       match t.config.mode with `Alt -> h | `Primary -> None
     in
+    (* In full mode on primary screen, cap to active_height to skip blank
+       rows and erase below content to clear stale rows. *)
+    let active_h =
+      if forced_full && t.config.mode = `Primary
+      then Some (max 1 (Screen.active_height t.screen))
+      else None
+    in
+    let render_height_limit =
+      match active_h with
+      | Some active -> (
+          match render_height_limit with
+          | Some limit -> Some (min limit active)
+          | None -> Some active)
+      | None -> render_height_limit
+    in
     let len =
       Screen.render_to_bytes ~full:forced_full ?scroll_hint
         ?height_limit:render_height_limit t.screen t.render_buffer
     in
     if len > 0 then Buffer.add_subbytes buf t.render_buffer 0 len;
+    (match active_h with
+    | Some active ->
+        buf_cursor_position buf ~row:(t.render_offset + active + 1) ~col:1;
+        Buffer.add_string buf Ansi.(to_string erase_below_cursor)
+    | None -> ());
 
     (* Skip the write when nothing beyond the preamble was produced. *)
     let stdout_ms = ref 0. in
