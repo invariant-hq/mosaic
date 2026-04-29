@@ -12,6 +12,12 @@ let encode_to_list pool ~width_method ~tab_width str =
 
 let check_width msg expected actual = equal ~msg int expected actual
 
+let expect_invalid_arg msg f =
+  try
+    f ();
+    fail (msg ^ ": expected Invalid_argument")
+  with Invalid_argument _ -> ()
+
 (* 1. Conformance & Segmentation *)
 
 let grapheme_break_test_path () =
@@ -363,6 +369,54 @@ let malformed_utf8_intern_replaces_with_ufffd () =
     (Pool.to_string pool g_sub);
   equal ~msg:"intern_sub malformed width" int 1 (grapheme_width g_sub)
 
+let malformed_utf8_intern_normalizes_mixed_strings () =
+  let pool = Pool.create () in
+  let ufffd = uchar_to_utf8 0xFFFD in
+
+  let g = Pool.intern pool ("\xC3" ^ "(") in
+  equal ~msg:"intern malformed prefix normalizes" string (ufffd ^ "(")
+    (Pool.to_string pool g);
+  equal ~msg:"intern malformed prefix width" int 2 (grapheme_width g);
+
+  let g_mid = Pool.intern pool ("a" ^ "\x80" ^ "b") in
+  equal ~msg:"intern malformed middle normalizes" string
+    ("a" ^ ufffd ^ "b")
+    (Pool.to_string pool g_mid);
+  equal ~msg:"intern malformed middle width" int 3 (grapheme_width g_mid);
+
+  let input = "x" ^ "\xC3" ^ "(" ^ "y" in
+  let g_sub =
+    Pool.intern_sub pool ~width_method:`Unicode ~tab_width:2 input ~pos:1 ~len:2
+      ~width:2
+  in
+  equal ~msg:"intern_sub malformed slice normalizes" string (ufffd ^ "(")
+    (Pool.to_string pool g_sub)
+
+let public_slice_range_validation () =
+  let pool = Pool.create () in
+  expect_invalid_arg "intern_sub negative pos" (fun () ->
+      ignore
+        (Pool.intern_sub pool ~width_method:`Unicode ~tab_width:2 "abc"
+           ~pos:(-1) ~len:1 ~width:1));
+  expect_invalid_arg "intern_sub oversized len" (fun () ->
+      ignore
+        (Pool.intern_sub pool ~width_method:`Unicode ~tab_width:2 "abc" ~pos:1
+           ~len:3 ~width:3));
+  expect_invalid_arg "measure_sub negative pos" (fun () ->
+      ignore
+        (String.measure_sub ~width_method:`Unicode ~tab_width:2 "abc" ~pos:(-1)
+           ~len:1));
+  expect_invalid_arg "measure_sub oversized len" (fun () ->
+      ignore
+        (String.measure_sub ~width_method:`Unicode ~tab_width:2 "abc" ~pos:1
+           ~len:3));
+  expect_invalid_arg "blit negative pos" (fun () ->
+      let buf = Bytes.create 8 in
+      ignore (Pool.blit pool space buf ~pos:(-1)));
+  expect_invalid_arg "blit pos past end" (fun () ->
+      let buf = Bytes.create 8 in
+      ignore (Pool.blit pool space buf ~pos:9))
+
 (* 4. Lifecycle & Pool *)
 
 let lifecycle_generation_safety () =
@@ -382,6 +436,16 @@ let lifecycle_generation_safety () =
   equal ~msg:"stale string empty" string "" (Pool.to_string pool g1);
   let buf = Bytes.create 8 in
   equal ~msg:"stale blit is empty" int 0 (Pool.blit pool g1 buf ~pos:0)
+
+let pool_clear_invalidates_old_ids () =
+  let pool = Pool.create () in
+  let old_g = Pool.intern pool "e\u{0301}" in
+  equal ~msg:"old content exists" string "e\u{0301}" (Pool.to_string pool old_g);
+  Pool.clear pool;
+  let new_g = Pool.intern pool "a\u{0302}" in
+  equal ~msg:"new content exists" string "a\u{0302}" (Pool.to_string pool new_g);
+  equal ~msg:"old glyph invalid after clear and reuse" string ""
+    (Pool.to_string pool old_g)
 
 let pool_resize_stress () =
   let pool = Pool.create () in
@@ -438,6 +502,21 @@ let decref_deduplicates_free_list () =
   equal ~msg:"g3 content" string "another" (Pool.to_string pool g3);
   (* Stale reference should return empty *)
   equal ~msg:"stale g empty" string "" (Pool.to_string pool g)
+
+let live_complex_graphemes_are_interned () =
+  let pool = Pool.create () in
+  let g1 = Pool.intern pool "e\u{0301}" in
+  Pool.incref pool g1;
+  let g2 = Pool.intern pool "e\u{0301}" in
+  equal ~msg:"live duplicate pool key" (option int) (pool_key g1) (pool_key g2);
+  Pool.incref pool g2;
+  Pool.decref pool g1;
+  Pool.decref pool g2;
+  let g3 = Pool.intern pool "e\u{0301}" in
+  Pool.incref pool g3;
+  equal ~msg:"content remains correct after reintern" string "e\u{0301}"
+    (Pool.to_string pool g3);
+  Pool.decref pool g3
 
 let pool_capacity_reuse () =
   (* Regression: alloc_string used to overwrite capacity with actual length,
@@ -721,6 +800,55 @@ let wrap_break_points_unicode_space () =
     { byte_offset = 3; grapheme_offset = 1 }
     resumes.(0)
 
+let wrap_breaks_mixed_cjk_ascii_transitions () =
+  (* Ported from OpenTUI utf8_test.zig:
+     "wrap breaks: CJK to ASCII script transition" and
+     "wrap breaks: ASCII to CJK script transition". *)
+  let cjk_ascii = "日本語abc" in
+  let cjk_points = wrap_break_points cjk_ascii in
+  let cjk_resumes = wrap_breaks cjk_ascii in
+  equal ~msg:"CJK->ASCII one break" int 1 (Array.length cjk_points);
+  equal ~msg:"CJK->ASCII point" wrap_break_testable
+    { byte_offset = 6; grapheme_offset = 2 }
+    cjk_points.(0);
+  equal ~msg:"CJK->ASCII resume" wrap_break_testable
+    { byte_offset = 9; grapheme_offset = 2 }
+    cjk_resumes.(0);
+
+  let ascii_cjk = "abc日本語" in
+  let ascii_points = wrap_break_points ascii_cjk in
+  let ascii_resumes = wrap_breaks ascii_cjk in
+  equal ~msg:"ASCII->CJK one break" int 1 (Array.length ascii_points);
+  equal ~msg:"ASCII->CJK point" wrap_break_testable
+    { byte_offset = 2; grapheme_offset = 2 }
+    ascii_points.(0);
+  equal ~msg:"ASCII->CJK resume" wrap_break_testable
+    { byte_offset = 3; grapheme_offset = 2 }
+    ascii_resumes.(0)
+
+let wrap_breaks_fullwidth_cjk_punctuation () =
+  (* Ported from OpenTUI utf8_test.zig:
+     "wrap breaks: CJK punctuation before ASCII". *)
+  let ideographic_full_stop = "日本語。abc" in
+  let points = wrap_break_points ideographic_full_stop in
+  let resumes = wrap_breaks ideographic_full_stop in
+  equal ~msg:"CJK punctuation one break" int 1 (Array.length points);
+  equal ~msg:"CJK punctuation point" wrap_break_testable
+    { byte_offset = 9; grapheme_offset = 3 }
+    points.(0);
+  equal ~msg:"CJK punctuation resume" wrap_break_testable
+    { byte_offset = 12; grapheme_offset = 3 }
+    resumes.(0);
+
+  let check_one label cp =
+    let s = "a" ^ uchar_to_utf8 cp ^ "b" in
+    let breaks = wrap_breaks s in
+    equal ~msg:label int 1 (Array.length breaks)
+  in
+  check_one "ideographic comma" 0x3001;
+  check_one "fullwidth exclamation" 0xFF01;
+  check_one "fullwidth question" 0xFF1F
+
 let line_breaks_lf () =
   let breaks = line_breaks_to_list "a\nb\nc" in
   equal ~msg:"two LF breaks" int 2 (List.length breaks);
@@ -805,9 +933,8 @@ let emoji_presentation_widths () =
   check "wave U+1F44B" 0x1F44B 2;
   check "thumbs up U+1F44D" 0x1F44D 2;
   check "face with tears U+1F602" 0x1F602 2;
-  check "red heart U+2764" 0x2764 1;
-  (* U+2764 is Neutral EAW, width 1 without VS16 *)
-  check "red heart + VS16" 0x2764 1;
+  check "red heart U+2764" 0x2764 2;
+  check "red heart + VS16 base" 0x2764 2;
   (* VS16 promotion to width 2 happens at grapheme level *)
   let heart_vs16 = uchar_to_utf8 0x2764 ^ uchar_to_utf8 0xFE0F in
   let w_heart = String.measure ~width_method:`Unicode ~tab_width:2 heart_vs16 in
@@ -868,6 +995,10 @@ let () =
             wrap_breaks_width_method_no_zwj;
           test "wrap break points: ASCII space" wrap_break_points_ascii_space;
           test "wrap break points: Unicode NBSP" wrap_break_points_unicode_space;
+          test "wrap breaks: mixed CJK/ASCII transitions"
+            wrap_breaks_mixed_cjk_ascii_transitions;
+          test "wrap breaks: fullwidth CJK punctuation"
+            wrap_breaks_fullwidth_cjk_punctuation;
           test "line breaks: LF" line_breaks_lf;
           test "line breaks: CR" line_breaks_cr;
           test "line breaks: CRLF" line_breaks_crlf;
@@ -891,13 +1022,19 @@ let () =
           test "malformed utf8" malformed_utf8_resilience;
           test "malformed utf8 intern replacement"
             malformed_utf8_intern_replaces_with_ufffd;
+          test "malformed utf8 intern mixed strings"
+            malformed_utf8_intern_normalizes_mixed_strings;
+          test "public slice range validation" public_slice_range_validation;
         ];
       group "Lifecycle & Pool"
         [
           test "generation safety" lifecycle_generation_safety;
+          test "clear invalidates old IDs" pool_clear_invalidates_old_ids;
           test "pool resize" pool_resize_stress;
           test "copy safety" copy_safety;
           test "decref deduplication" decref_deduplicates_free_list;
+          test "live complex graphemes are interned"
+            live_complex_graphemes_are_interned;
           test "capacity reuse" pool_capacity_reuse;
           test "iter_graphemes ignore_zwj" iter_graphemes_ignore_zwj;
         ];
