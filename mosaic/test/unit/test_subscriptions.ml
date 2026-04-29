@@ -18,7 +18,7 @@ type model = {
   tick_count : int;
 }
 
-type msg = Tick of float | Every_fired | Quit | Copy | Submit
+type msg = Tick of float | Every_fired | Quit | Submit
 
 let update msg m =
   match msg with
@@ -37,7 +37,7 @@ let update msg m =
         else { m with elapsed_time = elapsed; tick_count = m.tick_count + 1 }
       else m
   | Every_fired -> { m with tick_count = m.tick_count + 1 }
-  | Quit | Copy | Submit -> m
+  | Quit | Submit -> m
 
 (* ── Subscription collectors ── *)
 
@@ -123,33 +123,33 @@ let sub_map_transforms_messages () =
   | _ -> fail "expected On_tick"
 
 let key ?modifier ?event_type ?base_key key =
-  Event.Key.of_input (Matrix.Input.Key.make ?modifier ?event_type ?base_key key)
+  Event.Key.of_input (Input.Key.make ?modifier ?event_type ?base_key key)
 
 let char ?modifier ?event_type ?base_key c =
-  key ?modifier ?event_type ?base_key (Matrix.Input.Key.Char (Uchar.of_char c))
+  key ?modifier ?event_type ?base_key (Input.Key.Char (Uchar.of_char c))
 
 let shortcut_matches_plain_keys () =
   is_true ~msg:"char shortcut" (Shortcut.matches (Shortcut.char 'q') (char 'q'));
   is_true ~msg:"escape shortcut"
-    (Shortcut.matches Shortcut.escape (key Matrix.Input.Key.Escape));
+    (Shortcut.matches Shortcut.escape (key Input.Key.Escape));
   is_false ~msg:"wrong char" (Shortcut.matches (Shortcut.char 'q') (char 'x'))
 
 let shortcut_ignores_key_release () =
-  let ev = char ~event_type:Matrix.Input.Key.Release 'q' in
+  let ev = char ~event_type:Input.Key.Release 'q' in
   is_false ~msg:"release ignored" (Shortcut.matches (Shortcut.char 'q') ev)
 
 let shortcut_matches_ctrl_base_key () =
   let ev =
     key
-      ~modifier:{ Matrix.Input.Modifier.none with ctrl = true }
+      ~modifier:{ Input.Modifier.none with ctrl = true }
       ~base_key:(Uchar.of_char 'c')
-      (Matrix.Input.Key.Char (Uchar.of_int 0x0441))
+      (Input.Key.Char (Uchar.of_int 0x0441))
   in
   is_true ~msg:"base-layout fallback" (Shortcut.matches (Shortcut.ctrl 'c') ev)
 
 let shortcut_matches_legacy_shift_char () =
   let ev =
-    char ~modifier:{ Matrix.Input.Modifier.none with shift = true } 'A'
+    char ~modifier:{ Input.Modifier.none with shift = true } 'A'
   in
   is_true ~msg:"legacy uppercase fallback"
     (Shortcut.matches (Shortcut.char ~shift:true 'a') ev)
@@ -157,7 +157,7 @@ let shortcut_matches_legacy_shift_char () =
 let shortcut_alt_matches_matrix_alt_meta () =
   let ev =
     char
-      ~modifier:{ Matrix.Input.Modifier.none with alt = true; meta = true }
+      ~modifier:{ Input.Modifier.none with alt = true; meta = true }
       'x'
   in
   is_true ~msg:"Alt also requires Matrix meta"
@@ -171,7 +171,6 @@ let sub_on_keys_uses_first_matching_binding () =
   | Sub.On_key f -> (
       match f (char 'q') with
       | Some Quit -> ()
-      | Some Copy -> fail "expected Quit, got Copy"
       | Some Submit -> fail "expected Quit, got Submit"
       | Some (Tick dt) -> failf "expected Quit, got Tick %f" dt
       | Some Every_fired -> fail "expected Quit, got Every_fired"
