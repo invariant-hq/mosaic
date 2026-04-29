@@ -34,8 +34,8 @@
     - Post-processors always run, even when no cells changed. Their [~delta]
       argument is milliseconds since the last {!render} ([0.] for the first
       frame).
-    - {!set_mouse_enabled} and {!set_cursor_visible} update state only;
-      rendering does not emit terminal mode changes. *)
+    - {!set_cursor} updates cursor intent only; rendering does not emit terminal
+      mode changes. *)
 
 module Hit_grid = Hit_grid
 
@@ -59,11 +59,6 @@ type frame_metrics = {
   frame_time_ms : float;  (** Diff/render duration. *)
   interval_ms : float;  (** Time since previous render. *)
   reset_ms : float;  (** Buffer swap/reset duration. *)
-  overall_frame_ms : float;
-      (** Wall-clock duration of the enclosing render call. *)
-  frame_callback_ms : float;  (** Time spent in the frame builder callback. *)
-  stdout_ms : float;  (** Time spent writing to output. *)
-  mouse_enabled : bool;  (** Mouse state at render time. *)
   cursor_visible : bool;  (** Cursor state at render time. *)
   timestamp_s : float;  (** {!Unix.gettimeofday} when rendering finished. *)
 }
@@ -76,20 +71,18 @@ val create :
   ?glyph_pool:Glyph.Pool.t ->
   ?width_method:Glyph.width_method ->
   ?respect_alpha:bool ->
-  ?mouse_enabled:bool ->
   ?cursor_visible:bool ->
   ?explicit_width:bool ->
   unit ->
   t
-(** [create ~glyph_pool ~width_method ~respect_alpha ~mouse_enabled
-     ~cursor_visible ~explicit_width ()] is a screen with:
+(** [create ~glyph_pool ~width_method ~respect_alpha ~cursor_visible
+     ~explicit_width ()] is a screen with:
     - [glyph_pool] stores multi-width grapheme clusters. Defaults to a fresh
       pool. Share a pool across screens to reduce memory for common text.
     - [width_method] is the character width computation method. Defaults to
       [`Unicode]. See {!Glyph.width_method}.
     - [respect_alpha] enables alpha blending when drawing cells. Defaults to
       [false].
-    - [mouse_enabled] is the initial mouse-enabled flag. Defaults to [true].
     - [cursor_visible] is the initial cursor visibility. Defaults to [true].
     - [explicit_width] enables explicit-width OSC sequences for graphemes.
       Defaults to [false].
@@ -98,12 +91,12 @@ val create :
 
 (** {1:building Frame building} *)
 
-val build : t -> width:int -> height:int -> (Grid.t -> Hit_grid.t -> unit) -> t
+val build :
+  t -> width:int -> height:int -> (Grid.t -> Hit_grid.t -> unit) -> unit
 (** [build t ~width ~height f] builds a frame.
 
     Resizes buffers to [width] x [height] when both are positive, clears the hit
     grid, then calls [f] with the next grid and hit grid for in-place mutation.
-    Returns [t] for chaining.
 
     When [width <= 0] or [height <= 0], [f] is not called; only the hit grid is
     cleared.
@@ -132,20 +125,19 @@ val post_process : (Grid.t -> delta:float -> unit) -> t -> effect_id
 
     See also {!remove_post_process}. *)
 
-val remove_post_process : effect_id -> t -> t
+val remove_post_process : effect_id -> t -> unit
 (** [remove_post_process id t] unregisters the post-processor identified by
-    [id]. Returns [t] for chaining. *)
+    [id]. *)
 
-val clear_post_processes : t -> t
-(** [clear_post_processes t] removes all post-processing functions. Returns [t]
-    for chaining. *)
+val clear_post_processes : t -> unit
+(** [clear_post_processes t] removes all post-processing functions. *)
 
 val add_hit_region :
-  t -> x:int -> y:int -> width:int -> height:int -> id:int -> t
+  t -> x:int -> y:int -> width:int -> height:int -> id:int -> unit
 (** [add_hit_region t ~x ~y ~width ~height ~id] registers a hit region on the
     next hit grid. Convenience wrapper around {!Hit_grid.add} for use outside
     the {!build} callback. Regions outside grid bounds are clipped. Negative
-    dimensions are clamped to zero. Returns [t] for chaining. *)
+    dimensions are clamped to zero. *)
 
 (** {1:rendering Rendering} *)
 
@@ -169,8 +161,8 @@ val render :
     when [full] is [true]), then swaps buffers. Hit regions registered during
     this frame become queryable via {!query_hit}.
     - [full] renders all cells regardless of changes. Defaults to [false].
-    - [scroll_hint] when provided, emits DECSTBM hardware scroll before
-      diffing. Only useful in alternate-screen mode.
+    - [scroll_hint] when provided, emits DECSTBM hardware scroll before diffing.
+      Only useful in alternate-screen mode.
     - [height_limit] limits rendering to the first [height_limit] rows.
 
     See also {!render_to_bytes}. *)
@@ -188,57 +180,33 @@ val render_to_bytes :
 
 (** {1:screen_state Screen state} *)
 
-val set_mouse_enabled : t -> bool -> unit
-(** [set_mouse_enabled t b] updates the desired mouse-enabled flag. Rendering
-    does not emit mode changes. *)
-
-val set_cursor_visible : t -> bool -> unit
-(** [set_cursor_visible t b] updates the desired cursor visibility. Rendering
-    does not emit mode changes. *)
-
 val set_explicit_width : t -> bool -> unit
 (** [set_explicit_width t b] enables or disables explicit-width OSC emission for
     graphemes. When enabled and the terminal supports it, OSC sequences
     specifying the exact width of multi-width characters are emitted to prevent
     terminal-side width mismatch. *)
 
-val set_cursor_position : t -> row:int -> col:int -> unit
-(** [set_cursor_position t ~row ~col] sets the desired cursor coordinates. [row]
-    and [col] are one-based terminal coordinates where [(1, 1)] is the top-left
-    corner. *)
+type cursor_style = [ `Block | `Line | `Underline ]
+(** The type for hardware cursor shapes. *)
 
-val clear_cursor_position : t -> unit
-(** [clear_cursor_position t] clears any requested cursor position so the cursor
-    remains wherever the diff body last moved it. *)
-
-val set_cursor_style :
-  t -> style:[ `Block | `Line | `Underline ] -> blinking:bool -> unit
-(** [set_cursor_style t ~style ~blinking] sets the cursor's visual shape and
-    blinking behaviour. *)
-
-val set_cursor_color : t -> r:int -> g:int -> b:int -> unit
-(** [set_cursor_color t ~r ~g ~b] sets the cursor colour via OSC 12. Components
-    outside \[[0]; [255]\] are clamped. *)
-
-val reset_cursor_color : t -> unit
-(** [reset_cursor_color t] restores the terminal's default cursor colour. *)
-
-(** {1:cursor_info Cursor info} *)
-
-type cursor_info = {
-  row : int;  (** One-based row. *)
-  col : int;  (** One-based column. *)
-  has_position : bool;  (** [true] iff a position has been set. *)
-  style : [ `Block | `Line | `Underline ];  (** Cursor shape. *)
+type cursor = {
+  position : (int * int) option;
+      (** Zero-based [(x, y)] cell position, or [None] to leave the cursor at
+          the renderer/runtime default position. *)
+  style : cursor_style;  (** Cursor shape. *)
   blinking : bool;  (** [true] iff the cursor blinks. *)
   color : (int * int * int) option;
       (** [Some (r, g, b)] or [None] for the terminal default. *)
   visible : bool;  (** [true] iff the cursor is logically visible. *)
 }
-(** The type for cursor state snapshots. *)
+(** The type for cursor state. *)
 
-val cursor_info : t -> cursor_info
-(** [cursor_info t] is the current desired cursor state. *)
+val set_cursor : t -> cursor -> unit
+(** [set_cursor t c] sets the desired cursor state. Colour components outside
+    \[[0]; [255]\] are clamped. *)
+
+val cursor : t -> cursor
+(** [cursor t] is the current desired cursor state. *)
 
 (** {1:capabilities Capabilities} *)
 
@@ -266,8 +234,8 @@ val set_width_method : t -> Glyph.width_method -> unit
 
 val resize : t -> width:int -> height:int -> unit
 (** [resize t ~width ~height] resizes all internal buffers to [width] x
-    [height]. Grid contents are preserved where dimensions overlap; hit grids
-    are cleared.
+    [height]. The presented diff baseline is cleared so the next render redraws
+    the resized screen; hit grids are cleared.
 
     Raises [Invalid_argument] if [width <= 0] or [height <= 0].
 
@@ -288,31 +256,19 @@ val stats : t -> stats
 val last_metrics : t -> frame_metrics
 (** [last_metrics t] is the metrics for the most recent frame. *)
 
-val record_runtime_metrics :
-  t ->
-  frame_callback_ms:float ->
-  overall_frame_ms:float ->
-  stdout_ms:float ->
-  unit
-(** [record_runtime_metrics t ~frame_callback_ms ~overall_frame_ms ~stdout_ms]
-    supplements the most recent metrics with runtime measurements. All values
-    are in milliseconds. Intended for higher-level runtimes that measure
-    draw-call duration, total wall-clock time, and output flush time on behalf
-    of the screen. *)
-
 (** {1:direct Direct access}
 
     Direct access to internal buffers for advanced use cases. These functions
     bypass the builder API. *)
 
-val grid : t -> Grid.t
-(** [grid t] is [t]'s next buffer grid.
+val next_grid : t -> Grid.t
+(** [next_grid t] is [t]'s next buffer grid.
 
     {b Warning.} Do not mutate the returned grid after the next {!render} -- it
     becomes the diff baseline. *)
 
-val hit_grid : t -> Hit_grid.t
-(** [hit_grid t] is [t]'s next hit grid.
+val next_hit_grid : t -> Hit_grid.t
+(** [next_hit_grid t] is [t]'s next hit grid.
 
     {b Warning.} Do not mutate the returned hit grid after the next {!render} --
     it becomes the active hit grid for {!query_hit}. *)

@@ -1,7 +1,6 @@
 (* matrix/lib/screen.ml *)
 
-(* High-performance terminal screen with functional API. Zero-allocation frame
-   building through direct buffer mutation. *)
+(* Allocation-conscious terminal screen with direct buffer mutation. *)
 
 open StdLabels
 module Hit_grid = Hit_grid
@@ -24,25 +23,19 @@ type frame_metrics = {
   frame_time_ms : float;
   interval_ms : float;
   reset_ms : float;
-  overall_frame_ms : float;
-  frame_callback_ms : float;
-  stdout_ms : float;
-  mouse_enabled : bool;
   cursor_visible : bool;
   timestamp_s : float;
 }
 
-type cursor_info = Cursor_state.snapshot = {
-  row : int;
-  col : int;
-  has_position : bool;
-  style : [ `Block | `Line | `Underline ];
+type cursor_style = [ `Block | `Line | `Underline ]
+
+type cursor = {
+  position : (int * int) option;
+  style : cursor_style;
   blinking : bool;
   color : (int * int * int) option;
   visible : bool;
 }
-
-type input_state = { mutable mouse_enabled : bool }
 
 (* screen state - mutable internal state for maximum performance *)
 type t = {
@@ -56,7 +49,6 @@ type t = {
   mutable hit_current : Hit_grid.t;
   mutable hit_next : Hit_grid.t;
   (* State *)
-  input : input_state;
   cursor : Cursor_state.t;
   sgr_state : Ansi.Sgr_state.t;
   mutable row_offset : int;
@@ -78,6 +70,7 @@ type t = {
 (* --- Constants & Inline Helpers --- *)
 
 let[@inline] width_step w = if w <= 0 then 1 else w
+let default_render_buffer_size = 2 * 1024 * 1024
 
 (* --- Writer Logic --- *)
 
@@ -123,8 +116,7 @@ let[@inline] add_code_to_writer ~explicit_width ~explicit_cursor_positioning
 type render_mode = [ `Diff | `Full ]
 
 (* The hot loop. Scans grid, checks dirty flags, diffs against previous frame,
-   emits sequences. Zero-allocation implementation using tail-recursive loops
-   with accumulators. *)
+   and emits sequences while reusing renderer state and scratch buffers. *)
 let render_generic ~pool ~row_offset ~use_explicit_width
     ~use_explicit_cursor_positioning ~use_hyperlinks ~mode ~height_limit ~writer
     ~scratch ~sgr_state ~prev ~curr =
@@ -277,6 +269,7 @@ let render_generic ~pool ~row_offset ~use_explicit_width
     done;
 
   Ansi.Sgr_state.close_link sgr_state writer;
+  if total > 0 then Ansi.emit Ansi.reset writer;
   Ansi.Sgr_state.reset sgr_state;
   total
 
@@ -291,6 +284,17 @@ let[@inline] swap_buffers r =
   r.hit_next <- old_hit_current;
   Hit_grid.clear r.hit_next;
   Grid.clear r.next
+
+let clear_unpresented_rows r presented_height =
+  let height = Grid.height r.next in
+  if presented_height < height then (
+    let y = max 0 presented_height in
+    let h = height - y in
+    let clear = Ansi.Color.of_rgba 0 0 0 0 in
+    Grid.fill_rect r.next ~x:0 ~y ~width:(Grid.width r.next) ~height:h
+      ~color:clear;
+    Hit_grid.add r.hit_next ~x:0 ~y ~width:(Grid.width r.next) ~height:h
+      ~id:Hit_grid.empty_id)
 
 let post_processes r =
   if r.post_process_dirty then (
@@ -338,10 +342,6 @@ let finalize_frame r ~now ~delta_seconds ~elapsed_ms ~cells ~output_len =
       frame_time_ms = elapsed_ms;
       interval_ms = delta_seconds *. 1000.;
       reset_ms;
-      overall_frame_ms = 0.;
-      frame_callback_ms = 0.;
-      stdout_ms = 0.;
-      mouse_enabled = r.input.mouse_enabled;
       cursor_visible = Cursor_state.is_visible r.cursor;
       timestamp_s = now;
     }
@@ -354,20 +354,42 @@ let finalize_frame r ~now ~delta_seconds ~elapsed_ms ~cells ~output_len =
 
 type scroll_hint = { top : int; bottom : int; delta : int }
 
-let apply_scroll_hint ~(writer : Ansi.writer) ~current hint =
+let normalize_scroll_hint ~row_offset ~height_limit ~current hint =
   let { top; bottom; delta } = hint in
-  if delta <> 0 && top >= 0 && bottom > top then begin
-    (* Shift the previous buffer to match the hardware scroll. After this,
-       the diff loop sees only the newly-revealed edge rows as changes. *)
-    Grid.scroll current ~top ~bottom delta;
-    (* Tell the terminal to perform the same shift via DECSTBM. *)
-    Ansi.emit (Ansi.set_scrolling_region ~top:(top + 1) ~bottom:(bottom + 1))
-      writer;
-    (if delta > 0 then Ansi.emit (Ansi.scroll_up ~n:delta) writer
-     else Ansi.emit (Ansi.scroll_down ~n:(-delta)) writer);
-    Ansi.emit Ansi.reset_scrolling_region writer;
-    Ansi.emit Ansi.home writer
-  end
+  let current_height = Grid.height current in
+  let render_height =
+    match height_limit with
+    | None -> current_height
+    | Some limit -> max 0 (min current_height limit)
+  in
+  let top = max 0 top in
+  let bottom = min (render_height - 1) bottom in
+  if delta = 0 || top >= bottom then None
+  else
+    let region_h = bottom - top + 1 in
+    let delta =
+      if delta > 0 then min delta region_h else max delta (-region_h)
+    in
+    Some (top, bottom, delta, max 0 row_offset)
+
+let apply_scroll_hint ~(writer : Ansi.writer) ~row_offset ~height_limit ~current
+    hint =
+  match normalize_scroll_hint ~row_offset ~height_limit ~current hint with
+  | None -> ()
+  | Some (top, bottom, delta, row_offset) ->
+      (* Shift the previous buffer to match the hardware scroll. After this,
+         the diff loop sees only the newly-revealed edge rows as changes. *)
+      Grid.scroll current ~top ~bottom delta;
+      (* Tell the terminal to perform the same shift via DECSTBM. *)
+      Ansi.emit
+        (Ansi.set_scrolling_region
+           ~top:(row_offset + top + 1)
+           ~bottom:(row_offset + bottom + 1))
+        writer;
+      if delta > 0 then Ansi.emit (Ansi.scroll_up ~n:delta) writer
+      else Ansi.emit (Ansi.scroll_down ~n:(-delta)) writer;
+      Ansi.emit Ansi.reset_scrolling_region writer;
+      Ansi.cursor_position ~row:(row_offset + 1) ~col:1 writer
 
 let submit ~(mode : render_mode) ?scroll_hint ?height_limit
     ~(writer : Ansi.writer) r =
@@ -386,7 +408,9 @@ let submit ~(mode : render_mode) ?scroll_hint ?height_limit
          previous buffer and emits hardware scroll sequences so the diff
          loop only sees the newly-revealed rows as changes. *)
       (match (mode, scroll_hint) with
-      | `Diff, Some hint -> apply_scroll_hint ~writer ~current:r.current hint
+      | `Diff, Some hint ->
+          apply_scroll_hint ~writer ~row_offset:r.row_offset ~height_limit
+            ~current:r.current hint
       | _ -> ());
       let prev = match mode with `Diff -> Some r.current | `Full -> None in
 
@@ -401,6 +425,12 @@ let submit ~(mode : render_mode) ?scroll_hint ?height_limit
       r.scratch_bytes <- !scratch);
 
   let output_len = Ansi.Writer.len writer in
+  let presented_height =
+    match height_limit with
+    | None -> Grid.height r.next
+    | Some limit -> max 0 (min (Grid.height r.next) limit)
+  in
+  clear_unpresented_rows r presented_height;
   finalize_frame r ~now ~delta_seconds ~elapsed_ms:!elapsed_ms ~cells:!cells
     ~output_len
 
@@ -411,7 +441,7 @@ let render_to_bytes ?(full = false) ?scroll_hint ?height_limit frame bytes =
   Ansi.Writer.len writer
 
 let render ?(full = false) ?scroll_hint ?height_limit frame =
-  let bytes = Bytes.create 65536 in
+  let bytes = Bytes.create default_render_buffer_size in
   let len = render_to_bytes ~full ?scroll_hint ?height_limit frame bytes in
   Bytes.sub_string bytes ~pos:0 ~len
 
@@ -419,8 +449,8 @@ let glyph_pool t = t.glyph_pool
 
 (* Creation & Management *)
 
-let create ?glyph_pool ?width_method ?respect_alpha ?(mouse_enabled = true)
-    ?(cursor_visible = true) ?(explicit_width = false) () =
+let create ?glyph_pool ?width_method ?respect_alpha ?(cursor_visible = true)
+    ?(explicit_width = false) () =
   let glyph_pool =
     match glyph_pool with Some p -> p | None -> Glyph_pool.create ()
   in
@@ -439,10 +469,6 @@ let create ?glyph_pool ?width_method ?respect_alpha ?(mouse_enabled = true)
           frame_time_ms = 0.;
           interval_ms = 0.;
           reset_ms = 0.;
-          overall_frame_ms = 0.;
-          frame_callback_ms = 0.;
-          stdout_ms = 0.;
-          mouse_enabled;
           cursor_visible;
           timestamp_s = 0.;
         };
@@ -454,7 +480,6 @@ let create ?glyph_pool ?width_method ?respect_alpha ?(mouse_enabled = true)
           ~respect_alpha:r_alpha ();
       hit_current = Hit_grid.create ~width:0 ~height:0;
       hit_next = Hit_grid.create ~width:0 ~height:0;
-      input = { mouse_enabled };
       cursor = Cursor_state.create ();
       sgr_state = Ansi.Sgr_state.create ();
       row_offset = 0;
@@ -488,6 +513,7 @@ let reset t =
 
 let resize t ~width ~height =
   Grid.resize t.current ~width ~height;
+  Grid.clear t.current;
   Grid.resize t.next ~width ~height;
   (* Hit_grid.resize already clears unconditionally, no need to clear again *)
   Hit_grid.resize t.hit_current ~width ~height;
@@ -507,10 +533,10 @@ let internal_build t ~width ~height f =
     t)
 
 let build t ~width ~height f =
-  internal_build t ~width ~height (fun grid hits -> f grid hits)
+  ignore (internal_build t ~width ~height (fun grid hits -> f grid hits) : t)
 
-let grid frame = frame.next
-let hit_grid frame = frame.hit_next
+let next_grid frame = frame.next
+let next_hit_grid frame = frame.hit_next
 let query_hit frame ~x ~y = Hit_grid.get frame.hit_current ~x ~y
 let row_offset t = t.row_offset
 let set_row_offset t offset = t.row_offset <- max 0 offset
@@ -531,31 +557,34 @@ let stats t =
   }
 
 let last_metrics t = t.last_metrics
-
-let record_runtime_metrics t ~frame_callback_ms ~overall_frame_ms ~stdout_ms =
-  let m = t.last_metrics in
-  let new_m = { m with frame_callback_ms; overall_frame_ms; stdout_ms } in
-  t.last_metrics <- new_m
-
-let set_mouse_enabled t enabled = t.input.mouse_enabled <- enabled
-let set_cursor_visible t visible = Cursor_state.set_visible t.cursor visible
-
-let set_cursor_position t ~row ~col =
-  Cursor_state.set_position t.cursor ~row ~col
-
-let clear_cursor_position t = Cursor_state.clear_position t.cursor
-
-let set_cursor_style t ~style ~blinking =
-  Cursor_state.set_style t.cursor ~style ~blinking
-
 let clamp_byte v = max 0 (min 255 v)
 
-let set_cursor_color t ~r ~g ~b =
+let set_cursor t cursor =
+  (match cursor.position with
+  | None -> Cursor_state.clear_position t.cursor
+  | Some (x, y) ->
+      Cursor_state.set_position t.cursor ~row:(max 0 y + 1) ~col:(max 0 x + 1));
+  Cursor_state.set_visible t.cursor cursor.visible;
+  Cursor_state.set_style t.cursor ~style:cursor.style ~blinking:cursor.blinking;
   Cursor_state.set_color t.cursor
-    (Some (clamp_byte r, clamp_byte g, clamp_byte b))
+    (Option.map
+       (fun (r, g, b) -> (clamp_byte r, clamp_byte g, clamp_byte b))
+       cursor.color)
 
-let reset_cursor_color t = Cursor_state.set_color t.cursor None
-let cursor_info t = Cursor_state.snapshot t.cursor
+let cursor t =
+  let s = Cursor_state.snapshot t.cursor in
+  {
+    position =
+      (if s.has_position then Some (max 0 (s.col - 1), max 0 (s.row - 1))
+       else None);
+    style = s.style;
+    blinking = s.blinking;
+    color =
+      Option.map
+        (fun (r, g, b) -> (clamp_byte r, clamp_byte g, clamp_byte b))
+        s.color;
+    visible = s.visible;
+  }
 
 let apply_capabilities r ~explicit_width ~explicit_cursor_positioning
     ~hyperlinks =
@@ -585,15 +614,12 @@ let post_process f frame =
 let remove_post_process id frame =
   frame.post_process_fns <-
     List.filter ~f:(fun (eid, _) -> eid <> id) frame.post_process_fns;
-  frame.post_process_dirty <- true;
-  frame
+  frame.post_process_dirty <- true
 
 let clear_post_processes frame =
   frame.post_process_fns <- [];
   frame.post_process_cache <- [];
-  frame.post_process_dirty <- false;
-  frame
+  frame.post_process_dirty <- false
 
 let add_hit_region frame ~x ~y ~width ~height ~id =
-  Hit_grid.add frame.hit_next ~x ~y ~width ~height ~id;
-  frame
+  Hit_grid.add frame.hit_next ~x ~y ~width ~height ~id

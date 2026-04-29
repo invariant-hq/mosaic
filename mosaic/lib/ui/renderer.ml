@@ -637,43 +637,53 @@ let render_frame (t : t) ~width ~height ~delta =
   (* Frame callbacks *)
   List.iter (fun f -> f delta) t.frame_callbacks;
   (* Build the frame via Screen.build *)
-  ignore
-    (Screen.build t.screen ~width ~height (fun grid hits ->
-         (* Pass 1: Layout computation *)
-         let available_space =
-           Toffee.Geometry.Size.
-             {
-               width = Toffee.Available_space.Definite (Float.of_int width);
-               height = Toffee.Available_space.Definite (Float.of_int height);
-             }
-         in
-         let root_toffee = Renderable.Private.toffee_node t.root in
-         toffee_exn
-           (Toffee.compute_layout_with_measure t.tree root_toffee
-              available_space (measure_fn t));
-         (* Pass 2: Build render command list *)
-         t.cmd_len <- 0;
-         t.hit_scissors <- [];
-         build_commands t t.root ~parent_x:0. ~parent_y:0. ~delta;
-         (* Pass 3: Execute render commands *)
-         execute_commands t ~grid ~hits ~delta)
-      : Screen.t);
+  Screen.build t.screen ~width ~height (fun grid hits ->
+      (* Pass 1: Layout computation *)
+      let available_space =
+        Toffee.Geometry.Size.
+          {
+            width = Toffee.Available_space.Definite (Float.of_int width);
+            height = Toffee.Available_space.Definite (Float.of_int height);
+          }
+      in
+      let root_toffee = Renderable.Private.toffee_node t.root in
+      toffee_exn
+        (Toffee.compute_layout_with_measure t.tree root_toffee available_space
+           (measure_fn t));
+      (* Pass 2: Build render command list *)
+      t.cmd_len <- 0;
+      t.hit_scissors <- [];
+      build_commands t t.root ~parent_x:0. ~parent_y:0. ~delta;
+      (* Pass 3: Execute render commands *)
+      execute_commands t ~grid ~hits ~delta);
   (* Update cursor from focused node *)
   (match !(t.focused) with
   | Some node when Renderable.focused node -> (
       match Renderable.cursor node with
       | Some c ->
-          Screen.set_cursor_position t.screen ~row:(c.y + 1) ~col:(c.x + 1);
-          Screen.set_cursor_style t.screen ~style:c.style ~blinking:c.blinking;
           let r, g, b = Ansi.Color.to_rgb c.color in
-          Screen.set_cursor_color t.screen ~r ~g ~b
-      | None -> Screen.clear_cursor_position t.screen)
-  | _ -> Screen.clear_cursor_position t.screen);
-  (* Recheck hover — the hit grid may have changed after layout. *)
-  recheck_hover t;
+          let cursor = Screen.cursor t.screen in
+          Screen.set_cursor t.screen
+            {
+              cursor with
+              position = Some (c.x, c.y);
+              style = c.style;
+              blinking = c.blinking;
+              color = Some (r, g, b);
+            }
+      | None ->
+          let cursor = Screen.cursor t.screen in
+          Screen.set_cursor t.screen { cursor with position = None })
+  | _ ->
+      let cursor = Screen.cursor t.screen in
+      Screen.set_cursor t.screen { cursor with position = None });
   t.dirty := false
 
-let render ?full t = Screen.render ?full t.screen
+let render ?full t =
+  let output = Screen.render ?full t.screen in
+  recheck_hover t;
+  output
+
 let needs_render t = !(t.dirty) || Renderable.Private.live_count t.root > 0
 
 (* ───── Event Dispatch ───── *)
@@ -743,9 +753,5 @@ let clear_frame_callbacks t = t.frame_callbacks <- []
 (* ───── Post-Processing ───── *)
 
 let add_post_process t f = Screen.post_process f t.screen
-
-let remove_post_process t id =
-  ignore (Screen.remove_post_process id t.screen : Screen.t)
-
-let clear_post_processes t =
-  ignore (Screen.clear_post_processes t.screen : Screen.t)
+let remove_post_process t id = Screen.remove_post_process id t.screen
+let clear_post_processes t = Screen.clear_post_processes t.screen

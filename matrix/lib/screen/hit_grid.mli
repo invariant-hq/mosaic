@@ -8,14 +8,18 @@
 val empty_id : int
 (** [empty_id] is [0]. Represents the absence of any element. *)
 
+type id = int
+(** The type for hit-test element identifiers. [0] is reserved for {!empty_id};
+    real element identifiers should be positive. *)
+
 (** {1:types Types} *)
 
 type rect = { x : int; y : int; width : int; height : int }
 (** The type for rectangular areas in cell coordinates. *)
 
 type t
-(** The type for hit grids. Internally backed by an [int32] bigarray for cache
-    locality. *)
+(** The type for hit grids. Lookups are [O(1)]; adding a region is
+    [O(width * height)] in the clipped region. *)
 
 (** {1:lifecycle Lifecycle} *)
 
@@ -33,13 +37,13 @@ val clear : t -> unit
 
 (** {1:ops Operations} *)
 
-val add : t -> x:int -> y:int -> width:int -> height:int -> id:int -> unit
+val add : t -> x:int -> y:int -> width:int -> height:int -> id:id -> unit
 (** [add t ~x ~y ~width ~height ~id] fills the rectangular region with [id]
     (painter's algorithm: overwrites any existing IDs). The rectangle is clipped
     to the grid bounds and the active clip region. Zero or negative dimensions
     are a no-op. *)
 
-val get : t -> x:int -> y:int -> int
+val get : t -> x:int -> y:int -> id
 (** [get t ~x ~y] is the element ID at [(x, y)], or {!empty_id} if the
     coordinates are out of bounds. *)
 

@@ -295,7 +295,7 @@ let render_static_view runtime (view : _ t) =
     set_renderer_viewport renderer ~width ~height;
     Reconciler.render reconciler vnode;
     Renderer.render_frame renderer ~width ~height ~delta:0.;
-    let grid = Matrix.Screen.grid (Renderer.screen renderer) in
+    let grid = Matrix.Screen.next_grid (Renderer.screen renderer) in
     let used_rows = Matrix.Grid.active_height grid in
     if used_rows >= height && height < max_height then
       render_with_height (min (height * 2) max_height)
@@ -609,22 +609,23 @@ let run ?matrix
       let width, height = Matrix.effective_size runtime.matrix_app in
       Renderer.render_frame runtime.renderer ~width ~height ~delta:!frame_delta;
       let renderer_screen = Renderer.screen runtime.renderer in
-      let renderer_grid = Matrix.Screen.grid renderer_screen in
-      let renderer_hits = Matrix.Screen.hit_grid renderer_screen in
+      let renderer_grid = Matrix.Screen.next_grid renderer_screen in
+      let renderer_hits = Matrix.Screen.next_hit_grid renderer_screen in
       Matrix.Grid.blit ~src:renderer_grid ~dst:(Matrix.grid runtime.matrix_app);
       Matrix.Screen.Hit_grid.blit ~src:renderer_hits
         ~dst:(Matrix.hits runtime.matrix_app);
-      let cursor = Matrix.Screen.cursor_info renderer_screen in
+      let cursor = Matrix.Screen.cursor renderer_screen in
       (* Keep the terminal cursor hidden unless the focused renderable exposes
          an explicit cursor position. *)
       Matrix.set_cursor
-        ~visible:(cursor.visible && cursor.has_position)
+        ~visible:(cursor.visible && Option.is_some cursor.position)
         runtime.matrix_app;
       Matrix.set_cursor_style runtime.matrix_app ~style:cursor.style
         ~blinking:cursor.blinking;
-      if cursor.has_position then
-        Matrix.set_cursor_position runtime.matrix_app ~row:cursor.row
-          ~col:cursor.col;
+      (match cursor.position with
+      | Some (x, y) ->
+          Matrix.set_cursor_position runtime.matrix_app ~row:(y + 1) ~col:(x + 1)
+      | None -> ());
       (match cursor.color with
       | Some (r, g, b) ->
           Matrix.set_cursor_color runtime.matrix_app

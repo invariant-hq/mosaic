@@ -1,4 +1,5 @@
 type rect = { x : int; y : int; width : int; height : int }
+type id = int
 
 type t = {
   mutable width : int;

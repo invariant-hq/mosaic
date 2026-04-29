@@ -212,7 +212,7 @@ let on_frame ?(corner = `Bottom_right) ?(padding = 1) ?(gap = 1)
     Avg_ring.push interval_ring metrics.interval_ms;
     let frame_ms =
       if metrics.interval_ms > 0. then metrics.interval_ms
-      else metrics.overall_frame_ms
+      else metrics.frame_time_ms
     in
     let fps = if frame_ms > 0. then 1000. /. frame_ms else 0. in
     let base_rows =
@@ -221,12 +221,8 @@ let on_frame ?(corner = `Bottom_right) ?(padding = 1) ?(gap = 1)
         ("fps", Printf.sprintf "%.1f" fps);
         ("frame", fmt_ms frame_ms);
         ("render", fmt_ms metrics.frame_time_ms);
-        ("callback", fmt_ms metrics.frame_callback_ms);
-        ("overall", fmt_ms metrics.overall_frame_ms);
-        ("stdout", fmt_ms metrics.stdout_ms);
         ("cells", string_of_int metrics.cells);
         ("output", Printf.sprintf "%d bytes" metrics.bytes);
-        ("mouse", if metrics.mouse_enabled then "on" else "off");
         ("cursor", if metrics.cursor_visible then "visible" else "hidden");
       ]
     in
@@ -280,5 +276,5 @@ let on_frame ?(corner = `Bottom_right) ?(padding = 1) ?(gap = 1)
       sections @ [ section ~title:"gc" gc_rows ]
     in
     set_sections overlay sections;
-    let grid = Screen.grid screen in
+    let grid = Screen.next_grid screen in
     render ~corner overlay grid

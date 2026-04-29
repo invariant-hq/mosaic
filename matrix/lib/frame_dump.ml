@@ -33,8 +33,8 @@ let make_path ?(dir = default_dir) ?(pattern = default_pattern) index =
   Filename.concat dir name
 
 let hit_grid_text (screen : Screen.t) : string =
-  let grid = Screen.grid screen in
-  let hits = Screen.hit_grid screen in
+  let grid = Screen.next_grid screen in
+  let hits = Screen.next_hit_grid screen in
   let cols = Grid.width grid in
   let rows = Grid.height grid in
   if cols <= 0 || rows <= 0 then ""
@@ -76,7 +76,7 @@ let hit_grid_text (screen : Screen.t) : string =
 
 let snapshot ?dir ?pattern ?(hits = false) (screen : Screen.t) =
   let idx = next_index () in
-  let grid = Screen.grid screen in
+  let grid = Screen.next_grid screen in
   let ansi = Grid.to_ansi grid in
   let base = make_path ?dir ?pattern idx in
   write_file base ansi;
