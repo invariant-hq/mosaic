@@ -1,28 +1,28 @@
 # thumper baseline
 # version: 1
 # suite_name: input
-# host: 3fdff906040e1980
+# host: 3b8ae6dbe74c4269
 # cpu: Apple M1 Max
 # ocaml: 5.4.1
-# git: 751ab800
+# git: bac6b2d8
 # dirty: true
-# command: _build/default/matrix/bench/bench_input.exe --ci --bless --baseline matrix/bench/input.thumper -q
+# command: _build/default/matrix/bench/bench_input.exe --ci --bless
 
-input/keyboard_kitty-hot	alloc_words	3.304280e+05	3.304280e+05	3.304280e+05	0.000000e+00	30	0
-input/keyboard_kitty-hot	cpu_time	3.375285e-04	3.366371e-04	3.386802e-04	3.026555e-03	30	0
-input/keyboard_kitty-hot	wall_time	3.378494e-04	3.369575e-04	3.389920e-04	3.010888e-03	30	0
-input/keyboard_legacy-hot	alloc_words	2.043800e+05	2.043800e+05	2.043800e+05	0.000000e+00	30	0
-input/keyboard_legacy-hot	cpu_time	2.163548e-04	2.148700e-04	2.182345e-04	7.775426e-03	30	1
-input/keyboard_legacy-hot	wall_time	2.169884e-04	2.154129e-04	2.190267e-04	8.327145e-03	30	3
-input/mouse_mixed	alloc_words	2.823300e+04	2.823300e+04	2.823300e+04	0.000000e+00	57	5
-input/mouse_mixed	cpu_time	2.711696e-05	2.680122e-05	2.755971e-05	1.398546e-02	57	6
-input/mouse_mixed	wall_time	2.843560e-05	2.671015e-05	3.125582e-05	7.992929e-02	57	6
+input/keyboard_kitty-hot	alloc_words	3.314520e+05	3.314520e+05	3.314520e+05	0.000000e+00	30	0
+input/keyboard_kitty-hot	cpu_time	3.414987e-04	3.399504e-04	3.429318e-04	4.365225e-03	30	1
+input/keyboard_kitty-hot	wall_time	3.418829e-04	3.398847e-04	3.439055e-04	5.880435e-03	30	1
+input/keyboard_legacy-hot	alloc_words	2.056600e+05	2.056600e+05	2.056600e+05	0.000000e+00	30	0
+input/keyboard_legacy-hot	cpu_time	2.214140e-04	2.208272e-04	2.221797e-04	3.054126e-03	30	5
+input/keyboard_legacy-hot	wall_time	2.216313e-04	2.209270e-04	2.224523e-04	3.441063e-03	30	6
+input/mouse_mixed	alloc_words	2.876100e+04	2.876100e+04	2.876100e+04	0.000000e+00	30	0
+input/mouse_mixed	cpu_time	2.811756e-05	2.779102e-05	2.847337e-05	1.213387e-02	30	0
+input/mouse_mixed	wall_time	2.838238e-05	2.787256e-05	2.898903e-05	1.966846e-02	30	1
 input/paste_ci-log	alloc_words	1.789000e+03	1.789000e+03	1.789000e+03	0.000000e+00	30	0
-input/paste_ci-log	cpu_time	8.755553e-05	8.744104e-05	8.774248e-05	1.721432e-03	30	0
-input/paste_ci-log	wall_time	8.762887e-05	8.751801e-05	8.782419e-05	1.746994e-03	30	0
+input/paste_ci-log	cpu_time	8.838744e-05	8.810779e-05	8.893175e-05	4.661101e-03	30	5
+input/paste_ci-log	wall_time	8.879330e-05	8.845689e-05	8.943189e-05	5.490257e-03	30	3
 input/typing_ascii-burst	alloc_words	9.071000e+03	9.071000e+03	9.071000e+03	0.000000e+00	30	0
-input/typing_ascii-burst	cpu_time	1.532961e-05	1.528712e-05	1.538135e-05	3.073257e-03	30	1
-input/typing_ascii-burst	wall_time	1.540711e-05	1.534789e-05	1.545458e-05	3.462442e-03	30	1
+input/typing_ascii-burst	cpu_time	1.601892e-05	1.599997e-05	1.604730e-05	1.477220e-03	30	2
+input/typing_ascii-burst	wall_time	1.602428e-05	1.600515e-05	1.605423e-05	1.531312e-03	30	2
 input/typing_unicode-burst	alloc_words	2.987000e+04	2.987000e+04	2.987000e+04	0.000000e+00	30	0
-input/typing_unicode-burst	cpu_time	3.982204e-05	3.946444e-05	4.012985e-05	8.354877e-03	30	0
-input/typing_unicode-burst	wall_time	3.986719e-05	3.950265e-05	4.017645e-05	8.450620e-03	30	0
+input/typing_unicode-burst	cpu_time	3.967958e-05	3.957489e-05	3.985403e-05	3.517416e-03	30	6
+input/typing_unicode-burst	wall_time	3.971360e-05	3.961216e-05	3.987145e-05	3.264494e-03	30	4
