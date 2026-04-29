@@ -235,7 +235,7 @@ module Sub = struct
   let on_keys bindings =
     On_key
       (fun ev ->
-        let rec loop = function
+        let rec loop : (Shortcut.t * 'msg) list -> 'msg option = function
           | [] -> None
           | (shortcut, msg) :: rest ->
               if Shortcut.matches shortcut ev then Some msg else loop rest
