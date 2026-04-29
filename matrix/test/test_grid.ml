@@ -23,22 +23,13 @@ let read_width grid x y =
 (* Updated: Use Grid.attrs *)
 let read_attr grid x y = Grid.get_attrs grid (idx grid x y)
 
-(* Updated: Use Grid.Fg/Bg submodules and convert float back to int *)
-let to_byte f = Float.round (f *. 255.) |> int_of_float
-
 let read_fg grid x y =
   let i = idx grid x y in
-  ( to_byte (Grid.get_fg_r grid i),
-    to_byte (Grid.get_fg_g grid i),
-    to_byte (Grid.get_fg_b grid i),
-    to_byte (Grid.get_fg_a grid i) )
+  Ansi.Color.to_rgba (Grid.get_fg grid i)
 
 let read_bg grid x y =
   let i = idx grid x y in
-  ( to_byte (Grid.get_bg_r grid i),
-    to_byte (Grid.get_bg_g grid i),
-    to_byte (Grid.get_bg_b grid i),
-    to_byte (Grid.get_bg_a grid i) )
+  Ansi.Color.to_rgba (Grid.get_bg grid i)
 
 let rgba = pair int (pair int (pair int int))
 
@@ -62,6 +53,20 @@ let trim_right s =
     else String.sub s 0 (i + 1)
   in
   if len = 0 then s else loop (len - 1)
+
+let contains_substring s sub =
+  let len = String.length s in
+  let sublen = String.length sub in
+  if sublen = 0 then true
+  else if sublen > len then false
+  else
+    let rec matches_at i j =
+      j = sublen
+      || String.unsafe_get s (i + j) = String.unsafe_get sub j
+         && matches_at i (j + 1)
+    in
+    let rec loop i = i <= len - sublen && (matches_at i 0 || loop (i + 1)) in
+    loop 0
 
 let row_trimmed grid y = trim_right (row_to_string grid y)
 
@@ -795,6 +800,25 @@ let to_ansi_handles_orphan_continuation () =
   is_true ~msg:"serialized orphan continuation as space"
     (String.contains ansi ' ')
 
+let to_ansi_preserves_indexed_foreground () =
+  let grid = Grid.create ~width:1 ~height:1 () in
+  let style = Ansi.Style.make ~fg:(Ansi.Color.indexed 42) () in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"X" ~style;
+  let ansi = Grid.to_ansi ~reset:false grid in
+  is_true ~msg:"indexed foreground serialized as palette SGR"
+    (contains_substring ansi "\027[0;38;5;42m")
+
+let blit_preserves_indexed_background_intent () =
+  let src = Grid.create ~width:1 ~height:1 () in
+  Grid.set_cell src ~x:0 ~y:0
+    ~cell:(Grid.Cell.of_uchar (Uchar.of_char 'X'))
+    ~fg:Ansi.Color.white ~bg:(Ansi.Color.indexed 99) ~attrs:Ansi.Attr.empty ();
+  let dst = Grid.create ~width:1 ~height:1 () in
+  Grid.blit ~src ~dst;
+  let ansi = Grid.to_ansi ~reset:false dst in
+  is_true ~msg:"indexed background survives blit"
+    (contains_substring ansi "48;5;99")
+
 let draw_text_overflow_does_nothing () =
   let grid = Grid.create ~width:2 ~height:1 () in
   Grid.draw_text grid ~x:1 ~y:0 ~text:"中";
@@ -1177,6 +1201,10 @@ let tests =
     test "to_ansi handles empty glyph" to_ansi_handles_empty_glyph;
     test "to_ansi handles orphan continuation"
       to_ansi_handles_orphan_continuation;
+    test "to_ansi preserves indexed foreground"
+      to_ansi_preserves_indexed_foreground;
+    test "blit preserves indexed background intent"
+      blit_preserves_indexed_background_intent;
     test "draw text overflow does nothing" draw_text_overflow_does_nothing;
     test "box left border spans full height"
       draw_box_left_border_spans_full_height;

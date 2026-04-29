@@ -1,8 +1,8 @@
 (** Mutable grid of terminal cells.
 
     A grid is a two-dimensional framebuffer where each cell stores character
-    content, foreground and background colors (RGBA), text attributes, and a
-    hyperlink. Backed by bigarrays for cache-friendly access.
+    content, foreground and background colors, text attributes, and a hyperlink.
+    Backed by bigarrays for cache-friendly access.
 
     Single codepoints are stored directly as packed integers. Multi-codepoint
     grapheme clusters (ZWJ emoji, combining characters) are stored in grid-owned
@@ -143,19 +143,13 @@ val get_attrs : t -> int -> int
 val get_link : t -> int -> int32
 (** [get_link g idx] is the internal hyperlink ID at [idx]. *)
 
-val get_fg_r : t -> int -> float
-val get_fg_g : t -> int -> float
-val get_fg_b : t -> int -> float
+val get_fg : t -> int -> Ansi.Color.t
+(** [get_fg g idx] is the foreground color stored at [idx], including terminal
+    emission intent. *)
 
-val get_fg_a : t -> int -> float
-(** Foreground RGBA components at [idx], in \[0.0, 1.0\]. *)
-
-val get_bg_r : t -> int -> float
-val get_bg_g : t -> int -> float
-val get_bg_b : t -> int -> float
-
-val get_bg_a : t -> int -> float
-(** Background RGBA components at [idx], in \[0.0, 1.0\]. *)
+val get_bg : t -> int -> Ansi.Color.t
+(** [get_bg g idx] is the background color stored at [idx], including terminal
+    emission intent. *)
 
 val get_text : t -> int -> string
 (** [get_text g idx] is the grapheme at [idx] as a string. Returns [""] for
@@ -215,8 +209,7 @@ val resize : t -> width:int -> height:int -> unit
 
     Raises [Invalid_argument] if [width <= 0] or [height <= 0]. *)
 
-val resize_clear :
-  ?color:Ansi.Color.t -> t -> width:int -> height:int -> unit
+val resize_clear : ?color:Ansi.Color.t -> t -> width:int -> height:int -> unit
 (** [resize_clear g ~width ~height] resizes [g] and clears all cells with
     {!clear} when dimensions change. If dimensions are unchanged, this is a
     no-op; use {!clear} for an explicit same-size clear.

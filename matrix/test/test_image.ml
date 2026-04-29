@@ -2,14 +2,10 @@ open Windtrap
 open Matrix
 
 let idx grid x y = (y * Grid.width grid) + x
-let to_byte f = Float.round (f *. 255.) |> int_of_float
 
 let read_bg grid x y =
   let i = idx grid x y in
-  ( to_byte (Grid.get_bg_r grid i),
-    to_byte (Grid.get_bg_g grid i),
-    to_byte (Grid.get_bg_b grid i),
-    to_byte (Grid.get_bg_a grid i) )
+  Ansi.Color.to_rgba (Grid.get_bg grid i)
 
 let text_width_method_is_applied_during_render () =
   let grid = Grid.create ~width:6 ~height:1 ~width_method:`Unicode () in

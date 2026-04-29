@@ -4,28 +4,28 @@
 # host: 3b8ae6dbe74c4269
 # cpu: Apple M1 Max
 # ocaml: 5.4.1
-# git: bac6b2d8
+# git: 5f4dc340
 # dirty: true
-# command: _build/default/matrix/bench/bench_screen.exe --ci --bless
+# command: _build/default/matrix/bench/bench_screen.exe --ci --bless --baseline matrix/bench/screen.thumper
 
-render/render_diff_full-screen	alloc_words	6.045050e+05	6.045050e+05	6.045050e+05	0.000000e+00	30	0
-render/render_diff_full-screen	cpu_time	2.280320e-03	2.265222e-03	2.295095e-03	6.550184e-03	30	3
-render/render_diff_full-screen	wall_time	2.288982e-03	2.271290e-03	2.305740e-03	7.525126e-03	30	1
-render/render_diff_no-changes	alloc_words	6.045060e+05	6.045060e+05	6.045060e+05	0.000000e+00	30	0
-render/render_diff_no-changes	cpu_time	2.275485e-03	2.260908e-03	2.283670e-03	5.001589e-03	30	4
-render/render_diff_no-changes	wall_time	2.278137e-03	2.262654e-03	2.287077e-03	5.360169e-03	30	1
-render/render_diff_single-line	alloc_words	6.036320e+05	6.036320e+05	6.036320e+05	0.000000e+00	30	0
-render/render_diff_single-line	cpu_time	2.257618e-03	2.251822e-03	2.268089e-03	3.602676e-03	30	0
-render/render_diff_single-line	wall_time	2.260385e-03	2.253168e-03	2.272910e-03	4.367080e-03	30	0
-render/render_diff_sparse-cells	alloc_words	6.047150e+05	6.047150e+05	6.047150e+05	0.000000e+00	30	0
-render/render_diff_sparse-cells	cpu_time	2.268578e-03	2.247964e-03	2.305555e-03	1.269323e-02	30	2
-render/render_diff_sparse-cells	wall_time	2.277039e-03	2.247606e-03	2.341485e-03	2.061426e-02	30	3
-render/render_emoji_full-screen	alloc_words	5.964420e+05	5.964170e+05	5.964690e+05	4.359183e-05	30	10
-render/render_emoji_full-screen	cpu_time	2.221228e-03	2.217321e-03	2.226116e-03	1.979676e-03	30	2
-render/render_emoji_full-screen	wall_time	2.221720e-03	2.217650e-03	2.227110e-03	2.128994e-03	30	2
-render/render_scenario_ci-log-view	alloc_words	6.131490e+05	6.131490e+05	6.131490e+05	0.000000e+00	30	0
-render/render_scenario_ci-log-view	cpu_time	2.067936e-03	2.046816e-03	2.090076e-03	1.045961e-02	30	0
-render/render_scenario_ci-log-view	wall_time	2.083327e-03	2.046598e-03	2.134905e-03	2.119385e-02	30	1
-render/render_scenario_text-editor	alloc_words	6.039130e+05	6.039120e+05	6.039130e+05	8.279338e-07	59	3
-render/render_scenario_text-editor	cpu_time	2.270360e-03	2.259793e-03	2.276995e-03	3.788328e-03	59	3
-render/render_scenario_text-editor	wall_time	2.275807e-03	2.262703e-03	2.284159e-03	4.713847e-03	59	3
+render/render_diff_full-screen	alloc_words	3.281910e+05	3.281910e+05	3.281910e+05	0.000000e+00	30	0
+render/render_diff_full-screen	cpu_time	1.084975e-03	1.079239e-03	1.095394e-03	7.444792e-03	30	0
+render/render_diff_full-screen	wall_time	1.086722e-03	1.080069e-03	1.100080e-03	9.207353e-03	30	1
+render/render_diff_no-changes	alloc_words	3.281960e+05	3.281960e+05	3.281960e+05	0.000000e+00	30	0
+render/render_diff_no-changes	cpu_time	1.085316e-03	1.081285e-03	1.091252e-03	4.591580e-03	30	2
+render/render_diff_no-changes	wall_time	1.086626e-03	1.082048e-03	1.093429e-03	5.236857e-03	30	2
+render/render_diff_single-line	alloc_words	3.279060e+05	3.279060e+05	3.279060e+05	0.000000e+00	30	0
+render/render_diff_single-line	cpu_time	1.077713e-03	1.072418e-03	1.085522e-03	6.079584e-03	30	1
+render/render_diff_single-line	wall_time	1.080262e-03	1.074998e-03	1.087819e-03	5.934370e-03	30	1
+render/render_diff_sparse-cells	alloc_words	3.283410e+05	3.283410e+05	3.283410e+05	0.000000e+00	30	0
+render/render_diff_sparse-cells	cpu_time	1.084338e-03	1.080095e-03	1.089529e-03	4.350002e-03	30	3
+render/render_diff_sparse-cells	wall_time	1.086572e-03	1.082317e-03	1.091955e-03	4.434896e-03	30	3
+render/render_emoji_full-screen	alloc_words	3.443740e+05	3.443730e+05	3.443750e+05	2.903820e-06	58	21
+render/render_emoji_full-screen	cpu_time	1.137203e-03	1.130290e-03	1.144452e-03	6.226386e-03	58	8
+render/render_emoji_full-screen	wall_time	1.143496e-03	1.127719e-03	1.160425e-03	1.430075e-02	58	9
+render/render_scenario_ci-log-view	alloc_words	3.512330e+05	3.512330e+05	3.512330e+05	0.000000e+00	30	0
+render/render_scenario_ci-log-view	cpu_time	9.349456e-04	9.293442e-04	9.400086e-04	5.703205e-03	30	2
+render/render_scenario_ci-log-view	wall_time	9.370720e-04	9.304630e-04	9.430943e-04	6.739759e-03	30	4
+render/render_scenario_text-editor	alloc_words	3.282550e+05	3.282540e+05	3.282550e+05	1.523206e-06	30	0
+render/render_scenario_text-editor	cpu_time	1.082399e-03	1.078472e-03	1.089959e-03	5.306106e-03	30	0
+render/render_scenario_text-editor	wall_time	1.085338e-03	1.080264e-03	1.095587e-03	7.058918e-03	30	1

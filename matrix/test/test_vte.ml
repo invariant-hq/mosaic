@@ -249,9 +249,7 @@ let sgr_foreground_color () =
   let vte = Vte.create ~rows:5 ~cols:20 () in
   Vte.feed_string vte "\x1b[31mRed\x1b[0m";
   let grid = Vte.grid vte in
-  let r =
-    Grid.get_fg_r grid 0 |> fun v -> Float.round (v *. 255.) |> int_of_float
-  in
+  let r, _, _ = Grid.get_fg grid 0 |> Ansi.Color.to_rgb in
   (* Standard ANSI red fallback = (128, 0, 0) *)
   equal ~msg:"red foreground" int 128 r
 
@@ -259,9 +257,7 @@ let sgr_background_color () =
   let vte = Vte.create ~rows:5 ~cols:20 () in
   Vte.feed_string vte "\x1b[42mGreen BG\x1b[0m";
   let grid = Vte.grid vte in
-  let g =
-    Grid.get_bg_g grid 0 |> fun v -> Float.round (v *. 255.) |> int_of_float
-  in
+  let _, g, _ = Grid.get_bg grid 0 |> Ansi.Color.to_rgb in
   (* Standard ANSI green fallback = (0, 128, 0) *)
   equal ~msg:"green background" int 128 g
 

@@ -28,27 +28,14 @@ val reset : t -> unit
 (** {1:operations Operations} *)
 
 val update :
-  t ->
-  Writer.t ->
-  fg_r:float ->
-  fg_g:float ->
-  fg_b:float ->
-  fg_a:float ->
-  bg_r:float ->
-  bg_g:float ->
-  bg_b:float ->
-  bg_a:float ->
-  attrs:int ->
-  link:string ->
-  unit
-(** [update s w ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b ~bg_a ~attrs ~link]
-    synchronizes the terminal with the requested style. Emits escape codes to
-    [w] and updates [s] only if the style changed. Hyperlink changes are emitted
-    first (OSC 8), then SGR codes if any component changed.
+  t -> Writer.t -> fg:Color.t -> bg:Color.t -> attrs:int -> link:string -> unit
+(** [update s w ~fg ~bg ~attrs ~link] synchronizes the terminal with the
+    requested style. Emits escape codes to [w] and updates [s] only if the style
+    changed. Hyperlink changes are emitted first (OSC 8), then SGR codes if any
+    component changed.
 
-    Color components are normalized floats in \[0.0, 1.0\]. [attrs] is a bitmask
-    compatible with {!Attr.pack}. [link] is the hyperlink URL or [""] for none.
-*)
+    [attrs] is a bitmask compatible with {!Attr.pack}. [link] is the hyperlink
+    URL or [""] for none. *)
 
 val close_link : t -> Writer.t -> unit
 (** [close_link s w] closes any open hyperlink. Safe to call when no link is

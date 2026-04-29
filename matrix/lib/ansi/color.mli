@@ -5,10 +5,7 @@
     snapshot so callers can still blend, compare, and inspect colors without
     losing whether the renderer should emit [38;2], [38;5], or [39]/[49].
 
-    Constructors clamp components to their valid ranges instead of raising.
-
-    {b Note.} {!pack}/{!unpack} require a 64-bit platform
-    ([Sys.int_size >= 62]). *)
+    Constructors clamp components to their valid ranges instead of raising. *)
 
 (** {1:colors Colors} *)
 
@@ -160,15 +157,56 @@ val emit_sgr_codes : bg:bool -> (int -> unit) -> t -> unit
 (** [emit_sgr_codes ~bg push c] emits SGR codes for [c] via [push].
     Zero-allocation alternative to {!to_sgr_codes}. *)
 
-(** {1:encoding Binary encoding} *)
+(** {1:packed Packed representation} *)
 
-val pack : t -> int
-(** [pack c] encodes [c] to an unboxed integer for compact storage.
-    [equal c (unpack (pack c))] holds for all [c]. *)
+module Packed : sig
+  (** Low-level packed color operations.
 
-val unpack : int -> t
-(** [unpack bits] decodes a packed color. Invalid intent tags decode to
-    {!default}. *)
+      Packed colors are unboxed integers for render and grid hot paths. The bit
+      layout is private to this module; callers may store and compare packed
+      values, but must use these operations to inspect or emit them.
+
+      Requires a 64-bit platform ([Sys.int_size >= 62]). *)
+
+  type color = t
+  (** The unpacked color type. *)
+
+  val encode : color -> int
+  (** [encode c] is [c] encoded as an unboxed integer. *)
+
+  val decode : int -> color
+  (** [decode bits] decodes [bits]. Invalid intent tags decode to {!default}. *)
+
+  val red : int -> int
+  val green : int -> int
+  val blue : int -> int
+
+  val alpha : int -> int
+  (** Color channels in \[0,255\]. *)
+
+  val red_f : int -> float
+  val green_f : int -> float
+  val blue_f : int -> float
+
+  val alpha_f : int -> float
+  (** Color channels in \[0.0,1.0\]. *)
+
+  val intent : int -> intent
+  (** [intent bits] is the terminal emission intent encoded in [bits]. *)
+
+  val indexed_slot : int -> int
+  (** [indexed_slot bits] is the indexed color slot encoded in [bits]. The value
+      is meaningful only when [intent bits] is [Indexed _]. *)
+
+  val of_rgba_f : float -> float -> float -> float -> int
+  (** [of_rgba_f r g b a] is a packed literal RGBA color from normalized
+      channels. *)
+
+  val emit_sgr : Writer.t -> bg:bool -> int -> unit
+  (** [emit_sgr w ~bg bits] emits the SGR parameters for [bits] to [w], prefixed
+      by a separator when a non-default color is emitted. Default and fully
+      transparent colors emit nothing. *)
+end
 
 (** {1:converting Converting} *)
 

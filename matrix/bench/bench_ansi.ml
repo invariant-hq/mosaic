@@ -169,22 +169,22 @@ let sgr_buf = Bytes.create 131072
 (* Palette of styles for realistic TUI rendering *)
 let palette =
   [|
-    (* fg_r, fg_g, fg_b, fg_a, bg_r, bg_g, bg_b, bg_a, attrs *)
-    (1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0);
+    (* fg, bg, attrs *)
+    (C.of_rgb 255 255 255, C.default, 0);
     (* white on default *)
-    (1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, Attr.pack Attr.bold);
+    (C.of_rgb 255 0 0, C.default, Attr.pack Attr.bold);
     (* red bold *)
-    (0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0);
+    (C.of_rgb 0 255 0, C.default, 0);
     (* green *)
-    (0.0, 0.0, 1.0, 1.0, 0.2, 0.2, 0.2, 1.0, 0);
+    (C.of_rgb 0 0 255, C.of_rgb 51 51 51, 0);
     (* blue on gray *)
-    (1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.5, 1.0, Attr.pack Attr.underline);
+    (C.of_rgb 255 255 0, C.of_rgb 0 0 128, Attr.pack Attr.underline);
     (* yellow underline on blue *)
-    (0.5, 0.5, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0, Attr.pack Attr.dim);
+    (C.of_rgb 128 128 128, C.default, Attr.pack Attr.dim);
     (* dim gray *)
-    (1.0, 0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, Attr.pack Attr.italic);
+    (C.of_rgb 255 128 0, C.default, Attr.pack Attr.italic);
     (* orange italic *)
-    (0.0, 1.0, 1.0, 1.0, 0.1, 0.0, 0.1, 1.0, 0);
+    (C.of_rgb 0 255 255, C.of_rgb 26 0 26, 0);
     (* cyan on dark purple *)
   |]
 
@@ -203,11 +203,8 @@ let sgr_tui_frame_80x24 =
         for col = 0 to 79 do
           (* Pick style based on position - simulates UI regions *)
           let idx = ((row / 6) + (col / 20)) mod Array.length palette in
-          let fg_r, fg_g, fg_b, fg_a, bg_r, bg_g, bg_b, bg_a, attrs =
-            palette.(idx)
-          in
-          Sgr.update sgr_state_tui sgr_writer_tui ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r
-            ~bg_g ~bg_b ~bg_a ~attrs ~link:""
+          let fg, bg, attrs = palette.(idx) in
+          Sgr.update sgr_state_tui sgr_writer_tui ~fg ~bg ~attrs ~link:""
         done;
         (* Reset at end of row like Screen.render does *)
         Sgr.reset sgr_state_tui
@@ -216,6 +213,7 @@ let sgr_tui_frame_80x24 =
 
 let sgr_state_same = Sgr.create ()
 let sgr_writer_same = Ansi.Writer.make sgr_buf
+let sgr_white = C.of_rgb 255 255 255
 
 let sgr_same_style_1920 =
   Thumper.bench "sgr_same_style_1920" (fun () ->
@@ -225,13 +223,16 @@ let sgr_same_style_1920 =
       Sgr.reset sgr_state_same;
       Ansi.Writer.reset_pos sgr_writer_same;
       for _ = 0 to 1919 do
-        Sgr.update sgr_state_same sgr_writer_same ~fg_r:1.0 ~fg_g:1.0 ~fg_b:1.0
-          ~fg_a:1.0 ~bg_r:0.0 ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 ~attrs:0 ~link:""
+        Sgr.update sgr_state_same sgr_writer_same ~fg:sgr_white ~bg:C.default
+          ~attrs:0 ~link:""
       done;
       ignore (Sys.opaque_identity (Ansi.Writer.len sgr_writer_same)))
 
 let sgr_state_alt = Sgr.create ()
 let sgr_writer_alt = Ansi.Writer.make sgr_buf
+let sgr_red = C.of_rgb 255 0 0
+let sgr_green = C.of_rgb 0 255 0
+let sgr_alt_bg = C.of_rgb 26 26 26
 
 let sgr_alternating_styles_1920 =
   Thumper.bench "sgr_alternating_styles_1920" (fun () ->
@@ -241,12 +242,11 @@ let sgr_alternating_styles_1920 =
       Ansi.Writer.reset_pos sgr_writer_alt;
       for i = 0 to 1919 do
         if i land 1 = 0 then
-          Sgr.update sgr_state_alt sgr_writer_alt ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0
-            ~fg_a:1.0 ~bg_r:0.0 ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0
+          Sgr.update sgr_state_alt sgr_writer_alt ~fg:sgr_red ~bg:C.default
             ~attrs:(Attr.pack Attr.bold) ~link:""
         else
-          Sgr.update sgr_state_alt sgr_writer_alt ~fg_r:0.0 ~fg_g:1.0 ~fg_b:0.0
-            ~fg_a:1.0 ~bg_r:0.1 ~bg_g:0.1 ~bg_b:0.1 ~bg_a:1.0 ~attrs:0 ~link:""
+          Sgr.update sgr_state_alt sgr_writer_alt ~fg:sgr_green ~bg:sgr_alt_bg
+            ~attrs:0 ~link:""
       done;
       ignore (Sys.opaque_identity (Ansi.Writer.len sgr_writer_alt)))
 
@@ -257,6 +257,7 @@ let link_url = "https://example.com/path/to/resource"
 let link_text = Ansi.literal "link text here"
 let sgr_state_link = Sgr.create ()
 let sgr_writer_link = Ansi.Writer.make sgr_buf
+let sgr_link_fg = C.of_rgb 77 128 255
 
 let sgr_hyperlink_transitions =
   Thumper.bench "sgr_hyperlink_transitions" (fun () ->
@@ -266,8 +267,7 @@ let sgr_hyperlink_transitions =
       Ansi.Writer.reset_pos sgr_writer_link;
       for i = 0 to 199 do
         let link = if i mod 5 < 2 then link_url else "" in
-        Sgr.update sgr_state_link sgr_writer_link ~fg_r:0.3 ~fg_g:0.5 ~fg_b:1.0
-          ~fg_a:1.0 ~bg_r:0.0 ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0
+        Sgr.update sgr_state_link sgr_writer_link ~fg:sgr_link_fg ~bg:C.default
           ~attrs:(if i mod 5 < 2 then Attr.pack Attr.underline else 0)
           ~link;
         (* Simulate emitting some text *)
@@ -278,10 +278,11 @@ let sgr_hyperlink_transitions =
 
 (* Pre-allocated colors array for partial changes benchmark *)
 let partial_colors =
-  [| (1.0, 0.0, 0.0); (0.0, 1.0, 0.0); (0.0, 0.0, 1.0); (1.0, 1.0, 0.0) |]
+  [| C.of_rgb 255 0 0; C.of_rgb 0 255 0; C.of_rgb 0 0 255; C.of_rgb 255 255 0 |]
 
 let sgr_state_partial = Sgr.create ()
 let sgr_writer_partial = Ansi.Writer.make sgr_buf
+let sgr_partial_bg = C.of_rgb 26 26 38
 
 let sgr_partial_changes =
   Thumper.bench "sgr_partial_changes" (fun () ->
@@ -290,9 +291,9 @@ let sgr_partial_changes =
       Sgr.reset sgr_state_partial;
       Ansi.Writer.reset_pos sgr_writer_partial;
       for i = 0 to 999 do
-        let r, g, b = partial_colors.(i mod 4) in
-        Sgr.update sgr_state_partial sgr_writer_partial ~fg_r:r ~fg_g:g ~fg_b:b
-          ~fg_a:1.0 ~bg_r:0.1 ~bg_g:0.1 ~bg_b:0.15 ~bg_a:1.0 ~attrs:0 ~link:""
+        Sgr.update sgr_state_partial sgr_writer_partial
+          ~fg:partial_colors.(i mod 4)
+          ~bg:sgr_partial_bg ~attrs:0 ~link:""
       done;
       ignore (Sys.opaque_identity (Ansi.Writer.len sgr_writer_partial)))
 

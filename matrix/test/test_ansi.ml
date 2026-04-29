@@ -251,8 +251,7 @@ let sgr_state_transitions () =
   let state = Sgr_state.create () in
 
   (* 1. Initial: emits reset(0) + attributes *)
-  Sgr_state.update state w ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:1.0 (* Red *)
-    ~bg_r:0.0 ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 (* Black (transparent) *)
+  Sgr_state.update state w ~fg:(Color.of_rgb 255 0 0) ~bg:Color.default
     ~attrs:(Attr.pack Attr.bold) ~link:"";
 
   let out1 = Writer.slice w in
@@ -262,14 +261,14 @@ let sgr_state_transitions () =
 
   (* 2. No-op: update with exact same values *)
   let w2 = Writer.make buf in
-  Sgr_state.update state w2 ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:1.0 ~bg_r:0.0
-    ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 ~attrs:(Attr.pack Attr.bold) ~link:"";
+  Sgr_state.update state w2 ~fg:(Color.of_rgb 255 0 0) ~bg:Color.default
+    ~attrs:(Attr.pack Attr.bold) ~link:"";
   equal ~msg:"noop update empty" int 0 (Writer.len w2);
 
   (* 3. Delta: Remove Bold, keep color *)
   let w3 = Writer.make buf in
-  Sgr_state.update state w3 ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:1.0 ~bg_r:0.0
-    ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 ~attrs:0 ~link:"";
+  Sgr_state.update state w3 ~fg:(Color.of_rgb 255 0 0) ~bg:Color.default
+    ~attrs:0 ~link:"";
 
   (* No bold *)
 
@@ -282,13 +281,13 @@ let sgr_transparent_bg_resets () =
   let buf = Bytes.create 128 in
   let state = Sgr_state.create () in
   let w1 = Writer.make buf in
-  Sgr_state.update state w1 ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:1.0 ~bg_r:0.0
-    ~bg_g:0.0 ~bg_b:1.0 ~bg_a:1.0 ~attrs:0 ~link:"";
+  Sgr_state.update state w1 ~fg:(Color.of_rgb 255 0 0)
+    ~bg:(Color.of_rgb 0 0 255) ~attrs:0 ~link:"";
   check_seq "bg applied" "\x1b[0;38;2;255;0;0;48;2;0;0;255m"
     (Bytes.to_string (Writer.slice w1));
   let w2 = Writer.make buf in
-  Sgr_state.update state w2 ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:1.0 ~bg_r:0.0
-    ~bg_g:0.0 ~bg_b:1.0 ~bg_a:0.0 ~attrs:0 ~link:"";
+  Sgr_state.update state w2 ~fg:(Color.of_rgb 255 0 0) ~bg:Color.default
+    ~attrs:0 ~link:"";
   check_seq "bg cleared to default" "\x1b[0;38;2;255;0;0m"
     (Bytes.to_string (Writer.slice w2))
 
@@ -296,13 +295,13 @@ let sgr_transparent_fg_resets_to_default () =
   let buf = Bytes.create 128 in
   let state = Sgr_state.create () in
   let w1 = Writer.make buf in
-  Sgr_state.update state w1 ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:1.0 ~bg_r:0.0
-    ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 ~attrs:0 ~link:"";
+  Sgr_state.update state w1 ~fg:(Color.of_rgb 255 0 0) ~bg:Color.default
+    ~attrs:0 ~link:"";
   check_seq "fg applied" "\x1b[0;38;2;255;0;0m"
     (Bytes.to_string (Writer.slice w1));
   let w2 = Writer.make buf in
-  Sgr_state.update state w2 ~fg_r:0.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:0.0 ~bg_r:0.0
-    ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 ~attrs:0 ~link:"";
+  Sgr_state.update state w2 ~fg:Color.default ~bg:Color.default ~attrs:0
+    ~link:"";
   let out = Bytes.to_string (Writer.slice w2) in
   check_seq "fg cleared to default" "\x1b[0m" out;
   is_false ~msg:"default fg is not emitted as truecolor black"

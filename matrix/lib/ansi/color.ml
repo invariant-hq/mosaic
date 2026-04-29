@@ -57,6 +57,8 @@ let palette_flat =
   arr
 
 module Packed = struct
+  type color = t
+
   let () = assert (Sys.int_size >= 62)
   let alpha_shift = 0
   let blue_shift = 8
@@ -82,31 +84,87 @@ module Packed = struct
   let[@inline] blue c = (c lsr blue_shift) land 0xFF
   let[@inline] alpha c = (c lsr alpha_shift) land 0xFF
   let[@inline] slot c = (c lsr slot_shift) land 0xFF
-  let[@inline] intent c = (c lsr intent_shift) land intent_mask
+  let[@inline] intent_tag c = (c lsr intent_shift) land intent_mask
   let[@inline] rgba c = c land 0xFFFFFFFF
   let default = make ~intent:intent_default ~slot:0 ~r:0 ~g:0 ~b:0 ~a:0
 
   let decode bits =
     let bits = bits land full_mask in
-    match intent bits with 0 | 1 | 2 -> bits | _ -> default
+    match intent_tag bits with 0 | 1 | 2 -> bits | _ -> default
+
+  let[@inline] encode color = color
+  let[@inline] red_f color = float_of_byte (red color)
+  let[@inline] green_f color = float_of_byte (green color)
+  let[@inline] blue_f color = float_of_byte (blue color)
+  let[@inline] alpha_f color = float_of_byte (alpha color)
+
+  let[@inline] of_rgba_f r g b a =
+    let r = byte_of_float r in
+    let g = byte_of_float g in
+    let b = byte_of_float b in
+    let a = byte_of_float a in
+    a lor (b lsl blue_shift) lor (g lsl green_shift) lor (r lsl red_shift)
+
+  let intent color =
+    match intent_tag color with
+    | 1 -> Indexed (slot color)
+    | 2 -> Default
+    | _ -> Rgb
+
+  let indexed_slot color = slot color
+
+  let emit_indexed_sgr w ~bg idx =
+    Escape.sgr_sep w;
+    if idx < 8 then Escape.sgr_code w ((if bg then 40 else 30) + idx)
+    else if idx < 16 then Escape.sgr_code w ((if bg then 100 else 90) + idx - 8)
+    else (
+      Escape.sgr_code w (if bg then 48 else 38);
+      Escape.sgr_sep w;
+      Escape.sgr_code w 5;
+      Escape.sgr_sep w;
+      Escape.sgr_code w idx)
+
+  let emit_sgr w ~bg color =
+    match intent color with
+    | Default -> ()
+    | Indexed idx -> emit_indexed_sgr w ~bg idx
+    | Rgb ->
+        if alpha color = 0 then ()
+        else (
+          Escape.sgr_sep w;
+          Escape.sgr_code w (if bg then 48 else 38);
+          Escape.sgr_sep w;
+          Escape.sgr_code w 2;
+          Escape.sgr_sep w;
+          Escape.sgr_code w (red color);
+          Escape.sgr_sep w;
+          Escape.sgr_code w (green color);
+          Escape.sgr_sep w;
+          Escape.sgr_code w (blue color))
 end
 
 let default = Packed.default
+
+let[@inline] make_rgb_unchecked r g b =
+  255 lor (b lsl Packed.blue_shift) lor (g lsl Packed.green_shift)
+  lor (r lsl Packed.red_shift)
+
+let[@inline] make_rgba_unchecked r g b a =
+  a lor (b lsl Packed.blue_shift) lor (g lsl Packed.green_shift)
+  lor (r lsl Packed.red_shift)
 
 let[@inline] of_rgb r g b =
   let r = clamp_byte r in
   let g = clamp_byte g in
   let b = clamp_byte b in
-  255 lor (b lsl Packed.blue_shift) lor (g lsl Packed.green_shift)
-  lor (r lsl Packed.red_shift)
+  make_rgb_unchecked r g b
 
 let[@inline] of_rgba r g b a =
   let r = clamp_byte r in
   let g = clamp_byte g in
   let b = clamp_byte b in
   let a = clamp_byte a in
-  a lor (b lsl Packed.blue_shift) lor (g lsl Packed.green_shift)
-  lor (r lsl Packed.red_shift)
+  make_rgba_unchecked r g b a
 
 let make_indexed idx =
   let base = idx * 3 in
@@ -143,16 +201,8 @@ let grayscale ~level =
   let level = max 0 (min 23 level) in
   indexed (232 + level)
 
-let of_rgba_f r g b a =
-  of_rgba (byte_of_float r) (byte_of_float g) (byte_of_float b)
-    (byte_of_float a)
-
-let intent color =
-  match Packed.intent color with
-  | 1 -> Indexed (Packed.slot color)
-  | 2 -> Default
-  | _ -> Rgb
-
+let of_rgba_f r g b a = Packed.decode (Packed.of_rgba_f r g b a)
+let intent = Packed.intent
 let to_rgb color = (Packed.red color, Packed.green color, Packed.blue color)
 
 let to_rgba color =
@@ -276,8 +326,7 @@ let detected_level =
 let detect_level () = Lazy.force detected_level
 
 let downgrade ?level color =
-  if Packed.intent color = Packed.intent_default || Packed.alpha color = 0 then
-    color
+  if intent color = Default || Packed.alpha color = 0 then color
   else
     match Option.value level ~default:(detect_level ()) with
     | `Truecolor -> color
@@ -330,9 +379,6 @@ let to_sgr_codes ~bg color =
 let invert color =
   let r, g, b = to_rgb color in
   of_rgb (255 - r) (255 - g) (255 - b)
-
-let pack color = color
-let unpack = Packed.decode
 
 let string_of_color color =
   match intent color with

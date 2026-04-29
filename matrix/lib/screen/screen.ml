@@ -196,19 +196,8 @@ let render_generic ~row_offset ~use_explicit_width
           else ""
         in
 
-        (* Individual component access to avoid tuple allocation *)
-        let fg_r = Grid.get_fg_r curr idx in
-        let fg_g = Grid.get_fg_g curr idx in
-        let fg_b = Grid.get_fg_b curr idx in
-        let fg_a = Grid.get_fg_a curr idx in
-
-        let bg_r = Grid.get_bg_r curr idx in
-        let bg_g = Grid.get_bg_g curr idx in
-        let bg_b = Grid.get_bg_b curr idx in
-        let bg_a = Grid.get_bg_a curr idx in
-
-        Ansi.Sgr_state.update sgr_state writer ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r
-          ~bg_g ~bg_b ~bg_a ~attrs ~link;
+        Ansi.Sgr_state.update sgr_state writer ~fg:(Grid.get_fg curr idx)
+          ~bg:(Grid.get_bg curr idx) ~attrs ~link;
 
         (* Emit Content *)
         add_code_to_writer ~explicit_width:use_explicit_width

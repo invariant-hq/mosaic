@@ -49,8 +49,6 @@ let compress_row grid row cols =
   let current_attrs = ref Ansi.Attr.empty in
   let style_start_byte = ref 0 in
 
-  let scale v = Float.round (v *. 255.) |> int_of_float in
-
   let flush_style_run end_byte =
     match !current_key with
     | None -> ()
@@ -75,14 +73,10 @@ let compress_row grid row cols =
 
       if text <> "" then (
         (* Extract raw style from cell. *)
-        let fg_r = scale (Grid.get_fg_r grid idx) in
-        let fg_g = scale (Grid.get_fg_g grid idx) in
-        let fg_b = scale (Grid.get_fg_b grid idx) in
-        let fg_a = scale (Grid.get_fg_a grid idx) in
-        let bg_r = scale (Grid.get_bg_r grid idx) in
-        let bg_g = scale (Grid.get_bg_g grid idx) in
-        let bg_b = scale (Grid.get_bg_b grid idx) in
-        let bg_a = scale (Grid.get_bg_a grid idx) in
+        let fg = Grid.get_fg grid idx in
+        let bg = Grid.get_bg grid idx in
+        let fg_r, fg_g, fg_b, fg_a = Ansi.Color.to_rgba fg in
+        let bg_r, bg_g, bg_b, bg_a = Ansi.Color.to_rgba bg in
         let attrs_packed = Grid.get_attrs grid idx in
 
         let key =
@@ -93,8 +87,8 @@ let compress_row grid row cols =
         (match !current_key with
         | None ->
             current_key := Some key;
-            current_fg := Ansi.Color.of_rgba fg_r fg_g fg_b fg_a;
-            current_bg := Ansi.Color.of_rgba bg_r bg_g bg_b bg_a;
+            current_fg := fg;
+            current_bg := bg;
             current_attrs := Ansi.Attr.unpack attrs_packed;
             style_start_byte := Buffer.length buf
         | Some prev when prev <> key ->
@@ -102,8 +96,8 @@ let compress_row grid row cols =
             let end_byte = Buffer.length buf in
             flush_style_run end_byte;
             current_key := Some key;
-            current_fg := Ansi.Color.of_rgba fg_r fg_g fg_b fg_a;
-            current_bg := Ansi.Color.of_rgba bg_r bg_g bg_b bg_a;
+            current_fg := fg;
+            current_bg := bg;
             current_attrs := Ansi.Attr.unpack attrs_packed;
             style_start_byte := end_byte
         | Some _ -> ());
@@ -499,28 +493,8 @@ let put_text t text =
       let cell = Grid.get_cell t.active_grid src_idx in
       let attrs = Grid.get_attrs t.active_grid src_idx in
       let link = Grid.get_link t.active_grid src_idx in
-      let fg_r = Grid.get_fg_r t.active_grid src_idx in
-      let fg_g = Grid.get_fg_g t.active_grid src_idx in
-      let fg_b = Grid.get_fg_b t.active_grid src_idx in
-      let fg_a = Grid.get_fg_a t.active_grid src_idx in
-      let bg_r = Grid.get_bg_r t.active_grid src_idx in
-      let bg_g = Grid.get_bg_g t.active_grid src_idx in
-      let bg_b = Grid.get_bg_b t.active_grid src_idx in
-      let bg_a = Grid.get_bg_a t.active_grid src_idx in
-      let fg_color =
-        Ansi.Color.of_rgba
-          (int_of_float (fg_r *. 255.))
-          (int_of_float (fg_g *. 255.))
-          (int_of_float (fg_b *. 255.))
-          (int_of_float (fg_a *. 255.))
-      in
-      let bg_color =
-        Ansi.Color.of_rgba
-          (int_of_float (bg_r *. 255.))
-          (int_of_float (bg_g *. 255.))
-          (int_of_float (bg_b *. 255.))
-          (int_of_float (bg_a *. 255.))
-      in
+      let fg_color = Grid.get_fg t.active_grid src_idx in
+      let bg_color = Grid.get_bg t.active_grid src_idx in
       let link_url = Grid.hyperlink_url t.active_grid link in
       Grid.set_cell t.active_grid ~x:dst_x ~y:row ~cell ~fg:fg_color
         ~bg:bg_color ~attrs:(Ansi.Attr.unpack attrs) ?link:link_url ()
