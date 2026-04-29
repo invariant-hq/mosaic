@@ -86,10 +86,14 @@ let make_initial_capabilities ~term =
   }
 
 let with_env name f caps =
-  Option.fold ~none:caps ~some:(fun value -> f value caps) (Sys.getenv_opt name)
+  match Sys.getenv_opt name with
+  | Some value when value <> "" -> f value caps
+  | _ -> caps
 
 let with_env_bool name f caps =
-  if Option.is_some (Sys.getenv_opt name) then f caps else caps
+  match Sys.getenv_opt name with
+  | Some value when value <> "" -> f caps
+  | _ -> caps
 
 let colorterm_truecolor value =
   let v = String.lowercase_ascii value in
@@ -113,18 +117,28 @@ let apply_environment_overrides caps =
     else caps
   in
   let caps =
-    if Option.is_some (Sys.getenv_opt "TMUX") then
-      { caps with unicode_width = `Wcwidth }
-    else
-      with_env "TERM"
-        (fun term caps ->
-          let lower = String.lowercase_ascii term in
-          if
-            String.starts_with ~prefix:"tmux" lower
-            || String.starts_with ~prefix:"screen" lower
-          then { caps with unicode_width = `Wcwidth }
-          else caps)
-        caps
+    match Sys.getenv_opt "TMUX" with
+    | Some value when value <> "" ->
+        {
+          caps with
+          unicode_width = `Wcwidth;
+          explicit_cursor_positioning = true;
+        }
+    | _ ->
+        with_env "TERM"
+          (fun term caps ->
+            let lower = String.lowercase_ascii term in
+            if
+              String.starts_with ~prefix:"tmux" lower
+              || String.starts_with ~prefix:"screen" lower
+            then
+              {
+                caps with
+                unicode_width = `Wcwidth;
+                explicit_cursor_positioning = true;
+              }
+            else caps)
+          caps
   in
   let caps =
     with_env "TERM_PROGRAM"
@@ -133,7 +147,7 @@ let apply_environment_overrides caps =
           if is_hyperlink_term prog then { caps with hyperlinks = true }
           else caps
         in
-        match prog with
+        match String.lowercase_ascii prog with
         | "vscode" ->
             {
               caps with
@@ -141,7 +155,8 @@ let apply_environment_overrides caps =
               kitty_graphics = false;
               unicode_width = `Unicode;
             }
-        | "Apple_Terminal" -> { caps with unicode_width = `Wcwidth }
+        | "apple_terminal" -> { caps with unicode_width = `Wcwidth }
+        | "alacritty" -> { caps with explicit_cursor_positioning = true }
         | _ -> caps)
       caps
   in
@@ -270,6 +285,19 @@ let mark_kitty_terminal caps =
     bracketed_paste = true;
   }
 
+let apply_terminal_name_policy caps name =
+  let lower = String.lowercase_ascii name in
+  if contains_substring lower "tmux" then
+    {
+      caps with
+      unicode_width = `Wcwidth;
+      explicit_cursor_positioning = true;
+      hyperlinks = true;
+    }
+  else if contains_substring lower "alacritty" then
+    { caps with explicit_cursor_positioning = true; hyperlinks = true }
+  else caps
+
 let apply_mode_report caps report =
   (* DECRQM response values: 0 = not recognized (mode not supported) 1 = set
      (mode is enabled) 2 = reset (mode is disabled but supported) 3 =
@@ -330,8 +358,12 @@ let apply_event_internal (caps, info) (event : Input.Caps.event) =
            so we can safely enable all Kitty capabilities *)
         if contains_substring (String.lowercase_ascii payload) "kitty" then
           mark_kitty_terminal caps
-        else if is_hyperlink_term payload then { caps with hyperlinks = true }
-        else caps
+        else
+          let caps =
+            if is_hyperlink_term payload then { caps with hyperlinks = true }
+            else caps
+          in
+          apply_terminal_name_policy caps info.name
       in
       (caps, info)
   | Input.Caps.Kitty_graphics_reply payload ->
@@ -389,12 +421,18 @@ let kitty_graphics_query = Ansi.(to_string (query Kitty_graphics))
 let primary_device_attrs = Ansi.(to_string (query Device_attributes))
 let iterm2_proprietary_query = "\027]1337;ReportCellSize\007"
 
+let env_present name =
+  match Sys.getenv_opt name with Some value -> value <> "" | None -> false
+
 let is_tmux ~term =
-  Option.is_some (Sys.getenv_opt "TMUX")
+  env_present "TMUX"
   ||
   let lower = String.lowercase_ascii term in
   String.starts_with ~prefix:"tmux" lower
-  || String.starts_with ~prefix:"screen" lower
+
+let is_screen ~term =
+  (not (is_tmux ~term))
+  && String.starts_with ~prefix:"screen" (String.lowercase_ascii term)
 
 (* Wrap an escape sequence for tmux DCS passthrough. All ESC bytes (0x1b) in the
    payload are doubled so tmux forwards them to the outer terminal. *)
@@ -411,6 +449,7 @@ let wrap_for_tmux seq =
 
 let build_probe_payload term =
   let tmux = is_tmux ~term in
+  let screen = is_screen ~term in
   (* DECRQM queries probe whether the terminal supports specific private modes.
      Inside tmux, these must be DCS-wrapped to reach the outer terminal, since
      tmux intercepts DECRQM and may not know about newer modes (sync, unicode
@@ -430,7 +469,9 @@ let build_probe_payload term =
     if tmux then wrap_for_tmux raw else raw
   in
   let graphics =
-    if tmux then wrap_for_tmux kitty_graphics_query else kitty_graphics_query
+    if screen then ""
+    else if tmux then wrap_for_tmux kitty_graphics_query
+    else kitty_graphics_query
   in
   let base_queries =
     [
@@ -495,15 +536,17 @@ let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
           Input.Parser.feed parser buffer 0 read ~now ~on_event
             ~on_caps:(fun c ->
               let caps', info' =
-                apply_event ~apply_env_overrides ~caps:!caps_ref ~info:!info_ref
-                  c
+                apply_event ~caps:!caps_ref ~info:!info_ref c
               in
               caps_ref := caps';
               info_ref := info';
               match c with
               | Input.Caps.Device_attributes _ -> found_da := true
               | _ -> ());
-          let caps = !caps_ref in
+          let caps =
+            if apply_env_overrides then apply_environment_overrides !caps_ref
+            else !caps_ref
+          in
           let info = !info_ref in
           let has_da = got_da || !found_da in
           let da_time = if has_da && not got_da then Some now else da_time in
@@ -518,9 +561,7 @@ let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
   let info_ref = ref info in
   let now = Unix.gettimeofday () in
   Input.Parser.drain parser ~now ~on_event ~on_caps:(fun c ->
-      let caps', info' =
-        apply_event ~apply_env_overrides ~caps:!caps_ref ~info:!info_ref c
-      in
+      let caps', info' = apply_event ~caps:!caps_ref ~info:!info_ref c in
       caps_ref := caps';
       info_ref := info');
   let caps =

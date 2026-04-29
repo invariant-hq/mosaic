@@ -4,6 +4,7 @@ type fake_state = {
   mutable now_s : float;
   mutable read_calls : int;
   mutable cleanup_calls : int;
+  mutable raw_restore_calls : int;
 }
 
 let make_app ?(mode = `Alt) ?(target_fps = Some 30.) ?(input_timeout = Some 0.)
@@ -15,7 +16,9 @@ let make_app ?(mode = `Alt) ?(target_fps = Some 30.) ?(input_timeout = Some 0.)
       ~tty:false ()
   in
   let parser = Matrix.Input.Parser.create () in
-  let state = { now_s = 0.; read_calls = 0; cleanup_calls = 0 } in
+  let state =
+    { now_s = 0.; read_calls = 0; cleanup_calls = 0; raw_restore_calls = 0 }
+  in
   let app_ref = ref None in
   let app =
     Matrix.attach ~mode ~target_fps ~input_timeout ?render_offset
@@ -25,7 +28,9 @@ let make_app ?(mode = `Alt) ?(target_fps = Some 30.) ?(input_timeout = Some 0.)
         state.now_s)
       ~wake:(fun () -> ())
       ~terminal_size:(fun () -> (80, 24))
-      ~set_raw_mode:(fun _enabled -> ())
+      ~set_raw_mode:(fun enabled ->
+        if not enabled then
+          state.raw_restore_calls <- state.raw_restore_calls + 1)
       ~flush_input:(fun () -> ())
       ~read_events:(fun ~timeout:_ ~on_event:_ ->
         state.read_calls <- state.read_calls + 1;
@@ -49,7 +54,9 @@ let make_simulated_app ?(target_fps = Some 30.) ?(emit_event_each_read = false)
       ~tty:false ()
   in
   let parser = Matrix.Input.Parser.create () in
-  let state = { now_s = 0.; read_calls = 0; cleanup_calls = 0 } in
+  let state =
+    { now_s = 0.; read_calls = 0; cleanup_calls = 0; raw_restore_calls = 0 }
+  in
   let app_ref = ref None in
   let app =
     Matrix.attach ~target_fps ~input_timeout:None
@@ -57,7 +64,9 @@ let make_simulated_app ?(target_fps = Some 30.) ?(emit_event_each_read = false)
       ~now:(fun () -> state.now_s)
       ~wake:(fun () -> ())
       ~terminal_size:(fun () -> (80, 24))
-      ~set_raw_mode:(fun _enabled -> ())
+      ~set_raw_mode:(fun enabled ->
+        if not enabled then
+          state.raw_restore_calls <- state.raw_restore_calls + 1)
       ~flush_input:(fun () -> ())
       ~read_events:(fun ~timeout ~on_event ->
         state.read_calls <- state.read_calls + 1;
@@ -115,6 +124,36 @@ let test_run_closes_on_exception () =
   in
   is_true ~msg:"exception propagated" raised;
   equal ~msg:"cleanup called on exception" int 1 state.cleanup_calls
+
+let test_close_restores_raw_mode_if_terminal_close_raises () =
+  let fail_output = ref false in
+  let terminal =
+    Matrix.Terminal.make ~tty:true
+      ~output:(fun _ -> if !fail_output then failwith "closed output")
+      ()
+  in
+  let parser = Matrix.Input.Parser.create () in
+  let cleanup_calls = ref 0 in
+  let raw_restore_calls = ref 0 in
+  let app =
+    Matrix.attach ~mode:`Primary ~raw_mode:true ~mouse_enabled:false
+      ~bracketed_paste:false ~focus_reporting:false ~kitty_keyboard:`Disabled
+      ~target_fps:None ~input_timeout:(Some 0.)
+      ~write_output:(fun _buf _off _len -> ())
+      ~now:(fun () -> 0.)
+      ~wake:(fun () -> ())
+      ~terminal_size:(fun () -> (80, 24))
+      ~set_raw_mode:(fun enabled -> if not enabled then incr raw_restore_calls)
+      ~flush_input:(fun () -> ())
+      ~read_events:(fun ~timeout:_ ~on_event:_ -> ())
+      ~query_cursor_position:(fun ~timeout:_ -> None)
+      ~cleanup:(fun () -> incr cleanup_calls)
+      ~parser ~terminal ~width:80 ~height:24 ()
+  in
+  fail_output := true;
+  Matrix.close app;
+  equal ~msg:"raw mode restored" int 1 !raw_restore_calls;
+  equal ~msg:"cleanup called" int 1 !cleanup_calls
 
 let test_target_fps_respected_without_input_storm () =
   let app, state = make_simulated_app ~target_fps:(Some 13.) () in
@@ -189,7 +228,11 @@ let () =
             test_idle_does_not_force_live_loop;
         ];
       group "Lifecycle"
-        [ test "run closes on exception" test_run_closes_on_exception ];
+        [
+          test "run closes on exception" test_run_closes_on_exception;
+          test "close restores raw mode if terminal close raises"
+            test_close_restores_raw_mode_if_terminal_close_raises;
+        ];
       group "Frame pacing"
         [
           test "target fps respected without input storm"

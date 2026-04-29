@@ -1,6 +1,15 @@
 open Windtrap
 module T = Terminal
 
+let contains s needle =
+  let n = String.length needle in
+  let rec loop i =
+    if i + n > String.length s then false
+    else if String.sub s i n = needle then true
+    else loop (i + 1)
+  in
+  n = 0 || loop 0
+
 (* Helper to create a non-TTY terminal with a buffer-backed output *)
 let with_terminal ?initial_caps f =
   let buf = Buffer.create 4096 in
@@ -13,6 +22,29 @@ let with_tty_terminal ?initial_caps f =
   let output s = Buffer.add_string buf s in
   let term = T.make ~output ~tty:true ?initial_caps () in
   f term buf
+
+let contains_substring s sub =
+  let len_s = String.length s and len_sub = String.length sub in
+  if len_sub = 0 then true
+  else if len_sub > len_s then false
+  else
+    let rec loop idx =
+      if idx + len_sub > len_s then false
+      else if String.sub s idx len_sub = sub then true
+      else loop (idx + 1)
+    in
+    loop 0
+
+let with_env bindings f =
+  let saved = List.map (fun (key, _) -> (key, Sys.getenv_opt key)) bindings in
+  Fun.protect
+    (fun () ->
+      List.iter (fun (key, value) -> Unix.putenv key value) bindings;
+      f ())
+    ~finally:(fun () ->
+      List.iter
+        (fun (key, value) -> Unix.putenv key (Option.value ~default:"" value))
+        saved)
 
 (* Test: Non-TTY terminal doesn't send escape sequences *)
 let test_non_tty_no_escape_sequences () =
@@ -262,6 +294,165 @@ let test_make_with_caps () =
   is_true ~msg:"sync" c.sync;
   T.close term
 
+(* Regression: OpenTUI treats CSI ?0u as Kitty keyboard support. *)
+let test_kitty_keyboard_level_zero_capability () =
+  let caps =
+    {
+      T.term = "xterm";
+      rgb = false;
+      kitty_keyboard = false;
+      kitty_graphics = false;
+      bracketed_paste = false;
+      focus_tracking = false;
+      unicode_width = `Wcwidth;
+      sgr_pixels = false;
+      color_scheme_updates = false;
+      explicit_width = false;
+      explicit_cursor_positioning = false;
+      scaled_text = false;
+      sixel = false;
+      sync = false;
+      hyperlinks = false;
+    }
+  in
+  with_terminal ~initial_caps:caps @@ fun term _buf ->
+  is_false ~msg:"kitty initially off" (T.capabilities term).kitty_keyboard;
+  T.apply_capability_event term
+    (Input.Caps.Kitty_keyboard { level = 0; flags = None });
+  is_true ~msg:"kitty enabled by level zero response"
+    (T.capabilities term).kitty_keyboard;
+  T.close term
+
+(* Regression: startup probe uses DECRQM 2031 and avoids CSI ?996n. *)
+let test_probe_payload_color_scheme_mode () =
+  with_tty_terminal @@ fun term buf ->
+  let parser = Input.Parser.create () in
+  T.probe ~timeout:0.0
+    ~on_event:(fun _ -> ())
+    ~read_into:(fun _ _ _ -> 0)
+    ~wait_readable:(fun ~timeout:_ -> false)
+    ~parser term;
+  let output_data = Buffer.contents buf in
+  is_true ~msg:"probe queries color scheme update mode"
+    (contains_substring output_data "\027[?2031$p");
+  is_false ~msg:"probe does not send color scheme DSR"
+    (contains_substring output_data "\027[?996n");
+  T.close term
+
+let test_probe_payload_screen_is_not_tmux_wrapped () =
+  let caps =
+    {
+      T.term = "screen-256color";
+      rgb = false;
+      kitty_keyboard = false;
+      kitty_graphics = false;
+      bracketed_paste = false;
+      focus_tracking = false;
+      unicode_width = `Wcwidth;
+      sgr_pixels = false;
+      color_scheme_updates = false;
+      explicit_width = false;
+      explicit_cursor_positioning = true;
+      scaled_text = false;
+      sixel = false;
+      sync = false;
+      hyperlinks = false;
+    }
+  in
+  with_env [ ("TMUX", "") ] @@ fun () ->
+  with_tty_terminal ~initial_caps:caps @@ fun term buf ->
+  let parser = Input.Parser.create () in
+  T.probe ~timeout:0.0
+    ~on_event:(fun _ -> ())
+    ~read_into:(fun _ _ _ -> 0)
+    ~wait_readable:(fun ~timeout:_ -> false)
+    ~parser term;
+  let output_data = Buffer.contents buf in
+  is_false ~msg:"screen probe is not tmux wrapped"
+    (contains_substring output_data "\027Ptmux;");
+  is_false ~msg:"screen skips graphics query"
+    (contains_substring output_data "\027_Gi=31337");
+  T.close term
+
+let test_probe_payload_tmux_is_wrapped () =
+  let caps =
+    {
+      T.term = "tmux-256color";
+      rgb = false;
+      kitty_keyboard = false;
+      kitty_graphics = false;
+      bracketed_paste = false;
+      focus_tracking = false;
+      unicode_width = `Wcwidth;
+      sgr_pixels = false;
+      color_scheme_updates = false;
+      explicit_width = false;
+      explicit_cursor_positioning = true;
+      scaled_text = false;
+      sixel = false;
+      sync = false;
+      hyperlinks = false;
+    }
+  in
+  with_tty_terminal ~initial_caps:caps @@ fun term buf ->
+  let parser = Input.Parser.create () in
+  T.probe ~timeout:0.0
+    ~on_event:(fun _ -> ())
+    ~read_into:(fun _ _ _ -> 0)
+    ~wait_readable:(fun ~timeout:_ -> false)
+    ~parser term;
+  let output_data = Buffer.contents buf in
+  is_true ~msg:"tmux probe wraps DECRQM block"
+    (contains_substring output_data "\027Ptmux;\027\027[?1016$p");
+  T.close term
+
+(* Regression: X10 mouse tracking must be disabled on teardown. *)
+let test_x10_mouse_disable () =
+  with_tty_terminal @@ fun term buf ->
+  T.set_mouse_mode term `X10;
+  T.set_mouse_mode term `Off;
+  let output_data = Buffer.contents buf in
+  is_true ~msg:"X10 enabled" (contains_substring output_data "\027[?9h");
+  is_true ~msg:"X10 disabled" (contains_substring output_data "\027[?9l");
+  T.close term
+
+let test_explicit_cursor_positioning_env_overrides () =
+  with_env
+    [
+      ("TERM", "tmux-256color");
+      ("TMUX", "/tmp/tmux-1000/default,12345,0");
+      ("TERM_PROGRAM", "");
+    ]
+    (fun () ->
+      with_terminal @@ fun term _buf ->
+      let caps = T.capabilities term in
+      equal ~msg:"tmux width" string "Wcwidth"
+        (match caps.unicode_width with
+        | `Wcwidth -> "Wcwidth"
+        | `Unicode -> "Unicode");
+      is_true ~msg:"tmux explicit cursor positioning"
+        caps.explicit_cursor_positioning;
+      T.close term);
+  with_env
+    [ ("TERM", "screen-256color"); ("TMUX", ""); ("TERM_PROGRAM", "") ]
+    (fun () ->
+      with_terminal @@ fun term _buf ->
+      let caps = T.capabilities term in
+      equal ~msg:"screen width" string "Wcwidth"
+        (match caps.unicode_width with
+        | `Wcwidth -> "Wcwidth"
+        | `Unicode -> "Unicode");
+      is_true ~msg:"screen explicit cursor positioning"
+        caps.explicit_cursor_positioning;
+      T.close term);
+  with_env
+    [ ("TERM", "xterm-256color"); ("TMUX", ""); ("TERM_PROGRAM", "Alacritty") ]
+    (fun () ->
+      with_terminal @@ fun term _buf ->
+      is_true ~msg:"alacritty explicit cursor positioning"
+        (T.capabilities term).explicit_cursor_positioning;
+      T.close term)
+
 (* Test: Mouse mode validation on non-TTY *)
 let test_mouse_validation () =
   let caps =
@@ -377,6 +568,50 @@ let test_reset_state () =
     (match T.mouse_mode term with `Off -> "Off" | _ -> "Other");
   T.close term
 
+let test_reset_state_disables_partially_enabled_paste () =
+  let output = Buffer.create 256 in
+  let fail_on_paste_on = ref true in
+  let term =
+    T.make ~tty:true
+      ~output:(fun s ->
+        Buffer.add_string output s;
+        if !fail_on_paste_on && contains s "\027[?2004h" then (
+          fail_on_paste_on := false;
+          failwith "paste enable failed after write"))
+      ()
+  in
+  let raised =
+    try
+      T.enable_bracketed_paste term true;
+      false
+    with
+    | Failure _ -> true
+    | _ -> false
+  in
+  is_true ~msg:"enable raised" raised;
+  is_false ~msg:"steady state still off" (T.bracketed_paste_enabled term);
+  T.reset_state term;
+  is_true ~msg:"reset disables bracketed paste after partial enable"
+    (contains_substring (Buffer.contents output) "\027[?2004l")
+
+let test_reset_state_resets_cursor_metadata () =
+  with_terminal @@ fun term _buf ->
+  T.set_cursor_visible term false;
+  T.set_cursor_style term `Line ~blinking:true;
+  T.set_cursor_color term ~r:0.1 ~g:0.2 ~b:0.3 ~a:0.4;
+  T.reset_state term;
+  let style, blinking = T.cursor_style_state term in
+  equal ~msg:"cursor style reset" string "Block"
+    (match style with
+    | `Block -> "Block"
+    | `Line -> "Line"
+    | `Underline -> "Underline");
+  is_false ~msg:"cursor blinking reset" blinking;
+  equal ~msg:"cursor color reset" (float 0.01) 1.0
+    (let r, _, _, _ = T.cursor_color term in
+     r);
+  T.close term
+
 let () =
   run "Terminal"
     [
@@ -393,13 +628,25 @@ let () =
           test "environment overrides" test_env_overrides;
           test "terminal info env" test_terminal_info_from_env;
           test "make with caps" test_make_with_caps;
+          test "kitty keyboard level zero"
+            test_kitty_keyboard_level_zero_capability;
+          test "probe color scheme mode" test_probe_payload_color_scheme_mode;
+          test "screen probe not tmux wrapped"
+            test_probe_payload_screen_is_not_tmux_wrapped;
+          test "tmux probe wrapped" test_probe_payload_tmux_is_wrapped;
+          test "explicit cursor positioning env"
+            test_explicit_cursor_positioning_env_overrides;
         ];
       group "cursor"
         [
           test "position clamping" test_cursor_position_clamping;
           test "color clamping" test_color_clamping;
         ];
-      group "mouse" [ test "mouse mode on non-TTY" test_mouse_validation ];
+      group "mouse"
+        [
+          test "mouse mode on non-TTY" test_mouse_validation;
+          test "X10 disable" test_x10_mouse_disable;
+        ];
       group "unicode" [ test "set_unicode_width" test_set_unicode_width ];
       group "keyboard"
         [ test "modifyOtherKeys toggle" test_modify_other_keys_toggle ];
@@ -407,5 +654,9 @@ let () =
         [
           test "idempotent protocols" test_idempotent_protocols;
           test "reset state" test_reset_state;
+          test "reset state disables partial paste"
+            test_reset_state_disables_partially_enabled_paste;
+          test "reset state resets cursor metadata"
+            test_reset_state_resets_cursor_metadata;
         ];
     ]

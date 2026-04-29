@@ -65,7 +65,10 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     Matrix.Terminal.probe ~timeout:0.5
       ~on_event:(fun _ -> ())
       ~read_into:(fun buf off len ->
-        let cs = Cstruct.create len in
+        let cs =
+          if len <= Cstruct.length input_cs then Cstruct.sub input_cs 0 len
+          else Cstruct.create len
+        in
         try
           let n = Eio.Flow.single_read stdin cs in
           Cstruct.blit_to_bytes cs 0 buf off n;
@@ -193,9 +196,10 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
       ~debug_overlay ~debug_overlay_corner ~debug_overlay_capacity
       ~frame_dump_every ?frame_dump_dir ?frame_dump_pattern ~frame_dump_hits
       ~cursor_visible ~explicit_width ~input_timeout ~resize_debounce
-      ~min_tui_height ~start_idle ~write_output ~now ~wake ~terminal_size ~set_raw_mode
-      ~flush_input ~read_events ~query_cursor_position ~cleanup:ignore ~parser
-      ~terminal ~width ~height ~render_offset ~static_needs_newline ()
+      ~min_tui_height ~start_idle ~write_output ~now ~wake ~terminal_size
+      ~set_raw_mode ~flush_input ~read_events ~query_cursor_position
+      ~cleanup:ignore ~parser ~terminal ~width ~height ~render_offset
+      ~static_needs_newline ()
   in
   if signal_handlers then Matrix.install_signal_handlers ();
   (* CR: Doesn't matrix already do that for us? *)

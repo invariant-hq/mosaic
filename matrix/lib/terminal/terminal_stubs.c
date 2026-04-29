@@ -32,6 +32,11 @@ CAMLprim value terminal_get_size(value fd_val) {
   }
 #endif
 
+  if (width <= 0 || height <= 0) {
+    width = 80;
+    height = 24;
+  }
+
   result = caml_alloc(2, 0);
   Store_field(result, 0, Val_int(width));
   Store_field(result, 1, Val_int(height));

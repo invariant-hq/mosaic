@@ -64,6 +64,11 @@ type t = {
   mutable kitty_keyboard_flags : int;
   mutable modify_other_keys_enabled : bool;
   mutable unicode_mode_enabled : bool;
+  mutable mouse_armed : bool;
+  mutable bracketed_paste_armed : bool;
+  mutable focus_armed : bool;
+  mutable kitty_keyboard_armed : bool;
+  mutable modify_other_keys_armed : bool;
   cursor : cursor_state;
   mutable alt_screen : bool;
   mutable scroll_region : (int * int) option;
@@ -113,6 +118,7 @@ let mouse_motion = Ansi.(to_string (enable Mouse_motion))
 let disable_all_mouse_seq =
   String.concat ""
     [
+      Ansi.(to_string (disable Mouse_x10));
       Ansi.(to_string (disable Mouse_tracking));
       Ansi.(to_string (disable Mouse_button_tracking));
       Ansi.(to_string (disable Mouse_motion));
@@ -166,6 +172,11 @@ let make ~output ?(tty = true) ?initial_caps () =
     kitty_keyboard_flags = 0b00101;
     modify_other_keys_enabled = false;
     unicode_mode_enabled = false;
+    mouse_armed = false;
+    bracketed_paste_armed = false;
+    focus_armed = false;
+    kitty_keyboard_armed = false;
+    modify_other_keys_armed = false;
     cursor =
       {
         x = 1;
@@ -220,6 +231,7 @@ let set_mouse_mode t mode =
   if t.mouse_mode = mode then ()
   else (
     disable_all_mouse t;
+    if mode <> `Off then t.mouse_armed <- true;
     (match mode with
     | `Off -> ()
     | `X10 -> send t mouse_x10
@@ -229,27 +241,38 @@ let set_mouse_mode t mode =
     | `Sgr_normal -> send t sgr_normal_seq
     | `Sgr_button -> send t sgr_button_seq
     | `Sgr_any -> send t sgr_any_seq);
-    t.mouse_mode <- mode)
+    t.mouse_mode <- mode;
+    if mode = `Off then t.mouse_armed <- false)
 
 let mouse_mode t = t.mouse_mode
 
 (* Bracketed paste *)
 
 let enable_bracketed_paste t enable =
-  toggle t
-    ~current:(fun () -> t.bracketed_paste_enabled)
-    ~set:(fun v -> t.bracketed_paste_enabled <- v)
-    ~enable ~on_seq:paste_on ~off_seq:paste_off
+  if t.bracketed_paste_enabled = enable then ()
+  else if enable then (
+    t.bracketed_paste_armed <- true;
+    send t paste_on;
+    t.bracketed_paste_enabled <- true)
+  else (
+    send t paste_off;
+    t.bracketed_paste_enabled <- false;
+    t.bracketed_paste_armed <- false)
 
 let bracketed_paste_enabled t = t.bracketed_paste_enabled
 
 (* Focus reporting *)
 
 let enable_focus_reporting t enable =
-  toggle t
-    ~current:(fun () -> t.focus_enabled)
-    ~set:(fun v -> t.focus_enabled <- v)
-    ~enable ~on_seq:focus_on ~off_seq:focus_off
+  if t.focus_enabled = enable then ()
+  else if enable then (
+    t.focus_armed <- true;
+    send t focus_on;
+    t.focus_enabled <- true)
+  else (
+    send t focus_off;
+    t.focus_enabled <- false;
+    t.focus_armed <- false)
 
 let focus_reporting_enabled t = t.focus_enabled
 
@@ -258,22 +281,29 @@ let focus_reporting_enabled t = t.focus_enabled
 let enable_kitty_keyboard ?(flags = 0b00101) t enable =
   if enable then (
     if (not t.kitty_keyboard_enabled) || t.kitty_keyboard_flags <> flags then (
+      t.kitty_keyboard_armed <- true;
       send t (kitty_kb_push flags);
       t.kitty_keyboard_enabled <- true;
       t.kitty_keyboard_flags <- flags))
   else if t.kitty_keyboard_enabled then (
     send t kitty_kb_pop;
-    t.kitty_keyboard_enabled <- false)
+    t.kitty_keyboard_enabled <- false;
+    t.kitty_keyboard_armed <- false)
 
 let kitty_keyboard_enabled t = t.kitty_keyboard_enabled
 
 (* Modify other keys *)
 
 let enable_modify_other_keys t enable =
-  toggle t
-    ~current:(fun () -> t.modify_other_keys_enabled)
-    ~set:(fun v -> t.modify_other_keys_enabled <- v)
-    ~enable ~on_seq:modify_other_keys_on_seq ~off_seq:modify_other_keys_off_seq
+  if t.modify_other_keys_enabled = enable then ()
+  else if enable then (
+    t.modify_other_keys_armed <- true;
+    send t modify_other_keys_on_seq;
+    t.modify_other_keys_enabled <- true)
+  else (
+    send t modify_other_keys_off_seq;
+    t.modify_other_keys_enabled <- false;
+    t.modify_other_keys_armed <- false)
 
 let modify_other_keys_enabled t = t.modify_other_keys_enabled
 
@@ -406,11 +436,22 @@ let reset_state t =
   send t reset_cursor_color_fallback_seq;
   send t reset_cursor_color_seq;
   send t cursor_default;
-  if t.kitty_keyboard_enabled then enable_kitty_keyboard t false;
-  if t.modify_other_keys_enabled then enable_modify_other_keys t false;
-  if t.mouse_mode <> `Off then set_mouse_mode t `Off;
-  if t.bracketed_paste_enabled then enable_bracketed_paste t false;
-  if t.focus_enabled then enable_focus_reporting t false;
+  if t.kitty_keyboard_armed then send t kitty_kb_pop;
+  t.kitty_keyboard_enabled <- false;
+  t.kitty_keyboard_armed <- false;
+  t.kitty_keyboard_flags <- 0b00101;
+  if t.modify_other_keys_armed then send t modify_other_keys_off_seq;
+  t.modify_other_keys_enabled <- false;
+  t.modify_other_keys_armed <- false;
+  if t.mouse_armed || t.mouse_mode <> `Off then disable_all_mouse t;
+  t.mouse_mode <- `Off;
+  t.mouse_armed <- false;
+  if t.bracketed_paste_armed then send t paste_off;
+  t.bracketed_paste_enabled <- false;
+  t.bracketed_paste_armed <- false;
+  if t.focus_armed then send t focus_off;
+  t.focus_enabled <- false;
+  t.focus_armed <- false;
   if t.unicode_mode_enabled then set_unicode_width t `Wcwidth;
   if t.scroll_region <> None then clear_scroll_region t;
   if t.alt_screen then leave_alternate_screen t
@@ -422,7 +463,10 @@ let reset_state t =
     send t erase_below);
   set_title t "";
   send t cursor_show;
-  t.cursor.visible <- true
+  t.cursor.visible <- true;
+  t.cursor.style <- `Block;
+  t.cursor.blinking <- false;
+  t.cursor.color <- (1., 1., 1., 1.)
 
 let close t = reset_state t
 
