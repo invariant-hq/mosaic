@@ -115,14 +115,11 @@ module Packed = struct
 
   let emit_indexed_sgr w ~bg idx =
     Escape.sgr_sep w;
-    if idx < 8 then Escape.sgr_code w ((if bg then 40 else 30) + idx)
-    else if idx < 16 then Escape.sgr_code w ((if bg then 100 else 90) + idx - 8)
-    else (
-      Escape.sgr_code w (if bg then 48 else 38);
-      Escape.sgr_sep w;
-      Escape.sgr_code w 5;
-      Escape.sgr_sep w;
-      Escape.sgr_code w idx)
+    Escape.sgr_code w (if bg then 48 else 38);
+    Escape.sgr_sep w;
+    Escape.sgr_code w 5;
+    Escape.sgr_sep w;
+    Escape.sgr_code w idx
 
   let emit_sgr w ~bg color =
     match intent color with
@@ -351,12 +348,9 @@ let downgrade ?level color =
         indexed !nearest
 
 let emit_indexed_sgr ~bg push idx =
-  if idx < 8 then push ((if bg then 40 else 30) + idx)
-  else if idx < 16 then push ((if bg then 100 else 90) + idx - 8)
-  else (
-    push (if bg then 48 else 38);
-    push 5;
-    push idx)
+  push (if bg then 48 else 38);
+  push 5;
+  push idx
 
 let emit_sgr_codes ~bg push color =
   match intent color with

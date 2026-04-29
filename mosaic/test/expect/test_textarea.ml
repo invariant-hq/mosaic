@@ -90,7 +90,7 @@ let%expect_test "placeholder color" =
        ());
   [%expect_exact
     {|
-[0;38;2;205;0;0mType here[0;38;2;255;255;255m           [0m
+[0;38;5;1mType here[0;38;2;255;255;255m           [0m
 [0;38;2;255;255;255m                    [0m
 [0;38;2;255;255;255m                    [0m|}]
 

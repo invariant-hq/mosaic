@@ -129,6 +129,12 @@ let color_extended_out_of_range_is_safe () =
   ignore (Color.hash (Color.indexed 999) : int);
   ignore (Color.compare (Color.indexed (-1)) (Color.indexed 999) : int)
 
+let low_indexed_colors_use_extended_palette_sgr () =
+  equal ~msg:"foreground slot 1 keeps indexed SGR" (list int) [ 38; 5; 1 ]
+    (Color.to_sgr_codes ~bg:false Color.red);
+  equal ~msg:"background slot 4 keeps indexed SGR" (list int) [ 48; 5; 4 ]
+    (Color.to_sgr_codes ~bg:true Color.blue)
+
 (* --- 2. Attributes & Style --- *)
 
 let attr_bitmask_integrity () =
@@ -706,6 +712,8 @@ let tests =
           color_ansi16_palette_matches_standard_fallback;
         test "downgrade" color_downgrade_semantics;
         test "extended out of range safe" color_extended_out_of_range_is_safe;
+        test "low indexed colors use extended palette SGR"
+          low_indexed_colors_use_extended_palette_sgr;
       ];
     group "Attributes & Style"
       [

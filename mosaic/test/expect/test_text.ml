@@ -75,7 +75,7 @@ let%expect_test "styled text single color" =
   print_string (grid_to_ansi grid);
   [%expect_exact
     {|
-[0;38;2;205;0;0mRed text[0;38;2;255;255;255m            [0m|}]
+[0;38;5;1mRed text[0;38;2;255;255;255m            [0m|}]
 
 let%expect_test "styled text multiple spans" =
   let renderer = Renderer.create () in
@@ -93,7 +93,7 @@ let%expect_test "styled text multiple spans" =
   print_string (grid_to_ansi grid);
   [%expect_exact
     {|
-[0;38;2;205;0;0mRed [0;38;2;0;205;0mGreen[0;38;2;255;255;255m           [0m|}]
+[0;38;5;1mRed [0;38;5;2mGreen[0;38;2;255;255;255m           [0m|}]
 
 let%expect_test "content taller than viewport" =
   render ~width:10 ~height:2 (Vnode.text "Line 1\nLine 2\nLine 3\nLine 4");
