@@ -27,6 +27,7 @@ type kind =
   | Code of Code.Props.t
   | Line_number of Line_number.Props.t
   | Markdown of Markdown.Props.t
+  | Diff of Diff.Props.t
   | Tree of Tree.Props.t
 
 (* ───── Widget Callbacks ───── *)
@@ -563,6 +564,33 @@ let markdown ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
   let kind =
     Markdown
       (Markdown.Props.make ~content ?style:md_style ?conceal ?streaming ())
+  in
+  let attrs =
+    {
+      id;
+      style;
+      visible;
+      z_index;
+      opacity;
+      focusable;
+      autofocus;
+      buffered;
+      live;
+      ref;
+    }
+  in
+  let handlers = { on_mouse; on_key; on_paste } in
+  Element
+    { kind; key; attrs; handlers; callbacks = No_callbacks; children = [] }
+
+let diff ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
+    ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
+    ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?layout
+    ?theme ?highlight ?show_line_numbers ?wrap ?selectable ?text_style patch =
+  let kind =
+    Diff
+      (Diff.Props.make ~patch ?layout ?theme ?highlight ?show_line_numbers ?wrap
+         ?selectable ?text_style ())
   in
   let attrs =
     {

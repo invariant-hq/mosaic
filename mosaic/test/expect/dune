@@ -26,7 +26,8 @@
   test_progress_bar
   test_scroll_box
   test_table
-  test_tree)
+  test_tree
+  test_diff)
  (modules :standard \ expect_harness)
  (libraries
   windtrap
@@ -73,4 +74,6 @@
    (run ./test_table.exe)
    (diff? test_table.ml test_table.ml.corrected)
    (run ./test_tree.exe)
-   (diff? test_tree.ml test_tree.ml.corrected))))
+   (diff? test_tree.ml test_tree.ml.corrected)
+   (run ./test_diff.exe)
+   (diff? test_diff.ml test_diff.ml.corrected))))

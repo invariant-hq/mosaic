@@ -41,6 +41,7 @@ type kind =
   | Code of Code.Props.t
   | Line_number of Line_number.Props.t
   | Markdown of Markdown.Props.t
+  | Diff of Diff.Props.t
   | Tree of Tree.Props.t
       (** The type for widget kind and visual configuration. Values are
           monomorphic — they are shared by reference across {!val-map} and used
@@ -940,6 +941,44 @@ val markdown :
       to [true].
     - [streaming] enables graceful handling of incomplete trailing content,
       useful when content arrives incrementally. Defaults to [false]. *)
+
+val diff :
+  ?key:string ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
+  ?live:bool ->
+  ?ref:(Renderable.t -> unit) ->
+  ?on_mouse:(Event.mouse -> 'msg) ->
+  ?on_key:(Event.key -> 'msg) ->
+  ?on_paste:(Event.paste -> 'msg) ->
+  ?layout:Diff.layout ->
+  ?theme:Diff.theme ->
+  ?highlight:Diff.highlight ->
+  ?show_line_numbers:bool ->
+  ?wrap:Text_surface.wrap ->
+  ?selectable:bool ->
+  ?text_style:Ansi.Style.t ->
+  Diff.Patch.t ->
+  'msg t
+(** [diff patch] is a diff display leaf element rendering [patch].
+
+    Diff-specific attributes:
+    - [layout] is the view layout. Defaults to [Diff.Unified].
+    - [theme] is the colour theme. Defaults to {!Diff.default_theme}.
+    - [highlight] is optional pre-styled split-side content.
+    - [show_line_numbers] controls whether gutters are shown. Defaults to
+      [true].
+    - [wrap] is the wrap mode for embedded {!Code} children. Defaults to
+      [`None].
+    - [selectable] controls text selection on embedded {!Code} children.
+      Defaults to [true].
+    - [text_style] is the base text style. Defaults to {!Ansi.Style.default}. *)
 
 val tree :
   ?key:string ->

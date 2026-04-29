@@ -19,6 +19,7 @@ type instance =
   | Code_instance of Code.t
   | Line_number_instance of Line_number.t
   | Markdown_instance of Markdown.t
+  | Diff_instance of Diff.t
   | Tree_instance of Tree.t
 
 let node_of = function
@@ -38,6 +39,7 @@ let node_of = function
   | Code_instance c -> Code.node c
   | Line_number_instance ln -> Line_number.node ln
   | Markdown_instance md -> Markdown.node md
+  | Diff_instance d -> Diff.node d
   | Tree_instance tr -> Tree.node tr
 
 let create_instance ~(parent : Renderable.t) (kind : Vnode.kind)
@@ -172,6 +174,14 @@ let create_instance ~(parent : Renderable.t) (kind : Vnode.kind)
         in
         Markdown.apply_props md spec;
         Markdown_instance md
+    | Vnode.Diff spec ->
+        let d =
+          Diff.create ~parent ?id:attrs.id ~style:attrs.style
+            ~visible:attrs.visible ~z_index:attrs.z_index ~opacity:attrs.opacity
+            (Diff.Patch.make [])
+        in
+        Diff.apply_props d spec;
+        Diff_instance d
     | Vnode.Tree spec ->
         let tree =
           Tree.create ~parent ?id:attrs.id ~style:attrs.style
@@ -342,6 +352,11 @@ let update_instance (inst : instance) ~(old_attrs : Vnode.attrs)
             else (
               Markdown.apply_props md new_spec;
               true)
+        | Diff_instance d, Vnode.Diff old_spec, Vnode.Diff new_spec ->
+            if Diff.Props.equal old_spec new_spec then false
+            else (
+              Diff.apply_props d new_spec;
+              true)
         | Tree_instance tree, Vnode.Tree old_spec, Vnode.Tree new_spec ->
             if Tree.Props.equal old_spec new_spec then false
             else (
@@ -440,6 +455,7 @@ let kind_matches (a : Vnode.kind) (b : Vnode.kind) : bool =
   | Vnode.Code _, Vnode.Code _
   | Vnode.Line_number _, Vnode.Line_number _
   | Vnode.Markdown _, Vnode.Markdown _
+  | Vnode.Diff _, Vnode.Diff _
   | Vnode.Tree _, Vnode.Tree _ ->
       true
   | _ -> false

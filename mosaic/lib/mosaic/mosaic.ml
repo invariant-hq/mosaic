@@ -95,6 +95,7 @@ module Slider = Mosaic_ui.Slider
 module Scroll_bar = Mosaic_ui.Scroll_bar
 module Text_surface = Mosaic_ui.Text_surface
 module Line_number = Mosaic_ui.Line_number
+module Diff = Mosaic_ui.Diff
 module Markdown = Mosaic_ui.Markdown
 module Syntax_theme = Mosaic_ui.Syntax_theme
 
@@ -1019,6 +1020,30 @@ let line_number ?key ?id ?display ?box_sizing ?position ?overflow
     ?autofocus ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?fg ?bg
     ?min_width ?padding_right ?show_line_numbers ?line_number_offset
     ?line_colors ?line_signs ?hidden_line_numbers child
+
+let diff ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
+    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
+    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
+    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
+    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
+    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
+    ?visible ?z_index ?opacity ?focusable ?autofocus ?buffered ?live ?ref
+    ?on_mouse ?on_key ?on_paste ?layout ?theme ?highlight ?show_line_numbers
+    ?wrap ?selectable ?text_style patch =
+  let style =
+    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
+      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
+      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
+      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
+      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+      ?grid_row ?grid_column ()
+  in
+  Vnode.diff ?key ?id ~style ?visible ?z_index ?opacity ?focusable ?autofocus
+    ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?layout ?theme ?highlight
+    ?show_line_numbers ?wrap ?selectable ?text_style patch
 
 let markdown ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

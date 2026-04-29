@@ -561,6 +561,9 @@ module Line_number : sig
   (** The type for gutter sign decorations. *)
 end
 
+module Diff = Mosaic_ui.Diff
+(** Companion types for the {!val-diff} widget. *)
+
 (** Companion types for the {!val-markdown} widget. *)
 module Markdown : sig
   type style_key = Mosaic_ui.Markdown.style_key =
@@ -2094,6 +2097,78 @@ val line_number :
       [(line_index, sign)] pairs.
     - [hidden_line_numbers] -- line indices whose number labels are suppressed.
 *)
+
+val diff :
+  ?key:string ->
+  ?id:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?autofocus:bool ->
+  ?buffered:bool ->
+  ?live:bool ->
+  ?ref:(Mosaic_ui.Renderable.t -> unit) ->
+  ?on_mouse:(Event.mouse -> 'msg option) ->
+  ?on_key:(Event.key -> 'msg option) ->
+  ?on_paste:(Event.paste -> 'msg option) ->
+  ?layout:Diff.layout ->
+  ?theme:Diff.theme ->
+  ?highlight:Diff.highlight ->
+  ?show_line_numbers:bool ->
+  ?wrap:Text_surface.wrap ->
+  ?selectable:bool ->
+  ?text_style:Ansi.Style.t ->
+  Diff.Patch.t ->
+  'msg t
+(** [diff patch] renders [patch] as a unified or split diff.
+
+    Diff-specific optional arguments:
+    - [layout] -- [Diff.Unified] or [Diff.Split]. Defaults to [Diff.Unified].
+    - [theme] -- colors for changed lines, gutters, and signs. Defaults to
+      {!Diff.default_theme}.
+    - [highlight] -- optional pre-styled split-side content.
+    - [show_line_numbers] -- controls whether line-number gutters are shown.
+      Defaults to [true].
+    - [wrap] -- line-wrapping mode for embedded code content.
+    - [selectable] -- when [true], embedded code content can be selected.
+    - [text_style] -- base ANSI style applied to code content. *)
 
 val markdown :
   ?key:string ->

@@ -13,7 +13,7 @@
     - {b Widget catalogue.} {!Box}, {!Text}, {!Slider}, {!Text_input},
       {!Canvas}, {!Select}, {!Tab_select}, {!Markdown}, {!Spinner},
       {!Progress_bar}, {!Textarea}, {!Scroll_bar}, {!Scroll_box}, {!Table},
-      {!Tree}, {!Code}, and {!Line_number}.
+      {!Tree}, {!Code}, {!Line_number}, and {!Diff}.
     - {b Theming.} {!Syntax_theme} for tree-sitter/TextMate-style syntax
       colouring. *)
 
@@ -96,6 +96,9 @@ module Code = Code
 
 module Line_number = Line_number
 (** Line-number gutter with per-line colours, signs, and custom numbering. *)
+
+module Diff = Diff
+(** Unified and split-view diff display. *)
 
 (** {1:theming Theming} *)
 

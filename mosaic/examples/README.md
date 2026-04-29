@@ -34,6 +34,7 @@ dune exec ./mosaic/examples/<name>/main.exe
 | `21-line-number` | Line number gutter with signs and colors        |
 | `22-layout`    | CSS Grid layout with responsive switching         |
 | `23-resize`    | Terminal resize and focus events                  |
+| `25-diff`      | Unified and split-view diff display               |
 | `x-code-editor` | Editable code editor with completion + line numbers |
 | `x-agent`      | Agent-style primary-screen semantics demo         |
 | `x-dashboard`  | Component composition with TEA `map`             |
@@ -176,6 +177,13 @@ Terminal-aware info panel using `Sub.on_resize`, `Sub.on_focus`, and
 `Sub.on_blur`. Displays live terminal dimensions, a focused/blurred
 indicator, resize event history, and content that adapts between wide,
 normal, and narrow column layouts based on terminal width.
+
+### `25-diff` – Diff display
+
+Unified and split-view diff display with line numbers, gutter signs, and
+changed-line backgrounds. Demonstrates parsing a unified diff with
+`Diff.Patch.of_unified`, switching layouts, toggling line numbers, wrapping
+content, and applying a custom `Diff.theme`.
 
 ### `x-code-editor` – Editor workflow demo
 

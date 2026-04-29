@@ -25,5 +25,6 @@ module Table = Table
 module Tree = Tree
 module Code = Code
 module Line_number = Line_number
+module Diff = Diff
 module Syntax_theme = Syntax_theme
 module Vnode = Vnode
