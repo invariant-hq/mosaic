@@ -13,6 +13,9 @@
 type t
 (** The type for mutable SGR state trackers. Not thread-safe. *)
 
+type color_depth = [ `Ansi16 | `Ansi256 | `Truecolor ]
+(** The type for terminal color emission depth. *)
+
 (** {1:lifecycle Lifecycle} *)
 
 val create : unit -> t
@@ -24,6 +27,11 @@ val reset : t -> unit
 (** [reset s] invalidates [s], forcing the next {!update} to emit a full reset
     sequence. Use after external modifications to the output stream (e.g.
     subprocesses) or non-contiguous cursor jumps. *)
+
+val set_color_depth : t -> color_depth -> unit
+(** [set_color_depth s d] sets the terminal color depth used by subsequent
+    {!update} calls. Changing [d] invalidates [s] so the next update emits a
+    complete style for the new depth. *)
 
 (** {1:operations Operations} *)
 

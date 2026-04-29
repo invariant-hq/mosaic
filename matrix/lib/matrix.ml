@@ -292,9 +292,10 @@ let request_redraw t =
 
 let refresh_capabilities t =
   let caps = Terminal.capabilities t.terminal in
+  let color_depth = if caps.rgb then `Truecolor else `Ansi256 in
   Screen.apply_capabilities t.screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
-    ~hyperlinks:caps.hyperlinks
+    ~hyperlinks:caps.hyperlinks ~color_depth
 
 let refresh_render_region ?(effective = false) t =
   match t.config.mode with
@@ -954,9 +955,10 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
     match caps.unicode_width with `Unicode -> `Unicode | `Wcwidth -> `Wcwidth
   in
   Screen.set_width_method screen width_method;
+  let color_depth = if caps.rgb then `Truecolor else `Ansi256 in
   Screen.apply_capabilities screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
-    ~hyperlinks:caps.hyperlinks;
+    ~hyperlinks:caps.hyperlinks ~color_depth;
   Screen.set_row_offset screen live_region.row_offset;
   Screen.resize screen ~width ~height:live_region.height;
   let t =

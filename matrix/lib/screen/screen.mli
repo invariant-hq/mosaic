@@ -220,15 +220,17 @@ val apply_capabilities :
   explicit_width:bool ->
   explicit_cursor_positioning:bool ->
   hyperlinks:bool ->
+  color_depth:Ansi.Sgr_state.color_depth ->
   unit
 (** [apply_capabilities t ~explicit_width ~explicit_cursor_positioning
-     ~hyperlinks] applies terminal capability flags to [t].
+     ~hyperlinks ~color_depth] applies terminal capability flags to [t].
     - [explicit_width]: whether the terminal supports explicit-width OSC
       sequences.
     - [explicit_cursor_positioning]: whether to reposition the cursor after wide
       graphemes as a fallback when [explicit_width] is [false]. Prevents column
       drift in terminals that miscalculate grapheme display widths.
-    - [hyperlinks]: whether the terminal supports OSC 8 hyperlinks. *)
+    - [hyperlinks]: whether the terminal supports OSC 8 hyperlinks.
+    - [color_depth]: terminal color emission depth. *)
 
 val set_width_method : t -> Text.width_method -> unit
 (** [set_width_method t m] sets the grapheme width computation method on both

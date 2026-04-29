@@ -112,32 +112,6 @@ module Packed = struct
     | _ -> Rgb
 
   let indexed_slot color = slot color
-
-  let emit_indexed_sgr w ~bg idx =
-    Escape.sgr_sep w;
-    Escape.sgr_code w (if bg then 48 else 38);
-    Escape.sgr_sep w;
-    Escape.sgr_code w 5;
-    Escape.sgr_sep w;
-    Escape.sgr_code w idx
-
-  let emit_sgr w ~bg color =
-    match intent color with
-    | Default -> ()
-    | Indexed idx -> emit_indexed_sgr w ~bg idx
-    | Rgb ->
-        if alpha color = 0 then ()
-        else (
-          Escape.sgr_sep w;
-          Escape.sgr_code w (if bg then 48 else 38);
-          Escape.sgr_sep w;
-          Escape.sgr_code w 2;
-          Escape.sgr_sep w;
-          Escape.sgr_code w (red color);
-          Escape.sgr_sep w;
-          Escape.sgr_code w (green color);
-          Escape.sgr_sep w;
-          Escape.sgr_code w (blue color))
 end
 
 let default = Packed.default
@@ -289,63 +263,6 @@ let blend ?(mode = `Perceptual) ~src ~dst () =
             let b = byte_of_float (blend sb db) in
             let a = byte_of_float (sa +. da_f -. (sa *. da_f)) in
             if a = 255 then of_rgb r g b else of_rgba r g b a))
-
-(* Check if string contains a substring. Zero-allocation. *)
-let contains_substring s sub =
-  let len = String.length s in
-  let sublen = String.length sub in
-  if sublen = 0 then true
-  else if sublen > len then false
-  else
-    let rec match_at i j =
-      if j >= sublen then true
-      else if String.unsafe_get s (i + j) = String.unsafe_get sub j then
-        match_at i (j + 1)
-      else false
-    in
-    let rec check i =
-      if i > len - sublen then false
-      else if match_at i 0 then true
-      else check (i + 1)
-    in
-    check 0
-
-let detected_level =
-  lazy
-    (match Sys.getenv_opt "COLORTERM" with
-    | Some "truecolor" | Some "24bit" -> `Truecolor
-    | _ -> (
-        match Sys.getenv_opt "TERM" with
-        | Some term when contains_substring term "256" -> `Ansi256
-        | Some term when contains_substring term "truecolor" -> `Truecolor
-        | _ -> `Ansi16))
-
-let detect_level () = Lazy.force detected_level
-
-let downgrade ?level color =
-  if intent color = Default || Packed.alpha color = 0 then color
-  else
-    match Option.value level ~default:(detect_level ()) with
-    | `Truecolor -> color
-    | (`Ansi256 | `Ansi16) as effective_level ->
-        let target_size = if effective_level = `Ansi256 then 256 else 16 in
-        let r, g, b = to_rgb color in
-        let min_dist = ref max_int in
-        let nearest = ref 0 in
-        for i = 0 to target_size - 1 do
-          let base = i * 3 in
-          let pr = Array.unsafe_get palette_flat base in
-          let pg = Array.unsafe_get palette_flat (base + 1) in
-          let pb = Array.unsafe_get palette_flat (base + 2) in
-          let dr = r - pr in
-          let dg = g - pg in
-          let db = b - pb in
-          let dist = (dr * dr) + (dg * dg) + (db * db) in
-          if dist < !min_dist then (
-            min_dist := dist;
-            nearest := i)
-        done;
-        indexed !nearest
 
 let emit_indexed_sgr ~bg push idx =
   push (if bg then 48 else 38);

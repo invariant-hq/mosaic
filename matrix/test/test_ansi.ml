@@ -104,21 +104,6 @@ let color_ansi16_palette_matches_standard_fallback () =
       equal ~msg:(Printf.sprintf "ansi16 slot %d b" i) int eb ab)
     expected
 
-let color_downgrade_semantics () =
-  (* 1. Truecolor -> Truecolor (Identity) *)
-  let c = Color.of_rgb 100 150 200 in
-  equal ~msg:"identity downgrade" check_color c
-    (Color.downgrade ~level:`Truecolor c);
-
-  (* 2. Grayscale mapping in Ansi256 *)
-  (* 256 palette has a grayscale ramp from 232 (dark) to 255 (light) *)
-  (* Gray 10/10/10 should map low in the ramp *)
-  let dark_gray = Color.of_rgb 8 8 8 in
-  let down = Color.downgrade ~level:`Ansi256 dark_gray in
-  match Color.intent down with
-  | Color.Indexed n -> is_true ~msg:"mapped to grayscale ramp" (n = 232)
-  | _ -> fail "Expected indexed color"
-
 let color_extended_out_of_range_is_safe () =
   (* Regression from the matrix.ansi review: out-of-range palette inputs must
      not reach unsafe palette indexing. *)
@@ -312,6 +297,36 @@ let sgr_transparent_fg_resets_to_default () =
   check_seq "fg cleared to default" "\x1b[0m" out;
   is_false ~msg:"default fg is not emitted as truecolor black"
     (String.contains out '3' && String.contains out '8')
+
+let sgr_rgb_downgrades_to_ansi256 () =
+  let buf = Bytes.create 128 in
+  let state = Sgr_state.create () in
+  Sgr_state.set_color_depth state `Ansi256;
+  let w = Writer.make buf in
+  Sgr_state.update state w ~fg:(Color.of_rgb 255 0 0)
+    ~bg:(Color.of_rgb 0 0 255) ~attrs:0 ~link:"";
+  check_seq "rgb downgraded to ansi256" "\x1b[0;38;5;9;48;5;12m"
+    (Bytes.to_string (Writer.slice w))
+
+let sgr_rgb_downgrades_to_ansi16 () =
+  let buf = Bytes.create 128 in
+  let state = Sgr_state.create () in
+  Sgr_state.set_color_depth state `Ansi16;
+  let w = Writer.make buf in
+  Sgr_state.update state w ~fg:(Color.of_rgb 255 0 0)
+    ~bg:(Color.of_rgb 0 0 255) ~attrs:0 ~link:"";
+  check_seq "rgb downgraded to ansi16" "\x1b[0;91;104m"
+    (Bytes.to_string (Writer.slice w))
+
+let sgr_indexed_stays_indexed_without_truecolor () =
+  let buf = Bytes.create 128 in
+  let state = Sgr_state.create () in
+  Sgr_state.set_color_depth state `Ansi256;
+  let w = Writer.make buf in
+  Sgr_state.update state w ~fg:(Color.indexed 42) ~bg:(Color.indexed 99)
+    ~attrs:0 ~link:"";
+  check_seq "indexed preserved" "\x1b[0;38;5;42;48;5;99m"
+    (Bytes.to_string (Writer.slice w))
 
 (* --- 4. Parser Resilience --- *)
 
@@ -710,7 +725,6 @@ let tests =
         test "intent identity" color_intent_is_part_of_identity;
         test "ansi16 fallback palette"
           color_ansi16_palette_matches_standard_fallback;
-        test "downgrade" color_downgrade_semantics;
         test "extended out of range safe" color_extended_out_of_range_is_safe;
         test "low indexed colors use extended palette SGR"
           low_indexed_colors_use_extended_palette_sgr;
@@ -730,6 +744,10 @@ let tests =
         test "state diffing" sgr_state_transitions;
         test "transparent bg reset" sgr_transparent_bg_resets;
         test "transparent fg reset" sgr_transparent_fg_resets_to_default;
+        test "rgb downgrade to ansi256" sgr_rgb_downgrades_to_ansi256;
+        test "rgb downgrade to ansi16" sgr_rgb_downgrades_to_ansi16;
+        test "indexed preserved without truecolor"
+          sgr_indexed_stays_indexed_without_truecolor;
       ];
     group "Parser"
       [

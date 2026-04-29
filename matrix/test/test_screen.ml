@@ -173,6 +173,21 @@ let test_styled_frame_resets_sgr () =
   let output = Screen.render frame in
   is_true ~msg:"styled output resets SGR" (contains_substring "\027[0m" output)
 
+let test_color_depth_reaches_sgr_emission () =
+  let r = Screen.create () in
+  Screen.apply_capabilities r ~explicit_width:false
+    ~explicit_cursor_positioning:false ~hyperlinks:true ~color_depth:`Ansi256;
+  let style = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 255 0 0) () in
+  let frame =
+    build_screen r ~width:1 ~height:1 (fun grid _hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"R" ~style)
+  in
+  let output = Screen.render frame in
+  is_true ~msg:"screen downgraded rgb to ansi256"
+    (contains_substring "\027[0;38;5;9m" output);
+  is_false ~msg:"screen did not emit truecolor"
+    (contains_substring "38;2;255;0;0" output)
+
 let test_render_to_bytes_overflow_does_not_commit_scrolled_baseline () =
   let r = Screen.create () in
   let f1 =
@@ -787,7 +802,7 @@ let test_hyperlink_capability_gating () =
   (* Now test with capability disabled *)
   let r2 = Screen.create () in
   Screen.apply_capabilities r2 ~explicit_width:false
-    ~explicit_cursor_positioning:false ~hyperlinks:false;
+    ~explicit_cursor_positioning:false ~hyperlinks:false ~color_depth:`Truecolor;
   let f2 =
     build_screen r2 ~width:10 ~height:1 (fun grid _hits ->
         let style =
@@ -1049,6 +1064,8 @@ let () =
           test "Viewport clips active hit grid"
             test_viewport_clips_active_hit_grid;
           test "Styled frame resets SGR" test_styled_frame_resets_sgr;
+          test "Color depth reaches SGR emission"
+            test_color_depth_reaches_sgr_emission;
           test "Overflow does not commit scrolled baseline"
             test_render_to_bytes_overflow_does_not_commit_scrolled_baseline;
           test "Overflow does not activate hit grid"

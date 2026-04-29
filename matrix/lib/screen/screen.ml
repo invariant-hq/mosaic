@@ -618,12 +618,13 @@ let cursor t =
   }
 
 let apply_capabilities r ~explicit_width ~explicit_cursor_positioning
-    ~hyperlinks =
+    ~hyperlinks ~color_depth =
   r.explicit_width_capable <- explicit_width;
   r.use_explicit_width <- r.prefer_explicit_width && explicit_width;
   r.use_explicit_cursor_positioning <-
     (not r.use_explicit_width) && explicit_cursor_positioning;
-  r.hyperlinks_capable <- hyperlinks
+  r.hyperlinks_capable <- hyperlinks;
+  Ansi.Sgr_state.set_color_depth r.sgr_state color_depth
 
 let set_explicit_width t flag =
   t.prefer_explicit_width <- flag;

@@ -137,12 +137,6 @@ val blend : ?mode:[ `Linear | `Perceptual ] -> src:t -> dst:t -> unit -> t
 (** [blend ~mode ~src ~dst ()] alpha-blends [src] over [dst]. Fully opaque
     results are literal RGB colors. Fully transparent [src] returns [dst]. *)
 
-val downgrade : ?level:[ `Ansi16 | `Ansi256 | `Truecolor ] -> t -> t
-(** [downgrade ~level c] converts [c] to the specified color depth using
-    nearest-neighbor matching in RGB space. [level] defaults to detection from
-    environment variables. [`Truecolor] returns [c] unchanged. Terminal-default
-    and fully transparent colors pass through unchanged. *)
-
 val invert : t -> t
 (** [invert c] maps each RGB component [v] to [255 - v]. The result is an opaque
     literal RGB color. *)
@@ -201,11 +195,6 @@ module Packed : sig
   val of_rgba_f : float -> float -> float -> float -> int
   (** [of_rgba_f r g b a] is a packed literal RGBA color from normalized
       channels. *)
-
-  val emit_sgr : Writer.t -> bg:bool -> int -> unit
-  (** [emit_sgr w ~bg bits] emits the SGR parameters for [bits] to [w], prefixed
-      by a separator when a non-default color is emitted. Default and fully
-      transparent colors emit nothing. *)
 end
 
 (** {1:converting Converting} *)
