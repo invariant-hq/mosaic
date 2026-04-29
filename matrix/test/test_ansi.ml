@@ -74,6 +74,16 @@ let color_downgrade_semantics () =
   | Color.Extended n -> is_true ~msg:"mapped to grayscale ramp" (n = 232)
   | _ -> fail "Expected extended color index"
 
+let color_extended_out_of_range_is_safe () =
+  (* Regression from the matrix.ansi review: public [Extended] values outside
+     [0,255] must not reach unsafe palette indexing. *)
+  is_true ~msg:"negative extended compares safely"
+    (Color.equal (Color.Extended (-1)) Color.black);
+  is_true ~msg:"large extended compares safely"
+    (Color.equal (Color.Extended 999) (Color.Extended 255));
+  ignore (Color.hash (Color.Extended 999) : int);
+  ignore (Color.compare (Color.Extended (-1)) (Color.Extended 999) : int)
+
 (* --- 2. Attributes & Style --- *)
 
 let attr_bitmask_integrity () =
@@ -237,6 +247,22 @@ let sgr_transparent_bg_resets () =
   check_seq "bg cleared to default" "\x1b[0;38;2;255;0;0m"
     (Bytes.to_string (Writer.slice w2))
 
+let sgr_transparent_fg_resets_to_default () =
+  let buf = Bytes.create 128 in
+  let state = Sgr_state.create () in
+  let w1 = Writer.make buf in
+  Sgr_state.update state w1 ~fg_r:1.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:1.0 ~bg_r:0.0
+    ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 ~attrs:0 ~link:"";
+  check_seq "fg applied" "\x1b[0;38;2;255;0;0m"
+    (Bytes.to_string (Writer.slice w1));
+  let w2 = Writer.make buf in
+  Sgr_state.update state w2 ~fg_r:0.0 ~fg_g:0.0 ~fg_b:0.0 ~fg_a:0.0 ~bg_r:0.0
+    ~bg_g:0.0 ~bg_b:0.0 ~bg_a:0.0 ~attrs:0 ~link:"";
+  let out = Bytes.to_string (Writer.slice w2) in
+  check_seq "fg cleared to default" "\x1b[0m" out;
+  is_false ~msg:"default fg is not emitted as truecolor black"
+    (String.contains out '3' && String.contains out '8')
+
 (* --- 4. Parser Resilience --- *)
 
 let parser_chunked_utf8 () =
@@ -260,6 +286,22 @@ let parser_chunked_utf8 () =
     | _ -> ""
   in
   equal ~msg:"utf8 reconstructed" string "€ok" combined
+
+let parser_chunked_utf8_same_buffer_slice () =
+  (* Adapted from OpenTUI stdin-parser chunk-shape invariance tests: a parser
+     feed must respect the logical off/len slice, not bytes that happen to
+     follow in the same underlying buffer. *)
+  let p = Parser.create () in
+  let input = Bytes.of_string "\xE2\x82\xACok" in
+  let t1 = feed_to_list p input 0 1 in
+  equal ~msg:"same buffer byte 1 buffered" int 0 (List.length t1);
+  let t2 = feed_to_list p input 1 1 in
+  equal ~msg:"same buffer byte 2 buffered" int 0 (List.length t2);
+  let t3 = feed_to_list p input 2 3 in
+  match t3 with
+  | [ Parser.Text s ] ->
+      equal ~msg:"same buffer utf8 reconstructed" string "€ok" s
+  | _ -> fail "Expected reconstructed UTF-8 text token"
 
 let parser_chunked_escape () =
   let p = Parser.create () in
@@ -343,6 +385,49 @@ let parser_osc8_bel_terminated () =
       equal ~msg:"parsed link url bel" string "http://foo" link
   | _ -> fail "OSC 8 BEL tokens mismatch"
 
+let parser_protocol_string_controls () =
+  (* Adapted from OpenTUI stdin-parser protocol response tests. *)
+  (match Parser.parse "\x1bP>|kitty(0.40.1)\x1b\\" with
+  | [ Parser.Control (Parser.DCS ">|kitty(0.40.1)") ] -> ()
+  | _ -> fail "DCS response not tokenized");
+  (match Parser.parse "\x1b_Gi=1;OK\x1b\\" with
+  | [ Parser.Control (Parser.APC "Gi=1;OK") ] -> ()
+  | _ -> fail "APC response not tokenized");
+  (match Parser.parse "\x1b^pm-data\x1b\\" with
+  | [ Parser.Control (Parser.PM "pm-data") ] -> ()
+  | _ -> fail "PM response not tokenized");
+  match Parser.parse "\x1bXsos-data\x1b\\" with
+  | [ Parser.Control (Parser.SOS "sos-data") ] -> ()
+  | _ -> fail "SOS response not tokenized"
+
+let parser_protocol_string_controls_chunked () =
+  let p = Parser.create () in
+  let t1 = feed_to_list p (Bytes.of_string "\x1bP>|kitty") 0 9 in
+  equal ~msg:"partial DCS buffered" int 0 (List.length t1);
+  let t2 = feed_to_list p (Bytes.of_string "(0.40.1)\x1b") 0 9 in
+  equal ~msg:"DCS split ESC buffered" int 0 (List.length t2);
+  match feed_to_list p (Bytes.of_string "\\") 0 1 with
+  | [ Parser.Control (Parser.DCS ">|kitty(0.40.1)") ] -> ()
+  | _ -> fail "split DCS terminator not reconstructed"
+
+let parser_csi_empty_parameter_defaults () =
+  (match Parser.parse "\x1b[;5H" with
+  | [ Parser.Control (Parser.CUP (1, 5)) ] -> ()
+  | _ -> fail "CUP omitted row should default to 1");
+  (match Parser.parse "\x1b[5;H" with
+  | [ Parser.Control (Parser.CUP (5, 1)) ] -> ()
+  | _ -> fail "CUP omitted col should default to 1");
+  (match Parser.parse "\x1b[H" with
+  | [ Parser.Control (Parser.CUP (1, 1)) ] -> ()
+  | _ -> fail "CUP empty params should default to 1;1");
+  (match Parser.parse "\x1b[A" with
+  | [ Parser.Control (Parser.CUU 1) ] -> ()
+  | _ -> fail "CUU omitted count should default to 1");
+  match Parser.parse "\x1b[;31m" with
+  | [ Parser.SGR [ `Reset; `Fg c ] ] ->
+      equal ~msg:"SGR empty param fg" check_color Color.red c
+  | _ -> fail "SGR empty param should remain reset then fg"
+
 (* --- 5. Writer & Low-Level Escape --- *)
 
 let writer_utf8_encoding () =
@@ -375,6 +460,19 @@ let writer_invalid_scalar_replacement () =
   check_seq "invalid scalar -> replacement" "\xef\xbf\xbd"
     (Bytes.to_string (Writer.slice w))
 
+let writer_checked_bounds () =
+  let w = Writer.make (Bytes.create 1) in
+  Writer.write_char w 'a';
+  (try
+     Writer.write_char w 'b';
+     fail "expected write_char overflow"
+   with Invalid_argument _ -> ());
+  let w = Writer.make (Bytes.create 4) in
+  try
+    Writer.write_subbytes w (Bytes.of_string "abc") 2 2;
+    fail "expected invalid source slice"
+  with Invalid_argument _ -> ()
+
 (* --- 6. High Level API --- *)
 
 let strip_edge_cases () =
@@ -386,6 +484,10 @@ let strip_edge_cases () =
   equal ~msg:"strip lone esc" string "foo" (Ansi.strip "foo\x1b");
   (* OSC title *)
   equal ~msg:"strip osc" string "foo" (Ansi.strip "\x1b]0;Title\007foo")
+
+let strip_protocol_string_controls () =
+  equal ~msg:"strip DCS" string "ok" (Ansi.strip "\x1bP>|kitty(0.40.1)\x1b\\ok");
+  equal ~msg:"strip APC" string "ok" (Ansi.strip "\x1b_Gi=1;OK\x1b\\ok")
 
 let parameter_clamping () =
   (* Cursor movement: negative -> 0 -> empty string *)
@@ -408,6 +510,12 @@ let cursor_and_explicit_width_sequences () =
     Ansi.(to_string (cursor_color ~r:1 ~g:2 ~b:3));
   check_seq "explicit width osc66" "\x1b]66;w=5;hi\x1b\\"
     Ansi.(to_string (explicit_width ~width:5 ~text:"hi"))
+
+let kitty_keyboard_sequences () =
+  (* OpenTUI exposes Kitty keyboard as a stack: push flags, then pop. *)
+  check_seq "kitty keyboard push" "\x1b[>5u"
+    Ansi.(to_string (csi_u_push ~flags:5));
+  check_seq "kitty keyboard pop" "\x1b[<u" Ansi.(to_string csi_u_pop)
 
 let hyperlink_lifecycle () =
   let link_style = Style.hyperlink "http://foo" Style.default in
@@ -553,6 +661,7 @@ let tests =
         test "hsl roundtrip" color_hsl_roundtrip;
         test "blending" color_blending;
         test "downgrade" color_downgrade_semantics;
+        test "extended out of range safe" color_extended_out_of_range_is_safe;
       ];
     group "Attributes & Style"
       [
@@ -568,29 +677,39 @@ let tests =
       [
         test "state diffing" sgr_state_transitions;
         test "transparent bg reset" sgr_transparent_bg_resets;
+        test "transparent fg reset" sgr_transparent_fg_resets_to_default;
       ];
     group "Parser"
       [
         test "chunked utf8" parser_chunked_utf8;
+        test "chunked utf8 same buffer slice"
+          parser_chunked_utf8_same_buffer_slice;
         test "chunked escape" parser_chunked_escape;
         test "malformed inputs" parser_malformed_input;
         test "invalid utf8 lead bytes" parser_invalid_utf8_lead_bytes;
         test "overflow protection" parser_max_length_overflow;
         test "osc8 st terminated" parser_osc8_st_terminated;
         test "osc8 bel terminated" parser_osc8_bel_terminated;
+        test "protocol string controls" parser_protocol_string_controls;
+        test "chunked protocol string controls"
+          parser_protocol_string_controls_chunked;
+        test "csi empty parameter defaults" parser_csi_empty_parameter_defaults;
       ];
     group "Writer & Seq"
       [
         test "utf8 encoding" writer_utf8_encoding;
         test "hyperlink params" writer_hyperlink_params;
         test "invalid scalar replacement" writer_invalid_scalar_replacement;
+        test "checked bounds" writer_checked_bounds;
       ];
     group "High Level API"
       [
         test "strip semantics" strip_edge_cases;
+        test "strip protocol string controls" strip_protocol_string_controls;
         test "param clamping" parameter_clamping;
         test "input validation" explicit_error_handling;
         test "cursor & explicit width" cursor_and_explicit_width_sequences;
+        test "kitty keyboard sequences" kitty_keyboard_sequences;
         test "hyperlink lifecycle" hyperlink_lifecycle;
       ];
     group "Round-Trip"
