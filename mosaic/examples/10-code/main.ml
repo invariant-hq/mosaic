@@ -90,11 +90,7 @@ let view model =
       box ~flex_grow:1. ~padding:(padding 1)
         [
           box ~border:true ~border_color ~flex_grow:1.
-            [
-              code ~spans
-                ~size:{ width = pct 100; height = pct 100 }
-                content;
-            ];
+            [ code ~spans ~size:{ width = pct 100; height = pct 100 } content ];
         ];
       (* Footer *)
       box ~padding:(padding 1) ~background:footer_bg

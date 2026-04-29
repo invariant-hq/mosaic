@@ -117,8 +117,8 @@ val create :
     - [min_tui_height] minimum height in rows reserved for the dynamic TUI
       region. Static content will not grow past this floor. Defaults to [1].
     - [start_idle] when [true], the render loop starts in idle state even when
-      [target_fps] is set. The loop begins running only when {!request_live}
-      is called. One-shot redraws via {!request_redraw} still work while idle.
+      [target_fps] is set. The loop begins running only when {!request_live} is
+      called. One-shot redraws via {!request_redraw} still work while idle.
       Defaults to [false].
 
     {b Input:}
@@ -241,16 +241,14 @@ val size : app -> int * int
 (** [size app] is the current dynamic-region dimensions as [(cols, rows)]. *)
 
 val full_size : app -> int * int
-(** [full_size app] is the full terminal dimensions [(cols, rows)],
-    ignoring the primary-mode render offset. In [`Alt] mode this is
-    identical to {!size}. *)
+(** [full_size app] is the full terminal dimensions [(cols, rows)], ignoring the
+    primary-mode render offset. In [`Alt] mode this is identical to {!size}. *)
 
 val effective_size : app -> int * int
-(** [effective_size app] is the dynamic-region dimensions [(cols, rows)]
-    that will be in effect once pending static writes are flushed. In
-    [`Alt] mode or when the static queue is empty this equals {!size}.
-    Use this in [on_render] to lay out the dynamic UI against the
-    post-commit geometry. *)
+(** [effective_size app] is the dynamic-region dimensions [(cols, rows)] that
+    will be in effect once pending static writes are flushed. In [`Alt] mode or
+    when the static queue is empty this equals {!size}. Use this in [on_render]
+    to lay out the dynamic UI against the post-commit geometry. *)
 
 val pixel_resolution : app -> (int * int) option
 (** [pixel_resolution app] is the last known pixel resolution as
@@ -270,8 +268,8 @@ val capabilities : app -> Terminal.capabilities
 val static_write : app -> rows:int -> string -> unit
 (** [static_write app ~rows s] writes [s] to the static area, using [rows] as
     the exact number of terminal rows consumed. The caller is responsible for
-    computing [rows] accurately (e.g. from {!Grid.active_height} after
-    rendering to a grid). *)
+    computing [rows] accurately (e.g. from {!Grid.active_height} after rendering
+    to a grid). *)
 
 val static_clear : app -> unit
 (** [static_clear app] clears static content and resets the primary scroll
@@ -281,13 +279,12 @@ val static_clear : app -> unit
 
 val set_scroll_hint : app -> Screen.scroll_hint -> unit
 (** [set_scroll_hint app hint] sets a scroll hint for the current frame.
-    Consumed by the next {!submit} call. Only effective in [`Alt] mode; the
-    hint is silently discarded in [`Primary] mode.
+    Consumed by the next {!submit} call. Only effective in [`Alt] mode; the hint
+    is silently discarded in [`Primary] mode.
 
-    Use this when a scrollable container's viewport shifts: the renderer
-    applies DECSTBM hardware scroll so only the newly-revealed edge rows
-    need cell-level diffing. Without the hint, scrolling rewrites every row
-    in the viewport. *)
+    Use this when a scrollable container's viewport shifts: the renderer applies
+    DECSTBM hardware scroll so only the newly-revealed edge rows need cell-level
+    diffing. Without the hint, scrolling rewrites every row in the viewport. *)
 
 (** {1:cursor Cursor control} *)
 

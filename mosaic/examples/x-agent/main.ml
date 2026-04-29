@@ -126,14 +126,13 @@ let complex_plan =
                        |-----------|--------|-------|\n\
                        | Static content | DECSTBM scroll regions | \
                        Erase-and-rewrite |\n\
-                       | Scroll regions | Used in Primary mode | Removed \
-                       from Primary |\n\
-                       | Frame output | Multiple I/O calls | Single \
-                       buffered write |\n\
-                       | Alt mode | No cursor anchor | CSI H self-healing \
-                       |\n\n\
-                       The net change is **-12 lines** with cleaner \
-                       separation of concerns.\n";
+                       | Scroll regions | Used in Primary mode | Removed from \
+                       Primary |\n\
+                       | Frame output | Multiple I/O calls | Single buffered \
+                       write |\n\
+                       | Alt mode | No cursor anchor | CSI H self-healing |\n\n\
+                       The net change is **-12 lines** with cleaner separation \
+                       of concerns.\n";
                   ];
                 on_no = [ Emit "Skipping test run.\n" ];
               };
@@ -148,12 +147,12 @@ let simple_plan =
     Emit "Sure, I can help with that.\n\n";
     Emit
       "Here are a few approaches we could take:\n\n\
-       1. **Direct implementation** \xe2\x80\x94 write the code inline, \
-       simple and fast\n\
-       2. **Module extraction** \xe2\x80\x94 separate the logic into its \
-       own module with a clean `.mli`\n\
-       3. **Test-driven** \xe2\x80\x94 write the tests first, then \
-       implement to pass them\n\n\
+       1. **Direct implementation** \xe2\x80\x94 write the code inline, simple \
+       and fast\n\
+       2. **Module extraction** \xe2\x80\x94 separate the logic into its own \
+       module with a clean `.mli`\n\
+       3. **Test-driven** \xe2\x80\x94 write the tests first, then implement \
+       to pass them\n\n\
        For a change this size, I'd recommend option 2. The module boundary \
        gives us:\n\n\
        - Type safety at the interface\n\
@@ -196,47 +195,48 @@ let rule_color = Ansi.Color.grayscale ~level:8
 
 (* ── Symbols ── *)
 
-let s_prompt = "\xe2\x9d\xaf"       (* ❯ *)
-let s_circle = "\xe2\x8f\xba"       (* ⏺ *)
-let s_check = "\xe2\x9c\x93"        (* ✓ *)
+let s_prompt = "\xe2\x9d\xaf" (* ❯ *)
+let s_circle = "\xe2\x8f\xba" (* ⏺ *)
+let s_check = "\xe2\x9c\x93" (* ✓ *)
 
 (* ── Views ── *)
 
 let user_message_view prompt =
-  box ~flex_direction:Column
-    ~margin:(margin_lrtb 0 0 1 0) ~padding:(padding_lrtb 0 1 0 0)
-    ~background:user_msg_bg
+  box ~flex_direction:Column ~margin:(margin_lrtb 0 0 1 0)
+    ~padding:(padding_lrtb 0 1 0 0) ~background:user_msg_bg
     ~size:{ width = pct 100; height = auto }
     [
       box ~flex_direction:Row
-        [ text ~style:(Ansi.Style.make ~fg:subtle ())
-            (s_prompt ^ " ");
-          text ~wrap:`Word prompt ];
+        [
+          text ~style:(Ansi.Style.make ~fg:subtle ()) (s_prompt ^ " ");
+          text ~wrap:`Word prompt;
+        ];
     ]
 
 let tool_call_view tc =
   let indicator, label_style =
     match tc.status with
     | Running ->
-        ( spinner ~color:green
-            ~size:{ width = px 2; height = px 1 } (),
+        ( spinner ~color:green ~size:{ width = px 2; height = px 1 } (),
           Ansi.Style.make ~bold:true () )
     | Done ->
-        ( text ~style:(Ansi.Style.make ~fg:green ())
-            (s_check ^ " "),
+        ( text ~style:(Ansi.Style.make ~fg:green ()) (s_check ^ " "),
           Ansi.Style.make ~bold:true ~dim:true () )
   in
   let header =
     box ~flex_direction:Row ~gap:(gap 1)
-      [ indicator;
+      [
+        indicator;
         text ~style:label_style tc.name;
-        text ~style:dim_style tc.args ]
+        text ~style:dim_style tc.args;
+      ]
   in
   let output_view =
     match tc.output with
     | None -> empty
     | Some out ->
-        markdown ~size:{ width = pct 100; height = auto }
+        markdown
+          ~size:{ width = pct 100; height = auto }
           ~margin:(margin_lrtb 2 0 0 0) out
   in
   box ~flex_direction:Column ~margin:(margin_lrtb 0 0 1 0)
@@ -249,10 +249,8 @@ let assistant_text_view ?(streaming = false) content =
     box ~flex_direction:Row ~margin:(margin_lrtb 0 0 1 0)
       ~size:{ width = pct 100; height = auto }
       [
-        text ~style:(Ansi.Style.make ~fg:(Ansi.Color.white) ())
-          (s_circle ^ " ");
-        markdown ~streaming
-          ~size:{ width = pct 100; height = auto } content;
+        text ~style:(Ansi.Style.make ~fg:Ansi.Color.white ()) (s_circle ^ " ");
+        markdown ~streaming ~size:{ width = pct 100; height = auto } content;
       ]
 
 let confirmation_view prompt =
@@ -273,24 +271,23 @@ let active_turn_view model =
            [
              [ user_message_view prompt ];
              List.map tool_call_view model.tools;
-             [ assistant_text_view
-                 ~streaming:(model.state = Streaming)
-                 model.pending_text ];
+             [
+               assistant_text_view ~streaming:(model.state = Streaming)
+                 model.pending_text;
+             ];
              (match model.waiting with
              | None -> []
              | Some w -> [ confirmation_view w.prompt ]);
            ])
 
 let input_view model =
-  box ~border:true ~border_sides:[ `Top; `Bottom ]
-    ~border_color:rule_color
+  box ~border:true ~border_sides:[ `Top; `Bottom ] ~border_color:rule_color
     ~size:{ width = pct 100; height = auto }
     [
       box ~flex_direction:Row ~align_items:Center
         ~size:{ width = pct 100; height = px 1 }
         [
-          text ~style:(Ansi.Style.make ~bold:true ~fg:green ())
-            (s_prompt ^ " ");
+          text ~style:(Ansi.Style.make ~bold:true ~fg:green ()) (s_prompt ^ " ");
           input ~autofocus:true ~value:model.input
             ~placeholder:
               (match model.state with
@@ -312,10 +309,8 @@ let footer_view model =
     | Waiting_confirmation _ -> "awaiting confirmation"
   in
   let left =
-    if status = "" then
-      Printf.sprintf "  turns: %d" model.committed_turns
-    else
-      Printf.sprintf "  %s \xc2\xb7 turns: %d" status model.committed_turns
+    if status = "" then Printf.sprintf "  turns: %d" model.committed_turns
+    else Printf.sprintf "  %s \xc2\xb7 turns: %d" status model.committed_turns
   in
   text ~style:dim_style left
 
@@ -327,8 +322,7 @@ let init () =
       (box ~flex_direction:Column
          ~size:{ width = pct 100; height = auto }
          [
-           text ~style:(Ansi.Style.make ~bold:true ())
-             "x-agent";
+           text ~style:(Ansi.Style.make ~bold:true ()) "x-agent";
            text ~style:dim_style
              "Primary screen \xc2\xb7 erase-and-rewrite static commits";
            text "";
@@ -342,7 +336,8 @@ let finalize_turn m =
     | None -> Cmd.none
     | Some _ -> Cmd.static_commit (active_turn_view m)
   in
-  ( { m with
+  ( {
+      m with
       pending_text = "";
       tools = [];
       last_user = None;
@@ -360,7 +355,8 @@ let update msg model =
       let prompt = String.trim raw in
       if model.state <> Idle || prompt = "" then (model, Cmd.none)
       else
-        ( { model with
+        ( {
+            model with
             input = "";
             pending_text = "";
             tools = [];
@@ -376,13 +372,15 @@ let update msg model =
       | Streaming, None, step :: tail -> (
           match step with
           | Emit chunk ->
-              ( { model with
+              ( {
+                  model with
                   pending_text = model.pending_text ^ chunk;
                   queue = tail;
                 },
                 Cmd.none )
           | Tool_start { name; args } ->
-              ( { model with
+              ( {
+                  model with
                   tools =
                     model.tools
                     @ [ { name; args; output = None; status = Running } ];
@@ -400,7 +398,8 @@ let update msg model =
               in
               ({ model with tools; queue = tail }, Cmd.none)
           | Need_confirmation { prompt; on_yes; on_no } ->
-              ( { model with
+              ( {
+                  model with
                   state = Waiting_confirmation prompt;
                   waiting = Some { prompt; on_yes; on_no; tail };
                 },
@@ -411,13 +410,13 @@ let update msg model =
       | None -> (model, Cmd.none)
       | Some w ->
           let next = (if allowed then w.on_yes else w.on_no) @ w.tail in
-          ( { model with
+          ( {
+              model with
               queue = next;
               waiting = None;
               state = Streaming;
               pending_text =
-                model.pending_text
-                ^ (if allowed then "" else "_Denied._\n\n");
+                (model.pending_text ^ if allowed then "" else "_Denied._\n\n");
             },
             Cmd.none ))
   | Quit -> (model, Cmd.quit)
@@ -427,11 +426,7 @@ let update msg model =
 let view model =
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = auto }
-    [
-      active_turn_view model;
-      input_view model;
-      footer_view model;
-    ]
+    [ active_turn_view model; input_view model; footer_view model ]
 
 (* ── Subscriptions ── *)
 
@@ -447,14 +442,14 @@ let subscriptions model =
       Sub.on_key_all (fun ev ->
           match (Event.Key.data ev).key with
           | Escape -> Some Quit
-          | Char c
-            when Uchar.equal c (Uchar.of_char 'q') && model.state = Idle ->
+          | Char c when Uchar.equal c (Uchar.of_char 'q') && model.state = Idle
+            ->
               Some Quit
-          | Char c
-            when model.state <> Idle && Uchar.equal c (Uchar.of_char 'y') ->
+          | Char c when model.state <> Idle && Uchar.equal c (Uchar.of_char 'y')
+            ->
               Some (Confirm true)
-          | Char c
-            when model.state <> Idle && Uchar.equal c (Uchar.of_char 'n') ->
+          | Char c when model.state <> Idle && Uchar.equal c (Uchar.of_char 'n')
+            ->
               Some (Confirm false)
           | _ -> None);
     ]

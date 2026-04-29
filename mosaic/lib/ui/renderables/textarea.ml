@@ -611,11 +611,10 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ?value ?cursor ?selection ?spans ?ghost_text
-      ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
-      ?focused_text_color ?focused_background_color ?placeholder_color
-      ?selection_color ?selection_fg ?cursor_style ?cursor_color
-      ?cursor_blinking ()
+    Props.make ?value ?cursor ?selection ?spans ?ghost_text ?ghost_text_color
+      ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
+      ?focused_background_color ?placeholder_color ?selection_color
+      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ()
   in
   let buf = Edit_buffer.create ~max_length:max_int props.value in
   Option.iter (Edit_buffer.set_cursor buf) props.cursor;
@@ -685,9 +684,7 @@ let edit t f =
 (* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
-  let spans_changed =
-    not (Props.spans_equal t.props.spans props.spans)
-  in
+  let spans_changed = not (Props.spans_equal t.props.spans props.spans) in
   let value_replaced = ref false in
   if
     (not (String.equal t.props.value props.value))

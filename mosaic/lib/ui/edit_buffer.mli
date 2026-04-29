@@ -273,8 +273,8 @@ val col_of_offset : t -> int -> int
     line. [pos] is clamped to \[[0];[length t]\]. *)
 
 val line_start : t -> int -> int
-(** [line_start t line] is the grapheme offset of the first character on
-    [line]. [line] is clamped to \[[0];[line_count t - 1]\]. *)
+(** [line_start t line] is the grapheme offset of the first character on [line].
+    [line] is clamped to \[[0];[line_count t - 1]\]. *)
 
 val line_end : t -> int -> int
 (** [line_end t line] is the grapheme offset past the last character on [line],

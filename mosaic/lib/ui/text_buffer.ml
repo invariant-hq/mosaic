@@ -206,17 +206,13 @@ let compute_lines t =
       let len = end_ - pos in
       let w =
         if len = 0 then 0
-        else Glyph.String.measure_sub ~width_method ~tab_width full_text ~pos ~len
+        else
+          Glyph.String.measure_sub ~width_method ~tab_width full_text ~pos ~len
       in
       widths.(i) <- w;
       if w > !max_w then max_w := w
     done;
-    {
-      line_count = n;
-      line_widths = widths;
-      max_line_width = !max_w;
-      bounds;
-    }
+    { line_count = n; line_widths = widths; max_line_width = !max_w; bounds }
   end
 
 let ensure_line_cache t =
@@ -287,8 +283,7 @@ let text_in_range t ~start ~len =
       let full = plain_text t in
       let byte_start = offsets.(start) in
       let byte_end =
-        if start + len >= n then String.length full
-        else offsets.(start + len)
+        if start + len >= n then String.length full else offsets.(start + len)
       in
       String.sub full byte_start (byte_end - byte_start)
 

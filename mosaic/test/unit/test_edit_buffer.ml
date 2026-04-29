@@ -533,8 +533,10 @@ let undo_restores_selection () =
   (* Undo should restore the selection *)
   let _ = Edit_buffer.undo buf in
   is_true ~msg:"selection restored after undo" (Edit_buffer.has_selection buf);
-  equal ~msg:"selection range" (option (pair int int))
-    (Some (6, 11)) (Edit_buffer.selection buf)
+  equal ~msg:"selection range"
+    (option (pair int int))
+    (Some (6, 11))
+    (Edit_buffer.selection buf)
 
 let redo_after_undo () =
   let buf = Edit_buffer.create "hello" in

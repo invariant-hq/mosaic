@@ -137,8 +137,8 @@ let register_selection t =
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
-    ?spans ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?spans
+    ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
     ?selection_fg ?on_selection () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()

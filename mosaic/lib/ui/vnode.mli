@@ -843,8 +843,8 @@ val code :
     not accept children.
 
     Code-specific attributes:
-    - [spans] is the list of pre-computed syntax highlighting spans.
-      Defaults to [[]].
+    - [spans] is the list of pre-computed syntax highlighting spans. Defaults to
+      [[]].
     - [text_style] is the base ANSI style applied to the text. Defaults to
       {!Ansi.Style.default}.
     - [wrap] is the line-wrapping mode. Defaults to [`None].

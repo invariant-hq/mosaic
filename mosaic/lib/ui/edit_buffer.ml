@@ -77,8 +77,8 @@ let build_cache ~width_method ~tab_width content =
       let i = !idx in
       offsets.(i) <- offset;
       let w =
-        Glyph.String.measure_sub ~width_method ~tab_width content
-          ~pos:offset ~len
+        Glyph.String.measure_sub ~width_method ~tab_width content ~pos:offset
+          ~len
       in
       widths.(i) <- w;
       total_width := !total_width + w;
@@ -131,7 +131,9 @@ let create ?(max_length = 1000) ?(width_method = `Unicode) ?(tab_width = 2)
     initial =
   let max_length = Int.max 0 max_length in
   let tab_width = Int.max 1 tab_width in
-  let content = truncate_graphemes ~width_method ~tab_width initial max_length in
+  let content =
+    truncate_graphemes ~width_method ~tab_width initial max_length
+  in
   let t =
     {
       content;
@@ -238,8 +240,11 @@ let select_all t =
 
 let save_undo t =
   t.undo_stack <-
-    { content = t.content; cursor_pos = t.cursor_pos;
-      selection_anchor = t.selection_anchor }
+    {
+      content = t.content;
+      cursor_pos = t.cursor_pos;
+      selection_anchor = t.selection_anchor;
+    }
     :: t.undo_stack;
   t.redo_stack <- []
 
@@ -249,8 +254,11 @@ let undo t =
   | snap :: rest ->
       let old_content = t.content in
       t.redo_stack <-
-        { content = t.content; cursor_pos = t.cursor_pos;
-          selection_anchor = t.selection_anchor }
+        {
+          content = t.content;
+          cursor_pos = t.cursor_pos;
+          selection_anchor = t.selection_anchor;
+        }
         :: t.redo_stack;
       t.undo_stack <- rest;
       t.content <- snap.content;
@@ -265,8 +273,11 @@ let redo t =
   | snap :: rest ->
       let old_content = t.content in
       t.undo_stack <-
-        { content = t.content; cursor_pos = t.cursor_pos;
-          selection_anchor = t.selection_anchor }
+        {
+          content = t.content;
+          cursor_pos = t.cursor_pos;
+          selection_anchor = t.selection_anchor;
+        }
         :: t.undo_stack;
       t.redo_stack <- rest;
       t.content <- snap.content;
@@ -327,7 +338,8 @@ let truncate_to_fit t s =
       let result_end = ref 0 in
       let idx = ref 0 in
       Glyph.String.iter_grapheme_info ~width_method:t.width_method
-        ~tab_width:t.tab_width (fun ~offset:_ ~len ~width:_ ->
+        ~tab_width:t.tab_width
+        (fun ~offset:_ ~len ~width:_ ->
           if !idx < remaining then begin
             result_end := !result_end + len;
             incr idx

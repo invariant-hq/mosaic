@@ -423,11 +423,11 @@ let scroll_box ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 let textarea ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = true) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?value
-    ?cursor ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder
-    ?wrap ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
-    ?on_cursor () =
+    ?cursor ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder ?wrap
+    ?text_color ?background_color ?focused_text_color ?focused_background_color
+    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
+    ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor ()
+    =
   let kind =
     Textarea
       (Textarea.Props.make ?value ?cursor ?selection ?spans ?ghost_text
@@ -494,13 +494,13 @@ let table ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 
 let code ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
-    ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste
-    ?spans ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
+    ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?spans
+    ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
     ?selection_fg ?on_selection content =
   let kind =
     Code
-      (Code.Props.make ~content ?spans ?text_style ?wrap ?tab_width
-         ?truncate ?selectable ?selection_bg ?selection_fg ())
+      (Code.Props.make ~content ?spans ?text_style ?wrap ?tab_width ?truncate
+         ?selectable ?selection_bg ?selection_fg ())
   in
   let attrs =
     {

@@ -34,8 +34,7 @@ let diff_full_screen =
           let bg0 = C.of_rgb 0 0 0 in
           Grid.clear grid ~color:bg0;
           for row = 0 to grid_height - 1 do
-            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row
-              ~text:ascii_line
+            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row ~text:ascii_line
           done);
       let _ = Screen.render screen in
       screen)
@@ -46,8 +45,7 @@ let diff_full_screen =
           let bg1 = C.of_rgb 18 20 24 in
           Grid.clear grid ~color:bg1;
           for row = 0 to grid_height - 1 do
-            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row
-              ~text:ascii_line
+            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row ~text:ascii_line
           done);
       ignore (Screen.render screen))
 
@@ -65,8 +63,7 @@ let diff_single_line =
         (fun grid _hits ->
           Grid.clear grid ~color:clear_color;
           for row = 0 to grid_height - 1 do
-            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row
-              ~text:ascii_line
+            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row ~text:ascii_line
           done);
       let _ = Screen.render screen in
       screen)
@@ -98,8 +95,7 @@ let diff_sparse_cells =
         (fun grid _hits ->
           Grid.clear grid ~color:clear_color;
           for row = 0 to grid_height - 1 do
-            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row
-              ~text:ascii_line
+            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row ~text:ascii_line
           done);
       let _ = Screen.render screen in
       screen)
@@ -109,15 +105,13 @@ let diff_sparse_cells =
         (fun grid _hits ->
           Grid.clear grid ~color:clear_color;
           for row = 0 to grid_height - 1 do
-            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row
-              ~text:ascii_line
+            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row ~text:ascii_line
           done;
           for i = 0 to Array.length update_positions - 1 do
             let x, y = update_positions.(i) in
             Grid.set_cell grid ~x ~y
               ~glyph:(Glyph.of_uchar (Uchar.of_int (Char.code 'A' + i)))
-              ~fg:(C.of_rgb 255 255 0) ~bg:clear_color ~attrs:Ansi.Attr.empty
-              ()
+              ~fg:(C.of_rgb 255 255 0) ~bg:clear_color ~attrs:Ansi.Attr.empty ()
           done);
       ignore (Screen.render screen))
 
@@ -161,13 +155,11 @@ let scenario_text_editor =
           Grid.clear grid ~color:code_bg;
           (* Code area *)
           for row = 0 to grid_height - 2 do
-            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row
-              ~text:ascii_line
+            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row ~text:ascii_line
           done;
           (* Initial cursor line + status bar *)
           let cursor_style =
-            S.make ~fg:(C.of_rgb 255 255 0) ~bg:(C.of_rgb 40 40 0) ~bold:true
-              ()
+            S.make ~fg:(C.of_rgb 255 255 0) ~bg:(C.of_rgb 40 40 0) ~bold:true ()
           in
           Grid.draw_text ~style:cursor_style grid ~x:cursor_col ~y:cursor_row
             ~text:"let value = 42 in";
@@ -195,8 +187,7 @@ let scenario_text_editor =
         (fun grid hits ->
           Grid.clear grid ~color:code_bg;
           for row = 0 to grid_height - 2 do
-            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row
-              ~text:ascii_line
+            Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row ~text:ascii_line
           done;
           Grid.draw_text ~style:cursor_style grid ~x:cursor_col ~y:cursor_row
             ~text:"let value = 42 in";
