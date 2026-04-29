@@ -61,6 +61,24 @@ let substring_index needle haystack =
   in
   if needle_len = 0 then Some 0 else loop 0
 
+let count_substring needle haystack =
+  let needle_len = String.length needle in
+  let haystack_len = String.length haystack in
+  let rec matches_at i j =
+    j = needle_len
+    || i + j < haystack_len
+       && Char.equal
+            (String.unsafe_get haystack (i + j))
+            (String.unsafe_get needle j)
+       && matches_at i (j + 1)
+  in
+  let rec loop i count =
+    if needle_len = 0 || i + needle_len > haystack_len then count
+    else if matches_at i 0 then loop (i + needle_len) (count + 1)
+    else loop (i + 1) count
+  in
+  loop 0 0
+
 let is_before ~first ~second s =
   match (substring_index first s, substring_index second s) with
   | Some i, Some j -> i < j
@@ -341,6 +359,52 @@ let test_pinned_static_write_keeps_live_size () =
   equal ~msg:"pinned output keeps live size after submit" (pair int int) before
     (Matrix.size app)
 
+let test_full_height_static_write_scrolls_into_scrollback () =
+  let app, state =
+    make_app ~mode:`Primary ~min_tui_height:24 ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  let before = Matrix.size app in
+  equal ~msg:"full-height live viewport starts at terminal height"
+    (pair int int) (80, 24) before;
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:2 "INSERTED00\nINSERTED01\n";
+  Matrix.prepare app;
+  Matrix.Grid.draw_text (Matrix.grid app) ~x:0 ~y:0 ~text:"live";
+  Matrix.submit app;
+  let output = output state in
+  is_true ~msg:"full-height static payload is emitted"
+    (contains_substring "INSERTED00" output);
+  is_true ~msg:"full-height static rows are scrolled into history"
+    (contains_substring "\027[2S" output);
+  is_true ~msg:"payload is emitted before the hardware scroll"
+    (is_before ~first:"INSERTED01" ~second:"\027[2S" output);
+  is_true ~msg:"live viewport repaints after static rows are scrolled"
+    (is_before ~first:"\027[2S" ~second:"live" output);
+  is_false ~msg:"full-height path does not use bounded DECSTBM"
+    (contains_substring "\027[r" output);
+  is_false ~msg:"full-height path does not use the old broad-erase preflush"
+    (contains_substring "\027[1;1H\027[J" output);
+  equal ~msg:"full-height static write keeps live size" (pair int int) before
+    (Matrix.size app)
+
+let test_full_height_consecutive_static_writes_scroll_once_per_row () =
+  let app, state =
+    make_app ~mode:`Primary ~min_tui_height:24 ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:1 "first";
+  Matrix.static_write app ~rows:1 "second\n";
+  Matrix.submit app;
+  let output = output state in
+  is_true ~msg:"consecutive full-height writes stay ordered"
+    (is_before ~first:"first" ~second:"second" output);
+  equal ~msg:"full-height writes scroll once per consumed row" int 2
+    (count_substring "\027[1S" output)
+
 let test_static_write_ignored_in_alt_mode () =
   let app, state =
     make_app ~mode:`Alt ~target_fps:None ~input_timeout:(Some 0.) ()
@@ -453,6 +517,10 @@ let () =
             test_pinned_static_write_resets_scroll_region_before_live_render;
           test "pinned static write keeps live size"
             test_pinned_static_write_keeps_live_size;
+          test "full-height static write scrolls into scrollback"
+            test_full_height_static_write_scrolls_into_scrollback;
+          test "full-height consecutive static writes scroll once per row"
+            test_full_height_consecutive_static_writes_scroll_once_per_row;
           test "static_write is ignored in alt mode"
             test_static_write_ignored_in_alt_mode;
         ];

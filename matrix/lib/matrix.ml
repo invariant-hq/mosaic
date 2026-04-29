@@ -374,6 +374,7 @@ let apply_primary_op buf = function
       Buffer.add_string buf Ansi.(to_string erase_below_cursor)
   | Primary.Clear_and_home ->
       Buffer.add_string buf Ansi.(to_string clear_and_home)
+  | Primary.Scroll_up n -> Buffer.add_string buf Ansi.(to_string (scroll_up ~n))
   | Primary.Set_scroll_region { top; bottom } ->
       Buffer.add_string buf Ansi.(to_string (set_scrolling_region ~top ~bottom))
   | Primary.Reset_scroll_region ->

@@ -29,6 +29,7 @@ type terminal_op =
   | Erase_line  (** Erase the current terminal row. *)
   | Erase_below  (** Erase from cursor to the end of the screen. *)
   | Clear_and_home  (** Clear the screen and move the cursor home. *)
+  | Scroll_up of int  (** Scroll the current terminal viewport up by rows. *)
   | Set_scroll_region of { top : int; bottom : int }
       (** Set DECSTBM to one-based inclusive rows. *)
   | Reset_scroll_region  (** Reset DECSTBM to the full screen. *)
@@ -137,7 +138,11 @@ val flush_static : t -> t * plan
 
     The returned plan may physically change terminal rows outside the live
     viewport. The runtime must interpret it before rendering the next live
-    frame. *)
+    frame.
+
+    If the live viewport already occupies the full terminal height, static rows
+    are scrolled directly into terminal history and the live viewport is left at
+    the same size. *)
 
 val clear_static : t -> t * plan
 (** [clear_static t] resets primary static state and returns the terminal plan

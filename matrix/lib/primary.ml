@@ -5,6 +5,7 @@ type terminal_op =
   | Erase_line
   | Erase_below
   | Clear_and_home
+  | Scroll_up of int
   | Set_scroll_region of { top : int; bottom : int }
   | Reset_scroll_region
 
@@ -102,6 +103,7 @@ let ends_with_newline s =
 type static_step = {
   base : int;
   needs_newline : bool;
+  payload_rows : int;
   next_offset : int;
   next_static_needs_newline : bool;
 }
@@ -115,7 +117,8 @@ let static_step t ~offset ~static_needs_newline { text; rows } =
   {
     base;
     needs_newline;
-    next_offset = base + grow_by;
+    payload_rows;
+    next_offset = (if max_offset = 0 then 0 else base + grow_by);
     next_static_needs_newline = not (ends_with_newline text);
   }
 
@@ -194,14 +197,44 @@ let flush_pinned_static t queue =
   in
   (next, { empty_plan with terminal_ops })
 
+let full_height_static_ops step text =
+  let ops =
+    [ Move_cursor { row = 1; col = 1 }; Reset_sgr; Erase_line; Write text ]
+  in
+  if step.payload_rows > 0 then ops @ [ Scroll_up step.payload_rows ] else ops
+
+let flush_full_height_static t queue =
+  let ops_rev, static_needs_newline =
+    List.fold_left
+      (fun (ops_rev, static_needs_newline) ({ text; rows } as write) ->
+        let step = static_step t ~offset:0 ~static_needs_newline write in
+        let step = { step with payload_rows = rows } in
+        let ops_rev =
+          List.rev_append (full_height_static_ops step text) ops_rev
+        in
+        (ops_rev, step.next_static_needs_newline))
+      ([], t.static_needs_newline)
+      queue
+  in
+  let next =
+    { t with render_offset = 0; static_needs_newline; static_queue = [] }
+  in
+  ( next,
+    {
+      empty_plan with
+      terminal_ops = List.rev ops_rev;
+      invalidate_presented = true;
+      force_full_redraw = true;
+    } )
+
 let flush_static t =
   match t.static_queue with
   | [] -> (t, empty_plan)
   | rev_queue ->
       let queue = List.rev rev_queue in
       let max_offset = max 0 (t.terminal_height - t.min_live_height) in
-      if t.render_offset = max_offset && max_offset > 0 then
-        flush_pinned_static t queue
+      if max_offset = 0 then flush_full_height_static t queue
+      else if t.render_offset = max_offset then flush_pinned_static t queue
       else
         let start_plan =
           {
