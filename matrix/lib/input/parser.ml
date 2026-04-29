@@ -1067,6 +1067,41 @@ let[@inline] get_csi_param parser idx =
 
 (* CSI dispatch helpers — grouped by function for readability. *)
 
+let parse_csi_param_values s start end_ =
+  let rec loop acc i =
+    if i >= end_ then List.rev acc
+    else
+      let rec find_param_end j =
+        if j >= end_ || s.[j] = ';' || not (is_csi_param s.[j]) then j
+        else find_param_end (j + 1)
+      in
+      let param_end = find_param_end i in
+      let value =
+        match parse_int_range_opt s i param_end with Some v -> v | None -> -1
+      in
+      let next =
+        if param_end < end_ && s.[param_end] = ';' then param_end + 1
+        else param_end
+      in
+      loop (value :: acc) next
+  in
+  loop [] start
+
+let parse_csi_param_pairs values =
+  let rec loop acc = function
+    | mode :: value :: rest when mode >= 0 && value >= 0 ->
+        loop ((mode, value) :: acc) rest
+    | _ -> List.rev acc
+  in
+  loop [] values
+
+let parse_csi_positive_values values =
+  let rec loop acc = function
+    | [] -> List.rev acc
+    | v :: rest -> if v >= 0 then loop (v :: acc) rest else loop acc rest
+  in
+  loop [] values
+
 let parse_csi_cursor final_char modifier event_type : parsed option =
   match final_char with
   | 'A' -> Some (`User (make_key_event ~modifier ~event_type Up))
@@ -1135,25 +1170,17 @@ let parse_csi_tilde parser final_char modifier event_type csi_mod :
         | None -> None)
   | _ -> None
 
-let parse_csi_capability parser s start params_end final_char modifier
-    event_type : parsed option =
+let parse_csi_capability s start params_end final_char : parsed option =
   match final_char with
   | 'y' ->
       let is_private =
         start < params_end && s.[start] = '?' && start + 1 <= params_end
       in
       let params_start = if is_private then start + 1 else start in
-      parse_csi_params_into parser s params_start params_end;
-      let rec parse_pairs acc i =
-        if i + 1 >= parser.csi_param_count then List.rev acc
-        else
-          let mode = get_csi_param parser i in
-          let value = get_csi_param parser (i + 1) in
-          if mode >= 0 && value >= 0 then
-            parse_pairs ((mode, value) :: acc) (i + 2)
-          else List.rev acc
+      let modes =
+        parse_csi_param_values s params_start params_end
+        |> parse_csi_param_pairs
       in
-      let modes = parse_pairs [] 0 in
       Some
         (`Response
            (Response.Capability
@@ -1161,50 +1188,42 @@ let parse_csi_capability parser s start params_end final_char modifier
   (* Color scheme DSR response: CSI ? 997 ; value n Response to CSI ? 996 n
      query. Value 1 = dark, 2 = light. *)
   | 'n' ->
-      if start < params_end && s.[start] = '?' then (
-        parse_csi_params_into parser s (start + 1) params_end;
-        if parser.csi_param_count >= 2 && get_csi_param parser 0 = 997 then
-          let value = get_csi_param parser 1 in
-          let scheme =
-            match value with 1 -> `Dark | 2 -> `Light | v -> `Unknown v
-          in
-          Some (`Response (Response.Capability (Response.Color_scheme scheme)))
-        else None)
+      if start < params_end && s.[start] = '?' then
+        match parse_csi_param_values s (start + 1) params_end with
+        | 997 :: value :: _ ->
+            let scheme =
+              match value with 1 -> `Dark | 2 -> `Light | v -> `Unknown v
+            in
+            Some
+              (`Response (Response.Capability (Response.Color_scheme scheme)))
+        | _ -> None
       else None
-  | 't' ->
-      let p0 = get_csi_param parser 0 in
-      let p1 = get_csi_param parser 1 in
-      let p2 = get_csi_param parser 2 in
-      if parser.csi_param_count = 3 && p0 = 8 && p1 >= 0 && p2 >= 0 then
-        Some (`User (Resize (p2, p1)))
-      else if parser.csi_param_count = 3 && p0 = 4 && p1 >= 0 && p2 >= 0 then
-        Some
-          (`Response (Response.Capability (Response.Pixel_resolution (p2, p1))))
-      else None
-  | 'R' ->
-      let row = get_csi_param parser 0 in
-      let col = get_csi_param parser 1 in
-      if parser.csi_param_count = 2 && row >= 0 && col >= 0 then
-        Some
-          (`Response (Response.Capability (Response.Cursor_position (row, col))))
-      else None
+  | 't' -> (
+      match parse_csi_param_values s start params_end with
+      | [ 8; p1; p2 ] when p1 >= 0 && p2 >= 0 -> Some (`User (Resize (p2, p1)))
+      | [ 4; p1; p2 ] when p1 >= 0 && p2 >= 0 ->
+          Some
+            (`Response
+               (Response.Capability (Response.Pixel_resolution (p2, p1))))
+      | _ -> None)
+  | 'R' -> (
+      match parse_csi_param_values s start params_end with
+      | [ row; col ] when row >= 0 && col >= 0 ->
+          Some
+            (`Response
+               (Response.Capability (Response.Cursor_position (row, col))))
+      | _ -> None)
   | 'c' ->
-      if start < params_end && s.[start] = '?' then (
-        parse_csi_params_into parser s (start + 1) params_end;
-        let rec collect_attrs acc i =
-          if i >= parser.csi_param_count then List.rev acc
-          else
-            let v = get_csi_param parser i in
-            if v >= 0 then collect_attrs (v :: acc) (i + 1)
-            else collect_attrs acc (i + 1)
+      if start < params_end && s.[start] = '?' then
+        let attrs =
+          parse_csi_param_values s (start + 1) params_end
+          |> parse_csi_positive_values
         in
         Some
-          (`Response
-             (Response.Capability
-                (Response.Device_attributes (collect_attrs [] 0)))))
-      else if parser.csi_param_count = 0 then
-        let modifier = ensure_shift modifier in
-        Some (`User (make_key_event ~modifier ~event_type Right))
+          (`Response (Response.Capability (Response.Device_attributes attrs)))
+      else if start = params_end then
+        Some
+          (`User (make_key_event ~modifier:(mk_modifier ~shift:true ()) Right))
       else None
   | _ -> None
 
@@ -1244,38 +1263,47 @@ let parse_csi parser s start end_ : parsed option =
   in
   consume_intermediate ();
 
-  if !intermediate_end < end_ && is_csi_final s.[!intermediate_end] then (
+  if !intermediate_end < end_ && is_csi_final s.[!intermediate_end] then
     let final_char = s.[!intermediate_end] in
-    parse_csi_params_into parser s start !params_end;
 
-    let csi_mod = csi_mod_of_parsed parser s in
-    let modifier = modifier_of_csi_mod csi_mod in
-    let event_type = event_type_of_csi_mod csi_mod in
+    let capability =
+      match final_char with
+      | 'y' | 'n' | 't' | 'R' | 'c' ->
+          parse_csi_capability s start !params_end final_char
+      | _ -> None
+    in
+    match capability with
+    | Some _ as event -> event
+    | None -> (
+        parse_csi_params_into parser s start !params_end;
 
-    match final_char with
-    (* Cursor movement, Home/End, Tab *)
-    | 'A' | 'B' | 'C' | 'D' | 'E' | 'a' | 'b' | 'd' | 'e' | 'H' | 'F' | 'Z' ->
-        parse_csi_cursor final_char modifier event_type
-    (* Focus events *)
-    | 'I' -> Some (`User Focus)
-    | 'O' -> Some (`User Blur)
-    (* Tilde sequences and rxvt shift/ctrl variants *)
-    | '$' | '^' | '~' ->
-        parse_csi_tilde parser final_char modifier event_type csi_mod
-    (* CSI-u format (modern keyboard protocol) *)
-    | 'u' -> (
-        match parse_kitty_keyboard parser s start (!intermediate_end + 1) with
-        | None -> None
-        | Some e -> Some (`User e))
-    (* Capability reports *)
-    | 'y' | 'n' | 't' | 'R' | 'c' ->
-        parse_csi_capability parser s start !params_end final_char modifier
-          event_type
-    (* Mouse events *)
-    | 'M' | 'm' ->
-        parse_csi_mouse_event parser s start !intermediate_end final_char
-          !params_end
-    | _ -> None)
+        let csi_mod = csi_mod_of_parsed parser s in
+        let modifier = modifier_of_csi_mod csi_mod in
+        let event_type = event_type_of_csi_mod csi_mod in
+
+        match final_char with
+        (* Cursor movement, Home/End, Tab *)
+        | 'A' | 'B' | 'C' | 'D' | 'E' | 'a' | 'b' | 'd' | 'e' | 'H' | 'F' | 'Z'
+          ->
+            parse_csi_cursor final_char modifier event_type
+        (* Focus events *)
+        | 'I' -> Some (`User Focus)
+        | 'O' -> Some (`User Blur)
+        (* Tilde sequences and rxvt shift/ctrl variants *)
+        | '$' | '^' | '~' ->
+            parse_csi_tilde parser final_char modifier event_type csi_mod
+        (* CSI-u format (modern keyboard protocol) *)
+        | 'u' -> (
+            match
+              parse_kitty_keyboard parser s start (!intermediate_end + 1)
+            with
+            | None -> None
+            | Some e -> Some (`User e))
+        (* Mouse events *)
+        | 'M' | 'm' ->
+            parse_csi_mouse_event parser s start !intermediate_end final_char
+              !params_end
+        | _ -> None)
   else None
 
 (* ESC parsing *)

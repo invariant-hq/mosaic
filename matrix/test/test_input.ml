@@ -896,7 +896,11 @@ let test_cursor_position_report () =
 let test_device_attributes () =
   equal ~msg:"device attributes" (list capability_testable)
     [ Input.Response.Device_attributes [ 1; 2; 6; 9; 15 ] ]
-    (parse_capabilities "\x1b[?1;2;6;9;15c")
+    (parse_capabilities "\x1b[?1;2;6;9;15c");
+  equal ~msg:"device attributes with more than hot-path CSI params"
+    (list capability_testable)
+    [ Input.Response.Device_attributes [ 1; 2; 3; 4; 5; 6; 7; 8; 9; 10 ] ]
+    (parse_capabilities "\x1b[?1;2;3;4;5;6;7;8;9;10c")
 
 let test_mode_report () =
   match parse_capabilities "\x1b[?1004;2$y" with
