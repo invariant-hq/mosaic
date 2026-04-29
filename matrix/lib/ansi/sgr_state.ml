@@ -99,45 +99,44 @@ let nearest_palette_index limit color =
   in
   loop 0 0 max_int
 
-let emit_indexed_sgr w ~bg idx =
-  Escape.sgr_sep w;
-  Escape.sgr_code w (if bg then 48 else 38);
-  Escape.sgr_sep w;
-  Escape.sgr_code w 5;
-  Escape.sgr_sep w;
-  Escape.sgr_code w idx
+let emit_sgr_code w first code =
+  if not first then Escape.sgr_sep w;
+  Escape.sgr_code w code;
+  false
 
-let emit_ansi16_sgr w ~bg idx =
-  Escape.sgr_sep w;
-  if idx < 8 then Escape.sgr_code w ((if bg then 40 else 30) + idx)
-  else Escape.sgr_code w ((if bg then 100 else 90) + idx - 8)
+let emit_indexed_sgr w first ~bg idx =
+  let first = emit_sgr_code w first (if bg then 48 else 38) in
+  let first = emit_sgr_code w first 5 in
+  emit_sgr_code w first idx
 
-let emit_rgb_sgr w ~bg color =
-  Escape.sgr_sep w;
-  Escape.sgr_code w (if bg then 48 else 38);
-  Escape.sgr_sep w;
-  Escape.sgr_code w 2;
-  Escape.sgr_sep w;
-  Escape.sgr_code w (Color.Packed.red color);
-  Escape.sgr_sep w;
-  Escape.sgr_code w (Color.Packed.green color);
-  Escape.sgr_sep w;
-  Escape.sgr_code w (Color.Packed.blue color)
+let emit_ansi16_sgr w first ~bg idx =
+  if idx < 8 then emit_sgr_code w first ((if bg then 40 else 30) + idx)
+  else emit_sgr_code w first ((if bg then 100 else 90) + idx - 8)
 
-let emit_color_sgr t w ~bg color =
+let emit_rgb_sgr w first ~bg color =
+  let first = emit_sgr_code w first (if bg then 48 else 38) in
+  let first = emit_sgr_code w first 2 in
+  let first = emit_sgr_code w first (Color.Packed.red color) in
+  let first = emit_sgr_code w first (Color.Packed.green color) in
+  emit_sgr_code w first (Color.Packed.blue color)
+
+let emit_default_sgr w first ~bg = emit_sgr_code w first (if bg then 49 else 39)
+
+let emit_color_sgr t w first ~bg ~initial color =
   match Color.Packed.intent color with
-  | Color.Default -> ()
+  | Color.Default -> if initial then first else emit_default_sgr w first ~bg
   | Color.Indexed idx -> (
       match t.color_depth with
-      | `Truecolor | `Ansi256 -> emit_indexed_sgr w ~bg idx
-      | `Ansi16 -> emit_ansi16_sgr w ~bg (nearest_palette_index 16 color))
+      | `Truecolor | `Ansi256 -> emit_indexed_sgr w first ~bg idx
+      | `Ansi16 -> emit_ansi16_sgr w first ~bg (nearest_palette_index 16 color))
   | Color.Rgb -> (
-      if Color.Packed.alpha color = 0 then ()
+      if Color.Packed.alpha color = 0 then (
+        if initial then first else emit_default_sgr w first ~bg)
       else
         match t.color_depth with
-        | `Truecolor -> emit_rgb_sgr w ~bg color
-        | `Ansi256 -> emit_indexed_sgr w ~bg (nearest_palette_index 256 color)
-        | `Ansi16 -> emit_ansi16_sgr w ~bg (nearest_palette_index 16 color))
+        | `Truecolor -> emit_rgb_sgr w first ~bg color
+        | `Ansi256 -> emit_indexed_sgr w first ~bg (nearest_palette_index 256 color)
+        | `Ansi16 -> emit_ansi16_sgr w first ~bg (nearest_palette_index 16 color))
 
 let emit_attrs w attrs =
   if attrs <> 0 then (
@@ -178,17 +177,115 @@ let emit_attrs w attrs =
       Escape.sgr_sep w;
       Escape.sgr_code w 52))
 
+let emit_attrs_diff w first prev attrs =
+  let removed = prev land lnot attrs in
+  let added = attrs land lnot prev in
+  let added =
+    if removed land 0x003 <> 0 then added lor (attrs land 0x003) else added
+  in
+  let added =
+    if removed land 0x108 <> 0 then added lor (attrs land 0x108) else added
+  in
+  let added =
+    if removed land 0x600 <> 0 then added lor (attrs land 0x600) else added
+  in
+  let first =
+    if removed land 0x003 <> 0 then emit_sgr_code w first 22 else first
+  in
+  let first =
+    if removed land 0x004 <> 0 then emit_sgr_code w first 23 else first
+  in
+  let first =
+    if removed land 0x108 <> 0 then emit_sgr_code w first 24 else first
+  in
+  let first =
+    if removed land 0x010 <> 0 then emit_sgr_code w first 25 else first
+  in
+  let first =
+    if removed land 0x020 <> 0 then emit_sgr_code w first 27 else first
+  in
+  let first =
+    if removed land 0x040 <> 0 then emit_sgr_code w first 28 else first
+  in
+  let first =
+    if removed land 0x080 <> 0 then emit_sgr_code w first 29 else first
+  in
+  let first =
+    if removed land 0x600 <> 0 then emit_sgr_code w first 54 else first
+  in
+  let first =
+    if removed land 0x200 <> 0 then emit_sgr_code w first 55 else first
+  in
+  let first =
+    if added land 0x001 <> 0 then emit_sgr_code w first 1 else first
+  in
+  let first =
+    if added land 0x002 <> 0 then emit_sgr_code w first 2 else first
+  in
+  let first =
+    if added land 0x004 <> 0 then emit_sgr_code w first 3 else first
+  in
+  let first =
+    if added land 0x008 <> 0 then emit_sgr_code w first 4 else first
+  in
+  let first =
+    if added land 0x010 <> 0 then emit_sgr_code w first 5 else first
+  in
+  let first =
+    if added land 0x020 <> 0 then emit_sgr_code w first 7 else first
+  in
+  let first =
+    if added land 0x040 <> 0 then emit_sgr_code w first 8 else first
+  in
+  let first =
+    if added land 0x080 <> 0 then emit_sgr_code w first 9 else first
+  in
+  let first =
+    if added land 0x100 <> 0 then emit_sgr_code w first 21 else first
+  in
+  let first =
+    if added land 0x200 <> 0 then emit_sgr_code w first 53 else first
+  in
+  let first =
+    if added land 0x400 <> 0 then emit_sgr_code w first 51 else first
+  in
+  if added land 0x800 <> 0 then emit_sgr_code w first 52 else first
+
+let emit_full_update t w ~fg ~bg ~attrs =
+  Escape.sgr_open w;
+  Escape.sgr_code w 0;
+  let first = emit_color_sgr t w false ~bg:false ~initial:true fg in
+  let first = emit_color_sgr t w first ~bg:true ~initial:true bg in
+  ignore first;
+  emit_attrs w attrs;
+  Escape.sgr_close w
+
+let emit_diff_update t w ~fg ~bg ~attrs =
+  Escape.sgr_open w;
+  let first =
+    if fg <> t.fg_color then emit_color_sgr t w true ~bg:false ~initial:false fg
+    else true
+  in
+  let first =
+    if bg <> t.bg_color then emit_color_sgr t w first ~bg:true ~initial:false bg
+    else first
+  in
+  let first =
+    if attrs <> t.attrs then emit_attrs_diff w first t.attrs attrs else first
+  in
+  ignore first;
+  Escape.sgr_close w
+
 let update t w ~fg ~bg ~attrs ~link =
   update_link t w link;
   let fg = Color.Packed.encode fg in
   let bg = Color.Packed.encode bg in
   if fg <> t.fg_color || bg <> t.bg_color || attrs <> t.attrs then (
-    Escape.sgr_open w;
-    Escape.sgr_code w 0;
-    emit_color_sgr t w ~bg:false fg;
-    emit_color_sgr t w ~bg:true bg;
-    emit_attrs w attrs;
-    Escape.sgr_close w;
+    if t.fg_color < 0 || t.bg_color < 0 || t.attrs < 0 then
+      emit_full_update t w ~fg ~bg ~attrs
+    else if fg <> t.fg_color && bg <> t.bg_color && attrs <> t.attrs then
+      emit_full_update t w ~fg ~bg ~attrs
+    else emit_diff_update t w ~fg ~bg ~attrs;
     t.fg_color <- fg;
     t.bg_color <- bg;
     t.attrs <- attrs)

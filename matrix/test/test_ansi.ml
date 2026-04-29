@@ -261,12 +261,60 @@ let sgr_state_transitions () =
   Sgr_state.update state w3 ~fg:(Color.of_rgb 255 0 0) ~bg:Color.default
     ~attrs:0 ~link:"";
 
-  (* No bold *)
-
-  (* Expect: Reset(0); FG(Red) -- Bold is implicitly removed by Reset, need to
-     restore Color *)
+  (* Only the attribute changes; the foreground is already active. *)
   let out3 = Bytes.to_string (Writer.slice w3) in
-  check_seq "delta transition" "\x1b[0;38;2;255;0;0m" out3
+  check_seq "delta transition" "\x1b[22m" out3
+
+let sgr_foreground_only_change_does_not_reset () =
+  let buf = Bytes.create 128 in
+  let state = Sgr_state.create () in
+  let w1 = Writer.make buf in
+  Sgr_state.update state w1 ~fg:(Color.of_rgb 255 0 0)
+    ~bg:(Color.of_rgb 0 0 255) ~attrs:(Attr.pack Attr.bold) ~link:"";
+  let w2 = Writer.make buf in
+  Sgr_state.update state w2 ~fg:(Color.of_rgb 0 255 0)
+    ~bg:(Color.of_rgb 0 0 255) ~attrs:(Attr.pack Attr.bold) ~link:"";
+  let out = Bytes.to_string (Writer.slice w2) in
+  check_seq "foreground-only delta" "\x1b[38;2;0;255;0m" out;
+  is_false ~msg:"foreground-only delta does not reset"
+    (String.starts_with ~prefix:"\x1b[0" out)
+
+let sgr_background_only_change_does_not_reset () =
+  let buf = Bytes.create 128 in
+  let state = Sgr_state.create () in
+  let w1 = Writer.make buf in
+  Sgr_state.update state w1 ~fg:(Color.of_rgb 255 0 0)
+    ~bg:(Color.of_rgb 0 0 255) ~attrs:(Attr.pack Attr.bold) ~link:"";
+  let w2 = Writer.make buf in
+  Sgr_state.update state w2 ~fg:(Color.of_rgb 255 0 0)
+    ~bg:(Color.of_rgb 0 255 0) ~attrs:(Attr.pack Attr.bold) ~link:"";
+  check_seq "background-only delta" "\x1b[48;2;0;255;0m"
+    (Bytes.to_string (Writer.slice w2))
+
+let sgr_shared_attr_disable_reenables_survivor () =
+  let buf = Bytes.create 128 in
+  let state = Sgr_state.create () in
+  let w1 = Writer.make buf in
+  let bold_dim = Attr.union Attr.bold Attr.dim in
+  Sgr_state.update state w1 ~fg:Color.default ~bg:Color.default
+    ~attrs:(Attr.pack bold_dim) ~link:"";
+  let w2 = Writer.make buf in
+  Sgr_state.update state w2 ~fg:Color.default ~bg:Color.default
+    ~attrs:(Attr.pack Attr.dim) ~link:"";
+  check_seq "bold disabled and dim restored" "\x1b[22;2m"
+    (Bytes.to_string (Writer.slice w2))
+
+let sgr_same_rgba_different_intent_emits_color_delta () =
+  let buf = Bytes.create 128 in
+  let state = Sgr_state.create () in
+  let w1 = Writer.make buf in
+  Sgr_state.update state w1 ~fg:(Color.indexed 1) ~bg:Color.default ~attrs:0
+    ~link:"";
+  let w2 = Writer.make buf in
+  Sgr_state.update state w2 ~fg:(Color.of_rgb 128 0 0) ~bg:Color.default
+    ~attrs:0 ~link:"";
+  check_seq "intent-only color delta" "\x1b[38;2;128;0;0m"
+    (Bytes.to_string (Writer.slice w2))
 
 let sgr_transparent_bg_resets () =
   let buf = Bytes.create 128 in
@@ -279,7 +327,7 @@ let sgr_transparent_bg_resets () =
   let w2 = Writer.make buf in
   Sgr_state.update state w2 ~fg:(Color.of_rgb 255 0 0) ~bg:Color.default
     ~attrs:0 ~link:"";
-  check_seq "bg cleared to default" "\x1b[0;38;2;255;0;0m"
+  check_seq "bg cleared to default" "\x1b[49m"
     (Bytes.to_string (Writer.slice w2))
 
 let sgr_transparent_fg_resets_to_default () =
@@ -294,7 +342,7 @@ let sgr_transparent_fg_resets_to_default () =
   Sgr_state.update state w2 ~fg:Color.default ~bg:Color.default ~attrs:0
     ~link:"";
   let out = Bytes.to_string (Writer.slice w2) in
-  check_seq "fg cleared to default" "\x1b[0m" out;
+  check_seq "fg cleared to default" "\x1b[39m" out;
   is_false ~msg:"default fg is not emitted as truecolor black"
     (String.contains out '3' && String.contains out '8')
 
@@ -742,6 +790,14 @@ let tests =
     group "SGR Engine"
       [
         test "state diffing" sgr_state_transitions;
+        test "foreground-only change does not reset"
+          sgr_foreground_only_change_does_not_reset;
+        test "background-only change does not reset"
+          sgr_background_only_change_does_not_reset;
+        test "shared attr disable reenables survivor"
+          sgr_shared_attr_disable_reenables_survivor;
+        test "same rgba different intent emits color delta"
+          sgr_same_rgba_different_intent_emits_color_delta;
         test "transparent bg reset" sgr_transparent_bg_resets;
         test "transparent fg reset" sgr_transparent_fg_resets_to_default;
         test "rgb downgrade to ansi256" sgr_rgb_downgrades_to_ansi256;
