@@ -484,7 +484,7 @@ let line_color_of ~theme : Patch.tag -> Line_number.line_color = function
         content =
           (match theme.context_content_bg with
           | Some _ as c -> c
-          | None -> theme.context_bg);
+          | None -> Some (Option.value theme.context_bg ~default:transparent));
       }
 
 let after_sign ~color text : Line_number.line_sign =
