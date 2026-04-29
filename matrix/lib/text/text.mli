@@ -16,6 +16,17 @@ type width_method = [ `Unicode | `Wcwidth | `No_zwj ]
 type line_break_kind = [ `LF | `CR | `CRLF ]
 (** The type for line terminators. *)
 
+type position = { byte_offset : int; grapheme_count : int; columns_used : int }
+(** The type for a byte position found by display width.
+
+    [grapheme_count] is a cluster count for [`Unicode] and [`No_zwj] and a
+    codepoint count for [`Wcwidth]. *)
+
+type grapheme = { byte_offset : int; byte_length : int; width : int }
+(** The type for a grapheme or codepoint span.
+
+    Values returned in [`Wcwidth] mode describe one codepoint. *)
+
 val measure : width_method:width_method -> tab_width:int -> string -> int
 (** [measure ~width_method ~tab_width s] is the display width of [s]. Control
     characters contribute [0].
@@ -76,3 +87,52 @@ val iter_line_breaks :
   (pos:int -> kind:line_break_kind -> unit) -> string -> unit
 (** [iter_line_breaks f s] calls [f ~pos ~kind] for each line terminator in [s],
     in order. For [`CRLF], [pos] is the position of the LF byte. *)
+
+val find_wrap_pos :
+  width_method:width_method ->
+  tab_width:int ->
+  string ->
+  max_columns:int ->
+  position
+(** [find_wrap_pos ~width_method ~tab_width s ~max_columns] is the longest
+    prefix of [s] whose display width is at most [max_columns].
+
+    If the next grapheme would exceed [max_columns], the result points to the
+    start of that grapheme. In [`Wcwidth] mode, movement is by codepoint rather
+    than by grapheme cluster. *)
+
+val find_pos :
+  width_method:width_method ->
+  tab_width:int ->
+  ?include_start_before:bool ->
+  string ->
+  columns:int ->
+  position
+(** [find_pos ~width_method ~tab_width s ~columns] is the byte position in [s]
+    corresponding to display column [columns].
+
+    By default, a wide grapheme is included only if its end column is at or
+    before [columns]. If [include_start_before] is [true], a wide grapheme is
+    included if its start column is before [columns]. *)
+
+val width_at :
+  width_method:width_method -> tab_width:int -> string -> byte_offset:int -> int
+(** [width_at ~width_method ~tab_width s ~byte_offset] is the display width of
+    the grapheme starting at [byte_offset]. Returns [0] if [byte_offset] is out
+    of bounds.
+
+    In [`Wcwidth] mode, the result is the width of the codepoint starting at
+    [byte_offset]. *)
+
+val prev_grapheme :
+  width_method:width_method ->
+  tab_width:int ->
+  string ->
+  byte_offset:int ->
+  grapheme option
+(** [prev_grapheme ~width_method ~tab_width s ~byte_offset] is the grapheme
+    immediately before [byte_offset], if any.
+
+    If [byte_offset] falls inside a grapheme, that containing grapheme is
+    returned. In [`Wcwidth] mode, the result is the previous non-zero-width
+    codepoint. *)

@@ -2,6 +2,8 @@ open StdLabels
 
 type width_method = [ `Unicode | `Wcwidth | `No_zwj ]
 type line_break_kind = [ `LF | `CR | `CRLF ]
+type position = { byte_offset : int; grapheme_count : int; columns_used : int }
+type grapheme = { byte_offset : int; byte_length : int; width : int }
 
 let default_tab_width = 2
 
@@ -226,6 +228,189 @@ let iter_grapheme_info ~width_method ~tab_width f str =
           else loop end_pos
     in
     loop 0
+
+(* Width-position helpers *)
+
+let zero_position = { byte_offset = 0; grapheme_count = 0; columns_used = 0 }
+
+let[@inline] decode_codepoint str pos =
+  let d = Stdlib.String.get_utf_8_uchar str pos in
+  let len = Uchar.utf_decode_length d in
+  (Uchar.to_int (Uchar.utf_decode_uchar d), len)
+
+let find_wrap_pos_grapheme ~width_method ~tab_width str ~max_columns =
+  let len = Stdlib.String.length str in
+  if len = 0 || max_columns <= 0 then zero_position
+  else
+    let seg = Uuseg_grapheme_cluster.create () in
+    let ignore_zwj = width_method = `No_zwj in
+    let rec loop offset count columns =
+      if offset >= len then
+        { byte_offset = len; grapheme_count = count; columns_used = columns }
+      else
+        let end_pos = next_boundary seg ~ignore_zwj str offset len in
+        let width =
+          cluster_width ~method_:width_method ~tab_width str offset
+            (end_pos - offset)
+        in
+        if width <= 0 then loop end_pos count columns
+        else
+          let next_columns = columns + width in
+          if next_columns > max_columns then
+            {
+              byte_offset = offset;
+              grapheme_count = count;
+              columns_used = columns;
+            }
+          else loop end_pos (count + 1) next_columns
+    in
+    loop 0 0 0
+
+let find_pos_grapheme ~width_method ~tab_width ~include_start_before str
+    ~columns =
+  let len = Stdlib.String.length str in
+  if len = 0 || columns <= 0 then zero_position
+  else
+    let seg = Uuseg_grapheme_cluster.create () in
+    let ignore_zwj = width_method = `No_zwj in
+    let rec loop offset count used =
+      if offset >= len then
+        { byte_offset = len; grapheme_count = count; columns_used = used }
+      else
+        let end_pos = next_boundary seg ~ignore_zwj str offset len in
+        let width =
+          cluster_width ~method_:width_method ~tab_width str offset
+            (end_pos - offset)
+        in
+        if width <= 0 then loop end_pos count used
+        else
+          let next_used = used + width in
+          if
+            (include_start_before && used >= columns)
+            || ((not include_start_before) && next_used > columns)
+          then
+            {
+              byte_offset = offset;
+              grapheme_count = count;
+              columns_used = used;
+            }
+          else loop end_pos (count + 1) next_used
+    in
+    loop 0 0 0
+
+let find_wrap_pos_wcwidth ~tab_width str ~max_columns =
+  let len = Stdlib.String.length str in
+  if len = 0 || max_columns <= 0 then zero_position
+  else
+    let rec loop pos count columns =
+      if pos >= len then
+        { byte_offset = len; grapheme_count = count; columns_used = columns }
+      else
+        let cp, cp_len = decode_codepoint str pos in
+        let width = codepoint_width_wcwidth ~tab_width cp in
+        if columns >= max_columns || columns + width > max_columns then
+          { byte_offset = pos; grapheme_count = count; columns_used = columns }
+        else loop (pos + cp_len) (count + 1) (columns + width)
+    in
+    loop 0 0 0
+
+let find_pos_wcwidth ~tab_width ~include_start_before str ~columns =
+  let len = Stdlib.String.length str in
+  if len = 0 || columns <= 0 then zero_position
+  else
+    let rec loop pos count used =
+      if pos >= len then
+        { byte_offset = len; grapheme_count = count; columns_used = used }
+      else
+        let cp, cp_len = decode_codepoint str pos in
+        let width = codepoint_width_wcwidth ~tab_width cp in
+        let next_used = used + width in
+        if
+          (include_start_before && used >= columns)
+          || ((not include_start_before) && next_used > columns)
+        then { byte_offset = pos; grapheme_count = count; columns_used = used }
+        else loop (pos + cp_len) (count + 1) next_used
+    in
+    loop 0 0 0
+
+let find_wrap_pos ~width_method ~tab_width str ~max_columns =
+  let tab_width = normalize_tab_width tab_width in
+  match width_method with
+  | `Wcwidth -> find_wrap_pos_wcwidth ~tab_width str ~max_columns
+  | `Unicode | `No_zwj ->
+      find_wrap_pos_grapheme ~width_method ~tab_width str ~max_columns
+
+let find_pos ~width_method ~tab_width ?(include_start_before = false) str
+    ~columns =
+  let tab_width = normalize_tab_width tab_width in
+  match width_method with
+  | `Wcwidth -> find_pos_wcwidth ~tab_width ~include_start_before str ~columns
+  | `Unicode | `No_zwj ->
+      find_pos_grapheme ~width_method ~tab_width ~include_start_before str
+        ~columns
+
+let width_at ~width_method ~tab_width str ~byte_offset =
+  let tab_width = normalize_tab_width tab_width in
+  let len = Stdlib.String.length str in
+  if byte_offset < 0 || byte_offset >= len then 0
+  else
+    match width_method with
+    | `Wcwidth ->
+        let cp, _ = decode_codepoint str byte_offset in
+        codepoint_width_wcwidth ~tab_width cp
+    | `Unicode | `No_zwj ->
+        let seg = Uuseg_grapheme_cluster.create () in
+        let ignore_zwj = width_method = `No_zwj in
+        let end_pos = next_boundary seg ~ignore_zwj str byte_offset len in
+        cluster_width ~method_:width_method ~tab_width str byte_offset
+          (end_pos - byte_offset)
+
+let prev_grapheme_wcwidth ~tab_width str ~byte_offset =
+  let len = Stdlib.String.length str in
+  if byte_offset <= 0 || byte_offset > len then None
+  else
+    let rec loop pos last =
+      if pos >= byte_offset then last
+      else
+        let cp, cp_len = decode_codepoint str pos in
+        let width = codepoint_width_wcwidth ~tab_width cp in
+        let last =
+          if width > 0 then
+            Some { byte_offset = pos; byte_length = cp_len; width }
+          else last
+        in
+        loop (pos + cp_len) last
+    in
+    loop 0 None
+
+let prev_grapheme_segmented ~width_method ~tab_width str ~byte_offset =
+  let len = Stdlib.String.length str in
+  if byte_offset <= 0 || byte_offset > len then None
+  else
+    let seg = Uuseg_grapheme_cluster.create () in
+    let ignore_zwj = width_method = `No_zwj in
+    let rec loop offset candidate =
+      if offset >= len || offset >= byte_offset then candidate
+      else
+        let end_pos = next_boundary seg ~ignore_zwj str offset len in
+        let candidate = Some (offset, end_pos - offset) in
+        if end_pos >= byte_offset then candidate else loop end_pos candidate
+    in
+    match loop 0 None with
+    | None -> None
+    | Some (byte_offset, byte_length) ->
+        let width =
+          cluster_width ~method_:width_method ~tab_width str byte_offset
+            byte_length
+        in
+        Some { byte_offset; byte_length; width }
+
+let prev_grapheme ~width_method ~tab_width str ~byte_offset =
+  let tab_width = normalize_tab_width tab_width in
+  match width_method with
+  | `Wcwidth -> prev_grapheme_wcwidth ~tab_width str ~byte_offset
+  | `Unicode | `No_zwj ->
+      prev_grapheme_segmented ~width_method ~tab_width str ~byte_offset
 
 (* String Measurement *)
 

@@ -218,6 +218,20 @@ let line_break_testable =
       Format.fprintf ppf "{pos=%d; kind=%s}" pos kind_s)
     ~equal:( = ) ()
 
+let position_testable =
+  Testable.make
+    ~pp:(fun ppf { byte_offset; grapheme_count; columns_used } ->
+      Format.fprintf ppf "{byte_offset=%d; grapheme_count=%d; columns_used=%d}"
+        byte_offset grapheme_count columns_used)
+    ~equal:( = ) ()
+
+let grapheme_testable =
+  Testable.make
+    ~pp:(fun ppf { byte_offset; byte_length; width } ->
+      Format.fprintf ppf "{byte_offset=%d; byte_length=%d; width=%d}"
+        byte_offset byte_length width)
+    ~equal:( = ) ()
+
 let wrap_breaks_ascii_spaces () =
   let breaks = wrap_breaks "hello world test" in
   equal ~msg:"two breaks for two spaces" int 2 (Array.length breaks);
@@ -408,6 +422,97 @@ let line_breaks_consecutive_lf () =
   equal ~msg:"third" line_break_testable { pos = 3; kind = `LF }
     (List.nth breaks 2)
 
+let width_at_positions () =
+  equal ~msg:"empty" int 0
+    (width_at ~width_method:`Unicode ~tab_width:8 "" ~byte_offset:0);
+  equal ~msg:"out of bounds" int 0
+    (width_at ~width_method:`Unicode ~tab_width:8 "hello" ~byte_offset:10);
+  equal ~msg:"ASCII" int 1
+    (width_at ~width_method:`Unicode ~tab_width:8 "hello" ~byte_offset:1);
+  equal ~msg:"tab fixed width" int 4
+    (width_at ~width_method:`Unicode ~tab_width:4 "a\tb" ~byte_offset:1);
+  equal ~msg:"CJK" int 2
+    (width_at ~width_method:`Unicode ~tab_width:8 "世界" ~byte_offset:3);
+  equal ~msg:"combining cluster" int 1
+    (width_at ~width_method:`Unicode ~tab_width:8 "cafe\u{0301}" ~byte_offset:3);
+  equal ~msg:"ZWJ cluster" int 2
+    (width_at ~width_method:`Unicode ~tab_width:8 "👩\u{200D}🚀" ~byte_offset:0);
+  equal ~msg:"flag cluster" int 2
+    (width_at ~width_method:`Unicode ~tab_width:8 "🇺🇸" ~byte_offset:0);
+  equal ~msg:"malformed byte" int 1
+    (width_at ~width_method:`Unicode ~tab_width:8 "\xC3(" ~byte_offset:0)
+
+let wcwidth_position_semantics () =
+  let emoji = "👋🏿" in
+  equal ~msg:"wcwidth first emoji codepoint" int 2
+    (width_at ~width_method:`Wcwidth ~tab_width:4 emoji ~byte_offset:0);
+  equal ~msg:"wcwidth skin-tone codepoint" int 2
+    (width_at ~width_method:`Wcwidth ~tab_width:4 emoji ~byte_offset:4);
+  let zwj = "👩\u{200D}🚀" in
+  equal ~msg:"wcwidth ZWJ codepoint" int 0
+    (width_at ~width_method:`Wcwidth ~tab_width:4 zwj ~byte_offset:4);
+  equal ~msg:"wcwidth find_pos snap back" position_testable
+    { byte_offset = 2; grapheme_count = 2; columns_used = 2 }
+    (find_pos ~width_method:`Wcwidth ~tab_width:4 "AB👋🏿CD" ~columns:3);
+  equal ~msg:"wcwidth find_pos include start" position_testable
+    { byte_offset = 6; grapheme_count = 3; columns_used = 4 }
+    (find_pos ~width_method:`Wcwidth ~tab_width:4 ~include_start_before:true
+       "AB👋🏿CD" ~columns:3);
+  equal ~msg:"wcwidth wrap through emoji" position_testable
+    { byte_offset = 6; grapheme_count = 3; columns_used = 4 }
+    (find_wrap_pos ~width_method:`Wcwidth ~tab_width:4 "Hi👋🏿Bye" ~max_columns:4);
+  equal ~msg:"wcwidth previous skips zero-width ZWJ" (option grapheme_testable)
+    (Some { byte_offset = 7; byte_length = 4; width = 2 })
+    (prev_grapheme ~width_method:`Wcwidth ~tab_width:4 zwj ~byte_offset:11)
+
+let unicode_position_semantics () =
+  let input = "A🌍B世C" in
+  equal ~msg:"find_pos after ASCII" position_testable
+    { byte_offset = 1; grapheme_count = 1; columns_used = 1 }
+    (find_pos ~width_method:`Unicode ~tab_width:8 input ~columns:2);
+  equal ~msg:"find_pos include start before wide" position_testable
+    { byte_offset = 5; grapheme_count = 2; columns_used = 3 }
+    (find_pos ~width_method:`Unicode ~tab_width:8 ~include_start_before:true
+       input ~columns:2);
+  equal ~msg:"find_wrap_pos includes fitting wide grapheme" position_testable
+    { byte_offset = 5; grapheme_count = 2; columns_used = 3 }
+    (find_wrap_pos ~width_method:`Unicode ~tab_width:8 input ~max_columns:3);
+  equal ~msg:"find_wrap_pos stops before too-wide grapheme" position_testable
+    { byte_offset = 1; grapheme_count = 1; columns_used = 1 }
+    (find_wrap_pos ~width_method:`Unicode ~tab_width:8 input ~max_columns:2);
+  equal ~msg:"combining mark included" position_testable
+    { byte_offset = 6; grapheme_count = 4; columns_used = 4 }
+    (find_pos ~width_method:`Unicode ~tab_width:8 "cafe\u{0301}test" ~columns:4);
+  equal ~msg:"malformed offsets" position_testable
+    { byte_offset = 1; grapheme_count = 1; columns_used = 1 }
+    (find_wrap_pos ~width_method:`Unicode ~tab_width:8 "\xC3(" ~max_columns:1)
+
+let previous_grapheme_positions () =
+  equal ~msg:"at start" (option grapheme_testable) None
+    (prev_grapheme ~width_method:`Unicode ~tab_width:8 "hello" ~byte_offset:0);
+  equal ~msg:"out of bounds" (option grapheme_testable) None
+    (prev_grapheme ~width_method:`Unicode ~tab_width:8 "hello" ~byte_offset:10);
+  equal ~msg:"ASCII previous" (option grapheme_testable)
+    (Some { byte_offset = 4; byte_length = 1; width = 1 })
+    (prev_grapheme ~width_method:`Unicode ~tab_width:8 "hello" ~byte_offset:5);
+  equal ~msg:"inside CJK grapheme" (option grapheme_testable)
+    (Some { byte_offset = 1; byte_length = 3; width = 2 })
+    (prev_grapheme ~width_method:`Unicode ~tab_width:8 "a世界" ~byte_offset:2);
+  equal ~msg:"at CJK boundary returns previous" (option grapheme_testable)
+    (Some { byte_offset = 1; byte_length = 3; width = 2 })
+    (prev_grapheme ~width_method:`Unicode ~tab_width:8 "a世界" ~byte_offset:4);
+  equal ~msg:"combining cluster previous" (option grapheme_testable)
+    (Some { byte_offset = 3; byte_length = 3; width = 1 })
+    (prev_grapheme ~width_method:`Unicode ~tab_width:8 "cafe\u{0301}"
+       ~byte_offset:6);
+  equal ~msg:"emoji ZWJ previous" (option grapheme_testable)
+    (Some { byte_offset = 1; byte_length = 11; width = 2 })
+    (prev_grapheme ~width_method:`Unicode ~tab_width:8 ("a" ^ "👩\u{200D}🚀")
+       ~byte_offset:12);
+  equal ~msg:"flag previous" (option grapheme_testable)
+    (Some { byte_offset = 2; byte_length = 8; width = 2 })
+    (prev_grapheme ~width_method:`Unicode ~tab_width:8 "US🇺🇸" ~byte_offset:10)
+
 let emoji_presentation_widths () =
   let check label cp expected_w =
     check_width label expected_w
@@ -502,6 +607,13 @@ let () =
           test "empty" line_breaks_empty;
           test "no newlines" line_breaks_no_newlines;
           test "consecutive LF" line_breaks_consecutive_lf;
+        ];
+      group "Positions"
+        [
+          test "width_at" width_at_positions;
+          test "wcwidth semantics" wcwidth_position_semantics;
+          test "unicode semantics" unicode_position_semantics;
+          test "previous grapheme" previous_grapheme_positions;
         ];
       group "Width Tables"
         [

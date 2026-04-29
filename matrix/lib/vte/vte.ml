@@ -535,8 +535,9 @@ let put_text t text =
             ~col:0);
 
         if row < t.rows && t.cursor.col < line_width then
-          let cluster = String.sub text off l in
-          let w = Text.measure ~width_method ~tab_width:2 cluster in
+          let w =
+            Text.width_at ~width_method ~tab_width:2 text ~byte_offset:off
+          in
           let insert_w = min w (line_width - t.cursor.col) in
 
           if insert_w > 0 then (
@@ -561,6 +562,7 @@ let put_text t text =
 
             (* Clear the newly opened gap and draw the cluster. *)
             erase_region t ~x:t.cursor.col ~y:row ~width:insert_w ~height:1;
+            let cluster = String.sub text off l in
             Grid.draw_text t.active_grid ~x:t.cursor.col ~y:row ~text:cluster
               ~style;
             mark_row_dirty t row;
@@ -595,23 +597,11 @@ let put_text t text =
             set_cursor_pos t ~row:t.cursor.row ~col:(t.cursor.col + total_w);
             remaining := "")
           else
-            (* Need to find a prefix of [s] whose grapheme width ≤ available. *)
-            let bytes_consumed = ref 0 in
-            let width_consumed = ref 0 in
-            let stop = ref false in
-
-            Text.iter_graphemes
-              (fun ~offset:off ~len:l ->
-                if not !stop then
-                  let cluster = String.sub s off l in
-                  let w = Text.measure ~width_method ~tab_width:2 cluster in
-                  if !width_consumed + w <= available then (
-                    width_consumed := !width_consumed + w;
-                    bytes_consumed := off + l)
-                  else stop := true)
-              s;
-
-            if !bytes_consumed = 0 && len > 0 then (
+            let fit =
+              Text.find_wrap_pos ~width_method ~tab_width:2 s
+                ~max_columns:available
+            in
+            if fit.byte_offset = 0 && len > 0 then (
               (* First grapheme doesn't fit in remaining width. Defer to
                  Grid.draw_text to handle truncation/clearing semantics for this
                  line, then stop. *)
@@ -620,13 +610,13 @@ let put_text t text =
               mark_row_dirty t t.cursor.row;
               remaining := "")
             else
-              let segment = String.sub s 0 !bytes_consumed in
+              let segment = String.sub s 0 fit.byte_offset in
               Grid.draw_text t.active_grid ~x:t.cursor.col ~y:t.cursor.row
                 ~text:segment ~style;
               mark_row_dirty t t.cursor.row;
               set_cursor_pos t ~row:t.cursor.row
-                ~col:(t.cursor.col + !width_consumed);
-              remaining := String.sub s !bytes_consumed (len - !bytes_consumed)
+                ~col:(t.cursor.col + fit.columns_used);
+              remaining := String.sub s fit.byte_offset (len - fit.byte_offset)
     done
 
 (* Handle control characters *)

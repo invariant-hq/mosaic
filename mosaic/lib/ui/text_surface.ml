@@ -154,8 +154,10 @@ let wrap_word_line ~width ~tab_width ~width_method spans =
            cursor into the sorted breaks array for O(g + b) total. *)
         let wrap_points = ref [] in
         let line_width = ref 0 in
+        let absolute_col = ref 0 in
         let last_break_byte = ref 0 in
         let best_break = ref (-1) in
+        let best_break_col = ref 0 in
         let break_cursor = ref 0 in
         let nbreaks = Array.length breaks in
         Matrix.Text.iter_grapheme_info ~width_method ~tab_width
@@ -163,7 +165,10 @@ let wrap_word_line ~width ~tab_width ~width_method spans =
             (* Advance cursor past any breaks at or before this offset *)
             while !break_cursor < nbreaks && breaks.(!break_cursor) <= offset do
               if breaks.(!break_cursor) = offset && offset > !last_break_byte
-              then best_break := offset;
+              then begin
+                best_break := offset;
+                best_break_col := !absolute_col
+              end;
               incr break_cursor
             done;
             if !line_width + gw > width && !line_width > 0 then begin
@@ -176,15 +181,10 @@ let wrap_word_line ~width ~tab_width ~width_method spans =
               last_break_byte := wrap_at;
               line_width :=
                 if wrap_at = offset then gw
-                else begin
-                  (* Measure from wrap_at to current position *)
-                  let remaining =
-                    String.sub full_text wrap_at (offset - wrap_at)
-                  in
-                  Matrix.Text.measure ~width_method ~tab_width remaining + gw
-                end
+                else (!absolute_col - !best_break_col) + gw
             end
-            else line_width := !line_width + gw)
+            else line_width := !line_width + gw;
+            absolute_col := !absolute_col + gw)
           full_text;
         let wrap_points = List.rev !wrap_points in
         if wrap_points = [] then [| spans |]

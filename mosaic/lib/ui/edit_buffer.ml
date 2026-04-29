@@ -70,20 +70,18 @@ let build_cache ~width_method ~tab_width content =
   let idx = ref 0 in
   let total_width = ref 0 in
   let line_starts_rev = ref [ 0 ] in
-  (* iter_grapheme_info skips zero-width graphemes (newlines, control chars), so
-     we use iter_graphemes and measure_sub for per-grapheme width. *)
   Matrix.Text.iter_graphemes
-    (fun ~offset ~len ->
+    (fun ~offset ~len:grapheme_len ->
       let i = !idx in
       offsets.(i) <- offset;
       let w =
-        Matrix.Text.measure_sub ~width_method ~tab_width content ~pos:offset
-          ~len
+        Matrix.Text.width_at ~width_method ~tab_width content
+          ~byte_offset:offset
       in
       widths.(i) <- w;
       total_width := !total_width + w;
       let c = String.unsafe_get content offset in
-      if c = '\n' || c = '\r' then
+      if grapheme_len > 0 && (c = '\n' || c = '\r') then
         line_starts_rev := (i + 1) :: !line_starts_rev;
       incr idx)
     content;
