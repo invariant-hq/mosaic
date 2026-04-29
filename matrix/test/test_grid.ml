@@ -508,10 +508,10 @@ let draw_text_blends_fg_alpha_over_opaque_bg () =
   is_true ~msg:"blue component preserved" (b > 0);
   is_true ~msg:"red component applied" (r > 0)
 
-let blit_region_blends_without_respect_alpha () =
+let blit_region_copies_alpha_when_source_ignores_alpha () =
   let src = Grid.create ~width:1 ~height:1 () in
   let semi_red = Ansi.Color.of_rgba 255 0 0 128 in
-  Grid.set_cell ~blend:true src ~x:0 ~y:0
+  Grid.set_cell src ~x:0 ~y:0
     ~cell:(Grid.Cell.of_uchar (Uchar.of_char 'R'))
     ~fg:Ansi.Color.white ~bg:semi_red ~attrs:Ansi.Attr.empty ();
   let dst = Grid.create ~width:1 ~height:1 () in
@@ -520,9 +520,27 @@ let blit_region_blends_without_respect_alpha () =
   Grid.blit_region ~src ~dst ~src_x:0 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
     ~dst_y:0;
   let r, _g, b, a = read_bg dst 0 0 in
+  equal ~msg:"char copied" int (Char.code 'R') (read_char dst 0 0);
+  equal ~msg:"source red copied" int 255 r;
+  equal ~msg:"destination blue overwritten" int 0 b;
+  equal ~msg:"source alpha copied" int 128 a
+
+let blit_region_blends_when_source_respects_alpha () =
+  let src = Grid.create ~width:1 ~height:1 ~respect_alpha:true () in
+  let semi_red = Ansi.Color.of_rgba 255 0 0 128 in
+  Grid.set_cell ~blend:false src ~x:0 ~y:0
+    ~cell:(Grid.Cell.of_uchar (Uchar.of_char 'R'))
+    ~fg:Ansi.Color.white ~bg:semi_red ~attrs:Ansi.Attr.empty ();
+  let dst = Grid.create ~width:1 ~height:1 () in
+  let opaque_blue = Ansi.Color.of_rgba 0 0 255 255 in
+  Grid.fill_rect dst ~x:0 ~y:0 ~width:1 ~height:1 ~color:opaque_blue;
+  Grid.blit_region ~src ~dst ~src_x:0 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
+    ~dst_y:0;
+  let r, _g, b, a = read_bg dst 0 0 in
+  equal ~msg:"char copied" int (Char.code 'R') (read_char dst 0 0);
   is_true ~msg:"background blended keeps blue" (b > 0 && b < 255);
   is_true ~msg:"background blended adds red" (r > 0 && r < 255);
-  equal ~msg:"alpha preserved" int 128 a
+  equal ~msg:"matrix blend alpha policy" int 128 a
 
 let scissor_push_intersects_parent () =
   let grid = Grid.create ~width:4 ~height:1 () in
@@ -732,16 +750,32 @@ let blit_region_clears_right_truncated_wide_start () =
     (read_char dst 0 0);
   equal ~msg:"width reset" int 1 (read_width dst 0 0)
 
-let blit_region_transparent_source_cell_terminates () =
+let blit_region_copies_transparent_source_without_respect_alpha () =
   let src = Grid.create ~width:1 ~height:1 () in
   let transparent = Ansi.Color.of_rgba 0 0 0 0 in
   Grid.set_cell src ~x:0 ~y:0
     ~cell:(Grid.Cell.of_uchar (Uchar.of_char 'T'))
     ~fg:transparent ~bg:transparent ~attrs:Ansi.Attr.empty ();
   let dst = Grid.create ~width:1 ~height:1 () in
+  Grid.draw_text dst ~x:0 ~y:0 ~text:"D";
   Grid.blit_region ~src ~dst ~src_x:0 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
     ~dst_y:0;
-  equal ~msg:"transparent source skipped" int (Char.code ' ')
+  equal ~msg:"transparent source copied" int (Char.code 'T')
+    (read_char dst 0 0);
+  let _r, _g, _b, a = read_bg dst 0 0 in
+  equal ~msg:"transparent background copied" int 0 a
+
+let blit_region_skips_transparent_source_with_respect_alpha () =
+  let src = Grid.create ~width:1 ~height:1 ~respect_alpha:true () in
+  let transparent = Ansi.Color.of_rgba 0 0 0 0 in
+  Grid.set_cell ~blend:false src ~x:0 ~y:0
+    ~cell:(Grid.Cell.of_uchar (Uchar.of_char 'T'))
+    ~fg:transparent ~bg:transparent ~attrs:Ansi.Attr.empty ();
+  let dst = Grid.create ~width:1 ~height:1 () in
+  Grid.draw_text dst ~x:0 ~y:0 ~text:"D";
+  Grid.blit_region ~src ~dst ~src_x:0 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
+    ~dst_y:0;
+  equal ~msg:"transparent source skipped" int (Char.code 'D')
     (read_char dst 0 0)
 
 let to_ansi_handles_empty_glyph () =
@@ -1137,8 +1171,10 @@ let tests =
       fill_rect_clears_inline_wide_continuation;
     test "blit_region clears right-truncated wide start"
       blit_region_clears_right_truncated_wide_start;
-    test "blit_region transparent source cell terminates"
-      blit_region_transparent_source_cell_terminates;
+    test "blit_region copies transparent source without respect_alpha"
+      blit_region_copies_transparent_source_without_respect_alpha;
+    test "blit_region skips transparent source with respect_alpha"
+      blit_region_skips_transparent_source_with_respect_alpha;
     test "to_ansi handles empty glyph" to_ansi_handles_empty_glyph;
     test "to_ansi handles orphan continuation"
       to_ansi_handles_orphan_continuation;
@@ -1191,8 +1227,10 @@ let tests =
       resize_shrink_clips_stored_grapheme;
     test "draw_text blends FG alpha over opaque BG"
       draw_text_blends_fg_alpha_over_opaque_bg;
-    test "blit_region blends semi-transparent src without respect_alpha"
-      blit_region_blends_without_respect_alpha;
+    test "blit_region copies alpha when source ignores alpha"
+      blit_region_copies_alpha_when_source_ignores_alpha;
+    test "blit_region blends when source respects alpha"
+      blit_region_blends_when_source_respects_alpha;
     test "scissor push intersects parent" scissor_push_intersects_parent;
     (* Alpha overlay semantics *)
     test "semi-transparent overlay preserves text and tints fg" (fun () ->
