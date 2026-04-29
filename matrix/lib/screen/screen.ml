@@ -72,6 +72,22 @@ type t = {
 
 let[@inline] width_step w = if w <= 0 then 1 else w
 let[@inline] clamp_height grid height = max 0 (min (Grid.height grid) height)
+let default_render_buffer_size = 2 * 1024 * 1024
+let err_writer_overflow = "Writer: buffer overflow"
+let err_writer_overflow_len = String.length err_writer_overflow
+
+let has_prefix s prefix prefix_len =
+  let rec loop i =
+    if i = prefix_len then true
+    else if s.[i] <> prefix.[i] then false
+    else loop (i + 1)
+  in
+  String.length s >= prefix_len && loop 0
+
+let is_writer_overflow = function
+  | Invalid_argument msg ->
+      has_prefix msg err_writer_overflow err_writer_overflow_len
+  | _ -> false
 
 (* --- Writer Logic --- *)
 
@@ -455,18 +471,21 @@ let render_to_bytes ?(full = false) ?scroll_hint ?viewport frame bytes =
 let render ?(full = false) ?scroll_hint ?viewport frame =
   let mode = if full then `Full else `Diff in
   let prepared = prepare_frame frame in
-  let counter = Ansi.Writer.make_counting () in
-  let counted =
-    emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer:counter
+  let emit_to_string bytes =
+    let writer = Ansi.Writer.make bytes in
+    let emitted =
+      emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer
+    in
+    commit_frame frame emitted;
+    Bytes.sub_string bytes ~pos:0 ~len:emitted.output_len
   in
-  let bytes = Bytes.create counted.output_len in
-  let writer = Ansi.Writer.make bytes in
-  let emitted =
-    emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer
-  in
-  commit_frame frame emitted;
-  let len = emitted.output_len in
-  Bytes.sub_string bytes ~pos:0 ~len
+  try emit_to_string (Bytes.create default_render_buffer_size) with
+  | exn when is_writer_overflow exn ->
+      let counter = Ansi.Writer.make_counting () in
+      let counted =
+        emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer:counter
+      in
+      emit_to_string (Bytes.create counted.output_len)
 
 (* Creation & Management *)
 
