@@ -604,8 +604,9 @@ let submit ?primary_required_rows t =
     (match active_h with
     | Some active ->
         let offset = Primary.render_offset t.primary in
-        buf_cursor_position buf ~row:(offset + active + 1) ~col:1;
-        Buffer.add_string buf Ansi.(to_string erase_below_cursor)
+        if offset + active < t.height then (
+          buf_cursor_position buf ~row:(offset + active + 1) ~col:1;
+          Buffer.add_string buf Ansi.(to_string erase_below_cursor))
     | None -> ());
 
     (* Skip the write when nothing beyond the preamble was produced and cursor

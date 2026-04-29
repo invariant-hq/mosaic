@@ -429,6 +429,24 @@ let test_static_clear_resets_primary_layout () =
   equal ~msg:"effective size also reset" (pair int int) (80, 24)
     (Matrix.effective_size app)
 
+let test_primary_full_redraw_does_not_erase_past_terminal_bottom () =
+  let app, state =
+    make_app ~mode:`Primary ~render_offset:10 ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  let _w, live_height = Matrix.size app in
+  equal ~msg:"test setup uses 14 live rows" int 14 live_height;
+  Matrix.prepare app;
+  let grid = Matrix.grid app in
+  Matrix.Grid.resize grid ~width:(Matrix.Grid.width grid) ~height:live_height;
+  Matrix.Grid.draw_text grid ~x:0 ~y:(live_height - 1) ~text:"Elapsed: 5.5s";
+  Matrix.submit app;
+  let output = output state in
+  is_true ~msg:"bottom live row is rendered"
+    (contains_substring "Elapsed: 5.5s" output);
+  is_false ~msg:"full redraw must not erase from one row past terminal bottom"
+    (contains_substring "\027[25;1H\027[J" output)
+
 let test_primary_mouse_event_is_offset_into_live_region () =
   let app, _state =
     make_app ~mode:`Primary ~render_offset:10 ~target_fps:None
@@ -506,6 +524,8 @@ let () =
             test_primary_effective_size_tracks_pending_static;
           test "static_clear resets primary layout"
             test_static_clear_resets_primary_layout;
+          test "primary full redraw does not erase past terminal bottom"
+            test_primary_full_redraw_does_not_erase_past_terminal_bottom;
         ];
       group "Primary static output"
         [
