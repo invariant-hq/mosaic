@@ -16,7 +16,6 @@ module Buf = struct
   let[@inline] set arr i v = Bigarray.Array1.unsafe_set arr i v
   let fill = Bigarray.Array1.fill
   let blit = Bigarray.Array1.blit
-  let sub = Bigarray.Array1.sub
   let dim = Bigarray.Array1.dim
 
   let[@inline] get_cell arr i =
@@ -27,6 +26,37 @@ module Buf = struct
 
   let fill_cell arr (v : Packed_cell.t) =
     Bigarray.Array1.fill arr (Packed_cell.to_int v)
+
+  let[@inline] blit_range src ~src_pos dst ~dst_pos ~len =
+    if src == dst && src_pos < dst_pos then
+      for i = len - 1 downto 0 do
+        set dst (dst_pos + i) (get src (src_pos + i))
+      done
+    else
+      for i = 0 to len - 1 do
+        set dst (dst_pos + i) (get src (src_pos + i))
+      done
+
+  let[@inline] fill_range arr ~pos ~len v =
+    for i = pos to pos + len - 1 do
+      set arr i v
+    done
+
+  let[@inline] blit_cell_range src ~src_pos dst ~dst_pos ~len =
+    if src == dst && src_pos < dst_pos then
+      for i = len - 1 downto 0 do
+        set_cell dst (dst_pos + i) (get_cell src (src_pos + i))
+      done
+    else
+      for i = 0 to len - 1 do
+        set_cell dst (dst_pos + i) (get_cell src (src_pos + i))
+      done
+
+  let[@inline] fill_cell_range arr ~pos ~len v =
+    let v = Packed_cell.to_int v in
+    for i = pos to pos + len - 1 do
+      set arr i v
+    done
 end
 
 module Color_plane = struct
@@ -454,21 +484,16 @@ let resize t ~width ~height =
     let copy_h = min old_h height in
     for y = 0 to copy_h - 1 do
       let src_off = y * old_w and dst_off = y * width in
-      Buf.blit
-        (Buf.sub old_chars src_off copy_w)
-        (Buf.sub new_chars dst_off copy_w);
-      Buf.blit
-        (Buf.sub old_attrs src_off copy_w)
-        (Buf.sub new_attrs dst_off copy_w);
-      Buf.blit
-        (Buf.sub old_links src_off copy_w)
-        (Buf.sub new_links dst_off copy_w);
-      Buf.blit
-        (Buf.sub old_fg_color src_off copy_w)
-        (Buf.sub new_fg_color dst_off copy_w);
-      Buf.blit
-        (Buf.sub old_bg_color src_off copy_w)
-        (Buf.sub new_bg_color dst_off copy_w)
+      Buf.blit_cell_range old_chars ~src_pos:src_off new_chars
+        ~dst_pos:dst_off ~len:copy_w;
+      Buf.blit_range old_attrs ~src_pos:src_off new_attrs ~dst_pos:dst_off
+        ~len:copy_w;
+      Buf.blit_range old_links ~src_pos:src_off new_links ~dst_pos:dst_off
+        ~len:copy_w;
+      Buf.blit_range old_fg_color ~src_pos:src_off new_fg_color
+        ~dst_pos:dst_off ~len:copy_w;
+      Buf.blit_range old_bg_color ~src_pos:src_off new_bg_color
+        ~dst_pos:dst_off ~len:copy_w
     done;
 
     t.width <- width;
@@ -625,6 +650,31 @@ let set_cell t ~x ~y ~(cell : Cell.t) ~fg ~bg ~attrs ?link
 
 (* {1 Bulk operations} *)
 
+let fill_opaque_rect t ~x0 ~y0 ~width ~height ~bg_color =
+  if x0 = 0 && y0 = 0 && width = t.width && height = t.height then begin
+    Grapheme_tracker.clear t.grapheme_tracker;
+    Links.clear t.link_registry;
+    Buf.fill_cell t.chars space_cell;
+    Buf.fill t.attrs 0;
+    Buf.fill t.links no_link;
+    Buf.fill t.fg_color default_fg_packed;
+    Buf.fill t.bg_color bg_color
+  end
+  else
+    let y1 = y0 + height - 1 in
+    for row = y0 to y1 do
+      let start_idx = (row * t.width) + x0 in
+      let end_idx = start_idx + width - 1 in
+      for i = start_idx to end_idx do
+        cleanup_overwritten_cell t i
+      done;
+      Buf.fill_cell_range t.chars ~pos:start_idx ~len:width space_cell;
+      Buf.fill_range t.attrs ~pos:start_idx ~len:width 0;
+      Buf.fill_range t.links ~pos:start_idx ~len:width no_link;
+      Buf.fill_range t.fg_color ~pos:start_idx ~len:width default_fg_packed;
+      Buf.fill_range t.bg_color ~pos:start_idx ~len:width bg_color
+    done
+
 let clear_rect ?color t ~x ~y ~width ~height =
   match clip_rect_to_grid t Rect.{ x; y; width; height } with
   | None -> ()
@@ -632,21 +682,8 @@ let clear_rect ?color t ~x ~y ~width ~height =
       let bg_color =
         Option.value color ~default:default_bg |> Color_packed.encode
       in
-      let x0 = r.Rect.x and w = r.Rect.width in
-      let y0 = r.Rect.y in
-      let y1 = y0 + r.Rect.height - 1 in
-      for row = y0 to y1 do
-        let start_idx = (row * t.width) + x0 in
-        let end_idx = start_idx + w - 1 in
-        for i = start_idx to end_idx do
-          cleanup_overwritten_cell t i
-        done;
-        Buf.fill_cell (Buf.sub t.chars start_idx w) space_cell;
-        Buf.fill (Buf.sub t.attrs start_idx w) 0;
-        Buf.fill (Buf.sub t.links start_idx w) no_link;
-        Buf.fill (Buf.sub t.fg_color start_idx w) default_fg_packed;
-        Buf.fill (Buf.sub t.bg_color start_idx w) bg_color
-      done
+      fill_opaque_rect t ~x0:r.x ~y0:r.y ~width:r.width ~height:r.height
+        ~bg_color
 
 let fill_rect t ~x ~y ~width ~height ~color =
   match clip_rect_to_grid t Rect.{ x; y; width; height } with
@@ -712,20 +749,7 @@ let fill_rect t ~x ~y ~width ~height ~color =
         done
       else begin
         (* Opaque: fast bulk fill *)
-        for row = y0 to y1 do
-          let start_idx = (row * t.width) + x0 in
-          let end_idx = start_idx + w - 1 in
-
-          for i = start_idx to end_idx do
-            cleanup_overwritten_cell t i
-          done;
-
-          Buf.fill_cell (Buf.sub t.chars start_idx w) space_cell;
-          Buf.fill (Buf.sub t.attrs start_idx w) 0;
-          Buf.fill (Buf.sub t.links start_idx w) no_link;
-          Buf.fill (Buf.sub t.fg_color start_idx w) default_fg_packed;
-          Buf.fill (Buf.sub t.bg_color start_idx w) bg_color
-        done
+        fill_opaque_rect t ~x0 ~y0 ~width:w ~height:r.height ~bg_color
       end
 
 let blit ~src ~dst =
@@ -846,22 +870,20 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
 
         (* Full-width self-blit (scrolling) uses fast bulk copy *)
         if same_grid && src_x = 0 && dst_x = 0 && width = src.width then begin
-          let i = ref y_start in
-          while !i <> y_limit do
-            let sy = src_y + !i and dy = dst_y + !i in
-            let si = sy * src.width and di = dy * dst.width in
-            bulk_update_graphemes src ~src_idx:si ~dst_idx:di ~len:width;
-            Buf.blit (Buf.sub src.chars si width) (Buf.sub dst.chars di width);
-            Buf.blit (Buf.sub src.attrs si width) (Buf.sub dst.attrs di width);
-            Buf.blit (Buf.sub src.links si width) (Buf.sub dst.links di width);
-            Buf.blit
-              (Buf.sub src.fg_color si width)
-              (Buf.sub dst.fg_color di width);
-            Buf.blit
-              (Buf.sub src.bg_color si width)
-              (Buf.sub dst.bg_color di width);
-            i := !i + y_step
-          done
+          let si = src_y * src.width in
+          let di = dst_y * dst.width in
+          let len = width * height in
+          bulk_update_graphemes src ~src_idx:si ~dst_idx:di ~len;
+          Buf.blit (Bigarray.Array1.sub src.chars si len)
+            (Bigarray.Array1.sub dst.chars di len);
+          Buf.blit (Bigarray.Array1.sub src.attrs si len)
+            (Bigarray.Array1.sub dst.attrs di len);
+          Buf.blit (Bigarray.Array1.sub src.links si len)
+            (Bigarray.Array1.sub dst.links di len);
+          Buf.blit (Bigarray.Array1.sub src.fg_color si len)
+            (Bigarray.Array1.sub dst.fg_color di len);
+          Buf.blit (Bigarray.Array1.sub src.bg_color si len)
+            (Bigarray.Array1.sub dst.bg_color di len)
         end
         else begin
           (* General blit: cell-by-cell with cross-store support *)

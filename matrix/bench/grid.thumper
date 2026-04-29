@@ -4,28 +4,28 @@
 # host: 3b8ae6dbe74c4269
 # cpu: Apple M1 Max
 # ocaml: 5.4.1
-# git: 1caf64bf
+# git: c2bb02fc
 # dirty: true
-# command: _build/default/matrix/bench/bench_grid.exe --ci --bless --baseline matrix/bench/grid.thumper
+# command: /Users/tmattio/Workspace/mosaic/_build/default/matrix/bench/bench_grid.exe --ci --bless --baseline matrix/bench/grid.thumper
 
-grid/grid_draw_text_ascii-full-screen	alloc_words	1.108320e+05	1.108320e+05	1.108320e+05	0.000000e+00	30	0
-grid/grid_draw_text_ascii-full-screen	cpu_time	3.856197e-04	3.836853e-04	3.879744e-04	5.561396e-03	30	2
-grid/grid_draw_text_ascii-full-screen	wall_time	3.860898e-04	3.841100e-04	3.886156e-04	5.834944e-03	30	1
-grid/grid_draw_text_emoji-full-screen	alloc_words	4.747200e+04	4.747200e+04	4.747200e+04	0.000000e+00	30	0
-grid/grid_draw_text_emoji-full-screen	cpu_time	2.698487e-04	2.685110e-04	2.719281e-04	6.331561e-03	30	3
-grid/grid_draw_text_emoji-full-screen	wall_time	2.707971e-04	2.690644e-04	2.743060e-04	9.678021e-03	30	2
-grid/grid_fill_rect_opaque-full	alloc_words	1.710000e+03	1.710000e+03	1.710000e+03	0.000000e+00	30	0
-grid/grid_fill_rect_opaque-full	cpu_time	5.595754e-05	5.575450e-05	5.614833e-05	3.518964e-03	30	0
-grid/grid_fill_rect_opaque-full	wall_time	5.647515e-05	5.588462e-05	5.768427e-05	1.593317e-02	30	2
-grid/grid_fill_rect_translucent-overlay	alloc_words	6.147000e+04	6.147000e+04	6.147000e+04	0.000000e+00	30	0
-grid/grid_fill_rect_translucent-overlay	cpu_time	7.604639e-04	7.578213e-04	7.625546e-04	3.112144e-03	30	1
-grid/grid_fill_rect_translucent-overlay	wall_time	7.610830e-04	7.584301e-04	7.633589e-04	3.237962e-03	30	0
-grid/grid_partial_update_sparse-cells	alloc_words	1.600000e+02	1.600000e+02	1.600000e+02	0.000000e+00	30	0
-grid/grid_partial_update_sparse-cells	cpu_time	5.211442e-07	5.193037e-07	5.226813e-07	3.240592e-03	30	0
-grid/grid_partial_update_sparse-cells	wall_time	5.240291e-07	5.222141e-07	5.259670e-07	3.580779e-03	30	1
-grid/grid_partial_update_status-line	alloc_words	9.910000e+02	9.910000e+02	9.910000e+02	0.000000e+00	32	2
-grid/grid_partial_update_status-line	cpu_time	3.840967e-06	3.831126e-06	3.858747e-06	3.595661e-03	32	2
-grid/grid_partial_update_status-line	wall_time	3.872620e-06	3.850986e-06	3.922745e-06	9.264868e-03	32	2
-grid/grid_scroll_terminal-region	alloc_words	1.122200e+05	1.122200e+05	1.122200e+05	0.000000e+00	42	1
-grid/grid_scroll_terminal-region	cpu_time	5.937315e-04	5.918182e-04	5.960773e-04	3.586769e-03	42	1
-grid/grid_scroll_terminal-region	wall_time	5.993124e-04	5.954900e-04	6.054075e-04	8.274058e-03	42	3
+grid/grid_draw_text_ascii-full-screen	alloc_words	1.972800e+04	1.972800e+04	1.972800e+04	0.000000e+00	30	0
+grid/grid_draw_text_ascii-full-screen	cpu_time	3.661680e-04	3.633636e-04	3.693138e-04	8.125078e-03	30	1
+grid/grid_draw_text_ascii-full-screen	wall_time	3.671241e-04	3.638981e-04	3.704673e-04	8.946931e-03	30	0
+grid/grid_draw_text_emoji-full-screen	alloc_words	1.051200e+04	1.051200e+04	1.051200e+04	0.000000e+00	33	0
+grid/grid_draw_text_emoji-full-screen	cpu_time	2.554037e-04	2.529836e-04	2.596895e-04	1.312793e-02	33	1
+grid/grid_draw_text_emoji-full-screen	wall_time	2.595629e-04	2.535298e-04	2.730968e-04	3.769224e-02	33	1
+grid/grid_fill_rect_opaque-full	alloc_words	3.900000e+01	3.900000e+01	3.900000e+01	0.000000e+00	56	4
+grid/grid_fill_rect_opaque-full	cpu_time	3.597879e-06	3.418628e-06	3.756518e-06	4.695672e-02	56	0
+grid/grid_fill_rect_opaque-full	wall_time	3.629273e-06	3.436401e-06	3.804672e-06	5.073619e-02	56	1
+grid/grid_fill_rect_translucent-overlay	alloc_words	1.075500e+05	1.075500e+05	1.075500e+05	0.000000e+00	30	0
+grid/grid_fill_rect_translucent-overlay	cpu_time	7.715749e-04	7.675108e-04	7.785037e-04	7.123685e-03	30	1
+grid/grid_fill_rect_translucent-overlay	wall_time	7.736882e-04	7.689959e-04	7.828683e-04	8.965106e-03	30	2
+grid/grid_partial_update_sparse-cells	alloc_words	1.440000e+02	1.440000e+02	1.440000e+02	0.000000e+00	30	0
+grid/grid_partial_update_sparse-cells	cpu_time	5.163639e-07	5.127218e-07	5.240652e-07	1.098395e-02	30	0
+grid/grid_partial_update_sparse-cells	wall_time	5.185746e-07	5.130046e-07	5.296146e-07	1.601502e-02	30	2
+grid/grid_partial_update_status-line	alloc_words	2.510000e+02	2.510000e+02	2.510000e+02	0.000000e+00	30	0
+grid/grid_partial_update_status-line	cpu_time	3.466014e-06	3.448057e-06	3.490954e-06	6.188192e-03	30	1
+grid/grid_partial_update_status-line	wall_time	3.479480e-06	3.457078e-06	3.513638e-06	8.127746e-03	30	1
+grid/grid_scroll_terminal-region	alloc_words	1.008000e+04	1.008000e+04	1.008000e+04	0.000000e+00	30	0
+grid/grid_scroll_terminal-region	cpu_time	3.926500e-04	3.894390e-04	3.977349e-04	1.056394e-02	30	5
+grid/grid_scroll_terminal-region	wall_time	3.944085e-04	3.906409e-04	3.999811e-04	1.184074e-02	30	3
