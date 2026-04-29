@@ -6,8 +6,6 @@
 
 (* Vendored from uuseg v17.0.0 with the following modifications:
    - Added [reset] function for segmenter reuse (zero allocation)
-   - Added [ignore_zwj] option to disable GB11 (emoji ZWJ sequences)
-   - Added [set_ignore_zwj] to change the option after creation
    - Added [check_boundary] for zero-allocation direct boundary checks
    - Changed [break] and [update_left] to take pre-computed [is_extpic] flag
 *)
@@ -79,17 +77,15 @@ type t =
     mutable left : gcb;            (* break property value left of boundary. *)
     mutable left_odd_ri : bool;             (* odd number of RI on the left. *)
     mutable left_emoji_seq : bool;                 (* emoji seq on the left. *)
-    mutable buf : [ `Uchar of Uchar.t ];                  (* bufferized add. *)
-    mutable ignore_zwj : bool }             (* if true, disable GB11 rule. *)
+    mutable buf : [ `Uchar of Uchar.t ] }                 (* bufferized add. *)
 
 let nul_buf = `Uchar (Uchar.unsafe_of_int 0x0000)
 
-let create ?(ignore_zwj = false) () =
+let create () =
   { state = Fill;
     left_gb9c = Reset;
     left = Sot; left_odd_ri = false; left_emoji_seq = false;
-    buf = nul_buf (* overwritten *);
-    ignore_zwj }
+    buf = nul_buf (* overwritten *) }
 
 let copy s = { s with state = s.state; }
 let equal = ( = )
@@ -100,9 +96,6 @@ let reset s =
   s.left <- Sot;
   s.left_odd_ri <- false;
   s.left_emoji_seq <- false
-  (* Note: ignore_zwj is preserved across reset *)
-
-let set_ignore_zwj s v = s.ignore_zwj <- v
 
 let gb9c_match s right_incb = match s.left_gb9c, right_incb with
 | Has_linker, Consonant -> true
@@ -121,7 +114,7 @@ let break s right right_incb ~is_extpic = match s.left, right with
 | (* GB9+a *) _, (EX|ZWJ|SM) -> false
 | (* GB9b *)  PP, _ -> false
 | (* GB9c *)  _, _ when gb9c_match s right_incb -> false
-| (* GB11 *)  ZWJ, _ when (not s.ignore_zwj) && s.left_emoji_seq && is_extpic -> false
+| (* GB11 *)  ZWJ, _ when s.left_emoji_seq && is_extpic -> false
 | (* GB12+13 *) RI, RI when s.left_odd_ri -> false
 | (* GB999 *) _, _ -> true
 

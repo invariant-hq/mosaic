@@ -1,6 +1,6 @@
 open StdLabels
 
-type width_method = [ `Unicode | `Wcwidth | `No_zwj ]
+type width_method = [ `Unicode | `Wcwidth ]
 type line_break_kind = [ `LF | `CR | `CRLF ]
 type position = { byte_offset : int; grapheme_count : int; columns_used : int }
 type grapheme = { byte_offset : int; byte_length : int; width : int }
@@ -125,8 +125,7 @@ let cluster_width ~method_ ~tab_width str off len =
   let limit = off + len in
   match method_ with
   | `Wcwidth -> grapheme_width_wcwidth_loop str limit tab_width off 0
-  | `Unicode | `No_zwj ->
-      grapheme_width_unicode_loop str limit tab_width off 0 0
+  | `Unicode -> grapheme_width_unicode_loop str limit tab_width off 0 0
 
 (* Grapheme Segmentation *)
 
@@ -139,13 +138,11 @@ let rec find_boundary_loop seg str limit pos =
     else find_boundary_loop seg str limit (pos + Uchar.utf_decode_length d)
 
 (* Find the next grapheme cluster boundary starting at [start]. Returns the byte
-   offset after the grapheme cluster. When [ignore_zwj] is true, GB11 is
-   disabled (no emoji ZWJ sequences). *)
-let next_boundary seg ~ignore_zwj str start limit =
+   offset after the grapheme cluster. *)
+let next_boundary seg str start limit =
   if start >= limit then limit
   else (
     Uuseg_grapheme_cluster.reset seg;
-    Uuseg_grapheme_cluster.set_ignore_zwj seg ignore_zwj;
     let d = String.get_utf_8_uchar str start in
     let u = Uchar.utf_decode_uchar d in
     let _ = Uuseg_grapheme_cluster.check_boundary seg u in
@@ -177,12 +174,12 @@ let rec iter_graphemes_unicode seg str len f i start =
       iter_graphemes_unicode seg str len f next i)
     else iter_graphemes_unicode seg str len f next start
 
-let iter_graphemes ?(ignore_zwj = false) f str =
+let iter_graphemes f str =
   let len = Stdlib.String.length str in
   if len = 0 then ()
   else if is_ascii_only str len 0 then iter_graphemes_ascii str len f 0
   else
-    let seg = Uuseg_grapheme_cluster.create ~ignore_zwj () in
+    let seg = Uuseg_grapheme_cluster.create () in
     let d = Stdlib.String.get_utf_8_uchar str 0 in
     let _ =
       Uuseg_grapheme_cluster.check_boundary seg (Uchar.utf_decode_uchar d)
@@ -195,7 +192,6 @@ let iter_grapheme_info ~width_method ~tab_width f str =
   if len = 0 then ()
   else
     let seg = Uuseg_grapheme_cluster.create () in
-    let ignore_zwj = width_method = `No_zwj in
 
     let emit_ascii i =
       let b = Char.code (Stdlib.String.unsafe_get str i) in
@@ -217,7 +213,7 @@ let iter_grapheme_info ~width_method ~tab_width f str =
           emit_ascii i;
           loop (i + 1))
         else
-          let end_pos = next_boundary seg ~ignore_zwj str i len in
+          let end_pos = next_boundary seg str i len in
           let clus_len = end_pos - i in
           let w =
             cluster_width ~method_:width_method ~tab_width str i clus_len
@@ -315,12 +311,11 @@ let find_wrap_pos_grapheme ~width_method ~tab_width str ~max_columns =
     find_wrap_pos_ascii ~tab_width str len ~max_columns
   else
     let seg = Uuseg_grapheme_cluster.create () in
-    let ignore_zwj = width_method = `No_zwj in
     let rec loop offset count columns =
       if offset >= len then
         { byte_offset = len; grapheme_count = count; columns_used = columns }
       else
-        let end_pos = next_boundary seg ~ignore_zwj str offset len in
+        let end_pos = next_boundary seg str offset len in
         let width =
           cluster_width ~method_:width_method ~tab_width str offset
             (end_pos - offset)
@@ -346,12 +341,11 @@ let find_pos_grapheme ~width_method ~tab_width ~include_start_before str
     find_pos_ascii ~tab_width ~include_start_before str len ~columns
   else
     let seg = Uuseg_grapheme_cluster.create () in
-    let ignore_zwj = width_method = `No_zwj in
     let rec loop offset count used =
       if offset >= len then
         { byte_offset = len; grapheme_count = count; columns_used = used }
       else
-        let end_pos = next_boundary seg ~ignore_zwj str offset len in
+        let end_pos = next_boundary seg str offset len in
         let width =
           cluster_width ~method_:width_method ~tab_width str offset
             (end_pos - offset)
@@ -411,15 +405,14 @@ let find_wrap_pos ~width_method ~tab_width str ~max_columns =
   let tab_width = normalize_tab_width tab_width in
   match width_method with
   | `Wcwidth -> find_wrap_pos_wcwidth ~tab_width str ~max_columns
-  | `Unicode | `No_zwj ->
-      find_wrap_pos_grapheme ~width_method ~tab_width str ~max_columns
+  | `Unicode -> find_wrap_pos_grapheme ~width_method ~tab_width str ~max_columns
 
 let find_pos ~width_method ~tab_width ?(include_start_before = false) str
     ~columns =
   let tab_width = normalize_tab_width tab_width in
   match width_method with
   | `Wcwidth -> find_pos_wcwidth ~tab_width ~include_start_before str ~columns
-  | `Unicode | `No_zwj ->
+  | `Unicode ->
       find_pos_grapheme ~width_method ~tab_width ~include_start_before str
         ~columns
 
@@ -435,10 +428,9 @@ let width_at ~width_method ~tab_width str ~byte_offset =
     | `Wcwidth ->
         let cp, _ = decode_codepoint str byte_offset in
         codepoint_width_wcwidth ~tab_width cp
-    | `Unicode | `No_zwj ->
+    | `Unicode ->
         let seg = Uuseg_grapheme_cluster.create () in
-        let ignore_zwj = width_method = `No_zwj in
-        let end_pos = next_boundary seg ~ignore_zwj str byte_offset len in
+        let end_pos = next_boundary seg str byte_offset len in
         cluster_width ~method_:width_method ~tab_width str byte_offset
           (end_pos - byte_offset)
 
@@ -471,19 +463,20 @@ let prev_grapheme_segmented ~width_method ~tab_width str ~byte_offset =
     let rec loop i =
       if i < 0 then None
       else
-      let width = ascii_width ~tab_width (Char.code (String.unsafe_get str i)) in
+        let width =
+          ascii_width ~tab_width (Char.code (String.unsafe_get str i))
+        in
         if width > 0 then Some { byte_offset = i; byte_length = 1; width }
         else loop (i - 1)
     in
     loop (byte_offset - 1)
   else
     let seg = Uuseg_grapheme_cluster.create () in
-    let ignore_zwj = width_method = `No_zwj in
     let rec loop offset last_offset last_len =
       if offset >= len || offset >= byte_offset then
         if last_offset < 0 then None else Some (last_offset, last_len)
       else
-        let end_pos = next_boundary seg ~ignore_zwj str offset len in
+        let end_pos = next_boundary seg str offset len in
         let grapheme_len = end_pos - offset in
         if end_pos >= byte_offset then Some (offset, grapheme_len)
         else loop end_pos offset grapheme_len
@@ -501,8 +494,7 @@ let prev_grapheme ~width_method ~tab_width str ~byte_offset =
   let tab_width = normalize_tab_width tab_width in
   match width_method with
   | `Wcwidth -> prev_grapheme_wcwidth ~tab_width str ~byte_offset
-  | `Unicode | `No_zwj ->
-      prev_grapheme_segmented ~width_method ~tab_width str ~byte_offset
+  | `Unicode -> prev_grapheme_segmented ~width_method ~tab_width str ~byte_offset
 
 (* String Measurement *)
 
@@ -539,7 +531,7 @@ let rec measure_wcwidth str len tab_width i total =
     let w = codepoint_width_wcwidth ~tab_width cp in
     measure_wcwidth str len tab_width (i + Uchar.utf_decode_length d) (total + w)
 
-(* Fused segmentation + width loop for Unicode/No_zwj methods.
+(* Fused segmentation + width loop for Unicode width.
 
    State flags packed in [flags]: - bit 0: has_width (grapheme has a base
    width) - bit 1: ri_pair (last RI was first of a pair) - bit 2: virama (last
@@ -611,9 +603,8 @@ let measure ~width_method ~tab_width str =
   else
     match width_method with
     | `Wcwidth -> measure_wcwidth str len tab_width 0 0
-    | `Unicode | `No_zwj ->
+    | `Unicode ->
         let seg = Uuseg_grapheme_cluster.create () in
-        Uuseg_grapheme_cluster.set_ignore_zwj seg (width_method = `No_zwj);
         let d = Stdlib.String.get_utf_8_uchar str 0 in
         let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
         let bw =
@@ -642,9 +633,8 @@ let measure_sub ~width_method ~tab_width str ~pos ~len:sub_len =
     else
       match width_method with
       | `Wcwidth -> measure_wcwidth str end_pos tab_width pos 0
-      | `Unicode | `No_zwj ->
+      | `Unicode ->
           let seg = Uuseg_grapheme_cluster.create () in
-          Uuseg_grapheme_cluster.set_ignore_zwj seg (width_method = `No_zwj);
           let d = Stdlib.String.get_utf_8_uchar str pos in
           let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
           let bw =
@@ -727,9 +717,8 @@ let[@inline] first_codepoint s off =
   let d = Stdlib.String.get_utf_8_uchar s off in
   Uchar.to_int (Uchar.utf_decode_uchar d)
 
-let iter_wrap_breaks_core ?(width_method = `Unicode) f s =
+let iter_wrap_breaks_core f s =
   let len = Stdlib.String.length s in
-  let ignore_zwj = width_method = `No_zwj in
   let seg = Uuseg_grapheme_cluster.create () in
   let rec has_break i limit =
     if i >= limit then false
@@ -745,7 +734,7 @@ let iter_wrap_breaks_core ?(width_method = `Unicode) f s =
   let rec loop byte_off g_off prev_byte_off prev_g_off prev_class =
     if byte_off >= len then ()
     else
-      let next = next_boundary seg ~ignore_zwj s byte_off len in
+      let next = next_boundary seg s byte_off len in
       let curr_class = classify_word (first_codepoint s byte_off) in
       (match (prev_byte_off, prev_g_off, prev_class) with
       | Some prev_byte_off, Some prev_g_off, Some prev_class
@@ -758,8 +747,8 @@ let iter_wrap_breaks_core ?(width_method = `Unicode) f s =
   in
   loop 0 0 None None None
 
-let iter_wrap_breaks ?(width_method = `Unicode) f s =
-  iter_wrap_breaks_core ~width_method
+let iter_wrap_breaks f s =
+  iter_wrap_breaks_core
     (fun ~byte_off ~next_off ~grapheme_off ->
       f ~break_byte_offset:byte_off ~next_byte_offset:next_off
         ~grapheme_offset:grapheme_off)

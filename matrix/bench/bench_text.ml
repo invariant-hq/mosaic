@@ -94,7 +94,6 @@ let benchmarks =
         [
           width_bench "width/ascii/unicode" `Unicode ascii_line;
           width_bench "width/complex/unicode" `Unicode complex_line;
-          width_bench "width/complex/no_zwj" `No_zwj complex_line;
           width_bench "width/complex/wcwidth" `Wcwidth complex_line;
         ];
       group "position"

@@ -9,7 +9,7 @@ let read_bg grid x y =
 
 let text_width_method_is_applied_during_render () =
   let grid = Grid.create ~width:6 ~height:1 ~width_method:`Unicode () in
-  let img = Image.text ~width_method:`No_zwj "👩\u{200D}🚀" in
+  let img = Image.text ~width_method:`Wcwidth "👩\u{200D}🚀" in
 
   Image.render grid img;
 

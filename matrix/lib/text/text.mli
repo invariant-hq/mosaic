@@ -5,13 +5,11 @@
     lightweight break discovery. It does not own cells, styles, or interned
     storage. *)
 
-type width_method = [ `Unicode | `Wcwidth | `No_zwj ]
+type width_method = [ `Unicode | `Wcwidth ]
 (** The type for width calculation methods.
 
     - [`Unicode] uses full grapheme segmentation with emoji ZWJ composition.
-    - [`Wcwidth] sums per-codepoint wcwidth-style widths inside each string.
-    - [`No_zwj] uses grapheme-aware width logic but disables emoji ZWJ
-      composition. *)
+    - [`Wcwidth] sums per-codepoint wcwidth-style widths inside each string. *)
 
 type line_break_kind = [ `LF | `CR | `CRLF ]
 (** The type for line terminators. *)
@@ -19,8 +17,8 @@ type line_break_kind = [ `LF | `CR | `CRLF ]
 type position = { byte_offset : int; grapheme_count : int; columns_used : int }
 (** The type for a byte position found by display width.
 
-    [grapheme_count] is a cluster count for [`Unicode] and [`No_zwj] and a
-    codepoint count for [`Wcwidth]. *)
+    [grapheme_count] is a cluster count for [`Unicode] and a codepoint count
+    for [`Wcwidth]. *)
 
 type grapheme = { byte_offset : int; byte_length : int; width : int }
 (** The type for a grapheme or codepoint span.
@@ -51,14 +49,10 @@ val measure_sub :
 val grapheme_count : string -> int
 (** [grapheme_count s] is the number of grapheme clusters in [s]. *)
 
-val iter_graphemes :
-  ?ignore_zwj:bool -> (offset:int -> len:int -> unit) -> string -> unit
+val iter_graphemes : (offset:int -> len:int -> unit) -> string -> unit
 (** [iter_graphemes f s] calls [f ~offset ~len] for each grapheme cluster in
-    [s].
-
-    [ignore_zwj] defaults to [false]. When [true], ZWJ does not join emoji
-    sequences. Invalid UTF-8 byte sequences are treated as individual
-    replacement characters. *)
+    [s]. Invalid UTF-8 byte sequences are treated as individual replacement
+    characters. *)
 
 val iter_grapheme_info :
   width_method:width_method ->
@@ -70,7 +64,6 @@ val iter_grapheme_info :
     [f ~offset ~len ~width] for each non-zero-width grapheme cluster in [s]. *)
 
 val iter_wrap_breaks :
-  ?width_method:width_method ->
   (break_byte_offset:int -> next_byte_offset:int -> grapheme_offset:int -> unit) ->
   string ->
   unit

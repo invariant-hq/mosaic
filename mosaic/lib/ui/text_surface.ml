@@ -141,7 +141,7 @@ let wrap_word_line ~width ~tab_width ~width_method spans =
       (* Collect word break opportunities with their byte offsets and the
          grapheme offset at the break *)
       let breaks = ref [] in
-      Matrix.Text.iter_wrap_breaks ~width_method
+      Matrix.Text.iter_wrap_breaks
         (fun ~break_byte_offset:_ ~next_byte_offset ~grapheme_offset:_ ->
           breaks := next_byte_offset :: !breaks)
         full_text;

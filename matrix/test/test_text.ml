@@ -104,7 +104,6 @@ let measurement_semantics () =
       ("emoji family", "👨\u{200D}👩\u{200D}👧\u{200D}👦", `Unicode, 8, 2);
       ("regional indicator pair", "🇺🇸", `Unicode, 8, 2);
       ("skin tone sequence", "👍🏽", `Unicode, 8, 2);
-      ("no_zwj strategy", "👩\u{200D}🚀", `No_zwj, 8, 4);
       ("wcwidth strategy", "👩\u{200D}🚀", `Wcwidth, 8, 4);
       ("combining accent", "a\u{0301}", `Unicode, 8, 1);
       ("zero width space", "\u{200B}", `Unicode, 8, 0);
@@ -119,9 +118,7 @@ let measurement_semantics () =
 let ascii_fast_path_consistency () =
   let s = "hello\tworld" in
   let unicode_w = measure ~width_method:`Unicode ~tab_width:4 s in
-  let no_zwj_w = measure ~width_method:`No_zwj ~tab_width:4 s in
   let wcwidth_w = measure ~width_method:`Wcwidth ~tab_width:4 s in
-  check_width "unicode vs no_zwj" unicode_w no_zwj_w;
   check_width "unicode vs wcwidth" unicode_w wcwidth_w
 
 let measure_multi_grapheme_regression () =
@@ -160,13 +157,8 @@ let measure_sub_validation () =
 let grapheme_iteration () =
   let zwj_seq = "👩\u{200D}🚀" in
   let count_default = ref 0 in
-  let count_no_zwj = ref 0 in
   iter_graphemes (fun ~offset:_ ~len:_ -> incr count_default) zwj_seq;
-  iter_graphemes ~ignore_zwj:true
-    (fun ~offset:_ ~len:_ -> incr count_no_zwj)
-    zwj_seq;
   equal ~msg:"default: ZWJ sequence is one grapheme" int 1 !count_default;
-  equal ~msg:"ignore_zwj: ZWJ sequence splits" int 2 !count_no_zwj;
   equal ~msg:"grapheme_count" int 3 (grapheme_count ("a" ^ zwj_seq ^ "b"))
 
 let grapheme_info_skips_zero_width () =
@@ -182,17 +174,17 @@ let grapheme_info_skips_zero_width () =
 type wrap_break = { byte_offset : int; grapheme_offset : int }
 type line_break = { pos : int; kind : line_break_kind }
 
-let wrap_breaks ?(width_method = `Unicode) s =
+let wrap_breaks s =
   let acc = ref [] in
-  iter_wrap_breaks ~width_method
+  iter_wrap_breaks
     (fun ~break_byte_offset:_ ~next_byte_offset ~grapheme_offset ->
       acc := { byte_offset = next_byte_offset; grapheme_offset } :: !acc)
     s;
   Array.of_list (List.rev !acc)
 
-let wrap_break_points ?(width_method = `Unicode) s =
+let wrap_break_points s =
   let acc = ref [] in
-  iter_wrap_breaks ~width_method
+  iter_wrap_breaks
     (fun ~break_byte_offset ~next_byte_offset:_ ~grapheme_offset ->
       acc := { byte_offset = break_byte_offset; grapheme_offset } :: !acc)
     s;
@@ -299,12 +291,10 @@ let wrap_breaks_grapheme_aware () =
 let wrap_breaks_empty_string () =
   equal ~msg:"no breaks in empty string" int 0 (Array.length (wrap_breaks ""))
 
-let wrap_breaks_width_method_no_zwj () =
+let wrap_breaks_zwj_sequence () =
   let zwj_seq = "👩\u{200D}🚀" in
   equal ~msg:"unicode: no breaks in ZWJ sequence" int 0
-    (Array.length (wrap_breaks ~width_method:`Unicode zwj_seq));
-  equal ~msg:"no_zwj: still no breaks in ZWJ sequence" int 0
-    (Array.length (wrap_breaks ~width_method:`No_zwj zwj_seq))
+    (Array.length (wrap_breaks zwj_seq))
 
 let wrap_break_points_ascii_space () =
   let points = wrap_break_points "a b" in
@@ -591,7 +581,7 @@ let () =
           test "no break in plain text" wrap_breaks_no_break_in_plain_text;
           test "grapheme aware" wrap_breaks_grapheme_aware;
           test "empty string" wrap_breaks_empty_string;
-          test "width_method No_zwj" wrap_breaks_width_method_no_zwj;
+          test "ZWJ sequence" wrap_breaks_zwj_sequence;
           test "ASCII space break point" wrap_break_points_ascii_space;
           test "Unicode NBSP break point" wrap_break_points_unicode_space;
           test "mixed CJK/ASCII transitions"

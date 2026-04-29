@@ -53,9 +53,6 @@ segment/segment_complex_line	wall_time	1.100671e-05	1.098388e-05	1.104868e-05	2.
 width/width_ascii_unicode	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
 width/width_ascii_unicode	cpu_time	1.793885e-06	1.790345e-06	1.796813e-06	1.802854e-03	30	0
 width/width_ascii_unicode	wall_time	1.795971e-06	1.792585e-06	1.799188e-06	1.838285e-03	30	1
-width/width_complex_no_zwj	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	30	0
-width/width_complex_no_zwj	cpu_time	1.200970e-05	1.198135e-05	1.204098e-05	2.482420e-03	30	2
-width/width_complex_no_zwj	wall_time	1.202343e-05	1.199390e-05	1.205059e-05	2.357099e-03	30	2
 width/width_complex_unicode	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	30	0
 width/width_complex_unicode	cpu_time	1.214068e-05	1.210850e-05	1.217220e-05	2.623547e-03	30	1
 width/width_complex_unicode	wall_time	1.215823e-05	1.212194e-05	1.219285e-05	2.916068e-03	30	1

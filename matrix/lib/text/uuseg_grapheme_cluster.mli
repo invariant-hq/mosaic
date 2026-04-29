@@ -9,9 +9,6 @@
     Vendored from uuseg v17.0.0 with the following additions:
     {ul
     {- {!reset} for zero-allocation segmenter reuse.}
-    {- [ignore_zwj] option to disable rule GB11 (emoji ZWJ
-       sequences).}
-    {- {!set_ignore_zwj} to change the option after creation.}
     {- {!check_boundary} and {!check_boundary_with_width} for
        zero-allocation direct boundary checks.}} *)
 
@@ -20,12 +17,8 @@
 type t
 (** The type for grapheme cluster segmenters. *)
 
-val create : ?ignore_zwj:bool -> unit -> t
-(** [create ()] is a new grapheme cluster segmenter.
-
-    [ignore_zwj] defaults to [false]. When [true], rule GB11 is
-    disabled: ZWJ never joins emoji sequences, forcing a break
-    after every ZWJ. *)
+val create : unit -> t
+(** [create ()] is a new grapheme cluster segmenter. *)
 
 val copy : t -> t
 (** [copy s] is a copy of [s]. *)
@@ -35,11 +28,7 @@ val equal : t -> t -> bool
 
 val reset : t -> unit
 (** [reset s] resets [s] to its initial state, ready to segment a
-    new string. The [ignore_zwj] setting is preserved. *)
-
-val set_ignore_zwj : t -> bool -> unit
-(** [set_ignore_zwj s v] sets the [ignore_zwj] option of [s] to
-    [v]. *)
+    new string. *)
 
 (** {1:boundary Boundary checks} *)
 
