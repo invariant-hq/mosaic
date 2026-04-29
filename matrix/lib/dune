@@ -1,6 +1,7 @@
 (library
  (name matrix)
  (public_name matrix)
+ (private_modules primary)
  (libraries
   matrix.ansi
   matrix.grid

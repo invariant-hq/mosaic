@@ -61,10 +61,7 @@ type app = {
   mutable width : int;
   mutable height : int;
   (* Primary mode layout *)
-  mutable render_offset : int;
-  mutable tui_height : int;
-  mutable static_needs_newline : bool;
-  mutable static_queue : (string * int) list;
+  mutable primary : Primary.t;
   (* Scroll optimisation *)
   mutable scroll_hint : Screen.scroll_hint option;
   (* Cursor state tracking — only emit style/color when changed. *)
@@ -250,28 +247,12 @@ let query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
 
 let clamp lo hi v = max lo (min hi v)
 
-(* Interpret a CPR response as (render_offset, static_needs_newline). Emits a
-   CRLF to scroll if the cursor is at the bottom row. *)
-let render_offset_of_cursor ~terminal ~height row col =
-  let row = clamp 1 height row in
-  let col = max 1 col in
-  if row >= height then (
-    Terminal.send terminal "\r\n";
-    (height - 1, false))
-  else if col = 1 then (max 0 (row - 1), true)
-  else (row, true)
-
 (* Layout *)
 
-let update_primary_layout t ~render_offset ~resize =
-  let height = max 1 t.height in
-  let min_h = max 1 t.config.min_tui_height in
-  let render_offset = clamp 0 (height - min_h) render_offset in
-  let tui_height = max min_h (height - render_offset) in
-  t.render_offset <- render_offset;
-  t.tui_height <- tui_height;
-  Screen.set_row_offset t.screen render_offset;
-  if resize then Screen.resize t.screen ~width:t.width ~height:tui_height
+let sync_primary_layout t ~resize =
+  let region = Primary.live_region t.primary in
+  Screen.set_row_offset t.screen region.row_offset;
+  if resize then Screen.resize t.screen ~width:t.width ~height:region.height
 
 let force_full_redraw t = t.force_full_next_frame <- true
 
@@ -280,11 +261,14 @@ let force_full_redraw t = t.force_full_next_frame <- true
 let size t =
   match t.config.mode with
   | `Alt -> (t.width, t.height)
-  | `Primary -> (t.width, t.tui_height)
+  | `Primary -> Primary.size t.primary ~width:t.width
 
 let full_size t = (t.width, t.height)
 let mode t = t.config.mode
-let mouse_offset t = if t.config.mode = `Primary then t.render_offset else 0
+
+let mouse_offset t =
+  if t.config.mode = `Primary then Primary.render_offset t.primary else 0
+
 let pixel_resolution t = Terminal.pixel_resolution t.terminal
 let terminal t = t.terminal
 let capabilities t = Terminal.capabilities t.terminal
@@ -305,12 +289,14 @@ let refresh_capabilities t =
 let refresh_render_region t =
   match t.config.mode with
   | `Alt ->
-      t.render_offset <- 0;
-      t.tui_height <- t.height;
       Screen.set_row_offset t.screen 0;
       Screen.resize t.screen ~width:t.width ~height:t.height
   | `Primary ->
-      update_primary_layout t ~render_offset:t.render_offset ~resize:true
+      let primary, _plan =
+        Primary.resize t.primary ~terminal_height:(max 1 t.height)
+      in
+      t.primary <- primary;
+      sync_primary_layout t ~resize:true
 
 (* Frame timing *)
 
@@ -333,22 +319,8 @@ let update_loop_active t =
 
 (* Static output (primary mode only) *)
 
-let crlf = "\r\n"
 let erase_entire_line = Ansi.(to_string (erase_line ~mode:`All))
 let sgr_reset = Ansi.(to_string reset)
-
-let starts_with_newline s =
-  let len = String.length s in
-  if len = 0 then false
-  else if Char.equal (String.unsafe_get s 0) '\n' then true
-  else
-    len > 1
-    && Char.equal (String.unsafe_get s 0) '\r'
-    && Char.equal (String.unsafe_get s 1) '\n'
-
-let ends_with_newline s =
-  let len = String.length s in
-  len > 0 && Char.equal (String.unsafe_get s (len - 1)) '\n'
 
 let normalize_newlines s =
   let len = String.length s in
@@ -393,71 +365,44 @@ let buf_cursor_position buf ~row ~col =
 
 let buf_erase_line buf = Buffer.add_string buf erase_entire_line
 
-(* Write a single static entry into the frame buffer, advancing
-   render_offset. Called within flush_static_queue after the dynamic area
-   has been erased. *)
-let write_static_entry t ~buf ~max_offset text rows =
-  let base = if t.render_offset = 0 then 1 else t.render_offset in
-  let text = if t.config.raw_mode then normalize_newlines text else text in
-  let needs_leading =
-    t.static_needs_newline && not (starts_with_newline text)
-  in
-  let payload =
-    if needs_leading then sgr_reset ^ crlf ^ text else sgr_reset ^ text
-  in
-  let payload_rows = rows + if needs_leading then 1 else 0 in
-  let grow_by = min payload_rows (max 0 (max_offset - base)) in
-  buf_cursor_position buf ~row:base ~col:1;
-  Buffer.add_string buf payload;
-  t.render_offset <- base + grow_by;
-  t.static_needs_newline <- not (ends_with_newline text)
+let apply_primary_op buf = function
+  | Primary.Move_cursor { row; col } -> buf_cursor_position buf ~row ~col
+  | Primary.Reset_sgr -> Buffer.add_string buf sgr_reset
+  | Primary.Write s -> Buffer.add_string buf s
+  | Primary.Erase_line -> buf_erase_line buf
+  | Primary.Erase_below ->
+      Buffer.add_string buf Ansi.(to_string erase_below_cursor)
+  | Primary.Clear_and_home ->
+      Buffer.add_string buf Ansi.(to_string clear_and_home)
+  | Primary.Set_scroll_region { top; bottom } ->
+      Buffer.add_string buf Ansi.(to_string (set_scrolling_region ~top ~bottom))
+  | Primary.Reset_scroll_region ->
+      Buffer.add_string buf Ansi.(to_string reset_scrolling_region)
+
+let apply_primary_plan t ~buf (plan : Primary.plan) =
+  List.iter (apply_primary_op buf) plan.terminal_ops;
+  if plan.invalidate_presented then Screen.invalidate_presented t.screen;
+  if plan.region_changed then sync_primary_layout t ~resize:true;
+  if plan.force_full_redraw then t.force_full_next_frame <- true
 
 (* Erase the dynamic area, write queued static text into scrollback, and
    force a full re-render so the cell-diff baseline stays in sync. *)
 let flush_static_queue t ~buf =
-  match t.static_queue with
-  | [] -> ()
-  | rev ->
-      let queue = List.rev rev in
-      t.static_queue <- [];
-      buf_cursor_position buf ~row:(t.render_offset + 1) ~col:1;
-      Buffer.add_string buf Ansi.(to_string erase_below_cursor);
-      Screen.invalidate_presented t.screen;
-      let min_h = max 1 t.config.min_tui_height in
-      let max_offset = max 0 (t.height - min_h) in
-      List.iter
-        (fun (text, rows) -> write_static_entry t ~buf ~max_offset text rows)
-        queue;
-      update_primary_layout t ~render_offset:t.render_offset ~resize:true;
-      t.force_full_next_frame <- true
+  let primary, plan = Primary.flush_static t.primary in
+  t.primary <- primary;
+  apply_primary_plan t ~buf plan
 
 let effective_size t =
   match t.config.mode with
   | `Alt -> (t.width, t.height)
-  | `Primary -> (
-      match t.static_queue with
-      | [] -> (t.width, t.tui_height)
-      | rev ->
-          let min_h = max 1 t.config.min_tui_height in
-          let max_offset = max 0 (t.height - min_h) in
-          let offset, _ =
-            List.fold_left
-              (fun (offset, snl) (text, rows) ->
-                let base = if offset = 0 then 1 else offset in
-                let needs_nl = snl && not (starts_with_newline text) in
-                let payload_rows = rows + if needs_nl then 1 else 0 in
-                let grow = min payload_rows (max 0 (max_offset - base)) in
-                (base + grow, not (ends_with_newline text)))
-              (t.render_offset, t.static_needs_newline)
-              (List.rev rev)
-          in
-          (t.width, max min_h (t.height - offset)))
+  | `Primary -> Primary.effective_size t.primary ~width:t.width
 
 let static_write t ~rows text =
   if t.config.mode = `Alt || String.length text = 0 then ()
-  else (
-    t.static_queue <- (text, rows) :: t.static_queue;
-    request_redraw t)
+  else
+    let text = if t.config.raw_mode then normalize_newlines text else text in
+    t.primary <- Primary.enqueue_static t.primary { text; rows };
+    request_redraw t
 
 (* Immediate action, not part of the frame pipeline — the direct
    Terminal.send is intentional (clears the screen before the next frame). *)
@@ -468,10 +413,9 @@ let static_clear t =
     let cols, rows = t.terminal_size () in
     t.width <- max 1 cols;
     t.height <- max 1 rows;
-    t.render_offset <- 0;
-    t.tui_height <- t.height;
-    t.static_queue <- [];
-    t.static_needs_newline <- false;
+    let primary, _plan = Primary.clear_static t.primary in
+    let primary = Primary.resize primary ~terminal_height:t.height |> fst in
+    t.primary <- primary;
     force_full_redraw t;
     refresh_render_region t;
     request_redraw t)
@@ -521,44 +465,23 @@ let prepare t =
 let grid t = Screen.next_grid t.screen
 let hits t = Screen.next_hit_grid t.screen
 
-(* Ensure render_offset and tui_height stay consistent. Grows the dynamic
-   region when content or hints require more rows than tui_height. Returns a
-   height limit when the grid still exceeds the available space. *)
+(* Ensure primary layout stays consistent. Grows the dynamic region when
+   content or hints require more rows than the live viewport. Returns a height
+   limit when the grid still exceeds the available space. *)
 let adjust_primary_layout t ~buf ~required_rows_hint =
-  let height = max 1 t.height in
-  let min_h = max 1 t.config.min_tui_height in
-  (* Clamp render_offset after resize. *)
-  let render_offset = clamp 0 (height - min_h) t.render_offset in
-  if render_offset <> t.render_offset then
-    update_primary_layout t ~render_offset ~resize:false;
   let active_rows = max 1 (Screen.active_height t.screen) in
-  let hinted_rows =
-    match required_rows_hint with Some rows -> max 1 rows | None -> 0
+  let primary, plan, height_limit =
+    Primary.apply_required_rows t.primary ~active_rows
+      ~required_rows:required_rows_hint
   in
-  let required = max active_rows hinted_rows in
-  (* Grow the dynamic region if required rows exceed current tui_height.
-     Emit newlines to scroll the terminal first so the static content at the
-     claimed rows enters scrollback rather than being erased in place. *)
-  let new_offset = max 0 (height - required) in
-  if required > t.tui_height && new_offset < t.render_offset then begin
-    let rows_to_claim = t.render_offset - new_offset in
-    buf_cursor_position buf ~row:height ~col:1;
-    for _ = 1 to rows_to_claim do
-      Buffer.add_string buf "\r\n"
-    done;
-    for row = new_offset + 1 to t.render_offset do
-      buf_cursor_position buf ~row ~col:1;
-      buf_erase_line buf
-    done;
-    update_primary_layout t ~render_offset:new_offset ~resize:true;
-    Screen.invalidate_presented t.screen;
-    t.force_full_next_frame <- true
-  end;
-  let max_rows = max min_h height in
-  if required > max_rows then Some max_rows
-  else
-    let grid_h = Grid.height (Screen.next_grid t.screen) in
-    if grid_h > t.tui_height then Some t.tui_height else None
+  t.primary <- primary;
+  apply_primary_plan t ~buf plan;
+  match height_limit with
+  | Some _ as limit -> limit
+  | None ->
+      let live_height = (Primary.live_region t.primary).height in
+      let grid_h = Grid.height (Screen.next_grid t.screen) in
+      if grid_h > live_height then Some live_height else None
 
 (* Apply cursor position, style, and color into the frame buffer.
    Style and color are only emitted when they differ from the last frame. *)
@@ -574,10 +497,19 @@ let cursor_shape (cursor : Screen.cursor) : Ansi.cursor_shape =
 let cursor_output_position t ~(cursor : Screen.cursor) ~cursor_max_row =
   match cursor.position with
   | Some (x, y) ->
-      let row = clamp 0 (cursor_max_row - 1) y in
-      Some (t.render_offset + row + 1, max 1 (x + 1))
+      let row =
+        match t.config.mode with
+        | `Primary ->
+            Primary.terminal_cursor_row t.primary ~live_row:y
+              ~live_height:cursor_max_row
+        | `Alt -> clamp 0 (cursor_max_row - 1) y + 1
+      in
+      Some (row, max 1 (x + 1))
   | None when cursor.visible && t.config.mode = `Primary ->
-      Some (t.render_offset + cursor_max_row, 1)
+      Some
+        ( Primary.default_terminal_cursor_row t.primary
+            ~live_height:cursor_max_row,
+          1 )
   | None -> None
 
 let cursor_dirty t ~(cursor : Screen.cursor) ~cursor_max_row =
@@ -670,7 +602,8 @@ let submit ?primary_required_rows t =
     if len > 0 then Buffer.add_subbytes buf t.render_buffer 0 len;
     (match active_h with
     | Some active ->
-        buf_cursor_position buf ~row:(t.render_offset + active + 1) ~col:1;
+        let offset = Primary.render_offset t.primary in
+        buf_cursor_position buf ~row:(offset + active + 1) ~col:1;
         Buffer.add_string buf Ansi.(to_string erase_below_cursor)
     | None -> ());
 
@@ -681,7 +614,7 @@ let submit ?primary_required_rows t =
       | `Primary -> (
           match render_height_limit with
           | Some limit -> max 1 limit
-          | None -> t.tui_height)
+          | None -> (Primary.live_region t.primary).height)
       | `Alt -> t.height
     in
     if
@@ -771,13 +704,13 @@ let resume t =
        let height = max 1 t.height in
        match t.query_cursor_position ~timeout:0.1 with
        | Some (row, col) ->
-           let render_offset, static_needs_newline =
-             render_offset_of_cursor ~terminal:t.terminal ~height row col
+           let anchor =
+             Primary.anchor_of_cursor ~terminal_height:height ~row ~col
            in
-           let tui_height = max 1 (height - render_offset) in
-           t.render_offset <- render_offset;
-           t.tui_height <- tui_height;
-           t.static_needs_newline <- static_needs_newline
+           if anchor.scroll_bottom then Terminal.send t.terminal "\r\n";
+           t.primary <-
+             Primary.reanchor t.primary ~render_offset:anchor.render_offset
+               ~static_needs_newline:anchor.static_needs_newline
        | None -> ());
     force_full_redraw t;
     apply_config t;
@@ -811,7 +744,8 @@ let set_cursor_style t ~style ~blinking =
 
 let set_cursor_position t ~row ~col =
   let max_row =
-    if t.config.mode = `Primary then max 1 t.tui_height else max 1 t.height
+    if t.config.mode = `Primary then (Primary.live_region t.primary).height
+    else max 1 t.height
   in
   let row = clamp 1 max_row row in
   let col = max 1 col in
@@ -925,9 +859,11 @@ let close t =
        let is_tty = Terminal.tty t.terminal in
        if t.config.mode = `Primary && is_tty then (
          let height = max 1 t.height in
-         let render_offset = clamp 0 (height - 1) t.render_offset in
+         let render_offset =
+           clamp 0 (height - 1) (Primary.render_offset t.primary)
+         in
          let start_row =
-           if t.static_needs_newline then render_offset + 1
+           if Primary.static_needs_newline t.primary then render_offset + 1
            else max 1 render_offset
          in
          for row = start_row to height do
@@ -987,9 +923,11 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
     ~parser ~terminal ~width ~height ~render_offset ~static_needs_newline =
   let width = max 1 width in
   let height = max 1 height in
-  let min_h = max 1 c.min_tui_height in
-  let render_offset = min render_offset (max 0 (height - min_h)) in
-  let tui_height = max min_h (height - render_offset) in
+  let primary =
+    Primary.create ~terminal_height:height ~min_live_height:c.min_tui_height
+      ~render_offset ~static_needs_newline
+  in
+  let live_region = Primary.live_region primary in
   let screen =
     Screen.create ~width_method:`Wcwidth ~respect_alpha:c.respect_alpha
       ~cursor_visible:c.cursor_visible ~explicit_width:c.explicit_width ()
@@ -1003,7 +941,8 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
   Screen.apply_capabilities screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
     ~hyperlinks:caps.hyperlinks;
-  Screen.resize screen ~width ~height:tui_height;
+  Screen.set_row_offset screen live_region.row_offset;
+  Screen.resize screen ~width ~height:live_region.height;
   let t =
     {
       terminal;
@@ -1024,10 +963,7 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
       redraw_requested = false;
       width;
       height;
-      render_offset;
-      tui_height;
-      static_needs_newline;
-      static_queue = [];
+      primary;
       scroll_hint = None;
       last_cursor_position = None;
       last_cursor_visible = None;
@@ -1118,7 +1054,12 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
         query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
           ~input_buffer ~timeout:0.1
       with
-      | Some (row, col) -> render_offset_of_cursor ~terminal ~height row col
+      | Some (row, col) ->
+          let anchor =
+            Primary.anchor_of_cursor ~terminal_height:height ~row ~col
+          in
+          if anchor.scroll_bottom then Terminal.send terminal "\r\n";
+          (anchor.render_offset, anchor.static_needs_newline)
       | None -> (0, true)
     else if mode = `Primary then (0, true)
     else (0, false)

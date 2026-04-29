@@ -3,49 +3,59 @@
 (test
  (name test_ansi)
  (package matrix)
+ (modules test_ansi)
  (libraries windtrap ansi))
 
 (test
  (name test_glyph)
  (package matrix)
+ (modules test_glyph)
  (libraries windtrap glyph))
 
 (test
  (name test_grid)
  (package matrix)
+ (modules test_grid)
  (libraries windtrap grid glyph ansi))
 
 (test
  (name test_input)
  (package matrix)
+ (modules test_input)
  (libraries windtrap unix input))
 
 (test
  (name test_vte)
  (package matrix)
+ (modules test_vte)
  (libraries windtrap vte grid ansi))
 
 (test
  (name test_pty)
  (package matrix)
+ (modules test_pty)
  (libraries windtrap unix pty))
 
 (test
  (name test_terminal)
  (package matrix)
+ (modules test_terminal)
  (libraries windtrap terminal unix ansi input))
 
 (test
  (name test_screen)
  (package matrix)
+ (modules test_screen)
  (libraries windtrap str screen grid glyph ansi terminal unix input))
 
 (test
  (name test_runtime)
  (package matrix)
+ (modules test_runtime)
  (libraries windtrap matrix))
 
 (test
  (name test_image)
  (package matrix)
+ (modules test_image)
  (libraries windtrap matrix))
