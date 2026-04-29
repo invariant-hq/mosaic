@@ -162,7 +162,9 @@ val render :
     this frame become queryable via {!query_hit}.
     - [full] renders all cells regardless of changes. Defaults to [false].
     - [scroll_hint] when provided, emits DECSTBM hardware scroll before diffing.
-      Only useful in alternate-screen mode.
+      The hint is a rectangular diff optimization; the caller is responsible for
+      using it only when temporary scroll-region changes are safe for the
+      current terminal transaction.
     - [height_limit] limits rendering to the first [height_limit] rows.
 
     See also {!render_to_bytes}. *)
