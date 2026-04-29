@@ -4,8 +4,12 @@ open Windtrap
 
 let event_testable = Testable.make ~pp:Input.pp ~equal:Input.equal ()
 
-let caps_event_testable =
-  Testable.make ~pp:Input.Caps.pp_event ~equal:Input.Caps.equal_event ()
+let capability_testable =
+  Testable.make ~pp:Input.Response.pp_capability
+    ~equal:Input.Response.equal_capability ()
+
+let response_testable =
+  Testable.make ~pp:Input.Response.pp ~equal:Input.Response.equal ()
 
 let event_type_pp fmt = function
   | Input.Key.Press -> Format.pp_print_string fmt "Press"
@@ -24,28 +28,38 @@ let char_event ?modifier ?event_type ?associated_text ?shifted_key ?base_key c =
 (* Test helpers that wrap callback-based API to return lists *)
 let feed_to_lists ?(now = 0.0) parser bytes off len =
   let user_acc = ref [] in
-  let caps_acc = ref [] in
+  let response_acc = ref [] in
   Input.Parser.feed parser bytes off len ~now
     ~on_event:(fun e -> user_acc := e :: !user_acc)
-    ~on_caps:(fun c -> caps_acc := c :: !caps_acc);
-  (List.rev !user_acc, List.rev !caps_acc)
+    ~on_response:(fun c -> response_acc := c :: !response_acc);
+  (List.rev !user_acc, List.rev !response_acc)
 
 let drain_to_lists ?(now = 0.0) parser =
   let user_acc = ref [] in
-  let caps_acc = ref [] in
+  let response_acc = ref [] in
   Input.Parser.drain parser ~now
     ~on_event:(fun e -> user_acc := e :: !user_acc)
-    ~on_caps:(fun c -> caps_acc := c :: !caps_acc);
-  (List.rev !user_acc, List.rev !caps_acc)
+    ~on_response:(fun c -> response_acc := c :: !response_acc);
+  (List.rev !user_acc, List.rev !response_acc)
 
 let parse_single s =
   let p = Input.Parser.create () in
   feed_to_lists p (Bytes.of_string s) 0 (String.length s)
 
 let parse_user s = parse_single s |> fst
-let parse_caps s = parse_single s |> snd
+let parse_responses s = parse_single s |> snd
+
+let capabilities responses =
+  List.filter_map
+    (function Input.Response.Capability c -> Some c | _ -> None)
+    responses
+
+let parse_capabilities s = parse_responses s |> capabilities
 let feed_user parser bytes off len = feed_to_lists parser bytes off len |> fst
 let drain_user ?now parser = drain_to_lists ?now parser |> fst
+let drain_responses ?now parser = drain_to_lists ?now parser |> snd
+let drain_capabilities ?now parser = drain_responses ?now parser |> capabilities
+let unknown_response s = Input.Response.Unknown s
 
 let test_parse_regular_chars () =
   let events = parse_user "a" in
@@ -122,7 +136,7 @@ let test_opentui_alt_meta_regressions () =
         is_true ~msg:"meta modifier follows OpenTUI Alt semantics" modifier.meta;
         equal ~msg:"key" event_testable
           (key_event
-             ~modifier:{ Input.Key.no_modifier with alt = true; meta = true }
+             ~modifier:{ Input.Modifier.none with alt = true; meta = true }
              key)
           (Input.Key
              {
@@ -151,7 +165,7 @@ let test_keymap_ctrl_and_base_key_regressions () =
     (Input.Keymap.find map (List.hd (parse_user "\x03")));
   let physical =
     Input.key
-      ~modifier:{ Input.Key.no_modifier with ctrl = true }
+      ~modifier:{ Input.Modifier.none with ctrl = true }
       ~base_key:(Uchar.of_char 'c')
       (Input.Key.Char (Uchar.of_int 0x0441))
   in
@@ -190,7 +204,7 @@ let test_parse_special_keys () =
     [
       key_event
         ~modifier:
-          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
+          { Input.Modifier.none with Input.Modifier.alt = true; meta = true }
         Input.Key.Backspace;
     ]
     events
@@ -250,23 +264,21 @@ let test_parse_modifiers () =
   equal ~msg:"Shift+Tab" (list event_testable)
     [
       key_event
-        ~modifier:{ Input.Key.no_modifier with shift = true }
+        ~modifier:{ Input.Modifier.none with shift = true }
         Input.Key.Tab;
     ]
     (parse_user "\x1b[Z");
 
   equal ~msg:"Ctrl+Up" (list event_testable)
     [
-      key_event
-        ~modifier:{ Input.Key.no_modifier with ctrl = true }
-        Input.Key.Up;
+      key_event ~modifier:{ Input.Modifier.none with ctrl = true } Input.Key.Up;
     ]
     (parse_user "\x1b[1;5A");
 
   equal ~msg:"Alt+Left" (list event_testable)
     [
       key_event
-        ~modifier:{ Input.Key.no_modifier with alt = true; meta = true }
+        ~modifier:{ Input.Modifier.none with alt = true; meta = true }
         Input.Key.Left;
     ]
     (parse_user "\x1b[1;3D")
@@ -325,6 +337,141 @@ let test_sgr_mouse_partial_timeout_regression () =
     ]
     (feed_user parser (Bytes.of_string ";5m") 0 3)
 
+let test_protocol_context_timeout_regressions () =
+  let kitty_context =
+    { Input.Parser.default_protocol_context with kitty_keyboard = true }
+  in
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser kitty_context;
+  equal ~msg:"partial Kitty key pending" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[97;") 0 5);
+  equal ~msg:"partial Kitty key stays pending after timeout"
+    (list event_testable) []
+    (drain_user ~now:1.0 parser);
+  equal ~msg:"partial Kitty key completes after timeout" (list event_testable)
+    [
+      key_event
+        ~modifier:{ Input.Modifier.none with shift = true }
+        ~associated_text:"a"
+        (Input.Key.Char (Uchar.of_char 'a'));
+    ]
+    (feed_user parser (Bytes.of_string "2u") 0 2);
+
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser kitty_context;
+  equal ~msg:"numeric generic CSI pending with Kitty enabled"
+    (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[123") 0 5);
+  let events, responses = drain_to_lists ~now:1.0 parser in
+  equal ~msg:"numeric generic CSI is not Kitty input" (list event_testable) []
+    events;
+  equal ~msg:"numeric generic CSI flushes as unknown response"
+    (list response_testable)
+    [ unknown_response "\x1b[123" ]
+    responses;
+
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser
+    { Input.Parser.default_protocol_context with explicit_width_cpr = true };
+  equal ~msg:"partial explicit-width CPR pending" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[1;2") 0 5);
+  equal ~msg:"partial explicit-width CPR stays pending"
+    (list capability_testable) []
+    (drain_capabilities ~now:1.0 parser);
+  equal ~msg:"partial explicit-width CPR completes" (list capability_testable)
+    [ Input.Response.Cursor_position (1, 2) ]
+    (feed_to_lists parser (Bytes.of_string "R") 0 1 |> snd |> capabilities);
+
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser
+    { Input.Parser.default_protocol_context with explicit_width_cpr = true };
+  equal ~msg:"modified CSI key prefix pending" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[1;5") 0 5);
+  let events, caps = drain_to_lists ~now:1.0 parser in
+  equal ~msg:"modified CSI key prefix is not a CPR" (list event_testable) []
+    events;
+  equal ~msg:"modified CSI key prefix flushes as unknown response"
+    (list response_testable)
+    [ unknown_response "\x1b[1;5" ]
+    caps;
+
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser
+    { Input.Parser.default_protocol_context with explicit_width_cpr = true };
+  equal ~msg:"generic CPR prefix pending during explicit-width probe"
+    (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[24;80") 0 7);
+  let events, caps = drain_to_lists ~now:1.0 parser in
+  equal ~msg:"generic CPR is not explicit-width CPR" (list event_testable) []
+    events;
+  equal ~msg:"generic CPR prefix flushes during explicit-width probe"
+    (list response_testable)
+    [ unknown_response "\x1b[24;80" ]
+    caps;
+
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser
+    { Input.Parser.default_protocol_context with startup_cursor_cpr = true };
+  equal ~msg:"startup CPR prefix pending" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[24;80") 0 7);
+  equal ~msg:"startup CPR prefix stays pending" (list capability_testable) []
+    (drain_capabilities ~now:1.0 parser);
+  equal ~msg:"startup CPR prefix completes" (list capability_testable)
+    [ Input.Response.Cursor_position (24, 80) ]
+    (feed_to_lists parser (Bytes.of_string "R") 0 1 |> snd |> capabilities);
+
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser
+    { Input.Parser.default_protocol_context with pixel_resolution = true };
+  equal ~msg:"partial pixel response pending" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[4;1080;192") 0 12);
+  equal ~msg:"partial pixel response stays pending" (list capability_testable)
+    []
+    (drain_capabilities ~now:1.0 parser);
+  equal ~msg:"partial pixel response completes" (list capability_testable)
+    [ Input.Response.Pixel_resolution (1920, 1080) ]
+    (feed_to_lists parser (Bytes.of_string "0t") 0 2 |> snd |> capabilities);
+
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser
+    {
+      Input.Parser.default_protocol_context with
+      private_capability_replies = true;
+    };
+  equal ~msg:"partial DECRPM pending" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[?1016;2$") 0 10);
+  equal ~msg:"partial DECRPM stays pending" (list capability_testable) []
+    (drain_capabilities ~now:1.0 parser);
+  equal ~msg:"partial DECRPM completes" (list capability_testable)
+    [
+      Input.Response.Mode_report
+        { Input.Response.is_private = true; modes = [ (1016, 2) ] };
+    ]
+    (feed_to_lists parser (Bytes.of_string "y") 0 1 |> snd |> capabilities);
+
+  let parser = Input.Parser.create () in
+  Input.Parser.set_protocol_context parser
+    { Input.Parser.default_protocol_context with explicit_width_cpr = true };
+  ignore (feed_user parser (Bytes.of_string "\x1b[1;2") 0 5);
+  equal ~msg:"first deferred explicit CPR timeout" (list response_testable) []
+    (drain_responses ~now:1.0 parser);
+  equal ~msg:"deferred explicit CPR has no wake deadline" bool true
+    (Option.is_none (Input.Parser.deadline parser));
+  equal ~msg:"second deferred explicit CPR timeout does not rearm"
+    (list response_testable) []
+    (drain_responses ~now:2.0 parser);
+  equal ~msg:"deferred explicit CPR still has no wake deadline" bool true
+    (Option.is_none (Input.Parser.deadline parser));
+  equal ~msg:"more bytes after deferred timeout do not emit immediately"
+    (list response_testable) []
+    (feed_to_lists ~now:2.0 parser (Bytes.of_string ";") 0 1 |> snd);
+  equal ~msg:"more bytes after deferred timeout rearm deadline" bool true
+    (Option.is_some (Input.Parser.deadline parser));
+  equal ~msg:"extended explicit CPR flushes as unknown response"
+    (list response_testable)
+    [ unknown_response "\x1b[1;2;" ]
+    (drain_responses ~now:3.0 parser)
+
 let test_parse_paste_mode () =
   match parse_user "\x1b[200~Hello, World!\x1b[201~" with
   | [ Input.Paste content ] ->
@@ -345,7 +492,7 @@ let test_alt_and_alt_ctrl () =
     [
       key_event
         ~modifier:
-          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
+          { Input.Modifier.none with Input.Modifier.alt = true; meta = true }
         Input.Key.Enter;
     ]
     (parse_user "\x1b\r");
@@ -354,7 +501,7 @@ let test_alt_and_alt_ctrl () =
     [
       key_event
         ~modifier:
-          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
+          { Input.Modifier.none with Input.Modifier.alt = true; meta = true }
         Input.Key.Line_feed;
     ]
     (parse_user "\x1b\n");
@@ -364,8 +511,8 @@ let test_alt_and_alt_ctrl () =
       key_event
         ~modifier:
           {
-            Input.Key.no_modifier with
-            Input.Key.alt = true;
+            Input.Modifier.none with
+            Input.Modifier.alt = true;
             ctrl = true;
             meta = true;
           }
@@ -378,8 +525,8 @@ let test_alt_and_alt_ctrl () =
       key_event
         ~modifier:
           {
-            Input.Key.no_modifier with
-            Input.Key.alt = true;
+            Input.Modifier.none with
+            Input.Modifier.alt = true;
             ctrl = true;
             meta = true;
           }
@@ -392,8 +539,8 @@ let test_alt_and_alt_ctrl () =
       key_event
         ~modifier:
           {
-            Input.Key.no_modifier with
-            Input.Key.alt = true;
+            Input.Modifier.none with
+            Input.Modifier.alt = true;
             shift = true;
             meta = true;
           }
@@ -452,7 +599,7 @@ let test_more_key_variants () =
       equal ~msg:"rxvt shift arrows" (list event_testable)
         [
           key_event
-            ~modifier:{ Input.Key.no_modifier with Input.Key.shift = true }
+            ~modifier:{ Input.Modifier.none with Input.Modifier.shift = true }
             key;
         ]
         (parse_user seq))
@@ -474,7 +621,7 @@ let test_more_key_variants () =
       equal ~msg:"rxvt shift special" (list event_testable)
         [
           key_event
-            ~modifier:{ Input.Key.no_modifier with Input.Key.shift = true }
+            ~modifier:{ Input.Modifier.none with Input.Modifier.shift = true }
             key;
         ]
         (parse_user seq))
@@ -485,7 +632,7 @@ let test_more_key_variants () =
       equal ~msg:"rxvt ctrl special" (list event_testable)
         [
           key_event
-            ~modifier:{ Input.Key.no_modifier with Input.Key.ctrl = true }
+            ~modifier:{ Input.Modifier.none with Input.Modifier.ctrl = true }
             key;
         ]
         (parse_user seq))
@@ -505,7 +652,7 @@ let test_more_key_variants () =
       equal ~msg:"ss3 ctrl arrows" (list event_testable)
         [
           key_event
-            ~modifier:{ Input.Key.no_modifier with Input.Key.ctrl = true }
+            ~modifier:{ Input.Modifier.none with Input.Modifier.ctrl = true }
             key;
         ]
         (parse_user seq))
@@ -529,7 +676,7 @@ let test_alt_escape_no_sticky () =
     [
       key_event
         ~modifier:
-          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
+          { Input.Modifier.none with Input.Modifier.alt = true; meta = true }
         Input.Key.Escape;
     ]
     events;
@@ -544,8 +691,13 @@ let test_invalid_sequences () =
   equal ~msg:"incomplete CSI buffered" (list event_testable) []
     (feed_user parser (Bytes.of_string "\x1b[") 0 2);
 
-  let events = feed_user parser (Bytes.of_string "999999X") 0 7 in
-  is_true ~msg:"parsed as chars" (List.length events >= 7);
+  let events, responses =
+    feed_to_lists parser (Bytes.of_string "999999X") 0 7
+  in
+  equal ~msg:"invalid CSI is not user input" int 0 (List.length events);
+  equal ~msg:"invalid CSI is an unknown response" (list response_testable)
+    [ unknown_response "\x1b[999999X" ]
+    responses;
 
   let long_seq = "\x1b[" ^ String.make 100 '9' ^ "m" in
   let events = parse_user long_seq in
@@ -674,7 +826,7 @@ let test_input_edge_cases () =
   equal ~msg:"empty input" (list event_testable) [] (parse_user "");
 
   equal ~msg:"null byte as Ctrl+Space" (list event_testable)
-    [ char_event ~modifier:{ Input.Key.no_modifier with ctrl = true } ' ' ]
+    [ char_event ~modifier:{ Input.Modifier.none with ctrl = true } ' ' ]
     (parse_user "\x00");
 
   let parser = Input.Parser.create () in
@@ -683,7 +835,7 @@ let test_input_edge_cases () =
     [
       key_event
         ~modifier:
-          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
+          { Input.Modifier.none with Input.Modifier.alt = true; meta = true }
         Input.Key.Escape;
     ]
     events;
@@ -762,53 +914,56 @@ let test_csi_param_overflow () =
   is_true ~msg:"got some events" (List.length events >= 0)
 
 let test_cursor_position_report () =
-  equal ~msg:"cursor position report" (list caps_event_testable)
-    [ Input.Caps.Cursor_position (10, 25) ]
-    (parse_caps "\x1b[10;25R")
+  equal ~msg:"cursor position report" (list capability_testable)
+    [ Input.Response.Cursor_position (10, 25) ]
+    (parse_capabilities "\x1b[10;25R")
 
 let test_device_attributes () =
-  equal ~msg:"device attributes" (list caps_event_testable)
-    [ Input.Caps.Device_attributes [ 1; 2; 6; 9; 15 ] ]
-    (parse_caps "\x1b[?1;2;6;9;15c")
+  equal ~msg:"device attributes" (list capability_testable)
+    [ Input.Response.Device_attributes [ 1; 2; 6; 9; 15 ] ]
+    (parse_capabilities "\x1b[?1;2;6;9;15c")
 
 let test_mode_report () =
-  match parse_caps "\x1b[?1004;2$y" with
-  | [ Input.Caps.Mode_report report ] ->
+  match parse_capabilities "\x1b[?1004;2$y" with
+  | [ Input.Response.Mode_report report ] ->
       is_true ~msg:"private mode" report.is_private;
       is_true ~msg:"mode values" (report.modes = [ (1004, 2) ])
   | _ ->
       failf "Expected single mode report, got %d events"
-        (List.length (parse_caps "\x1b[?1004;2$y"))
+        (List.length (parse_capabilities "\x1b[?1004;2$y"))
 
 let test_color_scheme_report () =
   (* Color scheme DSR response: CSI ? 997 ; value n Response to CSI ? 996 n
      query. Value 1 = dark, 2 = light. *)
-  (match parse_caps "\x1b[?997;1n" with
-  | [ Input.Caps.Color_scheme `Dark ] -> ()
+  (match parse_capabilities "\x1b[?997;1n" with
+  | [ Input.Response.Color_scheme `Dark ] -> ()
   | _ ->
       failf "Expected Color_scheme Dark, got %d events"
-        (List.length (parse_caps "\x1b[?997;1n")));
-  (match parse_caps "\x1b[?997;2n" with
-  | [ Input.Caps.Color_scheme `Light ] -> ()
+        (List.length (parse_capabilities "\x1b[?997;1n")));
+  (match parse_capabilities "\x1b[?997;2n" with
+  | [ Input.Response.Color_scheme `Light ] -> ()
   | _ ->
       failf "Expected Color_scheme Light, got %d events"
-        (List.length (parse_caps "\x1b[?997;2n")));
+        (List.length (parse_capabilities "\x1b[?997;2n")));
   (* Unknown value should still be handled *)
-  (match parse_caps "\x1b[?997;99n" with
-  | [ Input.Caps.Color_scheme (`Unknown 99) ] -> ()
+  (match parse_capabilities "\x1b[?997;99n" with
+  | [ Input.Response.Color_scheme (`Unknown 99) ] -> ()
   | _ ->
       failf "Expected Color_scheme Unknown, got %d events"
-        (List.length (parse_caps "\x1b[?997;99n")));
+        (List.length (parse_capabilities "\x1b[?997;99n")));
   (* Verify it doesn't leak into user events *)
-  let user, caps = parse_single "\x1b[?997;1n" in
+  let user, responses = parse_single "\x1b[?997;1n" in
   equal ~msg:"no user events" int 0 (List.length user);
-  equal ~msg:"one caps event" int 1 (List.length caps)
+  equal ~msg:"one response" int 1 (List.length responses)
 
 let test_user_and_caps_split () =
-  let user, caps = parse_single "\x1b[?1004;2$yab" in
-  equal ~msg:"caps extracted" (list caps_event_testable)
-    [ Input.Caps.Mode_report { is_private = true; modes = [ (1004, 2) ] } ]
-    caps;
+  let user, responses = parse_single "\x1b[?1004;2$yab" in
+  equal ~msg:"capability extracted" (list response_testable)
+    [
+      Input.Response.Capability
+        (Input.Response.Mode_report { is_private = true; modes = [ (1004, 2) ] });
+    ]
+    responses;
   equal ~msg:"two user keys" int 2 (List.length user);
   match user with
   | [ Input.Key { key = Char a; _ }; Input.Key { key = Char b; _ } ] ->
@@ -832,15 +987,20 @@ let test_urxvt_mouse () =
     (parse_user "\x1b[32;10;20M")
 
 let test_osc_sequences () =
-  match parse_user "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07" with
-  | [ Input.Clipboard (sel, data); Input.Osc (code, osc_data) ] ->
+  equal ~msg:"OSC responses do not leak into user input" (list event_testable)
+    []
+    (parse_user "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07");
+  match parse_responses "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07" with
+  | [
+   Input.Response.Clipboard (sel, data); Input.Response.Osc (code, osc_data);
+  ] ->
       equal ~msg:"clipboard selection" string "c" sel;
       equal ~msg:"clipboard data" string "abc" data;
       equal ~msg:"osc code" int 10 code;
       equal ~msg:"osc data" string "#FFFFFF" osc_data
   | _ ->
-      failf "Expected [Clipboard; Osc], got %d events"
-        (List.length (parse_user "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07"))
+      failf "Expected [Clipboard; Osc], got %d responses"
+        (List.length (parse_responses "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07"))
 
 let test_window_events () =
   equal ~msg:"focus, blur, resize" (list event_testable)
@@ -848,9 +1008,9 @@ let test_window_events () =
     (parse_user "\x1b[I\x1b[O\x1b[8;30;80t")
 
 let test_pixel_resolution_response () =
-  equal ~msg:"pixel resolution response" (list caps_event_testable)
-    [ Input.Caps.Pixel_resolution (644, 448) ]
-    (parse_caps "\x1b[4;448;644t")
+  equal ~msg:"pixel resolution response" (list capability_testable)
+    [ Input.Response.Pixel_resolution (644, 448) ]
+    (parse_capabilities "\x1b[4;448;644t")
 
 let test_kitty_advanced () =
   match parse_user "\x1b[97:65:97;5:3;98:99u" with
@@ -910,10 +1070,12 @@ let test_kitty_invalid_codepoint_regression () =
 let test_parsing_efficiency () =
   let long_invalid = "\x1b[" ^ String.make 10000 '9' ^ "X" in
   let t0 = Unix.gettimeofday () in
-  let events = parse_user long_invalid in
+  let events, responses = parse_single long_invalid in
   let dt = Unix.gettimeofday () -. t0 in
   is_true ~msg:"fast on long invalid (<0.1s)" (dt < 0.1);
-  is_true ~msg:"parses many chars" (List.length events >= 10000);
+  equal ~msg:"long invalid is not user input" int 0 (List.length events);
+  equal ~msg:"long invalid is one unknown response" int 1
+    (List.length responses);
 
   let large_paste = String.make 50000 'A' in
   let t1 = Unix.gettimeofday () in
@@ -948,9 +1110,14 @@ let test_all_splits s expected_event_count desc =
   for split_at = 1 to len - 1 do
     let parser = Input.Parser.create () in
     let bytes = Bytes.of_string s in
-    let events1 = feed_user parser bytes 0 split_at in
-    let events2 = feed_user parser bytes split_at (len - split_at) in
-    let total = List.length events1 + List.length events2 in
+    let events1, responses1 = feed_to_lists parser bytes 0 split_at in
+    let events2, responses2 =
+      feed_to_lists parser bytes split_at (len - split_at)
+    in
+    let total =
+      List.length events1 + List.length responses1 + List.length events2
+      + List.length responses2
+    in
     equal
       ~msg:(Printf.sprintf "%s split at %d" desc split_at)
       int expected_event_count total
@@ -1058,15 +1225,15 @@ let test_kitty_keyboard_queries () =
   equal ~msg:"kitty query 1;2" (list event_testable) []
     (parse_user "\x1b[?1;2u");
   equal ~msg:"kitty query 0" (list event_testable) [] (parse_user "\x1b[?0u");
-  equal ~msg:"caps kitty query" (list caps_event_testable)
-    [ Input.Caps.Kitty_keyboard { level = 1; flags = None } ]
-    (parse_caps "\x1b[?1u");
-  equal ~msg:"caps kitty query with flags" (list caps_event_testable)
-    [ Input.Caps.Kitty_keyboard { level = 1; flags = Some 2 } ]
-    (parse_caps "\x1b[?1;2u");
-  equal ~msg:"caps kitty query unsupported" (list caps_event_testable)
-    [ Input.Caps.Kitty_keyboard { level = 0; flags = None } ]
-    (parse_caps "\x1b[?0u")
+  equal ~msg:"caps kitty query" (list capability_testable)
+    [ Input.Response.Kitty_keyboard { level = 1; flags = None } ]
+    (parse_capabilities "\x1b[?1u");
+  equal ~msg:"caps kitty query with flags" (list capability_testable)
+    [ Input.Response.Kitty_keyboard { level = 1; flags = Some 2 } ]
+    (parse_capabilities "\x1b[?1;2u");
+  equal ~msg:"caps kitty query unsupported" (list capability_testable)
+    [ Input.Response.Kitty_keyboard { level = 0; flags = None } ]
+    (parse_capabilities "\x1b[?0u")
 
 let tests =
   [
@@ -1088,6 +1255,8 @@ let tests =
     test "SGR mouse state regressions" test_sgr_mouse_state_regressions;
     test "SGR mouse partial timeout regression"
       test_sgr_mouse_partial_timeout_regression;
+    test "protocol context timeout regressions"
+      test_protocol_context_timeout_regressions;
     test "parse paste mode" test_parse_paste_mode;
     test "parse UTF-8" test_parse_utf8;
     test "incremental parsing" test_incremental_parsing;

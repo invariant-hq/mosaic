@@ -26,7 +26,7 @@ let render_textarea ta ~width ~height =
   Renderable.Private.render_full node ~grid ~delta:0.;
   grid
 
-let no_mod = Input.Key.no_modifier
+let no_mod = Input.Modifier.none
 
 let send_key ta key =
   let ev = Event.Key.of_input (Input.Key.make key) in
@@ -52,11 +52,11 @@ let focus_textarea t ta =
   ()
 
 let blur_textarea ta = Renderable.Private.blur_direct (Textarea.node ta)
-let ctrl_mod = { no_mod with Input.Key.ctrl = true }
-let shift_mod = { no_mod with Input.Key.shift = true }
-let alt_mod = { no_mod with Input.Key.alt = true }
-let super_mod = { no_mod with Input.Key.super = true }
-let ctrl_shift_mod = { no_mod with Input.Key.ctrl = true; shift = true }
+let ctrl_mod = { no_mod with Input.Modifier.ctrl = true }
+let shift_mod = { no_mod with Input.Modifier.shift = true }
+let alt_mod = { no_mod with Input.Modifier.alt = true }
+let super_mod = { no_mod with Input.Modifier.super = true }
+let ctrl_shift_mod = { no_mod with Input.Modifier.ctrl = true; shift = true }
 
 (* ── Props ── *)
 
@@ -599,7 +599,7 @@ let alt_enter_fires_submit () =
   let on_submit v = received := v in
   let t, ta = make_textarea ~value:"hello" ~on_submit () in
   focus_textarea t ta;
-  let alt_mod = { no_mod with Input.Key.alt = true } in
+  let alt_mod = { no_mod with Input.Modifier.alt = true } in
   send_key_with_mod ta ~modifier:alt_mod Input.Key.Enter;
   equal ~msg:"submit fired" string "hello" !received
 

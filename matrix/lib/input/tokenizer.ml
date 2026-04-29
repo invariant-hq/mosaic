@@ -29,6 +29,7 @@ type parser = {
   mutable paste_len : int;
   mutable paste_match : int;
   mutable flush_deadline : float option;
+  mutable deferred_timeout : bool;
   mutable mode : [ `Normal | `Paste ];
 }
 
@@ -39,6 +40,7 @@ let ambiguity_timeout = 0.050
 let incomplete_seq_timeout = 0.100
 
 let schedule_flush t now =
+  t.deferred_timeout <- false;
   if t.mode = `Paste || Buffer.length t.buffer = 0 then t.flush_deadline <- None
   else
     let len = Buffer.length t.buffer in
@@ -62,6 +64,7 @@ let create () =
     paste_len = 0;
     paste_match = 0;
     flush_deadline = None;
+    deferred_timeout = false;
     mode = `Normal;
   }
 
@@ -72,7 +75,8 @@ let reset t =
   t.paste_len <- 0;
   t.paste_match <- 0;
   t.mode <- `Normal;
-  t.flush_deadline <- None
+  t.flush_deadline <- None;
+  t.deferred_timeout <- false
 
 (* helpers *)
 
@@ -183,7 +187,10 @@ let find_sequence_end s start len =
             if i >= len then Incomplete
             else if s.[i] = esc then Restart i
             else if is_csi_final s.[i] then
-              if (s.[i] = '$' || s.[i] = '^') && i + 1 < len then loop (i + 1)
+              if s.[i] = '$' && s.[start + 2] = '?' && i + 1 >= len then
+                Incomplete
+              else if (s.[i] = '$' || s.[i] = '^') && i + 1 < len then
+                loop (i + 1)
               else End (i + 1)
             else loop (i + 1)
           in
@@ -370,21 +377,34 @@ let feed t bytes off len ~now =
         t.flush_deadline <- None;
         process t now acc)
   else (
+    t.deferred_timeout <- false;
     Buffer.add_subbytes t.buffer bytes off len;
     t.flush_deadline <- None;
     process t now [])
 
 let deadline t = t.flush_deadline
+let wake_deferred t = if t.deferred_timeout then t.flush_deadline <- Some 0.
 
-let flush_expired t now =
-  match t.flush_deadline with
-  | Some expiry when now >= expiry && t.mode = `Normal ->
-      t.flush_deadline <- None;
-      if Buffer.length t.buffer = 0 then []
+let flush_expired ?(defer = fun _ -> false) t now =
+  match
+    ( t.mode = `Normal,
+      t.deferred_timeout,
+      match t.flush_deadline with Some expiry -> now >= expiry | None -> false
+    )
+  with
+  | true, true, _ | true, false, true ->
+      if Buffer.length t.buffer = 0 then (
+        t.deferred_timeout <- false;
+        [])
       else
         let leftover = Buffer.contents t.buffer in
-        if is_partial_sgr_mouse leftover then []
+        if is_partial_sgr_mouse leftover || defer leftover then (
+          t.flush_deadline <- None;
+          t.deferred_timeout <- true;
+          [])
         else (
+          t.flush_deadline <- None;
+          t.deferred_timeout <- false;
           Buffer.clear t.buffer;
           if leftover = "" then [] else [ Sequence leftover ])
   | _ -> []

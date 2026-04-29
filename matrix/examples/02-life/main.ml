@@ -169,7 +169,7 @@ let () =
       | Input.Key { key = Input.Key.Char uchar; modifier; _ } ->
           let code = Uchar.to_int uchar in
           let ctrl_c =
-            modifier.Input.Key.ctrl
+            modifier.Input.Modifier.ctrl
             && (code = Char.code 'c' || code = Char.code 'C')
           in
           if ctrl_c then Matrix.stop app

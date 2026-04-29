@@ -22,8 +22,8 @@
     appended when [$TERM] contains ["iterm"].
 
     Responses are parsed through a {!Input.Parser.t} and converted into
-    {!Input.Caps.event} values. {!apply_events} folds those into the capability
-    record and {!terminal_info}.
+    {!Input.Response.capability} values. {!apply_events} folds those into the
+    capability record and {!terminal_info}.
 
     Kitty detection (via XTVersion containing ["kitty"] or [$KITTY_WINDOW_ID])
     immediately promotes all Kitty capabilities. Detection of the Kitty keyboard
@@ -143,7 +143,7 @@ val apply_event :
   ?apply_env_overrides:bool ->
   caps:t ->
   info:terminal_info ->
-  Input.Caps.event ->
+  Input.Response.capability ->
   t * terminal_info
 (** [apply_event ~apply_env_overrides ~caps ~info event] processes a single
     capability [event] and is [(caps', info')] with the updated records.
@@ -157,7 +157,7 @@ val apply_events :
   ?apply_env_overrides:bool ->
   caps:t ->
   info:terminal_info ->
-  Input.Caps.event list ->
+  Input.Response.capability list ->
   t * terminal_info
 (** [apply_events ~apply_env_overrides ~caps ~info events] folds capability
     [events] into the records and is [(caps', info')].

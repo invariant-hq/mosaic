@@ -202,7 +202,8 @@ let update app event () =
   | Input.Key { key = Input.Key.Char uchar; modifier; _ } ->
       let code = Uchar.to_int uchar in
       let ctrl_c =
-        modifier.Input.Key.ctrl && (code = Char.code 'c' || code = Char.code 'C')
+        modifier.Input.Modifier.ctrl
+        && (code = Char.code 'c' || code = Char.code 'C')
       in
       if ctrl_c then (
         stop app;

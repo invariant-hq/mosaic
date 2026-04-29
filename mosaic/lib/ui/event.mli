@@ -118,7 +118,7 @@ module Mouse : sig
   val pp_button : Format.formatter -> button -> unit
   (** [pp_button] formats a {!button} value. *)
 
-  type modifier = Input.Key.modifier = {
+  type modifier = Input.Modifier.t = {
     ctrl : bool;  (** Control key held. *)
     alt : bool;  (** Alt / Option key held. *)
     shift : bool;  (** Shift key held. *)
@@ -128,8 +128,7 @@ module Mouse : sig
     caps_lock : bool;  (** Caps Lock active. *)
     num_lock : bool;  (** Num Lock active. *)
   }
-  (** The type for modifier key state. Re-exported from {!Input.Key.modifier}.
-  *)
+  (** The type for modifier key state. Re-exported from {!Input.Modifier.t}. *)
 
   val no_modifier : modifier
   (** [no_modifier] is the modifier state with every field set to [false]. *)

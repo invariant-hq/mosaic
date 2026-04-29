@@ -26,7 +26,7 @@ let render_input input ~width ~height =
   Renderable.Private.render node grid ~delta:0.;
   grid
 
-let no_mod = Input.Key.no_modifier
+let no_mod = Input.Modifier.none
 
 let send_key input key =
   let ev = Event.Key.of_input (Input.Key.make key) in
@@ -68,12 +68,12 @@ let string_contains haystack needle =
     done;
     !found
 
-let ctrl_mod = { no_mod with Input.Key.ctrl = true }
-let shift_mod = { no_mod with Input.Key.shift = true }
-let alt_mod = { no_mod with Input.Key.alt = true }
-let super_mod = { no_mod with Input.Key.super = true }
-let ctrl_shift_mod = { no_mod with Input.Key.ctrl = true; shift = true }
-let super_shift_mod = { no_mod with Input.Key.super = true; shift = true }
+let ctrl_mod = { no_mod with Input.Modifier.ctrl = true }
+let shift_mod = { no_mod with Input.Modifier.shift = true }
+let alt_mod = { no_mod with Input.Modifier.alt = true }
+let super_mod = { no_mod with Input.Modifier.super = true }
+let ctrl_shift_mod = { no_mod with Input.Modifier.ctrl = true; shift = true }
+let super_shift_mod = { no_mod with Input.Modifier.super = true; shift = true }
 
 (* ── Props ── *)
 

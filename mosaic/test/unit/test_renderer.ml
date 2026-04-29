@@ -30,15 +30,15 @@ let make_child ~parent ~x ~y ~w ~h ?focusable () =
   | None -> ());
   child
 
-let mouse_press ?(button = Input.Mouse.Left)
-    ?(modifiers = Input.Key.no_modifier) ~x ~y () =
+let mouse_press ?(button = Input.Mouse.Left) ?(modifiers = Input.Modifier.none)
+    ~x ~y () =
   Input.Mouse.Button_press (x, y, button, modifiers)
 
 let mouse_release ?(button = Input.Mouse.Left)
-    ?(modifiers = Input.Key.no_modifier) ~x ~y () =
+    ?(modifiers = Input.Modifier.none) ~x ~y () =
   Input.Mouse.Button_release (x, y, button, modifiers)
 
-let mouse_motion ?(left = false) ?(modifiers = Input.Key.no_modifier) ~x ~y () =
+let mouse_motion ?(left = false) ?(modifiers = Input.Modifier.none) ~x ~y () =
   Input.Mouse.Motion (x, y, { left; middle = false; right = false }, modifiers)
 
 let record_mouse node =
@@ -426,7 +426,7 @@ let mouse_event_has_correct_modifiers () =
   let t = make_renderer () in
   let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   let log = record_mouse child in
-  let mods = { Input.Key.no_modifier with shift = true } in
+  let mods = { Input.Modifier.none with shift = true } in
   do_frame t;
   Renderer.dispatch_mouse t (mouse_press ~modifiers:mods ~x:7 ~y:7 ());
   is_true ~msg:"received" (List.length !log > 0);
@@ -516,7 +516,7 @@ let scroll_dispatches_to_hit_target () =
   let log = record_mouse child in
   do_frame t;
   Renderer.dispatch_scroll t ~x:7 ~y:7 ~direction:Input.Mouse.Scroll_up ~delta:1
-    ~modifiers:Input.Key.no_modifier;
+    ~modifiers:Input.Modifier.none;
   let found_scroll =
     List.exists
       (fun ev -> match Event.Mouse.kind ev with Scroll _ -> true | _ -> false)
@@ -528,7 +528,7 @@ let scroll_with_modifiers () =
   let t = make_renderer () in
   let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   let log = record_mouse child in
-  let mods = { Input.Key.no_modifier with shift = true } in
+  let mods = { Input.Modifier.none with shift = true } in
   do_frame t;
   Renderer.dispatch_scroll t ~x:7 ~y:7 ~direction:Input.Mouse.Scroll_down
     ~delta:1 ~modifiers:mods;
@@ -542,7 +542,7 @@ let scroll_on_empty_area () =
   do_frame t;
   (* Should not crash *)
   Renderer.dispatch_scroll t ~x:0 ~y:0 ~direction:Input.Mouse.Scroll_up ~delta:1
-    ~modifiers:Input.Key.no_modifier
+    ~modifiers:Input.Modifier.none
 
 (* ── Drag ── *)
 
@@ -645,7 +645,7 @@ let right_button_does_not_capture () =
        ( 7,
          7,
          { left = false; middle = false; right = true },
-         Input.Key.no_modifier ));
+         Input.Modifier.none ));
   is_none ~msg:"no capture from right" (Renderer.captured t)
 
 (* ── Selection ── *)

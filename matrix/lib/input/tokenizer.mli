@@ -72,9 +72,19 @@ val deadline : parser -> float option
     tokenizer will flush its pending escape sequence, or [None] when no flush is
     scheduled. *)
 
-val flush_expired : parser -> float -> token list
-(** [flush_expired p now] emits any pending partial sequence whose deadline is
-    at or before [now]. Returns an empty list if nothing was flushed. *)
+val wake_deferred : parser -> unit
+(** [wake_deferred p] schedules an immediate flush for a pending sequence that
+    was deferred by {!flush_expired}. Does nothing when no sequence is deferred.
+*)
+
+val flush_expired : ?defer:(string -> bool) -> parser -> float -> token list
+(** [flush_expired ~defer p now] emits any pending partial sequence whose
+    deadline is at or before [now]. Returns an empty list if nothing was
+    flushed.
+
+    If [defer pending] is [true], [pending] remains buffered and no new deadline
+    is scheduled until more bytes arrive or {!wake_deferred} is called. [defer]
+    defaults to [fun _ -> false]. *)
 
 (** {1:state State} *)
 

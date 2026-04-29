@@ -318,7 +318,7 @@ let test_kitty_keyboard_level_zero_capability () =
   with_terminal ~initial_caps:caps @@ fun term _buf ->
   is_false ~msg:"kitty initially off" (T.capabilities term).kitty_keyboard;
   T.apply_capability_event term
-    (Input.Caps.Kitty_keyboard { level = 0; flags = None });
+    (Input.Response.Kitty_keyboard { level = 0; flags = None });
   is_true ~msg:"kitty enabled by level zero response"
     (T.capabilities term).kitty_keyboard;
   T.close term

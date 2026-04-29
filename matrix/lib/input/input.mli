@@ -2,19 +2,19 @@
 
     This module parses raw terminal byte streams into structured events:
     keyboard input with modifiers, mouse actions, scroll wheel, bracketed paste,
-    terminal resize, and focus tracking. Capability responses (device
-    attributes, mode reports, cursor position) are separated into their own
+    terminal resize, and focus tracking. Terminal responses (device attributes,
+    mode reports, cursor position, OSC replies) are separated into their own
     stream.
 
     The module handles multiple terminal protocols transparently: Kitty keyboard
-    protocol, SGR and URXVT mouse tracking, X10/Normal mouse tracking, bracketed
-    paste, and OSC 52 clipboard responses.
+    protocol, SGR and URXVT mouse tracking, X10/Normal mouse tracking, and
+    bracketed paste.
 
     {1:event_model Event model}
 
-    The event type {!t} covers user-facing input. Capability responses are
-    reported separately as {!Caps.event} values so applications can handle input
-    and capability detection independently.
+    The event type {!t} covers user-facing input. Terminal responses are
+    reported separately as {!Response.t} values so applications can handle input
+    and terminal protocol replies independently.
 
     {1:parsing Parsing}
 
@@ -22,7 +22,7 @@
     {[
       let p = Input.Parser.create () in
       Input.Parser.feed p buf 0 len ~now ~on_event:handle_event
-        ~on_caps:handle_caps
+        ~on_response:handle_response
     ]}
 
     Escape sequences may arrive fragmented across reads; the parser buffers

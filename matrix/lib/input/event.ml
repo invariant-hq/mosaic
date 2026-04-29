@@ -1,5 +1,50 @@
-(* Terminal input events: keys, modifiers, mouse, capabilities and high-level
+(* Terminal input events: keys, modifiers, mouse, responses and high-level
    events. *)
+
+module Modifier = struct
+  type t = {
+    ctrl : bool;
+    alt : bool;
+    shift : bool;
+    super : bool;
+    hyper : bool;
+    meta : bool;
+    caps_lock : bool;
+    num_lock : bool;
+  }
+
+  let none =
+    {
+      ctrl = false;
+      alt = false;
+      shift = false;
+      super = false;
+      hyper = false;
+      meta = false;
+      caps_lock = false;
+      num_lock = false;
+    }
+
+  let equal (a : t) (b : t) = a = b
+
+  let pp fmt m =
+    let mods = [] in
+    let mods = if m.shift then "shift" :: mods else mods in
+    let mods = if m.alt then "alt" :: mods else mods in
+    let mods = if m.ctrl then "ctrl" :: mods else mods in
+    let mods = if m.super then "super" :: mods else mods in
+    let mods = if m.hyper then "hyper" :: mods else mods in
+    let mods = if m.meta then "meta" :: mods else mods in
+    let mods = if m.caps_lock then "caps_lock" :: mods else mods in
+    let mods = if m.num_lock then "num_lock" :: mods else mods in
+    match mods with
+    | [] -> Format.fprintf fmt "none"
+    | _ -> Format.fprintf fmt "{%s}" (String.concat "+" mods)
+
+  let ctrl (m : t) = m.ctrl
+  let alt (m : t) = m.alt
+  let shift (m : t) = m.shift
+end
 
 module Key = struct
   type t =
@@ -192,55 +237,16 @@ module Key = struct
     | Repeat -> Format.pp_print_string fmt "Repeat"
     | Release -> Format.pp_print_string fmt "Release"
 
-  type modifier = {
-    ctrl : bool;
-    alt : bool;
-    shift : bool;
-    super : bool;
-    hyper : bool;
-    meta : bool;
-    caps_lock : bool;
-    num_lock : bool;
-  }
-
-  let no_modifier =
-    {
-      ctrl = false;
-      alt = false;
-      shift = false;
-      super = false;
-      hyper = false;
-      meta = false;
-      caps_lock = false;
-      num_lock = false;
-    }
-
-  let equal_modifier (a : modifier) (b : modifier) = a = b
-
-  let pp_modifier fmt m =
-    let mods = [] in
-    let mods = if m.shift then "shift" :: mods else mods in
-    let mods = if m.alt then "alt" :: mods else mods in
-    let mods = if m.ctrl then "ctrl" :: mods else mods in
-    let mods = if m.super then "super" :: mods else mods in
-    let mods = if m.hyper then "hyper" :: mods else mods in
-    let mods = if m.meta then "meta" :: mods else mods in
-    let mods = if m.caps_lock then "caps_lock" :: mods else mods in
-    let mods = if m.num_lock then "num_lock" :: mods else mods in
-    match mods with
-    | [] -> Format.fprintf fmt "no_modifier"
-    | _ -> Format.fprintf fmt "{%s}" (String.concat "+" mods)
-
   type event = {
     key : t;
-    modifier : modifier;
+    modifier : Modifier.t;
     event_type : event_type;
     associated_text : string;
     shifted_key : Uchar.t option;
     base_key : Uchar.t option;
   }
 
-  let make ?(modifier = no_modifier) ?(event_type = Press)
+  let make ?(modifier = Modifier.none) ?(event_type = Press)
       ?(associated_text = "") ?shifted_key ?base_key key =
     { key; modifier; event_type; associated_text; shifted_key; base_key }
 
@@ -260,7 +266,7 @@ module Key = struct
 
   let pp_event fmt e =
     Format.fprintf fmt "{key=%a; modifier=%a; event_type=%a" pp e.key
-      pp_modifier e.modifier pp_event_type e.event_type;
+      Modifier.pp e.modifier pp_event_type e.event_type;
     if e.associated_text <> "" then
       Format.fprintf fmt "; associated_text=%S" e.associated_text;
     (match e.shifted_key with
@@ -283,10 +289,6 @@ module Key = struct
         let c = Uchar.to_int u in
         c < 0x20 || c = 0x7F
     | _ -> false
-
-  let ctrl (m : modifier) = m.ctrl
-  let alt (m : modifier) = m.alt
-  let shift (m : modifier) = m.shift
 end
 
 module Mouse = struct
@@ -337,25 +339,25 @@ module Mouse = struct
     | Scroll_right -> Format.pp_print_string fmt "Scroll_right"
 
   type event =
-    | Button_press of int * int * button * Key.modifier
-    | Button_release of int * int * button * Key.modifier
-    | Motion of int * int * button_state * Key.modifier
+    | Button_press of int * int * button * Modifier.t
+    | Button_release of int * int * button * Modifier.t
+    | Motion of int * int * button_state * Modifier.t
 
   let equal_event (a : event) (b : event) = a = b
 
   let pp_event fmt = function
     | Button_press (x, y, btn, mods) ->
         Format.fprintf fmt "Button_press(%d,%d,%a,%a)" x y pp_button btn
-          Key.pp_modifier mods
+          Modifier.pp mods
     | Button_release (x, y, btn, mods) ->
         Format.fprintf fmt "Button_release(%d,%d,%a,%a)" x y pp_button btn
-          Key.pp_modifier mods
+          Modifier.pp mods
     | Motion (x, y, state, mods) ->
         Format.fprintf fmt "Motion(%d,%d,%a,%a)" x y pp_button_state state
-          Key.pp_modifier mods
+          Modifier.pp mods
 end
 
-module Caps = struct
+module Response = struct
   type mode_report = { is_private : bool; modes : (int * int) list }
 
   let equal_mode_report (a : mode_report) (b : mode_report) = a = b
@@ -371,7 +373,7 @@ module Caps = struct
     in
     Format.fprintf fmt "Mode_report(is_private=%b,[%s])" r.is_private pairs
 
-  type event =
+  type capability =
     | Device_attributes of int list
     | Mode_report of mode_report
     | Pixel_resolution of int * int
@@ -381,9 +383,9 @@ module Caps = struct
     | Kitty_keyboard of { level : int; flags : int option }
     | Color_scheme of [ `Dark | `Light | `Unknown of int ]
 
-  let equal_event (a : event) (b : event) = a = b
+  let equal_capability (a : capability) (b : capability) = a = b
 
-  let pp_event fmt = function
+  let pp_capability fmt = function
     | Device_attributes attrs ->
         Format.fprintf fmt "Device_attributes([%s])"
           (String.concat ";" (List.map string_of_int attrs))
@@ -407,18 +409,30 @@ module Caps = struct
           | `Unknown v -> Printf.sprintf "Unknown(%d)" v
         in
         Format.fprintf fmt "Color_scheme(%s)" s
+
+  type t =
+    | Capability of capability
+    | Clipboard of string * string
+    | Osc of int * string
+    | Unknown of string
+
+  let equal (a : t) (b : t) = a = b
+
+  let pp fmt = function
+    | Capability c -> Format.fprintf fmt "Capability(%a)" pp_capability c
+    | Clipboard (sel, data) -> Format.fprintf fmt "Clipboard(%S,%S)" sel data
+    | Osc (code, data) -> Format.fprintf fmt "Osc(%d,%S)" code data
+    | Unknown s -> Format.fprintf fmt "Unknown(%S)" s
 end
 
 type t =
   | Key of Key.event
   | Mouse of Mouse.event
-  | Scroll of int * int * Mouse.scroll_direction * int * Key.modifier
+  | Scroll of int * int * Mouse.scroll_direction * int * Modifier.t
   | Resize of int * int
   | Focus
   | Blur
   | Paste of string
-  | Clipboard of string * string
-  | Osc of int * string
 
 let equal (e1 : t) (e2 : t) =
   match (e1, e2) with
@@ -427,17 +441,12 @@ let equal (e1 : t) (e2 : t) =
   | Scroll (x1, y1, d1, s1, m1), Scroll (x2, y2, d2, s2, m2) ->
       x1 = x2 && y1 = y2
       && Mouse.equal_scroll_direction d1 d2
-      && s1 = s2 && Key.equal_modifier m1 m2
+      && s1 = s2 && Modifier.equal m1 m2
   | Resize (w1, h1), Resize (w2, h2) -> w1 = w2 && h1 = h2
   | Focus, Focus -> true
   | Blur, Blur -> true
   | Paste s1, Paste s2 -> s1 = s2
-  | Clipboard (a1, d1), Clipboard (a2, d2) -> a1 = a2 && d1 = d2
-  | Osc (c1, d1), Osc (c2, d2) -> c1 = c2 && d1 = d2
-  | ( ( Key _ | Mouse _ | Scroll _ | Resize _ | Focus | Blur | Paste _
-      | Clipboard _ | Osc _ ),
-      _ ) ->
-      false
+  | (Key _ | Mouse _ | Scroll _ | Resize _ | Focus | Blur | Paste _), _ -> false
 
 let pp fmt = function
   | Key k -> Format.fprintf fmt "Key(%a)" Key.pp_event k
@@ -450,14 +459,12 @@ let pp fmt = function
         | Mouse.Scroll_left -> "left"
         | Mouse.Scroll_right -> "right"
       in
-      Format.fprintf fmt "Scroll(%d,%d,%s,%d,%a)" x y dir_s delta
-        Key.pp_modifier mods
+      Format.fprintf fmt "Scroll(%d,%d,%s,%d,%a)" x y dir_s delta Modifier.pp
+        mods
   | Resize (w, h) -> Format.fprintf fmt "Resize(%d,%d)" w h
   | Focus -> Format.pp_print_string fmt "Focus"
   | Blur -> Format.pp_print_string fmt "Blur"
   | Paste s -> Format.fprintf fmt "Paste(%S)" s
-  | Clipboard (sel, data) -> Format.fprintf fmt "Clipboard(%S,%S)" sel data
-  | Osc (code, data) -> Format.fprintf fmt "Osc(%d,%S)" code data
 
 (* Convenience constructors *)
 
@@ -486,13 +493,13 @@ let release ?modifier ?associated_text ?shifted_key ?base_key k =
   key_event ?modifier ~event_type:Key.Release ?associated_text ?shifted_key
     ?base_key k
 
-let mouse_press ?(modifier = Key.no_modifier) x y button =
+let mouse_press ?(modifier = Modifier.none) x y button =
   Mouse (Mouse.Button_press (x, y, button, modifier))
 
-let mouse_release ?(modifier = Key.no_modifier) x y button =
+let mouse_release ?(modifier = Modifier.none) x y button =
   Mouse (Mouse.Button_release (x, y, button, modifier))
 
-let mouse_motion ?(modifier = Key.no_modifier) x y state =
+let mouse_motion ?(modifier = Modifier.none) x y state =
   Mouse (Mouse.Motion (x, y, state, modifier))
 
 (* Helpers that depend on [t] *)

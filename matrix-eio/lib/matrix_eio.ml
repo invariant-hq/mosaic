@@ -86,9 +86,15 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     (* CR: don't hardcode ansi sequences. use Ansi *)
     Matrix.Terminal.send terminal "\027[6n";
     let result = ref None in
-    let on_caps = function
-      | Matrix.Input.Caps.Cursor_position (row, col) -> result := Some (row, col)
-      | event -> Matrix.Terminal.apply_capability_event terminal event
+    let on_response = function
+      | Matrix.Input.Response.Capability
+          (Matrix.Input.Response.Cursor_position (row, col)) ->
+          result := Some (row, col)
+      | Matrix.Input.Response.Capability event ->
+          Matrix.Terminal.apply_capability_event terminal event
+      | Matrix.Input.Response.Clipboard _ | Matrix.Input.Response.Osc _
+      | Matrix.Input.Response.Unknown _ ->
+          ()
     in
     let deadline = Eio.Time.now clock +. timeout in
     let rec loop () =
@@ -102,7 +108,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
              let now = Eio.Time.now clock in
              Matrix.Input.Parser.feed parser input_buffer 0 n ~now
                ~on_event:(fun _ -> ())
-               ~on_caps
+               ~on_response
            with End_of_file -> ());
           loop ())
     in
@@ -151,7 +157,13 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     Eio.Flow.write stdout [ Cstruct.of_bytes ~off ~len buf ]
   in
   let read_events ~timeout ~on_event =
-    let on_caps event = Matrix.Terminal.apply_capability_event terminal event in
+    let on_response = function
+      | Matrix.Input.Response.Capability event ->
+          Matrix.Terminal.apply_capability_event terminal event
+      | Matrix.Input.Response.Clipboard _ | Matrix.Input.Response.Osc _
+      | Matrix.Input.Response.Unknown _ ->
+          ()
+    in
     let effective_timeout =
       match timeout with
       | None -> sigwinch_poll_interval
@@ -184,11 +196,11 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
           let n = read_stdin () in
           let now = Eio.Time.now clock in
           Matrix.Input.Parser.feed parser input_buffer 0 n ~now ~on_event
-            ~on_caps
+            ~on_response
         with End_of_file -> ())
     | `Wakeup | `Timeout -> ());
     let now = Eio.Time.now clock in
-    Matrix.Input.Parser.drain parser ~now ~on_event ~on_caps
+    Matrix.Input.Parser.drain parser ~now ~on_event ~on_response
   in
   let app =
     Matrix.attach ~mode ~raw_mode ~target_fps ~respect_alpha ~mouse_enabled

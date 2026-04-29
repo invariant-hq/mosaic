@@ -4,12 +4,31 @@ open Event
 
 type key = Key.t
 type event_type = Key.event_type
-type modifier = Key.modifier
+type modifier = Modifier.t
 type mouse_button = Mouse.button
 type mouse_button_state = Mouse.button_state
 type scroll_direction = Mouse.scroll_direction
 type event = Event.t
-type parsed = [ `User of event | `Caps of Caps.event ]
+type response = Response.t
+type capability = Response.capability
+type parsed = [ `User of event | `Response of response ]
+
+type protocol_context = {
+  kitty_keyboard : bool;
+  explicit_width_cpr : bool;
+  startup_cursor_cpr : bool;
+  pixel_resolution : bool;
+  private_capability_replies : bool;
+}
+
+let default_protocol_context =
+  {
+    kitty_keyboard = false;
+    explicit_width_cpr = false;
+    startup_cursor_cpr = false;
+    pixel_resolution = false;
+    private_capability_replies = false;
+  }
 
 (* Maximum CSI parameters we track. Covers all keyboard/mouse sequences. *)
 let max_csi_params = 8
@@ -35,17 +54,18 @@ type t = {
   mutable mouse_left_pressed : bool;
   mutable mouse_middle_pressed : bool;
   mutable mouse_right_pressed : bool;
+  mutable protocol_context : protocol_context;
 }
 
 (* Modifiers *)
 
-let no_modifier = Key.no_modifier
+let no_modifier = Modifier.none
 
 (* Precomputed modifier table to avoid allocations *)
 let modifier_table : modifier array =
   Array.init 256 (fun mask ->
       {
-        Key.ctrl = mask land 4 <> 0;
+        Modifier.ctrl = mask land 4 <> 0;
         alt = mask land 2 <> 0;
         shift = mask land 1 <> 0;
         super = mask land 8 <> 0;
@@ -60,7 +80,7 @@ let mk_modifier ?(ctrl = false) ?(alt = false) ?(shift = false) ?(super = false)
     ?(hyper = false) ?(meta = false) ?(caps_lock = false) ?(num_lock = false) ()
     : modifier =
   {
-    Key.ctrl;
+    Modifier.ctrl;
     alt;
     shift;
     super;
@@ -149,7 +169,10 @@ let create () =
     mouse_left_pressed = false;
     mouse_middle_pressed = false;
     mouse_right_pressed = false;
+    protocol_context = default_protocol_context;
   }
+
+let protocol_context parser = parser.protocol_context
 
 (* CSI helpers *)
 
@@ -286,7 +309,93 @@ let contains_substring s sub =
     in
     outer 0
 
-type capability_match = Event of Caps.event | Drop | No_match
+let is_all_digits s start stop =
+  start < stop
+  &&
+  let rec loop i =
+    if i >= stop then true
+    else if is_ascii_digit s.[i] then loop (i + 1)
+    else false
+  in
+  loop start
+
+let is_digits_and s start stop allowed =
+  start < stop
+  &&
+  let rec loop i =
+    if i >= stop then true
+    else if is_ascii_digit s.[i] || String.contains allowed s.[i] then
+      loop (i + 1)
+    else false
+  in
+  loop start
+
+let is_deferred_kitty_csi context body =
+  context.kitty_keyboard
+  &&
+  let len = String.length body in
+  len > 0
+  && (String.contains body ';' || String.contains body ':')
+  && is_digits_and body 0 len ":;"
+
+let is_deferred_explicit_width_cpr context body =
+  context.explicit_width_cpr
+  &&
+  match String.index_opt body ';' with
+  | None -> false
+  | Some semi ->
+      if
+        String.equal (String.sub body 0 semi) "1"
+        && is_all_digits body (semi + 1) (String.length body)
+      then
+        match
+          parse_int_range_limit_opt body (semi + 1) (String.length body) 3
+        with
+        | Some col -> col >= 2 && col <= 3
+        | None -> false
+      else false
+
+let is_deferred_startup_cpr context body =
+  context.startup_cursor_cpr
+  &&
+  match String.index_opt body ';' with
+  | None -> false
+  | Some semi ->
+      is_all_digits body 0 semi
+      && is_all_digits body (semi + 1) (String.length body)
+
+let is_deferred_pixel_resolution context body =
+  context.pixel_resolution
+  &&
+  let prefix = "4;" in
+  has_prefix body prefix
+  && is_digits_and body (String.length prefix) (String.length body) ";"
+
+let is_deferred_private_capability context body =
+  context.private_capability_replies
+  && String.length body >= 1
+  && body.[0] = '?'
+  && is_digits_and body 1 (String.length body) ";$"
+
+let should_defer_pending parser pending =
+  let len = String.length pending in
+  if len < 3 || pending.[0] <> '\x1b' || pending.[1] <> '[' then false
+  else
+    let body = String.sub pending 2 (len - 2) in
+    let context = parser.protocol_context in
+    is_deferred_kitty_csi context body
+    || is_deferred_explicit_width_cpr context body
+    || is_deferred_startup_cpr context body
+    || is_deferred_pixel_resolution context body
+    || is_deferred_private_capability context body
+
+let set_protocol_context parser context =
+  parser.protocol_context <- context;
+  let pending = Bytes.to_string (Tokenizer.pending parser.raw) in
+  if pending <> "" && not (should_defer_pending parser pending) then
+    Tokenizer.wake_deferred parser.raw
+
+type capability_match = Event of capability | Drop | No_match
 
 let capability_event_of_sequence seq =
   let len = String.length seq in
@@ -295,20 +404,20 @@ let capability_event_of_sequence seq =
     let payload =
       if payload_len > 0 then String.sub seq 4 payload_len else ""
     in
-    Event (Caps.Xtversion payload)
+    Event (Response.Xtversion payload)
   else if
     len >= 4 && has_prefix seq "\x1bP" && has_suffix seq "\x1b\\"
     && contains_substring (String.lowercase_ascii seq) "kitty"
   then
     (* Some terminals respond with a plain DCS payload containing "kitty"
        without the XTVersion prefix; treat as Kitty identification. *)
-    Event (Caps.Xtversion "kitty")
+    Event (Response.Xtversion "kitty")
   else if len >= 5 && has_prefix seq "\x1b_G" && has_suffix seq "\x1b\\" then
     let payload_len = len - 5 in
     let payload =
       if payload_len > 0 then String.sub seq 3 payload_len else ""
     in
-    Event (Caps.Kitty_graphics_reply payload)
+    Event (Response.Kitty_graphics_reply payload)
   else if len >= 4 && has_prefix seq "\x1b[?" && has_suffix seq "u" then
     let body_len = len - 4 in
     if body_len <= 0 then Drop
@@ -324,7 +433,7 @@ let capability_event_of_sequence seq =
               let flags =
                 match rest with [] -> None | h :: _ -> to_int_opt h
               in
-              Event (Caps.Kitty_keyboard { level; flags }))
+              Event (Response.Kitty_keyboard { level; flags }))
       | _ -> Drop
   else No_match
 
@@ -367,8 +476,10 @@ let modifier_of_csi_mod m =
 let event_type_of_csi_mod m =
   match m.event with Some e -> event_type_of_int e | None -> Press
 
-let ensure_shift m = if m.Key.shift then m else { m with shift = true }
-let ensure_ctrl m = if m.Key.ctrl then m else { m with Key.ctrl = true }
+let ensure_shift m = if m.Modifier.shift then m else { m with shift = true }
+
+let ensure_ctrl m =
+  if m.Modifier.ctrl then m else { m with Modifier.ctrl = true }
 
 let ctrl_key_of_code code =
   match code with
@@ -824,7 +935,7 @@ let parse_kitty_keyboard parser s start end_ =
                 let buf = parser.scratch_buffer in
                 Buffer.clear buf;
                 let chosen =
-                  match (modifier.Key.shift, shifted) with
+                  match (modifier.Modifier.shift, shifted) with
                   | true, Some su -> su
                   | _ -> u
                 in
@@ -931,7 +1042,10 @@ let parse_csi_capability parser s start params_end final_char modifier
           else List.rev acc
       in
       let modes = parse_pairs [] 0 in
-      Some (`Caps (Caps.Mode_report { Caps.is_private; modes }))
+      Some
+        (`Response
+           (Response.Capability
+              (Response.Mode_report { Response.is_private; modes })))
   (* Color scheme DSR response: CSI ? 997 ; value n Response to CSI ? 996 n
      query. Value 1 = dark, 2 = light. *)
   | 'n' ->
@@ -942,7 +1056,7 @@ let parse_csi_capability parser s start params_end final_char modifier
           let scheme =
             match value with 1 -> `Dark | 2 -> `Light | v -> `Unknown v
           in
-          Some (`Caps (Caps.Color_scheme scheme))
+          Some (`Response (Response.Capability (Response.Color_scheme scheme)))
         else None)
       else None
   | 't' ->
@@ -952,13 +1066,15 @@ let parse_csi_capability parser s start params_end final_char modifier
       if parser.csi_param_count = 3 && p0 = 8 && p1 >= 0 && p2 >= 0 then
         Some (`User (Resize (p2, p1)))
       else if parser.csi_param_count = 3 && p0 = 4 && p1 >= 0 && p2 >= 0 then
-        Some (`Caps (Caps.Pixel_resolution (p2, p1)))
+        Some
+          (`Response (Response.Capability (Response.Pixel_resolution (p2, p1))))
       else None
   | 'R' ->
       let row = get_csi_param parser 0 in
       let col = get_csi_param parser 1 in
       if parser.csi_param_count = 2 && row >= 0 && col >= 0 then
-        Some (`Caps (Caps.Cursor_position (row, col)))
+        Some
+          (`Response (Response.Capability (Response.Cursor_position (row, col))))
       else None
   | 'c' ->
       if start < params_end && s.[start] = '?' then (
@@ -970,7 +1086,10 @@ let parse_csi_capability parser s start params_end final_char modifier
             if v >= 0 then collect_attrs (v :: acc) (i + 1)
             else collect_attrs acc (i + 1)
         in
-        Some (`Caps (Caps.Device_attributes (collect_attrs [] 0))))
+        Some
+          (`Response
+             (Response.Capability
+                (Response.Device_attributes (collect_attrs [] 0)))))
       else if parser.csi_param_count = 0 then
         let modifier = ensure_shift modifier in
         Some (`User (make_key_event ~modifier ~event_type Right))
@@ -1202,10 +1321,10 @@ let parse_escape_sequence parser s start length : parsed option * int =
                 | Some decoded -> decoded
                 | None -> base64_data (* Return verbatim if invalid *)
               in
-              Clipboard (selection, clipboard_data)
-            else Osc (code, data)
+              Response.Clipboard (selection, clipboard_data)
+            else Response.Osc (code, data)
           in
-          (Some (`User event), consumed)
+          (Some (`Response event), consumed)
     else if length >= 2 then
       (* Alt (ESC-prefix) combinations and ESC+control handling *)
       let c = s.[start + 1] in
@@ -1375,7 +1494,7 @@ let text_events_iter parser bytes off len emit =
 
 (* Token processing - callback based, zero list allocation *)
 
-let process_tokens_iter parser tokens ~on_event ~on_caps =
+let process_tokens_iter parser tokens ~on_event ~on_response =
   let rec loop = function
     | [] -> ()
     | Tokenizer.Paste payload :: rest ->
@@ -1388,7 +1507,7 @@ let process_tokens_iter parser tokens ~on_event ~on_caps =
              replies (e.g., Kitty detection) are handled correctly. *)
           match capability_event_of_sequence seq with
           | Event cap ->
-              on_caps cap;
+              on_response (Response.Capability cap);
               loop rest
           | Drop -> loop rest
           | No_match -> (
@@ -1412,22 +1531,11 @@ let process_tokens_iter parser tokens ~on_event ~on_caps =
               | Some (`User e) ->
                   on_event e;
                   loop rest
-              | Some (`Caps c) ->
-                  on_caps c;
+              | Some (`Response r) ->
+                  on_response r;
                   loop rest
               | None ->
-                  (* Unknown sequence - emit Escape, convert rest to text. This
-                     handles edge cases like: - Unknown CSI sequences with valid
-                     terminators - Unusual escape sequences from specific
-                     terminals The tokenizer's protocol-aware timeouts help
-                     prevent prematurely flushed incomplete sequences from
-                     reaching here. *)
-                  let len = String.length seq in
-                  if len > 0 then on_event (ascii_events.(0x1b) |> Option.get);
-                  if len > 1 then begin
-                    let bytes = Bytes.unsafe_of_string seq in
-                    text_events_iter parser bytes 1 (len - 1) on_event
-                  end;
+                  on_response (Response.Unknown seq);
                   loop rest))
     | Tokenizer.Text s :: rest ->
         let bytes = Bytes.unsafe_of_string s in
@@ -1438,13 +1546,15 @@ let process_tokens_iter parser tokens ~on_event ~on_caps =
 
 (* Public API *)
 
-let feed parser bytes offset length ~now ~on_event ~on_caps =
+let feed parser bytes offset length ~now ~on_event ~on_response =
   let tokens = Tokenizer.feed parser.raw bytes offset length ~now in
-  process_tokens_iter parser tokens ~on_event ~on_caps
+  process_tokens_iter parser tokens ~on_event ~on_response
 
-let drain parser ~now ~on_event ~on_caps =
-  let tokens = Tokenizer.flush_expired parser.raw now in
-  if tokens <> [] then process_tokens_iter parser tokens ~on_event ~on_caps
+let drain parser ~now ~on_event ~on_response =
+  let tokens =
+    Tokenizer.flush_expired ~defer:(should_defer_pending parser) parser.raw now
+  in
+  if tokens <> [] then process_tokens_iter parser tokens ~on_event ~on_response
 
 let deadline parser = Tokenizer.deadline parser.raw
 let pending parser = Tokenizer.pending parser.raw

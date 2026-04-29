@@ -31,7 +31,7 @@ let add_char ?(ctrl = false) ?(alt = false) ?(shift = false) ?(super = false)
       data;
     }
 
-let matches_modifier (cond : _ binding) (actual : Event.Key.modifier) =
+let matches_modifier (cond : _ binding) (actual : Event.Modifier.t) =
   let check_opt opt field =
     match opt with None -> true | Some v -> v = field
   in

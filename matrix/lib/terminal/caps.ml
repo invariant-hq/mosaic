@@ -328,21 +328,22 @@ let apply_mode_report caps report =
           | 2031 -> { caps with color_scheme_updates = true }
           | _ -> caps)
   in
-  if report.Input.Caps.is_private then List.fold_left update caps report.modes
+  if report.Input.Response.is_private then
+    List.fold_left update caps report.modes
   else caps
 
-let apply_event_internal (caps, info) (event : Input.Caps.event) =
+let apply_event_internal (caps, info) (event : Input.Response.capability) =
   match event with
-  | Input.Caps.Device_attributes attrs ->
+  | Input.Response.Device_attributes attrs ->
       let caps =
         if List.mem 4 attrs then { caps with sixel = true } else caps
       in
       (caps, info)
-  | Input.Caps.Mode_report r ->
+  | Input.Response.Mode_report r ->
       let caps = apply_mode_report caps r in
       (caps, info)
-  | Input.Caps.Pixel_resolution _ -> (caps, info)
-  | Input.Caps.Cursor_position (row, col) ->
+  | Input.Response.Pixel_resolution _ -> (caps, info)
+  | Input.Response.Cursor_position (row, col) ->
       let caps =
         let caps =
           if row = 1 && col >= 2 then { caps with explicit_width = true }
@@ -351,7 +352,7 @@ let apply_event_internal (caps, info) (event : Input.Caps.event) =
         if row = 1 && col >= 3 then { caps with scaled_text = true } else caps
       in
       (caps, info)
-  | Input.Caps.Xtversion payload ->
+  | Input.Response.Xtversion payload ->
       let info = parse_xtversion_payload info payload in
       let caps =
         (* XTVersion containing "kitty" confirms we're in actual Kitty terminal,
@@ -366,7 +367,7 @@ let apply_event_internal (caps, info) (event : Input.Caps.event) =
           apply_terminal_name_policy caps info.name
       in
       (caps, info)
-  | Input.Caps.Kitty_graphics_reply payload ->
+  | Input.Response.Kitty_graphics_reply payload ->
       (* Kitty graphics reply only confirms graphics support, nothing else *)
       let caps =
         if contains_substring payload "i=31337" then
@@ -374,7 +375,7 @@ let apply_event_internal (caps, info) (event : Input.Caps.event) =
         else caps
       in
       (caps, info)
-  | Input.Caps.Kitty_keyboard { level; _ } ->
+  | Input.Response.Kitty_keyboard { level; _ } ->
       (* Kitty keyboard reply only confirms keyboard protocol support. Other
          terminals (e.g., foot, WezTerm) may support the Kitty keyboard protocol
          without supporting Kitty graphics or other Kitty features. *)
@@ -382,7 +383,7 @@ let apply_event_internal (caps, info) (event : Input.Caps.event) =
         if level >= 0 then { caps with kitty_keyboard = true } else caps
       in
       (caps, info)
-  | Input.Caps.Color_scheme _ ->
+  | Input.Response.Color_scheme _ ->
       (* Color scheme DSR response. The scheme value (Dark/Light) could be
          stored if needed, but for now we just acknowledge the capability. *)
       let caps = { caps with color_scheme_updates = true } in
@@ -500,72 +501,100 @@ let build_probe_payload term =
 let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
     ~wait_readable ~send ~parser ~caps ~info () =
   let payload = build_probe_payload caps.term in
-  send payload;
-  let buffer = Bytes.create 4096 in
-  let deadline = Unix.gettimeofday () +. max 0. timeout in
-  (* Grace period after DA: once we receive Device Attributes, the terminal has
+  let previous_context = Input.Parser.protocol_context parser in
+  let probe_context =
+    {
+      previous_context with
+      kitty_keyboard = true;
+      explicit_width_cpr = true;
+      pixel_resolution = true;
+      private_capability_replies = true;
+    }
+  in
+  let run_probe () =
+    send payload;
+    let buffer = Bytes.create 4096 in
+    let deadline = Unix.gettimeofday () +. max 0. timeout in
+    (* Grace period after DA: once we receive Device Attributes, the terminal has
      processed our entire query payload. Any remaining responses (CPR for
      explicit width/scaled text, XTVersion, etc.) should arrive shortly after.
      We use a short grace period instead of waiting the full timeout. *)
-  let da_grace = 0.05 in
-  let rec loop caps info got_explicit got_scaled got_da da_time =
-    let now = Unix.gettimeofday () in
-    let complete =
-      (got_explicit || caps.explicit_width)
-      && (got_scaled || caps.scaled_text)
-      && got_da
-    in
-    let effective_deadline =
-      match da_time with
-      | Some t -> Float.min deadline (t +. da_grace)
-      | None -> deadline
-    in
-    if now >= effective_deadline || complete then (caps, info)
-    else
-      let remaining = effective_deadline -. now in
-      let select_timeout = Float.min remaining 0.05 in
-      let ready = wait_readable ~timeout:select_timeout in
-      if not ready then loop caps info got_explicit got_scaled got_da da_time
+    let da_grace = 0.05 in
+    let rec loop caps info got_explicit got_scaled got_da da_time =
+      let now = Unix.gettimeofday () in
+      let complete =
+        (got_explicit || caps.explicit_width)
+        && (got_scaled || caps.scaled_text)
+        && got_da
+      in
+      let effective_deadline =
+        match da_time with
+        | Some t -> Float.min deadline (t +. da_grace)
+        | None -> deadline
+      in
+      if now >= effective_deadline || complete then (caps, info)
       else
-        let read = read_into buffer 0 (Bytes.length buffer) in
-        if read <= 0 then loop caps info got_explicit got_scaled got_da da_time
+        let remaining = effective_deadline -. now in
+        let select_timeout = Float.min remaining 0.05 in
+        let ready = wait_readable ~timeout:select_timeout in
+        if not ready then loop caps info got_explicit got_scaled got_da da_time
         else
-          let caps_ref = ref caps in
-          let info_ref = ref info in
-          let found_da = ref false in
-          Input.Parser.feed parser buffer 0 read ~now ~on_event
-            ~on_caps:(fun c ->
-              let caps', info' =
-                apply_event ~caps:!caps_ref ~info:!info_ref c
-              in
-              caps_ref := caps';
-              info_ref := info';
-              match c with
-              | Input.Caps.Device_attributes _ -> found_da := true
-              | _ -> ());
-          let caps =
-            if apply_env_overrides then apply_environment_overrides !caps_ref
-            else !caps_ref
-          in
-          let info = !info_ref in
-          let has_da = got_da || !found_da in
-          let da_time = if has_da && not got_da then Some now else da_time in
-          let got_explicit = got_explicit || caps.explicit_width in
-          let got_scaled = got_scaled || caps.scaled_text in
-          loop caps info got_explicit got_scaled has_da da_time
+          let read = read_into buffer 0 (Bytes.length buffer) in
+          if read <= 0 then
+            loop caps info got_explicit got_scaled got_da da_time
+          else
+            let caps_ref = ref caps in
+            let info_ref = ref info in
+            let found_da = ref false in
+            Input.Parser.feed parser buffer 0 read ~now ~on_event
+              ~on_response:(fun response ->
+                match response with
+                | Input.Response.Clipboard _ | Input.Response.Osc _
+                | Input.Response.Unknown _ ->
+                    ()
+                | Input.Response.Capability c -> (
+                    let caps', info' =
+                      apply_event ~caps:!caps_ref ~info:!info_ref c
+                    in
+                    caps_ref := caps';
+                    info_ref := info';
+                    match c with
+                    | Input.Response.Device_attributes _ -> found_da := true
+                    | _ -> ()));
+            let caps =
+              if apply_env_overrides then apply_environment_overrides !caps_ref
+              else !caps_ref
+            in
+            let info = !info_ref in
+            let has_da = got_da || !found_da in
+            let da_time = if has_da && not got_da then Some now else da_time in
+            let got_explicit = got_explicit || caps.explicit_width in
+            let got_scaled = got_scaled || caps.scaled_text in
+            loop caps info got_explicit got_scaled has_da da_time
+    in
+    let caps, info =
+      loop caps info caps.explicit_width caps.scaled_text false None
+    in
+    let caps_ref = ref caps in
+    let info_ref = ref info in
+    let now = Unix.gettimeofday () in
+    Input.Parser.drain parser ~now ~on_event ~on_response:(fun response ->
+        match response with
+        | Input.Response.Clipboard _ | Input.Response.Osc _
+        | Input.Response.Unknown _ ->
+            ()
+        | Input.Response.Capability c ->
+            let caps', info' = apply_event ~caps:!caps_ref ~info:!info_ref c in
+            caps_ref := caps';
+            info_ref := info');
+    let caps =
+      if apply_env_overrides then apply_environment_overrides !caps_ref
+      else !caps_ref
+    in
+    (caps, !info_ref)
   in
-  let caps, info =
-    loop caps info caps.explicit_width caps.scaled_text false None
-  in
-  let caps_ref = ref caps in
-  let info_ref = ref info in
-  let now = Unix.gettimeofday () in
-  Input.Parser.drain parser ~now ~on_event ~on_caps:(fun c ->
-      let caps', info' = apply_event ~caps:!caps_ref ~info:!info_ref c in
-      caps_ref := caps';
-      info_ref := info');
-  let caps =
-    if apply_env_overrides then apply_environment_overrides !caps_ref
-    else !caps_ref
-  in
-  (caps, !info_ref)
+  Input.Parser.set_protocol_context parser probe_context;
+  Fun.protect
+    ~finally:(fun () ->
+      Input.Parser.set_protocol_context parser previous_context)
+    run_probe

@@ -62,7 +62,7 @@ let%expect_test "selection highlight" =
   reconcile app (Vnode.input ~ref:(fun n -> node := Some n) ~value:"hello" ());
   focus app (Option.get !node);
   frame app ~width:20 ~height:1;
-  let ctrl_mod = { no_mod with Input.Key.ctrl = true } in
+  let ctrl_mod = { no_mod with Input.Modifier.ctrl = true } in
   send_key_with_mod app ~modifier:ctrl_mod (Input.Key.Char (Uchar.of_char 'a'));
   frame_ansi app ~width:20 ~height:1;
   [%expect_exact
@@ -106,7 +106,7 @@ let%expect_test "after ctrl u clear to start" =
     (Vnode.input ~ref:(fun n -> node := Some n) ~value:"hello world" ());
   focus app (Option.get !node);
   frame app ~width:20 ~height:1;
-  let ctrl_mod = { no_mod with Input.Key.ctrl = true } in
+  let ctrl_mod = { no_mod with Input.Modifier.ctrl = true } in
   send_key_with_mod app ~modifier:ctrl_mod (Input.Key.Char (Uchar.of_char 'u'));
   frame app ~width:20 ~height:1;
   [%expect_exact {|

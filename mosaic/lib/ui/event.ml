@@ -61,7 +61,7 @@ module Mouse = struct
     | Right -> Format.pp_print_string ppf "Right"
     | Button n -> Format.fprintf ppf "Button(%d)" n
 
-  type modifier = Input.Key.modifier = {
+  type modifier = Input.Modifier.t = {
     ctrl : bool;
     alt : bool;
     shift : bool;
@@ -72,9 +72,9 @@ module Mouse = struct
     num_lock : bool;
   }
 
-  let no_modifier = Input.Key.no_modifier
-  let equal_modifier = Input.Key.equal_modifier
-  let pp_modifier = Input.Key.pp_modifier
+  let no_modifier = Input.Modifier.none
+  let equal_modifier = Input.Modifier.equal
+  let pp_modifier = Input.Modifier.pp
 
   type scroll_direction = Input.Mouse.scroll_direction =
     | Scroll_up

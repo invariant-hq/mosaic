@@ -167,7 +167,7 @@ val pixel_resolution : t -> (int * int) option
 val set_pixel_resolution : t -> (int * int) option -> unit
 (** [set_pixel_resolution t res] updates [t]'s cached pixel resolution. *)
 
-val apply_capability_event : t -> Input.Caps.event -> unit
+val apply_capability_event : t -> Input.Response.capability -> unit
 (** [apply_capability_event t event] folds a single capability response into
     [t]'s state. Updates {!capabilities}, {!terminal_info}, and
     {!pixel_resolution} as appropriate.

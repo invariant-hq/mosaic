@@ -459,7 +459,7 @@ let move_visual_line_end t ~select =
 
 (* ───── Key Handling ───── *)
 
-let normalize_modified_char_code (m : Input.Key.modifier) c =
+let normalize_modified_char_code (m : Input.Modifier.t) c =
   let code = Uchar.to_int c in
   if
     (m.ctrl || m.alt || m.super || m.meta || m.hyper)

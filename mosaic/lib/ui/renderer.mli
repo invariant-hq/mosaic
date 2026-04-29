@@ -107,7 +107,7 @@ val dispatch_scroll :
   y:int ->
   direction:Event.Mouse.scroll_direction ->
   delta:int ->
-  modifiers:Input.Key.modifier ->
+  modifiers:Input.Modifier.t ->
   unit
 (** [dispatch_scroll t ~x ~y ~direction ~delta ~modifiers] dispatches a scroll
     event at terminal cell position [(x, y)]. *)

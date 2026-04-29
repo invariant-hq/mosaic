@@ -102,7 +102,7 @@ let%expect_test "ctrl+u clears to line start" =
   focus app (Option.get !node);
   frame app ~width:20 ~height:5;
   (* Cursor is at buffer end (after 'f'); Ctrl+U deletes to line start *)
-  let ctrl_mod = { no_mod with Input.Key.ctrl = true } in
+  let ctrl_mod = { no_mod with Input.Modifier.ctrl = true } in
   send_key_with_mod app ~modifier:ctrl_mod (Input.Key.Char (Uchar.of_char 'u'));
   frame app ~width:20 ~height:5;
   [%expect_exact {|

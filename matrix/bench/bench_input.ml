@@ -69,7 +69,7 @@ let typing_ascii_burst =
           let chunk = min chunk_size (len - offset) in
           I.Parser.feed parser bytes offset chunk ~now:0.0
             ~on_event:(fun _ -> incr count)
-            ~on_caps:(fun _ -> incr count);
+            ~on_response:(fun _ -> incr count);
           loop (offset + chunk)
         end
       in
@@ -92,7 +92,7 @@ let typing_unicode_burst =
           let chunk = min chunk_size (len - offset) in
           I.Parser.feed parser bytes offset chunk ~now:0.0
             ~on_event:(fun _ -> incr count)
-            ~on_caps:(fun _ -> incr count);
+            ~on_response:(fun _ -> incr count);
           loop (offset + chunk)
         end
       in
@@ -155,7 +155,7 @@ let keyboard_legacy_hot =
       count := 0;
       I.Parser.feed parser bytes 0 len ~now:0.0
         ~on_event:(fun _ -> incr count)
-        ~on_caps:(fun _ -> incr count);
+        ~on_response:(fun _ -> incr count);
       ignore (Sys.opaque_identity !count))
 
 (* 3. Kitty keyboard protocol (CSI-u) *)
@@ -198,7 +198,7 @@ let keyboard_kitty_hot =
       count := 0;
       I.Parser.feed parser bytes 0 len ~now:0.0
         ~on_event:(fun _ -> incr count)
-        ~on_caps:(fun _ -> incr count);
+        ~on_response:(fun _ -> incr count);
       ignore (Sys.opaque_identity !count))
 
 (* 4. Mouse input: X10 + SGR mixed workload *)
@@ -255,7 +255,7 @@ let mouse_mixed_hot =
       count := 0;
       I.Parser.feed parser bytes 0 len ~now:0.0
         ~on_event:(fun _ -> incr count)
-        ~on_caps:(fun _ -> incr count);
+        ~on_response:(fun _ -> incr count);
       ignore (Sys.opaque_identity !count))
 
 (* 5. Bracketed paste with CI-style logs + ANSI stripping *)
@@ -288,7 +288,7 @@ let paste_ci_log =
           let chunk = min chunk_size (len - offset) in
           I.Parser.feed parser bytes offset chunk ~now:0.0
             ~on_event:(fun _ -> incr count)
-            ~on_caps:(fun _ -> incr count);
+            ~on_response:(fun _ -> incr count);
           loop (offset + chunk)
         end
       in

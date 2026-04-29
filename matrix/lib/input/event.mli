@@ -1,14 +1,53 @@
 (** Terminal input events.
 
     This module defines the data model for terminal input: keyboard keys and
-    modifiers, mouse buttons and motion, terminal capability responses, and the
-    unified high-level event type {!t} that combines them all.
+    modifiers, mouse buttons and motion, terminal responses, and the unified
+    high-level event type {!t} for user input.
 
     The types live in a separate module so components that only need the data
     model (e.g. the terminal runtime) can depend on them without pulling in the
     parser. *)
 
-(** {1:keys Keys and modifiers} *)
+(** {1:modifiers Modifiers} *)
+
+(** Modifier key state shared by keyboard and mouse events. *)
+module Modifier : sig
+  type t = {
+    ctrl : bool;  (** Control key held. *)
+    alt : bool;  (** Alt/Option key held. *)
+    shift : bool;  (** Shift key held. *)
+    super : bool;  (** Super/Windows/Command key held. *)
+    hyper : bool;  (** Hyper modifier key held. *)
+    meta : bool;  (** Meta modifier key held. *)
+    caps_lock : bool;  (** Caps Lock toggle is active. *)
+    num_lock : bool;  (** Num Lock toggle is active. *)
+  }
+  (** The type for modifier state.
+
+      Lock fields ([caps_lock], [num_lock]) indicate toggle state, not whether
+      the physical key is currently pressed. *)
+
+  val none : t
+  (** [none] is a modifier state with all fields set to [false]. Useful as a
+      base value: [{none with ctrl = true}]. *)
+
+  val equal : t -> t -> bool
+  (** [equal a b] is [true] iff all fields of [a] and [b] are equal. *)
+
+  val ctrl : t -> bool
+  (** [ctrl m] is [m.ctrl]. *)
+
+  val alt : t -> bool
+  (** [alt m] is [m.alt]. *)
+
+  val shift : t -> bool
+  (** [shift m] is [m.shift]. *)
+
+  val pp : Format.formatter -> t -> unit
+  (** [pp] formats modifier sets for debugging. *)
+end
+
+(** {1:keys Keys} *)
 
 (** Keyboard keys.
 
@@ -152,47 +191,11 @@ module Key : sig
             Only available when the terminal supports the Kitty keyboard
             protocol. Legacy terminals always report {!Press}. *)
 
-  (** {1:modifiers Modifiers} *)
-
-  type modifier = {
-    ctrl : bool;  (** Control key held. *)
-    alt : bool;  (** Alt/Option key held. *)
-    shift : bool;  (** Shift key held. *)
-    super : bool;  (** Super/Windows/Command key held. *)
-    hyper : bool;  (** Hyper modifier key held. *)
-    meta : bool;  (** Meta modifier key held. *)
-    caps_lock : bool;  (** Caps Lock toggle is active. *)
-    num_lock : bool;  (** Num Lock toggle is active. *)
-  }
-  (** The type for modifier state.
-
-      Lock fields ([caps_lock], [num_lock]) indicate toggle state, not whether
-      the physical key is currently pressed. *)
-
-  val no_modifier : modifier
-  (** [no_modifier] is a modifier with all fields set to [false]. Useful as a
-      base value: [{no_modifier with ctrl = true}]. *)
-
-  val equal_modifier : modifier -> modifier -> bool
-  (** [equal_modifier a b] is [true] iff all fields of [a] and [b] are equal. *)
-
-  val ctrl : modifier -> bool
-  (** [ctrl m] is [m.ctrl]. *)
-
-  val alt : modifier -> bool
-  (** [alt m] is [m.alt]. *)
-
-  val shift : modifier -> bool
-  (** [shift m] is [m.shift]. *)
-
-  val pp_modifier : Format.formatter -> modifier -> unit
-  (** [pp_modifier] formats modifier sets for debugging. *)
-
   (** {1:events Key events} *)
 
   type event = {
     key : t;  (** The key. *)
-    modifier : modifier;  (** Active modifiers. *)
+    modifier : Modifier.t;  (** Active modifiers. *)
     event_type : event_type;  (** Press, repeat or release. *)
     associated_text : string;
         (** UTF-8 text to insert. Populated by the Kitty protocol for
@@ -209,7 +212,7 @@ module Key : sig
       {!Press}, and [shifted_key] and [base_key] are [None]. *)
 
   val make :
-    ?modifier:modifier ->
+    ?modifier:Modifier.t ->
     ?event_type:event_type ->
     ?associated_text:string ->
     ?shifted_key:Uchar.t ->
@@ -217,14 +220,14 @@ module Key : sig
     t ->
     event
   (** [make key] is a key event for [key] with:
-      - [modifier] defaults to {!no_modifier}.
+      - [modifier] defaults to {!Modifier.none}.
       - [event_type] defaults to {!Press}.
       - [associated_text] defaults to [""].
       - [shifted_key] defaults to [None].
       - [base_key] defaults to [None]. *)
 
   val of_char :
-    ?modifier:modifier ->
+    ?modifier:Modifier.t ->
     ?event_type:event_type ->
     ?associated_text:string ->
     ?shifted_key:Uchar.t ->
@@ -304,15 +307,15 @@ module Mouse : sig
   (** The type for mouse events. Coordinates are 0-based with top-left origin.
   *)
   type event =
-    | Button_press of int * int * button * Key.modifier
+    | Button_press of int * int * button * Modifier.t
         (** [Button_press (x, y, button, mods)] is a button press at [(x, y)].
             Coordinates are 0-based, top-left origin. *)
-    | Button_release of int * int * button * Key.modifier
+    | Button_release of int * int * button * Modifier.t
         (** [Button_release (x, y, button, mods)] is a button release at
             [(x, y)]. In legacy tracking modes (X10/Normal, URXVT) [button] is
             [Button 0] because the protocol does not encode which button was
             released. *)
-    | Motion of int * int * button_state * Key.modifier
+    | Motion of int * int * button_state * Modifier.t
         (** [Motion (x, y, state, mods)] is mouse motion to [(x, y)] with
             primary button [state] and [mods]. *)
 
@@ -323,14 +326,14 @@ module Mouse : sig
   (** [pp_event] formats mouse events for debugging. *)
 end
 
-(** {1:caps Terminal capabilities} *)
+(** {1:responses Terminal responses} *)
 
-(** Terminal capability responses.
+(** Terminal protocol responses.
 
-    Capability events are terminal responses to control sequence queries. They
-    arrive asynchronously and are routed to a separate callback by {!Parser};
-    they never appear in the user-facing event stream. *)
-module Caps : sig
+    Responses are terminal replies to control sequence queries or operating
+    system commands. They arrive asynchronously and are routed to a separate
+    callback by {!Parser}; they never appear in the user-facing event stream. *)
+module Response : sig
   (** {1:mode_reports Mode reports} *)
 
   type mode_report = { is_private : bool; modes : (int * int) list }
@@ -345,10 +348,10 @@ module Caps : sig
   val pp_mode_report : Format.formatter -> mode_report -> unit
   (** [pp_mode_report] formats mode reports for debugging. *)
 
-  (** {1:events Capability events} *)
+  (** {1:capabilities Capability responses} *)
 
-  (** The type for terminal capability events. *)
-  type event =
+  (** The type for interpreted terminal capability responses. *)
+  type capability =
     | Device_attributes of int list
         (** Device Attributes (DA/DA2/DA3) response payload. *)
     | Mode_report of mode_report  (** DEC mode status report (DECRPM). *)
@@ -369,11 +372,34 @@ module Caps : sig
         (** Color scheme DSR response [CSI ? 997 ; value n], the reply to the
             [CSI ? 996 n] query. Value 1 is dark, 2 is light. *)
 
-  val equal_event : event -> event -> bool
-  (** [equal_event a b] is [true] iff [a] and [b] are structurally equal. *)
+  val equal_capability : capability -> capability -> bool
+  (** [equal_capability a b] is [true] iff [a] and [b] are structurally equal.
+  *)
 
-  val pp_event : Format.formatter -> event -> unit
-  (** [pp_event] formats capability events for debugging. *)
+  val pp_capability : Format.formatter -> capability -> unit
+  (** [pp_capability] formats capability responses for debugging. *)
+
+  (** {1:responses Responses} *)
+
+  (** The type for terminal responses. *)
+  type t =
+    | Capability of capability  (** Interpreted terminal capability response. *)
+    | Clipboard of string * string
+        (** [Clipboard (selection, data)] is an OSC 52 clipboard response.
+            [data] is base64-decoded when possible, verbatim otherwise. *)
+    | Osc of int * string
+        (** [Osc (number, payload)] is an unhandled OSC sequence. [payload] is
+            the raw text between introducer and terminator with no sanitization.
+        *)
+    | Unknown of string
+        (** [Unknown bytes] is an unrecognized terminal protocol sequence.
+            [bytes] is preserved verbatim. *)
+
+  val equal : t -> t -> bool
+  (** [equal a b] is [true] iff [a] and [b] are structurally equal. *)
+
+  val pp : Format.formatter -> t -> unit
+  (** [pp] formats responses for debugging. *)
 end
 
 (** {1:events Events} *)
@@ -382,7 +408,7 @@ end
 type t =
   | Key of Key.event  (** Keyboard input. *)
   | Mouse of Mouse.event  (** Mouse button or motion. *)
-  | Scroll of int * int * Mouse.scroll_direction * int * Key.modifier
+  | Scroll of int * int * Mouse.scroll_direction * int * Modifier.t
       (** [Scroll (x, y, dir, delta, mods)] is a scroll wheel event at [(x, y)]
           with direction [dir], step [delta] (usually 1), and modifiers [mods].
           Coordinates are 0-based. Normalizes wheel actions across terminal
@@ -393,12 +419,6 @@ type t =
   | Paste of string
       (** [Paste text] is bracketed paste content preserved exactly. Empty
           payloads are dropped by the parser. *)
-  | Clipboard of string * string
-      (** [Clipboard (selection, data)] is an OSC 52 clipboard response. [data]
-          is base64-decoded when possible, verbatim otherwise. *)
-  | Osc of int * string
-      (** [Osc (number, payload)] is an unhandled OSC sequence. [payload] is the
-          raw text between introducer and terminator with no sanitization. *)
 
 (** {1:preds Predicates and comparisons} *)
 
@@ -415,7 +435,7 @@ val pp : Format.formatter -> t -> unit
 (** {1:constructors Constructors} *)
 
 val key :
-  ?modifier:Key.modifier ->
+  ?modifier:Modifier.t ->
   ?event_type:Key.event_type ->
   ?associated_text:string ->
   ?shifted_key:Uchar.t ->
@@ -426,7 +446,7 @@ val key :
     {!Key.make} for defaults. *)
 
 val char :
-  ?modifier:Key.modifier ->
+  ?modifier:Modifier.t ->
   ?event_type:Key.event_type ->
   ?associated_text:string ->
   ?shifted_key:Uchar.t ->
@@ -437,7 +457,7 @@ val char :
     {!Key.of_char} for defaults. *)
 
 val key_event :
-  ?modifier:Key.modifier ->
+  ?modifier:Modifier.t ->
   ?event_type:Key.event_type ->
   ?associated_text:string ->
   ?shifted_key:Uchar.t ->
@@ -448,7 +468,7 @@ val key_event :
     {!Key.event} without wrapping in {!t}. *)
 
 val char_event :
-  ?modifier:Key.modifier ->
+  ?modifier:Modifier.t ->
   ?event_type:Key.event_type ->
   ?associated_text:string ->
   ?shifted_key:Uchar.t ->
@@ -458,7 +478,7 @@ val char_event :
 (** [char_event c] is {!Key.of_char}[ c]. *)
 
 val press :
-  ?modifier:Key.modifier ->
+  ?modifier:Modifier.t ->
   ?associated_text:string ->
   ?shifted_key:Uchar.t ->
   ?base_key:Uchar.t ->
@@ -467,7 +487,7 @@ val press :
 (** [press k] is {!Key.make}[ ~event_type:Press k]. *)
 
 val repeat :
-  ?modifier:Key.modifier ->
+  ?modifier:Modifier.t ->
   ?associated_text:string ->
   ?shifted_key:Uchar.t ->
   ?base_key:Uchar.t ->
@@ -476,7 +496,7 @@ val repeat :
 (** [repeat k] is {!Key.make}[ ~event_type:Repeat k]. *)
 
 val release :
-  ?modifier:Key.modifier ->
+  ?modifier:Modifier.t ->
   ?associated_text:string ->
   ?shifted_key:Uchar.t ->
   ?base_key:Uchar.t ->
@@ -484,19 +504,18 @@ val release :
   Key.event
 (** [release k] is {!Key.make}[ ~event_type:Release k]. *)
 
-val mouse_press : ?modifier:Key.modifier -> int -> int -> Mouse.button -> t
+val mouse_press : ?modifier:Modifier.t -> int -> int -> Mouse.button -> t
 (** [mouse_press x y button] is [Mouse (Button_press (x, y, button, modifier))].
-    [modifier] defaults to {!Key.no_modifier}. *)
+    [modifier] defaults to {!Modifier.none}. *)
 
-val mouse_release : ?modifier:Key.modifier -> int -> int -> Mouse.button -> t
+val mouse_release : ?modifier:Modifier.t -> int -> int -> Mouse.button -> t
 (** [mouse_release x y button] is
     [Mouse (Button_release (x, y, button, modifier))]. [modifier] defaults to
-    {!Key.no_modifier}. *)
+    {!Modifier.none}. *)
 
-val mouse_motion :
-  ?modifier:Key.modifier -> int -> int -> Mouse.button_state -> t
+val mouse_motion : ?modifier:Modifier.t -> int -> int -> Mouse.button_state -> t
 (** [mouse_motion x y state] is [Mouse (Motion (x, y, state, modifier))].
-    [modifier] defaults to {!Key.no_modifier}. *)
+    [modifier] defaults to {!Modifier.none}. *)
 
 (** {1:helpers Helpers} *)
 

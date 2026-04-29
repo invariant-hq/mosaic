@@ -116,7 +116,7 @@ let frame_ansi app ~width ~height =
   print_string (grid_to_ansi grid)
 
 let focus app node = ignore (Renderer.focus app.renderer node : bool)
-let no_mod = Input.Key.no_modifier
+let no_mod = Input.Modifier.none
 
 let send_char app c =
   let text = String.make 1 c in

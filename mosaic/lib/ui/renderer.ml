@@ -38,7 +38,7 @@ type t = {
   mutable hover_node : Renderable.t option;
   mutable hover_num : int;
   mutable pointer : (int * int) option;
-  mutable pointer_modifiers : Input.Key.modifier;
+  mutable pointer_modifiers : Input.Modifier.t;
   (* Drag capture *)
   mutable captured : Renderable.t option;
   (* Selection *)
@@ -228,7 +228,7 @@ let recheck_hover t =
 (* ───── Selection Event Handling ───── *)
 
 (* Returns [true] if the selection state machine consumed the event. *)
-let handle_selection t ~x ~y ~(modifiers : Input.Key.modifier) ~target_node
+let handle_selection t ~x ~y ~(modifiers : Input.Modifier.t) ~target_node
     ~target_id kind =
   match kind with
   | Event.Mouse.Down { button = Left } when not modifiers.ctrl -> (
@@ -515,7 +515,7 @@ let create ?glyph_pool ?width_method ?style () =
     hover_node = None;
     hover_num = 0;
     pointer = None;
-    pointer_modifiers = Input.Key.no_modifier;
+    pointer_modifiers = Input.Modifier.none;
     captured = None;
     selection = None;
     selection_containers = [];
@@ -707,7 +707,7 @@ let dispatch_mouse t (mouse : Input.Mouse.event) =
       dispatch_mouse_internal t ~x ~y ~modifiers
         (Event.Mouse.Up { button = map_button button; is_dragging = false })
   | Input.Mouse.Motion (x, y, button_state, _modifiers) ->
-      let no_mod = Input.Key.no_modifier in
+      let no_mod = Input.Modifier.none in
       if button_state.left || button_state.middle || button_state.right then
         let button =
           if button_state.left then Event.Mouse.Left

@@ -194,7 +194,13 @@ let wait_readable_fds ~input_fd ~wakeup_r ~timeout =
 
 let read_events_unix ~terminal ~parser ~input_fd ~wakeup_r ~output_fd
     ~input_buffer ~timeout ~on_event =
-  let on_caps event = Terminal.apply_capability_event terminal event in
+  let on_response = function
+    | Input.Response.Capability event ->
+        Terminal.apply_capability_event terminal event
+    | Input.Response.Clipboard _ | Input.Response.Osc _
+    | Input.Response.Unknown _ ->
+        ()
+  in
   let has_input = wait_readable_fds ~input_fd ~wakeup_r ~timeout in
   if has_input then (
     drain_wakeup_fd wakeup_r;
@@ -205,19 +211,24 @@ let read_events_unix ~terminal ~parser ~input_fd ~wakeup_r ~output_fd
     match Unix.read input_fd input_buffer 0 (Bytes.length input_buffer) with
     | n when n > 0 ->
         let now = Unix.gettimeofday () in
-        Input.Parser.feed parser input_buffer 0 n ~now ~on_event ~on_caps
+        Input.Parser.feed parser input_buffer 0 n ~now ~on_event ~on_response
     | _ -> ()
     | exception Unix.Unix_error _ -> ());
   let now = Unix.gettimeofday () in
-  Input.Parser.drain parser ~now ~on_event ~on_caps
+  Input.Parser.drain parser ~now ~on_event ~on_response
 
 let query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
     ~input_buffer ~timeout =
   Terminal.send terminal "\027[6n";
   let result = ref None in
-  let on_caps = function
-    | Input.Caps.Cursor_position (row, col) -> result := Some (row, col)
-    | event -> Terminal.apply_capability_event terminal event
+  let on_response = function
+    | Input.Response.Capability (Input.Response.Cursor_position (row, col)) ->
+        result := Some (row, col)
+    | Input.Response.Capability event ->
+        Terminal.apply_capability_event terminal event
+    | Input.Response.Clipboard _ | Input.Response.Osc _
+    | Input.Response.Unknown _ ->
+        ()
   in
   let deadline = Unix.gettimeofday () +. timeout in
   let rec loop () =
@@ -235,7 +246,7 @@ let query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
             let now = Unix.gettimeofday () in
             Input.Parser.feed parser input_buffer 0 n ~now
               ~on_event:(fun _ -> ())
-              ~on_caps
+              ~on_response
         | _ -> ()
         | exception Unix.Unix_error _ -> ());
         loop ())
