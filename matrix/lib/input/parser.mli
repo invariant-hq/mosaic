@@ -5,6 +5,11 @@
     instance drives both streams so callers do not need to run two parsers over
     the same bytes.
 
+    The parser preserves bracketed paste payloads exactly, including empty
+    payloads and embedded escape bytes. Invalid or timed-out legacy high bytes
+    are interpreted as Meta/Alt bytes by subtracting [0x80] and parsing the
+    resulting byte through the normal ESC-prefixed key path.
+
     {b Warning.} Not thread-safe; use one instance per input source. *)
 
 (** {1:parsers Parsers} *)
@@ -61,10 +66,13 @@ val feed :
 
     Each parsed user event is passed to [on_event]; each terminal response is
     passed to [on_response]. Incomplete escape sequences are buffered and
-    combined with subsequent calls.
+    combined with subsequent calls. Bracketed paste content is emitted as one
+    {!Event.Paste} event when the end marker is received.
 
     [now] is the current time in seconds since the epoch, used to schedule flush
-    deadlines for ambiguous sequences. *)
+    deadlines for ambiguous sequences, incomplete escape sequences, and
+    incomplete UTF-8 byte sequences. Raises [Invalid_argument] if [off] and
+    [len] describe a range outside [buf]. *)
 
 (** {1:draining Draining} *)
 
@@ -74,10 +82,11 @@ val drain :
   on_event:(Event.t -> unit) ->
   on_response:(Event.Response.t -> unit) ->
   unit
-(** [drain p ~now ~on_event ~on_response] emits any pending escape sequences
-    whose deadline has passed. A lone {!Event.Key.Escape} only appears after
-    this drain when the terminal splits a modifier sequence across reads. Call
-    after {!deadline} has elapsed. *)
+(** [drain p ~now ~on_event ~on_response] emits pending input whose deadline
+    has passed. A lone {!Event.Key.Escape} only appears after this drain when
+    the terminal splits a modifier sequence across reads. A timed-out incomplete
+    UTF-8 high byte is emitted through the legacy Meta/Alt path. Call after
+    {!deadline} has elapsed. *)
 
 val deadline : t -> float option
 (** [deadline p] is the absolute timestamp (seconds since the epoch) at which
@@ -86,8 +95,9 @@ val deadline : t -> float option
 (** {1:state State} *)
 
 val pending : t -> bytes
-(** [pending p] is a copy of the incomplete data buffered so far. Useful for
-    diagnostics and tests. *)
+(** [pending p] is a copy of the incomplete escape/protocol data buffered so
+    far. Bytes inside an open paste and bytes buffered for an incomplete UTF-8
+    sequence are not included. Useful for diagnostics and tests. *)
 
 val reset : t -> unit
 (** [reset p] clears all parser state, dropping any buffered partial sequences

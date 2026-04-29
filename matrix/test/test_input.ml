@@ -101,7 +101,7 @@ let test_parse_control_chars () =
   expect "\x03" 'c';
   expect "\x1a" 'z'
 
-let test_opentui_ctrl_normalization_regressions () =
+let test_ctrl_normalization_regressions () =
   let expect ctrl_seq letter =
     match parse_user ctrl_seq with
     | [ Input.Key { key = Char u; modifier; _ } ] ->
@@ -128,12 +128,12 @@ let test_opentui_ctrl_normalization_regressions () =
   expect_punct "\x1e" '^';
   expect_punct "\x1f" '_'
 
-let test_opentui_alt_meta_regressions () =
+let test_alt_meta_regressions () =
   let expect_meta seq key =
     match parse_user seq with
     | [ Input.Key { key = actual; modifier; _ } ] ->
         is_true ~msg:"alt modifier" modifier.alt;
-        is_true ~msg:"meta modifier follows OpenTUI Alt semantics" modifier.meta;
+        is_true ~msg:"meta modifier follows Alt semantics" modifier.meta;
         equal ~msg:"key" event_testable
           (key_event
              ~modifier:{ Input.Modifier.none with alt = true; meta = true }
@@ -840,12 +840,49 @@ let test_invalid_split_utf8_regression () =
   equal ~msg:"invalid split lead is buffered first" (list event_testable) []
     (feed_user parser (Bytes.of_string "\xE2") 0 1);
   match feed_user parser (Bytes.of_string "(") 0 1 with
-  | [ Input.Key { key = Char u; _ } ] ->
+  | [
+   Input.Key { key = Char legacy; modifier; _ };
+   Input.Key { key = Char u; _ };
+  ] ->
+      equal ~msg:"invalid lead maps to legacy Meta+b" char 'b'
+        (Uchar.to_char legacy);
+      is_true ~msg:"legacy fallback sets alt" modifier.alt;
+      is_true ~msg:"legacy fallback sets meta" modifier.meta;
       equal ~msg:"invalid continuation is reparsed as text" char '('
         (Uchar.to_char u)
   | events ->
-      failf "expected '(' after invalid UTF-8 recovery, got %d events"
+      failf "expected legacy Meta+b then '(' after invalid UTF-8 recovery, got %d events"
         (List.length events)
+
+let test_legacy_high_byte_regressions () =
+  let parser = Input.Parser.create () in
+  let bytes = Bytes.of_string "\xE9" in
+  equal ~msg:"single high byte waits for timeout" (list event_testable) []
+    (feed_user parser bytes 0 1);
+  (match drain_user ~now:1.0 parser with
+  | [ Input.Key { key = Char u; modifier; _ } ] ->
+      equal ~msg:"0xe9 maps to legacy Meta+i" char 'i' (Uchar.to_char u);
+      is_true ~msg:"legacy high byte sets alt" modifier.alt;
+      is_true ~msg:"legacy high byte sets meta" modifier.meta
+  | events ->
+      failf "expected legacy Meta+i after timeout, got %d events"
+        (List.length events));
+
+  let parser = Input.Parser.create () in
+  let bytes = Bytes.of_string "\xE9x" in
+  match feed_user parser bytes 0 2 with
+  | [
+   Input.Key { key = Char ui; modifier; _ };
+   Input.Key { key = Char ux; _ };
+  ] ->
+      equal ~msg:"invalid lead maps to legacy Meta+i" char 'i'
+        (Uchar.to_char ui);
+      is_true ~msg:"invalid lead sets alt" modifier.alt;
+      is_true ~msg:"invalid lead sets meta" modifier.meta;
+      equal ~msg:"invalid continuation is reparsed as text" char 'x'
+        (Uchar.to_char ux)
+  | events ->
+      failf "expected legacy Meta+i then x, got %d events" (List.length events)
 
 let test_buffer_overflow () =
   let large = String.make 5000 'X' in
@@ -858,6 +895,21 @@ let test_paste_mode_collection () =
   | [ Input.Paste content ] ->
       equal ~msg:"paste content matches" string paste_content content
   | _ -> fail "Expected single Paste event"
+
+let test_paste_empty_and_large_payloads () =
+  equal ~msg:"empty paste is still an event" (list event_testable)
+    [ Input.Paste "" ]
+    (parse_user "\x1b[200~\x1b[201~");
+
+  let paste_content = String.make (1_048_576 + 257) 'P' in
+  match parse_user ("\x1b[200~" ^ paste_content ^ "\x1b[201~") with
+  | [ Input.Paste content ] ->
+      equal ~msg:"paste content is not silently truncated" int
+        (String.length paste_content)
+        (String.length content);
+      equal ~msg:"paste content preserved" string paste_content content
+  | events ->
+      failf "expected one large paste event, got %d events" (List.length events)
 
 let test_reset_aborts_paste () =
   let parser = Input.Parser.create () in
@@ -1233,9 +1285,8 @@ let tests =
     test "parse regular chars" test_parse_regular_chars;
     test "char associated text default" test_char_associated_text_default;
     test "parse control chars" test_parse_control_chars;
-    test "OpenTUI ctrl normalization regressions"
-      test_opentui_ctrl_normalization_regressions;
-    test "OpenTUI alt/meta regressions" test_opentui_alt_meta_regressions;
+    test "ctrl normalization regressions" test_ctrl_normalization_regressions;
+    test "alt/meta regressions" test_alt_meta_regressions;
     test "parse special keys" test_parse_special_keys;
     test "parse arrow keys" test_parse_arrow_keys;
     test "parse function keys" test_parse_function_keys;
@@ -1263,8 +1314,10 @@ let tests =
     test "alt and alt+ctrl" test_alt_and_alt_ctrl;
     test "split UTF-8" test_split_utf8;
     test "invalid split UTF-8 regression" test_invalid_split_utf8_regression;
+    test "legacy high byte regressions" test_legacy_high_byte_regressions;
     test "buffer overflow" test_buffer_overflow;
     test "paste mode collection" test_paste_mode_collection;
+    test "paste empty and large payloads" test_paste_empty_and_large_payloads;
     test "reset aborts paste" test_reset_aborts_paste;
     test "CSI param overflow" test_csi_param_overflow;
     test "cursor position report" test_cursor_position_report;

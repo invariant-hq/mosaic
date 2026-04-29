@@ -33,7 +33,6 @@ let br_paste_start = "\x1b[200~"
 let br_paste_end = "\x1b[201~"
 let br_paste_start_len = String.length br_paste_start
 let br_paste_end_len = String.length br_paste_end
-let max_paste_len = 1_048_576
 let max_sequence_len = 4_096
 
 let br_paste_end_failure =
@@ -1495,8 +1494,19 @@ let[@inline] utf8_seq_len byte =
 
 let[@inline] is_utf8_continuation byte = byte land 0xc0 = 0x80
 
+let emit_legacy_high_byte parser byte emit =
+  let legacy = byte - 0x80 in
+  if legacy >= 0 && legacy < 0x80 then
+    let bytes = Bytes.create 2 in
+    Bytes.unsafe_set bytes 0 esc;
+    Bytes.unsafe_set bytes 1 (Char.unsafe_chr legacy);
+    let seq = Bytes.unsafe_to_string bytes in
+    match parse_escape_sequence parser seq 0 2 with
+    | Some (`User event), _ -> emit event
+    | Some (`Response _), _ | None, _ -> ()
+
 (* Callback-based text event processing - zero list allocation *)
-let text_events_iter parser bytes off len emit =
+let text_events_iter parser bytes off len now emit =
   let end_pos = off + len in
   let i = ref off in
   (* Handle pending incomplete UTF-8 sequence from previous chunk *)
@@ -1522,10 +1532,12 @@ let text_events_iter parser bytes off len emit =
         match key_event_of_code parser code with Some e -> emit e | None -> ()
       end;
       parser.utf8_len <- 0;
+      parser.flush_deadline <- None;
       i := !j
     end
     else if !valid then i := end_pos
     else begin
+      emit_legacy_high_byte parser lead emit;
       parser.utf8_len <- 0;
       i := !j
     end
@@ -1541,9 +1553,10 @@ let text_events_iter parser bytes off len emit =
     else begin
       let seq_len = utf8_seq_len b in
       let remaining = end_pos - !i in
-      if seq_len = 0 then
-        (* Invalid lead byte - skip *)
+      if seq_len = 0 then begin
+        emit_legacy_high_byte parser b emit;
         incr i
+      end
       else if remaining >= seq_len then begin
         (* Complete sequence available *)
         let d = Bytes.get_utf_8_uchar bytes !i in
@@ -1558,10 +1571,22 @@ let text_events_iter parser bytes off len emit =
           + if Uchar.utf_decode_is_valid d then Uchar.utf_decode_length d else 1
       end
       else begin
-        (* Incomplete at chunk boundary - buffer it *)
-        Bytes.blit bytes !i parser.utf8_buf 0 remaining;
-        parser.utf8_len <- remaining;
-        i := end_pos
+        let valid_prefix = ref true in
+        let j = ref (!i + 1) in
+        while !valid_prefix && !j < end_pos do
+          if is_utf8_continuation (Bytes.get_uint8 bytes !j) then incr j
+          else valid_prefix := false
+        done;
+        if !valid_prefix then begin
+          Bytes.blit bytes !i parser.utf8_buf 0 remaining;
+          parser.utf8_len <- remaining;
+          parser.flush_deadline <- Some (now +. incomplete_seq_timeout);
+          i := end_pos
+        end
+        else begin
+          emit_legacy_high_byte parser b emit;
+          incr i
+        end
       end
     end
   done
@@ -1652,10 +1677,9 @@ let rec advance_paste_match current c =
   else advance_paste_match br_paste_end_failure.(current - 1) c
 
 let add_paste_char parser c =
-  if parser.paste_len < max_paste_len then (
-    ensure_paste_capacity parser 1;
-    Bytes.unsafe_set parser.paste_buffer parser.paste_len c;
-    parser.paste_len <- parser.paste_len + 1);
+  ensure_paste_capacity parser 1;
+  Bytes.unsafe_set parser.paste_buffer parser.paste_len c;
+  parser.paste_len <- parser.paste_len + 1;
   parser.paste_match <- advance_paste_match parser.paste_match c;
   parser.paste_match = br_paste_end_len
 
@@ -1666,7 +1690,7 @@ let consume_paste_bytes parser bytes start stop on_event =
       let matched = add_paste_char parser (Bytes.unsafe_get bytes i) in
       if matched then (
         let payload = complete_paste parser in
-        if payload <> "" then on_event (Paste payload);
+        on_event (Paste payload);
         Some (i + 1))
       else loop (i + 1)
   in
@@ -1769,7 +1793,8 @@ let is_partial_sgr_mouse s =
   loop 3
 
 let rec scan_normal_bytes parser bytes pos stop now ~on_event ~on_response =
-  if pos >= stop then parser.flush_deadline <- None
+  if pos >= stop then (
+    if parser.utf8_len = 0 then parser.flush_deadline <- None)
   else
     let c = Bytes.unsafe_get bytes pos in
     if c = esc then
@@ -1785,7 +1810,7 @@ let rec scan_normal_bytes parser bytes pos stop now ~on_event ~on_response =
         | Incomplete ->
             let rem_len = stop - pos in
             if rem_len > max_sequence_len then (
-              text_events_iter parser bytes pos rem_len on_event;
+              text_events_iter parser bytes pos rem_len now on_event;
               parser.flush_deadline <- None)
             else (
               Buffer.add_subbytes parser.input_buffer bytes pos rem_len;
@@ -1805,7 +1830,7 @@ let rec scan_normal_bytes parser bytes pos stop now ~on_event ~on_response =
         else find_esc (i + 1)
       in
       let next = find_esc (pos + 1) in
-      text_events_iter parser bytes pos (next - pos) on_event;
+      text_events_iter parser bytes pos (next - pos) now on_event;
       scan_normal_bytes parser bytes next stop now ~on_event ~on_response
 
 and scan_paste_bytes parser bytes pos stop now ~on_event ~on_response =
@@ -1835,6 +1860,15 @@ let feed parser bytes offset length ~now ~on_event ~on_response =
       ~on_event ~on_response)
 
 let drain parser ~now ~on_event ~on_response =
+  if
+    parser.utf8_len > 0
+    &&
+    match parser.flush_deadline with Some expiry -> now >= expiry | None -> false
+  then (
+    let lead = Bytes.get_uint8 parser.utf8_buf 0 in
+    parser.utf8_len <- 0;
+    parser.flush_deadline <- None;
+    emit_legacy_high_byte parser lead on_event);
   match
     ( parser.scanner_mode = `Normal,
       parser.deferred_timeout,

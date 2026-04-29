@@ -25,7 +25,9 @@ module Modifier : sig
   (** The type for modifier state.
 
       Lock fields ([caps_lock], [num_lock]) indicate toggle state, not whether
-      the physical key is currently pressed. *)
+      the physical key is currently pressed. Terminal Alt/Option input also
+      sets [meta], so applications that want ordinary Alt shortcuts can match
+      either field according to their policy. *)
 
   val none : t
   (** [none] is a modifier state with all fields set to [false]. Useful as a
@@ -205,11 +207,13 @@ module Key : sig
         (** Key with Shift applied (Kitty protocol only). [None] on legacy
             terminals. *)
     base_key : Uchar.t option;
-        (** Key without modifiers (Kitty protocol only). [None] on legacy
-            terminals. *)
+        (** Physical/base-layout key without modifiers (Kitty protocol only).
+            [None] on legacy terminals. Shortcut layers can use this for
+            layout-independent bindings such as Ctrl+C. *)
   }
   (** The type for key events. On legacy terminals [event_type] is always
-      {!Press}, and [shifted_key] and [base_key] are [None]. *)
+      {!Press}, and [shifted_key] and [base_key] are [None]. Ctrl letters are
+      normalized to lowercase character keys. *)
 
   val make :
     ?modifier:Modifier.t ->
@@ -414,8 +418,8 @@ type t =
   | Focus  (** Terminal gained focus. *)
   | Blur  (** Terminal lost focus. *)
   | Paste of string
-      (** [Paste text] is bracketed paste content preserved exactly. Empty
-          payloads are dropped by the parser. *)
+      (** [Paste text] is bracketed paste content preserved exactly, including
+          empty payloads and embedded escape bytes. *)
 
 (** {1:preds Predicates and comparisons} *)
 
