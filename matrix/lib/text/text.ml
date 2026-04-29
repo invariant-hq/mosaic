@@ -233,14 +233,86 @@ let iter_grapheme_info ~width_method ~tab_width f str =
 
 let zero_position = { byte_offset = 0; grapheme_count = 0; columns_used = 0 }
 
+let[@inline] is_cont_byte b = b land 0xC0 = 0x80
+let replacement = (0xFFFD, 1)
+
 let[@inline] decode_codepoint str pos =
-  let d = Stdlib.String.get_utf_8_uchar str pos in
-  let len = Uchar.utf_decode_length d in
-  (Uchar.to_int (Uchar.utf_decode_uchar d), len)
+  let len = Stdlib.String.length str in
+  let b0 = Char.code (String.unsafe_get str pos) in
+  if b0 < 0x80 then (b0, 1)
+  else if b0 land 0xE0 = 0xC0 then
+    if pos + 1 < len then
+      let b1 = Char.code (String.unsafe_get str (pos + 1)) in
+      if is_cont_byte b1 then
+        let cp = ((b0 land 0x1F) lsl 6) lor (b1 land 0x3F) in
+        if cp >= 0x80 then (cp, 2) else replacement
+      else replacement
+    else replacement
+  else if b0 land 0xF0 = 0xE0 then
+    if pos + 2 < len then
+      let b1 = Char.code (String.unsafe_get str (pos + 1)) in
+      let b2 = Char.code (String.unsafe_get str (pos + 2)) in
+      if is_cont_byte b1 && is_cont_byte b2 then
+        let cp =
+          ((b0 land 0x0F) lsl 12) lor ((b1 land 0x3F) lsl 6)
+          lor (b2 land 0x3F)
+        in
+        if cp >= 0x800 && (cp < 0xD800 || cp > 0xDFFF) then (cp, 3)
+        else replacement
+      else replacement
+    else replacement
+  else if b0 land 0xF8 = 0xF0 then
+    if pos + 3 < len then
+      let b1 = Char.code (String.unsafe_get str (pos + 1)) in
+      let b2 = Char.code (String.unsafe_get str (pos + 2)) in
+      let b3 = Char.code (String.unsafe_get str (pos + 3)) in
+      if is_cont_byte b1 && is_cont_byte b2 && is_cont_byte b3 then
+        let cp =
+          ((b0 land 0x07) lsl 18) lor ((b1 land 0x3F) lsl 12)
+          lor ((b2 land 0x3F) lsl 6) lor (b3 land 0x3F)
+        in
+        if cp >= 0x10000 && cp <= 0x10FFFF then (cp, 4) else replacement
+      else replacement
+    else replacement
+  else replacement
+
+let find_wrap_pos_ascii ~tab_width str len ~max_columns =
+  let rec loop i count columns =
+    if i >= len then
+      { byte_offset = len; grapheme_count = count; columns_used = columns }
+    else
+      let width = ascii_width ~tab_width (Char.code (String.unsafe_get str i)) in
+      if width <= 0 then loop (i + 1) count columns
+      else
+        let next_columns = columns + width in
+        if next_columns > max_columns then
+          { byte_offset = i; grapheme_count = count; columns_used = columns }
+        else loop (i + 1) (count + 1) next_columns
+  in
+  loop 0 0 0
+
+let find_pos_ascii ~tab_width ~include_start_before str len ~columns =
+  let rec loop i count used =
+    if i >= len then
+      { byte_offset = len; grapheme_count = count; columns_used = used }
+    else
+      let width = ascii_width ~tab_width (Char.code (String.unsafe_get str i)) in
+      if width <= 0 then loop (i + 1) count used
+      else
+        let next_used = used + width in
+        if
+          (include_start_before && used >= columns)
+          || ((not include_start_before) && next_used > columns)
+        then { byte_offset = i; grapheme_count = count; columns_used = used }
+        else loop (i + 1) (count + 1) next_used
+  in
+  loop 0 0 0
 
 let find_wrap_pos_grapheme ~width_method ~tab_width str ~max_columns =
   let len = Stdlib.String.length str in
   if len = 0 || max_columns <= 0 then zero_position
+  else if is_ascii_only str len 0 then
+    find_wrap_pos_ascii ~tab_width str len ~max_columns
   else
     let seg = Uuseg_grapheme_cluster.create () in
     let ignore_zwj = width_method = `No_zwj in
@@ -270,6 +342,8 @@ let find_pos_grapheme ~width_method ~tab_width ~include_start_before str
     ~columns =
   let len = Stdlib.String.length str in
   if len = 0 || columns <= 0 then zero_position
+  else if is_ascii_only str len 0 then
+    find_pos_ascii ~tab_width ~include_start_before str len ~columns
   else
     let seg = Uuseg_grapheme_cluster.create () in
     let ignore_zwj = width_method = `No_zwj in
@@ -354,6 +428,9 @@ let width_at ~width_method ~tab_width str ~byte_offset =
   let len = Stdlib.String.length str in
   if byte_offset < 0 || byte_offset >= len then 0
   else
+    let b = Char.code (String.unsafe_get str byte_offset) in
+    if b < 0x80 then ascii_width ~tab_width b
+    else
     match width_method with
     | `Wcwidth ->
         let cp, _ = decode_codepoint str byte_offset in
@@ -369,34 +446,49 @@ let prev_grapheme_wcwidth ~tab_width str ~byte_offset =
   let len = Stdlib.String.length str in
   if byte_offset <= 0 || byte_offset > len then None
   else
-    let rec loop pos last =
-      if pos >= byte_offset then last
+    let rec loop pos last_offset last_len last_width =
+      if pos >= byte_offset then
+        if last_offset < 0 then None
+        else
+          Some
+            {
+              byte_offset = last_offset;
+              byte_length = last_len;
+              width = last_width;
+            }
       else
         let cp, cp_len = decode_codepoint str pos in
         let width = codepoint_width_wcwidth ~tab_width cp in
-        let last =
-          if width > 0 then
-            Some { byte_offset = pos; byte_length = cp_len; width }
-          else last
-        in
-        loop (pos + cp_len) last
+        if width > 0 then loop (pos + cp_len) pos cp_len width
+        else loop (pos + cp_len) last_offset last_len last_width
     in
-    loop 0 None
+    loop 0 (-1) 0 0
 
 let prev_grapheme_segmented ~width_method ~tab_width str ~byte_offset =
   let len = Stdlib.String.length str in
   if byte_offset <= 0 || byte_offset > len then None
+  else if is_ascii_only str len 0 then
+    let rec loop i =
+      if i < 0 then None
+      else
+      let width = ascii_width ~tab_width (Char.code (String.unsafe_get str i)) in
+        if width > 0 then Some { byte_offset = i; byte_length = 1; width }
+        else loop (i - 1)
+    in
+    loop (byte_offset - 1)
   else
     let seg = Uuseg_grapheme_cluster.create () in
     let ignore_zwj = width_method = `No_zwj in
-    let rec loop offset candidate =
-      if offset >= len || offset >= byte_offset then candidate
+    let rec loop offset last_offset last_len =
+      if offset >= len || offset >= byte_offset then
+        if last_offset < 0 then None else Some (last_offset, last_len)
       else
         let end_pos = next_boundary seg ~ignore_zwj str offset len in
-        let candidate = Some (offset, end_pos - offset) in
-        if end_pos >= byte_offset then candidate else loop end_pos candidate
+        let grapheme_len = end_pos - offset in
+        if end_pos >= byte_offset then Some (offset, grapheme_len)
+        else loop end_pos offset grapheme_len
     in
-    match loop 0 None with
+    match loop 0 (-1) 0 with
     | None -> None
     | Some (byte_offset, byte_length) ->
         let width =

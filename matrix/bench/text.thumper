@@ -4,25 +4,61 @@
 # host: 3b8ae6dbe74c4269
 # cpu: Apple M1 Max
 # ocaml: 5.4.1
-# git: bac6b2d8
+# git: 8efd4392
 # dirty: true
-# command: _build/default/matrix/bench/bench_text.exe --ci --bless
+# command: _build/default/matrix/bench/bench_text.exe --ci --bless --baseline matrix/bench/text.thumper
 
+position/position_find_pos_ascii	alloc_words	1.300000e+01	1.300000e+01	1.300000e+01	0.000000e+00	30	0
+position/position_find_pos_ascii	cpu_time	1.216591e-06	1.213293e-06	1.221258e-06	3.273584e-03	30	3
+position/position_find_pos_ascii	wall_time	1.218740e-06	1.215108e-06	1.223340e-06	3.377391e-03	30	3
+position/position_find_pos_mixed	alloc_words	2.400000e+01	2.400000e+01	2.400000e+01	0.000000e+00	30	0
+position/position_find_pos_mixed	cpu_time	1.068544e-05	1.067025e-05	1.070859e-05	1.793976e-03	30	0
+position/position_find_pos_mixed	wall_time	1.069662e-05	1.067980e-05	1.071899e-05	1.831523e-03	30	0
+position/position_find_pos_wcwidth	alloc_words	8.950000e+02	8.950000e+02	8.950000e+02	0.000000e+00	30	0
+position/position_find_pos_wcwidth	cpu_time	1.384428e-06	1.378143e-06	1.393509e-06	5.549553e-03	30	1
+position/position_find_pos_wcwidth	wall_time	1.386240e-06	1.379558e-06	1.394731e-06	5.472573e-03	30	1
+position/position_find_wrap_pos_ascii	alloc_words	1.200000e+01	1.200000e+01	1.200000e+01	0.000000e+00	30	0
+position/position_find_wrap_pos_ascii	cpu_time	1.114267e-06	1.112600e-06	1.115668e-06	1.376346e-03	30	1
+position/position_find_wrap_pos_ascii	wall_time	1.116254e-06	1.114824e-06	1.117897e-06	1.376354e-03	30	1
+position/position_find_wrap_pos_mixed	alloc_words	2.300000e+01	2.300000e+01	2.300000e+01	0.000000e+00	30	0
+position/position_find_wrap_pos_mixed	cpu_time	1.068554e-05	1.065830e-05	1.072404e-05	3.076254e-03	30	0
+position/position_find_wrap_pos_mixed	wall_time	1.069621e-05	1.066781e-05	1.073540e-05	3.159801e-03	30	0
+position/position_find_wrap_pos_wcwidth	alloc_words	8.940000e+02	8.940000e+02	8.940000e+02	0.000000e+00	59	5
+position/position_find_wrap_pos_wcwidth	cpu_time	1.414773e-06	1.407062e-06	1.422801e-06	5.562421e-03	59	6
+position/position_find_wrap_pos_wcwidth	wall_time	1.432253e-06	1.415303e-06	1.449238e-06	1.184684e-02	59	10
+position/position_prev_ascii	alloc_words	1.100000e+01	1.100000e+01	1.100000e+01	0.000000e+00	30	0
+position/position_prev_ascii	cpu_time	4.952717e-07	4.933866e-07	4.967372e-07	3.382672e-03	30	0
+position/position_prev_ascii	wall_time	4.996892e-07	4.952579e-07	5.042767e-07	9.024400e-03	30	2
+position/position_prev_mixed	alloc_words	2.800000e+01	2.800000e+01	2.800000e+01	0.000000e+00	30	0
+position/position_prev_mixed	cpu_time	7.225421e-05	7.208638e-05	7.247980e-05	2.722497e-03	30	1
+position/position_prev_mixed	wall_time	7.268906e-05	7.230541e-05	7.378057e-05	1.014703e-02	30	1
+position/position_prev_wcwidth	alloc_words	8.461000e+03	8.461000e+03	8.461000e+03	0.000000e+00	30	0
+position/position_prev_wcwidth	cpu_time	1.323072e-05	1.318554e-05	1.327665e-05	3.443105e-03	30	0
+position/position_prev_wcwidth	wall_time	1.329946e-05	1.325829e-05	1.333960e-05	3.056762e-03	30	1
+position/position_width_at_ascii	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
+position/position_width_at_ascii	cpu_time	3.451894e-09	3.434984e-09	3.467272e-09	4.676902e-03	30	1
+position/position_width_at_ascii	wall_time	3.496484e-09	3.449950e-09	3.571665e-09	1.740537e-02	30	1
+position/position_width_at_mixed	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	30	0
+position/position_width_at_mixed	cpu_time	3.780493e-08	3.693919e-08	3.901606e-08	2.746816e-02	30	1
+position/position_width_at_mixed	wall_time	3.857552e-08	3.709544e-08	4.074734e-08	4.733434e-02	30	1
+position/position_width_at_wcwidth	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	58	5
+position/position_width_at_wcwidth	cpu_time	6.147595e-09	6.131008e-09	6.163161e-09	2.615120e-03	58	4
+position/position_width_at_wcwidth	wall_time	6.239389e-09	6.177266e-09	6.300584e-09	9.882217e-03	58	7
 segment/segment_ascii_line	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-segment/segment_ascii_line	cpu_time	7.757526e-06	7.704820e-06	7.818142e-06	7.303956e-03	30	1
-segment/segment_ascii_line	wall_time	7.912477e-06	7.739062e-06	8.243207e-06	3.185761e-02	30	2
+segment/segment_ascii_line	cpu_time	7.698299e-06	7.678371e-06	7.715381e-06	2.403802e-03	30	1
+segment/segment_ascii_line	wall_time	7.710219e-06	7.688199e-06	7.743568e-06	3.590612e-03	30	3
 segment/segment_complex_line	alloc_words	1.000000e+01	1.000000e+01	1.000000e+01	0.000000e+00	30	0
-segment/segment_complex_line	cpu_time	1.094689e-05	1.090316e-05	1.101345e-05	5.037485e-03	30	0
-segment/segment_complex_line	wall_time	1.096959e-05	1.091139e-05	1.106330e-05	6.924291e-03	30	1
+segment/segment_complex_line	cpu_time	1.099310e-05	1.096722e-05	1.103445e-05	3.058043e-03	30	2
+segment/segment_complex_line	wall_time	1.100671e-05	1.098388e-05	1.104868e-05	2.943583e-03	30	2
 width/width_ascii_unicode	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-width/width_ascii_unicode	cpu_time	1.783997e-06	1.781350e-06	1.787246e-06	1.652357e-03	30	0
-width/width_ascii_unicode	wall_time	1.786307e-06	1.783794e-06	1.790246e-06	1.806006e-03	30	0
+width/width_ascii_unicode	cpu_time	1.793885e-06	1.790345e-06	1.796813e-06	1.802854e-03	30	0
+width/width_ascii_unicode	wall_time	1.795971e-06	1.792585e-06	1.799188e-06	1.838285e-03	30	1
 width/width_complex_no_zwj	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	30	0
-width/width_complex_no_zwj	cpu_time	1.205285e-05	1.202655e-05	1.209188e-05	2.710363e-03	30	2
-width/width_complex_no_zwj	wall_time	1.207552e-05	1.204192e-05	1.214320e-05	4.193468e-03	30	1
-width/width_complex_unicode	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	58	5
-width/width_complex_unicode	cpu_time	1.207480e-05	1.205888e-05	1.209262e-05	1.397091e-03	58	2
-width/width_complex_unicode	wall_time	1.210661e-05	1.208076e-05	1.214854e-05	2.799298e-03	58	5
+width/width_complex_no_zwj	cpu_time	1.200970e-05	1.198135e-05	1.204098e-05	2.482420e-03	30	2
+width/width_complex_no_zwj	wall_time	1.202343e-05	1.199390e-05	1.205059e-05	2.357099e-03	30	2
+width/width_complex_unicode	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	30	0
+width/width_complex_unicode	cpu_time	1.214068e-05	1.210850e-05	1.217220e-05	2.623547e-03	30	1
+width/width_complex_unicode	wall_time	1.215823e-05	1.212194e-05	1.219285e-05	2.916068e-03	30	1
 width/width_complex_wcwidth	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-width/width_complex_wcwidth	cpu_time	7.553770e-06	7.474024e-06	7.599151e-06	8.282385e-03	30	0
-width/width_complex_wcwidth	wall_time	7.580701e-06	7.503896e-06	7.633593e-06	8.554419e-03	30	0
+width/width_complex_wcwidth	cpu_time	7.559491e-06	7.527217e-06	7.589248e-06	4.102842e-03	30	0
+width/width_complex_wcwidth	wall_time	7.570022e-06	7.539049e-06	7.599880e-06	4.017918e-03	30	0
