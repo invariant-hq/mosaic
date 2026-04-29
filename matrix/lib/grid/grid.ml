@@ -528,6 +528,13 @@ let resize t ~width ~height =
     sanitize_spans t;
     rebuild_grapheme_tracker t
 
+let resize_clear ?color t ~width ~height =
+  if width <= 0 || height <= 0 then
+    invalid_arg "Grid.resize_clear: width and height must be > 0";
+  if width <> t.width || height <> t.height then (
+    resize t ~width ~height;
+    clear ?color t)
+
 (* {1 Clipping} *)
 
 let push_clip t rect = Scissor_stack.push t.scissor_stack rect

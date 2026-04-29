@@ -215,6 +215,14 @@ val resize : t -> width:int -> height:int -> unit
 
     Raises [Invalid_argument] if [width <= 0] or [height <= 0]. *)
 
+val resize_clear :
+  ?color:Ansi.Color.t -> t -> width:int -> height:int -> unit
+(** [resize_clear g ~width ~height] resizes [g] and clears all cells with
+    {!clear} when dimensions change. If dimensions are unchanged, this is a
+    no-op; use {!clear} for an explicit same-size clear.
+
+    Raises [Invalid_argument] if [width <= 0] or [height <= 0]. *)
+
 val clear : ?color:Ansi.Color.t -> t -> unit
 (** [clear ~color g] resets all cells to spaces with white foreground and
     [color] background. [color] defaults to transparent. Releases all stored

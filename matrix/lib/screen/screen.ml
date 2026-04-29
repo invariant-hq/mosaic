@@ -555,11 +555,9 @@ let resize t ~width ~height =
   if width <= 0 || height <= 0 then
     invalid_arg "Screen.resize: width and height must be > 0";
   if width <> Grid.width t.current || height <> Grid.height t.current then (
-    Grid.resize t.current ~width ~height;
-    Grid.clear t.current;
-    Grid.resize t.next ~width ~height;
-    Grid.resize t.scroll_baseline ~width ~height;
-    Grid.clear t.scroll_baseline;
+    Grid.resize_clear t.current ~width ~height;
+    Grid.resize_clear t.next ~width ~height;
+    Grid.resize_clear t.scroll_baseline ~width ~height;
     (* Hit_grid.resize already clears unconditionally, no need to clear again *)
     Hit_grid.resize t.hit_current ~width ~height;
     Hit_grid.resize t.hit_next ~width ~height;
