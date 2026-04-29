@@ -7,6 +7,10 @@
  (libraries thumper matrix.glyph))
 
 (executable
+ (name bench_text)
+ (libraries thumper matrix.text))
+
+(executable
  (name bench_input)
  (libraries thumper matrix.input))
 
@@ -33,6 +37,13 @@
   (progn
    (run %{exe:bench_glyph.exe} -q)
    (diff? glyph.thumper glyph.thumper.corrected))))
+
+(rule
+ (alias runtest)
+ (action
+  (progn
+   (run %{exe:bench_text.exe} -q)
+   (diff? text.thumper text.thumper.corrected))))
 
 (rule
  (alias runtest)

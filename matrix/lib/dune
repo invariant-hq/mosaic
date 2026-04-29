@@ -8,5 +8,6 @@
   matrix.screen
   matrix.input
   matrix.terminal
+  matrix.text
   matrix.glyph
   unix))

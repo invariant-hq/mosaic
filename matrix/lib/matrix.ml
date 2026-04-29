@@ -4,6 +4,7 @@ module Grid = Grid
 module Input = Input
 module Screen = Screen
 module Terminal = Terminal
+module Text = Text
 module Image = Image
 
 (* Types *)

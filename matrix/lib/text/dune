@@ -1,0 +1,4 @@
+(library
+ (name text)
+ (public_name matrix.text)
+ (private_modules unicode unicode_data uuseg_base uuseg_grapheme_cluster))

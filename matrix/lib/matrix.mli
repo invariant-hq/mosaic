@@ -9,7 +9,7 @@
 
     {1:sub_libraries Sub-libraries}
 
-    {!modules:Ansi Glyph Grid Input Screen Terminal Image} *)
+    {!modules:Ansi Glyph Grid Input Screen Terminal Text Image} *)
 
 (** {1:sub Sub-libraries} *)
 
@@ -30,6 +30,9 @@ module Screen = Screen
 
 module Terminal = Terminal
 (** Terminal protocol state machine. *)
+
+module Text = Text
+(** Terminal text measurement and segmentation. *)
 
 module Image = Image
 (** Declarative image composition and rendering. *)

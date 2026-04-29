@@ -1,0 +1,28 @@
+# thumper baseline
+# version: 1
+# suite_name: text
+# host: 3b8ae6dbe74c4269
+# cpu: Apple M1 Max
+# ocaml: 5.4.1
+# git: 81b790ed
+# dirty: true
+# command: _build/default/matrix/bench/bench_text.exe -- --ci --bless
+
+segment/segment_ascii_line	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	15	0
+segment/segment_ascii_line	cpu_time	7.802127e-06	7.724123e-06	7.865154e-06	9.038020e-03	15	2
+segment/segment_ascii_line	wall_time	8.082364e-06	7.756261e-06	8.396421e-06	3.960225e-02	15	1
+segment/segment_complex_line	alloc_words	1.000000e+01	1.000000e+01	1.000000e+01	0.000000e+00	15	0
+segment/segment_complex_line	cpu_time	1.094081e-05	1.092123e-05	1.096178e-05	1.853114e-03	15	0
+segment/segment_complex_line	wall_time	1.094789e-05	1.091850e-05	1.098100e-05	2.854405e-03	15	0
+width/width_ascii_unicode	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	15	0
+width/width_ascii_unicode	cpu_time	1.805757e-06	1.785277e-06	1.813006e-06	7.677775e-03	15	0
+width/width_ascii_unicode	wall_time	1.825515e-06	1.795338e-06	1.843817e-06	1.327822e-02	15	0
+width/width_complex_no_zwj	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	28	2
+width/width_complex_no_zwj	cpu_time	1.204999e-05	1.202152e-05	1.206921e-05	1.978818e-03	28	1
+width/width_complex_no_zwj	wall_time	1.206400e-05	1.199447e-05	1.213035e-05	5.631591e-03	28	2
+width/width_complex_unicode	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	15	0
+width/width_complex_unicode	cpu_time	1.224394e-05	1.212477e-05	1.244532e-05	1.309038e-02	15	2
+width/width_complex_unicode	wall_time	1.261863e-05	1.218907e-05	1.314983e-05	3.806902e-02	15	2
+width/width_complex_wcwidth	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	15	0
+width/width_complex_wcwidth	cpu_time	7.573914e-06	7.529356e-06	7.625840e-06	6.369478e-03	15	2
+width/width_complex_wcwidth	wall_time	7.574310e-06	7.529785e-06	7.623329e-06	6.175059e-03	15	0

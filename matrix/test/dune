@@ -13,6 +13,12 @@
  (libraries windtrap glyph))
 
 (test
+ (name test_text)
+ (package matrix)
+ (modules test_text)
+ (libraries windtrap text))
+
+(test
  (name test_grid)
  (package matrix)
  (modules test_grid)
