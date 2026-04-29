@@ -537,7 +537,8 @@ let mouse_event_of_codes ?release_button ~button_code ~x ~y ~is_release
       match release_button with
       | Some button -> Some button
       | None ->
-          if button_code = 3 then None else Some (mouse_button_of_code button_code)
+          if button_code = 3 then None
+          else Some (mouse_button_of_code button_code)
     in
     mouse_event ~x ~y ~modifier (Up { button })
   else
@@ -671,7 +672,8 @@ let parse_urxvt_mouse s start end_ =
                           mouse_event ~x:(x - 1) ~y:(y - 1) ~modifier
                             (Scroll
                                {
-                                 direction = scroll_direction_of_code button_code;
+                                 direction =
+                                   scroll_direction_of_code button_code;
                                  delta = 1;
                                })
                         else

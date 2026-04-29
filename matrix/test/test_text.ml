@@ -82,8 +82,8 @@ let run_grapheme_conformance () =
             let actual = List.rev !actual in
             if expected <> actual then
               fail
-                (Printf.sprintf
-                   "Grapheme break mismatch on line %d: %s" lineno rule));
+                (Printf.sprintf "Grapheme break mismatch on line %d: %s" lineno
+                   rule));
           loop (lineno + 1)
     in
     loop 1;
@@ -141,7 +141,8 @@ let malformed_utf8_measurement () =
   check_width "invalid middle byte" 3
     (measure ~width_method:`Unicode ~tab_width:2 ("a" ^ "\x80" ^ "b"));
   check_width "measure_sub invalid slice" 2
-    (measure_sub ~width_method:`Unicode ~tab_width:2 ("x" ^ invalid ^ "(")
+    (measure_sub ~width_method:`Unicode ~tab_width:2
+       ("x" ^ invalid ^ "(")
        ~pos:1 ~len:2)
 
 let measure_sub_validation () =
@@ -151,8 +152,7 @@ let measure_sub_validation () =
     (measure_sub ~width_method:`Unicode ~tab_width:2 "abc" ~pos:(-1) ~len:0);
   expect_invalid_arg "negative pos" (fun () ->
       ignore
-        (measure_sub ~width_method:`Unicode ~tab_width:2 "abc" ~pos:(-1)
-           ~len:1));
+        (measure_sub ~width_method:`Unicode ~tab_width:2 "abc" ~pos:(-1) ~len:1));
   expect_invalid_arg "oversized len" (fun () ->
       ignore
         (measure_sub ~width_method:`Unicode ~tab_width:2 "abc" ~pos:1 ~len:3))
@@ -174,7 +174,8 @@ let grapheme_info_skips_zero_width () =
   iter_grapheme_info ~width_method:`Unicode ~tab_width:2
     (fun ~offset ~len ~width -> seen := (offset, len, width) :: !seen)
     ("a" ^ "\u{200B}" ^ "界");
-  equal ~msg:"zero-width grapheme is skipped" (list (triple int int int))
+  equal ~msg:"zero-width grapheme is skipped"
+    (list (triple int int int))
     [ (0, 1, 1); (4, 3, 2) ]
     (List.rev !seen)
 

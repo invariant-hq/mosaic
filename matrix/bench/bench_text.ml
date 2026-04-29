@@ -41,7 +41,6 @@ let unicode_graphemes =
   |]
 
 let complex_line = cycle_concat unicode_graphemes 256
-
 let segment_counter = ref 0
 let segment_callback ~offset:_ ~len:_ = incr segment_counter
 

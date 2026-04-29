@@ -285,8 +285,7 @@ let handle_input state event =
           state.particles <- [];
           `Continue
       | _ -> `Continue)
-  | Input.Mouse
-      { Input.Mouse.x; y; kind = Down { button = Left }; _ } ->
+  | Input.Mouse { Input.Mouse.x; y; kind = Down { button = Left }; _ } ->
       state.mouse_x <- x;
       state.mouse_y <- y;
       state.mouse_emitter <- true;
