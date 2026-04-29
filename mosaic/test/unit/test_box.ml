@@ -45,7 +45,7 @@ let props_focused_border_color_auto_enables () =
   is_true ~msg:"auto-enabled" (Box.Props.equal p p_expected)
 
 let props_white_does_not_auto_enable () =
-  let p = Box.Props.make ~border_color:Ansi.Color.White () in
+  let p = Box.Props.make ~border_color:Ansi.Color.white () in
   let p_default = Box.Props.make () in
   is_true ~msg:"not auto-enabled" (Box.Props.equal p p_default)
 
@@ -286,7 +286,7 @@ let child_clip_clamps_zero () =
 let focused_border_color_default () =
   let a = Box.Props.make ~border:true () in
   let b =
-    Box.Props.make ~border:true ~focused_border_color:Ansi.Color.Bright_cyan ()
+    Box.Props.make ~border:true ~focused_border_color:Ansi.Color.bright_cyan ()
   in
   is_true ~msg:"default is Bright_cyan" (Box.Props.equal a b)
 
@@ -320,7 +320,7 @@ let set_border_color_noop_same_value () =
   let root = make_root t in
   let box = Box.create ~parent:root ~border:true () in
   let before = !(t.schedule_count) in
-  Box.set_border_color box Ansi.Color.White;
+  Box.set_border_color box Ansi.Color.white;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_border_sides_noop_same_value () =

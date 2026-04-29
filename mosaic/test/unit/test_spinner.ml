@@ -122,9 +122,9 @@ let set_color_schedules_render () =
   is_true ~msg:"scheduled" (!(t.schedule_count) > before)
 
 let set_color_noop_same () =
-  let t, spinner = make_spinner ~color:Ansi.Color.White () in
+  let t, spinner = make_spinner ~color:Ansi.Color.white () in
   let before = !(t.schedule_count) in
-  Spinner.set_color spinner Ansi.Color.White;
+  Spinner.set_color spinner Ansi.Color.white;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 (* ── apply_props ── *)

@@ -32,7 +32,7 @@ module Props = struct
   let make ~options ?(selected = 0) ?(tab_width = 12) ?background ?text_color
       ?focused_background ?focused_text_color
       ?(selected_background = default_selected_background)
-      ?(selected_text_color = Ansi.Color.White)
+      ?(selected_text_color = Ansi.Color.white)
       ?(description_color = default_description_color)
       ?(selected_description_color = default_selected_description_color)
       ?(show_underline = true) ?(show_description = false)

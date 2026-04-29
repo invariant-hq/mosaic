@@ -252,8 +252,8 @@ let sgr_foreground_color () =
   let r =
     Grid.get_fg_r grid 0 |> fun v -> Float.round (v *. 255.) |> int_of_float
   in
-  (* xterm-256 ANSI red = (205, 0, 0) *)
-  equal ~msg:"red foreground" int 205 r
+  (* Standard ANSI red fallback = (128, 0, 0) *)
+  equal ~msg:"red foreground" int 128 r
 
 let sgr_background_color () =
   let vte = Vte.create ~rows:5 ~cols:20 () in
@@ -262,8 +262,8 @@ let sgr_background_color () =
   let g =
     Grid.get_bg_g grid 0 |> fun v -> Float.round (v *. 255.) |> int_of_float
   in
-  (* xterm-256 ANSI green = (0, 205, 0) *)
-  equal ~msg:"green background" int 205 g
+  (* Standard ANSI green fallback = (0, 128, 0) *)
+  equal ~msg:"green background" int 128 g
 
 let sgr_reset () =
   let vte = Vte.create ~rows:5 ~cols:20 () in

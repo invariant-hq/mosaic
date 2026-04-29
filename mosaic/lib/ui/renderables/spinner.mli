@@ -61,7 +61,7 @@ val create :
 (** [create ~parent ()] is a spinner attached to [parent], with:
     - [frame_set] is the animation sequence. Defaults to {!default_frame_set}.
     - [color] is the foreground color for the spinner glyphs. Defaults to
-      {!Ansi.Color.White}. *)
+      {!Ansi.Color.white}. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} of [t]. *)
@@ -75,7 +75,7 @@ module Props : sig
   val make : ?frame_set:frame_set -> ?color:Ansi.Color.t -> unit -> t
   (** [make ()] is a property set, with:
       - [frame_set] is the animation sequence. Defaults to {!default_frame_set}.
-      - [color] is the foreground color. Defaults to {!Ansi.Color.White}. *)
+      - [color] is the foreground color. Defaults to {!Ansi.Color.white}. *)
 
   val default : t
   (** [default] is [make ()]. *)

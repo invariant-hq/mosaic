@@ -24,7 +24,7 @@ let default_frame_set = dots
 module Props = struct
   type t = { frame_set : frame_set; color : Ansi.Color.t }
 
-  let make ?(frame_set = default_frame_set) ?(color = Ansi.Color.White) () =
+  let make ?(frame_set = default_frame_set) ?(color = Ansi.Color.white) () =
     { frame_set; color }
 
   let default = make ()
@@ -106,7 +106,7 @@ let on_frame t _node ~delta =
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
-    ?(frame_set = default_frame_set) ?(color = Ansi.Color.White) () =
+    ?(frame_set = default_frame_set) ?(color = Ansi.Color.white) () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in

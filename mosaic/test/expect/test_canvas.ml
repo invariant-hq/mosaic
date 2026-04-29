@@ -43,7 +43,7 @@ let%expect_test "fill rect" =
   print_canvas_ansi ~width:10 ~height:5
     (fun c ->
       Grid.fill_rect (Canvas.grid c) ~x:2 ~y:1 ~width:6 ~height:3
-        ~color:Ansi.Color.White)
+        ~color:Ansi.Color.white)
     ();
   [%expect_exact
     {|

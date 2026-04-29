@@ -55,20 +55,20 @@ val create :
       [Some (lo, hi)], selection is normalized/clamped.
     - [placeholder]: text shown when empty. Defaults to [""].
     - [max_length]: maximum grapheme cluster count. Defaults to [1000].
-    - [text_color]: unfocused text color. Defaults to {!Ansi.Color.White}.
+    - [text_color]: unfocused text color. Defaults to {!Ansi.Color.white}.
     - [background_color]: unfocused background. Defaults to
       {!Ansi.Color.default}.
-    - [focused_text_color]: focused text color. Defaults to {!Ansi.Color.White}.
+    - [focused_text_color]: focused text color. Defaults to {!Ansi.Color.white}.
     - [focused_background_color]: focused background. Defaults to
       {!Ansi.Color.default}.
     - [placeholder_color]: placeholder text color. Defaults to
-      {!Ansi.Color.Bright_black}.
-    - [selection_color]: selection background. Defaults to {!Ansi.Color.Blue}.
+      {!Ansi.Color.bright_black}.
+    - [selection_color]: selection background. Defaults to {!Ansi.Color.blue}.
     - [selection_fg]: selection foreground. When [None], uses the normal text
       color. Defaults to [None].
     - [cursor_style]: cursor shape when focused. Defaults to [`Block].
     - [cursor_color]: cursor color when focused. Defaults to
-      {!Ansi.Color.White}.
+      {!Ansi.Color.white}.
     - [cursor_blinking]: whether the cursor blinks. Defaults to [true].
     - [on_input]: called after every text change.
     - [on_change]: called when committed value changes (blur or submit).

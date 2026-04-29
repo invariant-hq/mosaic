@@ -351,15 +351,15 @@ module Theme = struct
 
   let default_palette =
     [|
-      Color.Cyan;
-      Color.Magenta;
-      Color.Yellow;
-      Color.Green;
-      Color.Blue;
-      Color.Red;
-      Color.Extended 33;
-      Color.Extended 39;
-      Color.Extended 45;
+      Color.cyan;
+      Color.magenta;
+      Color.yellow;
+      Color.green;
+      Color.blue;
+      Color.red;
+      Color.indexed 33;
+      Color.indexed 39;
+      Color.indexed 45;
     |]
 
   let dark =

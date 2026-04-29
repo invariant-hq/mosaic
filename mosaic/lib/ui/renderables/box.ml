@@ -13,16 +13,16 @@ module Props = struct
     title_alignment : [ `Left | `Center | `Right ];
   }
 
-  let default_focused_border_color = Ansi.Color.Bright_cyan
+  let default_focused_border_color = Ansi.Color.bright_cyan
 
   let make ?(border = false) ?(border_style = Grid.Border.single)
-      ?(border_sides = Grid.Border.all) ?(border_color = Ansi.Color.White)
+      ?(border_sides = Grid.Border.all) ?(border_color = Ansi.Color.white)
       ?focused_border_color ?background ?(fill = true) ?title
       ?(title_alignment = `Left) () =
     let has_border_opts =
       Option.is_some focused_border_color
       || border_style <> Grid.Border.single
-      || border_color <> Ansi.Color.White
+      || border_color <> Ansi.Color.white
     in
     let border = border || has_border_opts in
     let focused_border_color =

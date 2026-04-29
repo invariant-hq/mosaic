@@ -379,7 +379,7 @@ let render_code_block_default ~(env : render_env) ~parent ?index ~is_last
   let box =
     Box.create ~parent ?index
       ~style:(bordered_block_style ~is_last)
-      ~border:true ~border_sides:[ `Left ] ~border_color:Ansi.Color.White ?title
+      ~border:true ~border_sides:[ `Left ] ~border_color:Ansi.Color.white ?title
       ()
   in
   let text =
@@ -519,7 +519,7 @@ and render_blockquote ~(env : render_env) ~parent ?index ~is_last
       ~style:(bordered_column_block_style ~is_last)
       ~border:true ~border_sides:[ `Left ]
       ~border_color:
-        (match bq_style.fg with Some c -> c | None -> Ansi.Color.Yellow)
+        (match bq_style.fg with Some c -> c | None -> Ansi.Color.yellow)
       ()
   in
   let inner_block = Cmarkit.Block.Block_quote.block bq in
@@ -562,7 +562,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
   else
     let border_style = env.style Table_border in
     let border_color =
-      match border_style.fg with Some c -> c | None -> Ansi.Color.White
+      match border_style.fg with Some c -> c | None -> Ansi.Color.white
     in
     let cell_text_style =
       Toffee.Style.make
@@ -819,7 +819,7 @@ let update_leaf_in_place ~(env : render_env) ~is_last (tb : tagged_block)
       Text.set_content text code_text;
       Text.set_text_style text (env.style Code_block);
       Box.set_title box title;
-      Box.set_border_color box Ansi.Color.White;
+      Box.set_border_color box Ansi.Color.white;
       Renderable.set_style (Box.node box) (block_style ~is_last);
       true
   | Hr_tag, Cmarkit.Block.Thematic_break _, Text_widget text ->

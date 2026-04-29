@@ -53,11 +53,56 @@ let color_blending () =
 
   (* Linear blend: 50% white over black should be approx gray 127 *)
   let res = Color.blend ~mode:`Linear ~src:fg ~dst:bg () in
-  match res with
-  | Color.Rgb { r; g; b } ->
-      is_true ~msg:"blend result roughly gray"
-        (r > 120 && r < 135 && r = g && g = b)
-  | _ -> fail "Expected opaque RGB result from blend"
+  let r, g, b, a = Color.to_rgba res in
+  equal ~msg:"blend result opaque" int 255 a;
+  is_true ~msg:"blend result roughly gray" (r > 120 && r < 135 && r = g && g = b)
+
+let color_intent_is_part_of_identity () =
+  (* Exact equality must preserve terminal emission intent, while visual
+     equality can still compare the RGBA snapshot. *)
+  let indexed_red = Color.indexed 1 in
+  let rgb_red = Color.of_rgb 128 0 0 in
+  (match Color.intent indexed_red with
+  | Color.Indexed 1 -> ()
+  | _ -> fail "Expected indexed intent");
+  (match Color.intent rgb_red with
+  | Color.Rgb -> ()
+  | _ -> fail "Expected RGB intent");
+  is_false ~msg:"intent differs" (Color.equal indexed_red rgb_red);
+  is_true ~msg:"rgba snapshot matches" (Color.equal_rgba indexed_red rgb_red);
+  is_false ~msg:"default intent differs from transparent RGB"
+    (Color.equal Color.default (Color.of_rgba 0 0 0 0))
+
+let color_ansi16_palette_matches_standard_fallback () =
+  (* The fallback ANSI16 table uses 0x80/0xc0 base colors. *)
+  let expected =
+    [|
+      (0x00, 0x00, 0x00);
+      (0x80, 0x00, 0x00);
+      (0x00, 0x80, 0x00);
+      (0x80, 0x80, 0x00);
+      (0x00, 0x00, 0x80);
+      (0x80, 0x00, 0x80);
+      (0x00, 0x80, 0x80);
+      (0xc0, 0xc0, 0xc0);
+      (0x80, 0x80, 0x80);
+      (0xff, 0x00, 0x00);
+      (0x00, 0xff, 0x00);
+      (0xff, 0xff, 0x00);
+      (0x00, 0x00, 0xff);
+      (0xff, 0x00, 0xff);
+      (0x00, 0xff, 0xff);
+      (0xff, 0xff, 0xff);
+    |]
+  in
+  Array.iteri
+    (fun i expected_rgb ->
+      let er, eg, eb = expected_rgb in
+      let ar, ag, ab = Color.to_rgb (Color.indexed i) in
+      equal ~msg:(Printf.sprintf "ansi16 slot %d r" i) int er ar;
+      equal ~msg:(Printf.sprintf "ansi16 slot %d g" i) int eg ag;
+      equal ~msg:(Printf.sprintf "ansi16 slot %d b" i) int eb ab)
+    expected
 
 let color_downgrade_semantics () =
   (* 1. Truecolor -> Truecolor (Identity) *)
@@ -70,19 +115,19 @@ let color_downgrade_semantics () =
   (* Gray 10/10/10 should map low in the ramp *)
   let dark_gray = Color.of_rgb 8 8 8 in
   let down = Color.downgrade ~level:`Ansi256 dark_gray in
-  match down with
-  | Color.Extended n -> is_true ~msg:"mapped to grayscale ramp" (n = 232)
-  | _ -> fail "Expected extended color index"
+  match Color.intent down with
+  | Color.Indexed n -> is_true ~msg:"mapped to grayscale ramp" (n = 232)
+  | _ -> fail "Expected indexed color"
 
 let color_extended_out_of_range_is_safe () =
-  (* Regression from the matrix.ansi review: public [Extended] values outside
-     [0,255] must not reach unsafe palette indexing. *)
+  (* Regression from the matrix.ansi review: out-of-range palette inputs must
+     not reach unsafe palette indexing. *)
   is_true ~msg:"negative extended compares safely"
-    (Color.equal (Color.Extended (-1)) Color.black);
+    (Color.equal (Color.indexed (-1)) Color.black);
   is_true ~msg:"large extended compares safely"
-    (Color.equal (Color.Extended 999) (Color.Extended 255));
-  ignore (Color.hash (Color.Extended 999) : int);
-  ignore (Color.compare (Color.Extended (-1)) (Color.Extended 999) : int)
+    (Color.equal (Color.indexed 999) (Color.indexed 255));
+  ignore (Color.hash (Color.indexed 999) : int);
+  ignore (Color.compare (Color.indexed (-1)) (Color.indexed 999) : int)
 
 (* --- 2. Attributes & Style --- *)
 
@@ -288,9 +333,8 @@ let parser_chunked_utf8 () =
   equal ~msg:"utf8 reconstructed" string "€ok" combined
 
 let parser_chunked_utf8_same_buffer_slice () =
-  (* Adapted from OpenTUI stdin-parser chunk-shape invariance tests: a parser
-     feed must respect the logical off/len slice, not bytes that happen to
-     follow in the same underlying buffer. *)
+  (* Parser feeds must respect the logical off/len slice, not bytes that happen
+     to follow in the same underlying buffer. *)
   let p = Parser.create () in
   let input = Bytes.of_string "\xE2\x82\xACok" in
   let t1 = feed_to_list p input 0 1 in
@@ -386,7 +430,6 @@ let parser_osc8_bel_terminated () =
   | _ -> fail "OSC 8 BEL tokens mismatch"
 
 let parser_protocol_string_controls () =
-  (* Adapted from OpenTUI stdin-parser protocol response tests. *)
   (match Parser.parse "\x1bP>|kitty(0.40.1)\x1b\\" with
   | [ Parser.Control (Parser.DCS ">|kitty(0.40.1)") ] -> ()
   | _ -> fail "DCS response not tokenized");
@@ -512,7 +555,6 @@ let cursor_and_explicit_width_sequences () =
     Ansi.(to_string (explicit_width ~width:5 ~text:"hi"))
 
 let kitty_keyboard_sequences () =
-  (* OpenTUI exposes Kitty keyboard as a stack: push flags, then pop. *)
   check_seq "kitty keyboard push" "\x1b[>5u"
     Ansi.(to_string (csi_u_push ~flags:5));
   check_seq "kitty keyboard pop" "\x1b[<u" Ansi.(to_string csi_u_pop)
@@ -660,6 +702,9 @@ let tests =
         test "hex parsing" color_parsing_hex;
         test "hsl roundtrip" color_hsl_roundtrip;
         test "blending" color_blending;
+        test "intent identity" color_intent_is_part_of_identity;
+        test "ansi16 fallback palette"
+          color_ansi16_palette_matches_standard_fallback;
         test "downgrade" color_downgrade_semantics;
         test "extended out of range safe" color_extended_out_of_range_is_safe;
       ];

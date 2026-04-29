@@ -265,10 +265,10 @@ let heatmap ?id ?(color_scale = [||]) ?value_range ?(auto_value_range = true)
 let candles ?id ?bullish ?bearish ?(width = (`One : candle_width))
     ?(body = (`Filled : candle_body)) ?(y_axis = `Y1) data =
   let bullish =
-    Option.value bullish ~default:(Style.fg Color.Green Style.default)
+    Option.value bullish ~default:(Style.fg Color.green Style.default)
   in
   let bearish =
-    Option.value bearish ~default:(Style.fg Color.Red Style.default)
+    Option.value bearish ~default:(Style.fg Color.red Style.default)
   in
   let sorted =
     let arr = Array.copy data in

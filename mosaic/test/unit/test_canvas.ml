@@ -191,10 +191,10 @@ let fill_rect_fills_cells () =
   let parent_grid = make_grid ~width:80 ~height:24 () in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
   Renderable.Private.render node parent_grid ~delta:0.;
-  Canvas.fill_rect canvas ~x:0 ~y:0 ~width:2 ~height:2 ~color:Ansi.Color.Red;
+  Canvas.fill_rect canvas ~x:0 ~y:0 ~width:2 ~height:2 ~color:Ansi.Color.red;
   let g = Canvas.grid canvas in
   let bg = Grid.get_background g (Grid.idx g ~x:0 ~y:0) in
-  is_true ~msg:"has fill color" (Ansi.Color.equal Ansi.Color.Red bg)
+  is_true ~msg:"has fill color" (Ansi.Color.equal Ansi.Color.red bg)
 
 let width_height_accessors () =
   let t = make_ctx () in
@@ -307,13 +307,13 @@ let set_cell_writes_glyph () =
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
   Renderable.Private.render node parent_grid ~delta:0.;
   let cell = Grid.Cell.of_uchar (Uchar.of_char 'Z') in
-  Canvas.set_cell canvas ~x:1 ~y:2 ~cell ~fg:Ansi.Color.Red ~bg:Ansi.Color.Blue
+  Canvas.set_cell canvas ~x:1 ~y:2 ~cell ~fg:Ansi.Color.red ~bg:Ansi.Color.blue
     ~attrs:Ansi.Attr.empty ();
   let g = Canvas.grid canvas in
   let idx = Grid.idx g ~x:1 ~y:2 in
   equal ~msg:"text" string "Z" (Grid.get_text g idx);
   is_true ~msg:"bg"
-    (Ansi.Color.equal Ansi.Color.Blue (Grid.get_background g idx))
+    (Ansi.Color.equal Ansi.Color.blue (Grid.get_background g idx))
 
 (* ── on_resize dimensions ── *)
 

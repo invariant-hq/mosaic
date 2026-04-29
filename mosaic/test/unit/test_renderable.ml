@@ -443,7 +443,7 @@ let cursor_with_provider () =
   let root = make_root t in
   let child = Renderable.create ~parent:root () in
   let c : Renderable.cursor =
-    { x = 1; y = 2; style = `Block; color = Ansi.Color.White; blinking = false }
+    { x = 1; y = 2; style = `Block; color = Ansi.Color.white; blinking = false }
   in
   Renderable.set_cursor_provider child (fun _ -> Some c);
   match Renderable.cursor child with
@@ -466,7 +466,7 @@ let clear_cursor_provider () =
           x = 0;
           y = 0;
           style = `Line;
-          color = Ansi.Color.White;
+          color = Ansi.Color.white;
           blinking = true;
         });
   Renderable.clear_cursor_provider child;

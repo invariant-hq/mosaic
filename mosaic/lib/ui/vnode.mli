@@ -333,20 +333,20 @@ val input :
       focus. Defaults to [""].
     - [max_length] is the maximum grapheme cluster count. Defaults to [1000].
     - [text_color] is the text color when unfocused. Defaults to
-      {!Ansi.Color.White}.
+      {!Ansi.Color.white}.
     - [background_color] is the background color when unfocused.
     - [focused_text_color] is the text color when focused. Defaults to
-      {!Ansi.Color.White}.
+      {!Ansi.Color.white}.
     - [focused_background_color] is the background color when focused.
     - [placeholder_color] is the placeholder text color. Defaults to
-      {!Ansi.Color.Bright_black}.
+      {!Ansi.Color.bright_black}.
     - [selection_color] is the selection background color. Defaults to
-      {!Ansi.Color.Blue}.
+      {!Ansi.Color.blue}.
     - [selection_fg] is the selection foreground color. When unset, the normal
       text color is used.
     - [cursor_style] is the cursor shape when focused. Defaults to [`Block].
     - [cursor_color] is the cursor color when focused. Defaults to
-      {!Ansi.Color.White}.
+      {!Ansi.Color.white}.
     - [cursor_blinking] controls whether the cursor blinks. Defaults to [true].
     - [on_input] is called after every text change at keystroke-level.
     - [on_change] is called when the committed value changes (on blur or
@@ -546,7 +546,7 @@ val spinner :
       by default.
     - [frame_set] is the set of animation frames and their interval. Defaults to
       {!Spinner.dots}.
-    - [color] is the spinner foreground color. Defaults to {!Ansi.Color.White}.
+    - [color] is the spinner foreground color. Defaults to {!Ansi.Color.white}.
 *)
 
 val progress_bar :
@@ -716,20 +716,20 @@ val textarea :
       focus. Defaults to [""].
     - [wrap] is the line-wrapping mode. Defaults to [`Word].
     - [text_color] is the text color when unfocused. Defaults to
-      {!Ansi.Color.White}.
+      {!Ansi.Color.white}.
     - [background_color] is the background color when unfocused.
     - [focused_text_color] is the text color when focused. Defaults to
-      {!Ansi.Color.White}.
+      {!Ansi.Color.white}.
     - [focused_background_color] is the background color when focused.
     - [placeholder_color] is the placeholder text color. Defaults to
-      {!Ansi.Color.Bright_black}.
+      {!Ansi.Color.bright_black}.
     - [selection_color] is the selection background color. Defaults to
-      {!Ansi.Color.Blue}.
+      {!Ansi.Color.blue}.
     - [selection_fg] is the selection foreground color. When unset, the normal
       text color is used.
     - [cursor_style] is the cursor shape when focused. Defaults to [`Block].
     - [cursor_color] is the cursor color when focused. Defaults to
-      {!Ansi.Color.White}.
+      {!Ansi.Color.white}.
     - [cursor_blinking] controls whether the cursor blinks. Defaults to [true].
     - [on_input] is called after every text change at keystroke-level.
     - [on_change] is called when the committed value changes (on blur or

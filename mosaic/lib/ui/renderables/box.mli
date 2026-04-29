@@ -36,8 +36,8 @@ val create :
       [border_color], or [focused_border_color] implicitly enables it.
     - [border_style] defaults to {!Grid.Border.single}.
     - [border_sides] defaults to {!Grid.Border.all} (all four sides).
-    - [border_color] defaults to {!Ansi.Color.White}.
-    - [focused_border_color] defaults to {!Ansi.Color.Bright_cyan}.
+    - [border_color] defaults to {!Ansi.Color.white}.
+    - [focused_border_color] defaults to {!Ansi.Color.bright_cyan}.
     - [background] defaults to [None] (transparent).
     - [fill] defaults to [true].
     - [title] defaults to [None].
