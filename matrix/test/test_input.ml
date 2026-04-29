@@ -974,7 +974,7 @@ let test_osc_sequences () =
   equal ~msg:"OSC responses do not leak into user input" (list event_testable)
     []
     (parse_user "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07");
-  match parse_responses "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07" with
+  (match parse_responses "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07" with
   | [
    Input.Response.Clipboard (sel, data); Input.Response.Osc (code, osc_data);
   ] ->
@@ -984,7 +984,12 @@ let test_osc_sequences () =
       equal ~msg:"osc data" string "#FFFFFF" osc_data
   | _ ->
       failf "Expected [Clipboard; Osc], got %d responses"
-        (List.length (parse_responses "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07"))
+        (List.length (parse_responses "\x1b]52;c;YWJj\x07\x1b]10;#FFFFFF\x07")));
+  match parse_responses "\x1b]10;#FFFFFF\x1b\\" with
+  | [ Input.Response.Osc (10, "#FFFFFF") ] -> ()
+  | responses ->
+      failf "Expected ST-terminated OSC payload without terminator, got %d"
+        (List.length responses)
 
 let test_window_events () =
   equal ~msg:"focus, blur, resize" (list event_testable)

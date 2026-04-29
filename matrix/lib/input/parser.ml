@@ -428,6 +428,116 @@ let capability_event_of_sequence seq =
       | _ -> Drop
   else No_match
 
+(* OSC helpers *)
+
+type osc_terminator = Bel of int | St of int
+
+let find_osc_terminator s start stop =
+  let rec loop i =
+    if i >= stop then None
+    else
+      match s.[i] with
+      | '\x07' -> Some (Bel i)
+      | '\x1b' when i + 1 < stop && s.[i + 1] = '\\' -> Some (St i)
+      | _ -> loop (i + 1)
+  in
+  loop start
+
+let find_char s c =
+  let len = String.length s in
+  let rec loop i =
+    if i >= len then None else if s.[i] = c then Some i else loop (i + 1)
+  in
+  loop 0
+
+let split_first s c =
+  match find_char s c with
+  | None -> (s, "")
+  | Some i -> (String.sub s 0 i, String.sub s (i + 1) (String.length s - i - 1))
+
+let is_base64_char = function
+  | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '+' | '/' | '=' -> true
+  | _ -> false
+
+let base64_value = function
+  | 'A' .. 'Z' as c -> Char.code c - Char.code 'A'
+  | 'a' .. 'z' as c -> Char.code c - Char.code 'a' + 26
+  | '0' .. '9' as c -> Char.code c - Char.code '0' + 52
+  | '+' -> 62
+  | '/' -> 63
+  | _ -> 0
+
+let base64_padding_is_valid s =
+  let len = String.length s in
+  if len < 4 then true
+  else
+    match (s.[len - 2], s.[len - 1]) with
+    | '=', '=' | _, '=' -> true
+    | '=', _ -> false
+    | _ -> true
+
+let base64_chars_are_valid s =
+  let len = String.length s in
+  let rec loop i =
+    if i >= len then true else is_base64_char s.[i] && loop (i + 1)
+  in
+  loop 0
+
+let decode_base64 parser s =
+  let len = String.length s in
+  if len = 0 || len mod 4 <> 0 then None
+  else if not (base64_chars_are_valid s && base64_padding_is_valid s) then None
+  else
+    let out = parser.scratch_buffer in
+    Buffer.clear out;
+    let rec loop i =
+      if i + 4 <= len then begin
+        let a = base64_value s.[i] in
+        let b = base64_value s.[i + 1] in
+        let c = base64_value s.[i + 2] in
+        let d = base64_value s.[i + 3] in
+        Buffer.add_char out (Char.chr ((a lsl 2) lor (b lsr 4)));
+        if s.[i + 2] <> '=' then begin
+          Buffer.add_char out (Char.chr (((b land 15) lsl 4) lor (c lsr 2)));
+          if s.[i + 3] <> '=' then
+            Buffer.add_char out (Char.chr (((c land 3) lsl 6) lor d))
+        end;
+        loop (i + 4)
+      end
+    in
+    loop 0;
+    Some (Buffer.contents out)
+
+let parse_osc_52 parser data =
+  let selection, base64_data = split_first data ';' in
+  let clipboard_data =
+    match decode_base64 parser base64_data with
+    | Some decoded -> decoded
+    | None -> base64_data
+  in
+  Response.Clipboard (selection, clipboard_data)
+
+let response_of_osc parser payload =
+  let code_str, data = split_first payload ';' in
+  let code =
+    match parse_int_range_opt code_str 0 (String.length code_str) with
+    | Some code -> code
+    | None -> 0
+  in
+  if code = 52 then parse_osc_52 parser data else Response.Osc (code, data)
+
+let parse_osc_sequence parser s start length =
+  match find_osc_terminator s (start + 2) (start + length) with
+  | None -> (None, 0)
+  | Some terminator ->
+      let payload_stop, consumed =
+        match terminator with
+        | Bel i -> (i, i - start + 1)
+        | St i -> (i, i - start + 2)
+      in
+      let payload = String.sub s (start + 2) (payload_stop - start - 2) in
+      (Some (`Response (response_of_osc parser payload)), consumed)
+
 type csi_mod = { code : int option; mods : int option; event : int option }
 
 (* Convert -1 to None, otherwise Some v *)
@@ -1221,112 +1331,7 @@ let parse_escape_sequence parser s start length : parsed option * int =
         | _ -> None
       in
       (Option.map (fun e -> `User e) event_opt, 3)
-    else if esc2 = ']' then
-      (* OSC sequences *)
-      let rec find_terminator i =
-        if i >= start + length then None
-        else
-          let c = s.[i] in
-          if c = '\x07' then Some i
-          else if c = '\x1b' && i + 1 < start + length && s.[i + 1] = '\\' then
-            Some (i + 1)
-          else find_terminator (i + 1)
-      in
-      match find_terminator (start + 2) with
-      | None -> (None, 0)
-      | Some pos ->
-          let seq_len = pos - (start + 2) in
-          let seq = String.sub s (start + 2) seq_len in
-          let semi = try String.index seq ';' with _ -> String.length seq in
-          let code_str = String.sub seq 0 semi in
-          let data =
-            if semi < String.length seq then
-              String.sub seq (semi + 1) (String.length seq - semi - 1)
-            else ""
-          in
-          let code = try int_of_string code_str with _ -> 0 in
-          let consumed = pos - start + 1 in
-          let event =
-            if code = 52 then
-              (* OSC 52 - Clipboard access *)
-              (* Format: selection;base64-data *)
-              let selection_end =
-                try String.index data ';' with _ -> String.length data
-              in
-              let selection = String.sub data 0 selection_end in
-              let base64_data =
-                if selection_end < String.length data then
-                  String.sub data (selection_end + 1)
-                    (String.length data - selection_end - 1)
-                else ""
-              in
-              (* Decode base64 with validation - returns None if invalid *)
-              let decode_base64 s =
-                let len = String.length s in
-                (* Must be multiple of 4 *)
-                if len = 0 || len mod 4 <> 0 then None
-                else
-                  let is_valid_char = function
-                    | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '+' | '/' | '=' ->
-                        true
-                    | _ -> false
-                  in
-                  let decode_char = function
-                    | 'A' .. 'Z' as c -> Char.code c - Char.code 'A'
-                    | 'a' .. 'z' as c -> Char.code c - Char.code 'a' + 26
-                    | '0' .. '9' as c -> Char.code c - Char.code '0' + 52
-                    | '+' -> 62
-                    | '/' -> 63
-                    | _ -> 0
-                  in
-                  (* Validate all characters first *)
-                  let rec validate i =
-                    if i >= len then true
-                    else if is_valid_char s.[i] then validate (i + 1)
-                    else false
-                  in
-                  (* Check padding: = can only appear at end, max 2 *)
-                  let valid_padding =
-                    if len < 4 then true
-                    else
-                      let c2 = s.[len - 2] in
-                      let c1 = s.[len - 1] in
-                      match (c2, c1) with
-                      | '=', '=' | _, '=' -> true
-                      | '=', _ -> false (* = before non-= is invalid *)
-                      | _ -> true
-                  in
-                  if not (validate 0 && valid_padding) then None
-                  else
-                    let out = parser.scratch_buffer in
-                    Buffer.clear out;
-                    let rec decode i =
-                      if i + 4 <= len then (
-                        let a = decode_char s.[i] in
-                        let b = decode_char s.[i + 1] in
-                        let c = decode_char s.[i + 2] in
-                        let d = decode_char s.[i + 3] in
-                        Buffer.add_char out (Char.chr ((a lsl 2) lor (b lsr 4)));
-                        if s.[i + 2] <> '=' then (
-                          Buffer.add_char out
-                            (Char.chr (((b land 15) lsl 4) lor (c lsr 2)));
-                          if s.[i + 3] <> '=' then
-                            Buffer.add_char out
-                              (Char.chr (((c land 3) lsl 6) lor d)));
-                        decode (i + 4))
-                    in
-                    decode 0;
-                    Some (Buffer.contents out)
-              in
-              let clipboard_data =
-                match decode_base64 base64_data with
-                | Some decoded -> decoded
-                | None -> base64_data (* Return verbatim if invalid *)
-              in
-              Response.Clipboard (selection, clipboard_data)
-            else Response.Osc (code, data)
-          in
-          (Some (`Response event), consumed)
+    else if esc2 = ']' then parse_osc_sequence parser s start length
     else if length >= 2 then
       (* Alt (ESC-prefix) combinations and ESC+control handling *)
       let c = s.[start + 1] in
