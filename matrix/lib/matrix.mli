@@ -49,8 +49,9 @@ type mode = [ `Alt | `Primary ]
 (** The type for presentation modes.
     - [`Alt] uses the alternate screen buffer. The application fully owns the
       screen; content is restored on exit.
-    - [`Primary] renders inline on the primary screen below the current cursor
-      row. Static output flows above the UI and enters native scrollback. *)
+    - [`Primary] renders an inline live viewport on the primary screen. Rows
+      above the viewport are static transcript rows and enter native scrollback.
+*)
 
 type debug_overlay_corner =
   [ `Top_left | `Top_right | `Bottom_left | `Bottom_right ]
@@ -188,8 +189,10 @@ val submit : ?primary_required_rows:int -> app -> unit
 (** [submit ?primary_required_rows app] diffs the current frame against the
     previous one and flushes ANSI output. Call after drawing into {!grid}.
 
-    In [`Primary] mode, [primary_required_rows] can be provided to request a
-    larger dynamic render region for this frame.
+    In [`Primary] mode, [primary_required_rows] requests a live viewport height
+    for this frame. The request is clamped to the terminal height and never
+    shrinks below [min_tui_height]. Growing the live viewport claims rows from
+    the static transcript area before rendering.
 
     {b Note.} Called automatically by {!run}. *)
 
@@ -238,7 +241,8 @@ val mode : app -> mode
 (** [mode app] is the presentation mode set at creation time. *)
 
 val size : app -> int * int
-(** [size app] is the current dynamic-region dimensions as [(cols, rows)]. *)
+(** [size app] is the current dynamic-region dimensions as [(cols, rows)]. In
+    [`Primary] mode this is the live viewport, not the full terminal. *)
 
 val full_size : app -> int * int
 (** [full_size app] is the full terminal dimensions [(cols, rows)], ignoring the
@@ -246,9 +250,10 @@ val full_size : app -> int * int
 
 val effective_size : app -> int * int
 (** [effective_size app] is the dynamic-region dimensions [(cols, rows)] that
-    will be in effect once pending static writes are flushed. In [`Alt] mode or
-    when the static queue is empty this equals {!size}. Use this in [on_render]
-    to lay out the dynamic UI against the post-commit geometry. *)
+    will be in effect once pending static writes are flushed by the same primary
+    planner used by {!submit}. In [`Alt] mode or when the static queue is empty
+    this equals {!size}. Use this in [on_render] to lay out the dynamic UI
+    against the post-commit geometry. *)
 
 val pixel_resolution : app -> (int * int) option
 (** [pixel_resolution app] is the last known pixel resolution as
@@ -262,25 +267,33 @@ val capabilities : app -> Terminal.capabilities
 
 (** {1:static Static output}
 
-    These functions write to the primary screen above the renderer. They are
-    ignored in [`Alt] mode. *)
+    Static output is primary-screen transcript output placed before the live
+    viewport. Insertion may move the live viewport downward until it reaches its
+    minimum height. Once pinned, inserted rows scroll only the rows above the
+    viewport and leave the live viewport intact. These functions are ignored in
+    [`Alt] mode. *)
 
 val static_write : app -> rows:int -> string -> unit
-(** [static_write app ~rows s] writes [s] to the static area, using [rows] as
-    the exact number of terminal rows consumed. The caller is responsible for
-    computing [rows] accurately (e.g. from {!Grid.active_height} after rendering
-    to a grid). *)
+(** [static_write app ~rows s] queues [s] for insertion before the live
+    viewport, using [rows] as the exact number of terminal rows consumed by [s].
+    The caller is responsible for computing [rows] accurately, for example from
+    {!Grid.active_height} after rendering to a grid.
+
+    In raw mode, lone LF bytes in [s] are normalized to CRLF before queuing so
+    terminal row accounting matches the provided [rows]. *)
 
 val static_clear : app -> unit
-(** [static_clear app] clears static content and resets the primary scroll
-    region. *)
+(** [static_clear app] clears the primary screen immediately, discards pending
+    static output, and resets the live viewport to the full terminal height. It
+    is an immediate terminal reset rather than a queued frame operation. *)
 
 (** {1:scroll Scroll optimisation} *)
 
 val set_scroll_hint : app -> Screen.scroll_hint -> unit
 (** [set_scroll_hint app hint] sets a scroll hint for the current frame.
-    Consumed by the next {!submit} call. Only effective in [`Alt] mode; the hint
-    is silently discarded in [`Primary] mode.
+    Consumed by the next {!submit} call. The runtime currently applies hints
+    only in [`Alt] mode. In [`Primary] mode hints are discarded because primary
+    static output already owns the frame's temporary scroll-region protocol.
 
     Use this when a scrollable container's viewport shifts: the renderer applies
     DECSTBM hardware scroll so only the newly-revealed edge rows need cell-level

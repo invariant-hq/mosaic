@@ -457,6 +457,60 @@ let test_static_writes_are_flushed_fifo () =
       is_true ~msg:"first static write appears before second" (first < second)
   | _ -> fail "expected both static writes in frame output"
 
+let test_static_write_normalizes_lf_in_raw_mode () =
+  let app, state =
+    make_app ~mode:`Primary ~raw_mode:true ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  Matrix.static_write app ~rows:1 "raw\n";
+  Matrix.submit app;
+  let output = output state in
+  is_true ~msg:"raw mode normalizes lone LF to CRLF"
+    (contains_substring "raw\r\n" output);
+  is_false ~msg:"raw mode does not emit lone LF"
+    (contains_substring "raw\n" output)
+
+let test_static_write_preserves_lf_outside_raw_mode () =
+  let app, state =
+    make_app ~mode:`Primary ~raw_mode:false ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  Matrix.static_write app ~rows:1 "plain\n";
+  Matrix.submit app;
+  let output = output state in
+  is_true ~msg:"non-raw mode preserves LF" (contains_substring "plain\n" output);
+  is_false ~msg:"non-raw mode does not normalize LF to CRLF"
+    (contains_substring "plain\r\n" output)
+
+let test_static_write_tracks_mid_line_continuation () =
+  let app, state =
+    make_app ~mode:`Primary ~render_offset:23 ~min_tui_height:1 ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:1 "first";
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:1 "second\n";
+  Matrix.submit app;
+  is_true ~msg:"mid-line static output anchors next write on a fresh row"
+    (contains_substring "\r\nsecond" (output state));
+
+  let app, state =
+    make_app ~mode:`Primary ~render_offset:23 ~min_tui_height:1 ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:1 "first\n";
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:1 "second\n";
+  Matrix.submit app;
+  is_false ~msg:"line-ended static output does not add an extra leading CRLF"
+    (contains_substring "\r\nsecond" (output state))
+
 let test_pinned_static_write_uses_bounded_scroll_region () =
   let app, state =
     make_app ~mode:`Primary ~render_offset:23 ~min_tui_height:1 ~target_fps:None
@@ -493,6 +547,29 @@ let test_pinned_static_write_resets_scroll_region_before_live_render () =
   is_true ~msg:"static payload appears before live render"
     (is_before ~first:"pinned" ~second:"live" output);
   is_true ~msg:"scroll region resets before live render"
+    (is_before ~first:"\027[r" ~second:"live" output)
+
+let test_multiline_static_write_uses_scroll_region_when_it_reaches_pin () =
+  let app, state =
+    make_app ~mode:`Primary ~render_offset:22 ~min_tui_height:1 ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:2 "line-a\nline-b\n";
+  Matrix.prepare app;
+  Matrix.Grid.draw_text (Matrix.grid app) ~x:0 ~y:0 ~text:"live";
+  Matrix.submit app;
+  let output = output state in
+  equal ~msg:"multiline append reaches pinned live viewport" (pair int int)
+    (80, 1) (Matrix.size app);
+  is_true ~msg:"pinning append sets bounded scroll region"
+    (contains_substring "\027[1;23r" output);
+  is_true ~msg:"pinning append resets bounded scroll region"
+    (contains_substring "\027[r" output);
+  is_true ~msg:"bounded scroll region is active before payload"
+    (is_before ~first:"\027[1;23r" ~second:"line-a" output);
+  is_true ~msg:"bounded scroll region resets before live repaint"
     (is_before ~first:"\027[r" ~second:"live" output)
 
 let test_unpinned_static_write_settles_without_scroll_region () =
@@ -611,17 +688,32 @@ let test_static_write_ignored_in_alt_mode () =
     (contains_substring "ignored" (output state))
 
 let test_static_clear_resets_primary_layout () =
-  let app, _state =
-    make_app ~mode:`Primary ~render_offset:10 ~target_fps:None
-      ~input_timeout:(Some 0.) ()
+  let app, state =
+    make_app ~mode:`Primary ~terminal_tty:true ~render_offset:10
+      ~target_fps:None ~input_timeout:(Some 0.) ()
   in
   equal ~msg:"attached primary starts below transcript" (pair int int) (80, 14)
     (Matrix.size app);
+  Matrix.static_write app ~rows:1 "pending\n";
+  equal ~msg:"pending output affects effective size" (pair int int) (80, 13)
+    (Matrix.effective_size app);
+  Buffer.clear state.terminal_output;
   Matrix.static_clear app;
+  is_true ~msg:"static clear is an immediate terminal reset"
+    (contains_substring "\027[H\027[2J" (Buffer.contents state.terminal_output));
   equal ~msg:"static clear restores full primary height" (pair int int) (80, 24)
     (Matrix.size app);
   equal ~msg:"effective size also reset" (pair int int) (80, 24)
-    (Matrix.effective_size app)
+    (Matrix.effective_size app);
+  Buffer.clear state.output;
+  Matrix.prepare app;
+  Matrix.Grid.draw_text (Matrix.grid app) ~x:0 ~y:0 ~text:"after-clear";
+  Matrix.submit app;
+  let output = output state in
+  is_true ~msg:"next live frame renders after static clear"
+    (contains_substring "after-clear" output);
+  is_false ~msg:"static clear discards pending static output"
+    (contains_substring "pending" output)
 
 let test_primary_full_redraw_does_not_erase_past_terminal_bottom () =
   let app, state =
@@ -824,10 +916,18 @@ let () =
         [
           test "static writes are flushed FIFO"
             test_static_writes_are_flushed_fifo;
+          test "static write normalizes LF in raw mode"
+            test_static_write_normalizes_lf_in_raw_mode;
+          test "static write preserves LF outside raw mode"
+            test_static_write_preserves_lf_outside_raw_mode;
+          test "static write tracks mid-line continuation"
+            test_static_write_tracks_mid_line_continuation;
           test "pinned static write uses bounded scroll region"
             test_pinned_static_write_uses_bounded_scroll_region;
           test "pinned static write resets scroll region before live render"
             test_pinned_static_write_resets_scroll_region_before_live_render;
+          test "multiline static write uses scroll region when it reaches pin"
+            test_multiline_static_write_uses_scroll_region_when_it_reaches_pin;
           test "unpinned static write settles without scroll region"
             test_unpinned_static_write_settles_without_scroll_region;
           test "static write and live repaint share sync frame"

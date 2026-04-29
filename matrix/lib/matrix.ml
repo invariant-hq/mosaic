@@ -397,8 +397,9 @@ let apply_primary_plan t ~buf (plan : Primary.plan) =
   if plan.region_changed then sync_primary_layout t ~resize:true;
   if plan.force_full_redraw then t.force_full_next_frame <- true
 
-(* Erase the dynamic area, write queued static text into scrollback, and
-   force a full re-render so the cell-diff baseline stays in sync. *)
+(* Apply queued primary static writes before the live viewport render. The
+   Primary planner owns the viewport movement, DECSTBM lifetime, and baseline
+   invalidation decisions. *)
 let flush_static_queue t ~buf =
   let primary, plan = Primary.flush_static t.primary in
   t.primary <- primary;

@@ -236,6 +236,8 @@ let flush_static t =
       if max_offset = 0 then flush_full_height_static t queue
       else if t.render_offset = max_offset then flush_pinned_static t queue
       else
+        let projected_offset, _ = projected_after_static t in
+        let reaches_pin = projected_offset = max_offset in
         let start_plan =
           {
             empty_plan with
@@ -248,17 +250,23 @@ let flush_static t =
           }
         in
         let start = { t with static_queue = [] } in
-        let next, ops_rev =
+        let next, static_ops_rev =
           List.fold_left
             (fun (state, ops_rev) write ->
               let state, ops = flush_one state write in
               (state, List.rev_append ops ops_rev))
-            (start, List.rev start_plan.terminal_ops)
-            queue
+            (start, []) queue
         in
         let region_changed = live_region next <> live_region t in
-        ( next,
-          { start_plan with terminal_ops = List.rev ops_rev; region_changed } )
+        let static_ops = List.rev static_ops_rev in
+        let terminal_ops =
+          if reaches_pin then
+            start_plan.terminal_ops
+            @ [ Set_scroll_region { top = 1; bottom = max_offset } ]
+            @ static_ops @ [ Reset_scroll_region ]
+          else start_plan.terminal_ops @ static_ops
+        in
+        (next, { start_plan with terminal_ops; region_changed })
 
 let clear_static t =
   let next =
