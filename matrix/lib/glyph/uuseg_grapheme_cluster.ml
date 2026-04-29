@@ -167,7 +167,7 @@ let[@inline] check_boundary s u =
    Returns packed int: bit 2 = is_boundary, bits 0-1 = width_enc.
    Width encoding: 0 → -1, 1 → 0, 2 → 1, 3 → 2. *)
 let[@inline] check_boundary_with_width s u =
-  let packed = Unicode.all_props u in
+  let packed = Unicode.packed_props u in
   let right = byte_to_gcb.(packed land 0x1F) in
   let right_incb = byte_to_incb.((packed lsr 5) land 0x03) in
   let is_extpic = packed land 0x80 <> 0 in

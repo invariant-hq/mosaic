@@ -518,6 +518,31 @@ let live_complex_graphemes_are_interned () =
     (Pool.to_string pool g3);
   Pool.decref pool g3
 
+let live_complex_interning_is_not_just_last_entry () =
+  let pool = Pool.create () in
+  let g1 = Pool.intern pool "e\u{0301}" in
+  Pool.incref pool g1;
+  let other = Pool.intern pool "a\u{0302}" in
+  Pool.incref pool other;
+  let g2 = Pool.intern pool "e\u{0301}" in
+  equal ~msg:"non-adjacent live duplicate pool key" (option int) (pool_key g1)
+    (pool_key g2);
+  Pool.decref pool g1;
+  Pool.decref pool other
+
+let live_complex_interning_survives_table_growth () =
+  let pool = Pool.create () in
+  let first = "e\u{0301}:0" in
+  let first_g = Pool.intern pool first in
+  Pool.incref pool first_g;
+  for i = 1 to 600 do
+    let g = Pool.intern pool ("e\u{0301}:" ^ string_of_int i) in
+    Pool.incref pool g
+  done;
+  let again = Pool.intern pool first in
+  equal ~msg:"live duplicate after table growth" (option int) (pool_key first_g)
+    (pool_key again)
+
 let pool_capacity_reuse () =
   (* Regression: alloc_string used to overwrite capacity with actual length,
      causing storage fragmentation when a freed slot was reused for shorter data
@@ -1035,6 +1060,10 @@ let () =
           test "decref deduplication" decref_deduplicates_free_list;
           test "live complex graphemes are interned"
             live_complex_graphemes_are_interned;
+          test "live complex interning finds non-adjacent entries"
+            live_complex_interning_is_not_just_last_entry;
+          test "live complex interning survives table growth"
+            live_complex_interning_survives_table_growth;
           test "capacity reuse" pool_capacity_reuse;
           test "iter_graphemes ignore_zwj" iter_graphemes_ignore_zwj;
         ];

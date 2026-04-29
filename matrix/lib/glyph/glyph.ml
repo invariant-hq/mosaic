@@ -21,7 +21,12 @@ type pool = {
   mutable free_count : int;
   mutable next_id : int;
   mutable storage_cursor : int;
-  interned_live_ids : (string, int) Hashtbl.t;
+  mutable live_buckets : int array;
+  mutable live_bucket_stamps : int array;
+  mutable live_epoch : int;
+  mutable live_count : int;
+  mutable live_next : int array;
+  mutable live_hashes : int array;
   segmenter : Uuseg_grapheme_cluster.t;
 }
 
@@ -53,6 +58,7 @@ let mask_codepoint = 0x1FFFFF
 let default_tab_width = 2
 let initial_pool_ids = 4096
 let initial_pool_bytes = 4096 * 8
+let initial_live_buckets = 1024
 
 let () =
   if Sys.word_size <> 64 then
@@ -171,6 +177,12 @@ let width_sum ~method_ ~tab_width str off len =
 let width_flag_has_width = 1
 let width_flag_ri_pair = 2
 let width_flag_virama = 4
+let width_utf8_valid = 0
+let width_utf8_invalid = 1
+let width_utf8_unknown = 2
+let[@inline] pack_width_status width status = (width lsl 2) lor status
+let[@inline] width_status_width v = v lsr 2
+let[@inline] width_status v = v land 3
 
 let rec grapheme_width_unicode_loop str limit tab_width i width flags =
   if i >= limit then width
@@ -224,6 +236,76 @@ let cluster_width ~method_ ~tab_width str off len =
   | `Wcwidth -> grapheme_width_wcwidth_loop str limit tab_width off 0
   | `Unicode | `No_zwj ->
       grapheme_width_unicode_loop str limit tab_width off 0 0
+
+let rec grapheme_width_unicode_status_loop str limit tab_width i width flags
+    valid =
+  if i >= limit then
+    pack_width_status width
+      (if valid then width_utf8_valid else width_utf8_invalid)
+  else
+    let d = String.get_utf_8_uchar str i in
+    let valid = valid && Uchar.utf_decode_is_valid d in
+    let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
+    let next = i + Uchar.utf_decode_length d in
+    let cp_width = codepoint_width_unicode ~tab_width cp in
+    let has_width = flags land width_flag_has_width <> 0 in
+    let is_ri_pair = flags land width_flag_ri_pair <> 0 in
+    let has_virama = flags land width_flag_virama <> 0 in
+    if cp = 0xFE0F then
+      let new_width = if has_width && width = 1 then 2 else width in
+      grapheme_width_unicode_status_loop str limit tab_width next new_width
+        flags valid
+    else if is_virama cp then
+      grapheme_width_unicode_status_loop str limit tab_width next width
+        (flags lor width_flag_virama)
+        valid
+    else if is_regional_indicator cp then
+      if is_ri_pair then
+        grapheme_width_unicode_status_loop str limit tab_width next
+          (width + cp_width)
+          (flags lor width_flag_has_width land lnot width_flag_ri_pair
+         land lnot width_flag_virama)
+          valid
+      else
+        let new_w = if not has_width then cp_width else width in
+        grapheme_width_unicode_status_loop str limit tab_width next new_w
+          (flags lor width_flag_has_width lor width_flag_ri_pair
+         land lnot width_flag_virama)
+          valid
+    else if has_width && has_virama && is_devanagari_base cp then
+      let add = if cp <> 0x0930 && cp_width > 0 then cp_width else 0 in
+      grapheme_width_unicode_status_loop str limit tab_width next (width + add)
+        (flags lor width_flag_has_width land lnot width_flag_virama)
+        valid
+    else if (not has_width) && cp_width > 0 then
+      grapheme_width_unicode_status_loop str limit tab_width next cp_width
+        (flags lor width_flag_has_width land lnot width_flag_virama)
+        valid
+    else
+      grapheme_width_unicode_status_loop str limit tab_width next width
+        (flags land lnot width_flag_virama)
+        valid
+
+let rec grapheme_width_wcwidth_status_loop str limit tab_width i acc valid =
+  if i >= limit then
+    pack_width_status acc
+      (if valid then width_utf8_valid else width_utf8_invalid)
+  else
+    let d = String.get_utf_8_uchar str i in
+    let valid = valid && Uchar.utf_decode_is_valid d in
+    let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
+    let next = i + Uchar.utf_decode_length d in
+    grapheme_width_wcwidth_status_loop str limit tab_width next
+      (acc + codepoint_width_wcwidth ~tab_width cp)
+      valid
+
+let cluster_width_status ~method_ ~tab_width str off len =
+  let limit = off + len in
+  match method_ with
+  | `Wcwidth ->
+      grapheme_width_wcwidth_status_loop str limit tab_width off 0 true
+  | `Unicode | `No_zwj ->
+      grapheme_width_unicode_status_loop str limit tab_width off 0 0 true
 
 (* Grapheme Segmentation *)
 
@@ -356,9 +438,23 @@ module Pool = struct
       free_count = 0;
       next_id = 1;
       storage_cursor = 0;
-      interned_live_ids = Hashtbl.create 128;
+      live_buckets = Array.make initial_live_buckets 0;
+      live_bucket_stamps = Array.make initial_live_buckets 0;
+      live_epoch = 1;
+      live_count = 0;
+      live_next = Array.make initial_pool_ids (-1);
+      live_hashes = Array.make initial_pool_ids 0;
       segmenter = Uuseg_grapheme_cluster.create ();
     }
+
+  let clear_live_table pool =
+    pool.live_count <- 0;
+    if pool.live_epoch = max_int then (
+      Array.fill pool.live_bucket_stamps ~pos:0
+        ~len:(Array.length pool.live_bucket_stamps)
+        0;
+      pool.live_epoch <- 1)
+    else pool.live_epoch <- pool.live_epoch + 1
 
   let clear pool =
     let used = pool.next_id in
@@ -376,7 +472,7 @@ module Pool = struct
       Array.unsafe_set pool.generations i
         ((Array.unsafe_get pool.generations i + 1) land mask_generation)
     done;
-    Hashtbl.clear pool.interned_live_ids
+    clear_live_table pool
 
   let ensure_id_capacity pool =
     let cap = Array.length pool.offsets in
@@ -393,7 +489,9 @@ module Pool = struct
       pool.capacities <- resize pool.capacities 0;
       pool.refcounts <- resize pool.refcounts 0;
       pool.generations <- resize pool.generations 0;
-      pool.free_stack <- resize pool.free_stack 0)
+      pool.free_stack <- resize pool.free_stack 0;
+      pool.live_next <- resize pool.live_next (-1);
+      pool.live_hashes <- resize pool.live_hashes 0)
 
   let ensure_storage_capacity pool needed =
     let cap = Bytes.length pool.storage in
@@ -421,65 +519,138 @@ module Pool = struct
     Array.unsafe_set pool.free_stack pool.free_count idx;
     pool.free_count <- pool.free_count + 1
 
-  let[@inline] key_of_slice str off len =
-    if off = 0 && len = String.length str then str
-    else String.sub str ~pos:off ~len
+  let rec hash_slice_loop str limit i hash =
+    if i >= limit then if hash = 0 then 1 else hash
+    else
+      let hash =
+        ((hash lsl 5) - hash + Char.code (String.unsafe_get str i)) land max_int
+      in
+      hash_slice_loop str limit (i + 1) hash
 
-  let[@inline] validate_payload pool payload =
-    let idx = payload land mask_index in
-    let gen = (payload lsr shift_generation) land mask_generation in
-    if
-      idx > 0 && idx < pool.next_id
-      && Array.unsafe_get pool.generations idx = gen
+  let[@inline] hash_slice str off len =
+    hash_slice_loop str (off + len) off 0x345678
+
+  let rec hash_storage_loop storage limit i hash =
+    if i >= limit then if hash = 0 then 1 else hash
+    else
+      let hash =
+        ((hash lsl 5) - hash + Char.code (Bytes.unsafe_get storage i))
+        land max_int
+      in
+      hash_storage_loop storage limit (i + 1) hash
+
+  let[@inline] hash_storage storage off len =
+    hash_storage_loop storage (off + len) off 0x345678
+
+  let rec storage_equals_slice_loop storage storage_off str off len i =
+    i >= len
+    || Char.equal
+         (Bytes.unsafe_get storage (storage_off + i))
+         (String.unsafe_get str (off + i))
+       && storage_equals_slice_loop storage storage_off str off len (i + 1)
+
+  let[@inline] storage_equals_slice storage storage_off str off len =
+    storage_equals_slice_loop storage storage_off str off len 0
+
+  let[@inline] live_bucket pool hash =
+    hash land (Array.length pool.live_buckets - 1)
+
+  let[@inline] live_bucket_head pool bucket =
+    if Array.unsafe_get pool.live_bucket_stamps bucket = pool.live_epoch then
+      Array.unsafe_get pool.live_buckets bucket
+    else 0
+
+  let[@inline] set_live_bucket_head pool bucket head =
+    Array.unsafe_set pool.live_bucket_stamps bucket pool.live_epoch;
+    Array.unsafe_set pool.live_buckets bucket head
+
+  let rec live_lookup_loop pool str off len hash idx =
+    if idx = 0 then 0
+    else if
+      Array.unsafe_get pool.live_hashes idx = hash
       && Array.unsafe_get pool.refcounts idx > 0
+      && Array.unsafe_get pool.lengths idx = len
+      && storage_equals_slice pool.storage
+           (Array.unsafe_get pool.offsets idx)
+           str off len
     then idx
-    else -1
+    else
+      live_lookup_loop pool str off len hash
+        (Array.unsafe_get pool.live_next idx)
 
-  let storage_equals_string storage off str len =
-    let rec loop i =
-      i >= len
-      || Char.equal
-           (Bytes.unsafe_get storage (off + i))
-           (String.unsafe_get str i)
-         && loop (i + 1)
-    in
-    loop 0
+  let[@inline] live_lookup pool str off len hash =
+    live_lookup_loop pool str off len hash
+      (live_bucket_head pool (live_bucket pool hash))
 
-  let lookup_live_payload pool key =
-    match Hashtbl.find_opt pool.interned_live_ids key with
-    | None -> None
-    | Some payload ->
-        let idx = validate_payload pool payload in
-        if idx < 0 then (
-          Hashtbl.remove pool.interned_live_ids key;
-          None)
-        else
-          let len = Array.unsafe_get pool.lengths idx in
-          let off = Array.unsafe_get pool.offsets idx in
-          if
-            len = String.length key
-            && storage_equals_string pool.storage off key len
-          then Some payload
-          else (
-            Hashtbl.remove pool.interned_live_ids key;
-            None)
+  let rehash_live_table pool new_bucket_count =
+    pool.live_buckets <- Array.make new_bucket_count 0;
+    pool.live_bucket_stamps <- Array.make new_bucket_count 0;
+    pool.live_epoch <- 1;
+    pool.live_count <- 0;
+    for idx = 1 to pool.next_id - 1 do
+      if
+        Array.unsafe_get pool.refcounts idx > 0
+        && Array.unsafe_get pool.live_next idx >= 0
+      then (
+        let hash = Array.unsafe_get pool.live_hashes idx in
+        let bucket = live_bucket pool hash in
+        let head = live_bucket_head pool bucket in
+        Array.unsafe_set pool.live_next idx head;
+        set_live_bucket_head pool bucket idx;
+        pool.live_count <- pool.live_count + 1)
+    done
 
-  let intern_live_payload pool idx payload =
-    let len = Array.unsafe_get pool.lengths idx in
-    let off = Array.unsafe_get pool.offsets idx in
-    let key = Bytes.sub_string pool.storage ~pos:off ~len in
-    match lookup_live_payload pool key with
-    | Some _ -> ()
-    | None -> Hashtbl.replace pool.interned_live_ids key payload
+  let ensure_live_capacity pool =
+    let bucket_count = Array.length pool.live_buckets in
+    if pool.live_count * 2 >= bucket_count then
+      rehash_live_table pool (bucket_count * 2)
 
-  let remove_live_payload pool idx payload =
-    let len = Array.unsafe_get pool.lengths idx in
-    let off = Array.unsafe_get pool.offsets idx in
-    let key = Bytes.sub_string pool.storage ~pos:off ~len in
-    match Hashtbl.find_opt pool.interned_live_ids key with
-    | Some live_payload when live_payload = payload ->
-        Hashtbl.remove pool.interned_live_ids key
-    | Some _ | None -> ()
+  let live_add pool idx hash =
+    ensure_live_capacity pool;
+    let bucket = live_bucket pool hash in
+    let head = live_bucket_head pool bucket in
+    Array.unsafe_set pool.live_hashes idx hash;
+    Array.unsafe_set pool.live_next idx head;
+    set_live_bucket_head pool bucket idx;
+    pool.live_count <- pool.live_count + 1
+
+  let rec live_remove_loop pool bucket idx prev cur =
+    if cur = 0 then ()
+    else
+      let next = Array.unsafe_get pool.live_next cur in
+      if cur = idx then (
+        if prev = 0 then set_live_bucket_head pool bucket next
+        else Array.unsafe_set pool.live_next prev next;
+        Array.unsafe_set pool.live_next idx (-1);
+        Array.unsafe_set pool.live_hashes idx 0;
+        pool.live_count <- pool.live_count - 1)
+      else live_remove_loop pool bucket idx cur next
+
+  let live_remove pool idx =
+    let hash = Array.unsafe_get pool.live_hashes idx in
+    if hash <> 0 then
+      let bucket = live_bucket pool hash in
+      if Array.unsafe_get pool.live_bucket_stamps bucket <> pool.live_epoch then (
+        Array.unsafe_set pool.live_next idx (-1);
+        Array.unsafe_set pool.live_hashes idx 0)
+      else
+        live_remove_loop pool bucket idx 0
+          (Array.unsafe_get pool.live_buckets bucket)
+
+  let live_hash pool idx =
+    let hash = Array.unsafe_get pool.live_hashes idx in
+    if hash <> 0 then hash
+    else
+      let hash =
+        hash_storage pool.storage
+          (Array.unsafe_get pool.offsets idx)
+          (Array.unsafe_get pool.lengths idx)
+      in
+      Array.unsafe_set pool.live_hashes idx hash;
+      hash
+
+  let intern_live_payload pool idx = live_add pool idx (live_hash pool idx)
+  let remove_live_payload pool idx = live_remove pool idx
 
   let alloc_string pool str off len =
     ensure_id_capacity pool;
@@ -499,6 +670,8 @@ module Pool = struct
     Array.unsafe_set pool.offsets id cursor;
     Array.unsafe_set pool.lengths id len;
     Array.unsafe_set pool.refcounts id 0;
+    Array.unsafe_set pool.live_next id (-1);
+    Array.unsafe_set pool.live_hashes id 0;
     id
 
   (* Reference Counting *)
@@ -510,7 +683,7 @@ module Pool = struct
       if idx >= 0 then (
         let rc = Array.unsafe_get pool.refcounts idx in
         Array.unsafe_set pool.refcounts idx (rc + 1);
-        if rc = 0 then intern_live_payload pool idx (pool_payload c))
+        if rc = 0 then intern_live_payload pool idx)
 
   let decref pool c =
     if is_inline c then ()
@@ -524,7 +697,7 @@ module Pool = struct
           let rc' = rc - 1 in
           if rc' > 0 then Array.unsafe_set pool.refcounts idx rc'
           else (
-            remove_live_payload pool idx (pool_payload c);
+            remove_live_payload pool idx;
             Array.unsafe_set pool.refcounts idx (-1);
             push_free pool idx)
 
@@ -596,43 +769,45 @@ module Pool = struct
         if w <= 0 then 0 else pack_simple cp w
       else
         (* Multi-codepoint cluster: pool allocation *)
-        let w =
+        let w_status =
           match precomputed_width with
-          | Some w -> w
+          | Some w -> pack_width_status w width_utf8_unknown
           | None ->
               let first_b = Char.code (String.unsafe_get str off) in
               if first_b >= 128 then
-                cluster_width ~method_ ~tab_width str off len
+                cluster_width_status ~method_ ~tab_width str off len
               else
                 let ascii_w =
                   ascii_width_loop str (off + len) tab_width off 0
                 in
-                if ascii_w >= 0 then ascii_w
-                else cluster_width ~method_ ~tab_width str off len
+                if ascii_w >= 0 then pack_width_status ascii_w width_utf8_valid
+                else cluster_width_status ~method_ ~tab_width str off len
         in
+        let w = width_status_width w_status in
         if w <= 0 then 0
         else
           let str, off, len, w =
-            match normalize_malformed_utf8_slice str off len with
-            | None -> (str, off, len, w)
-            | Some s ->
-                let len = String.length s in
-                let w =
-                  match precomputed_width with
-                  | Some w -> w
-                  | None -> width_sum ~method_ ~tab_width s 0 len
-                in
-                (s, 0, len, w)
+            if width_status w_status = width_utf8_valid then (str, off, len, w)
+            else
+              match normalize_malformed_utf8_slice str off len with
+              | None -> (str, off, len, w)
+              | Some s ->
+                  let len = String.length s in
+                  let w =
+                    match precomputed_width with
+                    | Some w -> w
+                    | None -> width_sum ~method_ ~tab_width s 0 len
+                  in
+                  (s, 0, len, w)
           in
-          let key = key_of_slice str off len in
-          match lookup_live_payload pool key with
-          | Some payload ->
-              let idx = payload land mask_index in
-              let gen = (payload lsr shift_generation) land mask_generation in
-              pack_start idx gen w
-          | None ->
-              let idx = alloc_string pool key 0 (String.length key) in
-              pack_start idx (Array.unsafe_get pool.generations idx) w
+          let hash = hash_slice str off len in
+          let idx = live_lookup pool str off len hash in
+          if idx <> 0 then
+            pack_start idx (Array.unsafe_get pool.generations idx) w
+          else
+            let idx = alloc_string pool str off len in
+            Array.unsafe_set pool.live_hashes idx hash;
+            pack_start idx (Array.unsafe_get pool.generations idx) w
 
   let intern pool ?(width_method = `Unicode) ?(tab_width = default_tab_width)
       str =
