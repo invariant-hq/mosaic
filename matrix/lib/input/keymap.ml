@@ -46,15 +46,33 @@ let default_event_type_filter = function
   | Event.Key.Press | Event.Key.Repeat -> true
   | Event.Key.Release -> false
 
+let normalized_char_key u =
+  let code = Uchar.to_int u in
+  if code >= Char.code 'A' && code <= Char.code 'Z' then
+    Event.Key.Char (Uchar.of_int (code + 32))
+  else Char u
+
+let matching_keys key base_key =
+  match base_key with
+  | Some u -> (
+      let physical = normalized_char_key u in
+      match Event.Key.equal key physical with
+      | true -> [ key ]
+      | false -> [ key; physical ])
+  | None -> [ key ]
+
 let find ?(event_type = default_event_type_filter) map = function
-  | Event.Key { key; modifier; event_type = et; _ } ->
+  | Event.Key { key; modifier; event_type = et; base_key; _ } ->
       if not (event_type et) then None
       else
+        let keys = matching_keys key base_key in
         let rec loop = function
           | [] -> None
           | b :: rest ->
-              if Event.Key.equal key b.key && matches_modifier b modifier then
-                Some b.data
+              if
+                List.exists (fun key -> Event.Key.equal key b.key) keys
+                && matches_modifier b modifier
+              then Some b.data
               else loop rest
         in
         loop map

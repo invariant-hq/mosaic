@@ -422,28 +422,6 @@ type t =
 
 let equal (e1 : t) (e2 : t) =
   match (e1, e2) with
-  | Key k1, Key k2 ->
-      (* Retain the "semantic equality" from the old [event_equal]: compare only
-         key + modifiers. *)
-      Key.equal k1.key k2.key && Key.equal_modifier k1.modifier k2.modifier
-  | Mouse m1, Mouse m2 -> Mouse.equal_event m1 m2
-  | Scroll (x1, y1, d1, s1, m1), Scroll (x2, y2, d2, s2, m2) ->
-      x1 = x2 && y1 = y2
-      && Mouse.equal_scroll_direction d1 d2
-      && s1 = s2 && Key.equal_modifier m1 m2
-  | Resize (w1, h1), Resize (w2, h2) -> w1 = w2 && h1 = h2
-  | Focus, Focus -> true
-  | Blur, Blur -> true
-  | Paste s1, Paste s2 -> s1 = s2
-  | Clipboard (a1, d1), Clipboard (a2, d2) -> a1 = a2 && d1 = d2
-  | Osc (c1, d1), Osc (c2, d2) -> c1 = c2 && d1 = d2
-  | ( ( Key _ | Mouse _ | Scroll _ | Resize _ | Focus | Blur | Paste _
-      | Clipboard _ | Osc _ ),
-      _ ) ->
-      false
-
-let equal_full (e1 : t) (e2 : t) =
-  match (e1, e2) with
   | Key k1, Key k2 -> Key.equal_event k1 k2
   | Mouse m1, Mouse m2 -> Mouse.equal_event m1 m2
   | Scroll (x1, y1, d1, s1, m1), Scroll (x2, y2, d2, s2, m2) ->

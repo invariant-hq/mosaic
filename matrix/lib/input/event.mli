@@ -391,8 +391,8 @@ type t =
   | Focus  (** Terminal gained focus. *)
   | Blur  (** Terminal lost focus. *)
   | Paste of string
-      (** [Paste text] is bracketed paste content with ANSI escape sequences
-          stripped. Empty payloads are dropped by the parser. *)
+      (** [Paste text] is bracketed paste content preserved exactly. Empty
+          payloads are dropped by the parser. *)
   | Clipboard of string * string
       (** [Clipboard (selection, data)] is an OSC 52 clipboard response. [data]
           is base64-decoded when possible, verbatim otherwise. *)
@@ -403,18 +403,9 @@ type t =
 (** {1:preds Predicates and comparisons} *)
 
 val equal : t -> t -> bool
-(** [equal a b] is [true] iff [a] and [b] are semantically equal.
-
-    For {!Key} events only the [key] and [modifier] fields are compared;
-    [event_type], [associated_text], [shifted_key] and [base_key] are ignored.
-    All other variants compare fields structurally.
-
-    See {!equal_full} for full structural equality. *)
-
-val equal_full : t -> t -> bool
-(** [equal_full a b] is [true] iff all fields of [a] and [b] are structurally
-    equal. Unlike {!equal}, this compares all fields of {!Key} events including
-    [event_type] and [associated_text]. *)
+(** [equal a b] is [true] iff all fields of [a] and [b] are structurally equal.
+    Key events compare [event_type], [associated_text], [shifted_key], and
+    [base_key] as well as the key and modifiers. *)
 
 (** {1:fmt Formatting} *)
 

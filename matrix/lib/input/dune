@@ -1,3 +1,4 @@
 (library
  (name input)
- (public_name matrix.input))
+ (public_name matrix.input)
+ (private_modules tokenizer))

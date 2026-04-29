@@ -164,6 +164,12 @@ let find_sequence_end s start len =
         if start + 2 < len && s.[start + 2] = 'M' then
           let expected = start + 6 in
           if expected <= len then Some expected else None
+        else if
+          start + 3 < len
+          && s.[start + 2] = '['
+          && s.[start + 3] >= 'A'
+          && s.[start + 3] <= 'E'
+        then Some (start + 4)
         else
           let rec loop i =
             if i >= len then None
@@ -193,6 +199,19 @@ let find_sequence_end s start len =
     | _ ->
         (* Generic short escape: ESC X *)
         Some (start + 2)
+
+let is_partial_sgr_mouse s =
+  let len = String.length s in
+  len >= 3
+  && s.[0] = esc
+  && s.[1] = '['
+  && s.[2] = '<'
+  &&
+  let rec loop i =
+    if i >= len then true
+    else match s.[i] with '0' .. '9' | ';' -> loop (i + 1) | _ -> false
+  in
+  loop 3
 
 let extract_sequences_from s =
   let len = String.length s in
@@ -342,6 +361,8 @@ let flush_expired t now =
       if Buffer.length t.buffer = 0 then []
       else
         let leftover = Buffer.contents t.buffer in
-        Buffer.clear t.buffer;
-        if leftover = "" then [] else [ Sequence leftover ]
+        if is_partial_sgr_mouse leftover then []
+        else (
+          Buffer.clear t.buffer;
+          if leftover = "" then [] else [ Sequence leftover ])
   | _ -> []

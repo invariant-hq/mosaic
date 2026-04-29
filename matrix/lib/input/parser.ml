@@ -32,6 +32,9 @@ type t = {
   (* Pre-allocated sub-parameter storage *)
   sub_param_values : int array; (* -1 means empty/missing *)
   mutable sub_param_count : int;
+  mutable mouse_left_pressed : bool;
+  mutable mouse_middle_pressed : bool;
+  mutable mouse_right_pressed : bool;
 }
 
 (* Modifiers *)
@@ -47,7 +50,7 @@ let modifier_table : modifier array =
         shift = mask land 1 <> 0;
         super = mask land 8 <> 0;
         hyper = mask land 16 <> 0;
-        meta = mask land 32 <> 0;
+        meta = mask land 2 <> 0 || mask land 32 <> 0;
         caps_lock = mask land 64 <> 0;
         num_lock = mask land 128 <> 0;
       })
@@ -56,7 +59,16 @@ let modifier_table : modifier array =
 let mk_modifier ?(ctrl = false) ?(alt = false) ?(shift = false) ?(super = false)
     ?(hyper = false) ?(meta = false) ?(caps_lock = false) ?(num_lock = false) ()
     : modifier =
-  { Key.ctrl; alt; shift; super; hyper; meta; caps_lock; num_lock }
+  {
+    Key.ctrl;
+    alt;
+    shift;
+    super;
+    hyper;
+    meta = meta || alt;
+    caps_lock;
+    num_lock;
+  }
 
 let modifier_of_bits bits =
   if bits <= 0 then no_modifier else modifier_table.((bits - 1) land 0xff)
@@ -97,6 +109,25 @@ let scroll_direction_of_button : mouse_button -> scroll_direction = function
 let mouse_button_state_of_code code : mouse_button_state =
   { left = code = 0; middle = code = 1; right = code = 2 }
 
+let mouse_pressed_state parser : mouse_button_state =
+  {
+    left = parser.mouse_left_pressed;
+    middle = parser.mouse_middle_pressed;
+    right = parser.mouse_right_pressed;
+  }
+
+let clear_mouse_pressed parser =
+  parser.mouse_left_pressed <- false;
+  parser.mouse_middle_pressed <- false;
+  parser.mouse_right_pressed <- false
+
+let set_mouse_pressed parser button pressed =
+  match button with
+  | Mouse.Left -> parser.mouse_left_pressed <- pressed
+  | Middle -> parser.mouse_middle_pressed <- pressed
+  | Right -> parser.mouse_right_pressed <- pressed
+  | _ -> ()
+
 let modifier_of_mouse_value value : modifier =
   let mask = (value land 0x1c) lsr 2 in
   modifier_table.(mask land 0xff)
@@ -115,6 +146,9 @@ let create () =
     csi_param_count = 0;
     sub_param_values = Array.make max_sub_params (-1);
     sub_param_count = 0;
+    mouse_left_pressed = false;
+    mouse_middle_pressed = false;
+    mouse_right_pressed = false;
   }
 
 (* CSI helpers *)
@@ -127,78 +161,7 @@ let is_csi_final c =
   let code = Char.code c in
   (code >= 0x40 && code <= 0x7e) || code = 0x24 || code = 0x5e
 
-(* Strip ANSI/terminal escape sequences from text. Used to sanitize bracketed
-   paste payloads so pasted content cannot inject control codes. *)
-let strip_ansi parser s =
-  if not (String.contains s '\x1b') then s
-  else
-    let len = String.length s in
-    let buf = parser.scratch_buffer in
-    Buffer.clear buf;
-    let rec find_st i =
-      if i >= len then len
-      else if s.[i] = '\x1b' && i + 1 < len && s.[i + 1] = '\\' then i + 2
-      else find_st (i + 1)
-    in
-    let rec loop i =
-      if i >= len then Buffer.contents buf
-      else
-        let c = s.[i] in
-        if c <> '\x1b' then (
-          Buffer.add_char buf c;
-          loop (i + 1))
-        else if i + 1 >= len then Buffer.contents buf
-        else
-          let c2 = s.[i + 1] in
-          if c2 = '[' then (
-            (* CSI: ESC [ ... final (0x40-0x7e) *)
-            let j = ref (i + 2) in
-            while
-              !j < len
-              &&
-              let ch = s.[!j] in
-              let code = Char.code ch in
-              code < 0x40 || code > 0x7e
-            do
-              incr j
-            done;
-            if !j < len then loop (!j + 1) else Buffer.contents buf)
-          else if c2 = ']' || c2 = 'P' || c2 = '_' then
-            if
-              (* OSC (]), DCS (P), APC (_): end with ST (ESC \). OSC can also
-                 end with BEL. *)
-              c2 = ']'
-            then
-              let rec find_end k =
-                if k >= len then len
-                else if s.[k] = '\x07' then k + 1
-                else if k + 1 < len && s.[k] = '\x1b' && s.[k + 1] = '\\' then
-                  k + 2
-                else find_end (k + 1)
-              in
-              let k = find_end (i + 2) in
-              if k <= len then loop k else Buffer.contents buf
-            else
-              let k = find_st (i + 2) in
-              if k <= len then loop k else Buffer.contents buf
-          else
-            (* Other ESC-prefixed sequence: skip ESC + following char *)
-            loop (i + 2)
-    in
-    loop 0
-
 (* Manual integer parsing without exceptions *)
-let parse_int_range s start end_ =
-  if start >= end_ then 0
-  else
-    let rec loop acc i =
-      if i >= end_ then acc
-      else if is_ascii_digit s.[i] then
-        loop ((acc * 10) + (Char.code s.[i] - 48)) (i + 1)
-      else acc
-    in
-    loop 0 start
-
 let parse_int_range_opt s start end_ =
   if start >= end_ then None
   else
@@ -210,6 +173,25 @@ let parse_int_range_opt s start end_ =
         else None
     in
     loop 0 start
+
+let parse_int_range_limit_opt s start end_ limit =
+  if start >= end_ then None
+  else
+    let rec loop acc i =
+      if i >= end_ then Some acc
+      else
+        let c = s.[i] in
+        if is_ascii_digit c then
+          let digit = Char.code c - 48 in
+          if acc > (limit - digit) / 10 then None
+          else loop ((acc * 10) + digit) (i + 1)
+        else None
+    in
+    loop 0 start
+
+let uchar_of_int_opt cp =
+  if cp < 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) then None
+  else Some (Uchar.of_int cp)
 
 (* Parse CSI parameters into pre-allocated arrays - zero allocation *)
 let parse_csi_params_into parser s start end_ =
@@ -388,56 +370,48 @@ let event_type_of_csi_mod m =
 let ensure_shift m = if m.Key.shift then m else { m with shift = true }
 let ensure_ctrl m = if m.Key.ctrl then m else { m with Key.ctrl = true }
 
-(* Decode a single UTF-8 codepoint at position [pos] in string [s]. Returns Some
-   (codepoint, byte_length) or None if invalid/truncated. Used for parsing URXVT
-   mouse coordinates which are UTF-8 encoded. *)
-let decode_utf8_char_string s pos =
-  if pos >= String.length s then None
-  else
-    let d = String.get_utf_8_uchar s pos in
-    if Uchar.utf_decode_is_valid d then
-      Some (Uchar.to_int (Uchar.utf_decode_uchar d), Uchar.utf_decode_length d)
-    else None
+let ctrl_key_of_code code =
+  match code with
+  | 0x00 -> Some (Key.Char (Uchar.of_int 32))
+  | c when c >= 0x01 && c <= 0x1a ->
+      Some (Char (Uchar.of_int (Char.code 'a' + c - 1)))
+  | 0x1c -> Some (Char (Uchar.of_char '\\'))
+  | 0x1d -> Some (Char (Uchar.of_char ']'))
+  | 0x1e -> Some (Char (Uchar.of_char '^'))
+  | 0x1f -> Some (Char (Uchar.of_char '_'))
+  | _ -> None
 
 let parse_x10_normal_mouse_string s start =
   let len = String.length s in
   if start + 3 <= len then
-    match decode_utf8_char_string s start with
-    | None -> None
-    | Some (btn, len1) -> (
-        match decode_utf8_char_string s (start + len1) with
-        | None -> None
-        | Some (ux, len2) -> (
-            match decode_utf8_char_string s (start + len1 + len2) with
-            | None -> None
-            | Some (uy, len3) ->
-                let cb = btn - 32 in
-                let x = ux - 33 in
-                let y = uy - 33 in
-                let consumed = len1 + len2 + len3 in
-                if x < 0 || y < 0 then None
-                else
-                  let base_button = cb land 3 in
-                  let is_scroll = cb land 64 <> 0 in
-                  let modifier = modifier_of_mouse_value cb in
-                  let ev : event =
-                    if is_scroll then
-                      let button = mouse_button_of_code (cb land 0xC3) in
-                      Scroll
-                        (x, y, scroll_direction_of_button button, 1, modifier)
-                    else if base_button = 3 then
-                      Mouse (Mouse.Button_release (x, y, Button 0, modifier))
-                    else
-                      let button =
-                        match base_button with
-                        | 0 -> Mouse.Left
-                        | 1 -> Middle
-                        | 2 -> Right
-                        | n -> Button n
-                      in
-                      Mouse (Mouse.Button_press (x, y, button, modifier))
-                  in
-                  Some (ev, consumed)))
+    let btn = Char.code s.[start] in
+    let ux = Char.code s.[start + 1] in
+    let uy = Char.code s.[start + 2] in
+    let cb = btn - 32 in
+    let x = ux - 33 in
+    let y = uy - 33 in
+    if x < 0 || y < 0 then None
+    else
+      let base_button = cb land 3 in
+      let is_scroll = cb land 64 <> 0 in
+      let modifier = modifier_of_mouse_value cb in
+      let ev : event =
+        if is_scroll then
+          let button = mouse_button_of_code (cb land 0xC3) in
+          Scroll (x, y, scroll_direction_of_button button, 1, modifier)
+        else if base_button = 3 then
+          Mouse (Mouse.Button_release (x, y, Button 0, modifier))
+        else
+          let button =
+            match base_button with
+            | 0 -> Mouse.Left
+            | 1 -> Middle
+            | 2 -> Right
+            | n -> Button n
+          in
+          Mouse (Mouse.Button_press (x, y, button, modifier))
+      in
+      Some (ev, 3)
   else None
 
 (* Generic helper for mouse events used by SGR/URXVT-style encodings *)
@@ -454,7 +428,7 @@ let mouse_event_of_codes ?release_button ~button_code ~x ~y ~is_release
     Mouse (Mouse.Button_release (x, y, b, modifier))
   else Mouse (Mouse.Button_press (x, y, button, modifier))
 
-let parse_sgr_mouse s start end_ =
+let parse_sgr_mouse parser s start end_ =
   (* Format: "<btn;x;y" followed by final M/m at [end_ - 1]. *)
   let final = s.[end_ - 1] in
   if final <> 'M' && final <> 'm' then None
@@ -504,8 +478,24 @@ let parse_sgr_mouse s start end_ =
                         final = 'm' && (not is_scroll) && not is_motion
                       in
                       let event =
-                        mouse_event_of_codes ~button_code ~x:(x - 1) ~y:(y - 1)
-                          ~is_release ~is_motion ~modifier ()
+                        if is_scroll then
+                          mouse_event_of_codes ~button_code ~x:(x - 1)
+                            ~y:(y - 1) ~is_release ~is_motion ~modifier ()
+                        else if is_motion then
+                          Mouse
+                            (Mouse.Motion
+                               ( x - 1,
+                                 y - 1,
+                                 mouse_pressed_state parser,
+                                 modifier ))
+                        else if is_release then (
+                          clear_mouse_pressed parser;
+                          mouse_event_of_codes ~button_code ~x:(x - 1)
+                            ~y:(y - 1) ~is_release ~is_motion ~modifier ())
+                        else (
+                          set_mouse_pressed parser button true;
+                          mouse_event_of_codes ~button_code ~x:(x - 1)
+                            ~y:(y - 1) ~is_release ~is_motion ~modifier ())
                       in
                       Some event))
 
@@ -738,10 +728,13 @@ let parse_kitty_keyboard parser s start end_ =
   else
     (* Parse code with optional :shifted:base *)
     let code_i = ref code_start in
-    let code = parse_int_range s !code_i (min (!code_i + 10) code_end) in
     while !code_i < code_end && s.[!code_i] <> ':' do
       incr code_i
     done;
+    let code =
+      parse_int_range_limit_opt s code_start !code_i 0x10ffff
+      |> Option.value ~default:0
+    in
     let shifted =
       if !code_i < code_end then (
         incr code_i;
@@ -750,31 +743,39 @@ let parse_kitty_keyboard parser s start end_ =
         while !code_i < code_end && s.[!code_i] <> ':' do
           incr code_i
         done;
-        let shifted_val = parse_int_range s shifted_start !code_i in
-        if shifted_val > 0 then Some (Uchar.of_int shifted_val) else None)
+        let shifted_val =
+          parse_int_range_limit_opt s shifted_start !code_i 0x10ffff
+        in
+        Option.bind shifted_val (fun cp ->
+            if cp > 0 then uchar_of_int_opt cp else None))
       else None
     in
     let base =
       if !code_i < code_end then (
         incr code_i;
         (* skip ':' *)
-        let base_val = parse_int_range s !code_i code_end in
-        if base_val > 0 then Some (Uchar.of_int base_val) else None)
+        let base_val = parse_int_range_limit_opt s !code_i code_end 0x10ffff in
+        Option.bind base_val (fun cp ->
+            if cp > 0 then uchar_of_int_opt cp else None))
       else None
     in
 
     (* Parse second field: mods[:event] *)
     let mods_start, mods_end = find_sep ';' in
     let mods_i = ref mods_start in
-    let mods = parse_int_range s !mods_i (min (!mods_i + 5) mods_end) in
     while !mods_i < mods_end && s.[!mods_i] <> ':' do
       incr mods_i
     done;
+    let mods =
+      parse_int_range_limit_opt s mods_start !mods_i 255
+      |> Option.value ~default:1
+    in
     let event_val =
       if !mods_i < mods_end then (
         incr mods_i;
         (* skip ':' *)
-        parse_int_range s !mods_i mods_end)
+        parse_int_range_limit_opt s !mods_i mods_end 3
+        |> Option.value ~default:1)
       else 1
     in
 
@@ -790,8 +791,10 @@ let parse_kitty_keyboard parser s start end_ =
           while !pos < len && s.[!pos] <> ':' do
             incr pos
           done;
-          let cp = parse_int_range s field_start !pos in
-          if cp > 0 then Buffer.add_utf_8_uchar buf (Uchar.of_int cp);
+          let cp = parse_int_range_limit_opt s field_start !pos 0x10ffff in
+          (match Option.bind cp uchar_of_int_opt with
+          | Some u when Uchar.to_int u > 0 -> Buffer.add_utf_8_uchar buf u
+          | _ -> ());
           if !pos < len then incr pos (* skip ':' *)
         done;
         Buffer.contents buf
@@ -807,7 +810,7 @@ let parse_kitty_keyboard parser s start end_ =
       | 27 -> Some Escape
       | 127 -> Some Backspace
       | c when c >= 57344 && c <= 63743 -> Some (pua_to_key c)
-      | c when c > 0 -> Some (Char (Uchar.of_int c))
+      | c when c > 0 -> Option.map (fun u -> Key.Char u) (uchar_of_int_opt c)
       | _ -> None
     in
     match key_opt with
@@ -974,14 +977,14 @@ let parse_csi_capability parser s start params_end final_char modifier
       else None
   | _ -> None
 
-let parse_csi_mouse_event s start intermediate_end final_char params_end :
-    parsed option =
+let parse_csi_mouse_event parser s start intermediate_end final_char params_end
+    : parsed option =
   match final_char with
   | 'M' | 'm' ->
       if start < String.length s && s.[start] = '<' then
         Option.map
           (fun e -> `User e)
-          (parse_sgr_mouse s start (intermediate_end + 1))
+          (parse_sgr_mouse parser s start (intermediate_end + 1))
       else if params_end > start then
         Option.map
           (fun e -> `User e)
@@ -1039,7 +1042,8 @@ let parse_csi parser s start end_ : parsed option =
           event_type
     (* Mouse events *)
     | 'M' | 'm' ->
-        parse_csi_mouse_event s start !intermediate_end final_char !params_end
+        parse_csi_mouse_event parser s start !intermediate_end final_char
+          !params_end
     | _ -> None)
   else None
 
@@ -1051,9 +1055,23 @@ let parse_escape_sequence parser s start length : parsed option * int =
   else
     let esc2 = s.[start + 1] in
     if esc2 = '[' then
-      match parse_csi parser s (start + 2) (start + length) with
-      | Some event -> (Some event, length)
-      | None -> (None, 0)
+      if length = 4 && s.[start + 2] = '[' then
+        let key =
+          match s.[start + 3] with
+          | 'A' -> Some (Key.F 1)
+          | 'B' -> Some (Key.F 2)
+          | 'C' -> Some (Key.F 3)
+          | 'D' -> Some (Key.F 4)
+          | 'E' -> Some (Key.F 5)
+          | _ -> None
+        in
+        match key with
+        | Some key -> (Some (`User (make_key_event key)), length)
+        | None -> (None, 0)
+      else
+        match parse_csi parser s (start + 2) (start + length) with
+        | Some event -> (Some event, length)
+        | None -> (None, 0)
     else if esc2 = 'O' && length >= 3 then
       (* SS3 sequences - used by terminals for arrows, home/end, function
          keys *)
@@ -1192,17 +1210,16 @@ let parse_escape_sequence parser s start length : parsed option * int =
       (* Alt (ESC-prefix) combinations and ESC+control handling *)
       let c = s.[start + 1] in
       (* ESC + control-char -> Alt+Ctrl letter (or space for NUL) *)
-      if c >= '\x00' && c <= '\x1a' then
+      if c >= '\x00' && c <= '\x1f' then
         let key, modifier =
-          if c = '\x00' then
-            (Key.Char (Uchar.of_int 32), mk_modifier ~alt:true ~ctrl:true ())
-          else if c = '\t' then (Tab, mk_modifier ~alt:true ())
-          else if c = '\n' then (Line_feed, mk_modifier ~alt:true ())
-          else if c = '\r' then (Enter, mk_modifier ~alt:true ())
+          if c = '\t' then (Key.Tab, mk_modifier ~alt:true ())
+          else if c = '\n' then (Key.Line_feed, mk_modifier ~alt:true ())
+          else if c = '\r' then (Key.Enter, mk_modifier ~alt:true ())
           else
-            (* Map 0x01..0x1a to 'A'..'Z' with ctrl+alt *)
-            ( Char (Uchar.of_int (Char.code c + 64)),
-              mk_modifier ~alt:true ~ctrl:true () )
+            match ctrl_key_of_code (Char.code c) with
+            | Some key -> (key, mk_modifier ~alt:true ~ctrl:true ())
+            | None ->
+                (Char (Uchar.of_int (Char.code c)), mk_modifier ~alt:true ())
         in
         (Some (`User (make_key_event ~modifier key)), 2)
       else if c = '\x7f' || c = '\b' then
@@ -1238,12 +1255,10 @@ let special_key_event_of_code code : event option =
   | 0x09 -> Some (make_key_event Tab)
   | 0x0a -> Some (make_key_event Line_feed)
   | 0x0d -> Some (make_key_event Enter)
-  | c when c >= 0x01 && c <= 0x1A ->
-      let letter = 0x40 + c in
-      Some
-        (make_key_event
-           ~modifier:(mk_modifier ~ctrl:true ())
-           (Char (Uchar.of_int letter)))
+  | c when (c >= 0x01 && c <= 0x1a) || (c >= 0x1c && c <= 0x1f) ->
+      Option.map
+        (make_key_event ~modifier:(mk_modifier ~ctrl:true ()))
+        (ctrl_key_of_code c)
   | _ -> None
 
 (* Precomputed ASCII key events to avoid per-character allocation in hot
@@ -1285,6 +1300,8 @@ let[@inline] utf8_seq_len byte =
   else if byte < 0xF5 then 4
   else 0
 
+let[@inline] is_utf8_continuation byte = byte land 0xc0 = 0x80
+
 (* Callback-based text event processing - zero list allocation *)
 let text_events_iter parser bytes off len emit =
   let end_pos = off + len in
@@ -1293,24 +1310,31 @@ let text_events_iter parser bytes off len emit =
   if parser.utf8_len > 0 then begin
     let lead = Bytes.get_uint8 parser.utf8_buf 0 in
     let need = utf8_seq_len lead in
-    let have = parser.utf8_len in
-    let want = need - have in
-    if want <= len then begin
-      (* Complete the pending sequence *)
-      Bytes.blit bytes off parser.utf8_buf have want;
+    let j = ref off in
+    let valid = ref true in
+    while
+      !valid && parser.utf8_len < need && !j < end_pos
+      && is_utf8_continuation (Bytes.get_uint8 bytes !j)
+    do
+      Bytes.unsafe_set parser.utf8_buf parser.utf8_len
+        (Bytes.unsafe_get bytes !j);
+      parser.utf8_len <- parser.utf8_len + 1;
+      incr j
+    done;
+    if parser.utf8_len < need && !j < end_pos then valid := false;
+    if !valid && parser.utf8_len = need then begin
       let d = Bytes.get_utf_8_uchar parser.utf8_buf 0 in
       if Uchar.utf_decode_is_valid d then begin
         let code = Uchar.to_int (Uchar.utf_decode_uchar d) in
         match key_event_of_code parser code with Some e -> emit e | None -> ()
       end;
       parser.utf8_len <- 0;
-      i := off + want
+      i := !j
     end
+    else if !valid then i := end_pos
     else begin
-      (* Still incomplete - buffer all new bytes *)
-      Bytes.blit bytes off parser.utf8_buf have len;
-      parser.utf8_len <- have + len;
-      i := end_pos
+      parser.utf8_len <- 0;
+      i := !j
     end
   end;
   (* Process remaining bytes *)
@@ -1336,7 +1360,9 @@ let text_events_iter parser bytes off len emit =
           | Some e -> emit e
           | None -> ()
         end;
-        i := !i + Uchar.utf_decode_length d
+        i :=
+          !i
+          + if Uchar.utf_decode_is_valid d then Uchar.utf_decode_length d else 1
       end
       else begin
         (* Incomplete at chunk boundary - buffer it *)
@@ -1353,8 +1379,7 @@ let process_tokens_iter parser tokens ~on_event ~on_caps =
   let rec loop = function
     | [] -> ()
     | Tokenizer.Paste payload :: rest ->
-        let sanitized = strip_ansi parser payload in
-        if sanitized <> "" then on_event (Paste sanitized);
+        if payload <> "" then on_event (Paste payload);
         loop rest
     | Tokenizer.Sequence seq :: rest -> (
         if seq = "\x1b[200~" || seq = "\x1b[201~" then loop rest
@@ -1427,4 +1452,5 @@ let pending parser = Tokenizer.pending parser.raw
 let reset parser =
   Tokenizer.reset parser.raw;
   Buffer.clear parser.scratch_buffer;
-  parser.utf8_len <- 0
+  parser.utf8_len <- 0;
+  clear_mouse_pressed parser
