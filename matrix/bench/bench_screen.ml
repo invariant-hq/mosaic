@@ -26,7 +26,7 @@ module Hit_grid = Screen.Hit_grid
 
 (* Full-screen change: typical "mode switch" or theme change. *)
 let diff_full_screen =
-  Ubench.create_with_setup "render.diff/full-screen"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       let screen = Screen.create () in
       Screen.build screen ~width:grid_width ~height:grid_height
@@ -39,7 +39,8 @@ let diff_full_screen =
       let _ = Screen.render screen in
       screen)
     ~teardown:(fun _ -> ())
-    ~f:(fun screen ->
+    "render.diff/full-screen"
+    (fun screen ->
       Screen.build screen ~width:grid_width ~height:grid_height
         (fun grid _hits ->
           let bg1 = C.of_rgb 18 20 24 in
@@ -56,7 +57,7 @@ let diff_single_line =
   let changed_style =
     S.make ~fg:(C.of_rgb 255 80 80) ~bg:clear_color ~bold:true ()
   in
-  Ubench.create_with_setup "render.diff/single-line"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       let screen = Screen.create () in
       Screen.build screen ~width:grid_width ~height:grid_height
@@ -68,7 +69,8 @@ let diff_single_line =
       let _ = Screen.render screen in
       screen)
     ~teardown:(fun _ -> ())
-    ~f:(fun screen ->
+    "render.diff/single-line"
+    (fun screen ->
       Screen.build screen ~width:grid_width ~height:grid_height
         (fun grid _hits ->
           Grid.clear grid ~color:clear_color;
@@ -88,7 +90,7 @@ let diff_sparse_cells =
   let update_positions =
     [| (40, 12); (0, 0); (grid_width / 2, 0); (grid_width - 1, 0) |]
   in
-  Ubench.create_with_setup "render.diff/sparse-cells"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       let screen = Screen.create () in
       Screen.build screen ~width:grid_width ~height:grid_height
@@ -100,7 +102,8 @@ let diff_sparse_cells =
       let _ = Screen.render screen in
       screen)
     ~teardown:(fun _ -> ())
-    ~f:(fun screen ->
+    "render.diff/sparse-cells"
+    (fun screen ->
       Screen.build screen ~width:grid_width ~height:grid_height
         (fun grid _hits ->
           Grid.clear grid ~color:clear_color;
@@ -125,14 +128,15 @@ let diff_no_changes =
           Grid.draw_text ~style:ascii_style grid ~x:0 ~y:row ~text:ascii_line
         done)
   in
-  Ubench.create_with_setup "render.diff/no-changes"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       let screen = Screen.create () in
       build_full_ascii screen;
       let _ = Screen.render screen in
       screen)
     ~teardown:(fun _ -> ())
-    ~f:(fun screen ->
+    "render.diff/no-changes"
+    (fun screen ->
       build_full_ascii screen;
       ignore (Screen.render screen))
 
@@ -146,7 +150,7 @@ let scenario_text_editor =
   let status_style = S.make ~fg:status_fg ~bg:status_bg ~bold:true () in
   let cursor_row = 12 in
   let cursor_col = 8 in
-  Ubench.create_with_setup "render.scenario/text-editor"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       toggle := false;
       let screen = Screen.create () in
@@ -170,7 +174,8 @@ let scenario_text_editor =
       let _ = Screen.render screen in
       screen)
     ~teardown:(fun _ -> ())
-    ~f:(fun screen ->
+    "render.scenario/text-editor"
+    (fun screen ->
       toggle := not !toggle;
       let mode_label = if !toggle then "-- INSERT --" else "-- NORMAL --" in
       let cursor_style =
@@ -282,7 +287,7 @@ let progress_line_b =
 
 let scenario_ci_log_view =
   let toggle = ref false in
-  Ubench.create_with_setup "render.scenario/ci-log-view"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       toggle := false;
       let screen = Screen.create () in
@@ -293,7 +298,8 @@ let scenario_ci_log_view =
       let _ = Screen.render screen in
       screen)
     ~teardown:(fun _ -> ())
-    ~f:(fun screen ->
+    "render.scenario/ci-log-view"
+    (fun screen ->
       toggle := not !toggle;
       let progress_line =
         if !toggle then progress_line_b else progress_line_a
@@ -308,7 +314,7 @@ let scenario_ci_log_view =
 
 let emoji_full_screen =
   let toggle = ref false in
-  Ubench.create_with_setup "render.emoji/full-screen"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       toggle := false;
       let screen = Screen.create ~explicit_width:true () in
@@ -323,7 +329,8 @@ let emoji_full_screen =
       let _ = Screen.render screen in
       screen)
     ~teardown:(fun _ -> ())
-    ~f:(fun screen ->
+    "render.emoji/full-screen"
+    (fun screen ->
       toggle := not !toggle;
       let bg = if !toggle then C.of_rgb 0 0 0 else C.of_rgb 10 10 20 in
       Screen.build screen ~width:grid_width ~height:grid_height
@@ -349,6 +356,6 @@ let benchmarks =
     scenario_ci_log_view;
     emoji_full_screen;
   ]
-  |> Ubench.group "render"
+  |> Thumper.group "render"
 
-let () = Ubench.run_cli [ benchmarks ]
+let () = Thumper.run "screen" [ benchmarks ]

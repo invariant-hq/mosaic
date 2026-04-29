@@ -1,7 +1,7 @@
 (* bench_input.ml *)
 
 module I = Input
-open Ubench
+open Thumper
 
 (* Helpers (copied from bench_glyph for consistency) *)
 
@@ -61,7 +61,7 @@ let typing_ascii_burst =
   let len = Bytes.length bytes in
   let chunk_size = 32 in
   let count = ref 0 in
-  create "typing/ascii-burst" (fun () ->
+  bench "typing/ascii-burst" (fun () ->
       count := 0;
       let rec loop offset =
         if offset >= len then ()
@@ -84,7 +84,7 @@ let typing_unicode_burst =
   let len = Bytes.length bytes in
   let chunk_size = 48 in
   let count = ref 0 in
-  create "typing/unicode-burst" (fun () ->
+  bench "typing/unicode-burst" (fun () ->
       count := 0;
       let rec loop offset =
         if offset >= len then ()
@@ -151,7 +151,7 @@ let keyboard_legacy_hot =
   let bytes = Bytes.of_string legacy_keyboard_stream in
   let len = Bytes.length bytes in
   let count = ref 0 in
-  create "keyboard/legacy-hot" (fun () ->
+  bench "keyboard/legacy-hot" (fun () ->
       count := 0;
       I.Parser.feed parser bytes 0 len ~now:0.0
         ~on_event:(fun _ -> incr count)
@@ -194,7 +194,7 @@ let keyboard_kitty_hot =
   let bytes = Bytes.of_string kitty_keyboard_stream in
   let len = Bytes.length bytes in
   let count = ref 0 in
-  create "keyboard/kitty-hot" (fun () ->
+  bench "keyboard/kitty-hot" (fun () ->
       count := 0;
       I.Parser.feed parser bytes 0 len ~now:0.0
         ~on_event:(fun _ -> incr count)
@@ -251,7 +251,7 @@ let mouse_mixed_hot =
   let bytes = Bytes.of_string mouse_stream in
   let len = Bytes.length bytes in
   let count = ref 0 in
-  create "mouse/mixed" (fun () ->
+  bench "mouse/mixed" (fun () ->
       count := 0;
       I.Parser.feed parser bytes 0 len ~now:0.0
         ~on_event:(fun _ -> incr count)
@@ -278,7 +278,7 @@ let paste_ci_log =
   let len = Bytes.length bytes in
   let chunk_size = 1024 in
   let count = ref 0 in
-  create "paste/ci-log" (fun () ->
+  bench "paste/ci-log" (fun () ->
       (* For bracketed paste we want a clean parser state each run. *)
       I.Parser.reset parser;
       count := 0;
@@ -314,4 +314,4 @@ let benchmarks =
       ];
   ]
 
-let () = run_cli benchmarks
+let () = run "input" benchmarks

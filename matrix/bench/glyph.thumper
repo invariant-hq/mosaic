@@ -1,0 +1,43 @@
+# thumper baseline
+# version: 1
+# suite_name: glyph
+# host: 3fdff906040e1980
+# cpu: Apple M1 Max
+# ocaml: 5.4.1
+# git: 751ab800
+# dirty: true
+# command: _build/default/matrix/bench/bench_glyph.exe --ci --bless --baseline matrix/bench/glyph.thumper -q
+
+encode/encode_ascii_line	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
+encode/encode_ascii_line	cpu_time	8.073853e-06	7.997673e-06	8.149117e-06	9.378669e-03	30	1
+encode/encode_ascii_line	wall_time	8.129283e-06	8.001541e-06	8.277974e-06	1.700227e-02	30	1
+encode/encode_complex_line	alloc_words	2.327000e+03	2.327000e+03	2.327000e+03	0.000000e+00	44	2
+encode/encode_complex_line	cpu_time	6.379483e-05	6.359049e-05	6.399507e-05	3.170956e-03	44	4
+encode/encode_complex_line	wall_time	6.400872e-05	6.370899e-05	6.427428e-05	4.415737e-03	44	3
+pool/pool_get_existing	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
+pool/pool_get_existing	cpu_time	5.079436e-08	5.051383e-08	5.100753e-08	4.859738e-03	30	7
+pool/pool_get_existing	wall_time	5.100034e-08	5.065807e-08	5.129525e-08	6.246794e-03	30	6
+pool/pool_intern_hotset	alloc_words	1.620000e+02	1.620000e+02	1.620000e+02	0.000000e+00	30	0
+pool/pool_intern_hotset	cpu_time	2.321104e-06	2.306771e-06	2.348419e-06	8.971753e-03	30	1
+pool/pool_intern_hotset	wall_time	2.342762e-06	2.315584e-06	2.399696e-06	1.795135e-02	30	2
+pool/pool_intern_unique_256	alloc_words	4.544000e+03	4.544000e+03	4.544000e+03	0.000000e+00	30	0
+pool/pool_intern_unique_256	cpu_time	8.090700e-05	8.053876e-05	8.140293e-05	5.340552e-03	30	0
+pool/pool_intern_unique_256	wall_time	8.093984e-05	8.054548e-05	8.146538e-05	5.682610e-03	30	0
+segment/segment_ascii_line	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
+segment/segment_ascii_line	cpu_time	7.653436e-06	7.628644e-06	7.679884e-06	3.347481e-03	30	6
+segment/segment_ascii_line	wall_time	7.661128e-06	7.632950e-06	7.690781e-06	3.774308e-03	30	2
+segment/segment_complex_line	alloc_words	1.000000e+01	1.000000e+01	1.000000e+01	0.000000e+00	30	0
+segment/segment_complex_line	cpu_time	1.089327e-05	1.081477e-05	1.096111e-05	6.716880e-03	30	2
+segment/segment_complex_line	wall_time	1.090345e-05	1.082437e-05	1.097265e-05	6.799841e-03	30	1
+width/width_ascii_unicode	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
+width/width_ascii_unicode	cpu_time	1.803216e-06	1.795129e-06	1.809712e-06	4.043437e-03	30	1
+width/width_ascii_unicode	wall_time	1.804889e-06	1.797053e-06	1.811018e-06	3.868611e-03	30	1
+width/width_complex_no_zwj	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	57	5
+width/width_complex_no_zwj	cpu_time	2.535960e-05	2.528164e-05	2.542403e-05	2.807383e-03	57	3
+width/width_complex_no_zwj	wall_time	2.523206e-05	2.496281e-05	2.544605e-05	9.575950e-03	57	9
+width/width_complex_unicode	alloc_words	8.000000e+00	8.000000e+00	8.000000e+00	0.000000e+00	30	0
+width/width_complex_unicode	cpu_time	2.561356e-05	2.514810e-05	2.584555e-05	1.361486e-02	30	2
+width/width_complex_unicode	wall_time	2.566908e-05	2.517213e-05	2.592147e-05	1.459614e-02	30	2
+width/width_complex_wcwidth	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
+width/width_complex_wcwidth	cpu_time	1.582074e-05	1.575895e-05	1.588743e-05	4.060506e-03	30	0
+width/width_complex_wcwidth	wall_time	1.581843e-05	1.575614e-05	1.588266e-05	3.999311e-03	30	0

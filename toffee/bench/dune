@@ -1,3 +1,10 @@
 (executable
  (name bench_toffee)
- (libraries toffee ubench))
+ (libraries toffee thumper))
+
+(rule
+ (alias runtest)
+ (action
+  (progn
+   (run %{exe:bench_toffee.exe} -q)
+   (diff? toffee.thumper toffee.thumper.corrected))))

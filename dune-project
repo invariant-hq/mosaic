@@ -15,6 +15,11 @@
 
 (implicit_transitive_deps false)
 
+(pin
+ (url "git+https://github.com/invariant-hq/thumper.git")
+ (package
+  (name thumper)))
+
 (package
  (name matrix)
  (synopsis "Fast, modern terminal toolkit for OCaml")
@@ -24,7 +29,8 @@
   (ocaml
    (>= 5.4))
   dune
-  (windtrap :with-test))
+  (windtrap :with-test)
+  (thumper :with-test))
  (tags
   (terminal ansi input grid rendering unicode pty vte)))
 
@@ -38,7 +44,8 @@
    (>= 5.1))
   dune
   (windtrap :with-test)
-  (ppx_windtrap :with-test))
+  (ppx_windtrap :with-test)
+  (thumper :with-test))
  (tags
   (css layout flexbox grid "css-grid" taffy "layout-engine")))
 

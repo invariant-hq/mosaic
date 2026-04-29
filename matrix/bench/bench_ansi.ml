@@ -76,7 +76,7 @@ let tui_frame =
 (* Bench group: styled output (producers) *)
 
 let styled_inline =
-  Ubench.create "inline_styled" (fun () ->
+  Thumper.bench "inline_styled" (fun () ->
       (* Logging-style single-call styling, e.g. direct use from application
          code *)
       let s =
@@ -87,7 +87,7 @@ let styled_inline =
       ignore (Sys.opaque_identity s))
 
 let styled_segments =
-  Ubench.create "render_log_segments" (fun () ->
+  Thumper.bench "render_log_segments" (fun () ->
       (* Renderer-style segmented output, e.g. logging framework or TUI
          header *)
       let out = Ansi.render log_segments in
@@ -96,25 +96,25 @@ let styled_segments =
 (* Bench group: stripping & parsing (consumers / CI log tools) *)
 
 let strip_plain_block_bench =
-  Ubench.create "strip_plain_block" (fun () ->
+  Thumper.bench "strip_plain_block" (fun () ->
       (* Fast path: no escape sequences *)
       let s = Ansi.strip plain_log_block in
       ignore (Sys.opaque_identity s))
 
 let strip_ansi_block_bench =
-  Ubench.create "strip_ansi_block" (fun () ->
+  Thumper.bench "strip_ansi_block" (fun () ->
       (* Heavy path: lots of SGR sequences, typical CI log chunk *)
       let s = Ansi.strip ansi_log_block in
       ignore (Sys.opaque_identity s))
 
 let parse_ansi_block_bench =
-  Ubench.create "parse_ansi_block" (fun () ->
+  Thumper.bench "parse_ansi_block" (fun () ->
       (* Parsing a chunk of colored logs for later reformatting / filtering *)
       let tokens = Ansi.parse ansi_log_block in
       ignore (Sys.opaque_identity tokens))
 
 let parse_tui_frame_bench =
-  Ubench.create "parse_tui_frame" (fun () ->
+  Thumper.bench "parse_tui_frame" (fun () ->
       (* Parsing a TUI frame: lots of CSI, SGR and control sequences mixed with
          text. Representative of terminal emulators or log recorders. *)
       let tokens = Ansi.parse tui_frame in
@@ -126,7 +126,7 @@ let ansi_log_block_bytes = Bytes.unsafe_of_string ansi_log_block
 let tui_frame_bytes = Bytes.unsafe_of_string tui_frame
 
 let parse_ansi_block_iter_bench =
-  Ubench.create "parse_ansi_block_iter" (fun () ->
+  Thumper.bench "parse_ansi_block_iter" (fun () ->
       (* Callback-based parsing - avoids list allocation *)
       Ansi.Parser.reset iter_parser;
       let count = ref 0 in
@@ -135,7 +135,7 @@ let parse_ansi_block_iter_bench =
       ignore (Sys.opaque_identity !count))
 
 let parse_tui_frame_iter_bench =
-  Ubench.create "parse_tui_frame_iter" (fun () ->
+  Thumper.bench "parse_tui_frame_iter" (fun () ->
       (* Callback-based parsing - avoids list allocation *)
       Ansi.Parser.reset iter_parser;
       let count = ref 0 in
@@ -146,7 +146,7 @@ let parse_tui_frame_iter_bench =
 (* Bench group: control / cursor sequences *)
 
 let cursor_script_80x24 =
-  Ubench.create "cursor_script_80x24" (fun () ->
+  Thumper.bench "cursor_script_80x24" (fun () ->
       (* Typical TUI "paint the grid" pattern using cursor_position *)
       let buf = Buffer.create 32_000 in
       for row = 1 to 24 do
@@ -193,7 +193,7 @@ let sgr_state_tui = Sgr.create ()
 let sgr_writer_tui = Ansi.Writer.make sgr_buf
 
 let sgr_tui_frame_80x24 =
-  Ubench.create "sgr_tui_frame_80x24" (fun () ->
+  Thumper.bench "sgr_tui_frame_80x24" (fun () ->
       (* Simulate rendering a full 80x24 TUI frame with varied styles. This is
          the primary use case for Sgr_state: rendering a grid where adjacent
          cells often share styles (state diffing wins). *)
@@ -218,7 +218,7 @@ let sgr_state_same = Sgr.create ()
 let sgr_writer_same = Ansi.Writer.make sgr_buf
 
 let sgr_same_style_1920 =
-  Ubench.create "sgr_same_style_1920" (fun () ->
+  Thumper.bench "sgr_same_style_1920" (fun () ->
       (* Best case: 1920 cells (one row at 1920px) with identical style. After
          the first update, all subsequent calls should be no-ops. Tests the fast
          path where state diffing avoids all output. *)
@@ -234,7 +234,7 @@ let sgr_state_alt = Sgr.create ()
 let sgr_writer_alt = Ansi.Writer.make sgr_buf
 
 let sgr_alternating_styles_1920 =
-  Ubench.create "sgr_alternating_styles_1920" (fun () ->
+  Thumper.bench "sgr_alternating_styles_1920" (fun () ->
       (* Worst case: style changes on every cell (checkerboard pattern). Every
          update emits a full SGR sequence. Tests raw throughput. *)
       Sgr.reset sgr_state_alt;
@@ -259,7 +259,7 @@ let sgr_state_link = Sgr.create ()
 let sgr_writer_link = Ansi.Writer.make sgr_buf
 
 let sgr_hyperlink_transitions =
-  Ubench.create "sgr_hyperlink_transitions" (fun () ->
+  Thumper.bench "sgr_hyperlink_transitions" (fun () ->
       (* Hyperlink-heavy scenario: alternating between linked and non-linked
          text. Simulates a log viewer or markdown renderer with many links. *)
       Sgr.reset sgr_state_link;
@@ -284,7 +284,7 @@ let sgr_state_partial = Sgr.create ()
 let sgr_writer_partial = Ansi.Writer.make sgr_buf
 
 let sgr_partial_changes =
-  Ubench.create "sgr_partial_changes" (fun () ->
+  Thumper.bench "sgr_partial_changes" (fun () ->
       (* Partial style changes: only foreground changes, background stays.
          Common in syntax highlighting where bg is uniform. *)
       Sgr.reset sgr_state_partial;
@@ -299,7 +299,7 @@ let sgr_partial_changes =
 (* Registration *)
 
 let benchmarks =
-  Ubench.
+  Thumper.
     [
       group "styled" [ styled_inline; styled_segments ];
       group "strip_parse"
@@ -322,4 +322,4 @@ let benchmarks =
         ];
     ]
 
-let () = Ubench.run_cli benchmarks
+let () = Thumper.run "ansi" benchmarks

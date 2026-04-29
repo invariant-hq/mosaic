@@ -82,13 +82,13 @@ let segment_counter = ref 0
 let segment_callback ~offset:_ ~len:_ = incr segment_counter
 
 let segment_bench name text =
-  Ubench.create name (fun () ->
+  Thumper.bench name (fun () ->
       segment_counter := 0;
       G.String.iter_graphemes segment_callback text;
       ignore (Sys.opaque_identity !segment_counter))
 
 let width_bench name method_ text =
-  Ubench.create name (fun () ->
+  Thumper.bench name (fun () ->
       let w = G.String.measure ~width_method:method_ ~tab_width:2 text in
       ignore (Sys.opaque_identity w))
 
@@ -107,7 +107,7 @@ let encode_bench name method_ text =
         G.Pool.incref pool g;
         G.Pool.decref pool g)
   in
-  Ubench.create name (fun () ->
+  Thumper.bench name (fun () ->
       cols := 0;
       G.Pool.encode pool ~width_method:method_ ~tab_width:2 callback text;
       ignore (Sys.opaque_identity !cols))
@@ -120,7 +120,7 @@ let encode_bench name method_ text =
 let pool_intern_hotset =
   let pool = G.Pool.create () in
   let scratch = Array.make (Array.length hotset_tokens) G.empty in
-  Ubench.create "pool/intern_hotset" (fun () ->
+  Thumper.bench "pool/intern_hotset" (fun () ->
       G.Pool.clear pool;
       for i = 0 to Array.length hotset_tokens - 1 do
         scratch.(i) <- G.Pool.intern pool hotset_tokens.(i);
@@ -135,7 +135,7 @@ let pool_intern_hotset =
 let pool_intern_unique =
   let pool = G.Pool.create () in
   let scratch = Array.make 256 G.empty in
-  Ubench.create "pool/intern_unique_256" (fun () ->
+  Thumper.bench "pool/intern_unique_256" (fun () ->
       G.Pool.clear pool;
       for i = 0 to 255 do
         scratch.(i) <- G.Pool.intern pool unique_tokens.(i);
@@ -155,7 +155,7 @@ let pool_get_existing =
         G.Pool.incref pool id;
         id)
   in
-  Ubench.create "pool/get_existing" (fun () ->
+  Thumper.bench "pool/get_existing" (fun () ->
       let total = ref 0 in
       for i = 0 to Array.length ids - 1 do
         total := !total + G.Pool.length pool ids.(i)
@@ -165,7 +165,7 @@ let pool_get_existing =
 (* Benchmark tree *)
 
 let benchmarks =
-  Ubench.
+  Thumper.
     [
       (* Grapheme segmentation: used for cursor motion, selection, wrapping. *)
       group "segment"
@@ -196,4 +196,4 @@ let benchmarks =
       group "pool" [ pool_intern_hotset; pool_intern_unique; pool_get_existing ];
     ]
 
-let () = Ubench.run_cli benchmarks
+let () = Thumper.run "glyph" benchmarks

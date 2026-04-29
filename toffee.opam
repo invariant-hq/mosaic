@@ -14,6 +14,7 @@ depends: [
   "dune" {>= "3.19"}
   "windtrap" {with-test}
   "ppx_windtrap" {with-test}
+  "thumper" {with-test}
   "odoc" {with-doc}
 ]
 build: [

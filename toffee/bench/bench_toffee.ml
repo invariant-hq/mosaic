@@ -212,55 +212,53 @@ let build_mixed_dashboard tree rng =
 
 let deep_flex_benchmark =
   let available_space = available ~width:1280. ~height:900. in
-  Ubench.create_with_setup "flex/deep-hierarchy"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       let tree = new_tree () in
       let rng = Random.State.make [| 42 |] in
       let root = build_deep_flex tree rng ~depth:7 ~branching:3 in
       (tree, root))
-    ~teardown:(fun _ -> ())
-    ~f:(fun (tree, root) -> run_layout tree root available_space)
+    "flex/deep-hierarchy"
+    (fun (tree, root) -> run_layout tree root available_space)
 
 let wide_flex_benchmark =
   let available_space = available ~width:1440. ~height:900. in
-  Ubench.create_with_setup "flex/wide-dashboard"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       let tree = new_tree () in
       let rng = Random.State.make [| 7 |] in
       let root = build_wide_flex tree rng ~rows:16 ~cols:12 in
       (tree, root))
-    ~teardown:(fun _ -> ())
-    ~f:(fun (tree, root) -> run_layout tree root available_space)
+    "flex/wide-dashboard"
+    (fun (tree, root) -> run_layout tree root available_space)
 
 let grid_gallery_benchmark =
   let available_space = available ~width:1200. ~height:900. in
-  Ubench.create_with_setup "grid/auto-placement-gallery"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       let tree = new_tree () in
       let rng = Random.State.make [| 99 |] in
       let root = build_grid_gallery tree rng ~items:72 in
       (tree, root))
-    ~teardown:(fun _ -> ())
-    ~f:(fun (tree, root) -> run_layout tree root available_space)
+    "grid/auto-placement-gallery"
+    (fun (tree, root) -> run_layout tree root available_space)
 
 let mixed_dashboard_benchmark =
   let available_space = available ~width:1366. ~height:900. in
-  Ubench.create_with_setup "mixed/dashboard"
+  Thumper.bench_with_setup
     ~setup:(fun () ->
       let tree = new_tree () in
       let rng = Random.State.make [| 2024 |] in
       let root = build_mixed_dashboard tree rng in
       (tree, root))
-    ~teardown:(fun _ -> ())
-    ~f:(fun (tree, root) -> run_layout tree root available_space)
+    "mixed/dashboard"
+    (fun (tree, root) -> run_layout tree root available_space)
 
-let benchmarks =
-  Ubench.group "toffee"
+let () =
+  Thumper.run "toffee"
     [
       deep_flex_benchmark;
       wide_flex_benchmark;
       grid_gallery_benchmark;
       mixed_dashboard_benchmark;
     ]
-
-let () = Ubench.run_cli [ benchmarks ]
