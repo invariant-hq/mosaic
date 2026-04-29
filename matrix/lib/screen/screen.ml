@@ -479,13 +479,13 @@ let render ?(full = false) ?scroll_hint ?viewport frame =
     commit_frame frame emitted;
     Bytes.sub_string bytes ~pos:0 ~len:emitted.output_len
   in
-  try emit_to_string (Bytes.create default_render_buffer_size) with
-  | exn when is_writer_overflow exn ->
-      let counter = Ansi.Writer.make_counting () in
-      let counted =
-        emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer:counter
-      in
-      emit_to_string (Bytes.create counted.output_len)
+  try emit_to_string (Bytes.create default_render_buffer_size)
+  with exn when is_writer_overflow exn ->
+    let counter = Ansi.Writer.make_counting () in
+    let counted =
+      emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer:counter
+    in
+    emit_to_string (Bytes.create counted.output_len)
 
 (* Creation & Management *)
 

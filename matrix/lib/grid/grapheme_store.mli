@@ -49,9 +49,9 @@ val incref : t -> idx:int -> gen:int -> unit
 val decref : t -> idx:int -> gen:int -> unit
 (** [decref t ~idx ~gen] releases one owner of [(idx, gen)].
 
-    If the handle is stale or invalid, this is a no-op. Releasing the last
-    owner removes the payload from the live intern table and makes the slot
-    reusable. Calls must be balanced with prior {!incref} calls. *)
+    If the handle is stale or invalid, this is a no-op. Releasing the last owner
+    removes the payload from the live intern table and makes the slot reusable.
+    Calls must be balanced with prior {!incref} calls. *)
 
 val length : t -> idx:int -> gen:int -> int
 (** [length t ~idx ~gen] is the UTF-8 byte length of [(idx, gen)], or [0] if the

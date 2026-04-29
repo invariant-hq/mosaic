@@ -760,8 +760,7 @@ let blit_region_copies_transparent_source_without_respect_alpha () =
   Grid.draw_text dst ~x:0 ~y:0 ~text:"D";
   Grid.blit_region ~src ~dst ~src_x:0 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
     ~dst_y:0;
-  equal ~msg:"transparent source copied" int (Char.code 'T')
-    (read_char dst 0 0);
+  equal ~msg:"transparent source copied" int (Char.code 'T') (read_char dst 0 0);
   let _r, _g, _b, a = read_bg dst 0 0 in
   equal ~msg:"transparent background copied" int 0 a
 

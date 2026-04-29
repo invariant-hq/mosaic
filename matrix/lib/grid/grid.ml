@@ -934,12 +934,12 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
                  alpha-respecting framebuffers composite and fully transparent
                  cells become holes. *)
               let compose = (not same_grid) && src.respect_alpha in
-              (if compose && fg_a <= 0.001 && bg_a <= 0.001 then ()
-               else
-                 set_cell_internal dst
-                   ~idx:((dy * dst.width) + dx)
-                   ~code:mapped_code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
-                   ~bg_a ~attrs ~link_id ~blending:compose);
+              if compose && fg_a <= 0.001 && bg_a <= 0.001 then ()
+              else
+                set_cell_internal dst
+                  ~idx:((dy * dst.width) + dx)
+                  ~code:mapped_code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
+                  ~bg_a ~attrs ~link_id ~blending:compose;
 
               k := !k + x_step
             done;

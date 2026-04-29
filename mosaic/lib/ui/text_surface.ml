@@ -181,7 +181,7 @@ let wrap_word_line ~width ~tab_width ~width_method spans =
               last_break_byte := wrap_at;
               line_width :=
                 if wrap_at = offset then gw
-                else (!absolute_col - !best_break_col) + gw
+                else !absolute_col - !best_break_col + gw
             end
             else line_width := !line_width + gw;
             absolute_col := !absolute_col + gw)
