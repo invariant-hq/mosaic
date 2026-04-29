@@ -108,6 +108,12 @@ val static_needs_newline : t -> bool
 val live_region : t -> region
 (** [live_region t] is the current live viewport region. *)
 
+val effective_region : t -> region
+(** [effective_region t] is the live viewport region that will be in effect
+    after pending static writes are flushed.
+
+    This must stay in lockstep with {!flush_static}. *)
+
 val size : t -> width:int -> int * int
 (** [size t ~width] is the current live viewport size as [(width, rows)]. *)
 

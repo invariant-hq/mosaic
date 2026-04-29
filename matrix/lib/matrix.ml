@@ -296,7 +296,7 @@ let refresh_capabilities t =
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
     ~hyperlinks:caps.hyperlinks
 
-let refresh_render_region t =
+let refresh_render_region ?(effective = false) t =
   match t.config.mode with
   | `Alt ->
       Screen.set_row_offset t.screen 0;
@@ -306,7 +306,11 @@ let refresh_render_region t =
         Primary.resize t.primary ~terminal_height:(max 1 t.height)
       in
       t.primary <- primary;
-      sync_primary_layout t ~resize:true
+      if effective then
+        let region = Primary.effective_region t.primary in
+        Screen.set_row_offset t.screen region.row_offset;
+        Screen.resize t.screen ~width:t.width ~height:region.height
+      else sync_primary_layout t ~resize:true
 
 (* Frame timing *)
 
@@ -470,7 +474,7 @@ let apply_config t =
 let prepare t =
   refresh_capabilities t;
   t.redraw_requested <- false;
-  refresh_render_region t;
+  refresh_render_region ~effective:true t;
   Grid.clear (Screen.next_grid t.screen);
   Screen.Hit_grid.clear (Screen.next_hit_grid t.screen)
 

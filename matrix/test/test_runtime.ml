@@ -433,6 +433,23 @@ let test_primary_effective_size_tracks_pending_static () =
   equal ~msg:"submit applies pending effective size" (pair int int) effective
     (Matrix.size app)
 
+let test_prepare_uses_pending_static_effective_region () =
+  let app, state =
+    make_app ~mode:`Primary ~target_fps:None ~input_timeout:(Some 0.) ()
+  in
+  Matrix.static_write app ~rows:2 "alpha\nbeta\n";
+  let _, effective_height = Matrix.effective_size app in
+  Matrix.prepare app;
+  let grid = Matrix.grid app in
+  equal ~msg:"prepare sizes grid to pending effective height" int
+    effective_height (Matrix.Grid.height grid);
+  Matrix.Grid.draw_text grid ~x:0 ~y:(effective_height - 1) ~text:"live";
+  Matrix.submit app;
+  let out = output state in
+  is_true ~msg:"static output is emitted" (contains_substring "alpha" out);
+  is_true ~msg:"live output is rendered after static output"
+    (is_before ~first:"alpha" ~second:"live" out)
+
 let test_static_writes_are_flushed_fifo () =
   let app, state =
     make_app ~mode:`Primary ~target_fps:None ~input_timeout:(Some 0.) ()
@@ -877,6 +894,8 @@ let () =
             test_primary_required_rows_ignored_in_alt_mode;
           test "effective_size tracks pending static writes"
             test_primary_effective_size_tracks_pending_static;
+          test "prepare uses pending static effective region"
+            test_prepare_uses_pending_static_effective_region;
           test "static_clear resets primary layout"
             test_static_clear_resets_primary_layout;
           test "primary full redraw does not erase past terminal bottom"

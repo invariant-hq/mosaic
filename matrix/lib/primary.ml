@@ -130,12 +130,19 @@ let projected_after_static t =
     (t.render_offset, t.static_needs_newline)
     (List.rev t.static_queue)
 
-let effective_size t ~width =
+let effective_region t =
   match t.static_queue with
-  | [] -> size t ~width
+  | [] -> live_region t
   | _ ->
       let offset, _ = projected_after_static t in
-      (width, max t.min_live_height (t.terminal_height - offset))
+      {
+        row_offset = offset;
+        height = max t.min_live_height (t.terminal_height - offset);
+      }
+
+let effective_size t ~width =
+  let region = effective_region t in
+  (width, region.height)
 
 let resize t ~terminal_height =
   let next =
