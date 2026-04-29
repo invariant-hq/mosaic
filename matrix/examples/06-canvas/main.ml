@@ -158,7 +158,7 @@ let handle_key state key modifier =
       | 'z' | 'Z' ->
           let new_alpha = max 0.1 (state.brush.alpha -. 0.1) in
           { state with brush = { state.brush with alpha = new_alpha } }
-      | ('c' | 'C') when not modifier.ctrl ->
+      | ('c' | 'C') when not modifier.Input.Modifier.ctrl ->
           state (* Clear is handled separately *)
       | 'p' | 'P' -> { state with show_palette = not state.show_palette }
       | 'h' | 'H' -> { state with show_help = not state.show_help }
@@ -184,7 +184,7 @@ let () =
       | Input.Key { key = Input.Key.Escape; _ } -> Matrix.stop app
       | Input.Key { key = Input.Key.Char u; modifier; _ }
         when (Uchar.to_int u = Char.code 'c' || Uchar.to_int u = Char.code 'C')
-             && not modifier.ctrl -> (
+             && not modifier.Input.Modifier.ctrl -> (
           (* Clear canvas *)
           match !canvas_grid with
           | Some cg -> Grid.clear ~color:Ansi.Color.black cg
