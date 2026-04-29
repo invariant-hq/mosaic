@@ -177,9 +177,13 @@ let () =
             state := { !state with paused = not !state.paused }
           else if code = Char.code 'c' || code = Char.code 'C' then
             state := { !state with life = CSet.empty; generation = 0 }
-      | Input.Mouse (Input.Mouse.Button_press (x, y, Input.Mouse.Left, _))
       | Input.Mouse
-          (Input.Mouse.Motion (x, y, { Input.Mouse.left = true; _ }, _)) ->
+          {
+            Input.Mouse.x;
+            y;
+            kind = Down { button = Left } | Drag { button = Left };
+            _;
+          } ->
           let w, h = !state.dim in
           if y < h then
             let pt = torus (w, h) (x, y) in

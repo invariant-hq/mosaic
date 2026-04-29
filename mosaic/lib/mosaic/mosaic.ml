@@ -461,43 +461,34 @@ let handle_input runtime (input : Matrix.Input.t) =
         | Matrix.Input.Mouse.Right -> Event.Mouse.Right
         | Matrix.Input.Mouse.Middle -> Event.Mouse.Middle
         | Matrix.Input.Mouse.Button n -> Event.Mouse.Button n
-        | Matrix.Input.Mouse.Wheel_up | Matrix.Input.Mouse.Wheel_down
-        | Matrix.Input.Mouse.Wheel_left | Matrix.Input.Mouse.Wheel_right ->
-            Event.Mouse.Left
       in
       let ev =
-        match mouse_event with
-        | Matrix.Input.Mouse.Button_press (x, y, btn, mods) ->
-            Event.Mouse.make ~x ~y ~modifiers:mods
-              (Event.Mouse.Down { button = map_button btn })
-        | Matrix.Input.Mouse.Button_release (x, y, btn, mods) ->
-            Event.Mouse.make ~x ~y ~modifiers:mods
-              (Event.Mouse.Up { button = map_button btn; is_dragging = false })
-        | Matrix.Input.Mouse.Motion (x, y, state, mods) ->
-            if state.left || state.middle || state.right then
-              let button =
-                if state.left then Event.Mouse.Left
-                else if state.middle then Event.Mouse.Middle
-                else Event.Mouse.Right
-              in
-              Event.Mouse.make ~x ~y ~modifiers:mods
-                (Event.Mouse.Drag { button; is_dragging = true })
-            else Event.Mouse.make ~x ~y ~modifiers:mods Event.Mouse.Move
-      in
-      handle_mouse runtime ev
-  | Matrix.Input.Scroll (x, y, dir, delta, modifiers) ->
-      let direction : Event.Mouse.scroll_direction =
-        match dir with
-        | Matrix.Input.Mouse.Scroll_up -> Scroll_up
-        | Matrix.Input.Mouse.Scroll_down -> Scroll_down
-        | Matrix.Input.Mouse.Scroll_left -> Scroll_left
-        | Matrix.Input.Mouse.Scroll_right -> Scroll_right
-      in
-      Renderer.dispatch_scroll runtime.renderer ~x ~y ~direction ~delta
-        ~modifiers;
-      let ev =
-        Event.Mouse.make ~x ~y ~modifiers
-          (Event.Mouse.Scroll { direction; delta })
+        match mouse_event.kind with
+        | Matrix.Input.Mouse.Down { button } ->
+            Event.Mouse.make ~x:mouse_event.x ~y:mouse_event.y
+              ~modifiers:mouse_event.modifiers
+              (Event.Mouse.Down { button = map_button button })
+        | Matrix.Input.Mouse.Up { button } ->
+            let button =
+              match button with
+              | Some button -> map_button button
+              | None -> Event.Mouse.Button 0
+            in
+            Event.Mouse.make ~x:mouse_event.x ~y:mouse_event.y
+              ~modifiers:mouse_event.modifiers
+              (Event.Mouse.Up { button; is_dragging = false })
+        | Matrix.Input.Mouse.Move ->
+            Event.Mouse.make ~x:mouse_event.x ~y:mouse_event.y
+              ~modifiers:mouse_event.modifiers Event.Mouse.Move
+        | Matrix.Input.Mouse.Drag { button } ->
+            Event.Mouse.make ~x:mouse_event.x ~y:mouse_event.y
+              ~modifiers:mouse_event.modifiers
+              (Event.Mouse.Drag
+                 { button = map_button button; is_dragging = true })
+        | Matrix.Input.Mouse.Scroll { direction; delta } ->
+            Event.Mouse.make ~x:mouse_event.x ~y:mouse_event.y
+              ~modifiers:mouse_event.modifiers
+              (Event.Mouse.Scroll { direction; delta })
       in
       handle_mouse runtime ev
   | Matrix.Input.Paste text ->

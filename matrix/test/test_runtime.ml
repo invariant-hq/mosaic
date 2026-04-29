@@ -142,26 +142,15 @@ let make_app ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
   app_ref := Some app;
   (app, state)
 
-let mouse_press x y =
-  Matrix.Input.Mouse
-    (Matrix.Input.Mouse.Button_press
-       (x, y, Matrix.Input.Mouse.Left, Matrix.Input.Modifier.none))
+let mouse_press x y = Matrix.Input.mouse_press x y Matrix.Input.Mouse.Left
 
 let mouse_release x y =
-  Matrix.Input.Mouse
-    (Matrix.Input.Mouse.Button_release
-       (x, y, Matrix.Input.Mouse.Left, Matrix.Input.Modifier.none))
+  Matrix.Input.mouse_release x y (Some Matrix.Input.Mouse.Left)
 
-let mouse_motion x y =
-  let buttons =
-    { Matrix.Input.Mouse.left = true; middle = false; right = false }
-  in
-  Matrix.Input.Mouse
-    (Matrix.Input.Mouse.Motion (x, y, buttons, Matrix.Input.Modifier.none))
+let mouse_motion x y = Matrix.Input.mouse_drag x y Matrix.Input.Mouse.Left
 
 let mouse_scroll x y =
-  Matrix.Input.Scroll
-    (x, y, Matrix.Input.Mouse.Scroll_down, 1, Matrix.Input.Modifier.none)
+  Matrix.Input.mouse_scroll x y Matrix.Input.Mouse.Scroll_down
 
 let set_sync_capable app =
   let terminal = Matrix.terminal app in
@@ -782,9 +771,7 @@ let test_primary_mouse_event_is_offset_into_live_region () =
       Matrix.stop app)
     ~on_render:(fun _app -> ());
   match List.rev !inputs with
-  | [
-   Matrix.Input.Mouse (Matrix.Input.Mouse.Button_press (_x, y, _button, _mods));
-  ] ->
+  | [ Matrix.Input.Mouse { Matrix.Input.Mouse.y; kind = Down _; _ } ] ->
       equal ~msg:"mouse y is relative to live viewport" int 2 y
   | _ -> fail "expected one mouse press event"
 
@@ -802,9 +789,7 @@ let test_primary_mouse_event_above_live_region_maps_to_minus_one () =
       Matrix.stop app)
     ~on_render:(fun _app -> ());
   match List.rev !inputs with
-  | [
-   Matrix.Input.Mouse (Matrix.Input.Mouse.Button_press (_x, y, _button, _mods));
-  ] ->
+  | [ Matrix.Input.Mouse { Matrix.Input.Mouse.y; kind = Down _; _ } ] ->
       equal ~msg:"mouse y above live region maps outside UI" int (-1) y
   | _ -> fail "expected one mouse press event"
 
@@ -813,22 +798,13 @@ let test_primary_adjusts_all_mouse_like_events () =
     [
       ( "release",
         mouse_release 4 12,
-        Matrix.Input.Mouse
-          (Matrix.Input.Mouse.Button_release
-             (4, 2, Matrix.Input.Mouse.Left, Matrix.Input.Modifier.none)) );
+        Matrix.Input.mouse_release 4 2 (Some Matrix.Input.Mouse.Left) );
       ( "motion",
         mouse_motion 4 12,
-        Matrix.Input.Mouse
-          (Matrix.Input.Mouse.Motion
-             ( 4,
-               2,
-               { Matrix.Input.Mouse.left = true; middle = false; right = false },
-               Matrix.Input.Modifier.none )) );
+        Matrix.Input.mouse_drag 4 2 Matrix.Input.Mouse.Left );
       ( "scroll",
         mouse_scroll 4 12,
-        Matrix.Input.Scroll
-          (4, 2, Matrix.Input.Mouse.Scroll_down, 1, Matrix.Input.Modifier.none)
-      );
+        Matrix.Input.mouse_scroll 4 2 Matrix.Input.Mouse.Scroll_down );
     ]
   in
   List.iter

@@ -252,7 +252,7 @@ end
 
 (** {1:mouse Mouse} *)
 
-(** Mouse buttons and motion events. *)
+(** Mouse events. *)
 module Mouse : sig
   (** {1:buttons Buttons} *)
 
@@ -261,31 +261,15 @@ module Mouse : sig
     | Left
     | Middle
     | Right
-    | Wheel_up
-    | Wheel_down
-    | Wheel_left
-    | Wheel_right
     | Button of int
-        (** Extended button (4+). In legacy tracking modes (X10/Normal, URXVT)
-            release events do not encode which button was released; these are
-            reported as [Button 0]. *)
+        (** Extended button. Numbering follows the terminal protocol after the
+            primary buttons. *)
 
   val equal_button : button -> button -> bool
   (** [equal_button a b] is [true] iff [a] and [b] are the same button. *)
 
   val pp_button : Format.formatter -> button -> unit
   (** [pp_button] formats mouse buttons for debugging. *)
-
-  (** {1:button_state Button state} *)
-
-  type button_state = { left : bool; middle : bool; right : bool }
-  (** The type for primary button state during motion events. *)
-
-  val equal_button_state : button_state -> button_state -> bool
-  (** [equal_button_state a b] is [true] iff all fields are equal. *)
-
-  val pp_button_state : Format.formatter -> button_state -> unit
-  (** [pp_button_state] formats button state for debugging. *)
 
   (** {1:scroll Scroll direction} *)
 
@@ -302,22 +286,38 @@ module Mouse : sig
   val pp_scroll_direction : Format.formatter -> scroll_direction -> unit
   (** [pp_scroll_direction] formats scroll directions for debugging. *)
 
-  (** {1:events Mouse events} *)
+  (** {1:events Events} *)
+
+  (** The type for mouse event kinds. Coordinates and modifiers live on the
+      enclosing {!event} record. *)
+  type kind =
+    | Down of { button : button }  (** Button pressed. *)
+    | Up of { button : button option }
+        (** Button released. [button] is [None] for legacy protocols that do
+            not identify the released button. *)
+    | Move  (** Pointer moved with no tracked button pressed. *)
+    | Drag of { button : button }  (** Pointer moved with [button] pressed. *)
+    | Scroll of { direction : scroll_direction; delta : int }
+        (** Scroll-wheel event. [delta] is the number of steps in [direction].
+        *)
+
+  val equal_kind : kind -> kind -> bool
+  (** [equal_kind a b] is [true] iff [a] and [b] are structurally equal. *)
+
+  val pp_kind : Format.formatter -> kind -> unit
+  (** [pp_kind] formats mouse event kinds for debugging. *)
 
   (** The type for mouse events. Coordinates are 0-based with top-left origin.
   *)
-  type event =
-    | Button_press of int * int * button * Modifier.t
-        (** [Button_press (x, y, button, mods)] is a button press at [(x, y)].
-            Coordinates are 0-based, top-left origin. *)
-    | Button_release of int * int * button * Modifier.t
-        (** [Button_release (x, y, button, mods)] is a button release at
-            [(x, y)]. In legacy tracking modes (X10/Normal, URXVT) [button] is
-            [Button 0] because the protocol does not encode which button was
-            released. *)
-    | Motion of int * int * button_state * Modifier.t
-        (** [Motion (x, y, state, mods)] is mouse motion to [(x, y)] with
-            primary button [state] and [mods]. *)
+  type event = {
+    x : int;  (** Horizontal coordinate, 0-based. *)
+    y : int;  (** Vertical coordinate, 0-based. *)
+    modifiers : Modifier.t;  (** Active modifiers. *)
+    kind : kind;  (** Button, motion, or scroll payload. *)
+  }
+
+  val make : x:int -> y:int -> modifiers:Modifier.t -> kind -> event
+  (** [make ~x ~y ~modifiers kind] is a mouse event. *)
 
   val equal_event : event -> event -> bool
   (** [equal_event a b] is [true] iff [a] and [b] are structurally equal. *)
@@ -407,12 +407,9 @@ end
 (** The type for terminal input events. *)
 type t =
   | Key of Key.event  (** Keyboard input. *)
-  | Mouse of Mouse.event  (** Mouse button or motion. *)
-  | Scroll of int * int * Mouse.scroll_direction * int * Modifier.t
-      (** [Scroll (x, y, dir, delta, mods)] is a scroll wheel event at [(x, y)]
-          with direction [dir], step [delta] (usually 1), and modifiers [mods].
-          Coordinates are 0-based. Normalizes wheel actions across terminal
-          protocols (SGR, URXVT, X10) into a single event. *)
+  | Mouse of Mouse.event
+      (** Mouse button, motion, or scroll-wheel input. Coordinates are 0-based.
+      *)
   | Resize of int * int  (** [Resize (width, height)] is a terminal resize. *)
   | Focus  (** Terminal gained focus. *)
   | Blur  (** Terminal lost focus. *)
@@ -504,18 +501,27 @@ val release :
   Key.event
 (** [release k] is {!Key.make}[ ~event_type:Release k]. *)
 
-val mouse_press : ?modifier:Modifier.t -> int -> int -> Mouse.button -> t
-(** [mouse_press x y button] is [Mouse (Button_press (x, y, button, modifier))].
-    [modifier] defaults to {!Modifier.none}. *)
-
-val mouse_release : ?modifier:Modifier.t -> int -> int -> Mouse.button -> t
-(** [mouse_release x y button] is
-    [Mouse (Button_release (x, y, button, modifier))]. [modifier] defaults to
+val mouse_press : ?modifiers:Modifier.t -> int -> int -> Mouse.button -> t
+(** [mouse_press x y button] is a mouse button press. [modifiers] defaults to
     {!Modifier.none}. *)
 
-val mouse_motion : ?modifier:Modifier.t -> int -> int -> Mouse.button_state -> t
-(** [mouse_motion x y state] is [Mouse (Motion (x, y, state, modifier))].
-    [modifier] defaults to {!Modifier.none}. *)
+val mouse_release : ?modifiers:Modifier.t -> int -> int -> Mouse.button option -> t
+(** [mouse_release x y button] is a mouse button release. [button] is [None]
+    when the terminal protocol does not identify the released button.
+    [modifiers] defaults to {!Modifier.none}. *)
+
+val mouse_move : ?modifiers:Modifier.t -> int -> int -> t
+(** [mouse_move x y] is pointer motion with no tracked button pressed.
+    [modifiers] defaults to {!Modifier.none}. *)
+
+val mouse_drag : ?modifiers:Modifier.t -> int -> int -> Mouse.button -> t
+(** [mouse_drag x y button] is pointer motion with [button] pressed.
+    [modifiers] defaults to {!Modifier.none}. *)
+
+val mouse_scroll :
+  ?modifiers:Modifier.t -> ?delta:int -> int -> int -> Mouse.scroll_direction -> t
+(** [mouse_scroll x y direction] is a scroll-wheel event. [delta] defaults to
+    [1] and [modifiers] defaults to {!Modifier.none}. *)
 
 (** {1:helpers Helpers} *)
 
@@ -525,10 +531,7 @@ val match_ctrl_char : t -> char option
     [None] otherwise. *)
 
 val is_scroll : t -> bool
-(** [is_scroll e] is [true] iff [e] is a {!Scroll} event or a {!Mouse} event
-    with a wheel button ([Wheel_up], [Wheel_down], [Wheel_left], [Wheel_right]).
-*)
+(** [is_scroll e] is [true] iff [e] is a mouse scroll event. *)
 
 val is_drag : t -> bool
-(** [is_drag e] is [true] iff [e] is a {!Mouse} [Motion] event with at least one
-    primary button pressed. *)
+(** [is_drag e] is [true] iff [e] is a mouse drag event. *)

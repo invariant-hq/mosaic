@@ -6,8 +6,6 @@ type key = Key.t
 type event_type = Key.event_type
 type modifier = Modifier.t
 type mouse_button = Mouse.button
-type mouse_button_state = Mouse.button_state
-type scroll_direction = Mouse.scroll_direction
 type event = Event.t
 type response = Response.t
 type capability = Response.capability
@@ -105,36 +103,26 @@ let mouse_button_of_code : int -> mouse_button = function
   | 1 -> Middle
   | 2 -> Right
   | 3 -> Left
-  | 64 -> Wheel_up
-  | 65 -> Wheel_down
-  | 66 -> Wheel_left
-  | 67 -> Wheel_right
   | 128 -> Button 8
   | 129 -> Button 9
   | 130 -> Button 10
   | 131 -> Button 11
   | n -> Button n
 
-let is_scroll_button = function
-  | Mouse.Wheel_up | Wheel_down | Wheel_left | Wheel_right -> true
-  | _ -> false
+let is_scroll_code code = code land 64 <> 0
 
-let scroll_direction_of_button : mouse_button -> scroll_direction = function
-  | Wheel_up -> Scroll_up
-  | Wheel_down -> Scroll_down
-  | Wheel_left -> Scroll_left
-  | Wheel_right -> Scroll_right
-  | _ -> Scroll_down
+let scroll_direction_of_code code =
+  match code land 3 with
+  | 0 -> Mouse.Scroll_up
+  | 1 -> Scroll_down
+  | 2 -> Scroll_left
+  | _ -> Scroll_right
 
-let mouse_button_state_of_code code : mouse_button_state =
-  { left = code = 0; middle = code = 1; right = code = 2 }
-
-let mouse_pressed_state parser : mouse_button_state =
-  {
-    left = parser.mouse_left_pressed;
-    middle = parser.mouse_middle_pressed;
-    right = parser.mouse_right_pressed;
-  }
+let mouse_pressed_button parser =
+  if parser.mouse_left_pressed then Some Mouse.Left
+  else if parser.mouse_middle_pressed then Some Middle
+  else if parser.mouse_right_pressed then Some Right
+  else None
 
 let clear_mouse_pressed parser =
   parser.mouse_left_pressed <- false;
@@ -147,6 +135,9 @@ let set_mouse_pressed parser button pressed =
   | Middle -> parser.mouse_middle_pressed <- pressed
   | Right -> parser.mouse_right_pressed <- pressed
   | _ -> ()
+
+let mouse_event ~x ~y ~modifier kind =
+  Mouse (Mouse.make ~x ~y ~modifiers:modifier kind)
 
 let modifier_of_mouse_value value : modifier =
   let mask = (value land 0x1c) lsr 2 in
@@ -505,13 +496,20 @@ let parse_x10_normal_mouse_string s start =
     else
       let base_button = cb land 3 in
       let is_scroll = cb land 64 <> 0 in
+      let is_motion = cb land 32 <> 0 in
       let modifier = modifier_of_mouse_value cb in
       let ev : event =
         if is_scroll then
-          let button = mouse_button_of_code (cb land 0xC3) in
-          Scroll (x, y, scroll_direction_of_button button, 1, modifier)
+          mouse_event ~x ~y ~modifier
+            (Scroll { direction = scroll_direction_of_code cb; delta = 1 })
+        else if is_motion then
+          let kind =
+            if base_button = 3 then Mouse.Move
+            else Drag { button = mouse_button_of_code base_button }
+          in
+          mouse_event ~x ~y ~modifier kind
         else if base_button = 3 then
-          Mouse (Mouse.Button_release (x, y, Button 0, modifier))
+          mouse_event ~x ~y ~modifier (Up { button = None })
         else
           let button =
             match base_button with
@@ -520,7 +518,7 @@ let parse_x10_normal_mouse_string s start =
             | 2 -> Right
             | n -> Button n
           in
-          Mouse (Mouse.Button_press (x, y, button, modifier))
+          mouse_event ~x ~y ~modifier (Down { button })
       in
       Some (ev, 3)
   else None
@@ -528,16 +526,23 @@ let parse_x10_normal_mouse_string s start =
 (* Generic helper for mouse events used by SGR/URXVT-style encodings *)
 let mouse_event_of_codes ?release_button ~button_code ~x ~y ~is_release
     ~is_motion ~modifier () : event =
-  let button = mouse_button_of_code button_code in
-  let is_scroll = is_scroll_button button in
-  if is_scroll then Scroll (x, y, scroll_direction_of_button button, 1, modifier)
+  if is_scroll_code button_code then
+    mouse_event ~x ~y ~modifier
+      (Scroll { direction = scroll_direction_of_code button_code; delta = 1 })
   else if is_motion then
-    Mouse
-      (Mouse.Motion (x, y, mouse_button_state_of_code button_code, modifier))
+    mouse_event ~x ~y ~modifier
+      (Drag { button = mouse_button_of_code button_code })
   else if is_release then
-    let b = match release_button with Some b -> b | None -> button in
-    Mouse (Mouse.Button_release (x, y, b, modifier))
-  else Mouse (Mouse.Button_press (x, y, button, modifier))
+    let button =
+      match release_button with
+      | Some button -> Some button
+      | None ->
+          if button_code = 3 then None else Some (mouse_button_of_code button_code)
+    in
+    mouse_event ~x ~y ~modifier (Up { button })
+  else
+    mouse_event ~x ~y ~modifier
+      (Down { button = mouse_button_of_code button_code })
 
 let parse_sgr_mouse parser s start end_ =
   (* Format: "<btn;x;y" followed by final M/m at [end_ - 1]. *)
@@ -583,7 +588,7 @@ let parse_sgr_mouse parser s start end_ =
                       let button_code = btn land 3 lor ((btn lsr 6) lsl 6) in
                       let modifier = modifier_of_mouse_value btn in
                       let button = mouse_button_of_code button_code in
-                      let is_scroll = is_scroll_button button in
+                      let is_scroll = is_scroll_code button_code in
                       let is_motion = btn land 32 <> 0 && not is_scroll in
                       let is_release =
                         final = 'm' && (not is_scroll) && not is_motion
@@ -593,12 +598,12 @@ let parse_sgr_mouse parser s start end_ =
                           mouse_event_of_codes ~button_code ~x:(x - 1)
                             ~y:(y - 1) ~is_release ~is_motion ~modifier ()
                         else if is_motion then
-                          Mouse
-                            (Mouse.Motion
-                               ( x - 1,
-                                 y - 1,
-                                 mouse_pressed_state parser,
-                                 modifier ))
+                          let kind =
+                            match mouse_pressed_button parser with
+                            | Some button -> Mouse.Drag { button }
+                            | None -> Move
+                          in
+                          mouse_event ~x:(x - 1) ~y:(y - 1) ~modifier kind
                         else if is_release then (
                           clear_mouse_pressed parser;
                           mouse_event_of_codes ~button_code ~x:(x - 1)
@@ -655,28 +660,23 @@ let parse_urxvt_mouse s start end_ =
                       let button_code =
                         base_btn land 3 lor ((base_btn lsr 6) lsl 6)
                       in
-                      let button = mouse_button_of_code button_code in
-                      let is_scroll = is_scroll_button button in
+                      let is_scroll = is_scroll_code button_code in
                       let modifier = modifier_of_mouse_value base_btn in
                       let is_motion = base_btn land 32 <> 0 && not is_scroll in
                       let is_release =
                         button_code = 3 && (not is_scroll) && not is_motion
                       in
-                      let release_button =
-                        if is_release then Some (Mouse.Button 0) else None
-                      in
                       let event =
                         if is_scroll then
-                          Scroll
-                            ( x - 1,
-                              y - 1,
-                              scroll_direction_of_button button,
-                              1,
-                              modifier )
+                          mouse_event ~x:(x - 1) ~y:(y - 1) ~modifier
+                            (Scroll
+                               {
+                                 direction = scroll_direction_of_code button_code;
+                                 delta = 1;
+                               })
                         else
-                          mouse_event_of_codes ?release_button ~button_code
-                            ~x:(x - 1) ~y:(y - 1) ~is_release ~is_motion
-                            ~modifier ()
+                          mouse_event_of_codes ~button_code ~x:(x - 1)
+                            ~y:(y - 1) ~is_release ~is_motion ~modifier ()
                       in
                       Some event))
 

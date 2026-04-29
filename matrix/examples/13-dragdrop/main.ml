@@ -294,7 +294,8 @@ let handle_input state event =
   | Input.Key { key = Input.Key.Char u; _ }
     when Uchar.to_int u = Char.code 'q' || Uchar.to_int u = Char.code 'Q' ->
       `Quit
-  | Input.Mouse (Input.Mouse.Button_press (x, y, Input.Mouse.Left, _)) ->
+  | Input.Mouse
+      { Input.Mouse.x; y; kind = Down { button = Left }; _ } ->
       state.mouse_x <- x;
       state.mouse_y <- y;
       state.mouse_left <- true;
@@ -302,17 +303,21 @@ let handle_input state event =
       | Some item -> start_drag state item ~mouse_x:x ~mouse_y:y
       | None -> ());
       `Continue
-  | Input.Mouse (Input.Mouse.Button_release (x, y, Input.Mouse.Left, _)) ->
+  | Input.Mouse
+      { Input.Mouse.x; y; kind = Up { button = Some Left }; _ } ->
       state.mouse_x <- x;
       state.mouse_y <- y;
       state.mouse_left <- false;
       end_drag state;
       `Continue
-  | Input.Mouse (Input.Mouse.Motion (x, y, btns, _)) ->
+  | Input.Mouse { Input.Mouse.x; y; kind; _ } ->
       state.mouse_x <- x;
       state.mouse_y <- y;
-      state.mouse_left <- btns.Input.Mouse.left;
-      if btns.Input.Mouse.left then update_drag state ~mouse_x:x ~mouse_y:y;
+      let left_drag =
+        match kind with Drag { button = Left } -> true | _ -> false
+      in
+      state.mouse_left <- left_drag;
+      if left_drag then update_drag state ~mouse_x:x ~mouse_y:y;
       `Continue
   | _ -> `Continue
 

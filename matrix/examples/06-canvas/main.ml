@@ -191,15 +191,23 @@ let () =
           | None -> ())
       | Input.Key { key; modifier; _ } ->
           state := handle_key !state key modifier
-      | Input.Mouse (Input.Mouse.Button_press (x, y, Input.Mouse.Left, _))
       | Input.Mouse
-          (Input.Mouse.Motion (x, y, { Input.Mouse.left = true; _ }, _)) -> (
+          {
+            Input.Mouse.x;
+            y;
+            kind = Down { button = Left } | Drag { button = Left };
+            _;
+          } -> (
           match !canvas_grid with
           | Some cg -> draw_brush cg ~cx:x ~cy:y ~brush:!state.brush
           | None -> ())
-      | Input.Mouse (Input.Mouse.Button_press (x, y, Input.Mouse.Right, _))
       | Input.Mouse
-          (Input.Mouse.Motion (x, y, { Input.Mouse.right = true; _ }, _)) -> (
+          {
+            Input.Mouse.x;
+            y;
+            kind = Down { button = Right } | Drag { button = Right };
+            _;
+          } -> (
           (* Erase with right click *)
           match !canvas_grid with
           | Some cg ->

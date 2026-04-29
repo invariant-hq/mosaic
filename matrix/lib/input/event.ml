@@ -292,15 +292,7 @@ module Key = struct
 end
 
 module Mouse = struct
-  type button =
-    | Left
-    | Middle
-    | Right
-    | Wheel_up
-    | Wheel_down
-    | Wheel_left
-    | Wheel_right
-    | Button of int
+  type button = Left | Middle | Right | Button of int
 
   let equal_button (a : button) (b : button) = a = b
 
@@ -308,24 +300,7 @@ module Mouse = struct
     | Left -> Format.pp_print_string fmt "Left"
     | Middle -> Format.pp_print_string fmt "Middle"
     | Right -> Format.pp_print_string fmt "Right"
-    | Wheel_up -> Format.pp_print_string fmt "Wheel_up"
-    | Wheel_down -> Format.pp_print_string fmt "Wheel_down"
-    | Wheel_left -> Format.pp_print_string fmt "Wheel_left"
-    | Wheel_right -> Format.pp_print_string fmt "Wheel_right"
     | Button n -> Format.fprintf fmt "Button(%d)" n
-
-  type button_state = { left : bool; middle : bool; right : bool }
-
-  let equal_button_state (a : button_state) (b : button_state) = a = b
-
-  let pp_button_state fmt s =
-    let buttons = [] in
-    let buttons = if s.left then "left" :: buttons else buttons in
-    let buttons = if s.middle then "middle" :: buttons else buttons in
-    let buttons = if s.right then "right" :: buttons else buttons in
-    match buttons with
-    | [] -> Format.fprintf fmt "{}"
-    | _ -> Format.fprintf fmt "{%s}" (String.concat "," buttons)
 
   type scroll_direction = Scroll_up | Scroll_down | Scroll_left | Scroll_right
 
@@ -338,23 +313,39 @@ module Mouse = struct
     | Scroll_left -> Format.pp_print_string fmt "Scroll_left"
     | Scroll_right -> Format.pp_print_string fmt "Scroll_right"
 
-  type event =
-    | Button_press of int * int * button * Modifier.t
-    | Button_release of int * int * button * Modifier.t
-    | Motion of int * int * button_state * Modifier.t
+  type kind =
+    | Down of { button : button }
+    | Up of { button : button option }
+    | Move
+    | Drag of { button : button }
+    | Scroll of { direction : scroll_direction; delta : int }
+
+  let equal_kind (a : kind) (b : kind) = a = b
+
+  let pp_kind fmt = function
+    | Down { button } -> Format.fprintf fmt "Down(%a)" pp_button button
+    | Up { button = Some button } ->
+        Format.fprintf fmt "Up(%a)" pp_button button
+    | Up { button = None } -> Format.pp_print_string fmt "Up(None)"
+    | Move -> Format.pp_print_string fmt "Move"
+    | Drag { button } -> Format.fprintf fmt "Drag(%a)" pp_button button
+    | Scroll { direction; delta } ->
+        Format.fprintf fmt "Scroll(%a,%d)" pp_scroll_direction direction delta
+
+  type event = {
+    x : int;
+    y : int;
+    modifiers : Modifier.t;
+    kind : kind;
+  }
+
+  let make ~x ~y ~modifiers kind = { x; y; modifiers; kind }
 
   let equal_event (a : event) (b : event) = a = b
 
-  let pp_event fmt = function
-    | Button_press (x, y, btn, mods) ->
-        Format.fprintf fmt "Button_press(%d,%d,%a,%a)" x y pp_button btn
-          Modifier.pp mods
-    | Button_release (x, y, btn, mods) ->
-        Format.fprintf fmt "Button_release(%d,%d,%a,%a)" x y pp_button btn
-          Modifier.pp mods
-    | Motion (x, y, state, mods) ->
-        Format.fprintf fmt "Motion(%d,%d,%a,%a)" x y pp_button_state state
-          Modifier.pp mods
+  let pp_event fmt e =
+    Format.fprintf fmt "{x=%d; y=%d; modifiers=%a; kind=%a}" e.x e.y
+      Modifier.pp e.modifiers pp_kind e.kind
 end
 
 module Response = struct
@@ -428,7 +419,6 @@ end
 type t =
   | Key of Key.event
   | Mouse of Mouse.event
-  | Scroll of int * int * Mouse.scroll_direction * int * Modifier.t
   | Resize of int * int
   | Focus
   | Blur
@@ -438,29 +428,15 @@ let equal (e1 : t) (e2 : t) =
   match (e1, e2) with
   | Key k1, Key k2 -> Key.equal_event k1 k2
   | Mouse m1, Mouse m2 -> Mouse.equal_event m1 m2
-  | Scroll (x1, y1, d1, s1, m1), Scroll (x2, y2, d2, s2, m2) ->
-      x1 = x2 && y1 = y2
-      && Mouse.equal_scroll_direction d1 d2
-      && s1 = s2 && Modifier.equal m1 m2
   | Resize (w1, h1), Resize (w2, h2) -> w1 = w2 && h1 = h2
   | Focus, Focus -> true
   | Blur, Blur -> true
   | Paste s1, Paste s2 -> s1 = s2
-  | (Key _ | Mouse _ | Scroll _ | Resize _ | Focus | Blur | Paste _), _ -> false
+  | (Key _ | Mouse _ | Resize _ | Focus | Blur | Paste _), _ -> false
 
 let pp fmt = function
   | Key k -> Format.fprintf fmt "Key(%a)" Key.pp_event k
   | Mouse m -> Format.fprintf fmt "Mouse(%a)" Mouse.pp_event m
-  | Scroll (x, y, dir, delta, mods) ->
-      let dir_s =
-        match dir with
-        | Mouse.Scroll_up -> "up"
-        | Mouse.Scroll_down -> "down"
-        | Mouse.Scroll_left -> "left"
-        | Mouse.Scroll_right -> "right"
-      in
-      Format.fprintf fmt "Scroll(%d,%d,%s,%d,%a)" x y dir_s delta Modifier.pp
-        mods
   | Resize (w, h) -> Format.fprintf fmt "Resize(%d,%d)" w h
   | Focus -> Format.pp_print_string fmt "Focus"
   | Blur -> Format.pp_print_string fmt "Blur"
@@ -493,14 +469,20 @@ let release ?modifier ?associated_text ?shifted_key ?base_key k =
   key_event ?modifier ~event_type:Key.Release ?associated_text ?shifted_key
     ?base_key k
 
-let mouse_press ?(modifier = Modifier.none) x y button =
-  Mouse (Mouse.Button_press (x, y, button, modifier))
+let mouse_press ?(modifiers = Modifier.none) x y button =
+  Mouse (Mouse.make ~x ~y ~modifiers (Mouse.Down { button }))
 
-let mouse_release ?(modifier = Modifier.none) x y button =
-  Mouse (Mouse.Button_release (x, y, button, modifier))
+let mouse_release ?(modifiers = Modifier.none) x y button =
+  Mouse (Mouse.make ~x ~y ~modifiers (Mouse.Up { button }))
 
-let mouse_motion ?(modifier = Modifier.none) x y state =
-  Mouse (Mouse.Motion (x, y, state, modifier))
+let mouse_move ?(modifiers = Modifier.none) x y =
+  Mouse (Mouse.make ~x ~y ~modifiers Mouse.Move)
+
+let mouse_drag ?(modifiers = Modifier.none) x y button =
+  Mouse (Mouse.make ~x ~y ~modifiers (Mouse.Drag { button }))
+
+let mouse_scroll ?(modifiers = Modifier.none) ?(delta = 1) x y direction =
+  Mouse (Mouse.make ~x ~y ~modifiers (Mouse.Scroll { direction; delta }))
 
 (* Helpers that depend on [t] *)
 
@@ -511,15 +493,9 @@ let match_ctrl_char = function
   | _ -> None
 
 let is_scroll = function
-  | Scroll _ -> true
-  | Mouse (Mouse.Button_press (_, _, btn, _))
-  | Mouse (Mouse.Button_release (_, _, btn, _)) -> (
-      match btn with
-      | Wheel_up | Wheel_down | Wheel_left | Wheel_right -> true
-      | _ -> false)
+  | Mouse { Mouse.kind = Scroll _; _ } -> true
   | _ -> false
 
 let is_drag = function
-  | Mouse (Mouse.Motion (_, _, state, _)) ->
-      state.left || state.middle || state.right
+  | Mouse { Mouse.kind = Drag _; _ } -> true
   | _ -> false

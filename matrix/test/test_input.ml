@@ -289,38 +289,30 @@ let test_parse_mouse_sgr () =
     (parse_user "\x1b[<0;10;20M");
 
   equal ~msg:"Mouse release" (list event_testable)
-    [ Input.mouse_release 9 19 Input.Mouse.Left ]
+    [ Input.mouse_release 9 19 (Some Input.Mouse.Left) ]
     (parse_user "\x1b[<0;10;20m");
 
   equal ~msg:"Mouse motion" (list event_testable)
-    [
-      Input.mouse_motion 14 24
-        Input.Mouse.{ left = false; middle = false; right = false };
-    ]
-    (parse_user "\x1b[<32;15;25M")
+    [ Input.mouse_move 14 24 ]
+    (parse_user "\x1b[<32;15;25M");
+
+  equal ~msg:"Mouse scroll" (list event_testable)
+    [ Input.mouse_scroll 9 4 Input.Mouse.Scroll_up ]
+    (parse_user "\x1b[<64;10;5M")
 
 let test_sgr_mouse_state_regressions () =
   let parser = Input.Parser.create () in
   equal ~msg:"SGR motion without prior press is move" (list event_testable)
-    [
-      Input.mouse_motion 9 4
-        Input.Mouse.{ left = false; middle = false; right = false };
-    ]
+    [ Input.mouse_move 9 4 ]
     (feed_user parser (Bytes.of_string "\x1b[<32;10;5M") 0 11);
   let parser = Input.Parser.create () in
   ignore (feed_user parser (Bytes.of_string "\x1b[<0;10;5M") 0 10);
   equal ~msg:"SGR motion after left press is drag" (list event_testable)
-    [
-      Input.mouse_motion 11 4
-        Input.Mouse.{ left = true; middle = false; right = false };
-    ]
+    [ Input.mouse_drag 11 4 Input.Mouse.Left ]
     (feed_user parser (Bytes.of_string "\x1b[<32;12;5M") 0 11);
   ignore (feed_user parser (Bytes.of_string "\x1b[<0;12;5m") 0 10);
   equal ~msg:"SGR motion after release is move" (list event_testable)
-    [
-      Input.mouse_motion 13 4
-        Input.Mouse.{ left = false; middle = false; right = false };
-    ]
+    [ Input.mouse_move 13 4 ]
     (feed_user parser (Bytes.of_string "\x1b[<32;14;5M") 0 11)
 
 let test_sgr_mouse_partial_timeout_regression () =
@@ -331,10 +323,7 @@ let test_sgr_mouse_partial_timeout_regression () =
     (list event_testable) []
     (drain_user ~now:1.0 parser);
   equal ~msg:"partial SGR mouse completes after timeout" (list event_testable)
-    [
-      Input.mouse_motion 19 4
-        Input.Mouse.{ left = false; middle = false; right = false };
-    ]
+    [ Input.mouse_move 19 4 ]
     (feed_user parser (Bytes.of_string ";5m") 0 3)
 
 let test_protocol_context_timeout_regressions () =
@@ -981,6 +970,15 @@ let test_x10_high_byte_mouse_regression () =
     [ Input.mouse_press 95 9 Input.Mouse.Left ]
     (parse_user "\x1b[M \x80\x2A")
 
+let test_x10_scroll_regression () =
+  equal ~msg:"X10 ctrl scroll" (list event_testable)
+    [
+      Input.mouse_scroll
+        ~modifiers:{ Input.Modifier.none with ctrl = true }
+        7 8 Input.Mouse.Scroll_up;
+    ]
+    (parse_user "\x1b[Mp()")
+
 let test_urxvt_mouse () =
   equal ~msg:"URXVT mouse left press at (9,19)" (list event_testable)
     [ Input.mouse_press 9 19 Input.Mouse.Left ]
@@ -1283,6 +1281,7 @@ let tests =
     test "user and caps split" test_user_and_caps_split;
     test "X10 mouse" test_x10_mouse;
     test "X10 high byte mouse regression" test_x10_high_byte_mouse_regression;
+    test "X10 scroll regression" test_x10_scroll_regression;
     test "URXVT mouse" test_urxvt_mouse;
     test "OSC sequences" test_osc_sequences;
     test "window events" test_window_events;

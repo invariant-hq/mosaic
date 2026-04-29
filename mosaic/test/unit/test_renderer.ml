@@ -32,14 +32,20 @@ let make_child ~parent ~x ~y ~w ~h ?focusable () =
 
 let mouse_press ?(button = Input.Mouse.Left) ?(modifiers = Input.Modifier.none)
     ~x ~y () =
-  Input.Mouse.Button_press (x, y, button, modifiers)
+  Input.Mouse.make ~x ~y ~modifiers (Down { button })
 
 let mouse_release ?(button = Input.Mouse.Left)
     ?(modifiers = Input.Modifier.none) ~x ~y () =
-  Input.Mouse.Button_release (x, y, button, modifiers)
+  Input.Mouse.make ~x ~y ~modifiers (Up { button = Some button })
 
 let mouse_motion ?(left = false) ?(modifiers = Input.Modifier.none) ~x ~y () =
-  Input.Mouse.Motion (x, y, { left; middle = false; right = false }, modifiers)
+  let kind = if left then Input.Mouse.Drag { button = Left } else Move in
+  Input.Mouse.make ~x ~y ~modifiers kind
+
+let mouse_scroll ?modifiers ~x ~y direction =
+  match Input.mouse_scroll ?modifiers x y direction with
+  | Input.Mouse mouse -> mouse
+  | _ -> assert false
 
 let record_mouse node =
   let log = ref [] in
@@ -431,7 +437,12 @@ let mouse_event_has_correct_modifiers () =
   Renderer.dispatch_mouse t (mouse_press ~modifiers:mods ~x:7 ~y:7 ());
   is_true ~msg:"received" (List.length !log > 0);
   let ev = List.hd !log in
-  is_true ~msg:"shift" (Event.Mouse.modifiers ev).shift
+  is_true ~msg:"shift" (Event.Mouse.modifiers ev).shift;
+  log := [];
+  Renderer.dispatch_mouse t (mouse_motion ~modifiers:mods ~x:7 ~y:7 ());
+  is_true ~msg:"motion received" (List.length !log > 0);
+  let ev = List.hd !log in
+  is_true ~msg:"motion shift" (Event.Mouse.modifiers ev).shift
 
 let move_over_child_fires_over () =
   let t = make_renderer () in
@@ -515,8 +526,7 @@ let scroll_dispatches_to_hit_target () =
   let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   let log = record_mouse child in
   do_frame t;
-  Renderer.dispatch_scroll t ~x:7 ~y:7 ~direction:Input.Mouse.Scroll_up ~delta:1
-    ~modifiers:Input.Modifier.none;
+  Renderer.dispatch_mouse t (mouse_scroll ~x:7 ~y:7 Input.Mouse.Scroll_up);
   let found_scroll =
     List.exists
       (fun ev -> match Event.Mouse.kind ev with Scroll _ -> true | _ -> false)
@@ -530,8 +540,8 @@ let scroll_with_modifiers () =
   let log = record_mouse child in
   let mods = { Input.Modifier.none with shift = true } in
   do_frame t;
-  Renderer.dispatch_scroll t ~x:7 ~y:7 ~direction:Input.Mouse.Scroll_down
-    ~delta:1 ~modifiers:mods;
+  Renderer.dispatch_mouse t
+    (mouse_scroll ~modifiers:mods ~x:7 ~y:7 Input.Mouse.Scroll_down);
   is_true ~msg:"received" (List.length !log > 0);
   let ev = List.hd !log in
   is_true ~msg:"shift" (Event.Mouse.modifiers ev).shift
@@ -541,8 +551,7 @@ let scroll_on_empty_area () =
   let _child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   do_frame t;
   (* Should not crash *)
-  Renderer.dispatch_scroll t ~x:0 ~y:0 ~direction:Input.Mouse.Scroll_up ~delta:1
-    ~modifiers:Input.Modifier.none
+  Renderer.dispatch_mouse t (mouse_scroll ~x:0 ~y:0 Input.Mouse.Scroll_up)
 
 (* ── Drag ── *)
 
@@ -641,11 +650,8 @@ let right_button_does_not_capture () =
   do_frame t;
   (* Right button motion *)
   Renderer.dispatch_mouse t
-    (Input.Mouse.Motion
-       ( 7,
-         7,
-         { left = false; middle = false; right = true },
-         Input.Modifier.none ));
+    (Input.Mouse.make ~x:7 ~y:7 ~modifiers:Input.Modifier.none
+       (Drag { button = Right }));
   is_none ~msg:"no capture from right" (Renderer.captured t)
 
 (* ── Selection ── *)

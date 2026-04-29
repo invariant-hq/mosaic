@@ -285,19 +285,21 @@ let handle_input state event =
           state.particles <- [];
           `Continue
       | _ -> `Continue)
-  | Input.Mouse (Input.Mouse.Button_press (x, y, Input.Mouse.Left, _)) ->
+  | Input.Mouse
+      { Input.Mouse.x; y; kind = Down { button = Left }; _ } ->
       state.mouse_x <- x;
       state.mouse_y <- y;
       state.mouse_emitter <- true;
       burst_at state ~x ~y ~count:30;
       `Continue
-  | Input.Mouse (Input.Mouse.Button_release (_, _, Input.Mouse.Left, _)) ->
+  | Input.Mouse { kind = Up { button = Some Left }; _ } ->
       state.mouse_emitter <- false;
       `Continue
-  | Input.Mouse (Input.Mouse.Motion (x, y, btns, _)) ->
+  | Input.Mouse { Input.Mouse.x; y; kind; _ } ->
       state.mouse_x <- x;
       state.mouse_y <- y;
-      state.mouse_emitter <- btns.Input.Mouse.left;
+      state.mouse_emitter <-
+        (match kind with Drag { button = Left } -> true | _ -> false);
       `Continue
   | _ -> `Continue
 

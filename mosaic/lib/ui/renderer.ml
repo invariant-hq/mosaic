@@ -364,9 +364,6 @@ let map_button = function
   | Input.Mouse.Right -> Event.Mouse.Right
   | Input.Mouse.Middle -> Event.Mouse.Middle
   | Input.Mouse.Button n -> Event.Mouse.Button n
-  | Input.Mouse.Wheel_up | Input.Mouse.Wheel_down | Input.Mouse.Wheel_left
-  | Input.Mouse.Wheel_right ->
-      Event.Mouse.Left
 
 (* Full mouse dispatch pipeline in a fixed order: 1. Update pointer →
    2. Hit test → 3. Selection → 4. Hover → 5. Drag capture → 6. Normal dispatch
@@ -699,24 +696,34 @@ let dispatch_key t (key : Input.Key.event) =
   ev
 
 let dispatch_mouse t (mouse : Input.Mouse.event) =
-  match mouse with
-  | Input.Mouse.Button_press (x, y, button, modifiers) ->
+  let x = mouse.x in
+  let y = mouse.y in
+  let modifiers = mouse.modifiers in
+  match mouse.kind with
+  | Input.Mouse.Down { button } ->
       dispatch_mouse_internal t ~x ~y ~modifiers
         (Event.Mouse.Down { button = map_button button })
-  | Input.Mouse.Button_release (x, y, button, modifiers) ->
+  | Input.Mouse.Up { button } ->
+      let button =
+        match button with Some button -> map_button button | None -> Button 0
+      in
       dispatch_mouse_internal t ~x ~y ~modifiers
-        (Event.Mouse.Up { button = map_button button; is_dragging = false })
-  | Input.Mouse.Motion (x, y, button_state, _modifiers) ->
-      let no_mod = Input.Modifier.none in
-      if button_state.left || button_state.middle || button_state.right then
-        let button =
-          if button_state.left then Event.Mouse.Left
-          else if button_state.middle then Event.Mouse.Middle
-          else Event.Mouse.Right
-        in
-        dispatch_mouse_internal t ~x ~y ~modifiers:no_mod
-          (Event.Mouse.Drag { button; is_dragging = true })
-      else dispatch_mouse_internal t ~x ~y ~modifiers:no_mod Event.Mouse.Move
+        (Event.Mouse.Up { button; is_dragging = false })
+  | Input.Mouse.Move -> dispatch_mouse_internal t ~x ~y ~modifiers Event.Mouse.Move
+  | Input.Mouse.Drag { button } ->
+      dispatch_mouse_internal t ~x ~y ~modifiers
+        (Event.Mouse.Drag { button = map_button button; is_dragging = true })
+  | Input.Mouse.Scroll { direction; delta } ->
+      let hit_num = Screen.query_hit t.screen ~x ~y in
+      let target_node = if hit_num > 0 then find_node t hit_num else None in
+      let target_id = Option.map Renderable.Private.num target_node in
+      let ev =
+        Event.Mouse.make ~x ~y ~modifiers ?target:target_id
+          (Event.Mouse.Scroll { direction; delta })
+      in
+      (match target_node with
+      | Some node -> Renderable.Private.emit_mouse node ev
+      | None -> ())
 
 let dispatch_paste t text =
   match !(t.focused) with
@@ -724,18 +731,6 @@ let dispatch_paste t text =
   | Some node ->
       let ev = Event.Paste.of_text text in
       Renderable.Private.emit_paste node ev
-
-let dispatch_scroll t ~x ~y ~direction ~delta ~modifiers =
-  let hit_num = Screen.query_hit t.screen ~x ~y in
-  let target_node = if hit_num > 0 then find_node t hit_num else None in
-  let target_id = Option.map Renderable.Private.num target_node in
-  let ev =
-    Event.Mouse.make ~x ~y ~modifiers ?target:target_id
-      (Event.Mouse.Scroll { direction; delta })
-  in
-  match target_node with
-  | Some node -> Renderable.Private.emit_mouse node ev
-  | None -> ()
 
 (* ───── Selection ───── *)
 

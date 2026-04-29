@@ -821,15 +821,8 @@ let adjust_event_for_offset t =
     let map_y y = if y <= offset then -1 else y - offset in
     fun event ->
       match event with
-      | Input.Mouse (Input.Mouse.Button_press (x, y, button, modifiers)) ->
-          Input.Mouse (Input.Mouse.Button_press (x, map_y y, button, modifiers))
-      | Input.Mouse (Input.Mouse.Button_release (x, y, button, modifiers)) ->
-          Input.Mouse
-            (Input.Mouse.Button_release (x, map_y y, button, modifiers))
-      | Input.Mouse (Input.Mouse.Motion (x, y, state, modifiers)) ->
-          Input.Mouse (Input.Mouse.Motion (x, map_y y, state, modifiers))
-      | Input.Scroll (x, y, dir, delta, mods) ->
-          Input.Scroll (x, map_y y, dir, delta, mods)
+      | Input.Mouse mouse ->
+          Input.Mouse { mouse with Input.Mouse.y = map_y mouse.y }
       | event -> event
 
 let classify_event t evt =

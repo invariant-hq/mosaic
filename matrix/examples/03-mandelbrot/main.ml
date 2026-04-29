@@ -333,31 +333,7 @@ let handle_char app st uchar modifier =
 
 let update app event st =
   match event with
-  | Input.Mouse mouse_ev -> (
-      let coord =
-        match mouse_ev with
-        | Input.Mouse.Button_press (x, y, _, _)
-        | Input.Mouse.Button_release (x, y, _, _)
-        | Input.Mouse.Motion (x, y, _, _) ->
-            Some (x, y)
-      in
-      match coord with
-      | Some (x, y) ->
-          let fractal_rows, _ = layout st in
-          if pointer_in_fractal st.dims fractal_rows x y then
-            `Continue { st with pointer = (x, y) }
-          else `Continue st
-      | None -> `Continue st)
-  | Input.Key { key = Input.Key.Escape; _ } ->
-      stop app;
-      `Stop
-  | Input.Key { key = Input.Key.Char uchar; modifier; _ } ->
-      handle_char app st uchar modifier
-  | Input.Key { key = Input.Key.Left; _ } -> with_redraw app (pan st (-1.) 0.)
-  | Input.Key { key = Input.Key.Right; _ } -> with_redraw app (pan st 1. 0.)
-  | Input.Key { key = Input.Key.Up; _ } -> with_redraw app (pan st 0. (-1.))
-  | Input.Key { key = Input.Key.Down; _ } -> with_redraw app (pan st 0. 1.)
-  | Input.Scroll (x, y, dir, delta, _) ->
+  | Input.Mouse { x; y; kind = Scroll { direction = dir; delta }; _ } ->
       let fractal_rows, _ = layout st in
       if fractal_rows <= 0 then `Continue st
       else
@@ -388,6 +364,20 @@ let update app event st =
               pan ~fraction:scroll_pan_fraction st (float steps) 0.
         in
         with_redraw app new_state
+  | Input.Mouse { x; y; _ } ->
+      let fractal_rows, _ = layout st in
+      if pointer_in_fractal st.dims fractal_rows x y then
+        `Continue { st with pointer = (x, y) }
+      else `Continue st
+  | Input.Key { key = Input.Key.Escape; _ } ->
+      stop app;
+      `Stop
+  | Input.Key { key = Input.Key.Char uchar; modifier; _ } ->
+      handle_char app st uchar modifier
+  | Input.Key { key = Input.Key.Left; _ } -> with_redraw app (pan st (-1.) 0.)
+  | Input.Key { key = Input.Key.Right; _ } -> with_redraw app (pan st 1. 0.)
+  | Input.Key { key = Input.Key.Up; _ } -> with_redraw app (pan st 0. (-1.))
+  | Input.Key { key = Input.Key.Down; _ } -> with_redraw app (pan st 0. 1.)
   | Input.Resize (cols, rows) -> with_redraw app (resize st ~cols ~rows)
   | _ -> `Continue st
 

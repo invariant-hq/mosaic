@@ -101,17 +101,6 @@ val dispatch_paste : t -> string -> unit
 (** [dispatch_paste t text] sends [text] as a paste event to the focused
     renderable. *)
 
-val dispatch_scroll :
-  t ->
-  x:int ->
-  y:int ->
-  direction:Event.Mouse.scroll_direction ->
-  delta:int ->
-  modifiers:Input.Modifier.t ->
-  unit
-(** [dispatch_scroll t ~x ~y ~direction ~delta ~modifiers] dispatches a scroll
-    event at terminal cell position [(x, y)]. *)
-
 (** {1:focus Focus} *)
 
 val focused : t -> Renderable.t option
