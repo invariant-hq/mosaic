@@ -6,7 +6,7 @@
 # ocaml: 5.4.1
 # git: c2bb02fc
 # dirty: true
-# command: /Users/tmattio/Workspace/mosaic/_build/default/matrix/bench/bench_grid.exe --ci --bless --baseline matrix/bench/grid.thumper
+# command: _build/default/matrix/bench/bench_grid.exe --ci --bless --baseline matrix/bench/grid.thumper
 
 grid/grid_draw_text_ascii-full-screen	alloc_words	1.972800e+04	1.972800e+04	1.972800e+04	0.000000e+00	30	0
 grid/grid_draw_text_ascii-full-screen	cpu_time	3.661680e-04	3.633636e-04	3.693138e-04	8.125078e-03	30	1

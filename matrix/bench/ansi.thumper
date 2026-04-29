@@ -4,49 +4,49 @@
 # host: 3b8ae6dbe74c4269
 # cpu: Apple M1 Max
 # ocaml: 5.4.1
-# git: 5f4dc340
+# git: c9079abb
 # dirty: true
 # command: /Users/tmattio/Workspace/mosaic/_build/default/matrix/bench/bench_ansi.exe --ci --bless --baseline matrix/bench/ansi.thumper
 
 control/cursor_script_80x24	alloc_words	4.923400e+04	4.923400e+04	4.923400e+04	0.000000e+00	30	0
-control/cursor_script_80x24	cpu_time	2.562086e-04	2.559357e-04	2.566964e-04	1.484379e-03	30	3
-control/cursor_script_80x24	wall_time	2.566513e-04	2.563391e-04	2.571537e-04	1.587142e-03	30	3
-sgr_state/sgr_alternating_styles_1920	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-sgr_state/sgr_alternating_styles_1920	cpu_time	3.280741e-04	3.275919e-04	3.285928e-04	1.525436e-03	30	3
-sgr_state/sgr_alternating_styles_1920	wall_time	3.285717e-04	3.280186e-04	3.291547e-04	1.728854e-03	30	3
+control/cursor_script_80x24	cpu_time	2.481545e-04	2.467119e-04	2.504313e-04	7.493955e-03	30	0
+control/cursor_script_80x24	wall_time	2.482426e-04	2.467081e-04	2.505752e-04	7.788940e-03	30	0
+sgr_state/sgr_alternating_styles_1920	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	62	5
+sgr_state/sgr_alternating_styles_1920	cpu_time	3.242822e-04	3.238300e-04	3.246817e-04	1.313211e-03	62	5
+sgr_state/sgr_alternating_styles_1920	wall_time	3.247447e-04	3.241852e-04	3.252716e-04	1.672547e-03	62	4
 sgr_state/sgr_hyperlink_transitions	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-sgr_state/sgr_hyperlink_transitions	cpu_time	1.642362e-05	1.640891e-05	1.644071e-05	9.682117e-04	30	4
-sgr_state/sgr_hyperlink_transitions	wall_time	1.644830e-05	1.643616e-05	1.646294e-05	8.141144e-04	30	5
+sgr_state/sgr_hyperlink_transitions	cpu_time	8.726032e-06	8.692580e-06	8.807900e-06	6.607853e-03	30	3
+sgr_state/sgr_hyperlink_transitions	wall_time	8.739356e-06	8.705013e-06	8.822843e-06	6.741352e-03	30	3
 sgr_state/sgr_partial_changes	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-sgr_state/sgr_partial_changes	cpu_time	2.181787e-04	2.176447e-04	2.193195e-04	3.838309e-03	30	1
-sgr_state/sgr_partial_changes	wall_time	2.186895e-04	2.180186e-04	2.201650e-04	4.907493e-03	30	1
+sgr_state/sgr_partial_changes	cpu_time	1.024262e-04	1.022755e-04	1.027525e-04	2.328959e-03	30	4
+sgr_state/sgr_partial_changes	wall_time	1.025655e-04	1.023967e-04	1.029006e-04	2.456427e-03	30	3
 sgr_state/sgr_same_style_1920	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-sgr_state/sgr_same_style_1920	cpu_time	1.182317e-05	1.180666e-05	1.183703e-05	1.284531e-03	30	1
-sgr_state/sgr_same_style_1920	wall_time	1.184447e-05	1.182798e-05	1.185635e-05	1.197655e-03	30	1
-sgr_state/sgr_tui_frame_80x24	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-sgr_state/sgr_tui_frame_80x24	cpu_time	3.125697e-05	3.121603e-05	3.133130e-05	1.844042e-03	30	2
-sgr_state/sgr_tui_frame_80x24	wall_time	3.130397e-05	3.126053e-05	3.137463e-05	1.822487e-03	30	2
-strip_parse/parse_ansi_block	alloc_words	4.818400e+04	4.818400e+04	4.818400e+04	0.000000e+00	30	0
-strip_parse/parse_ansi_block	cpu_time	2.206117e-04	2.199673e-04	2.217092e-04	3.947826e-03	30	2
-strip_parse/parse_ansi_block	wall_time	2.212821e-04	2.205559e-04	2.224722e-04	4.329900e-03	30	2
-strip_parse/parse_ansi_block_iter	alloc_words	3.880800e+04	3.880800e+04	3.880800e+04	0.000000e+00	30	0
-strip_parse/parse_ansi_block_iter	cpu_time	1.954589e-04	1.952545e-04	1.957371e-04	1.234508e-03	30	1
-strip_parse/parse_ansi_block_iter	wall_time	1.959564e-04	1.956848e-04	1.962873e-04	1.537141e-03	30	0
+sgr_state/sgr_same_style_1920	cpu_time	1.157388e-05	1.152947e-05	1.165858e-05	5.577380e-03	30	0
+sgr_state/sgr_same_style_1920	wall_time	1.159561e-05	1.154729e-05	1.169041e-05	6.171048e-03	30	0
+sgr_state/sgr_tui_frame_80x24	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	55	4
+sgr_state/sgr_tui_frame_80x24	cpu_time	3.145895e-05	3.140804e-05	3.149722e-05	1.417501e-03	55	1
+sgr_state/sgr_tui_frame_80x24	wall_time	3.162778e-05	3.147960e-05	3.177388e-05	4.652266e-03	55	1
+strip_parse/parse_ansi_block	alloc_words	4.831200e+04	4.831200e+04	4.831200e+04	0.000000e+00	30	0
+strip_parse/parse_ansi_block	cpu_time	2.380744e-04	2.366001e-04	2.391539e-04	5.363372e-03	30	0
+strip_parse/parse_ansi_block	wall_time	2.385751e-04	2.369631e-04	2.397432e-04	5.826418e-03	30	0
+strip_parse/parse_ansi_block_iter	alloc_words	3.893600e+04	3.893600e+04	3.893600e+04	0.000000e+00	58	5
+strip_parse/parse_ansi_block_iter	cpu_time	2.128798e-04	2.116085e-04	2.148452e-04	7.602170e-03	58	1
+strip_parse/parse_ansi_block_iter	wall_time	2.135340e-04	2.119196e-04	2.160889e-04	9.762584e-03	58	2
 strip_parse/parse_tui_frame	alloc_words	4.652000e+03	4.652000e+03	4.652000e+03	0.000000e+00	30	0
-strip_parse/parse_tui_frame	cpu_time	3.735088e-05	3.688844e-05	3.800022e-05	1.488289e-02	30	1
-strip_parse/parse_tui_frame	wall_time	3.769455e-05	3.700796e-05	3.866136e-05	2.193153e-02	30	1
+strip_parse/parse_tui_frame	cpu_time	3.572646e-05	3.559590e-05	3.593874e-05	4.798076e-03	30	1
+strip_parse/parse_tui_frame	wall_time	3.573383e-05	3.557929e-05	3.597510e-05	5.538288e-03	30	2
 strip_parse/parse_tui_frame_iter	alloc_words	3.748000e+03	3.748000e+03	3.748000e+03	0.000000e+00	30	0
-strip_parse/parse_tui_frame_iter	cpu_time	3.599992e-05	3.594484e-05	3.608894e-05	2.001417e-03	30	1
-strip_parse/parse_tui_frame_iter	wall_time	3.606177e-05	3.600309e-05	3.615029e-05	2.041034e-03	30	1
-strip_parse/strip_ansi_block	alloc_words	3.629000e+03	3.629000e+03	3.629000e+03	0.000000e+00	30	0
-strip_parse/strip_ansi_block	cpu_time	2.096267e-05	2.089696e-05	2.104163e-05	3.450482e-03	30	0
-strip_parse/strip_ansi_block	wall_time	2.106352e-05	2.097708e-05	2.116434e-05	4.445027e-03	30	0
+strip_parse/parse_tui_frame_iter	cpu_time	3.518170e-05	3.494785e-05	3.534360e-05	5.624322e-03	30	0
+strip_parse/parse_tui_frame_iter	wall_time	3.519363e-05	3.495465e-05	3.537214e-05	5.931276e-03	30	0
+strip_parse/strip_ansi_block	alloc_words	3.917000e+03	3.917000e+03	3.917000e+03	0.000000e+00	38	1
+strip_parse/strip_ansi_block	cpu_time	2.352541e-05	2.334860e-05	2.365013e-05	6.408622e-03	38	1
+strip_parse/strip_ansi_block	wall_time	2.362550e-05	2.345755e-05	2.377830e-05	6.788137e-03	38	1
 strip_parse/strip_plain_block	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	30	0
-strip_parse/strip_plain_block	cpu_time	1.216600e-05	1.211058e-05	1.223367e-05	5.058434e-03	30	0
-strip_parse/strip_plain_block	wall_time	1.223104e-05	1.215385e-05	1.231686e-05	6.663691e-03	30	0
-styled/inline_styled	alloc_words	1.130000e+02	1.130000e+02	1.130000e+02	0.000000e+00	47	3
-styled/inline_styled	cpu_time	3.422040e-07	3.401818e-07	3.437553e-07	5.221252e-03	47	1
-styled/inline_styled	wall_time	3.474705e-07	3.413769e-07	3.550370e-07	1.965644e-02	47	4
-styled/render_log_segments	alloc_words	3.030000e+02	3.030000e+02	3.030000e+02	0.000000e+00	30	0
-styled/render_log_segments	cpu_time	1.225628e-06	1.214320e-06	1.241504e-06	1.108969e-02	30	1
-styled/render_log_segments	wall_time	1.238785e-06	1.216970e-06	1.272470e-06	2.240120e-02	30	1
+strip_parse/strip_plain_block	cpu_time	1.188280e-05	1.180666e-05	1.196168e-05	6.522628e-03	30	1
+strip_parse/strip_plain_block	wall_time	1.202543e-05	1.182133e-05	1.229756e-05	1.980108e-02	30	1
+styled/inline_styled	alloc_words	1.140000e+02	1.140000e+02	1.140000e+02	0.000000e+00	41	2
+styled/inline_styled	cpu_time	3.745586e-07	3.717830e-07	3.788934e-07	9.491739e-03	41	1
+styled/inline_styled	wall_time	3.790984e-07	3.725536e-07	3.906583e-07	2.387861e-02	41	2
+styled/render_log_segments	alloc_words	3.060000e+02	3.060000e+02	3.060000e+02	0.000000e+00	30	0
+styled/render_log_segments	cpu_time	1.388602e-06	1.384006e-06	1.394191e-06	3.667169e-03	30	0
+styled/render_log_segments	wall_time	1.392051e-06	1.387223e-06	1.398490e-06	4.046869e-03	30	0

@@ -12,12 +12,10 @@
 
 (test
  (name bench_grid)
- (modules bench_grid)
  (libraries thumper matrix.grid matrix.ansi))
 
 (test
  (name bench_screen)
- (modules bench_screen)
  (libraries thumper matrix.screen matrix.grid matrix.ansi))
 
 (rule

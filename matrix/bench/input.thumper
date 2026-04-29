@@ -6,7 +6,7 @@
 # ocaml: 5.4.1
 # git: 482a837d
 # dirty: true
-# command: /Users/tmattio/Workspace/mosaic/_build/default/matrix/bench/bench_input.exe --ci --bless --baseline matrix/bench/input.thumper
+# command: _build/default/matrix/bench/bench_input.exe --ci --bless --baseline matrix/bench/input.thumper
 
 input/keyboard_kitty-hot	alloc_words	2.549840e+05	2.549840e+05	2.549840e+05	0.000000e+00	55	4
 input/keyboard_kitty-hot	cpu_time	2.701032e-04	2.697518e-04	2.705436e-04	1.465698e-03	55	5
