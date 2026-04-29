@@ -1,4 +1,4 @@
-(* Generate pre-computed Unicode property table for matrix.glyph.
+(* Generate pre-computed Unicode property table for matrix.text.
 
    Packs all Unicode properties needed for grapheme segmentation and width
    calculation into a two-level page table with block deduplication. Each
@@ -193,7 +193,7 @@ let write_ml oc =
   write_string_literal oc "prop_index" index;
   write_string_literal oc "prop_data" data
 
-let file = "matrix/lib/glyph/unicode_data"
+let file = "matrix/lib/text/unicode_data"
 
 let () =
   Format.printf "Dumping Unicode v%s data to %s.@." Uucp.unicode_version file;

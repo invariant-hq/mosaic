@@ -42,7 +42,7 @@ type t = {
   mutable default_style : Ansi.Style.t;
   mutable highlights : Highlight.t list;
   mutable tab_width : int;
-  mutable width_method : Glyph.width_method;
+  mutable width_method : Matrix.Text.width_method;
   mutable cached_plain_text : string option;
   mutable cached_lines : line_cache option;
   mutable cached_grapheme_count : int option;
@@ -139,10 +139,10 @@ let ensure_grapheme_offsets t =
   | Some offsets -> offsets
   | None ->
       let full = plain_text t in
-      let n = Glyph.String.grapheme_count full in
+      let n = Matrix.Text.grapheme_count full in
       let offsets = Array.make (n + 1) (String.length full) in
       let idx = ref 0 in
-      Glyph.String.iter_graphemes
+      Matrix.Text.iter_graphemes
         (fun ~offset ~len:_ ->
           offsets.(!idx) <- offset;
           incr idx)
@@ -181,7 +181,7 @@ let compute_lines t =
     }
   else begin
     let breaks = ref [] in
-    Glyph.String.iter_line_breaks
+    Matrix.Text.iter_line_breaks
       (fun ~pos ~kind -> breaks := (pos, kind) :: !breaks)
       full_text;
     let breaks = List.rev !breaks in
@@ -207,7 +207,7 @@ let compute_lines t =
       let w =
         if len = 0 then 0
         else
-          Glyph.String.measure_sub ~width_method ~tab_width full_text ~pos ~len
+          Matrix.Text.measure_sub ~width_method ~tab_width full_text ~pos ~len
       in
       widths.(i) <- w;
       if w > !max_w then max_w := w

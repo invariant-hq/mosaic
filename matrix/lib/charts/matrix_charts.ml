@@ -330,7 +330,7 @@ module Overlay = struct
       ~y2 =
     let style = Option.value style ~default:layout.theme.labels in
     let ch = layout.theme.charset in
-    let line_glyphs : G.line_glyphs =
+    let line_symbols : G.line_symbols =
       {
         G.h = ch.frame.h;
         v = ch.frame.v;
@@ -341,8 +341,8 @@ module Overlay = struct
     let px1, py1 = Layout.px_of_data layout ~x:x1 ~y:y1 in
     let px2, py2 = Layout.px_of_data layout ~x:x2 ~y:y2 in
     let rect = Layout.plot_rect layout in
-    G.draw_line grid ~x1:px1 ~y1:py1 ~x2:px2 ~y2:py2 ~style ~glyphs:line_glyphs
-      ~kind:`Line ();
+    G.draw_line grid ~x1:px1 ~y1:py1 ~x2:px2 ~y2:py2 ~style
+      ~symbols:line_symbols ~kind:`Line ();
     if Layout.rect_contains rect ~x:px2 ~y:py2 then
       match head with
       | `None -> ()

@@ -116,11 +116,7 @@ let init () =
   (* Enable text input *)
   Sdl.start_text_input ();
 
-  let view_grid =
-    Grid.create ~width:term_cols ~height:term_rows
-      ~glyph_pool:(Grid.glyph_pool (Vte.grid vte))
-      ()
-  in
+  let view_grid = Grid.create ~width:term_cols ~height:term_rows () in
 
   {
     window;

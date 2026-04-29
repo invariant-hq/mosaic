@@ -455,9 +455,9 @@ let set_on_expand t cb = t.on_expand <- cb
 
 (* ───── Rendering Helpers ───── *)
 
-let draw_glyph grid ~x ~y ~fg ~bg uch =
-  let glyph = Glyph.of_uchar uch in
-  Grid.set_cell grid ~x ~y ~glyph ~fg ~bg ~attrs:Ansi.Attr.empty ()
+let draw_cell grid ~x ~y ~fg ~bg uch =
+  let cell = Grid.Cell.of_uchar uch in
+  Grid.set_cell grid ~x ~y ~cell ~fg ~bg ~attrs:Ansi.Attr.empty ()
 
 (* ───── Key Handling ───── *)
 
@@ -595,7 +595,7 @@ let render t _self grid ~delta:_ =
             | continues :: rest ->
                 let gx = (entry.depth - 1 - d) * t.props.indent_size in
                 if continues && gx >= 0 && gx < width then
-                  draw_glyph grid ~x:gx ~y:row ~fg:guide_fg ~bg:guide_bg
+                  draw_cell grid ~x:gx ~y:row ~fg:guide_fg ~bg:guide_bg
                     border.vertical;
                 draw_guides rest (d + 1)
           in
@@ -606,12 +606,12 @@ let render t _self grid ~delta:_ =
             let connector =
               if entry.is_last_child then border.bottom_left else border.left_t
             in
-            draw_glyph grid ~x:branch_x ~y:row ~fg:guide_fg ~bg:guide_bg
+            draw_cell grid ~x:branch_x ~y:row ~fg:guide_fg ~bg:guide_bg
               connector;
             (* Horizontal segment *)
             let hx = branch_x + 1 in
             if hx < width && hx < indent then
-              draw_glyph grid ~x:hx ~y:row ~fg:guide_fg ~bg:guide_bg
+              draw_cell grid ~x:hx ~y:row ~fg:guide_fg ~bg:guide_bg
                 border.horizontal));
 
         (* Icon *)

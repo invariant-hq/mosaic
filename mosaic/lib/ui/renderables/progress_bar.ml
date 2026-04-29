@@ -66,9 +66,9 @@ let render_horizontal t grid =
     Grid.fill_rect grid ~x ~y ~width:full_cells ~height:h
       ~color:t.props.filled_color;
   if has_half && full_cells < w then
-    let glyph = Glyph.of_uchar (Uchar.of_int 0x258C) in
+    let cell = Grid.Cell.of_uchar (Uchar.of_int 0x258C) in
     for row = 0 to h - 1 do
-      Grid.set_cell ~blend:true grid ~x:(x + full_cells) ~y:(y + row) ~glyph
+      Grid.set_cell ~blend:true grid ~x:(x + full_cells) ~y:(y + row) ~cell
         ~fg:t.props.filled_color ~bg:t.props.empty_color ~attrs:Ansi.Attr.empty
         ()
     done
@@ -92,9 +92,9 @@ let render_vertical t grid =
       ~width:w ~height:full_cells ~color:t.props.filled_color;
   if has_half && full_cells < h then
     let boundary_y = y + h - full_cells - 1 in
-    let glyph = Glyph.of_uchar (Uchar.of_int 0x2584) in
+    let cell = Grid.Cell.of_uchar (Uchar.of_int 0x2584) in
     for col = 0 to w - 1 do
-      Grid.set_cell ~blend:true grid ~x:(x + col) ~y:boundary_y ~glyph
+      Grid.set_cell ~blend:true grid ~x:(x + col) ~y:boundary_y ~cell
         ~fg:t.props.filled_color ~bg:t.props.empty_color ~attrs:Ansi.Attr.empty
         ()
     done

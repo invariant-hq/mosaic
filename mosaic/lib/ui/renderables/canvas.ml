@@ -38,11 +38,11 @@ let draw_box t ~x ~y ~width ~height ?border ?sides ?style ?fill ?title
   Grid.draw_box t.grid ~x ~y ~width ~height ?border ?sides ?style ?fill ?title
     ?title_alignment ?title_style ()
 
-let draw_line t ~x1 ~y1 ~x2 ~y2 ?style ?glyphs ?kind () =
-  Grid.draw_line t.grid ~x1 ~y1 ~x2 ~y2 ?style ?glyphs ?kind ()
+let draw_line t ~x1 ~y1 ~x2 ~y2 ?style ?symbols ?kind () =
+  Grid.draw_line t.grid ~x1 ~y1 ~x2 ~y2 ?style ?symbols ?kind ()
 
-let set_cell t ~x ~y ~glyph ~fg ~bg ~attrs ?link ?blend () =
-  Grid.set_cell t.grid ~x ~y ~glyph ~fg ~bg ~attrs ?link ?blend ()
+let set_cell t ~x ~y ~cell ~fg ~bg ~attrs ?link ?blend () =
+  Grid.set_cell t.grid ~x ~y ~cell ~fg ~bg ~attrs ?link ?blend ()
 
 let clear ?color t =
   Grid.clear ?color t.grid;
@@ -73,13 +73,10 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?respect_alpha
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
-  (* Share the tree's glyph pool for efficient cross-grid blit. *)
-  let glyph_pool = Renderable.Private.glyph_pool node in
   let respect_alpha = Option.value ~default:false respect_alpha in
   (* 1×1 placeholder; resized to match layout on the first render pass. *)
   let grid =
-    Grid.create ~width:1 ~height:1 ?glyph_pool ~width_method:`Unicode
-      ~respect_alpha ()
+    Grid.create ~width:1 ~height:1 ~width_method:`Unicode ~respect_alpha ()
   in
   let props = Props.make ~respect_alpha () in
   let t = { node; grid; props; on_draw = None; on_resize = None } in

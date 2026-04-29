@@ -34,8 +34,7 @@ type t
 
 val create :
   ?scrollback:int ->
-  ?glyph_pool:Glyph.Pool.t ->
-  ?width_method:Glyph.width_method ->
+  ?width_method:Text.width_method ->
   ?respect_alpha:bool ->
   ?default_fg:Ansi.Color.t ->
   ?default_bg:Ansi.Color.t ->
@@ -47,11 +46,8 @@ val create :
     - [scrollback] is the maximum number of scrollback lines stored in a ring
       buffer. Defaults to [10000]. Use [0] to disable. Only applies to the
       primary screen.
-    - [glyph_pool] is a shared grapheme pool for multi-width character storage.
-      If omitted a fresh pool is created and shared between both grids and the
-      scrollback.
     - [width_method] is the grapheme width computation method. Defaults to
-      [`Unicode]. See {!Glyph.width_method}.
+      [`Unicode].
     - [respect_alpha] enables alpha blending for semi-transparent colours.
       Defaults to [false].
     - [default_fg] is the opaque foreground colour used when the current style

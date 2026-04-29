@@ -306,8 +306,8 @@ let set_cell_writes_glyph () =
   let parent_grid = make_grid ~width:80 ~height:24 () in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
   Renderable.Private.render node parent_grid ~delta:0.;
-  let glyph = Glyph.of_uchar (Uchar.of_char 'Z') in
-  Canvas.set_cell canvas ~x:1 ~y:2 ~glyph ~fg:Ansi.Color.Red ~bg:Ansi.Color.Blue
+  let cell = Grid.Cell.of_uchar (Uchar.of_char 'Z') in
+  Canvas.set_cell canvas ~x:1 ~y:2 ~cell ~fg:Ansi.Color.Red ~bg:Ansi.Color.Blue
     ~attrs:Ansi.Attr.empty ();
   let g = Canvas.grid canvas in
   let idx = Grid.idx g ~x:1 ~y:2 in
@@ -412,7 +412,7 @@ let () =
         [
           test "draw_text writes to grid" draw_text_writes_to_grid;
           test "fill_rect fills cells" fill_rect_fills_cells;
-          test "set_cell writes glyph" set_cell_writes_glyph;
+          test "set_cell writes cell" set_cell_writes_glyph;
           test "width/height accessors" width_height_accessors;
         ];
       group "on_draw"

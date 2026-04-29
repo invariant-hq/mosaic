@@ -23,17 +23,10 @@ type t
 (** {1:constructors Constructors} *)
 
 val create :
-  ?glyph_pool:Glyph.Pool.t ->
-  ?width_method:Glyph.width_method ->
-  ?style:Toffee.Style.t ->
-  unit ->
-  t
+  ?width_method:Matrix.Text.width_method -> ?style:Toffee.Style.t -> unit -> t
 (** [create ()] is a renderer with a root renderable and an empty screen. The
     optional parameters are:
-    - [glyph_pool]: the shared glyph pool for text rendering. Defaults to a
-      fresh {!Glyph.Pool.t}.
-    - [width_method]: the glyph width computation method. Defaults to the
-      {!Glyph.width_method} default.
+    - [width_method]: the text width computation method. Defaults to [`Unicode].
     - [style]: the root node's initial style. Defaults to
       {!Toffee.Style.default}. *)
 
@@ -44,9 +37,6 @@ val root : t -> Renderable.t
 
 val screen : t -> Screen.t
 (** [screen t] is the underlying screen. *)
-
-val glyph_pool : t -> Glyph.Pool.t
-(** [glyph_pool t] is the shared glyph pool for text rendering. *)
 
 (** {1:rendering Rendering} *)
 

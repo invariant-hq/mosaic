@@ -44,7 +44,7 @@ let draw_pixel grid ~x ~y ~color ~alpha =
   else
     (* Use alpha blending *)
     let bg = color_with_alpha color alpha in
-    Grid.set_cell grid ~x ~y ~glyph:Glyph.space ~fg:Ansi.Color.white ~bg
+    Grid.set_cell grid ~x ~y ~cell:Grid.Cell.space ~fg:Ansi.Color.white ~bg
       ~attrs:Ansi.Attr.empty ~blend:true ()
 
 let draw_brush grid ~cx ~cy ~brush =

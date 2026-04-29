@@ -7,7 +7,7 @@
   toffee
   cmarkit
   matrix.ansi
+  matrix
   matrix.input
   matrix.grid
-  matrix.glyph
   matrix.screen))

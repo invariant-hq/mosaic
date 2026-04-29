@@ -65,5 +65,4 @@ let border_of node = Toffee.Style.border (Renderable.style node)
 (* ── Grid ── *)
 
 let make_grid ?(width = 80) ?(height = 24) () =
-  Grid.create ~width ~height ~glyph_pool:(Glyph.Pool.create ())
-    ~width_method:`Unicode ~respect_alpha:false ()
+  Grid.create ~width ~height ~width_method:`Unicode ~respect_alpha:false ()

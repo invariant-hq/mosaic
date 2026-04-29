@@ -7,12 +7,6 @@
  (libraries windtrap ansi))
 
 (test
- (name test_glyph)
- (package matrix)
- (modules test_glyph)
- (libraries windtrap glyph))
-
-(test
  (name test_text)
  (package matrix)
  (modules test_text)
@@ -22,7 +16,7 @@
  (name test_grid)
  (package matrix)
  (modules test_grid)
- (libraries windtrap grid glyph ansi))
+ (libraries windtrap grid text ansi))
 
 (test
  (name test_input)
@@ -52,7 +46,7 @@
  (name test_screen)
  (package matrix)
  (modules test_screen)
- (libraries windtrap str screen grid glyph ansi terminal unix input))
+ (libraries windtrap str screen grid ansi terminal unix input))
 
 (test
  (name test_runtime)

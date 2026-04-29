@@ -3,7 +3,7 @@
 module I = Input
 open Thumper
 
-(* Helpers (copied from bench_glyph for consistency) *)
+(* Helpers shared with text benchmarks for consistency. *)
 
 let repeat chunk count =
   let buffer = Buffer.create (String.length chunk * count) in

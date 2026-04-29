@@ -17,10 +17,10 @@ let text_width_method_is_applied_during_render () =
 
   Image.render grid img;
 
-  let start0 = Grid.get_glyph grid (Grid.idx grid ~x:0 ~y:0) in
-  let start2 = Grid.get_glyph grid (Grid.idx grid ~x:2 ~y:0) in
-  is_true ~msg:"first grapheme start written" (start0 <> Glyph.space);
-  is_true ~msg:"second grapheme start written at x=2" (start2 <> Glyph.space);
+  let start0 = Grid.get_cell grid (Grid.idx grid ~x:0 ~y:0) in
+  let start2 = Grid.get_cell grid (Grid.idx grid ~x:2 ~y:0) in
+  is_true ~msg:"first grapheme start written" (start0 <> Grid.Cell.space);
+  is_true ~msg:"second grapheme start written at x=2" (start2 <> Grid.Cell.space);
   is_true ~msg:"render restores grid width method"
     (Grid.width_method grid = `Unicode)
 

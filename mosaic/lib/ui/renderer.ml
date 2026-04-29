@@ -16,7 +16,6 @@ type t = {
   screen : Screen.t;
   root : Renderable.t;
   tree : unit Toffee.tree;
-  glyph_pool : Glyph.Pool.t;
   (* Node registry: maps numeric IDs to renderables for hit testing. *)
   node_map : (int, Renderable.t) Hashtbl.t;
   (* Reverse index: maps Toffee.Node_id index to renderable for O(1) measure
@@ -418,12 +417,9 @@ let dispatch_mouse_internal t ~x ~y ~modifiers kind =
 
 (* ───── Creation ───── *)
 
-let create ?glyph_pool ?width_method ?style () =
+let create ?width_method ?style () =
   let tree = Toffee.new_tree () in
-  let screen = Screen.create ?glyph_pool ?width_method ~respect_alpha:true () in
-  let pool =
-    match glyph_pool with Some p -> p | None -> Screen.glyph_pool screen
-  in
+  let screen = Screen.create ?width_method ~respect_alpha:true () in
   let node_map = Hashtbl.create 256 in
   let toffee_map = Hashtbl.create 256 in
   let lifecycle_set = Hashtbl.create 16 in
@@ -488,8 +484,7 @@ let create ?glyph_pool ?width_method ?style () =
           Toffee.Style.default
   in
   let root =
-    Renderable.Private.create_root ctx ~style:root_style ~glyph_pool:pool
-      ~id:"root" ()
+    Renderable.Private.create_root ctx ~style:root_style ~id:"root" ()
   in
   Renderable.Private.set_is_root root true;
   Hashtbl.replace node_map (Renderable.Private.num root) root;
@@ -500,7 +495,6 @@ let create ?glyph_pool ?width_method ?style () =
     screen;
     root;
     tree;
-    glyph_pool = pool;
     node_map;
     toffee_map;
     dirty;
@@ -524,7 +518,6 @@ let create ?glyph_pool ?width_method ?style () =
 
 let root t = t.root
 let screen t = t.screen
-let glyph_pool t = t.glyph_pool
 let focused t = !(t.focused)
 let blur t = blur_current t
 let focus t node = focus_node t node
@@ -709,11 +702,12 @@ let dispatch_mouse t (mouse : Input.Mouse.event) =
       in
       dispatch_mouse_internal t ~x ~y ~modifiers
         (Event.Mouse.Up { button; is_dragging = false })
-  | Input.Mouse.Move -> dispatch_mouse_internal t ~x ~y ~modifiers Event.Mouse.Move
+  | Input.Mouse.Move ->
+      dispatch_mouse_internal t ~x ~y ~modifiers Event.Mouse.Move
   | Input.Mouse.Drag { button } ->
       dispatch_mouse_internal t ~x ~y ~modifiers
         (Event.Mouse.Drag { button = map_button button; is_dragging = true })
-  | Input.Mouse.Scroll { direction; delta } ->
+  | Input.Mouse.Scroll { direction; delta } -> (
       let hit_num = Screen.query_hit t.screen ~x ~y in
       let target_node = if hit_num > 0 then find_node t hit_num else None in
       let target_id = Option.map Renderable.Private.num target_node in
@@ -721,7 +715,7 @@ let dispatch_mouse t (mouse : Input.Mouse.event) =
         Event.Mouse.make ~x ~y ~modifiers ?target:target_id
           (Event.Mouse.Scroll { direction; delta })
       in
-      (match target_node with
+      match target_node with
       | Some node -> Renderable.Private.emit_mouse node ev
       | None -> ())
 

@@ -20,7 +20,7 @@ type primitive =
       y : int;
       lines : string array;
       style : Style.t;
-      width_method : Glyph.width_method;
+      width_method : Text.width_method;
       clip : Grid.region option;
     }
   | P_box of {
@@ -127,7 +127,7 @@ let make_text ~style ~width_method lines =
   | _ ->
       let widths =
         List.map
-          (fun line -> Glyph.String.measure ~width_method ~tab_width:2 line)
+          (fun line -> Text.measure ~width_method ~tab_width:2 line)
           lines
       in
       let width = List.fold_left max 0 widths in

@@ -219,7 +219,7 @@ let safe_view_range (a : float) (b : float) =
 let safe_range = safe_domain_range
 
 let text_width (s : string) : int =
-  Glyph.String.measure ~width_method:`Unicode ~tab_width:2 s
+  Text.measure ~width_method:`Unicode ~tab_width:2 s
 
 let lerp a b t = a +. ((b -. a) *. t)
 

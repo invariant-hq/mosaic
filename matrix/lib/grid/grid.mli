@@ -1,13 +1,13 @@
 (** Mutable grid of terminal cells.
 
-    A grid is a two-dimensional framebuffer where each cell stores a character
-    ({!Glyph.t}), foreground and background colors (RGBA), text attributes, and
-    a hyperlink. Backed by bigarrays for cache-friendly access.
+    A grid is a two-dimensional framebuffer where each cell stores character
+    content, foreground and background colors (RGBA), text attributes, and a
+    hyperlink. Backed by bigarrays for cache-friendly access.
 
     Single codepoints are stored directly as packed integers. Multi-codepoint
-    grapheme clusters (ZWJ emoji, combining characters) are interned in a
-    reference-counted {!Glyph.Pool.t}. Wide characters span multiple cells: a
-    start cell followed by continuation markers.
+    grapheme clusters (ZWJ emoji, combining characters) are stored in grid-owned
+    grapheme storage. Wide characters span multiple cells: a start cell followed
+    by continuation markers.
 
     When {!respect_alpha} is enabled, colors with alpha < 1.0 are blended with
     existing cell colors using a perceptual curve. A stack of {e scissor}
@@ -16,6 +16,65 @@
     with it to keep the row well-formed. *)
 
 (** {1:types Types} *)
+
+module Cell : sig
+  (** Packed terminal cell content.
+
+      [Cell] values describe the character stored in one grid cell. Simple cells
+      store one Unicode scalar directly. Complex cells are opaque references to
+      grid-owned storage and are meaningful only inside the grid that created
+      them. *)
+
+  type t
+  (** The type for packed cell content. *)
+
+  val empty : t
+  (** [empty] is the zero-width empty cell content. *)
+
+  val space : t
+  (** [space] is U+0020. *)
+
+  val of_uchar : Uchar.t -> t
+  (** [of_uchar u] is the single-codepoint cell content for [u], or {!empty}
+      when [u] has zero terminal width. *)
+
+  val is_empty : t -> bool
+  (** [is_empty c] is [true] iff [c] is {!empty}. *)
+
+  val is_inline : t -> bool
+  (** [is_inline c] is [true] iff [c] stores its Unicode scalar directly and
+      needs no grid-owned storage lookup. *)
+
+  val is_start : t -> bool
+  (** [is_start c] is [true] iff [c] is a simple cell or the first cell of a
+      complex grapheme span. *)
+
+  val is_continuation : t -> bool
+  (** [is_continuation c] is [true] iff [c] is a continuation cell in a wide
+      grapheme span. *)
+
+  val is_complex : t -> bool
+  (** [is_complex c] is [true] iff [c] references grid-owned storage. *)
+
+  val grapheme_width : ?tab_width:int -> t -> int
+  (** [grapheme_width c] is the full terminal width represented by [c]. *)
+
+  val cell_width : t -> int
+  (** [cell_width c] is the width contribution of this one grid cell. *)
+
+  val left_extent : t -> int
+  (** [left_extent c] is the number of cells between continuation cell [c] and
+      its span start. It is [0] for non-continuation cells. *)
+
+  val right_extent : t -> int
+  (** [right_extent c] is the number of continuation cells to the right of [c].
+  *)
+
+  val codepoint : t -> int
+  (** [codepoint c] is the Unicode scalar value of an inline cell.
+
+      {b Warning.} The result is unspecified for complex cells. *)
+end
 
 type t
 (** The type for mutable cell grids. *)
@@ -30,15 +89,12 @@ type region = { x : int; y : int; width : int; height : int }
 val create :
   width:int ->
   height:int ->
-  ?glyph_pool:Glyph.Pool.t ->
-  ?width_method:Glyph.width_method ->
+  ?width_method:Text.width_method ->
   ?respect_alpha:bool ->
   unit ->
   t
 (** [create ~width ~height ()] is a grid with all cells set to spaces (white
     foreground, transparent background) with:
-    - [glyph_pool] shared grapheme storage. A fresh pool is allocated if
-      omitted.
     - [width_method] grapheme width method. Defaults to [`Unicode].
     - [respect_alpha] alpha blending on {!set_cell}. Defaults to [false].
 
@@ -52,13 +108,10 @@ val width : t -> int
 val height : t -> int
 (** [height g] is the grid height in cells. *)
 
-val glyph_pool : t -> Glyph.Pool.t
-(** [glyph_pool g] is the glyph pool used by [g]. *)
-
-val width_method : t -> Glyph.width_method
+val width_method : t -> Text.width_method
 (** [width_method g] is the current width computation method. *)
 
-val set_width_method : t -> Glyph.width_method -> unit
+val set_width_method : t -> Text.width_method -> unit
 (** [set_width_method g m] changes the width method for subsequent {!draw_text}
     calls. Existing cell widths are not updated. *)
 
@@ -81,11 +134,8 @@ val active_height : t -> int
 val idx : t -> x:int -> y:int -> int
 (** [idx g ~x ~y] is the flat index for cell [(x, y)]. No bounds checking. *)
 
-val get_code : t -> int -> int
-(** [get_code g idx] is the cell code at [idx]. *)
-
-val get_glyph : t -> int -> Glyph.t
-(** [get_glyph g idx] is the glyph at [idx]. *)
+val get_cell : t -> int -> Cell.t
+(** [get_cell g idx] is the character content at [idx]. *)
 
 val get_attrs : t -> int -> int
 (** [get_attrs g idx] is the packed attribute integer at [idx]. *)
@@ -111,6 +161,15 @@ val get_text : t -> int -> string
 (** [get_text g idx] is the grapheme at [idx] as a string. Returns [""] for
     empty or continuation cells. *)
 
+val cell_text_length : t -> int -> int
+(** [cell_text_length g idx] is the number of UTF-8 bytes needed to encode the
+    cell content at [idx]. *)
+
+val blit_cell_text : t -> int -> bytes -> pos:int -> int
+(** [blit_cell_text g idx dst ~pos] writes the UTF-8 bytes for the cell content
+    at [idx] into [dst] starting at [pos] and returns the number of bytes
+    written. Returns [0] if [dst] has insufficient space. *)
+
 val get_style : t -> int -> Ansi.Style.t
 (** [get_style g idx] reconstructs the style at [idx]. *)
 
@@ -120,8 +179,8 @@ val get_background : t -> int -> Ansi.Color.t
 (** {1:predicates Predicates} *)
 
 val is_empty : t -> int -> bool
-(** [is_empty g idx] is [true] iff the cell is the null/empty glyph sentinel.
-    Different from a blank space cell ({!Glyph.space}), which is the default
+(** [is_empty g idx] is [true] iff the cell is the null/empty sentinel.
+    Different from a blank space cell ({!Cell.space}), which is the default
     content after {!create} and {!clear}. *)
 
 val is_continuation : t -> int -> bool
@@ -129,8 +188,7 @@ val is_continuation : t -> int -> bool
     wide character. *)
 
 val is_inline : t -> int -> bool
-(** [is_inline g idx] is [true] iff the cell needs no glyph pool lookup (ASCII
-    or single codepoint). *)
+(** [is_inline g idx] is [true] iff the cell needs no grapheme store lookup. *)
 
 val cell_width : t -> int -> int
 (** [cell_width g idx] is the display width of the cell (0 for
@@ -159,17 +217,17 @@ val resize : t -> width:int -> height:int -> unit
 
 val clear : ?color:Ansi.Color.t -> t -> unit
 (** [clear ~color g] resets all cells to spaces with white foreground and
-    [color] background. [color] defaults to transparent. Releases all glyph pool
-    references. The scissor stack is preserved. *)
+    [color] background. [color] defaults to transparent. Releases all stored
+    grapheme references. The scissor stack is preserved. *)
 
 val blit : src:t -> dst:t -> unit
 (** [blit ~src ~dst] copies all cell data from [src] to [dst], resizing [dst] to
-    match. When pools are shared, codes are copied verbatim. When pools differ,
-    each distinct grapheme is re-interned once. No alpha blending. *)
+    match. Graphemes are copied into [dst]'s storage as needed. No alpha
+    blending. *)
 
 val copy : t -> t
-(** [copy g] is a deep copy of [g] sharing the same glyph pool. The scissor
-    stack starts empty on the copy. *)
+(** [copy g] is a deep copy of [g]. The scissor stack starts empty on the copy.
+*)
 
 val blit_region :
   src:t ->
@@ -196,7 +254,7 @@ val fill_rect :
 (** [fill_rect g ~x ~y ~width ~height ~color] fills a rectangle:
     - Transparent (alpha ≈ 0): leaves cells unchanged.
     - Semi-transparent: blends over existing background.
-    - Opaque: overwrites entirely (space glyph, white foreground, [color]
+    - Opaque: overwrites entirely (space cell, white foreground, [color]
       background).
 
     Clipped to grid bounds and scissor. *)
@@ -225,7 +283,7 @@ val draw_text :
 
     When the resolved background has alpha < 1.0, colors are blended with
     existing cells. A space on a translucent background preserves the existing
-    glyph and tints its colors.
+    cell content and tints its colors.
 
     Respects the active scissor for start cells. If a wide character's start
     cell is visible, its continuation cells are written as well to preserve the
@@ -262,18 +320,18 @@ val draw_box :
 
     Respects the scissor. *)
 
-type line_glyphs = {
+type line_symbols = {
   h : string;  (** Horizontal segment. *)
   v : string;  (** Vertical segment. *)
   diag_up : string;  (** Diagonal up-right. *)
   diag_down : string;  (** Diagonal down-right. *)
 }
-(** The type for line drawing glyph sets. *)
+(** The type for line drawing symbol sets. *)
 
-val default_line_glyphs : line_glyphs
+val default_line_symbols : line_symbols
 (** Unicode box-drawing: ["─"], ["│"], ["╱"], ["╲"]. *)
 
-val ascii_line_glyphs : line_glyphs
+val ascii_line_symbols : line_symbols
 (** ASCII: ["-"], ["|"], ["/"], ["\\"]. *)
 
 val draw_line :
@@ -283,13 +341,13 @@ val draw_line :
   x2:int ->
   y2:int ->
   ?style:Ansi.Style.t ->
-  ?glyphs:line_glyphs ->
+  ?symbols:line_symbols ->
   ?kind:[ `Line | `Braille ] ->
   unit ->
   unit
 (** [draw_line g ~x1 ~y1 ~x2 ~y2 ()] draws a line using Bresenham's algorithm
     with:
-    - [\`Line] (default) uses box-drawing characters with per-step glyph
+    - [\`Line] (default) uses box-drawing characters with per-step symbol
       selection based on direction.
     - [\`Braille] uses 2×4 dot patterns that merge with existing braille cells,
       allowing multiple lines to share cells.
@@ -302,7 +360,7 @@ val set_cell :
   t ->
   x:int ->
   y:int ->
-  glyph:Glyph.t ->
+  cell:Cell.t ->
   fg:Ansi.Color.t ->
   bg:Ansi.Color.t ->
   attrs:Ansi.Attr.t ->
@@ -310,7 +368,7 @@ val set_cell :
   ?blend:bool ->
   unit ->
   unit
-(** [set_cell g ~x ~y ~glyph ~fg ~bg ~attrs ()] writes a single cell. [blend]
+(** [set_cell g ~x ~y ~cell ~fg ~bg ~attrs ()] writes a single cell. [blend]
     defaults to the grid's {!respect_alpha} setting; pass [~blend:true] to force
     blending.
 

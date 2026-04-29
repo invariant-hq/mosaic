@@ -148,17 +148,13 @@ let shortcut_matches_ctrl_base_key () =
   is_true ~msg:"base-layout fallback" (Shortcut.matches (Shortcut.ctrl 'c') ev)
 
 let shortcut_matches_legacy_shift_char () =
-  let ev =
-    char ~modifier:{ Input.Modifier.none with shift = true } 'A'
-  in
+  let ev = char ~modifier:{ Input.Modifier.none with shift = true } 'A' in
   is_true ~msg:"legacy uppercase fallback"
     (Shortcut.matches (Shortcut.char ~shift:true 'a') ev)
 
 let shortcut_alt_matches_matrix_alt_meta () =
   let ev =
-    char
-      ~modifier:{ Input.Modifier.none with alt = true; meta = true }
-      'x'
+    char ~modifier:{ Input.Modifier.none with alt = true; meta = true } 'x'
   in
   is_true ~msg:"Alt also requires Matrix meta"
     (Shortcut.matches (Shortcut.alt 'x') ev)

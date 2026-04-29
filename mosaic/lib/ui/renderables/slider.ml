@@ -132,9 +132,9 @@ let thumb_rect t =
 
 (* Rendering *)
 
-(* Pick the half-block glyph for a single cell along the primary axis.
+(* Pick the half-block cell for a single cell along the primary axis.
    [vthumb_start]/[vthumb_end] are in virtual (double-resolution) units. *)
-let thumb_glyph ~orientation ~vthumb_start ~vthumb_end real_pos =
+let thumb_cell ~orientation ~vthumb_start ~vthumb_end real_pos =
   let vcell_start = real_pos * 2 in
   let vcell_end = vcell_start + 2 in
   let ts = Int.max vthumb_start vcell_start in
@@ -151,7 +151,7 @@ let thumb_glyph ~orientation ~vthumb_start ~vthumb_end real_pos =
             if ts - vcell_start = 0 then 0x2580 (* ▀ *) else 0x2584 (* ▄ *)
           else 0x20 (* space — unreachable within thumb range *)
   in
-  Glyph.of_uchar (Uchar.of_int code)
+  Grid.Cell.of_uchar (Uchar.of_int code)
 
 let render t _self grid ~delta:_ =
   let w = Renderable.width t.node in
@@ -171,11 +171,9 @@ let render t _self grid ~delta:_ =
         let real_start = Int.max 0 (vthumb_start / 2) in
         let real_end = Int.min (w - 1) (((vthumb_end + 1) / 2) - 1) in
         for real_x = real_start to real_end do
-          let glyph =
-            thumb_glyph ~orientation ~vthumb_start ~vthumb_end real_x
-          in
+          let cell = thumb_cell ~orientation ~vthumb_start ~vthumb_end real_x in
           for row = 0 to h - 1 do
-            Grid.set_cell ~blend:true grid ~x:(x + real_x) ~y:(y + row) ~glyph
+            Grid.set_cell ~blend:true grid ~x:(x + real_x) ~y:(y + row) ~cell
               ~fg:thumb_color ~bg:track_color ~attrs:Ansi.Attr.empty ()
           done
         done
@@ -183,11 +181,9 @@ let render t _self grid ~delta:_ =
         let real_start = Int.max 0 (vthumb_start / 2) in
         let real_end = Int.min (h - 1) (((vthumb_end + 1) / 2) - 1) in
         for real_y = real_start to real_end do
-          let glyph =
-            thumb_glyph ~orientation ~vthumb_start ~vthumb_end real_y
-          in
+          let cell = thumb_cell ~orientation ~vthumb_start ~vthumb_end real_y in
           for col = 0 to w - 1 do
-            Grid.set_cell ~blend:true grid ~x:(x + col) ~y:(y + real_y) ~glyph
+            Grid.set_cell ~blend:true grid ~x:(x + col) ~y:(y + real_y) ~cell
               ~fg:thumb_color ~bg:track_color ~attrs:Ansi.Attr.empty ()
           done
         done

@@ -33,8 +33,7 @@ val create :
 (** [create ~parent ()] is a canvas node attached to [parent].
 
     The internal grid starts at 1x1 and is resized to match the node's layout
-    dimensions on the first render pass. The grid shares the parent's glyph pool
-    (if available) and uses [`Unicode] width computation.
+    dimensions on the first render pass and uses [`Unicode] width computation.
 
     Optional parameters:
     - [index] is the child index within [parent]. Defaults to appending at the
@@ -140,7 +139,7 @@ val draw_line :
   x2:int ->
   y2:int ->
   ?style:Ansi.Style.t ->
-  ?glyphs:Grid.line_glyphs ->
+  ?symbols:Grid.line_symbols ->
   ?kind:[ `Line | `Braille ] ->
   unit ->
   unit
@@ -150,8 +149,8 @@ val draw_line :
 
     Optional parameters:
     - [style] is the line style. Defaults to the empty style.
-    - [glyphs] is the glyph set used for line segments. Defaults to the standard
-      box-drawing characters.
+    - [symbols] is the symbol set used for line segments. Defaults to the
+      standard box-drawing characters.
     - [kind] is the line rendering mode. [`Line] uses box-drawing characters;
       [`Braille] uses Braille dot patterns. Defaults to [`Line]. *)
 
@@ -159,7 +158,7 @@ val set_cell :
   t ->
   x:int ->
   y:int ->
-  glyph:Glyph.t ->
+  cell:Grid.Cell.t ->
   fg:Ansi.Color.t ->
   bg:Ansi.Color.t ->
   attrs:Ansi.Attr.t ->
@@ -167,7 +166,7 @@ val set_cell :
   ?blend:bool ->
   unit ->
   unit
-(** [set_cell t ~x ~y ~glyph ~fg ~bg ~attrs ()] writes a single cell at column
+(** [set_cell t ~x ~y ~cell ~fg ~bg ~attrs ()] writes a single cell at column
     [x], row [y].
 
     See {!Grid.set_cell} for full semantics.

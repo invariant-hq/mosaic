@@ -1,5 +1,4 @@
 module Ansi = Ansi
-module Glyph = Glyph
 module Grid = Grid
 module Input = Input
 module Screen = Screen
@@ -480,17 +479,17 @@ let grid t = Screen.next_grid t.screen
 let hits t = Screen.next_hit_grid t.screen
 
 (* Ensure primary layout stays consistent. Grows the dynamic region when
-   content or hints require more rows than the live viewport. Returns a height
-   limit when the grid still exceeds the available space. *)
+   content or hints require more rows than the live viewport. Returns a render
+   height when the grid still exceeds the available space. *)
 let adjust_primary_layout t ~buf ~required_rows_hint =
   let active_rows = max 1 (Screen.active_height t.screen) in
-  let primary, plan, height_limit =
+  let primary, plan, render_height =
     Primary.apply_required_rows t.primary ~active_rows
       ~required_rows:required_rows_hint
   in
   t.primary <- primary;
   apply_primary_plan t ~buf plan;
-  match height_limit with
+  match render_height with
   | Some _ as limit -> limit
   | None ->
       let live_height = (Primary.live_region t.primary).height in
@@ -577,7 +576,7 @@ let submit ?primary_required_rows t =
     | `Primary -> flush_static_queue t ~buf
     | `Alt -> Buffer.add_string buf Ansi.(to_string home));
 
-    let render_height_limit =
+    let render_height =
       match t.config.mode with
       | `Primary ->
           adjust_primary_layout t ~buf ~required_rows_hint:primary_required_rows
@@ -601,17 +600,23 @@ let submit ?primary_required_rows t =
         Some (max 1 (Screen.active_height t.screen))
       else None
     in
-    let render_height_limit =
+    let render_height =
       match active_h with
       | Some active -> (
-          match render_height_limit with
+          match render_height with
           | Some limit -> Some (min limit active)
           | None -> Some active)
-      | None -> render_height_limit
+      | None -> render_height
+    in
+    let viewport =
+      match render_height with
+      | None -> None
+      | Some height ->
+          Some { Screen.y = Primary.render_offset t.primary; height }
     in
     let len =
-      Screen.render_to_bytes ~full:forced_full ?scroll_hint
-        ?height_limit:render_height_limit t.screen t.render_buffer
+      Screen.render_to_bytes ~full:forced_full ?scroll_hint ?viewport t.screen
+        t.render_buffer
     in
     if len > 0 then Buffer.add_subbytes buf t.render_buffer 0 len;
     (match active_h with
@@ -627,7 +632,7 @@ let submit ?primary_required_rows t =
     let cursor_max_row =
       match t.config.mode with
       | `Primary -> (
-          match render_height_limit with
+          match render_height with
           | Some limit -> max 1 limit
           | None -> (Primary.live_region t.primary).height)
       | `Alt -> t.height
@@ -942,7 +947,7 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
   in
   let render_buffer = Bytes.create (1024 * 1024 * 2) in
   let caps = Terminal.capabilities terminal in
-  let width_method : Glyph.width_method =
+  let width_method : Text.width_method =
     match caps.unicode_width with `Unicode -> `Unicode | `Wcwidth -> `Wcwidth
   in
   Screen.set_width_method screen width_method;

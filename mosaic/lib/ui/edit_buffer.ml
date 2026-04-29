@@ -24,7 +24,7 @@ let truncate_graphemes ~width_method ~tab_width s max_graphemes =
     let result_end = ref 0 in
     let idx = ref 0 in
     let truncated = ref false in
-    Glyph.String.iter_grapheme_info ~width_method ~tab_width
+    Matrix.Text.iter_grapheme_info ~width_method ~tab_width
       (fun ~offset:_ ~len ~width:_ ->
         if !idx < max_graphemes then result_end := !result_end + len
         else truncated := true;
@@ -58,13 +58,13 @@ type t = {
   mutable redo_stack : snapshot list;
   mutable cache : cache option;
   tab_width : int;
-  width_method : Glyph.width_method;
+  width_method : Matrix.Text.width_method;
 }
 
 (* ───── Cache ───── *)
 
 let build_cache ~width_method ~tab_width content =
-  let n = Glyph.String.grapheme_count content in
+  let n = Matrix.Text.grapheme_count content in
   let offsets = Array.make n 0 in
   let widths = Array.make n 0 in
   let idx = ref 0 in
@@ -72,12 +72,12 @@ let build_cache ~width_method ~tab_width content =
   let line_starts_rev = ref [ 0 ] in
   (* iter_grapheme_info skips zero-width graphemes (newlines, control chars), so
      we use iter_graphemes and measure_sub for per-grapheme width. *)
-  Glyph.String.iter_graphemes
+  Matrix.Text.iter_graphemes
     (fun ~offset ~len ->
       let i = !idx in
       offsets.(i) <- offset;
       let w =
-        Glyph.String.measure_sub ~width_method ~tab_width content ~pos:offset
+        Matrix.Text.measure_sub ~width_method ~tab_width content ~pos:offset
           ~len
       in
       widths.(i) <- w;
@@ -332,12 +332,12 @@ let truncate_to_fit t s =
   let remaining = t.max_length - c.count in
   if remaining <= 0 then ""
   else
-    let input_count = Glyph.String.grapheme_count s in
+    let input_count = Matrix.Text.grapheme_count s in
     if input_count <= remaining then s
     else begin
       let result_end = ref 0 in
       let idx = ref 0 in
-      Glyph.String.iter_grapheme_info ~width_method:t.width_method
+      Matrix.Text.iter_grapheme_info ~width_method:t.width_method
         ~tab_width:t.tab_width
         (fun ~offset:_ ~len ~width:_ ->
           if !idx < remaining then begin
@@ -367,7 +367,7 @@ let insert t s =
             String.sub t.content 0 byte_pos
             ^ s
             ^ String.sub t.content byte_pos (total_len - byte_pos);
-          let inserted_count = Glyph.String.grapheme_count s in
+          let inserted_count = Matrix.Text.grapheme_count s in
           t.cursor_pos <- t.cursor_pos + inserted_count;
           invalidate_cache t;
           true
@@ -386,7 +386,7 @@ let insert t s =
             String.sub t.content 0 byte_pos
             ^ s
             ^ String.sub t.content byte_pos (total_len - byte_pos);
-          let inserted_count = Glyph.String.grapheme_count s in
+          let inserted_count = Matrix.Text.grapheme_count s in
           t.cursor_pos <- t.cursor_pos + inserted_count;
           invalidate_cache t;
           true
@@ -418,7 +418,7 @@ let next_word_boundary t =
   let c = ensure_cache t in
   let result = ref c.count in
   let found = ref false in
-  Glyph.String.iter_wrap_breaks
+  Matrix.Text.iter_wrap_breaks
     (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
       let after = grapheme_offset + 1 in
       if (not !found) && after > t.cursor_pos then begin
@@ -430,7 +430,7 @@ let next_word_boundary t =
 
 let prev_word_boundary t =
   let result = ref 0 in
-  Glyph.String.iter_wrap_breaks
+  Matrix.Text.iter_wrap_breaks
     (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
       let after = grapheme_offset + 1 in
       if after < t.cursor_pos then result := after)
@@ -442,7 +442,7 @@ let prev_word_boundary t =
 (* Collect the set of grapheme offsets that are wrap-break characters. *)
 let break_set t =
   let s = Hashtbl.create 16 in
-  Glyph.String.iter_wrap_breaks
+  Matrix.Text.iter_wrap_breaks
     (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
       Hashtbl.replace s grapheme_offset ())
     t.content;

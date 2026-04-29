@@ -7,7 +7,6 @@
   matrix.terminal
   matrix.ansi
   matrix.grid
-  matrix.glyph
   matrix.screen
   matrix.input
   mosaic_ui

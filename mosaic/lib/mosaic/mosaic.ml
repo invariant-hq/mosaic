@@ -354,7 +354,6 @@ let serialize_grid_rows (grid : Matrix.Grid.t) ~rows =
     else
       let cropped =
         Matrix.Grid.create ~width ~height:rows
-          ~glyph_pool:(Matrix.Grid.glyph_pool grid)
           ~width_method:(Matrix.Grid.width_method grid)
           ()
       in
@@ -608,7 +607,6 @@ let run ?matrix
   in
   let renderer =
     Renderer.create ?style:renderer_style
-      ~glyph_pool:(Matrix.Grid.glyph_pool base_grid)
       ~width_method:(Matrix.Grid.width_method base_grid)
       ()
   in

@@ -60,7 +60,7 @@ let compute_max_width frames =
   Array.fold_left
     (fun acc frame ->
       Int.max acc
-        (Glyph.String.measure ~width_method:`Unicode ~tab_width:2 frame))
+        (Matrix.Text.measure ~width_method:`Unicode ~tab_width:2 frame))
     0 frames
 
 (* ───── Measure ───── *)

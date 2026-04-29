@@ -3,10 +3,6 @@
  (libraries thumper matrix.ansi))
 
 (executable
- (name bench_glyph)
- (libraries thumper matrix.glyph))
-
-(executable
  (name bench_text)
  (libraries thumper matrix.text))
 
@@ -17,12 +13,12 @@
 (executable
  (name bench_grid)
  (modules bench_grid)
- (libraries thumper matrix.grid matrix.glyph matrix.ansi))
+ (libraries thumper matrix.grid matrix.ansi))
 
 (executable
  (name bench_screen)
  (modules bench_screen)
- (libraries thumper matrix.screen matrix.grid matrix.glyph matrix.ansi))
+ (libraries thumper matrix.screen matrix.grid matrix.ansi))
 
 (rule
  (alias runtest)
@@ -30,13 +26,6 @@
   (progn
    (run %{exe:bench_ansi.exe} -q)
    (diff? ansi.thumper ansi.thumper.corrected))))
-
-(rule
- (alias runtest)
- (action
-  (progn
-   (run %{exe:bench_glyph.exe} -q)
-   (diff? glyph.thumper glyph.thumper.corrected))))
 
 (rule
  (alias runtest)

@@ -68,19 +68,16 @@ type frame_metrics = {
 (** {1:constructors Constructors} *)
 
 val create :
-  ?glyph_pool:Glyph.Pool.t ->
-  ?width_method:Glyph.width_method ->
+  ?width_method:Text.width_method ->
   ?respect_alpha:bool ->
   ?cursor_visible:bool ->
   ?explicit_width:bool ->
   unit ->
   t
-(** [create ~glyph_pool ~width_method ~respect_alpha ~cursor_visible
-     ~explicit_width ()] is a screen with:
-    - [glyph_pool] stores multi-width grapheme clusters. Defaults to a fresh
-      pool. Share a pool across screens to reduce memory for common text.
+(** [create ~width_method ~respect_alpha ~cursor_visible ~explicit_width ()] is
+    a screen with:
     - [width_method] is the character width computation method. Defaults to
-      [`Unicode]. See {!Glyph.width_method}.
+      [`Unicode].
     - [respect_alpha] enables alpha blending when drawing cells. Defaults to
       [false].
     - [cursor_visible] is the initial cursor visibility. Defaults to [true].
@@ -103,11 +100,6 @@ val build :
 
     {b Warning.} The {!Grid.t} and {!Hit_grid.t} passed to [f] must not be
     mutated after the next {!render} -- they become the diff baseline. *)
-
-(** {1:resources Shared resources} *)
-
-val glyph_pool : t -> Glyph.Pool.t
-(** [glyph_pool t] is the glyph pool shared by [t]'s grids. *)
 
 (** {1:effects Post-processing} *)
 
@@ -152,10 +144,20 @@ type scroll_hint = {
     sequences so only the newly-revealed edge rows need cell-level diffing.
     Without the hint, scrolling rewrites every row in the viewport. *)
 
+type viewport = {
+  y : int;  (** Zero-based terminal row offset of the rendered surface. *)
+  height : int;  (** Number of rows in the rendered surface. *)
+}
+(** A terminal viewport rendered by the screen.
+
+    [None] in {!render} and {!render_to_bytes} means render the full next grid
+    at the screen's current {!row_offset}. [Some v] renders the first [v.height]
+    grid rows at terminal row offset [v.y]. *)
+
 val render :
-  ?full:bool -> ?scroll_hint:scroll_hint -> ?height_limit:int -> t -> string
-(** [render ~full ~scroll_hint ~height_limit t] is the ANSI output for the
-    current frame.
+  ?full:bool -> ?scroll_hint:scroll_hint -> ?viewport:viewport -> t -> string
+(** [render ~full ~scroll_hint ~viewport t] is the ANSI output for the current
+    frame.
 
     Applies post-processors, diffs next against current (or renders all cells
     when [full] is [true]), then swaps buffers. Hit regions registered during
@@ -165,20 +167,21 @@ val render :
       The hint is a rectangular diff optimization; the caller is responsible for
       using it only when temporary scroll-region changes are safe for the
       current terminal transaction.
-    - [height_limit] limits rendering to the first [height_limit] rows.
+    - [viewport] renders into an explicit terminal surface. Rows outside the
+      viewport are not presented and do not become active hit regions.
 
     See also {!render_to_bytes}. *)
 
 val render_to_bytes :
   ?full:bool ->
   ?scroll_hint:scroll_hint ->
-  ?height_limit:int ->
+  ?viewport:viewport ->
   t ->
   Bytes.t ->
   int
-(** [render_to_bytes ~full ~scroll_hint ~height_limit t buf] is like {!render}
-    but writes into [buf] and is the number of bytes written. [buf] must be
-    large enough for the output. *)
+(** [render_to_bytes ~full ~scroll_hint ~viewport t buf] is like {!render} but
+    writes into [buf] and is the number of bytes written. [buf] must be large
+    enough for the output. *)
 
 (** {1:screen_state Screen state} *)
 
@@ -227,7 +230,7 @@ val apply_capabilities :
       drift in terminals that miscalculate grapheme display widths.
     - [hyperlinks]: whether the terminal supports OSC 8 hyperlinks. *)
 
-val set_width_method : t -> Glyph.width_method -> unit
+val set_width_method : t -> Text.width_method -> unit
 (** [set_width_method t m] sets the grapheme width computation method on both
     the current and next buffers. Use this after capability changes that affect
     width calculation to keep buffers consistent across swaps. *)

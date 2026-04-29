@@ -300,7 +300,7 @@ let apply_required_rows t ~active_rows ~required_rows =
             (Erase_line :: Move_cursor { row; col = 1 } :: acc)
       in
       let next = { t with render_offset = new_offset } in
-      let height_limit = if required > max_rows then Some max_rows else None in
+      let render_height = if required > max_rows then Some max_rows else None in
       ( next,
         {
           terminal_ops =
@@ -310,10 +310,10 @@ let apply_required_rows t ~active_rows ~required_rows =
           invalidate_presented = true;
           force_full_redraw = true;
         },
-        height_limit )
+        render_height )
     else
-      let height_limit = if required > max_rows then Some max_rows else None in
-      (t, empty_plan, height_limit)
+      let render_height = if required > max_rows then Some max_rows else None in
+      (t, empty_plan, render_height)
   else (t, empty_plan, None)
 
 let terminal_cursor_row t ~live_row ~live_height =

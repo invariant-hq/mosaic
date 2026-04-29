@@ -61,7 +61,7 @@ end
 
 val create :
   ?default_style:Ansi.Style.t ->
-  ?width_method:Glyph.width_method ->
+  ?width_method:Matrix.Text.width_method ->
   ?tab_width:int ->
   unit ->
   t
@@ -161,10 +161,10 @@ val set_tab_width : t -> int -> unit
 
 (** {1:width_method Width method} *)
 
-val width_method : t -> Glyph.width_method
+val width_method : t -> Matrix.Text.width_method
 (** [width_method t] is the grapheme width computation method. *)
 
-val set_width_method : t -> Glyph.width_method -> unit
+val set_width_method : t -> Matrix.Text.width_method -> unit
 (** [set_width_method t m] changes the width method. Invalidates cached line
     info if [m] differs from the current value. *)
 

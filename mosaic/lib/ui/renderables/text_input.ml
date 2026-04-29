@@ -175,7 +175,7 @@ let ensure_cursor_visible t =
 let measure t ~known_dimensions ~available_space:_ ~style:_ =
   let content_width = Edit_buffer.display_width t.buf in
   let placeholder_width =
-    Glyph.String.measure ~width_method:`Unicode ~tab_width:2 t.props.placeholder
+    Matrix.Text.measure ~width_method:`Unicode ~tab_width:2 t.props.placeholder
   in
   let intrinsic_width = Float.of_int (max content_width placeholder_width) in
   let width =
@@ -231,8 +231,7 @@ let render t _self grid ~delta:_ =
               (* Draw text in three segments: before selection, selection,
                  after *)
               let cache_ref = ref [] in
-              Glyph.String.iter_grapheme_info ~width_method:`Unicode
-                ~tab_width:2
+              Matrix.Text.iter_grapheme_info ~width_method:`Unicode ~tab_width:2
                 (fun ~offset ~len ~width ->
                   cache_ref := (offset, len, width) :: !cache_ref)
                 text;

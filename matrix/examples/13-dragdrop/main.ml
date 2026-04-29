@@ -91,7 +91,7 @@ let color_with_alpha color alpha =
 
 let draw_cell_alpha grid ~x ~y ~bg ~alpha =
   let bg_with_alpha = color_with_alpha bg alpha in
-  Grid.set_cell grid ~x ~y ~glyph:Glyph.space ~fg:Ansi.Color.white
+  Grid.set_cell grid ~x ~y ~cell:Grid.Cell.space ~fg:Ansi.Color.white
     ~bg:bg_with_alpha ~attrs:Ansi.Attr.empty ~blend:true ()
 
 let draw_box grid ~x ~y ~w ~h ~bg ~border_color ~title ~subtitle ~alpha =
@@ -294,8 +294,7 @@ let handle_input state event =
   | Input.Key { key = Input.Key.Char u; _ }
     when Uchar.to_int u = Char.code 'q' || Uchar.to_int u = Char.code 'Q' ->
       `Quit
-  | Input.Mouse
-      { Input.Mouse.x; y; kind = Down { button = Left }; _ } ->
+  | Input.Mouse { Input.Mouse.x; y; kind = Down { button = Left }; _ } ->
       state.mouse_x <- x;
       state.mouse_y <- y;
       state.mouse_left <- true;
@@ -303,8 +302,7 @@ let handle_input state event =
       | Some item -> start_drag state item ~mouse_x:x ~mouse_y:y
       | None -> ());
       `Continue
-  | Input.Mouse
-      { Input.Mouse.x; y; kind = Up { button = Some Left }; _ } ->
+  | Input.Mouse { Input.Mouse.x; y; kind = Up { button = Some Left }; _ } ->
       state.mouse_x <- x;
       state.mouse_y <- y;
       state.mouse_left <- false;

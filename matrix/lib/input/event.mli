@@ -293,8 +293,8 @@ module Mouse : sig
   type kind =
     | Down of { button : button }  (** Button pressed. *)
     | Up of { button : button option }
-        (** Button released. [button] is [None] for legacy protocols that do
-            not identify the released button. *)
+        (** Button released. [button] is [None] for legacy protocols that do not
+            identify the released button. *)
     | Move  (** Pointer moved with no tracked button pressed. *)
     | Drag of { button : button }  (** Pointer moved with [button] pressed. *)
     | Scroll of { direction : scroll_direction; delta : int }
@@ -307,14 +307,14 @@ module Mouse : sig
   val pp_kind : Format.formatter -> kind -> unit
   (** [pp_kind] formats mouse event kinds for debugging. *)
 
-  (** The type for mouse events. Coordinates are 0-based with top-left origin.
-  *)
   type event = {
     x : int;  (** Horizontal coordinate, 0-based. *)
     y : int;  (** Vertical coordinate, 0-based. *)
     modifiers : Modifier.t;  (** Active modifiers. *)
     kind : kind;  (** Button, motion, or scroll payload. *)
   }
+  (** The type for mouse events. Coordinates are 0-based with top-left origin.
+  *)
 
   val make : x:int -> y:int -> modifiers:Modifier.t -> kind -> event
   (** [make ~x ~y ~modifiers kind] is a mouse event. *)
@@ -505,7 +505,8 @@ val mouse_press : ?modifiers:Modifier.t -> int -> int -> Mouse.button -> t
 (** [mouse_press x y button] is a mouse button press. [modifiers] defaults to
     {!Modifier.none}. *)
 
-val mouse_release : ?modifiers:Modifier.t -> int -> int -> Mouse.button option -> t
+val mouse_release :
+  ?modifiers:Modifier.t -> int -> int -> Mouse.button option -> t
 (** [mouse_release x y button] is a mouse button release. [button] is [None]
     when the terminal protocol does not identify the released button.
     [modifiers] defaults to {!Modifier.none}. *)
@@ -515,11 +516,16 @@ val mouse_move : ?modifiers:Modifier.t -> int -> int -> t
     [modifiers] defaults to {!Modifier.none}. *)
 
 val mouse_drag : ?modifiers:Modifier.t -> int -> int -> Mouse.button -> t
-(** [mouse_drag x y button] is pointer motion with [button] pressed.
-    [modifiers] defaults to {!Modifier.none}. *)
+(** [mouse_drag x y button] is pointer motion with [button] pressed. [modifiers]
+    defaults to {!Modifier.none}. *)
 
 val mouse_scroll :
-  ?modifiers:Modifier.t -> ?delta:int -> int -> int -> Mouse.scroll_direction -> t
+  ?modifiers:Modifier.t ->
+  ?delta:int ->
+  int ->
+  int ->
+  Mouse.scroll_direction ->
+  t
 (** [mouse_scroll x y direction] is a scroll-wheel event. [delta] defaults to
     [1] and [modifiers] defaults to {!Modifier.none}. *)
 

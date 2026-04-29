@@ -9,15 +9,12 @@
 
     {1:sub_libraries Sub-libraries}
 
-    {!modules:Ansi Glyph Grid Input Screen Terminal Text Image} *)
+    {!modules:Ansi Grid Input Screen Terminal Text Image} *)
 
 (** {1:sub Sub-libraries} *)
 
 module Ansi = Ansi
 (** ANSI escape sequence generation. *)
-
-module Glyph = Glyph
-(** Unicode glyph measurement. *)
 
 module Grid = Grid
 (** Cell-based drawing grid. *)

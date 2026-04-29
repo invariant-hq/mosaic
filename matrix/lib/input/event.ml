@@ -332,20 +332,14 @@ module Mouse = struct
     | Scroll { direction; delta } ->
         Format.fprintf fmt "Scroll(%a,%d)" pp_scroll_direction direction delta
 
-  type event = {
-    x : int;
-    y : int;
-    modifiers : Modifier.t;
-    kind : kind;
-  }
+  type event = { x : int; y : int; modifiers : Modifier.t; kind : kind }
 
   let make ~x ~y ~modifiers kind = { x; y; modifiers; kind }
-
   let equal_event (a : event) (b : event) = a = b
 
   let pp_event fmt e =
-    Format.fprintf fmt "{x=%d; y=%d; modifiers=%a; kind=%a}" e.x e.y
-      Modifier.pp e.modifiers pp_kind e.kind
+    Format.fprintf fmt "{x=%d; y=%d; modifiers=%a; kind=%a}" e.x e.y Modifier.pp
+      e.modifiers pp_kind e.kind
 end
 
 module Response = struct
@@ -496,6 +490,4 @@ let is_scroll = function
   | Mouse { Mouse.kind = Scroll _; _ } -> true
   | _ -> false
 
-let is_drag = function
-  | Mouse { Mouse.kind = Drag _; _ } -> true
-  | _ -> false
+let is_drag = function Mouse { Mouse.kind = Drag _; _ } -> true | _ -> false

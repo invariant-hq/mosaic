@@ -185,21 +185,21 @@ module Canvas : sig
     x2:int ->
     y2:int ->
     ?style:Ansi.Style.t ->
-    ?glyphs:Matrix.Grid.line_glyphs ->
+    ?symbols:Matrix.Grid.line_symbols ->
     ?kind:[ `Line | `Braille ] ->
     unit ->
     unit
   (** [draw_line t ~x1 ~y1 ~x2 ~y2 ()] draws a line from [(x1, y1)] to
       [(x2, y2)].
       - [style] defaults to {!Ansi.Style.default}.
-      - [glyphs] defaults to standard box-drawing characters.
+      - [symbols] defaults to standard box-drawing characters.
       - [kind] defaults to [`Line]. Use [`Braille] for Braille dot patterns. *)
 
   val set_cell :
     t ->
     x:int ->
     y:int ->
-    glyph:Matrix.Glyph.t ->
+    cell:Matrix.Grid.Cell.t ->
     fg:Ansi.Color.t ->
     bg:Ansi.Color.t ->
     attrs:Ansi.Attr.t ->
@@ -207,7 +207,7 @@ module Canvas : sig
     ?blend:bool ->
     unit ->
     unit
-  (** [set_cell t ~x ~y ~glyph ~fg ~bg ~attrs ()] writes a single cell.
+  (** [set_cell t ~x ~y ~cell ~fg ~bg ~attrs ()] writes a single cell.
 
       [link] defaults to no hyperlink. [blend] defaults to the canvas
       {!respect_alpha} setting. *)

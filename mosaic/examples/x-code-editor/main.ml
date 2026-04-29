@@ -128,10 +128,10 @@ let completion_pool code =
   unique_sorted (ocaml_keywords @ collect_identifiers code)
 
 let grapheme_byte_offsets s =
-  let n = Glyph.String.grapheme_count s in
+  let n = Matrix.Text.grapheme_count s in
   let offsets = Array.make (n + 1) (String.length s) in
   let i = ref 0 in
-  Glyph.String.iter_graphemes
+  Matrix.Text.iter_graphemes
     (fun ~offset ~len:_ ->
       offsets.(!i) <- offset;
       incr i)
@@ -260,7 +260,7 @@ let apply_completion model c choice =
     |> recompute_completion
   else
     let code = insert_at_byte model.code ~byte:c.cursor_byte suffix in
-    let cursor = model.cursor + Glyph.String.grapheme_count suffix in
+    let cursor = model.cursor + Matrix.Text.grapheme_count suffix in
     {
       code;
       cursor;
@@ -323,7 +323,7 @@ let editor_on_key model ev =
 
 let init () =
   let code = ocaml_sample in
-  let cursor = Glyph.String.grapheme_count code in
+  let cursor = Matrix.Text.grapheme_count code in
   ( {
       code;
       cursor;

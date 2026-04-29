@@ -205,7 +205,7 @@ let clamp_index t idx =
 
 (* ───── Column Width Computation ───── *)
 
-let text_width s = Glyph.String.measure ~width_method:`Unicode ~tab_width:2 s
+let text_width s = Matrix.Text.measure ~width_method:`Unicode ~tab_width:2 s
 
 let compute_column_widths t ~available_width =
   let ncols = Array.length t.col_specs in
@@ -501,33 +501,33 @@ let handle_mouse t (event : Event.mouse) =
 
 (* ───── Rendering Helpers ───── *)
 
-let draw_glyph grid ~x ~y ~fg ~bg uch =
-  let glyph = Glyph.of_uchar uch in
-  Grid.set_cell grid ~x ~y ~glyph ~fg ~bg ~attrs:Ansi.Attr.empty ()
+let draw_cell grid ~x ~y ~fg ~bg uch =
+  let cell = Grid.Cell.of_uchar uch in
+  Grid.set_cell grid ~x ~y ~cell ~fg ~bg ~attrs:Ansi.Attr.empty ()
 
 let draw_hline grid ~border ~x ~y ~width ~left_cap ~right_cap ~cross
     ~show_col_sep ~col_widths ~fg ~bg =
   let right_edge = x + width - 1 in
   let horiz = border.Grid.Border.horizontal in
-  draw_glyph grid ~x ~y ~fg ~bg left_cap;
+  draw_cell grid ~x ~y ~fg ~bg left_cap;
   let cx = ref (x + 1) in
   let ncols = Array.length col_widths in
   for c = 0 to ncols - 1 do
     for _ = 1 to col_widths.(c) do
       if !cx < right_edge then (
-        draw_glyph grid ~x:!cx ~y ~fg ~bg horiz;
+        draw_cell grid ~x:!cx ~y ~fg ~bg horiz;
         incr cx)
     done;
     (* Always draw a junction/horizontal between adjacent columns *)
     if c < ncols - 1 && !cx < right_edge then (
-      draw_glyph grid ~x:!cx ~y ~fg ~bg (if show_col_sep then cross else horiz);
+      draw_cell grid ~x:!cx ~y ~fg ~bg (if show_col_sep then cross else horiz);
       incr cx)
   done;
   while !cx < right_edge do
-    draw_glyph grid ~x:!cx ~y ~fg ~bg horiz;
+    draw_cell grid ~x:!cx ~y ~fg ~bg horiz;
     incr cx
   done;
-  draw_glyph grid ~x:right_edge ~y ~fg ~bg right_cap
+  draw_cell grid ~x:right_edge ~y ~fg ~bg right_cap
 
 (* ───── Grapheme-Aware Text Truncation ───── *)
 
@@ -537,11 +537,11 @@ let crop_to_width text target_width =
     let result = Buffer.create (String.length text) in
     let current_width = ref 0 in
     let stop = ref false in
-    Glyph.String.iter_graphemes
+    Matrix.Text.iter_graphemes
       (fun ~offset ~len ->
         if not !stop then
           let g = String.sub text offset len in
-          let gw = Glyph.String.measure ~width_method:`Unicode ~tab_width:2 g in
+          let gw = Matrix.Text.measure ~width_method:`Unicode ~tab_width:2 g in
           if !current_width + gw <= target_width then (
             Buffer.add_string result g;
             current_width := !current_width + gw)
@@ -669,7 +669,7 @@ let render t _self grid ~delta:_ =
         ~width:(width - (2 * border_left))
         ~height:1 ~color:t.props.header_background;
       if border then
-        draw_glyph grid ~x:0 ~y:!cur_y ~fg:border_fg ~bg:border_bg
+        draw_cell grid ~x:0 ~y:!cur_y ~fg:border_fg ~bg:border_bg
           border_style.vertical;
       let cx = ref border_left in
       for c = 0 to ncols - 1 do
@@ -684,12 +684,12 @@ let render t _self grid ~delta:_ =
           cx := !cx + cw;
           if c < ncols - 1 then (
             if show_col_sep then
-              draw_glyph grid ~x:!cx ~y:!cur_y ~fg:border_fg ~bg:border_bg
+              draw_cell grid ~x:!cx ~y:!cur_y ~fg:border_fg ~bg:border_bg
                 border_style.vertical;
             incr cx))
       done;
       if border then
-        draw_glyph grid ~x:(width - 1) ~y:!cur_y ~fg:border_fg ~bg:border_bg
+        draw_cell grid ~x:(width - 1) ~y:!cur_y ~fg:border_fg ~bg:border_bg
           border_style.vertical;
       incr cur_y;
       (* Header separator *)
@@ -738,7 +738,7 @@ let render t _self grid ~delta:_ =
            | _ -> ());
         (* Left border *)
         if border then
-          draw_glyph grid ~x:0 ~y:!cur_y ~fg:border_fg ~bg:border_bg
+          draw_cell grid ~x:0 ~y:!cur_y ~fg:border_fg ~bg:border_bg
             border_style.vertical;
         (* Draw cells *)
         let row = t.data_rows.(i) in
@@ -764,13 +764,13 @@ let render t _self grid ~delta:_ =
             cx := !cx + cw;
             if c < ncols - 1 then (
               if show_col_sep then
-                draw_glyph grid ~x:!cx ~y:!cur_y ~fg:border_fg ~bg:border_bg
+                draw_cell grid ~x:!cx ~y:!cur_y ~fg:border_fg ~bg:border_bg
                   border_style.vertical;
               incr cx))
         done;
         (* Right border *)
         if border then
-          draw_glyph grid ~x:(width - 1) ~y:!cur_y ~fg:border_fg ~bg:border_bg
+          draw_cell grid ~x:(width - 1) ~y:!cur_y ~fg:border_fg ~bg:border_bg
             border_style.vertical;
         incr cur_y;
         (* Row separator *)

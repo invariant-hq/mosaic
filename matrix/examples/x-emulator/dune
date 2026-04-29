@@ -8,7 +8,7 @@
   matrix.pty
   matrix.vte
   matrix.grid
-  matrix.glyph
+  matrix.text
   tsdl
   tsdl-ttf
   unix))

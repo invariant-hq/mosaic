@@ -369,19 +369,12 @@ module Private : sig
 
   (** {2:root Root construction} *)
 
-  val create_root :
-    context ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?glyph_pool:Glyph.Pool.t ->
-    unit ->
-    t
+  val create_root : context -> ?id:string -> ?style:Toffee.Style.t -> unit -> t
   (** [create_root ctx ()] is a new root node backed by [ctx]'s layout tree.
 
       Optional parameters:
       - [id]: identifier string. Defaults to ["node-N"].
-      - [style]: flexbox style. Defaults to {!Toffee.Style.default}.
-      - [glyph_pool]: glyph pool for text rendering. Defaults to none. *)
+      - [style]: flexbox style. Defaults to {!Toffee.Style.default}. *)
 
   (** {2:identity Identity} *)
 
@@ -519,13 +512,4 @@ module Private : sig
   val child_clip : t -> Grid.region option
   (** [child_clip t] is the clipping rectangle for [t]'s children as returned by
       [t]'s clip override, or [None] if no override is set. *)
-
-  (** {2:glyph_pool Glyph pool} *)
-
-  val set_glyph_pool : t -> Glyph.Pool.t -> unit
-  (** [set_glyph_pool t pool] assigns a glyph pool for text rendering by [t] and
-      its descendants. *)
-
-  val glyph_pool : t -> Glyph.Pool.t option
-  (** [glyph_pool t] is [t]'s glyph pool, or [None] if none is assigned. *)
 end

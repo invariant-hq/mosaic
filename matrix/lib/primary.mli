@@ -153,7 +153,7 @@ val apply_required_rows :
 (** [apply_required_rows t ~active_rows ~required_rows] grows the live viewport
     if the current frame needs more rows.
 
-    The returned [int option] is the height limit to pass to {!Screen.render}.
+    The returned [int option] is the maximum live viewport height to render.
     [None] means the full live viewport can be rendered. *)
 
 val terminal_cursor_row : t -> live_row:int -> live_height:int -> int

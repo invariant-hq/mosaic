@@ -1,5 +1,5 @@
 (library
  (name screen)
  (public_name matrix.screen)
- (libraries ansi glyph grid bigarray unix)
+ (libraries ansi grid text bigarray unix)
  (private_modules cursor_state))

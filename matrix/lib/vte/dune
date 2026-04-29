@@ -1,4 +1,4 @@
 (library
  (name vte)
  (public_name matrix.vte)
- (libraries ansi glyph grid bigarray))
+ (libraries ansi grid matrix.text bigarray))

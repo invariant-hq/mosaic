@@ -86,7 +86,7 @@ let wrap_char_line ~width ~tab_width ~width_method spans =
         if text_len = 0 then ()
         else begin
           let chunk_start = ref 0 in
-          Glyph.String.iter_grapheme_info ~width_method ~tab_width
+          Matrix.Text.iter_grapheme_info ~width_method ~tab_width
             (fun ~offset ~len ~width:gw ->
               if !current_width + gw > width && !current_width > 0 then begin
                 (* Emit current chunk before wrap *)
@@ -141,7 +141,7 @@ let wrap_word_line ~width ~tab_width ~width_method spans =
       (* Collect word break opportunities with their byte offsets and the
          grapheme offset at the break *)
       let breaks = ref [] in
-      Glyph.String.iter_wrap_breaks ~width_method
+      Matrix.Text.iter_wrap_breaks ~width_method
         (fun ~break_byte_offset:_ ~next_byte_offset ~grapheme_offset:_ ->
           breaks := next_byte_offset :: !breaks)
         full_text;
@@ -158,7 +158,7 @@ let wrap_word_line ~width ~tab_width ~width_method spans =
         let best_break = ref (-1) in
         let break_cursor = ref 0 in
         let nbreaks = Array.length breaks in
-        Glyph.String.iter_grapheme_info ~width_method ~tab_width
+        Matrix.Text.iter_grapheme_info ~width_method ~tab_width
           (fun ~offset ~len:_ ~width:gw ->
             (* Advance cursor past any breaks at or before this offset *)
             while !break_cursor < nbreaks && breaks.(!break_cursor) <= offset do
@@ -181,7 +181,7 @@ let wrap_word_line ~width ~tab_width ~width_method spans =
                   let remaining =
                     String.sub full_text wrap_at (offset - wrap_at)
                   in
-                  Glyph.String.measure ~width_method ~tab_width remaining + gw
+                  Matrix.Text.measure ~width_method ~tab_width remaining + gw
                 end
             end
             else line_width := !line_width + gw)
@@ -213,7 +213,7 @@ let truncate_line ~width ~tab_width ~width_method spans =
     let total_width =
       List.fold_left
         (fun acc (s : Text_buffer.span) ->
-          acc + Glyph.String.measure ~width_method ~tab_width s.text)
+          acc + Matrix.Text.measure ~width_method ~tab_width s.text)
         0 spans
     in
     if total_width <= width then spans
@@ -232,7 +232,7 @@ let truncate_line ~width ~tab_width ~width_method spans =
             let text_len = String.length text in
             if text_len > 0 then begin
               let chunk_end = ref 0 in
-              Glyph.String.iter_grapheme_info ~width_method ~tab_width
+              Matrix.Text.iter_grapheme_info ~width_method ~tab_width
                 (fun ~offset ~len ~width:gw ->
                   if not !done_ then begin
                     if !col + gw > target then begin
@@ -307,7 +307,7 @@ let compute_display_info t ?wrap_width () =
         let line_graphemes =
           List.fold_left
             (fun acc (s : Text_buffer.span) ->
-              acc + Glyph.String.grapheme_count s.text)
+              acc + Matrix.Text.grapheme_count s.text)
             0 line
         in
         grapheme_offset := !grapheme_offset + line_graphemes;
@@ -325,7 +325,7 @@ let compute_display_info t ?wrap_width () =
         let w =
           List.fold_left
             (fun acc (s : Text_buffer.span) ->
-              acc + Glyph.String.measure ~width_method ~tab_width s.text)
+              acc + Matrix.Text.measure ~width_method ~tab_width s.text)
             0 spans
         in
         max acc w)
@@ -456,7 +456,7 @@ let local_coords_to_offset t ~x ~y =
       List.iter
         (fun (span : Text_buffer.span) ->
           if not !stop then
-            Glyph.String.iter_grapheme_info ~width_method ~tab_width
+            Matrix.Text.iter_grapheme_info ~width_method ~tab_width
               (fun ~offset:_ ~len:_ ~width:gw ->
                 if not !stop then begin
                   if !col + gw > target_col then stop := true
@@ -584,7 +584,7 @@ let render t _self grid ~delta:_ =
         let last_line_graphemes =
           List.fold_left
             (fun acc (s : Text_buffer.span) ->
-              acc + Glyph.String.grapheme_count s.text)
+              acc + Matrix.Text.grapheme_count s.text)
             0 lines.(last_visible)
         in
         let end_g =
@@ -630,7 +630,7 @@ let render t _self grid ~delta:_ =
               (* New span: flush any pending batch from previous span *)
               flush ();
               batch_text := text;
-              Glyph.String.iter_grapheme_info ~width_method ~tab_width
+              Matrix.Text.iter_grapheme_info ~width_method ~tab_width
                 (fun ~offset ~len ~width:gw ->
                   if !col >= 0 && !col < w then begin
                     let abs_col = !col in

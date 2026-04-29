@@ -90,7 +90,6 @@ and node = {
   mutable render_before : render option;
   mutable render_after : render option;
   mutable frame_buffer : Grid.t option;
-  mutable glyph_pool : Glyph.Pool.t option;
   (* Visual *)
   mutable visible : bool;
   mutable z_index : int;
@@ -271,7 +270,7 @@ let remove_child_ref parent child =
 
 let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     ?(visible = true) ?(z_index = 0) ?(opacity = 1.0) ?(live = false)
-    ?(render = render_noop) ?glyph_pool () =
+    ?(render = render_noop) () =
   let self_live = if live && visible then 1 else 0 in
   {
     ctx;
@@ -304,7 +303,6 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     render_before = None;
     render_after = None;
     frame_buffer = None;
-    glyph_pool;
     visible;
     z_index;
     opacity;
@@ -576,7 +574,7 @@ let create ~parent ?index ?id ?(style = Toffee.Style.default) ?(visible = true)
   let id = Option.value id ~default:(Printf.sprintf "node-%d" num) in
   let t =
     make_node ctx ~toffee_node ~id ~num ~style:prepared ~visible ~z_index
-      ~opacity ~live ~render ?glyph_pool:parent.glyph_pool ()
+      ~opacity ~live ~render ()
   in
   ctx.register t;
   apply_initial_visibility t;
@@ -972,7 +970,7 @@ let ensure_frame_buffer (t : t) ~(parent : Grid.t) : Grid.t option =
         Some buf
     | None ->
         let buf =
-          Grid.create ~width:w ~height:h ~glyph_pool:(Grid.glyph_pool parent)
+          Grid.create ~width:w ~height:h
             ~width_method:(Grid.width_method parent) ~respect_alpha:true ()
         in
         t.frame_buffer <- Some buf;
@@ -1033,14 +1031,14 @@ module Private = struct
     unregister : t -> unit;
   }
 
-  let create_root ctx ?id ?style ?glyph_pool () =
+  let create_root ctx ?id ?style () =
     let num = ctx.alloc_num () in
     let prepared =
       Option.fold ~none:Toffee.Style.default ~some:prepare_style style
     in
     let toffee_node = toffee_exn (Toffee.new_leaf ctx.tree prepared) in
     let id = Option.value id ~default:(Printf.sprintf "node-%d" num) in
-    make_node ctx ~toffee_node ~id ~num ~style:prepared ?glyph_pool ()
+    make_node ctx ~toffee_node ~id ~num ~style:prepared ()
 
   let num t = t.num
   let toffee_node t = t.toffee_node
@@ -1085,7 +1083,4 @@ module Private = struct
     | None ->
         let b = bounds t in
         if b.width > 0 && b.height > 0 then Some b else None
-
-  let set_glyph_pool t pool = t.glyph_pool <- Some pool
-  let glyph_pool t = t.glyph_pool
 end

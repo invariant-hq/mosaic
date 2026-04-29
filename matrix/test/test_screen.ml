@@ -45,6 +45,8 @@ let expect_writer_overflow f =
     fail "expected writer overflow"
   with exn -> if not (is_writer_overflow exn) then raise exn
 
+let viewport height = { Screen.y = 0; height }
+
 (* 1. Core Rendering Tests *)
 
 let test_create_renderer () =
@@ -128,7 +130,7 @@ let test_row_offset_applied () =
   is_true ~msg:"cursor moved with offset" has_seq;
   is_true ~msg:"character rendered" (String.contains output 'A')
 
-let test_height_limit_expansion_renders_new_rows () =
+let test_viewport_expansion_renders_new_rows () =
   let r = Screen.create () in
   let draw_rows grid =
     Grid.draw_text grid ~x:0 ~y:0 ~text:"A";
@@ -138,26 +140,26 @@ let test_height_limit_expansion_renders_new_rows () =
   let frame1 =
     build_screen r ~width:1 ~height:3 (fun grid _hits -> draw_rows grid)
   in
-  let output1 = Screen.render ~height_limit:1 frame1 in
+  let output1 = Screen.render ~viewport:(viewport 1) frame1 in
   is_true ~msg:"first visible row rendered" (String.contains output1 'A');
   is_false ~msg:"second row initially clipped" (String.contains output1 'B');
 
   let frame2 =
     build_screen r ~width:1 ~height:3 (fun grid _hits -> draw_rows grid)
   in
-  let output2 = Screen.render ~height_limit:3 frame2 in
+  let output2 = Screen.render ~viewport:(viewport 3) frame2 in
   is_true ~msg:"newly exposed row rendered after expansion"
     (String.contains output2 'B');
   is_true ~msg:"newly exposed lower row rendered after expansion"
     (String.contains output2 'C')
 
-let test_height_limit_clips_active_hit_grid () =
+let test_viewport_clips_active_hit_grid () =
   let r = Screen.create () in
   let frame =
     build_screen r ~width:4 ~height:4 (fun _grid hits ->
         Screen.Hit_grid.add hits ~x:0 ~y:2 ~width:4 ~height:1 ~id:77)
   in
-  let _ = Screen.render ~height_limit:1 frame in
+  let _ = Screen.render ~viewport:(viewport 1) frame in
   equal ~msg:"hit below rendered height is inactive" int 0
     (Screen.query_hit frame ~x:0 ~y:2)
 
@@ -791,7 +793,7 @@ let test_hyperlink_capability_gating () =
   is_false ~msg:"hyperlink not emitted when incapable"
     contains_hyperlink_disabled
 
-let test_scroll_hint_clips_to_height_limit () =
+let test_scroll_hint_clips_to_viewport () =
   let r = Screen.create () in
   let f1 =
     build_screen r ~width:1 ~height:4 (fun grid _hits ->
@@ -800,7 +802,7 @@ let test_scroll_hint_clips_to_height_limit () =
         Grid.draw_text grid ~x:0 ~y:2 ~text:"C";
         Grid.draw_text grid ~x:0 ~y:3 ~text:"D")
   in
-  let _ = Screen.render ~height_limit:2 f1 in
+  let _ = Screen.render ~viewport:(viewport 2) f1 in
   let f2 =
     build_screen r ~width:1 ~height:4 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"B";
@@ -809,7 +811,7 @@ let test_scroll_hint_clips_to_height_limit () =
         Grid.draw_text grid ~x:0 ~y:3 ~text:"D")
   in
   let output =
-    Screen.render ~height_limit:2
+    Screen.render ~viewport:(viewport 2)
       ~scroll_hint:{ Screen.top = 0; bottom = 3; delta = 1 }
       f2
   in
@@ -1028,10 +1030,10 @@ let () =
           test "Simple text rendering" test_simple_text_rendering;
           test "Hyperlink rendering" test_hyperlink_rendering;
           test "Row offset applied" test_row_offset_applied;
-          test "Height limit expansion renders new rows"
-            test_height_limit_expansion_renders_new_rows;
-          test "Height limit clips active hit grid"
-            test_height_limit_clips_active_hit_grid;
+          test "Viewport expansion renders new rows"
+            test_viewport_expansion_renders_new_rows;
+          test "Viewport clips active hit grid"
+            test_viewport_clips_active_hit_grid;
           test "Styled frame resets SGR" test_styled_frame_resets_sgr;
           test "Overflow does not commit scrolled baseline"
             test_render_to_bytes_overflow_does_not_commit_scrolled_baseline;
@@ -1091,8 +1093,8 @@ let () =
           test "Resize clears hit grids" test_resize_hit_grid_cleared;
           test "Explicit width sequences" test_explicit_width_sequences;
           test "Hyperlink capability gating" test_hyperlink_capability_gating;
-          test "Scroll hint clips to height limit"
-            test_scroll_hint_clips_to_height_limit;
+          test "Scroll hint clips to viewport"
+            test_scroll_hint_clips_to_viewport;
           test "Scroll hint applies row offset"
             test_scroll_hint_applies_row_offset;
           test "Cursor style and color" test_cursor_style_and_color;

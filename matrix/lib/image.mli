@@ -103,15 +103,15 @@ val fill : ?color:Color.t -> width:int -> height:int -> unit -> t
 (** [fill ~width ~height ()] is a solid rectangle of [color]. [color] defaults
     to the terminal default. *)
 
-val text : ?style:Style.t -> ?width_method:Glyph.width_method -> string -> t
+val text : ?style:Style.t -> ?width_method:Text.width_method -> string -> t
 (** [text s] is a multi-line text image. Lines are split on ['\n']. Width is
     computed from the widest line using [width_method] (defaults to the global
     setting). *)
 
-val string : ?style:Style.t -> ?width_method:Glyph.width_method -> string -> t
+val string : ?style:Style.t -> ?width_method:Text.width_method -> string -> t
 (** [string] is {!text}. *)
 
-val line : ?style:Style.t -> ?width_method:Glyph.width_method -> string -> t
+val line : ?style:Style.t -> ?width_method:Text.width_method -> string -> t
 (** [line] is {!text} for a single line. *)
 
 val box :

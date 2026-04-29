@@ -5,7 +5,7 @@ A fast, full-featured, modern terminal UI library for OCaml.
 ## Why Matrix?
 
 - **Minimal dependencies** – Only depends on `uutf` for UTF-8 decoding. No transitive dependency bloat.
-- **High performance** – Double-buffered rendering diffs cell changes to emit minimal ANSI output. Efficient glyph pooling minimises allocations on the hot path.
+- **High performance** – Double-buffered rendering diffs cell changes to emit minimal ANSI output. Grid-owned grapheme storage minimises allocations on the hot path.
 - **Modular architecture** – Small, focused libraries (`matrix.ansi`, `matrix.grid`, `matrix.pty`, `matrix.vte`, etc.) that you can use independently or combine as needed.
 - **Immediate-mode API** – A simple render loop with `on_render`, `on_input`, and `on_resize` callbacks. No framework overhead—just draw your UI each frame.
 - **Native alpha blending** – RGBA colors with proper alpha compositing for translucent overlays and smooth visual effects.
@@ -86,7 +86,7 @@ Matrix is organized into focused libraries that can be used together or independ
 | `matrix.input`    | `Input`    | Keyboard, mouse, paste, focus event parsing           |
 | `matrix.terminal` | `Terminal` | TTY control and capability detection                  |
 | `matrix.ansi`     | `Ansi`     | Low-level ANSI escape sequence generation             |
-| `matrix.glyph`    | `Glyph`    | Unicode grapheme cluster management                   |
+| `matrix.text`     | `Text`     | Unicode text measurement and segmentation             |
 | `matrix.terminfo` | `Terminfo` | Terminal capability database                          |
 | `matrix.pty`      | `Pty`      | Pseudo-terminal spawning (POSIX + Windows ConPTY)     |
 | `matrix.vte`      | `Vte`      | Virtual terminal emulator for embedding output        |
@@ -98,10 +98,10 @@ API documentation is available in the corresponding `.mli` files under `lib/`.
 | Aspect              | Matrix                                                                                                                                        | Notty                                                                                                 |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Rendering model     | Immediate-mode, double-buffered grid with ANSI diffing; only changed cells emit bytes; built for high FPS.                                    | Declarative images; redraws full image on refresh; simpler, not diff-based.                           |
-| Performance tactics | Double-buffered cell diffing, glyph pooling, explicit-width output for graphemes.                                                              | Allocates per render; no diffing or explicit-width negotiation.                                       |
+| Performance tactics | Double-buffered cell diffing, grid-owned grapheme storage, explicit-width output for graphemes.                                                | Allocates per render; no diffing or explicit-width negotiation.                                       |
 | Features            | RGBA with alpha blending, OSC8 hyperlinks, hit regions, inline/alt/split display modes, debug overlay, frame dumps.                           | Core fg/bg + styles; compact feature set; no alpha/hyperlinks or built-in diagnostics.                |
 | Protocols and input | Auto-negotiates Kitty keyboard, SGR/URXVT/X10 mouse, bracketed paste, focus, explicit width; separates capability responses from user events. | Minimal, broadly compatible protocols by design; no capability probing; basic key/mouse/paste events. |
-| Unicode handling    | Unicode width tables plus explicit-width negotiation to stay aligned with modern emoji/wide glyphs.                                           | Width hints only; no explicit-width negotiation.                                                      |
+| Unicode handling    | Unicode width tables plus explicit-width negotiation to stay aligned with modern emoji/wide symbols.                                          | Width hints only; no explicit-width negotiation.                                                      |
 | API surface         | Mutable `Grid` for hot paths + Notty-inspired `Image` DSL; choose imperative or declarative.                                                  | Compositional image API; no mutable grid for rendering.                                               |
 | Runtime and cleanup | Manages raw mode, alt/inline/split modes, cursor/mouse/paste/focus state, and restores the terminal on exit.                                  | Alt-screen runtime; inline helpers but no managed mode negotiation or runtime loop.                   |
 

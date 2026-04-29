@@ -19,7 +19,7 @@ val strip_newlines : string -> string
 
 val create :
   ?max_length:int ->
-  ?width_method:Glyph.width_method ->
+  ?width_method:Matrix.Text.width_method ->
   ?tab_width:int ->
   string ->
   t

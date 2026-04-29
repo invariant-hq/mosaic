@@ -102,7 +102,7 @@ let digits n =
   else if n < 1000000 then 6
   else 7
 
-let display_width s = Glyph.String.measure ~width_method:`Unicode ~tab_width:2 s
+let display_width s = Matrix.Text.measure ~width_method:`Unicode ~tab_width:2 s
 
 let darken_color (c : Ansi.Color.t) : Ansi.Color.t =
   let r, g, b = Ansi.Color.to_rgb c in

@@ -226,7 +226,7 @@ let draw_fractal st (ctx : draw_context) =
                  Ansi.Color.of_rgb r g b
              in
              Grid.set_cell ctx.grid ~x ~y
-               ~glyph:(Glyph.of_uchar (Uchar.of_int (braille_code !mask)))
+               ~cell:(Grid.Cell.of_uchar (Uchar.of_int (braille_code !mask)))
                ~fg ~bg:inside_color ~attrs:empty_attrs ~blend:true ()
          done
        done);

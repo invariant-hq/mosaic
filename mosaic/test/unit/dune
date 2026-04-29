@@ -26,7 +26,7 @@
  (name test_text_buffer)
  (modules test_text_buffer)
  (package mosaic)
- (libraries windtrap windtrap.prop mosaic.ui matrix.ansi matrix.glyph))
+ (libraries windtrap windtrap.prop mosaic.ui matrix.ansi matrix.text))
 
 (test
  (name test_text_surface)
@@ -38,7 +38,7 @@
   mosaic.ui
   toffee
   matrix.ansi
-  matrix.glyph
+  matrix.text
   test_harness))
 
 (test
@@ -56,7 +56,7 @@
   mosaic.ui
   toffee
   matrix.grid
-  matrix.glyph
+  matrix.text
   matrix.ansi
   test_harness))
 
@@ -70,7 +70,7 @@
  (name test_edit_buffer)
  (modules test_edit_buffer)
  (package mosaic)
- (libraries windtrap mosaic.ui matrix.glyph))
+ (libraries windtrap mosaic.ui matrix.text))
 
 (test
  (name test_text_input)
@@ -147,7 +147,7 @@
   mosaic.ui
   toffee
   matrix.grid
-  matrix.glyph
+  matrix.text
   matrix.ansi
   matrix.input
   matrix.screen))
@@ -219,4 +219,4 @@
  (name test_subscriptions)
  (modules test_subscriptions)
  (package mosaic)
- (libraries windtrap mosaic))
+ (libraries windtrap mosaic matrix.input))

@@ -4,7 +4,6 @@
 
 open StdLabels
 module Hit_grid = Hit_grid
-module Glyph_pool = Glyph.Pool
 
 (* --- Types & Metrics --- *)
 
@@ -40,7 +39,6 @@ type cursor = {
 (* screen state - mutable internal state for maximum performance *)
 type t = {
   (* Configuration *)
-  glyph_pool : Glyph_pool.t;
   stats : stats_state;
   mutable last_metrics : frame_metrics;
   (* Buffers. [current] is the last committed terminal state. [next] is the
@@ -73,6 +71,7 @@ type t = {
 (* --- Constants & Inline Helpers --- *)
 
 let[@inline] width_step w = if w <= 0 then 1 else w
+let[@inline] clamp_height grid height = max 0 (min (Grid.height grid) height)
 
 (* --- Writer Logic --- *)
 
@@ -81,22 +80,22 @@ let[@inline] width_step w = if w <= 0 then 1 else w
    repositioning to prevent column drift in terminals that miscalculate grapheme
    widths. *)
 let[@inline] add_code_to_writer ~explicit_width ~explicit_cursor_positioning
-    ~row_offset ~y ~x ~grid_width ~cell_width pool (scratch : bytes ref)
+    ~row_offset ~y ~x ~grid_width ~cell_width (scratch : bytes ref)
     (w : Ansi.writer) grid idx =
-  let glyph = Grid.get_glyph grid idx in
+  let cell = Grid.get_cell grid idx in
 
-  if Glyph.is_empty glyph || Grid.is_continuation grid idx then
+  if Grid.Cell.is_empty cell || Grid.Cell.is_continuation cell then
     Ansi.emit (Ansi.char ' ') w
+  else if Grid.Cell.is_inline cell && Grid.Cell.codepoint cell < 128 then
+    Ansi.emit (Ansi.char (Char.chr (Grid.Cell.codepoint cell))) w
   else
-    let len = Glyph_pool.length pool glyph in
+    let len = Grid.cell_text_length grid idx in
     if len <= 0 then Ansi.emit (Ansi.char ' ') w
-    else if len = 1 && (glyph :> int) < 128 then
-      Ansi.emit (Ansi.char (Char.chr (glyph :> int))) w
     else (
       if len > Bytes.length !scratch then
         scratch := Bytes.create (max (Bytes.length !scratch * 2) len);
 
-      let written = Glyph_pool.blit pool glyph !scratch ~pos:0 in
+      let written = Grid.blit_cell_text grid idx !scratch ~pos:0 in
 
       if written <= 0 then Ansi.emit (Ansi.char ' ') w
       else if explicit_width && cell_width >= 2 then
@@ -130,26 +129,17 @@ type emitted_frame = {
 
 (* The hot loop. Scans grid, checks dirty flags, diffs against previous frame,
    and emits sequences while reusing renderer state and scratch buffers. *)
-let render_generic ~pool ~row_offset ~use_explicit_width
-    ~use_explicit_cursor_positioning ~use_hyperlinks ~mode ~height_limit ~writer
+let render_generic ~row_offset ~use_explicit_width
+    ~use_explicit_cursor_positioning ~use_hyperlinks ~mode ~height ~writer
     ~scratch ~sgr_state ~prev ~curr =
   let width = Grid.width curr in
-  let curr_height = Grid.height curr in
-  let height =
-    match height_limit with
-    | None -> curr_height
-    | Some limit -> max 0 (min curr_height limit)
-  in
+  let height = clamp_height curr height in
   let row_offset = max 0 row_offset in
 
   (* Extract prev grid dimensions once - no tuple allocation *)
   let prev_width = match prev with None -> 0 | Some p -> Grid.width p in
   let prev_height_raw = match prev with None -> 0 | Some p -> Grid.height p in
-  let prev_height =
-    match height_limit with
-    | None -> prev_height_raw
-    | Some _ -> min prev_height_raw height
-  in
+  let prev_height = min prev_height_raw height in
 
   (* Inline cell change detection - no closure allocation *)
   let[@inline] is_cell_changed y x idx curr_width =
@@ -207,8 +197,8 @@ let render_generic ~pool ~row_offset ~use_explicit_width
         (* Emit Content *)
         add_code_to_writer ~explicit_width:use_explicit_width
           ~explicit_cursor_positioning:use_explicit_cursor_positioning
-          ~row_offset ~y ~x ~grid_width:width ~cell_width:curr_width pool
-          scratch writer curr idx;
+          ~row_offset ~y ~x ~grid_width:width ~cell_width:curr_width scratch
+          writer curr idx;
 
         write_run y (x + step)
   in
@@ -356,25 +346,23 @@ let finalize_frame r ~now ~delta_seconds ~elapsed_ms ~cells ~output_len =
   in
   r.last_metrics <- next_m
 
-let presented_height r height_limit =
-  match height_limit with
-  | None -> Grid.height r.next
-  | Some limit -> max 0 (min (Grid.height r.next) limit)
+let presented_height r height = clamp_height r.next height
 
 (* --- Input / Cursor Handling --- *)
 
 (* --- Public API --- *)
 
 type scroll_hint = { top : int; bottom : int; delta : int }
+type viewport = { y : int; height : int }
 
-let normalize_scroll_hint ~row_offset ~height_limit ~current hint =
+let effective_viewport r = function
+  | None -> (max 0 r.row_offset, Grid.height r.next)
+  | Some { y; height } -> (max 0 y, clamp_height r.next height)
+
+let normalize_scroll_hint ~row_offset ~height ~current hint =
   let { top; bottom; delta } = hint in
   let current_height = Grid.height current in
-  let render_height =
-    match height_limit with
-    | None -> current_height
-    | Some limit -> max 0 (min current_height limit)
-  in
+  let render_height = max 0 (min current_height height) in
   let top = max 0 top in
   let bottom = min (render_height - 1) bottom in
   if delta = 0 || top >= bottom then None
@@ -385,9 +373,9 @@ let normalize_scroll_hint ~row_offset ~height_limit ~current hint =
     in
     Some (top, bottom, delta, max 0 row_offset)
 
-let apply_scroll_hint ~(writer : Ansi.writer) ~row_offset ~height_limit ~current
-    hint =
-  match normalize_scroll_hint ~row_offset ~height_limit ~current hint with
+let apply_scroll_hint ~(writer : Ansi.writer) ~row_offset ~height ~current hint
+    =
+  match normalize_scroll_hint ~row_offset ~height ~current hint with
   | None -> ()
   | Some (top, bottom, delta, row_offset) ->
       (* Shift the previous buffer to match the hardware scroll. After this,
@@ -404,7 +392,7 @@ let apply_scroll_hint ~(writer : Ansi.writer) ~row_offset ~height_limit ~current
       Ansi.emit Ansi.reset_scrolling_region writer;
       Ansi.cursor_position ~row:(row_offset + 1) ~col:1 writer
 
-let prepare_diff_baseline (r : t) ~mode ~scroll_hint ~height_limit
+let prepare_diff_baseline (r : t) ~mode ~scroll_hint ~row_offset ~height
     ~(writer : Ansi.writer) =
   match (mode, scroll_hint) with
   | `Full, _ -> None
@@ -413,24 +401,24 @@ let prepare_diff_baseline (r : t) ~mode ~scroll_hint ~height_limit
       (* Scroll hints describe terminal-side movement. Apply them to a
          temporary baseline so output failures cannot corrupt [current]. *)
       Grid.blit ~src:r.current ~dst:r.scroll_baseline;
-      apply_scroll_hint ~writer ~row_offset:r.row_offset ~height_limit
-        ~current:r.scroll_baseline hint;
+      apply_scroll_hint ~writer ~row_offset ~height ~current:r.scroll_baseline
+        hint;
       Some r.scroll_baseline
 
 let emit_frame (r : t) ({ now; delta_seconds } : prepared_frame)
-    ~(mode : render_mode) ~scroll_hint ~height_limit ~(writer : Ansi.writer) =
+    ~(mode : render_mode) ~scroll_hint ~viewport ~(writer : Ansi.writer) =
+  let row_offset, height = effective_viewport r viewport in
   let scratch = ref r.scratch_bytes in
   let render_start = Unix.gettimeofday () in
   let cells =
     try
       let prev =
-        prepare_diff_baseline r ~mode ~scroll_hint ~height_limit ~writer
+        prepare_diff_baseline r ~mode ~scroll_hint ~row_offset ~height ~writer
       in
-      render_generic ~pool:r.glyph_pool ~row_offset:r.row_offset
-        ~use_explicit_width:r.use_explicit_width
+      render_generic ~row_offset ~use_explicit_width:r.use_explicit_width
         ~use_explicit_cursor_positioning:r.use_explicit_cursor_positioning
-        ~use_hyperlinks:r.hyperlinks_capable ~mode ~height_limit ~writer
-        ~scratch ~sgr_state:r.sgr_state ~prev ~curr:r.next
+        ~use_hyperlinks:r.hyperlinks_capable ~mode ~height ~writer ~scratch
+        ~sgr_state:r.sgr_state ~prev ~curr:r.next
     with exn ->
       Ansi.Sgr_state.reset r.sgr_state;
       raise_notrace exn
@@ -442,7 +430,7 @@ let emit_frame (r : t) ({ now; delta_seconds } : prepared_frame)
     elapsed_ms;
     cells;
     output_len = Ansi.Writer.len writer;
-    presented_height = presented_height r height_limit;
+    presented_height = presented_height r height;
     scratch_bytes = !scratch;
   }
 
@@ -454,47 +442,41 @@ let commit_frame r emitted =
     ~elapsed_ms:emitted.elapsed_ms ~cells:emitted.cells
     ~output_len:emitted.output_len
 
-let render_to_bytes ?(full = false) ?scroll_hint ?height_limit frame bytes =
+let render_to_bytes ?(full = false) ?scroll_hint ?viewport frame bytes =
   let writer = Ansi.Writer.make bytes in
   let mode = if full then `Full else `Diff in
   let prepared = prepare_frame frame in
   let emitted =
-    emit_frame frame prepared ~mode ~scroll_hint ~height_limit ~writer
+    emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer
   in
   commit_frame frame emitted;
   emitted.output_len
 
-let render ?(full = false) ?scroll_hint ?height_limit frame =
+let render ?(full = false) ?scroll_hint ?viewport frame =
   let mode = if full then `Full else `Diff in
   let prepared = prepare_frame frame in
   let counter = Ansi.Writer.make_counting () in
   let counted =
-    emit_frame frame prepared ~mode ~scroll_hint ~height_limit ~writer:counter
+    emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer:counter
   in
   let bytes = Bytes.create counted.output_len in
   let writer = Ansi.Writer.make bytes in
   let emitted =
-    emit_frame frame prepared ~mode ~scroll_hint ~height_limit ~writer
+    emit_frame frame prepared ~mode ~scroll_hint ~viewport ~writer
   in
   commit_frame frame emitted;
   let len = emitted.output_len in
   Bytes.sub_string bytes ~pos:0 ~len
 
-let glyph_pool t = t.glyph_pool
-
 (* Creation & Management *)
 
-let create ?glyph_pool ?width_method ?respect_alpha ?(cursor_visible = true)
+let create ?width_method ?respect_alpha ?(cursor_visible = true)
     ?(explicit_width = false) () =
-  let glyph_pool =
-    match glyph_pool with Some p -> p | None -> Glyph_pool.create ()
-  in
   let w_method = match width_method with Some m -> m | None -> `Unicode in
   let r_alpha = match respect_alpha with Some r -> r | None -> false in
 
   let t =
     {
-      glyph_pool;
       stats = { frame_count = 0; total_cells = 0; total_bytes = 0 };
       last_metrics =
         {
@@ -508,13 +490,13 @@ let create ?glyph_pool ?width_method ?respect_alpha ?(cursor_visible = true)
           timestamp_s = 0.;
         };
       current =
-        Grid.create ~width:1 ~height:1 ~glyph_pool ~width_method:w_method
+        Grid.create ~width:1 ~height:1 ~width_method:w_method
           ~respect_alpha:r_alpha ();
       next =
-        Grid.create ~width:1 ~height:1 ~glyph_pool ~width_method:w_method
+        Grid.create ~width:1 ~height:1 ~width_method:w_method
           ~respect_alpha:r_alpha ();
       scroll_baseline =
-        Grid.create ~width:1 ~height:1 ~glyph_pool ~width_method:w_method
+        Grid.create ~width:1 ~height:1 ~width_method:w_method
           ~respect_alpha:r_alpha ();
       hit_current = Hit_grid.create ~width:0 ~height:0;
       hit_next = Hit_grid.create ~width:0 ~height:0;
@@ -641,7 +623,7 @@ let set_explicit_width t flag =
   t.prefer_explicit_width <- flag;
   t.use_explicit_width <- flag && t.explicit_width_capable
 
-let set_width_method (t : t) (method_ : Glyph.width_method) =
+let set_width_method (t : t) (method_ : Text.width_method) =
   Grid.set_width_method t.current method_;
   Grid.set_width_method t.scroll_baseline method_;
   Grid.set_width_method t.next method_

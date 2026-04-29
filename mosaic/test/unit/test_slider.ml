@@ -42,7 +42,7 @@ let lower_half = 0x2584
 let float_eq a b = Float.equal a b
 let float_close ?(eps = 0.5) a b = Float.abs (a -. b) < eps
 
-(* Count how many cells in a row have a thumb glyph (horizontal). *)
+(* Count how many cells in a row have a thumb cell (horizontal). *)
 let count_thumb_cells_h grid ~y ~width =
   let n = ref 0 in
   for x = 0 to width - 1 do
@@ -57,7 +57,7 @@ let count_thumb_cells_h grid ~y ~width =
   done;
   !n
 
-(* Count how many cells in a column have a thumb glyph (vertical). *)
+(* Count how many cells in a column have a thumb cell (vertical). *)
 let count_thumb_cells_v grid ~x ~width ~height =
   let n = ref 0 in
   for y = 0 to height - 1 do

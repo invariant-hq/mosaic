@@ -2,7 +2,7 @@ module G = Grid
 module Style = Ansi.Style
 module Color = Ansi.Color
 
-(* {1 Glyph Helpers} *)
+(* {1 Symbol Helpers} *)
 
 let utf8_of_uchar (u : Uchar.t) : string =
   let b = Buffer.create 4 in
@@ -375,7 +375,7 @@ let draw_axes (layout : Layout.t) (grid : G.t) =
   let r = layout.plot in
   let ip = layout.frame_inner_padding in
   let ch = layout.theme.charset in
-  let line_glyphs : G.line_glyphs =
+  let line_symbols : G.line_symbols =
     {
       G.h = ch.frame.h;
       v = ch.frame.v;
@@ -390,20 +390,20 @@ let draw_axes (layout : Layout.t) (grid : G.t) =
     | `Axis_only ->
         G.draw_line grid ~x1:ax ~y1:r.y ~x2:ax
           ~y2:(r.y + r.height - 1)
-          ~style:st ~glyphs:line_glyphs ~kind:`Line ()
+          ~style:st ~symbols:line_symbols ~kind:`Line ()
     | `Frame ->
         G.draw_line grid ~x1:ax ~y1:r.y ~x2:ax
           ~y2:(r.y + r.height - 1)
-          ~style:st ~glyphs:line_glyphs ~kind:`Line ();
+          ~style:st ~symbols:line_symbols ~kind:`Line ();
         G.draw_line grid ~x1:ax ~y1:r.y
           ~x2:(r.x + r.width - 1)
-          ~y2:r.y ~style:st ~glyphs:line_glyphs ~kind:`Line ();
+          ~y2:r.y ~style:st ~symbols:line_symbols ~kind:`Line ();
         if not layout.x_axis.show then
           G.draw_line grid ~x1:ax
             ~y1:(r.y + r.height - 1)
             ~x2:(r.x + r.width - 1)
             ~y2:(r.y + r.height - 1)
-            ~style:st ~glyphs:line_glyphs ~kind:`Line ()
+            ~style:st ~symbols:line_symbols ~kind:`Line ()
   in
 
   let draw_x_axis_line ~ay ~st =
@@ -412,19 +412,19 @@ let draw_axes (layout : Layout.t) (grid : G.t) =
     | `Axis_only ->
         G.draw_line grid ~x1:r.x ~y1:ay
           ~x2:(r.x + r.width - 1)
-          ~y2:ay ~style:st ~glyphs:line_glyphs ~kind:`Line ()
+          ~y2:ay ~style:st ~symbols:line_symbols ~kind:`Line ()
     | `Frame ->
         G.draw_line grid ~x1:r.x ~y1:ay
           ~x2:(r.x + r.width - 1)
-          ~y2:ay ~style:st ~glyphs:line_glyphs ~kind:`Line ();
+          ~y2:ay ~style:st ~symbols:line_symbols ~kind:`Line ();
         G.draw_line grid
           ~x1:(r.x + r.width - 1)
           ~y1:r.y
           ~x2:(r.x + r.width - 1)
-          ~y2:ay ~style:st ~glyphs:line_glyphs ~kind:`Line ();
+          ~y2:ay ~style:st ~symbols:line_symbols ~kind:`Line ();
         if not layout.y_axis.show then
           G.draw_line grid ~x1:r.x ~y1:r.y ~x2:r.x ~y2:ay ~style:st
-            ~glyphs:line_glyphs ~kind:`Line ()
+            ~symbols:line_symbols ~kind:`Line ()
   in
 
   (* Y axis *)
@@ -600,20 +600,20 @@ let draw_axes (layout : Layout.t) (grid : G.t) =
       | `Axis_only ->
           G.draw_line grid ~x1:ax2 ~y1:r.y ~x2:ax2
             ~y2:(r.y + r.height - 1)
-            ~style:st ~glyphs:line_glyphs ~kind:`Line ()
+            ~style:st ~symbols:line_symbols ~kind:`Line ()
       | `Frame ->
           G.draw_line grid ~x1:ax2 ~y1:r.y ~x2:ax2
             ~y2:(r.y + r.height - 1)
-            ~style:st ~glyphs:line_glyphs ~kind:`Line ();
+            ~style:st ~symbols:line_symbols ~kind:`Line ();
           if not layout.y_axis.show then
             G.draw_line grid ~x1:r.x ~y1:r.y ~x2:ax2 ~y2:r.y ~style:st
-              ~glyphs:line_glyphs ~kind:`Line ();
+              ~symbols:line_symbols ~kind:`Line ();
           if not layout.x_axis.show then
             G.draw_line grid ~x1:r.x
               ~y1:(r.y + r.height - 1)
               ~x2:ax2
               ~y2:(r.y + r.height - 1)
-              ~style:st ~glyphs:line_glyphs ~kind:`Line ());
+              ~style:st ~symbols:line_symbols ~kind:`Line ());
       let y2_tick_values = Option.value layout.y2_ticks ~default:[] in
       (match y2_sc with
       | Numeric _ ->
@@ -681,7 +681,7 @@ let draw_axes (layout : Layout.t) (grid : G.t) =
       let default_st = Option.get layout.y_axis.label_style in
       let title_style = Option.value ~default:default_st style in
       let graphemes = ref [] in
-      Glyph.String.iter_graphemes
+      Text.iter_graphemes
         (fun ~offset ~len ->
           graphemes := String.sub text offset len :: !graphemes)
         text;
@@ -845,8 +845,8 @@ let draw_marks (layout : Layout.t) (grid : G.t) =
     | _ -> None
   in
 
-  (* Grid.line_glyphs for theme-aware line rendering *)
-  let line_glyphs : G.line_glyphs =
+  (* Grid.line_symbols for theme-aware line rendering *)
+  let line_symbols : G.line_symbols =
     let charset = layout.theme.charset in
     {
       G.h = charset.frame.h;
@@ -1088,7 +1088,7 @@ let draw_marks (layout : Layout.t) (grid : G.t) =
                     match pattern with
                     | `Solid ->
                         G.draw_line grid ~x1 ~y1 ~x2 ~y2 ~style
-                          ~glyphs:line_glyphs ~kind:`Line ()
+                          ~symbols:line_symbols ~kind:`Line ()
                     | `Dashed | `Dotted ->
                         draw_stippled_line ~style ~pattern ~step_counter
                           (x1, y1) (x2, y2))

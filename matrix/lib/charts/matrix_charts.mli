@@ -117,7 +117,7 @@ module Theme : sig
         (** Tooltip border. [None] draws no border. *)
     crosshair : Ansi.Style.t;  (** Crosshair lines. *)
     marker : Ansi.Style.t;  (** Highlight markers. *)
-    charset : Charset.t;  (** Glyph character set. *)
+    charset : Charset.t;  (** Symbol character set. *)
   }
 
   val dark : t

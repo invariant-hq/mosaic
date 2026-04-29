@@ -1,43 +1,40 @@
 (** Buffer-local reference counting for grapheme clusters.
 
     This module implements a "write-combining" strategy for reference counting.
-    Instead of touching the shared [Glyph.Pool.t] for every cell assignment in a
-    grid, this tracker maintains a local count of usage within a specific grid
-    buffer.
+    Instead of touching the grapheme store for every cell assignment in a grid,
+    this tracker maintains a local count of usage within a specific grid buffer.
 
-    Global refcounts are only updated when a grapheme's local count transitions
-    between 0 and 1. This keeps pool operations proportional to the number of
-    distinct graphemes rather than the number of cells, and it plays well with
-    an external lock if the pool is shared across threads. *)
+    Store refcounts are only updated when a grapheme's local count transitions
+    between 0 and 1. This keeps store operations proportional to the number of
+    distinct graphemes rather than the number of cells. *)
 
 type t
 (** The abstract state of a tracker. *)
 
-val create : Glyph.Pool.t -> t
-(** [create pool] initializes a new tracker associated with the given global
-    glyph pool. *)
+val create : Grapheme_store.t -> t
+(** [create store] initializes a new tracker associated with [store]. *)
 
-val add : t -> Glyph.t -> unit
+val add : t -> Packed_cell.t -> unit
 (** [add t id] increments the local reference count for the given encoded
     character [id].
 
     If [id] represents a simple scalar (not an interned pointer), this is a
     no-op. If [id] is a complex grapheme seeing its first local reference, the
-    global pool reference count is incremented.
+    store reference count is incremented.
 
     Start and continuation cells of the same grapheme share a single entry,
-    keyed by a stable pool key, so wide graphemes only bump the global refcount
+    keyed by a stable store key, so wide graphemes only bump the store refcount
     once per grid. *)
 
-val remove : t -> Glyph.t -> unit
+val remove : t -> Packed_cell.t -> unit
 (** [remove t id] decrements the local reference count for the given encoded
     character [id].
 
     If [id] represents a simple scalar, this is a no-op. If [id] is a complex
-    grapheme and its local count reaches zero, the global pool reference count
-    is decremented. *)
+    grapheme and its local count reaches zero, the store reference count is
+    decremented. *)
 
-val replace : t -> old_id:Glyph.t -> new_id:Glyph.t -> unit
+val replace : t -> old_id:Packed_cell.t -> new_id:Packed_cell.t -> unit
 (** [replace t ~old_id ~new_id] effectively performs [remove t old_id] followed
     by [add t new_id].
 

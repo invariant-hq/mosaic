@@ -77,11 +77,6 @@ let creates_with_custom_style () =
   let _root = Renderer.root t in
   ()
 
-let creates_with_custom_glyph_pool () =
-  let pool = Glyph.Pool.create () in
-  let t = Renderer.create ~glyph_pool:pool () in
-  is_true ~msg:"pool matches" (Renderer.glyph_pool t == pool)
-
 let starts_dirty () =
   let t = make_renderer () in
   is_true ~msg:"needs_render" (Renderer.needs_render t)
@@ -780,7 +775,6 @@ let () =
         [
           test "creates with default style" creates_with_default_style;
           test "creates with custom style" creates_with_custom_style;
-          test "creates with custom glyph pool" creates_with_custom_glyph_pool;
           test "starts dirty" starts_dirty;
           test "clean after render" clean_after_render;
           test "dirty after schedule" dirty_after_schedule;

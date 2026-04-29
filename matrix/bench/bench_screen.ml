@@ -113,7 +113,7 @@ let diff_sparse_cells =
           for i = 0 to Array.length update_positions - 1 do
             let x, y = update_positions.(i) in
             Grid.set_cell grid ~x ~y
-              ~glyph:(Glyph.of_uchar (Uchar.of_int (Char.code 'A' + i)))
+              ~cell:(Grid.Cell.of_uchar (Uchar.of_int (Char.code 'A' + i)))
               ~fg:(C.of_rgb 255 255 0) ~bg:clear_color ~attrs:Ansi.Attr.empty ()
           done);
       ignore (Screen.render screen))

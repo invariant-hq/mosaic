@@ -34,7 +34,7 @@ module Arrow = struct
     let text = arrow_char t.direction in
     let width =
       float_of_int
-        (max 1 (Glyph.String.measure ~width_method:`Unicode ~tab_width:2 text))
+        (max 1 (Matrix.Text.measure ~width_method:`Unicode ~tab_width:2 text))
     in
     Toffee.Geometry.Size.make width 1.
 

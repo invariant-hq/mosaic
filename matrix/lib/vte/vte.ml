@@ -31,10 +31,10 @@ type scroll_region = { mutable top : int; mutable bottom : int }
 module Int_set = Set.Make (Int)
 
 (* Compress a grid row into text + style runs with byte offsets using the new
-   Grid/Glyph API. We avoid raw Bigarray access and rely on per-cell accessors.
+   Grid/Text API. We avoid raw Bigarray access and rely on per-cell accessors.
    Continuation cells are skipped; each starting cell contributes exactly one
    grapheme string (including spaces). *)
-(* Compress a grid row into text + style runs using public Grid/Glyph APIs. *)
+(* Compress a grid row into text + style runs using public Grid/Text APIs. *)
 let compress_row grid row cols =
   let buf = Buffer.create (cols * 2) in
   let styles_rev = ref [] in
@@ -139,7 +139,7 @@ let compress_row grid row cols =
 
   { text = trimmed; styles = trimmed_styles }
 
-(* Decompress a scrollback line into a grid row using the public Grid/Glyph API.
+(* Decompress a scrollback line into a grid row using the public Grid/Text API.
    We assume the destination grid has been cleared beforehand. *)
 let decompress_line line grid row _cols =
   if Array.length line.styles = 0 || String.length line.text = 0 then ()
@@ -167,9 +167,7 @@ let decompress_line line grid row _cols =
                   |> Ansi.Style.with_attrs run.attrs
                 in
                 Grid.draw_text grid ~x:!col ~y:row ~style ~text:segment;
-                let w =
-                  Glyph.String.measure ~width_method ~tab_width:2 segment
-                in
+                let w = Text.measure ~width_method ~tab_width:2 segment in
                 col := min max_cols (!col + w))
             with Invalid_argument _ ->
               (* Skip problematic segments *)
@@ -216,19 +214,16 @@ type t = {
 }
 (* VTE instance *)
 
-let create ?(scrollback = 10000) ?glyph_pool ?width_method
-    ?(respect_alpha = false) ?(default_fg = Ansi.Color.white)
-    ?(default_bg = Ansi.Color.black) ~rows ~cols () =
+let create ?(scrollback = 10000) ?width_method ?(respect_alpha = false)
+    ?(default_fg = Ansi.Color.white) ?(default_bg = Ansi.Color.black) ~rows
+    ~cols () =
   let rows = max 1 rows in
   let cols = max 1 cols in
   let primary =
-    Grid.create ~width:cols ~height:rows ?glyph_pool ?width_method
-      ~respect_alpha ()
+    Grid.create ~width:cols ~height:rows ?width_method ~respect_alpha ()
   in
-  let pool = Grid.glyph_pool primary in
   let alternate =
-    Grid.create ~width:cols ~height:rows ~glyph_pool:pool ?width_method
-      ~respect_alpha ()
+    Grid.create ~width:cols ~height:rows ?width_method ~respect_alpha ()
   in
   let scrollback_buffer =
     if scrollback <= 0 then None
@@ -485,9 +480,9 @@ let scroll_down t n =
 
     mark_rows_dirty t t.scroll_region.top t.scroll_region.bottom
 
-(* Write printable text using new Glyph/Grid API. We manually segment the input
+(* Write printable text using Grid and Text APIs. We manually segment the input
    string into pieces that fit in the current line, using an ASCII fast path and
-   falling back to Grapheme_cluster + Glyph.String.measure for complex text. *)
+   falling back to grapheme segmentation for complex text. *)
 let put_text t text =
   let fg = Option.value t.style.Ansi.Style.fg ~default:t.default_fg in
   let bg = Option.value t.style.Ansi.Style.bg ~default:t.default_bg in
@@ -501,7 +496,7 @@ let put_text t text =
     let line_width = t.cols in
     let row = t.cursor.row in
     let copy_cell src_idx dst_x =
-      let glyph = Grid.get_glyph t.active_grid src_idx in
+      let cell = Grid.get_cell t.active_grid src_idx in
       let attrs = Grid.get_attrs t.active_grid src_idx in
       let link = Grid.get_link t.active_grid src_idx in
       let fg_r = Grid.get_fg_r t.active_grid src_idx in
@@ -527,11 +522,11 @@ let put_text t text =
           (int_of_float (bg_a *. 255.))
       in
       let link_url = Grid.hyperlink_url t.active_grid link in
-      Grid.set_cell t.active_grid ~x:dst_x ~y:row ~glyph ~fg:fg_color
+      Grid.set_cell t.active_grid ~x:dst_x ~y:row ~cell ~fg:fg_color
         ~bg:bg_color ~attrs:(Ansi.Attr.unpack attrs) ?link:link_url ()
     in
 
-    Glyph.String.iter_graphemes
+    Text.iter_graphemes
       (fun ~offset:off ~len:l ->
         if t.cursor.col >= line_width && t.auto_wrap_mode then (
           if t.cursor.row >= t.scroll_region.bottom then scroll_up t 1;
@@ -541,7 +536,7 @@ let put_text t text =
 
         if row < t.rows && t.cursor.col < line_width then
           let cluster = String.sub text off l in
-          let w = Glyph.String.measure ~width_method ~tab_width:2 cluster in
+          let w = Text.measure ~width_method ~tab_width:2 cluster in
           let insert_w = min w (line_width - t.cursor.col) in
 
           if insert_w > 0 then (
@@ -592,7 +587,7 @@ let put_text t text =
 
           (* Fast path: if the whole string fits in remaining columns, draw
              once. *)
-          let total_w = Glyph.String.measure ~width_method ~tab_width:2 s in
+          let total_w = Text.measure ~width_method ~tab_width:2 s in
           if total_w <= available then (
             Grid.draw_text t.active_grid ~x:t.cursor.col ~y:t.cursor.row ~text:s
               ~style;
@@ -605,13 +600,11 @@ let put_text t text =
             let width_consumed = ref 0 in
             let stop = ref false in
 
-            Glyph.String.iter_graphemes
+            Text.iter_graphemes
               (fun ~offset:off ~len:l ->
                 if not !stop then
                   let cluster = String.sub s off l in
-                  let w =
-                    Glyph.String.measure ~width_method ~tab_width:2 cluster
-                  in
+                  let w = Text.measure ~width_method ~tab_width:2 cluster in
                   if !width_consumed + w <= available then (
                     width_consumed := !width_consumed + w;
                     bytes_consumed := off + l)
