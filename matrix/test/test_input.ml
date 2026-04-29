@@ -561,6 +561,42 @@ let test_invalid_sequences () =
       equal ~msg:"first char parsed" char 'a' (Uchar.to_char c)
   | _ -> fail "expected at least one char"
 
+let test_interrupted_escape_regressions () =
+  let parser = Input.Parser.create () in
+  equal ~msg:"partial CSI buffered" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[123") 0 5);
+  equal ~msg:"CSI resyncs on later ESC" (list event_testable)
+    [ key_event Input.Key.Up ]
+    (feed_user parser (Bytes.of_string "\x1b[A") 0 3);
+
+  let parser = Input.Parser.create () in
+  equal ~msg:"partial SS3 buffered" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1bO") 0 2);
+  equal ~msg:"SS3 resyncs on later ESC" (list event_testable)
+    [ key_event Input.Key.Up ]
+    (feed_user parser (Bytes.of_string "\x1b[A") 0 3);
+
+  let parser = Input.Parser.create () in
+  equal ~msg:"partial OSC buffered" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b]52;c;") 0 7);
+  equal ~msg:"OSC resyncs on later ESC" (list event_testable)
+    [ key_event Input.Key.Up ]
+    (feed_user parser (Bytes.of_string "\x1b[A") 0 3);
+
+  let parser = Input.Parser.create () in
+  equal ~msg:"partial DCS buffered" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1bP>|") 0 4);
+  equal ~msg:"DCS resyncs on later ESC" (list event_testable)
+    [ key_event Input.Key.Up ]
+    (feed_user parser (Bytes.of_string "\x1b[A") 0 3);
+
+  let parser = Input.Parser.create () in
+  equal ~msg:"partial APC buffered" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b_Gi=1;") 0 7);
+  equal ~msg:"APC resyncs on later ESC" (list event_testable)
+    [ key_event Input.Key.Up ]
+    (feed_user parser (Bytes.of_string "\x1b[A") 0 3)
+
 let test_combined_inputs () =
   equal ~msg:"Ctrl+Alt+Shift+Up" (list event_testable)
     [
@@ -1059,6 +1095,7 @@ let tests =
     test "escape drain" test_escape_drain;
     test "alt escape no sticky" test_alt_escape_no_sticky;
     test "invalid sequences" test_invalid_sequences;
+    test "interrupted escape regressions" test_interrupted_escape_regressions;
     test "combined inputs" test_combined_inputs;
     test "kitty keyboard" test_kitty_keyboard;
     test "kitty associated text fallback" test_kitty_associated_text_fallback;

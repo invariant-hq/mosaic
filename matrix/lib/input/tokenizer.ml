@@ -150,55 +150,73 @@ let is_csi_final c =
   let code = Char.code c in
   (code >= 0x40 && code <= 0x7e) || code = 0x24 || code = 0x5e
 
-let rec find_st s i len =
-  if i + 1 >= len then None
-  else if s.[i] = esc && s.[i + 1] = '\\' then Some (i + 2)
-  else find_st s (i + 1) len
+type sequence_end = End of int | Restart of int | Incomplete
+
+let find_x10_end s start len =
+  let expected = start + 6 in
+  let rec find_esc i =
+    if i >= min expected len then Incomplete
+    else if s.[i] = esc then Restart i
+    else find_esc (i + 1)
+  in
+  if expected <= len then
+    match find_esc (start + 3) with
+    | End _ | Incomplete -> End expected
+    | r -> r
+  else find_esc (start + 3)
 
 let find_sequence_end s start len =
-  if start + 1 >= len then None
+  if start + 1 >= len then Incomplete
   else
     match s.[start + 1] with
     | '[' ->
         (* Mouse reporting: ESC [ M ... (3 bytes after M) *)
-        if start + 2 < len && s.[start + 2] = 'M' then
-          let expected = start + 6 in
-          if expected <= len then Some expected else None
+        if start + 2 < len && s.[start + 2] = 'M' then find_x10_end s start len
         else if
           start + 3 < len
           && s.[start + 2] = '['
           && s.[start + 3] >= 'A'
           && s.[start + 3] <= 'E'
-        then Some (start + 4)
+        then End (start + 4)
         else
           let rec loop i =
-            if i >= len then None
+            if i >= len then Incomplete
+            else if s.[i] = esc then Restart i
             else if is_csi_final s.[i] then
               if (s.[i] = '$' || s.[i] = '^') && i + 1 < len then loop (i + 1)
-              else Some (i + 1)
+              else End (i + 1)
             else loop (i + 1)
           in
           loop (start + 2)
     | ']' ->
         (* OSC terminates with BEL or ST (ESC \) *)
         let rec loop i =
-          if i >= len then None
+          if i >= len then Incomplete
           else
             let c = s.[i] in
-            if c = '\x07' then Some (i + 1)
-            else if c = esc && i + 1 < len && s.[i + 1] = '\\' then Some (i + 2)
+            if c = '\x07' then End (i + 1)
+            else if c = esc && i + 1 < len && s.[i + 1] = '\\' then End (i + 2)
+            else if c = esc then Restart i
             else loop (i + 1)
         in
         loop (start + 2)
     | 'P' | '_' ->
         (* DCS / APC, terminated by ST *)
-        find_st s (start + 2) len
+        let rec loop i =
+          if i >= len then Incomplete
+          else if s.[i] = esc && i + 1 < len && s.[i + 1] = '\\' then End (i + 2)
+          else if s.[i] = esc then Restart i
+          else loop (i + 1)
+        in
+        loop (start + 2)
     | 'O' ->
         (* SS3: ESC O <char> *)
-        if start + 2 < len then Some (start + 3) else None
+        if start + 2 >= len then Incomplete
+        else if s.[start + 2] = esc then Restart (start + 2)
+        else End (start + 3)
     | _ ->
         (* Generic short escape: ESC X *)
-        Some (start + 2)
+        End (start + 2)
 
 let is_partial_sgr_mouse s =
   let len = String.length s in
@@ -221,10 +239,14 @@ let extract_sequences_from s =
       let c = s.[pos] in
       if c = esc then
         match find_sequence_end s pos len with
-        | None ->
+        | Incomplete ->
             (* incomplete sequence: keep the rest for later *)
             (List.rev acc, String.sub s pos (len - pos))
-        | Some end_pos ->
+        | Restart restart ->
+            (* A fresh ESC inside an incomplete sequence starts a new unit. The
+               interrupted prefix is protocol noise, not user input. *)
+            loop restart acc
+        | End end_pos ->
             let seq = String.sub s pos (end_pos - pos) in
             loop end_pos (Sequence seq :: acc)
       else
