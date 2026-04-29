@@ -107,6 +107,27 @@ let find_substring_from s sub start =
   in
   if sub_len = 0 || start > limit then -1 else scan start
 
+let has_subbytes_at bytes ~sub ~pos ~stop =
+  let sub_len = String.length sub in
+  if pos < 0 || pos + sub_len > stop then false
+  else
+    let rec loop i =
+      if i = sub_len then true
+      else if Bytes.unsafe_get bytes (pos + i) <> sub.[i] then false
+      else loop (i + 1)
+    in
+    loop 0
+
+let find_subbytes_from bytes sub start stop =
+  let sub_len = String.length sub in
+  let limit = stop - sub_len in
+  let rec scan i =
+    if i > limit then -1
+    else if has_subbytes_at bytes ~sub ~pos:i ~stop then i
+    else scan (i + 1)
+  in
+  if sub_len = 0 || start > limit then -1 else scan start
+
 let ensure_paste_capacity t needed =
   let required = t.paste_len + needed in
   if required > Bytes.length t.paste_buffer then (
@@ -221,6 +242,87 @@ let find_sequence_end s start len =
         (* Generic short escape: ESC X *)
         End (start + 2)
 
+let find_x10_end_bytes bytes start stop =
+  let expected = start + 6 in
+  let rec find_esc i =
+    if i >= min expected stop then Incomplete
+    else if Bytes.unsafe_get bytes i = esc then Restart i
+    else find_esc (i + 1)
+  in
+  if expected <= stop then
+    match find_esc (start + 3) with
+    | End _ | Incomplete -> End expected
+    | r -> r
+  else find_esc (start + 3)
+
+let find_sequence_end_bytes bytes start stop =
+  if start + 1 >= stop then Incomplete
+  else
+    match Bytes.unsafe_get bytes (start + 1) with
+    | '[' ->
+        if
+          start + 2 < stop
+          && Bytes.unsafe_get bytes (start + 2) = 'M'
+        then find_x10_end_bytes bytes start stop
+        else if
+          start + 3 < stop
+          && Bytes.unsafe_get bytes (start + 2) = '['
+          && Bytes.unsafe_get bytes (start + 3) >= 'A'
+          && Bytes.unsafe_get bytes (start + 3) <= 'E'
+        then End (start + 4)
+        else
+          let rec loop i =
+            if i >= stop then Incomplete
+            else
+              let c = Bytes.unsafe_get bytes i in
+              if c = esc then Restart i
+              else if is_csi_final c then
+                if
+                  c = '$'
+                  && Bytes.unsafe_get bytes (start + 2) = '?'
+                  && i + 1 >= stop
+                then Incomplete
+                else if (c = '$' || c = '^') && i + 1 < stop then loop (i + 1)
+                else End (i + 1)
+              else loop (i + 1)
+          in
+          loop (start + 2)
+    | ']' ->
+        let rec loop i =
+          if i >= stop then Incomplete
+          else
+            let c = Bytes.unsafe_get bytes i in
+            if c = '\x07' then End (i + 1)
+            else if
+              c = esc
+              && i + 1 < stop
+              && Bytes.unsafe_get bytes (i + 1) = '\\'
+            then End (i + 2)
+            else if c = esc then Restart i
+            else loop (i + 1)
+        in
+        loop (start + 2)
+    | 'P' | '_' ->
+        let rec loop i =
+          if i >= stop then Incomplete
+          else
+            let c = Bytes.unsafe_get bytes i in
+            if
+              c = esc
+              && i + 1 < stop
+              && Bytes.unsafe_get bytes (i + 1) = '\\'
+            then End (i + 2)
+            else if c = esc then Restart i
+            else loop (i + 1)
+        in
+        loop (start + 2)
+    | 'O' ->
+        if start + 2 >= stop then Incomplete
+        else if Bytes.unsafe_get bytes (start + 2) = esc then
+          Restart (start + 2)
+        else End (start + 3)
+    | _ -> End (start + 2)
+
 let is_partial_sgr_mouse s =
   let len = String.length s in
   len >= 3
@@ -264,6 +366,30 @@ let extract_sequences_iter_from s emit =
         loop stop
   in
   loop 0
+
+let extract_sequences_iter_from_bytes bytes start stop emit =
+  let rec loop pos =
+    if pos >= stop then -1
+    else
+      let c = Bytes.unsafe_get bytes pos in
+      if c = esc then
+        match find_sequence_end_bytes bytes pos stop with
+        | Incomplete -> pos
+        | Restart restart -> loop restart
+        | End end_pos ->
+            emit (Sequence (Bytes.sub_string bytes pos (end_pos - pos)));
+            loop end_pos
+      else
+        let rec find_esc i =
+          if i >= stop then stop
+          else if Bytes.unsafe_get bytes i = esc then i
+          else find_esc (i + 1)
+        in
+        let next = find_esc (pos + 1) in
+        emit (Text (Bytes.sub_string bytes pos (next - pos)));
+        loop next
+  in
+  loop start
 
 (* state machine *)
 
@@ -356,6 +482,54 @@ let rec process_iter t now emit =
           t.flush_deadline <- None;
           process_iter t now emit)
 
+let process_bytes_iter t bytes off len now emit =
+  let stop = off + len in
+  let start_idx = find_subbytes_from bytes br_paste_start off stop in
+  if start_idx < 0 then
+    let rem_start = extract_sequences_iter_from_bytes bytes off stop emit in
+    if rem_start >= 0 then
+      let rem_len = stop - rem_start in
+      if rem_len > max_sequence_len then (
+        t.flush_deadline <- None;
+        emit (Text (Bytes.sub_string bytes rem_start rem_len)))
+      else (
+        Buffer.add_subbytes t.buffer bytes rem_start rem_len;
+        schedule_flush t now)
+    else t.flush_deadline <- None
+  else
+    let rem_start = extract_sequences_iter_from_bytes bytes off start_idx emit in
+    reset_paste_state t;
+    t.mode <- `Paste;
+    t.flush_deadline <- None;
+    emit (Sequence br_paste_start);
+    let rem_stop =
+      if rem_start < 0 then None
+      else consume_paste_from_bytes_iter t bytes rem_start start_idx emit
+    in
+    if t.mode = `Normal then (
+      (match rem_stop with
+      | Some idx when idx < start_idx ->
+          Buffer.add_subbytes t.buffer bytes idx (start_idx - idx)
+      | _ -> ());
+      let after_start = start_idx + br_paste_start_len in
+      if after_start < stop then
+        Buffer.add_subbytes t.buffer bytes after_start (stop - after_start);
+      t.flush_deadline <- None;
+      process_iter t now emit)
+    else
+      let after_start = start_idx + br_paste_start_len in
+      let after_stop =
+        if after_start >= stop then None
+        else consume_paste_from_bytes_iter t bytes after_start stop emit
+      in
+      if t.mode = `Normal then (
+        (match after_stop with
+        | Some idx when idx < stop ->
+            Buffer.add_subbytes t.buffer bytes idx (stop - idx)
+        | _ -> ());
+        t.flush_deadline <- None;
+        process_iter t now emit)
+
 let feed_iter t bytes off len ~now ~emit =
   if off < 0 || len < 0 || off + len > Bytes.length bytes then
     invalid_arg "Input_tokenizer.feed: out of bounds";
@@ -368,6 +542,9 @@ let feed_iter t bytes off len ~now ~emit =
         if remaining > 0 then Buffer.add_subbytes t.buffer bytes stop remaining;
         t.flush_deadline <- None;
         process_iter t now emit)
+  else if Buffer.length t.buffer = 0 then (
+    t.deferred_timeout <- false;
+    process_bytes_iter t bytes off len now emit)
   else (
     t.deferred_timeout <- false;
     Buffer.add_subbytes t.buffer bytes off len;
