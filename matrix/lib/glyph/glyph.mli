@@ -209,10 +209,8 @@ module Pool : sig
   val clear : t -> unit
   (** [clear pool] resets [pool], invalidating {e all} existing glyph
       references. Does not free memory, only resets internal cursors for reuse.
-
-      {b Warning.} Glyphs must not be used after [clear]. Because [clear] can
-      recycle IDs with the same generation, behaviour is undefined for
-      previously issued IDs. *)
+      Previously issued pool-backed glyphs become stale and pool accessors
+      return their documented stale defaults. *)
 
   (** {2:refcounting Reference counting} *)
 
@@ -261,6 +259,12 @@ module Pool : sig
       with precomputed display [width], avoiding redundant width calculation and
       [String.sub] allocation.
 
+      Invalid UTF-8 byte sequences are replaced with U+FFFD (replacement
+      character).
+
+      Raises [Invalid_argument] if [pos] and [len] do not designate a valid
+      substring of [str], or if [width] is negative.
+
       Raises [Failure] if [pool] exceeds 262K interned graphemes. *)
 
   val encode :
@@ -297,7 +301,9 @@ module Pool : sig
   (** [blit pool g buf ~pos] copies the UTF-8 bytes of [g] into [buf] starting
       at [pos] and returns the number of bytes written. {!empty} is encoded as
       U+0000 (1 byte). The result is [0] for stale complex IDs or insufficient
-      buffer space. *)
+      buffer space.
+
+      Raises [Invalid_argument] if [pos] is not a valid position in [buf]. *)
 
   val copy : src:t -> glyph -> dst:t -> glyph
   (** [copy ~src g ~dst] transfers [g] from [src] to [dst].
@@ -340,7 +346,10 @@ module String : sig
     int
   (** [measure_sub ~width_method ~tab_width s ~pos ~len] is like {!measure} but
       operates on the substring [s.[pos] .. s.[pos + len - 1]] without
-      allocating. The result is [0] when [len <= 0]. *)
+      allocating. The result is [0] when [len <= 0].
+
+      Raises [Invalid_argument] if [len > 0] and [pos] and [len] do not
+      designate a valid substring of [s]. *)
 
   (** {2:counting Counting} *)
 

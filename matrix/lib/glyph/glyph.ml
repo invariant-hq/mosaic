@@ -21,6 +21,7 @@ type pool = {
   mutable free_count : int;
   mutable next_id : int;
   mutable storage_cursor : int;
+  interned_live_ids : (string, int) Hashtbl.t;
   segmenter : Uuseg_grapheme_cluster.t;
 }
 
@@ -60,6 +61,13 @@ let () =
 (* ASCII Helpers *)
 
 let[@inline] normalize_tab_width w = if w <= 0 then default_tab_width else w
+
+let check_sub name str ~pos ~len =
+  let str_len = String.length str in
+  if pos < 0 then invalid_arg (name ^ ": negative position");
+  if len < 0 then invalid_arg (name ^ ": negative length");
+  if pos > str_len || len > str_len - pos then
+    invalid_arg (name ^ ": substring out of bounds")
 
 (* Width of an ASCII byte (0-127). Tab returns tab_width, printable (0x20-0x7E)
    returns 1, control characters return 0. Two comparisons instead of a table
@@ -118,6 +126,44 @@ let[@inline] codepoint_width ~method_ ~tab_width cp =
   match method_ with
   | `Wcwidth -> codepoint_width_wcwidth ~tab_width cp
   | `Unicode | `No_zwj -> codepoint_width_unicode ~tab_width cp
+
+let normalize_malformed_utf8_slice str off len =
+  let limit = off + len in
+  let rec valid_loop i =
+    if i >= limit then true
+    else
+      let d = String.get_utf_8_uchar str i in
+      Uchar.utf_decode_is_valid d && valid_loop (i + Uchar.utf_decode_length d)
+  in
+  if valid_loop off then None
+  else
+    let b = Buffer.create len in
+    let rec normalize_loop i =
+      if i < limit then (
+        let d = String.get_utf_8_uchar str i in
+        let u =
+          if Uchar.utf_decode_is_valid d then Uchar.utf_decode_uchar d
+          else Uchar.rep
+        in
+        Buffer.add_utf_8_uchar b u;
+        normalize_loop (i + Uchar.utf_decode_length d))
+    in
+    normalize_loop off;
+    Some (Buffer.contents b)
+
+let rec width_sum_loop ~method_ ~tab_width str limit i acc =
+  if i >= limit then acc
+  else
+    let d = String.get_utf_8_uchar str i in
+    let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
+    let w = codepoint_width ~method_ ~tab_width cp in
+    let acc = if w > 0 then acc + w else acc in
+    width_sum_loop ~method_ ~tab_width str limit
+      (i + Uchar.utf_decode_length d)
+      acc
+
+let width_sum ~method_ ~tab_width str off len =
+  width_sum_loop ~method_ ~tab_width str (off + len) off 0
 
 (* Grapheme Cluster Width (for a slice of string) *)
 
@@ -310,6 +356,7 @@ module Pool = struct
       free_count = 0;
       next_id = 1;
       storage_cursor = 0;
+      interned_live_ids = Hashtbl.create 128;
       segmenter = Uuseg_grapheme_cluster.create ();
     }
 
@@ -318,13 +365,18 @@ module Pool = struct
     pool.next_id <- 1;
     pool.storage_cursor <- 0;
     pool.free_count <- 0;
-    (* Only zero slots [0..used-1]. Offsets and refcounts are overwritten by
+    (* Only reset slots [0..used-1]. Offsets and refcounts are overwritten by
        alloc_string so they don't need clearing. Lengths and capacities must be
        zeroed to prevent the storage-reuse path from reading stale offsets.
-       Generations must be zeroed so old glyphs fail generation validation. *)
+       Generations are bumped so old glyphs fail generation validation even if
+       the same slot is reused immediately after clear. *)
     Array.fill pool.lengths ~pos:0 ~len:used 0;
     Array.fill pool.capacities ~pos:0 ~len:used 0;
-    Array.fill pool.generations ~pos:0 ~len:used 0
+    for i = 1 to used - 1 do
+      Array.unsafe_set pool.generations i
+        ((Array.unsafe_get pool.generations i + 1) land mask_generation)
+    done;
+    Hashtbl.clear pool.interned_live_ids
 
   let ensure_id_capacity pool =
     let cap = Array.length pool.offsets in
@@ -363,12 +415,71 @@ module Pool = struct
     else
       let id = pool.next_id in
       pool.next_id <- id + 1;
-      Array.unsafe_set pool.generations id 0;
       id
 
   let[@inline] push_free pool idx =
     Array.unsafe_set pool.free_stack pool.free_count idx;
     pool.free_count <- pool.free_count + 1
+
+  let[@inline] key_of_slice str off len =
+    if off = 0 && len = String.length str then str
+    else String.sub str ~pos:off ~len
+
+  let[@inline] validate_payload pool payload =
+    let idx = payload land mask_index in
+    let gen = (payload lsr shift_generation) land mask_generation in
+    if
+      idx > 0 && idx < pool.next_id
+      && Array.unsafe_get pool.generations idx = gen
+      && Array.unsafe_get pool.refcounts idx > 0
+    then idx
+    else -1
+
+  let storage_equals_string storage off str len =
+    let rec loop i =
+      i >= len
+      || Char.equal
+           (Bytes.unsafe_get storage (off + i))
+           (String.unsafe_get str i)
+         && loop (i + 1)
+    in
+    loop 0
+
+  let lookup_live_payload pool key =
+    match Hashtbl.find_opt pool.interned_live_ids key with
+    | None -> None
+    | Some payload ->
+        let idx = validate_payload pool payload in
+        if idx < 0 then (
+          Hashtbl.remove pool.interned_live_ids key;
+          None)
+        else
+          let len = Array.unsafe_get pool.lengths idx in
+          let off = Array.unsafe_get pool.offsets idx in
+          if
+            len = String.length key
+            && storage_equals_string pool.storage off key len
+          then Some payload
+          else (
+            Hashtbl.remove pool.interned_live_ids key;
+            None)
+
+  let intern_live_payload pool idx payload =
+    let len = Array.unsafe_get pool.lengths idx in
+    let off = Array.unsafe_get pool.offsets idx in
+    let key = Bytes.sub_string pool.storage ~pos:off ~len in
+    match lookup_live_payload pool key with
+    | Some _ -> ()
+    | None -> Hashtbl.replace pool.interned_live_ids key payload
+
+  let remove_live_payload pool idx payload =
+    let len = Array.unsafe_get pool.lengths idx in
+    let off = Array.unsafe_get pool.offsets idx in
+    let key = Bytes.sub_string pool.storage ~pos:off ~len in
+    match Hashtbl.find_opt pool.interned_live_ids key with
+    | Some live_payload when live_payload = payload ->
+        Hashtbl.remove pool.interned_live_ids key
+    | Some _ | None -> ()
 
   let alloc_string pool str off len =
     ensure_id_capacity pool;
@@ -396,9 +507,10 @@ module Pool = struct
     if is_inline c then ()
     else
       let idx = validate_complex pool c in
-      if idx >= 0 then
-        Array.unsafe_set pool.refcounts idx
-          (Array.unsafe_get pool.refcounts idx + 1)
+      if idx >= 0 then (
+        let rc = Array.unsafe_get pool.refcounts idx in
+        Array.unsafe_set pool.refcounts idx (rc + 1);
+        if rc = 0 then intern_live_payload pool idx (pool_payload c))
 
   let decref pool c =
     if is_inline c then ()
@@ -412,6 +524,7 @@ module Pool = struct
           let rc' = rc - 1 in
           if rc' > 0 then Array.unsafe_set pool.refcounts idx rc'
           else (
+            remove_live_payload pool idx (pool_payload c);
             Array.unsafe_set pool.refcounts idx (-1);
             push_free pool idx)
 
@@ -499,8 +612,27 @@ module Pool = struct
         in
         if w <= 0 then 0
         else
-          let idx = alloc_string pool str off len in
-          pack_start idx (Array.unsafe_get pool.generations idx) w
+          let str, off, len, w =
+            match normalize_malformed_utf8_slice str off len with
+            | None -> (str, off, len, w)
+            | Some s ->
+                let len = String.length s in
+                let w =
+                  match precomputed_width with
+                  | Some w -> w
+                  | None -> width_sum ~method_ ~tab_width s 0 len
+                in
+                (s, 0, len, w)
+          in
+          let key = key_of_slice str off len in
+          match lookup_live_payload pool key with
+          | Some payload ->
+              let idx = payload land mask_index in
+              let gen = (payload lsr shift_generation) land mask_generation in
+              pack_start idx gen w
+          | None ->
+              let idx = alloc_string pool key 0 (String.length key) in
+              pack_start idx (Array.unsafe_get pool.generations idx) w
 
   let intern pool ?(width_method = `Unicode) ?(tab_width = default_tab_width)
       str =
@@ -508,6 +640,8 @@ module Pool = struct
     intern_core pool width_method tab_width None 0 (String.length str) str
 
   let intern_sub pool ~width_method ~tab_width str ~pos ~len ~width =
+    check_sub "Glyph.Pool.intern_sub" str ~pos ~len;
+    if width < 0 then invalid_arg "Glyph.Pool.intern_sub: negative width";
     let tab_width = normalize_tab_width tab_width in
     intern_core pool width_method tab_width (Some width) pos len str
 
@@ -591,6 +725,8 @@ module Pool = struct
       if idx < 0 then 0 else Array.unsafe_get pool.lengths idx
 
   let blit pool c buf ~pos =
+    if pos < 0 || pos > Bytes.length buf then
+      invalid_arg "Glyph.Pool.blit: position out of bounds";
     if is_inline c then
       let u = Uchar.unsafe_of_int (c land mask_codepoint) in
       let len = Uchar.utf_8_byte_length u in
@@ -877,32 +1013,34 @@ module String = struct
 
   let measure_sub ~width_method ~tab_width str ~pos ~len:sub_len =
     let tab_width = normalize_tab_width tab_width in
-    let end_pos = pos + sub_len in
     if sub_len <= 0 then 0
-    else if is_ascii_only str end_pos pos then
-      measure_ascii str end_pos tab_width pos 0
-    else
-      match width_method with
-      | `Wcwidth -> measure_wcwidth str end_pos tab_width pos 0
-      | `Unicode | `No_zwj ->
-          let seg = Uuseg_grapheme_cluster.create () in
-          Uuseg_grapheme_cluster.set_ignore_zwj seg (width_method = `No_zwj);
-          let d = Stdlib.String.get_utf_8_uchar str pos in
-          let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
-          let bw =
-            Uuseg_grapheme_cluster.check_boundary_with_width seg
-              (Uchar.unsafe_of_int cp)
-          in
-          let w = if cp = 0x09 then tab_width else (bw land 3) - 1 in
-          let init_w = if w > 0 then w else 0 in
-          let init_flags =
-            (if w > 0 then ms_has_width else 0)
-            lor (if is_regional_indicator cp then ms_ri_pair else 0)
-            lor if is_virama cp then ms_virama else 0
-          in
-          measure_segmented seg str end_pos tab_width
-            (pos + Uchar.utf_decode_length d)
-            0 init_w init_flags
+    else (
+      check_sub "Glyph.String.measure_sub" str ~pos ~len:sub_len;
+      let end_pos = pos + sub_len in
+      if is_ascii_only str end_pos pos then
+        measure_ascii str end_pos tab_width pos 0
+      else
+        match width_method with
+        | `Wcwidth -> measure_wcwidth str end_pos tab_width pos 0
+        | `Unicode | `No_zwj ->
+            let seg = Uuseg_grapheme_cluster.create () in
+            Uuseg_grapheme_cluster.set_ignore_zwj seg (width_method = `No_zwj);
+            let d = Stdlib.String.get_utf_8_uchar str pos in
+            let cp = Uchar.to_int (Uchar.utf_decode_uchar d) in
+            let bw =
+              Uuseg_grapheme_cluster.check_boundary_with_width seg
+                (Uchar.unsafe_of_int cp)
+            in
+            let w = if cp = 0x09 then tab_width else (bw land 3) - 1 in
+            let init_w = if w > 0 then w else 0 in
+            let init_flags =
+              (if w > 0 then ms_has_width else 0)
+              lor (if is_regional_indicator cp then ms_ri_pair else 0)
+              lor if is_virama cp then ms_virama else 0
+            in
+            measure_segmented seg str end_pos tab_width
+              (pos + Uchar.utf_decode_length d)
+              0 init_w init_flags)
 
   let grapheme_count str =
     let n = ref 0 in
@@ -920,10 +1058,54 @@ module String = struct
 
   let[@inline] is_unicode_wrap_break cp =
     match cp with
-    | 0x00A0 | 0x1680 | 0x202F | 0x205F | 0x3000 | 0x200B | 0x00AD | 0x2010 ->
+    | 0x00A0 | 0x1680 | 0x202F | 0x205F | 0x3000 | 0x200B | 0x00AD | 0x2010
+    | 0x3001 | 0x3002 | 0xFF01 | 0xFF1F ->
         true
     | cp when cp >= 0x2000 && cp <= 0x200A -> true
     | _ -> false
+
+  type word_class = Ascii_word | Cjk_word | Other
+
+  let[@inline] is_ascii_word_byte b =
+    (b >= 0x61 && b <= 0x7A)
+    || (b >= 0x41 && b <= 0x5A)
+    || (b >= 0x30 && b <= 0x39)
+    || b = 0x5F
+
+  let[@inline] is_cjk_word_codepoint cp =
+    (cp >= 0x3400 && cp <= 0x4DBF)
+    || (cp >= 0x4E00 && cp <= 0x9FFF)
+    || (cp >= 0xF900 && cp <= 0xFAFF)
+    || (cp >= 0x20000 && cp <= 0x2A6DF)
+    || (cp >= 0x2A700 && cp <= 0x2B73F)
+    || (cp >= 0x2B740 && cp <= 0x2B81F)
+    || (cp >= 0x2B820 && cp <= 0x2CEAF)
+    || (cp >= 0x2CEB0 && cp <= 0x2EBEF)
+    || (cp >= 0x2EBF0 && cp <= 0x2EE5D)
+    || (cp >= 0x2F800 && cp <= 0x2FA1F)
+    || (cp >= 0x3040 && cp <= 0x309F)
+    || (cp >= 0x30A0 && cp <= 0x30FF)
+    || (cp >= 0x31F0 && cp <= 0x31FF)
+    || (cp >= 0xFF66 && cp <= 0xFF9D)
+    || (cp >= 0x1100 && cp <= 0x11FF)
+    || (cp >= 0x3130 && cp <= 0x318F)
+    || (cp >= 0xA960 && cp <= 0xA97F)
+    || (cp >= 0xAC00 && cp <= 0xD7AF)
+    || (cp >= 0xD7B0 && cp <= 0xD7FF)
+
+  let[@inline] classify_word cp =
+    if cp <= 0x7F then if is_ascii_word_byte cp then Ascii_word else Other
+    else if is_cjk_word_codepoint cp then Cjk_word
+    else Other
+
+  let[@inline] is_cjk_ascii_transition prev curr =
+    match (prev, curr) with
+    | Cjk_word, Ascii_word | Ascii_word, Cjk_word -> true
+    | _ -> false
+
+  let[@inline] first_codepoint s off =
+    let d = Stdlib.String.get_utf_8_uchar s off in
+    Uchar.to_int (Uchar.utf_decode_uchar d)
 
   let iter_wrap_breaks_core ?(width_method = `Unicode) f s =
     let len = Stdlib.String.length s in
@@ -940,15 +1122,22 @@ module String = struct
           is_unicode_wrap_break cp
           || has_break (i + Uchar.utf_decode_length d) limit
     in
-    let rec loop byte_off g_off =
+    let rec loop byte_off g_off prev_byte_off prev_g_off prev_class =
       if byte_off >= len then ()
       else
         let next = next_boundary seg ~ignore_zwj s byte_off len in
+        let curr_class = classify_word (first_codepoint s byte_off) in
+        (match (prev_byte_off, prev_g_off, prev_class) with
+        | Some prev_byte_off, Some prev_g_off, Some prev_class
+          when is_cjk_ascii_transition prev_class curr_class ->
+            f ~byte_off:prev_byte_off ~next_off:byte_off
+              ~grapheme_off:prev_g_off
+        | _ -> ());
         if has_break byte_off next then
           f ~byte_off ~next_off:next ~grapheme_off:g_off;
-        loop next (g_off + 1)
+        loop next (g_off + 1) (Some byte_off) (Some g_off) (Some curr_class)
     in
-    loop 0 0
+    loop 0 0 None None None
 
   let iter_wrap_breaks ?(width_method = `Unicode) f s =
     iter_wrap_breaks_core ~width_method
