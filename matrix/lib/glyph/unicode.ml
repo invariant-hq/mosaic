@@ -28,9 +28,7 @@ let[@inline] packed_props u =
 let[@inline] grapheme_cluster_break u = packed_props u land 0x1F
 let[@inline] indic_conjunct_break u = (packed_props u lsr 5) land 0x03
 let[@inline] is_extended_pictographic u = packed_props u land 0x80 <> 0
-
-let[@inline] tty_width_hint u =
-  ((packed_props u lsr 8) land 0x03) - 1
+let[@inline] tty_width_hint u = ((packed_props u lsr 8) land 0x03) - 1
 
 (* Combined lookup - returns packed (gcb, incb, extpic) in one access. Returns:
    bits 0-4 = gcb, bits 5-6 = incb, bit 7 = extpic *)
