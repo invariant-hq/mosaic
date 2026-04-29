@@ -80,13 +80,9 @@ let reset t =
 
 (* helpers *)
 
-let push_tokens acc tokens =
-  (* tokens are in left-to-right order; we build acc in reverse *)
-  List.rev_append tokens acc
-
-let add_paste_tokens acc payload =
-  let acc = if payload = "" then acc else Paste payload :: acc in
-  Sequence br_paste_end :: acc
+let emit_paste_tokens emit payload =
+  if payload <> "" then emit (Paste payload);
+  emit (Sequence br_paste_end)
 
 let has_substring_at s ~sub ~pos =
   let sub_len = String.length sub in
@@ -238,24 +234,25 @@ let is_partial_sgr_mouse s =
   in
   loop 3
 
-let extract_sequences_from s =
+let extract_sequences_iter_from s emit =
   let len = String.length s in
-  let rec loop pos acc =
-    if pos >= len then (List.rev acc, "")
+  let rec loop pos =
+    if pos >= len then ""
     else
       let c = s.[pos] in
       if c = esc then
         match find_sequence_end s pos len with
         | Incomplete ->
             (* incomplete sequence: keep the rest for later *)
-            (List.rev acc, String.sub s pos (len - pos))
+            String.sub s pos (len - pos)
         | Restart restart ->
             (* A fresh ESC inside an incomplete sequence starts a new unit. The
                interrupted prefix is protocol noise, not user input. *)
-            loop restart acc
+            loop restart
         | End end_pos ->
             let seq = String.sub s pos (end_pos - pos) in
-            loop end_pos (Sequence seq :: acc)
+            emit (Sequence seq);
+            loop end_pos
       else
         (* run of plain text until next ESC or end *)
         let rec find_esc i =
@@ -263,68 +260,64 @@ let extract_sequences_from s =
         in
         let stop = find_esc (pos + 1) in
         let txt = String.sub s pos (stop - pos) in
-        loop stop (Text txt :: acc)
+        emit (Text txt);
+        loop stop
   in
-  loop 0 []
+  loop 0
 
 (* state machine *)
 
-let consume_paste_from_string t s start stop acc =
-  if start >= stop then (acc, None)
+let consume_paste_from_string_iter t s start stop emit =
+  if start >= stop then None
   else
-    let rec loop i acc =
-      if i >= stop then (acc, None)
+    let rec loop i =
+      if i >= stop then None
       else
         let matched = add_paste_char t s.[i] in
         if matched then
           let payload = complete_paste t in
-          let acc = add_paste_tokens acc payload in
-          (acc, Some (i + 1))
-        else loop (i + 1) acc
+          emit_paste_tokens emit payload;
+          Some (i + 1)
+        else loop (i + 1)
     in
-    loop start acc
+    loop start
 
-let consume_paste_from_bytes t bytes start stop acc =
-  if start >= stop then (acc, None)
+let consume_paste_from_bytes_iter t bytes start stop emit =
+  if start >= stop then None
   else
-    let rec loop i acc =
-      if i >= stop then (acc, None)
+    let rec loop i =
+      if i >= stop then None
       else
         let matched = add_paste_char t (Bytes.unsafe_get bytes i) in
         if matched then
           let payload = complete_paste t in
-          let acc = add_paste_tokens acc payload in
-          (acc, Some (i + 1))
-        else loop (i + 1) acc
+          emit_paste_tokens emit payload;
+          Some (i + 1)
+        else loop (i + 1)
     in
-    loop start acc
+    loop start
 
-let rec process t now acc =
-  if t.mode = `Paste then List.rev acc
-  else if Buffer.length t.buffer = 0 then List.rev acc
+let rec process_iter t now emit =
+  if t.mode = `Paste then ()
+  else if Buffer.length t.buffer = 0 then ()
   else
     let buf_str = Buffer.contents t.buffer in
     Buffer.clear t.buffer;
     let len = String.length buf_str in
     let start_idx = find_substring_from buf_str br_paste_start 0 in
     if start_idx < 0 then
-      let seqs, rem = extract_sequences_from buf_str in
+      let rem = extract_sequences_iter_from buf_str emit in
       if rem <> "" then
         if String.length rem > max_sequence_len then (
           (* Incomplete sequence exceeded the safety cap — treat as plain text
              rather than buffering without bound. *)
           t.flush_deadline <- None;
-          let acc = push_tokens acc seqs in
-          List.rev (Text rem :: acc))
+          emit (Text rem))
         else (
           Buffer.add_string t.buffer rem;
-          schedule_flush t now;
-          let acc = push_tokens acc seqs in
-          List.rev acc)
+          schedule_flush t now)
       else (
-        t.flush_deadline <- None;
-        let acc = push_tokens acc seqs in
-        List.rev acc)
+        t.flush_deadline <- None)
     else
       let before = String.sub buf_str 0 start_idx in
       let after_start = start_idx + br_paste_start_len in
@@ -332,15 +325,14 @@ let rec process t now acc =
       let after =
         if after_len > 0 then String.sub buf_str after_start after_len else ""
       in
-      let seqs, rem = extract_sequences_from before in
+      let rem = extract_sequences_iter_from before emit in
       reset_paste_state t;
       t.mode <- `Paste;
       t.flush_deadline <- None;
-      let acc = push_tokens acc seqs in
-      let acc = Sequence br_paste_start :: acc in
-      let acc, rem_stop =
-        if rem = "" then (acc, None)
-        else consume_paste_from_string t rem 0 (String.length rem) acc
+      emit (Sequence br_paste_start);
+      let rem_stop =
+        if rem = "" then None
+        else consume_paste_from_string_iter t rem 0 (String.length rem) emit
       in
       if t.mode = `Normal then (
         (match rem_stop with
@@ -349,11 +341,12 @@ let rec process t now acc =
         | _ -> ());
         if after <> "" then Buffer.add_string t.buffer after;
         t.flush_deadline <- None;
-        process t now acc)
+        process_iter t now emit)
       else
-        let acc, after_stop =
-          if after = "" then (acc, None)
-          else consume_paste_from_string t after 0 (String.length after) acc
+        let after_stop =
+          if after = "" then None
+          else
+            consume_paste_from_string_iter t after 0 (String.length after) emit
         in
         if t.mode = `Normal then (
           (match after_stop with
@@ -361,31 +354,35 @@ let rec process t now acc =
               Buffer.add_substring t.buffer after idx (String.length after - idx)
           | _ -> ());
           t.flush_deadline <- None;
-          process t now acc)
-        else List.rev acc
+          process_iter t now emit)
 
-let feed t bytes off len ~now =
+let feed_iter t bytes off len ~now ~emit =
   if off < 0 || len < 0 || off + len > Bytes.length bytes then
     invalid_arg "Input_tokenizer.feed: out of bounds";
   if t.mode = `Paste then (
-    let acc, stop_opt = consume_paste_from_bytes t bytes off (off + len) [] in
+    let stop_opt = consume_paste_from_bytes_iter t bytes off (off + len) emit in
     match stop_opt with
-    | None -> List.rev acc
+    | None -> ()
     | Some stop ->
         let remaining = off + len - stop in
         if remaining > 0 then Buffer.add_subbytes t.buffer bytes stop remaining;
         t.flush_deadline <- None;
-        process t now acc)
+        process_iter t now emit)
   else (
     t.deferred_timeout <- false;
     Buffer.add_subbytes t.buffer bytes off len;
     t.flush_deadline <- None;
-    process t now [])
+    process_iter t now emit)
+
+let feed t bytes off len ~now =
+  let acc = ref [] in
+  feed_iter t bytes off len ~now ~emit:(fun token -> acc := token :: !acc);
+  List.rev !acc
 
 let deadline t = t.flush_deadline
 let wake_deferred t = if t.deferred_timeout then t.flush_deadline <- Some 0.
 
-let flush_expired ?(defer = fun _ -> false) t now =
+let flush_expired_iter ?(defer = fun _ -> false) t now ~emit =
   match
     ( t.mode = `Normal,
       t.deferred_timeout,
@@ -395,16 +392,21 @@ let flush_expired ?(defer = fun _ -> false) t now =
   | true, true, _ | true, false, true ->
       if Buffer.length t.buffer = 0 then (
         t.deferred_timeout <- false;
-        [])
+        ())
       else
         let leftover = Buffer.contents t.buffer in
         if is_partial_sgr_mouse leftover || defer leftover then (
           t.flush_deadline <- None;
           t.deferred_timeout <- true;
-          [])
+          ())
         else (
           t.flush_deadline <- None;
           t.deferred_timeout <- false;
           Buffer.clear t.buffer;
-          if leftover = "" then [] else [ Sequence leftover ])
-  | _ -> []
+          if leftover <> "" then emit (Sequence leftover))
+  | _ -> ()
+
+let flush_expired ?defer t now =
+  let acc = ref [] in
+  flush_expired_iter ?defer t now ~emit:(fun token -> acc := token :: !acc);
+  List.rev !acc

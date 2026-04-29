@@ -1527,69 +1527,56 @@ let text_events_iter parser bytes off len emit =
     end
   done
 
-(* Token processing - callback based, zero list allocation *)
+(* Token processing *)
 
-let process_tokens_iter parser tokens ~on_event ~on_response =
-  let rec loop = function
-    | [] -> ()
-    | Tokenizer.Paste payload :: rest ->
-        if payload <> "" then on_event (Paste payload);
-        loop rest
-    | Tokenizer.Sequence seq :: rest -> (
-        if seq = "\x1b[200~" || seq = "\x1b[201~" then loop rest
-        else
-          (* Prefer capability responses over generic escape parsing so DCS/OSC
-             replies (e.g., Kitty detection) are handled correctly. *)
-          match capability_event_of_sequence seq with
-          | Event cap ->
-              on_response (Response.Capability cap);
-              loop rest
-          | Drop -> loop rest
-          | No_match -> (
-              let ev_opt =
-                let seq_len = String.length seq in
-                if
-                  seq_len >= 3
-                  && seq.[0] = '\x1b'
-                  && seq.[1] = '['
-                  && seq.[2] = 'M'
-                then
-                  match parse_x10_normal_mouse_string seq 3 with
-                  | Some (e, _) -> Some (`User e)
-                  | None -> None
-                else if seq = "\x1b\x1b" then Some (`User alt_escape_event)
-                else
-                  let ev, _ = parse_escape_sequence parser seq 0 seq_len in
-                  ev
-              in
-              match ev_opt with
-              | Some (`User e) ->
-                  on_event e;
-                  loop rest
-              | Some (`Response r) ->
-                  on_response r;
-                  loop rest
-              | None ->
-                  on_response (Response.Unknown seq);
-                  loop rest))
-    | Tokenizer.Text s :: rest ->
-        let bytes = Bytes.unsafe_of_string s in
-        text_events_iter parser bytes 0 (String.length s) on_event;
-        loop rest
-  in
-  loop tokens
+let process_sequence_token parser seq ~on_event ~on_response =
+  if seq = "\x1b[200~" || seq = "\x1b[201~" then ()
+  else
+    (* Prefer capability responses over generic escape parsing so DCS/OSC
+       replies (e.g., Kitty detection) are handled correctly. *)
+    match capability_event_of_sequence seq with
+    | Event cap -> on_response (Response.Capability cap)
+    | Drop -> ()
+    | No_match ->
+        let ev_opt =
+          let seq_len = String.length seq in
+          if
+            seq_len >= 3
+            && seq.[0] = '\x1b'
+            && seq.[1] = '['
+            && seq.[2] = 'M'
+          then
+            match parse_x10_normal_mouse_string seq 3 with
+            | Some (e, _) -> Some (`User e)
+            | None -> None
+          else if seq = "\x1b\x1b" then Some (`User alt_escape_event)
+          else
+            let ev, _ = parse_escape_sequence parser seq 0 seq_len in
+            ev
+        in
+        match ev_opt with
+        | Some (`User e) -> on_event e
+        | Some (`Response r) -> on_response r
+        | None -> on_response (Response.Unknown seq)
+
+let process_token parser ~on_event ~on_response = function
+  | Tokenizer.Paste payload ->
+      if payload <> "" then on_event (Paste payload)
+  | Tokenizer.Sequence seq -> process_sequence_token parser seq ~on_event ~on_response
+  | Tokenizer.Text s ->
+      let bytes = Bytes.unsafe_of_string s in
+      text_events_iter parser bytes 0 (String.length s) on_event
 
 (* Public API *)
 
 let feed parser bytes offset length ~now ~on_event ~on_response =
-  let tokens = Tokenizer.feed parser.raw bytes offset length ~now in
-  process_tokens_iter parser tokens ~on_event ~on_response
+  Tokenizer.feed_iter parser.raw bytes offset length ~now
+    ~emit:(process_token parser ~on_event ~on_response)
 
 let drain parser ~now ~on_event ~on_response =
-  let tokens =
-    Tokenizer.flush_expired ~defer:(should_defer_pending parser) parser.raw now
-  in
-  if tokens <> [] then process_tokens_iter parser tokens ~on_event ~on_response
+  Tokenizer.flush_expired_iter
+    ~defer:(should_defer_pending parser)
+    parser.raw now ~emit:(process_token parser ~on_event ~on_response)
 
 let deadline parser = Tokenizer.deadline parser.raw
 let pending parser = Tokenizer.pending parser.raw

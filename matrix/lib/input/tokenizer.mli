@@ -65,6 +65,12 @@ val feed : parser -> bytes -> int -> int -> now:float -> token list
     Raises [Invalid_argument] if [off] and [len] describe a range outside [buf].
 *)
 
+val feed_iter :
+  parser -> bytes -> int -> int -> now:float -> emit:(token -> unit) -> unit
+(** [feed_iter p buf off len ~now ~emit] is like {!feed}, but calls [emit] once
+    for each token instead of allocating and returning a token list. Tokens are
+    emitted in input order. *)
+
 (** {1:flushing Flushing} *)
 
 val deadline : parser -> float option
@@ -85,6 +91,12 @@ val flush_expired : ?defer:(string -> bool) -> parser -> float -> token list
     If [defer pending] is [true], [pending] remains buffered and no new deadline
     is scheduled until more bytes arrive or {!wake_deferred} is called. [defer]
     defaults to [fun _ -> false]. *)
+
+val flush_expired_iter :
+  ?defer:(string -> bool) -> parser -> float -> emit:(token -> unit) -> unit
+(** [flush_expired_iter ~defer p now ~emit] is like {!flush_expired}, but calls
+    [emit] once for each flushed token instead of allocating and returning a
+    token list. *)
 
 (** {1:state State} *)
 
