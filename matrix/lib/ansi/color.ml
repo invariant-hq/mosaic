@@ -56,19 +56,6 @@ let palette_flat =
   done;
   arr
 
-let palette_rgb_int idx =
-  let idx = clamp_byte idx in
-  if idx < 16 then ansi_16_rgb.(idx)
-  else if idx < 232 then
-    let n = idx - 16 in
-    let r = cube_level.(n / 36) in
-    let g = cube_level.(n / 6 mod 6) in
-    let b = cube_level.(n mod 6) in
-    (r, g, b)
-  else
-    let gray = 8 + ((idx - 232) * 10) in
-    (gray, gray, gray)
-
 module Packed = struct
   let () = assert (Sys.int_size >= 62)
   let alpha_shift = 0
@@ -77,7 +64,6 @@ module Packed = struct
   let red_shift = 24
   let slot_shift = 32
   let intent_shift = 40
-  let intent_rgb = 0
   let intent_indexed = 1
   let intent_default = 2
   let intent_mask = 0x3
@@ -106,13 +92,34 @@ module Packed = struct
 end
 
 let default = Packed.default
-let of_rgb r g b = Packed.make ~intent:Packed.intent_rgb ~slot:0 ~r ~g ~b ~a:255
-let of_rgba r g b a = Packed.make ~intent:Packed.intent_rgb ~slot:0 ~r ~g ~b ~a
+
+let[@inline] of_rgb r g b =
+  let r = clamp_byte r in
+  let g = clamp_byte g in
+  let b = clamp_byte b in
+  255 lor (b lsl Packed.blue_shift) lor (g lsl Packed.green_shift)
+  lor (r lsl Packed.red_shift)
+
+let[@inline] of_rgba r g b a =
+  let r = clamp_byte r in
+  let g = clamp_byte g in
+  let b = clamp_byte b in
+  let a = clamp_byte a in
+  a lor (b lsl Packed.blue_shift) lor (g lsl Packed.green_shift)
+  lor (r lsl Packed.red_shift)
+
+let make_indexed idx =
+  let base = idx * 3 in
+  let r = Array.unsafe_get palette_flat base in
+  let g = Array.unsafe_get palette_flat (base + 1) in
+  let b = Array.unsafe_get palette_flat (base + 2) in
+  Packed.make ~intent:Packed.intent_indexed ~slot:idx ~r ~g ~b ~a:255
+
+let indexed_colors = Array.init 256 make_indexed
 
 let indexed idx =
   let idx = clamp_byte idx in
-  let r, g, b = palette_rgb_int idx in
-  Packed.make ~intent:Packed.intent_indexed ~slot:idx ~r ~g ~b ~a:255
+  Array.unsafe_get indexed_colors idx
 
 let of_palette_index = indexed
 let black = indexed 0
