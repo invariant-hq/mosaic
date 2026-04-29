@@ -871,6 +871,9 @@ let handle_control t ctrl =
               mark_row_dirty t row)
   | Ansi.Parser.OSC (0, title) | Ansi.Parser.OSC (2, title) -> t.title <- title
   | Ansi.Parser.OSC _ -> () (* Ignore other OSC *)
+  | Ansi.Parser.DCS _ | Ansi.Parser.APC _ | Ansi.Parser.PM _ | Ansi.Parser.SOS _
+    ->
+      ()
   | Ansi.Parser.Hyperlink payload -> (
       match payload with
       | None -> t.style <- Ansi.Style.unlink t.style

@@ -347,7 +347,7 @@ let apply_event_internal (caps, info) (event : Input.Caps.event) =
          terminals (e.g., foot, WezTerm) may support the Kitty keyboard protocol
          without supporting Kitty graphics or other Kitty features. *)
       let caps =
-        if level > 0 then { caps with kitty_keyboard = true } else caps
+        if level >= 0 then { caps with kitty_keyboard = true } else caps
       in
       (caps, info)
   | Input.Caps.Color_scheme _ ->
@@ -380,7 +380,7 @@ let xtversion_query = Ansi.(to_string (query Terminal_identity))
 let csi_u_query = Ansi.(to_string (query Csi_u_support))
 let decrqm_sgr_pixels = Ansi.(to_string (query Sgr_pixels_mode))
 let decrqm_unicode = Ansi.(to_string (query Unicode_mode))
-let decrqm_color_scheme = Ansi.(to_string (query Color_scheme_query))
+let decrqm_color_scheme = Ansi.(to_string (query Color_scheme_mode))
 let decrqm_focus = Ansi.(to_string (query Focus_mode))
 let decrqm_bracketed_paste = Ansi.(to_string (query Bracketed_paste_mode))
 let decrqm_sync = Ansi.(to_string (query Sync_mode))

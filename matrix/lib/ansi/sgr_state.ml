@@ -61,10 +61,13 @@ let update t w ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b ~bg_a ~attrs ~link =
       t.link_open <- false));
 
   (* Handle SGR state *)
-  let had_fg = t.fg_r >= 0. && t.fg_g >= 0. && t.fg_b >= 0. && t.fg_a >= 0. in
+  let fg_visible = fg_a > 0.0001 in
+  let prev_fg_visible = t.fg_a > 0.0001 in
   let fg_diff =
-    floats_neq fg_r t.fg_r || floats_neq fg_g t.fg_g || floats_neq fg_b t.fg_b
-    || floats_neq fg_a t.fg_a
+    fg_visible <> prev_fg_visible
+    || fg_visible
+       && (floats_neq fg_r t.fg_r || floats_neq fg_g t.fg_g
+         || floats_neq fg_b t.fg_b)
   in
   let bg_visible = bg_a > 0.0001 in
   let prev_bg_visible = t.bg_a > 0.0001 in
@@ -82,7 +85,7 @@ let update t w ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b ~bg_a ~attrs ~link =
     Escape.sgr_code w 0;
 
     (* Foreground color *)
-    if fg_diff || had_fg then (
+    if fg_visible then (
       Escape.sgr_sep w;
       Escape.sgr_code w 38;
       Escape.sgr_sep w;

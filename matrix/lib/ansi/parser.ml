@@ -18,6 +18,10 @@ type control =
   | DCH of int
   | ICH of int
   | OSC of int * string
+  | DCS of string
+  | APC of string
+  | PM of string
+  | SOS of string
   | Hyperlink of ((string * string) list * string) option
   | Reset
   | DECSC
@@ -119,29 +123,43 @@ let parse_sgr_params params len =
 
 (* Maximum CSI parameters supported. 32 covers even complex SGR sequences. *)
 let max_csi_params = 32
+let csi_param_missing = -1
 
 (* Parse CSI body into parameters - returns param count *)
 let parse_csi_params body body_len params max_params =
-  let rec parse i current count =
+  let rec parse i current saw_digit count =
     if i >= body_len then (
-      if count < max_params then params.(count) <- current;
+      if count < max_params then
+        params.(count) <- (if saw_digit then current else csi_param_missing);
       min (count + 1) max_params)
     else
       match body.[i] with
       | ';' ->
-          if count < max_params then params.(count) <- current;
-          parse (i + 1) 0 (count + 1)
+          if count < max_params then
+            params.(count) <- (if saw_digit then current else csi_param_missing);
+          parse (i + 1) 0 false (count + 1)
       | '0' .. '9' as c ->
-          parse (i + 1) ((current * 10) + Char.code c - 48) count
-      | _ -> parse (i + 1) current count
+          parse (i + 1) ((current * 10) + Char.code c - 48) true count
+      | _ -> parse (i + 1) current saw_digit count
   in
-  if body_len > 0 then parse 0 0 0 else 0
+  if body_len > 0 then parse 0 0 false 0 else 0
 
 let parse_csi ~params body final : token option =
   let body_len = String.length body in
   (* Zero out params for reuse - only need to clear used portion *)
   let param_count = parse_csi_params body body_len params max_csi_params in
-  let get n default = if n < param_count then params.(n) else default in
+  let get n default =
+    if n < param_count then
+      let value = params.(n) in
+      if value = csi_param_missing then default else value
+    else default
+  in
+  let sgr_param n =
+    if n < param_count then
+      let value = params.(n) in
+      if value = csi_param_missing then 0 else value
+    else 0
+  in
   match final with
   | 'A' -> Some (Control (CUU (get 0 1)))
   | 'B' -> Some (Control (CUD (get 0 1)))
@@ -161,7 +179,12 @@ let parse_csi ~params body final : token option =
   | 'm' ->
       let attrs =
         if param_count = 0 then [ `Reset ]
-        else parse_sgr_params params param_count
+        else begin
+          for i = 0 to param_count - 1 do
+            params.(i) <- sgr_param i
+          done;
+          parse_sgr_params params param_count
+        end
       in
       Some (SGR attrs)
   | 's' -> Some (Control DECSC) (* CSI s - save cursor position *)
@@ -231,7 +254,23 @@ let parse_osc body : token =
       | Some code -> Control (OSC (code, data))
       | None -> Control (Unknown ("OSC " ^ body)))
 
-type state = Normal | Escape | Csi | Osc | Osc_escape
+type string_control = Dcs | Apc | Pm | Sos
+
+type state =
+  | Normal
+  | Escape
+  | Csi
+  | Osc
+  | Osc_escape
+  | String_control of string_control
+  | String_control_escape of string_control
+
+let control_of_string_control kind body =
+  match kind with
+  | Dcs -> DCS body
+  | Apc -> APC body
+  | Pm -> PM body
+  | Sos -> SOS body
 
 type t = {
   (* Pending bytes buffer - for incomplete escape sequences at chunk
@@ -243,6 +282,7 @@ type t = {
   (* Escape sequence accumulators *)
   csi_buf : Buffer.t;
   osc_buf : Buffer.t;
+  string_control_buf : Buffer.t;
   (* Decoded text accumulator *)
   text_buf : Buffer.t;
   (* UTF-8 incomplete sequence buffer (max 3 bytes needed) *)
@@ -259,6 +299,7 @@ let create () =
     state = Normal;
     csi_buf = Buffer.create 32;
     osc_buf = Buffer.create 64;
+    string_control_buf = Buffer.create 64;
     text_buf = Buffer.create 128;
     utf8_buf = Bytes.create 4;
     utf8_len = 0;
@@ -270,11 +311,28 @@ let reset p =
   p.state <- Normal;
   Buffer.clear p.csi_buf;
   Buffer.clear p.osc_buf;
+  Buffer.clear p.string_control_buf;
   Buffer.clear p.text_buf;
   p.utf8_len <- 0
 
 let has_pending p = p.pending_len > 0 || p.state <> Normal || p.utf8_len > 0
 let pending p = Bytes.sub p.pending_buf 0 p.pending_len
+
+let[@inline] utf8_sequence_len b =
+  if b < 0x80 then 1
+  else if b >= 0xC2 && b <= 0xDF then 2
+  else if b >= 0xE0 && b <= 0xEF then 3
+  else if b >= 0xF0 && b <= 0xF4 then 4
+  else 0
+
+let[@inline] emit_utf8_decode buf bytes off =
+  let d = Bytes.get_utf_8_uchar bytes off in
+  if Uchar.utf_decode_is_valid d then (
+    Buffer.add_utf_8_uchar buf (Uchar.utf_decode_uchar d);
+    true)
+  else (
+    Buffer.add_utf_8_uchar buf Uchar.rep;
+    false)
 
 (* Decode UTF-8 bytes to text_buf. Handles chunk boundaries for streaming
    input. *)
@@ -286,48 +344,39 @@ let decode_utf8 p src off len =
     let i = ref off in
     (* Complete any pending incomplete sequence from previous chunk *)
     if p.utf8_len > 0 then begin
-      (* Try adding bytes until we get a valid decode or run out *)
-      while p.utf8_len < 4 && !i < end_pos do
+      let lead = Bytes.get_uint8 p.utf8_buf 0 in
+      let expected = utf8_sequence_len lead in
+      if expected = 0 then begin
+        Buffer.add_utf_8_uchar buf Uchar.rep;
+        p.utf8_len <- 0
+      end;
+      while p.utf8_len > 0 && p.utf8_len < expected && !i < end_pos do
         Bytes.set p.utf8_buf p.utf8_len (Bytes.get src !i);
         p.utf8_len <- p.utf8_len + 1;
-        incr i;
-        let d = Bytes.get_utf_8_uchar p.utf8_buf 0 in
-        if Uchar.utf_decode_is_valid d then begin
-          Buffer.add_utf_8_uchar buf (Uchar.utf_decode_uchar d);
-          p.utf8_len <- 0
-        end
+        incr i
       done;
-      (* If we filled 4 bytes and still invalid, emit replacement *)
-      if p.utf8_len = 4 then begin
-        Buffer.add_utf_8_uchar buf Uchar.rep;
+      if p.utf8_len = expected then begin
+        ignore (emit_utf8_decode buf p.utf8_buf 0 : bool);
         p.utf8_len <- 0
       end
     end;
-    (* Process remaining bytes using stdlib decoder *)
+    (* Process remaining bytes. Only decode after proving the complete
+       sequence is inside the caller's logical slice. *)
     while !i < end_pos do
-      let d = Bytes.get_utf_8_uchar src !i in
-      if Uchar.utf_decode_is_valid d then begin
-        Buffer.add_utf_8_uchar buf (Uchar.utf_decode_uchar d);
-        i := !i + Uchar.utf_decode_length d
+      let b = Bytes.get_uint8 src !i in
+      let expected = utf8_sequence_len b in
+      if expected = 0 then begin
+        Buffer.add_utf_8_uchar buf Uchar.rep;
+        incr i
+      end
+      else if !i + expected > end_pos then begin
+        let available = end_pos - !i in
+        Bytes.blit src !i p.utf8_buf 0 available;
+        p.utf8_len <- available;
+        i := end_pos
       end
       else begin
-        (* Invalid or incomplete - check if it's a truncated sequence at end *)
-        let remaining = end_pos - !i in
-        let b = Bytes.get_uint8 src !i in
-        (* Valid UTF-8 lead bytes are 0xC2-0xF4. 0xC0-0xC1 are overlong,
-           0xF5-0xFF encode values beyond Unicode range. *)
-        let is_valid_lead = b >= 0xC2 && b <= 0xF4 in
-        if remaining < 4 && is_valid_lead then begin
-          (* Might be incomplete at chunk boundary - buffer it *)
-          Bytes.blit src !i p.utf8_buf 0 remaining;
-          p.utf8_len <- remaining;
-          i := end_pos
-        end
-        else begin
-          (* Truly invalid - emit replacement, skip one byte *)
-          Buffer.add_utf_8_uchar buf Uchar.rep;
-          incr i
-        end
+        if emit_utf8_decode buf src !i then i := !i + expected else incr i
       end
     done
   end
@@ -397,6 +446,22 @@ let feed p src ~off ~len emit =
           | ']' ->
               Buffer.clear p.osc_buf;
               p.state <- Osc;
+              loop (pos + 1)
+          | 'P' ->
+              Buffer.clear p.string_control_buf;
+              p.state <- String_control Dcs;
+              loop (pos + 1)
+          | '_' ->
+              Buffer.clear p.string_control_buf;
+              p.state <- String_control Apc;
+              loop (pos + 1)
+          | '^' ->
+              Buffer.clear p.string_control_buf;
+              p.state <- String_control Pm;
+              loop (pos + 1)
+          | 'X' ->
+              Buffer.clear p.string_control_buf;
+              p.state <- String_control Sos;
               loop (pos + 1)
           | 'c' ->
               p.state <- Normal;
@@ -480,6 +545,30 @@ let feed p src ~off ~len emit =
             (* Not ST - add ESC to buffer and reprocess *)
             Buffer.add_char p.osc_buf '\x1b';
             p.state <- Osc;
+            loop pos)
+      | String_control kind ->
+          let c = Bytes.get input (input_off + pos) in
+          if c = '\x1b' then (
+            p.state <- String_control_escape kind;
+            loop (pos + 1))
+          else if Buffer.length p.string_control_buf >= max_osc_length then (
+            p.state <- Normal;
+            Buffer.clear p.string_control_buf;
+            emit (Control (Unknown "STRING_CONTROL_TOO_LONG"));
+            loop (pos + 1))
+          else (
+            Buffer.add_char p.string_control_buf c;
+            loop (pos + 1))
+      | String_control_escape kind ->
+          let c = Bytes.get input (input_off + pos) in
+          if c = '\\' then (
+            let body = Buffer.contents p.string_control_buf in
+            p.state <- Normal;
+            emit (Control (control_of_string_control kind body));
+            loop (pos + 1))
+          else (
+            Buffer.add_char p.string_control_buf '\x1b';
+            p.state <- String_control kind;
             loop pos)
   in
   let consumed = loop 0 in

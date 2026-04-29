@@ -284,12 +284,6 @@ val disable : mode -> t
 
 (** {2:keyboard Keyboard encoding} *)
 
-val csi_u_on : t
-(** [csi_u_on] enables CSI-u extended keyboard encoding. *)
-
-val csi_u_off : t
-(** [csi_u_off] disables CSI-u encoding. *)
-
 val csi_u_push : flags:int -> t
 (** [csi_u_push ~flags] pushes Kitty keyboard protocol flags. *)
 
@@ -318,7 +312,6 @@ type query =
   | Sixel_geometry  (** Sixel geometry limits. *)
   | Explicit_width_support  (** OSC 66 width probe. *)
   | Scaled_text_support  (** OSC 66 scaled text probe. *)
-  | Color_scheme_query  (** DSR 996. *)
   | Focus_mode  (** DECRQM 1004. *)
   | Sgr_pixels_mode  (** DECRQM 1016. *)
   | Bracketed_paste_mode  (** DECRQM 2004. *)

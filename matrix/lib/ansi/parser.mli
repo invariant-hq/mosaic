@@ -7,8 +7,8 @@
 
     Parsing never raises on malformed input. Unrecognized sequences become
     {!Unknown} controls and invalid UTF-8 is replaced with U+FFFD. Maximum
-    sequence lengths ([max_escape_length] for CSI, [max_osc_length] for OSC)
-    prevent unbounded buffering. *)
+    sequence lengths ([max_escape_length] for CSI, [max_osc_length] for OSC and
+    other string controls) prevent unbounded buffering. *)
 
 (** {1:tokens Tokens} *)
 
@@ -30,6 +30,10 @@ type control =
   | DCH of int  (** Delete [n] Characters. *)
   | ICH of int  (** Insert [n] blank Characters. *)
   | OSC of int * string  (** Generic OSC with code and payload. *)
+  | DCS of string  (** Device Control String payload. *)
+  | APC of string  (** Application Program Command payload. *)
+  | PM of string  (** Privacy Message payload. *)
+  | SOS of string  (** Start Of String payload. *)
   | Hyperlink of ((string * string) list * string) option
       (** OSC 8 hyperlink. [None] closes the current hyperlink.
           [Some (params, url)] opens one, where [params] are key=value pairs
@@ -110,6 +114,6 @@ val has_pending : t -> bool
 
 val pending : t -> bytes
 (** [pending p] is a copy of raw input bytes not yet consumed. Escape sequence
-    bodies being accumulated (CSI parameters, OSC payloads) are stored in
-    separate internal buffers and are not included. Use {!has_pending} to avoid
-    allocation when only checking for pending data. *)
+    bodies being accumulated (CSI parameters, OSC payloads, DCS/APC/PM/SOS
+    payloads) are stored in separate internal buffers and are not included. Use
+    {!has_pending} to avoid allocation when only checking for pending data. *)

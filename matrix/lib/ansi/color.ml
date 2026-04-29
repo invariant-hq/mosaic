@@ -249,7 +249,7 @@ let[@inline] rgba_packed color =
   | Rgb { r; g; b } -> (r lsl 24) lor (g lsl 16) lor (b lsl 8) lor 255
   | Rgba { r; g; b; a } -> (r lsl 24) lor (g lsl 16) lor (b lsl 8) lor a
   | _ ->
-      let idx = palette_index color in
+      let idx = clamp_byte (palette_index color) in
       let base = idx * 3 in
       let r = Array.unsafe_get palette_flat base in
       let g = Array.unsafe_get palette_flat (base + 1) in

@@ -431,11 +431,6 @@ let disable mode w =
   add_int w (mode_code mode);
   write_char w 'l'
 
-(* Key Encoding *)
-
-let csi_u_on : t = literal "\027[>1u"
-let csi_u_off : t = literal "\027[<1u"
-
 let csi_u_push ~flags w =
   write_string w "\027[>";
   add_int w flags;
@@ -459,7 +454,6 @@ type query =
   | Sixel_geometry
   | Explicit_width_support
   | Scaled_text_support
-  | Color_scheme_query
   | Focus_mode
   | Sgr_pixels_mode
   | Bracketed_paste_mode
@@ -480,7 +474,6 @@ let query = function
   | Sixel_geometry -> literal "\027[?2;1;0S"
   | Explicit_width_support -> literal "\027]66;w=1; \027\\"
   | Scaled_text_support -> literal "\027]66;s=2; \027\\"
-  | Color_scheme_query -> literal "\027[?996n"
   | Focus_mode -> literal "\027[?1004$p"
   | Sgr_pixels_mode -> literal "\027[?1016$p"
   | Bracketed_paste_mode -> literal "\027[?2004$p"

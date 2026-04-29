@@ -140,8 +140,6 @@ type mode =
 
 val enable : mode -> t
 val disable : mode -> t
-val csi_u_on : t
-val csi_u_off : t
 val csi_u_push : flags:int -> t
 val csi_u_pop : t
 val modify_other_keys_on : t
@@ -161,7 +159,6 @@ type query =
   | Sixel_geometry
   | Explicit_width_support
   | Scaled_text_support
-  | Color_scheme_query
   | Focus_mode
   | Sgr_pixels_mode
   | Bracketed_paste_mode
