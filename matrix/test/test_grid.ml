@@ -1391,6 +1391,14 @@ let tests =
         equal ~msg:"original content preserved" string "AB  "
           (row_to_string grid 0);
         equal ~msg:"new row is spaces" string "    " (row_to_string grid 1));
+    test "resize_clear clears when dimensions change" (fun () ->
+        let grid = Grid.create ~width:2 ~height:1 () in
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"AB";
+        Grid.resize_clear grid ~width:4 ~height:2;
+        equal ~msg:"width after resize_clear" int 4 (Grid.width grid);
+        equal ~msg:"height after resize_clear" int 2 (Grid.height grid);
+        equal ~msg:"old row cleared" string "    " (row_to_string grid 0);
+        equal ~msg:"new row cleared" string "    " (row_to_string grid 1));
   ]
 
 let () = run "matrix.grid" [ group "grid" tests ]

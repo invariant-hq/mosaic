@@ -368,6 +368,20 @@ let test_resize_clears_both_buffers () =
   (* Verify the new content is rendered *)
   is_true ~msg:"new content rendered" (String.contains output2 'S')
 
+let test_resize_clears_pending_next_buffer () =
+  let r = Screen.create () in
+  Screen.build r ~width:5 ~height:1 (fun grid _hits ->
+      Grid.draw_text grid ~x:0 ~y:0 ~text:"STALE");
+  Screen.resize r ~width:10 ~height:1;
+  let f =
+    build_screen r ~width:10 ~height:1 (fun _grid _hits -> ())
+  in
+  let grid = Screen.next_grid f in
+  equal ~msg:"pending content cleared from next grid" string " "
+    (Grid.get_text grid 0);
+  let output = Screen.render f in
+  is_false ~msg:"stale text not rendered" (String.contains output 'S')
+
 let test_resize_same_size_preserves_diff_baseline () =
   let r = create_renderer ~width:8 ~height:3 () in
   let bg = Ansi.Color.of_rgb 28 28 28 in
@@ -1056,6 +1070,8 @@ let () =
           test "Resize preserves content" test_resize_preserves_content;
           test "Resize smaller" test_resize_smaller;
           test "Resize clears both buffers" test_resize_clears_both_buffers;
+          test "Resize clears pending next buffer"
+            test_resize_clears_pending_next_buffer;
           test "Resize same size preserves diff baseline"
             test_resize_same_size_preserves_diff_baseline;
           test "Cursor clamped on resize" test_cursor_clamped_on_resize;
