@@ -35,6 +35,16 @@ let contains_substring needle haystack =
     true
   with Not_found -> false
 
+let is_writer_overflow = function
+  | Invalid_argument msg -> contains_substring "Writer: buffer overflow" msg
+  | _ -> false
+
+let expect_writer_overflow f =
+  try
+    f ();
+    fail "expected writer overflow"
+  with exn -> if not (is_writer_overflow exn) then raise exn
+
 (* 1. Core Rendering Tests *)
 
 let test_create_renderer () =
@@ -160,6 +170,49 @@ let test_styled_frame_resets_sgr () =
   in
   let output = Screen.render frame in
   is_true ~msg:"styled output resets SGR" (contains_substring "\027[0m" output)
+
+let test_render_to_bytes_overflow_does_not_commit_scrolled_baseline () =
+  let r = Screen.create () in
+  let f1 =
+    build_screen r ~width:1 ~height:3 (fun grid _hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"A";
+        Grid.draw_text grid ~x:0 ~y:1 ~text:"B";
+        Grid.draw_text grid ~x:0 ~y:2 ~text:"C")
+  in
+  let _ = Screen.render f1 in
+  let f2 =
+    build_screen r ~width:1 ~height:3 (fun grid _hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"B";
+        Grid.draw_text grid ~x:0 ~y:1 ~text:"C";
+        Grid.draw_text grid ~x:0 ~y:2 ~text:"D")
+  in
+  expect_writer_overflow (fun () ->
+      ignore
+        (Screen.render_to_bytes
+           ~scroll_hint:{ Screen.top = 0; bottom = 2; delta = 1 }
+           f2 (Bytes.create 4)
+          : int));
+  let output = Screen.render f2 in
+  is_true ~msg:"retry without scroll hint still emits B"
+    (String.contains output 'B');
+  is_true ~msg:"retry without scroll hint still emits C"
+    (String.contains output 'C');
+  is_true ~msg:"retry without scroll hint emits D" (String.contains output 'D')
+
+let test_render_to_bytes_overflow_does_not_activate_hit_grid () =
+  let r = Screen.create () in
+  let frame =
+    build_screen r ~width:3 ~height:1 (fun grid hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"abc";
+        Screen.Hit_grid.add hits ~x:1 ~y:0 ~width:1 ~height:1 ~id:42)
+  in
+  expect_writer_overflow (fun () ->
+      ignore (Screen.render_to_bytes frame (Bytes.create 1) : int));
+  equal ~msg:"overflow leaves hit grid inactive" int 0
+    (Screen.query_hit frame ~x:1 ~y:0);
+  let _ = Screen.render frame in
+  equal ~msg:"successful render activates hit grid" int 42
+    (Screen.query_hit frame ~x:1 ~y:0)
 
 (* 2. Diff Algorithm Tests *)
 
@@ -597,6 +650,30 @@ let test_buffer_overflow_prevention () =
   is_true ~msg:"large frame renders without overflow"
     (String.length output > 1000)
 
+let test_render_large_hyperlinked_frame_succeeds () =
+  let r = Screen.create () in
+  let width = 96 in
+  let height = 96 in
+  let payload = String.make 240 'x' in
+  let frame =
+    build_screen r ~width ~height (fun grid _hits ->
+        for y = 0 to height - 1 do
+          for x = 0 to width - 1 do
+            let style =
+              Ansi.Style.hyperlink
+                (Printf.sprintf "https://example.com/%d/%s"
+                   ((y * width) + x)
+                   payload)
+                Ansi.Style.default
+            in
+            Grid.draw_text grid ~x ~y ~text:"X" ~style
+          done
+        done)
+  in
+  let output = Screen.render frame in
+  is_true ~msg:"large hyperlinked frame renders above old fixed buffer"
+    (String.length output > 2 * 1024 * 1024)
+
 let test_resize_full_redraw () =
   (* Test that first frame after resize is full redraw *)
   let r = create_renderer ~width:10 ~height:10 () in
@@ -956,6 +1033,10 @@ let () =
           test "Height limit clips active hit grid"
             test_height_limit_clips_active_hit_grid;
           test "Styled frame resets SGR" test_styled_frame_resets_sgr;
+          test "Overflow does not commit scrolled baseline"
+            test_render_to_bytes_overflow_does_not_commit_scrolled_baseline;
+          test "Overflow does not activate hit grid"
+            test_render_to_bytes_overflow_does_not_activate_hit_grid;
         ];
       group "Diff Algorithm"
         [
@@ -1004,6 +1085,8 @@ let () =
         [
           test "Extremely wide characters" test_extremely_wide_char;
           test "Buffer overflow prevention" test_buffer_overflow_prevention;
+          test "Large hyperlinked Screen.render succeeds"
+            test_render_large_hyperlinked_frame_succeeds;
           test "Resize triggers full redraw" test_resize_full_redraw;
           test "Resize clears hit grids" test_resize_hit_grid_cleared;
           test "Explicit width sequences" test_explicit_width_sequences;

@@ -46,6 +46,7 @@ type t = {
   (* Buffers (Double Buffering) *)
   mutable current : Grid.t;
   mutable next : Grid.t;
+  diff_current : Grid.t;
   mutable hit_current : Hit_grid.t;
   mutable hit_next : Hit_grid.t;
   (* State *)
@@ -70,7 +71,6 @@ type t = {
 (* --- Constants & Inline Helpers --- *)
 
 let[@inline] width_step w = if w <= 0 then 1 else w
-let default_render_buffer_size = 2 * 1024 * 1024
 
 (* --- Writer Logic --- *)
 
@@ -114,6 +114,17 @@ let[@inline] add_code_to_writer ~explicit_width ~explicit_cursor_positioning
 (* --- Core Rendering Logic --- *)
 
 type render_mode = [ `Diff | `Full ]
+type prepared_frame = { now : float; delta_seconds : float }
+
+type emitted_frame = {
+  now : float;
+  delta_seconds : float;
+  elapsed_ms : float;
+  cells : int;
+  output_len : int;
+  presented_height : int;
+  scratch_bytes : bytes;
+}
 
 (* The hot loop. Scans grid, checks dirty flags, diffs against previous frame,
    and emits sequences while reusing renderer state and scratch buffers. *)
@@ -304,17 +315,14 @@ let prepare_frame r =
   let now = Unix.gettimeofday () in
   let delta_seconds =
     match r.last_render_time with
-    | None ->
-        r.last_render_time <- Some now;
-        0.
+    | None -> 0.
     | Some prev ->
         let delta = now -. prev in
-        r.last_render_time <- Some now;
         if delta <= 0. then 0. else delta
   in
   let delta_ms = delta_seconds *. 1000. in
   List.iter ~f:(fun fn -> fn r.next ~delta:delta_ms) (post_processes r);
-  (now, delta_seconds)
+  { now; delta_seconds }
 
 let finalize_frame r ~now ~delta_seconds ~elapsed_ms ~cells ~output_len =
   let t_reset_start = Unix.gettimeofday () in
@@ -345,6 +353,11 @@ let finalize_frame r ~now ~delta_seconds ~elapsed_ms ~cells ~output_len =
     }
   in
   r.last_metrics <- next_m
+
+let presented_height r height_limit =
+  match height_limit with
+  | None -> Grid.height r.next
+  | Some limit -> max 0 (min (Grid.height r.next) limit)
 
 (* --- Input / Cursor Handling --- *)
 
@@ -389,58 +402,80 @@ let apply_scroll_hint ~(writer : Ansi.writer) ~row_offset ~height_limit ~current
       Ansi.emit Ansi.reset_scrolling_region writer;
       Ansi.cursor_position ~row:(row_offset + 1) ~col:1 writer
 
-let submit ~(mode : render_mode) ?scroll_hint ?height_limit
-    ~(writer : Ansi.writer) r =
-  let now, delta_seconds = prepare_frame r in
-  (* Use Fun.protect to guarantee SGR cleanup even if render raises. *)
-  let cells = ref 0 in
-  let elapsed_ms = ref 0. in
-  Fun.protect
-    ~finally:(fun () ->
-      Ansi.Sgr_state.close_link r.sgr_state writer;
-      Ansi.Sgr_state.reset r.sgr_state)
-    (fun () ->
-      let scratch = ref r.scratch_bytes in
-      let render_start = Unix.gettimeofday () in
-      (* Apply DECSTBM scroll hint before diffing. The hint shifts the
-         previous buffer and emits hardware scroll sequences so the diff
-         loop only sees the newly-revealed rows as changes. *)
-      (match (mode, scroll_hint) with
-      | `Diff, Some hint ->
-          apply_scroll_hint ~writer ~row_offset:r.row_offset ~height_limit
-            ~current:r.current hint
-      | _ -> ());
-      let prev = match mode with `Diff -> Some r.current | `Full -> None in
+let prepare_diff_baseline (r : t) ~mode ~scroll_hint ~height_limit
+    ~(writer : Ansi.writer) =
+  match (mode, scroll_hint) with
+  | `Full, _ -> None
+  | `Diff, None -> Some r.current
+  | `Diff, Some hint ->
+      (* Scroll hints describe terminal-side movement. Apply them to a
+         temporary baseline so output failures cannot corrupt [current]. *)
+      Grid.blit ~src:r.current ~dst:r.diff_current;
+      apply_scroll_hint ~writer ~row_offset:r.row_offset ~height_limit
+        ~current:r.diff_current hint;
+      Some r.diff_current
 
-      cells :=
-        render_generic ~pool:r.glyph_pool ~row_offset:r.row_offset
-          ~use_explicit_width:r.use_explicit_width
-          ~use_explicit_cursor_positioning:r.use_explicit_cursor_positioning
-          ~use_hyperlinks:r.hyperlinks_capable ~mode ~height_limit ~writer
-          ~scratch ~sgr_state:r.sgr_state ~prev ~curr:r.next;
-
-      elapsed_ms := (Unix.gettimeofday () -. render_start) *. 1000.;
-      r.scratch_bytes <- !scratch);
-
-  let output_len = Ansi.Writer.len writer in
-  let presented_height =
-    match height_limit with
-    | None -> Grid.height r.next
-    | Some limit -> max 0 (min (Grid.height r.next) limit)
+let emit_frame (r : t) ({ now; delta_seconds } : prepared_frame)
+    ~(mode : render_mode) ~scroll_hint ~height_limit ~(writer : Ansi.writer) =
+  let scratch = ref r.scratch_bytes in
+  let render_start = Unix.gettimeofday () in
+  let cells =
+    try
+      let prev =
+        prepare_diff_baseline r ~mode ~scroll_hint ~height_limit ~writer
+      in
+      render_generic ~pool:r.glyph_pool ~row_offset:r.row_offset
+        ~use_explicit_width:r.use_explicit_width
+        ~use_explicit_cursor_positioning:r.use_explicit_cursor_positioning
+        ~use_hyperlinks:r.hyperlinks_capable ~mode ~height_limit ~writer
+        ~scratch ~sgr_state:r.sgr_state ~prev ~curr:r.next
+    with exn ->
+      Ansi.Sgr_state.reset r.sgr_state;
+      raise_notrace exn
   in
-  clear_unpresented_rows r presented_height;
-  finalize_frame r ~now ~delta_seconds ~elapsed_ms:!elapsed_ms ~cells:!cells
-    ~output_len
+  let elapsed_ms = (Unix.gettimeofday () -. render_start) *. 1000. in
+  {
+    now;
+    delta_seconds;
+    elapsed_ms;
+    cells;
+    output_len = Ansi.Writer.len writer;
+    presented_height = presented_height r height_limit;
+    scratch_bytes = !scratch;
+  }
+
+let commit_frame r emitted =
+  r.last_render_time <- Some emitted.now;
+  r.scratch_bytes <- emitted.scratch_bytes;
+  clear_unpresented_rows r emitted.presented_height;
+  finalize_frame r ~now:emitted.now ~delta_seconds:emitted.delta_seconds
+    ~elapsed_ms:emitted.elapsed_ms ~cells:emitted.cells
+    ~output_len:emitted.output_len
 
 let render_to_bytes ?(full = false) ?scroll_hint ?height_limit frame bytes =
   let writer = Ansi.Writer.make bytes in
   let mode = if full then `Full else `Diff in
-  submit frame ~mode ?scroll_hint ?height_limit ~writer;
-  Ansi.Writer.len writer
+  let prepared = prepare_frame frame in
+  let emitted =
+    emit_frame frame prepared ~mode ~scroll_hint ~height_limit ~writer
+  in
+  commit_frame frame emitted;
+  emitted.output_len
 
 let render ?(full = false) ?scroll_hint ?height_limit frame =
-  let bytes = Bytes.create default_render_buffer_size in
-  let len = render_to_bytes ~full ?scroll_hint ?height_limit frame bytes in
+  let mode = if full then `Full else `Diff in
+  let prepared = prepare_frame frame in
+  let counter = Ansi.Writer.make_counting () in
+  let counted =
+    emit_frame frame prepared ~mode ~scroll_hint ~height_limit ~writer:counter
+  in
+  let bytes = Bytes.create counted.output_len in
+  let writer = Ansi.Writer.make bytes in
+  let emitted =
+    emit_frame frame prepared ~mode ~scroll_hint ~height_limit ~writer
+  in
+  commit_frame frame emitted;
+  let len = emitted.output_len in
   Bytes.sub_string bytes ~pos:0 ~len
 
 let glyph_pool t = t.glyph_pool
@@ -476,6 +511,9 @@ let create ?glyph_pool ?width_method ?respect_alpha ?(cursor_visible = true)
       next =
         Grid.create ~width:1 ~height:1 ~glyph_pool ~width_method:w_method
           ~respect_alpha:r_alpha ();
+      diff_current =
+        Grid.create ~width:1 ~height:1 ~glyph_pool ~width_method:w_method
+          ~respect_alpha:r_alpha ();
       hit_current = Hit_grid.create ~width:0 ~height:0;
       hit_next = Hit_grid.create ~width:0 ~height:0;
       cursor = Cursor_state.create ();
@@ -500,6 +538,7 @@ let create ?glyph_pool ?width_method ?respect_alpha ?(cursor_visible = true)
 
 let reset t =
   Grid.clear t.next;
+  Grid.clear t.diff_current;
   Hit_grid.clear t.hit_current;
   Hit_grid.clear t.hit_next;
   t.last_render_time <- None;
@@ -516,6 +555,8 @@ let resize t ~width ~height =
     Grid.resize t.current ~width ~height;
     Grid.clear t.current;
     Grid.resize t.next ~width ~height;
+    Grid.resize t.diff_current ~width ~height;
+    Grid.clear t.diff_current;
     (* Hit_grid.resize already clears unconditionally, no need to clear again *)
     Hit_grid.resize t.hit_current ~width ~height;
     Hit_grid.resize t.hit_next ~width ~height;
@@ -600,6 +641,7 @@ let set_explicit_width t flag =
 
 let set_width_method (t : t) (method_ : Glyph.width_method) =
   Grid.set_width_method t.current method_;
+  Grid.set_width_method t.diff_current method_;
   Grid.set_width_method t.next method_
 
 type effect_id = int
