@@ -929,17 +929,17 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
                 if is_reset then (1., 1., 1., 1.) else (fg_r, fg_g, fg_b, fg_a)
               in
 
-              (* Skip fully transparent source cells in cross-grid blits *)
-              (if (not same_grid) && fg_a <= 0.001 && bg_a <= 0.001 then ()
+              (* A source framebuffer opts into composition with
+                 [respect_alpha]. Plain framebuffers copy stored alpha values;
+                 alpha-respecting framebuffers composite and fully transparent
+                 cells become holes. *)
+              let compose = (not same_grid) && src.respect_alpha in
+              (if compose && fg_a <= 0.001 && bg_a <= 0.001 then ()
                else
-                 let blending =
-                   if same_grid then dst.respect_alpha
-                   else dst.respect_alpha || fg_a < 0.999 || bg_a < 0.999
-                 in
                  set_cell_internal dst
                    ~idx:((dy * dst.width) + dx)
                    ~code:mapped_code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
-                   ~bg_a ~attrs ~link_id ~blending);
+                   ~bg_a ~attrs ~link_id ~blending:compose);
 
               k := !k + x_step
             done;

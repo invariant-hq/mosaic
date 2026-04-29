@@ -117,7 +117,7 @@ val set_width_method : t -> Text.width_method -> unit
 
 val respect_alpha : t -> bool
 (** [respect_alpha g] is [true] iff alpha blending is enabled for {!set_cell}
-    and {!blit_region}. *)
+    and when [g] is used as the source of {!blit_region}. *)
 
 val set_respect_alpha : t -> bool -> unit
 (** [set_respect_alpha g b] sets the alpha blending mode. *)
@@ -243,11 +243,13 @@ val blit_region :
     rectangular region from [src] to [dst].
 
     The region is clamped to valid bounds in both grids. Negative coordinates
-    shift the region inward. Respects the scissor on [dst]. Alpha blending
-    occurs when [dst]'s {!respect_alpha} is [true] or source alpha < 1.0.
-    Same-grid overlapping regions are handled correctly. Wide-character
-    fragments whose start or continuation is outside the copied region are
-    written as spaces. Never resizes [dst]. *)
+    shift the region inward. Respects the scissor on [dst]. Cross-grid alpha
+    blending is source-driven: when [src]'s {!respect_alpha} is [true],
+    semi-transparent source cells are composited over [dst] and fully
+    transparent source cells are skipped; otherwise stored alpha values are
+    copied as-is. Same-grid overlapping regions are handled as copies.
+    Wide-character fragments whose start or continuation is outside the copied
+    region are written as spaces. Never resizes [dst]. *)
 
 val fill_rect :
   t -> x:int -> y:int -> width:int -> height:int -> color:Ansi.Color.t -> unit
