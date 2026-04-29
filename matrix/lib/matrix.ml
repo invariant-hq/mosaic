@@ -218,7 +218,7 @@ let read_events_unix ~terminal ~parser ~input_fd ~wakeup_r ~output_fd
   Input.Parser.drain parser ~now ~on_event ~on_response
 
 let query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
-    ~input_buffer ~timeout =
+    ~input_buffer ~timeout ~on_event =
   Terminal.send terminal "\027[6n";
   let result = ref None in
   let on_response = function
@@ -244,8 +244,7 @@ let query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
          with
         | n when n > 0 ->
             let now = Unix.gettimeofday () in
-            Input.Parser.feed parser input_buffer 0 n ~now
-              ~on_event:(fun _ -> ())
+            Input.Parser.feed parser input_buffer 0 n ~now ~on_event
               ~on_response
         | _ -> ()
         | exception Unix.Unix_error _ -> ());
@@ -1046,9 +1045,11 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
   if input_is_tty && raw_mode then
     original_termios := Some (Terminal.set_raw input_fd);
   let input_buffer = Bytes.create 4096 in
+  let startup_events = ref [] in
+  let queue_startup_event event = startup_events := event :: !startup_events in
   if input_is_tty && raw_mode then
     Terminal.probe ~timeout:0.5
-      ~on_event:(fun _ -> ())
+      ~on_event:queue_startup_event
       ~read_into:(fun buf off len ->
         try Unix.read input_fd buf off len with Unix.Unix_error _ -> 0)
       ~wait_readable:(fun ~timeout ->
@@ -1065,7 +1066,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     if mode = `Primary && input_is_tty && raw_mode then
       match
         query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
-          ~input_buffer ~timeout:0.1
+          ~input_buffer ~timeout:0.1 ~on_event:queue_startup_event
       with
       | Some (row, col) ->
           let anchor =
@@ -1077,6 +1078,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     else if mode = `Primary then (0, true)
     else (0, false)
   in
+  let pending_startup_events = ref (List.rev !startup_events) in
   let shutdown_fn_ref = ref None in
   let app =
     init_app config ~write_output:(write_all output_fd) ~now:Unix.gettimeofday
@@ -1098,11 +1100,16 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
       ~flush_input:(fun () ->
         if input_is_tty then Terminal.flush_input input_fd)
       ~read_events:(fun ~timeout ~on_event ->
-        read_events_unix ~terminal ~parser ~input_fd ~wakeup_r ~output_fd
-          ~input_buffer ~timeout ~on_event)
+        match !pending_startup_events with
+        | [] ->
+            read_events_unix ~terminal ~parser ~input_fd ~wakeup_r ~output_fd
+              ~input_buffer ~timeout ~on_event
+        | events ->
+            pending_startup_events := [];
+            List.iter on_event events)
       ~query_cursor_position:(fun ~timeout ->
         query_cursor_position_unix ~terminal ~parser ~input_fd ~wakeup_r
-          ~input_buffer ~timeout)
+          ~input_buffer ~timeout ~on_event:(fun _ -> ()))
       ~cleanup:(fun () ->
         (match !shutdown_fn_ref with
         | Some fn -> deregister_shutdown_handler fn

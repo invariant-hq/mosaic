@@ -46,6 +46,8 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
       Some (Eio_unix.Fd.use_exn "set_raw" input_eio_fd Matrix.Terminal.set_raw);
   let input_buffer = Bytes.create 4096 in
   let input_cs = Cstruct.create 4096 in
+  let startup_events = ref [] in
+  let queue_startup_event event = startup_events := event :: !startup_events in
   let await_readable ~timeout =
     match
       Eio.Time.with_timeout clock timeout (fun () ->
@@ -63,7 +65,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
   in
   if input_is_tty && raw_mode then
     Matrix.Terminal.probe ~timeout:0.5
-      ~on_event:(fun _ -> ())
+      ~on_event:queue_startup_event
       ~read_into:(fun buf off len ->
         let cs =
           if len <= Cstruct.length input_cs then Cstruct.sub input_cs 0 len
@@ -82,7 +84,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     let cols, rows = terminal_size () in
     (max 1 cols, max 1 rows)
   in
-  let query_cursor_position ~timeout =
+  let query_cursor_position_with_events ~timeout ~on_event =
     (* CR: don't hardcode ansi sequences. use Ansi *)
     Matrix.Terminal.send terminal "\027[6n";
     let result = ref None in
@@ -107,8 +109,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
              let n = read_stdin () in
              let now = Eio.Time.now clock in
              Matrix.Input.Parser.feed parser input_buffer 0 n ~now
-               ~on_event:(fun _ -> ())
-               ~on_response
+               ~on_event ~on_response
            with End_of_file -> ());
           loop ())
     in
@@ -124,9 +125,15 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     else if col = 1 then (max 0 (row - 1), true)
     else (row, true)
   in
+  let query_cursor_position ~timeout =
+    query_cursor_position_with_events ~timeout ~on_event:(fun _ -> ())
+  in
   let render_offset, static_needs_newline =
     if mode = `Primary && input_is_tty && raw_mode then
-      match query_cursor_position ~timeout:0.1 with
+      match
+        query_cursor_position_with_events ~timeout:0.1
+          ~on_event:queue_startup_event
+      with
       | Some (row, col) -> render_offset_of_cursor ~height row col
       | None -> (0, true)
     else if mode = `Primary then (0, true)
@@ -156,6 +163,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
   let write_output buf off len =
     Eio.Flow.write stdout [ Cstruct.of_bytes ~off ~len buf ]
   in
+  let pending_startup_events = ref (List.rev !startup_events) in
   let read_events ~timeout ~on_event =
     let on_response = function
       | Matrix.Input.Response.Capability event ->
@@ -164,43 +172,49 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
       | Matrix.Input.Response.Unknown _ ->
           ()
     in
-    let effective_timeout =
-      match timeout with
-      | None -> sigwinch_poll_interval
-      | Some t -> Float.min t sigwinch_poll_interval
-    in
-    let got =
-      let wait () =
-        Eio.Fiber.first
-          (fun () ->
-            Eio_unix.Fd.use_exn "await" input_eio_fd (fun fd ->
-                Eio_unix.await_readable fd);
-            `Input)
-          (fun () ->
-            Eio.Condition.await_no_mutex wakeup;
-            `Wakeup)
-      in
-      match
-        Eio.Time.with_timeout clock effective_timeout (fun () -> Ok (wait ()))
-      with
-      | Ok v -> v
-      | Error `Timeout -> `Timeout
-    in
-    if Atomic.get winch_flag then (
-      Atomic.set winch_flag false;
-      let cols, rows = terminal_size () in
-      on_event (Matrix.Input.Resize (cols, rows)));
-    (match got with
-    | `Input -> (
-        try
-          let n = read_stdin () in
-          let now = Eio.Time.now clock in
-          Matrix.Input.Parser.feed parser input_buffer 0 n ~now ~on_event
-            ~on_response
-        with End_of_file -> ())
-    | `Wakeup | `Timeout -> ());
-    let now = Eio.Time.now clock in
-    Matrix.Input.Parser.drain parser ~now ~on_event ~on_response
+    match !pending_startup_events with
+    | [] ->
+        let effective_timeout =
+          match timeout with
+          | None -> sigwinch_poll_interval
+          | Some t -> Float.min t sigwinch_poll_interval
+        in
+        let got =
+          let wait () =
+            Eio.Fiber.first
+              (fun () ->
+                Eio_unix.Fd.use_exn "await" input_eio_fd (fun fd ->
+                    Eio_unix.await_readable fd);
+                `Input)
+              (fun () ->
+                Eio.Condition.await_no_mutex wakeup;
+                `Wakeup)
+          in
+          match
+            Eio.Time.with_timeout clock effective_timeout (fun () ->
+                Ok (wait ()))
+          with
+          | Ok v -> v
+          | Error `Timeout -> `Timeout
+        in
+        if Atomic.get winch_flag then (
+          Atomic.set winch_flag false;
+          let cols, rows = terminal_size () in
+          on_event (Matrix.Input.Resize (cols, rows)));
+        (match got with
+        | `Input -> (
+            try
+              let n = read_stdin () in
+              let now = Eio.Time.now clock in
+              Matrix.Input.Parser.feed parser input_buffer 0 n ~now ~on_event
+                ~on_response
+            with End_of_file -> ())
+        | `Wakeup | `Timeout -> ());
+        let now = Eio.Time.now clock in
+        Matrix.Input.Parser.drain parser ~now ~on_event ~on_response
+    | events ->
+        pending_startup_events := [];
+        List.iter on_event events
   in
   let app =
     Matrix.attach ~mode ~raw_mode ~target_fps ~respect_alpha ~mouse_enabled

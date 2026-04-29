@@ -406,6 +406,53 @@ let test_probe_payload_tmux_is_wrapped () =
     (contains_substring output_data "\027Ptmux;\027\027[?1016$p");
   T.close term
 
+let test_probe_preserves_user_input_and_capabilities () =
+  let caps =
+    {
+      T.term = "xterm";
+      rgb = false;
+      kitty_keyboard = false;
+      kitty_graphics = false;
+      bracketed_paste = false;
+      focus_tracking = false;
+      unicode_width = `Wcwidth;
+      sgr_pixels = false;
+      color_scheme_updates = false;
+      explicit_width = true;
+      explicit_cursor_positioning = false;
+      scaled_text = true;
+      sixel = false;
+      sync = false;
+      hyperlinks = false;
+    }
+  in
+  with_tty_terminal ~initial_caps:caps @@ fun term _buf ->
+  let parser = Input.Parser.create () in
+  let input = Bytes.of_string "a\027[?0u\027[?62;c" in
+  let consumed = ref false in
+  let events = ref [] in
+  T.probe ~timeout:0.1
+    ~on_event:(fun event -> events := event :: !events)
+    ~read_into:(fun buf off len ->
+      if !consumed then 0
+      else (
+        consumed := true;
+        let n = min len (Bytes.length input) in
+        Bytes.blit input 0 buf off n;
+        n))
+    ~wait_readable:(fun ~timeout:_ -> not !consumed)
+    ~parser term;
+  (match List.rev !events with
+  | [ event ] ->
+      is_true ~msg:"probe forwards ordinary input"
+        (Input.equal (Input.char 'a') event)
+  | events ->
+      failf "expected one forwarded probe input event, got %d"
+        (List.length events));
+  is_true ~msg:"probe still folds capability replies"
+    (T.capabilities term).kitty_keyboard;
+  T.close term
+
 (* Regression: X10 mouse tracking must be disabled on teardown. *)
 let test_x10_mouse_disable () =
   with_tty_terminal @@ fun term buf ->
@@ -634,6 +681,8 @@ let () =
           test "screen probe not tmux wrapped"
             test_probe_payload_screen_is_not_tmux_wrapped;
           test "tmux probe wrapped" test_probe_payload_tmux_is_wrapped;
+          test "probe preserves user input and capabilities"
+            test_probe_preserves_user_input_and_capabilities;
           test "explicit cursor positioning env"
             test_explicit_cursor_positioning_env_overrides;
         ];
