@@ -83,10 +83,6 @@ let subscriptions _model =
   (* Using on_key means these shortcuts only fire when not consumed by the
      focused text_input. Tab and Escape are not consumed by text_input, so they
      work even when the input is focused. *)
-  Sub.on_key (fun ev ->
-      match (Event.Key.data ev).key with
-      | Tab -> Some Cycle_cursor
-      | Escape -> Some Quit
-      | _ -> None)
+  Sub.on_keys [ (Shortcut.tab, Cycle_cursor); (Shortcut.escape, Quit) ]
 
 let () = run { init; update; view; subscriptions }

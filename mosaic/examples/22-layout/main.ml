@@ -146,16 +146,13 @@ let view model =
 (* ---------- Subscriptions ---------- *)
 
 let subscriptions _model =
-  Sub.on_key (fun ev ->
-      match (Event.Key.data ev).key with
-      | Char c when Uchar.equal c (Uchar.of_char '1') ->
-          Some (Set_layout Dashboard)
-      | Char c when Uchar.equal c (Uchar.of_char '2') ->
-          Some (Set_layout Two_column)
-      | Char c when Uchar.equal c (Uchar.of_char '3') ->
-          Some (Set_layout Holy_grail)
-      | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-      | Escape -> Some Quit
-      | _ -> None)
+  Sub.on_keys
+    [
+      (Shortcut.char '1', Set_layout Dashboard);
+      (Shortcut.char '2', Set_layout Two_column);
+      (Shortcut.char '3', Set_layout Holy_grail);
+      (Shortcut.char 'q', Quit);
+      (Shortcut.escape, Quit);
+    ]
 
 let () = run { init; update; view; subscriptions }

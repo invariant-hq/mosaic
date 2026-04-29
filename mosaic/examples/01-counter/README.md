@@ -5,7 +5,7 @@ Minimal TEA example: model-view-update pattern with keyboard input.
 ## Concepts
 
 - TEA structure: `init`, `update`, `view`, `subscriptions`
-- Keyboard event handling with `Sub.on_key`
+- Keyboard shortcut handling with `Sub.on_keys`
 - Box and Text renderables
 - Quitting with `quit ()`
 

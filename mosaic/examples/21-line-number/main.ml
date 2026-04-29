@@ -140,17 +140,17 @@ let view model =
     ]
 
 let subscriptions _model =
-  Sub.on_key (fun ev ->
-      match (Event.Key.data ev).key with
-      | Char c when Uchar.equal c (Uchar.of_char 'j') -> Some Move_down
-      | Char c when Uchar.equal c (Uchar.of_char 'k') -> Some Move_up
-      | Down -> Some Move_down
-      | Up -> Some Move_up
-      | Char c when Uchar.equal c (Uchar.of_char 'b') -> Some Toggle_breakpoint
-      | Char c when Uchar.equal c (Uchar.of_char 'e') -> Some Toggle_error
-      | Char c when Uchar.equal c (Uchar.of_char 'n') -> Some Toggle_numbers
-      | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-      | Escape -> Some Quit
-      | _ -> None)
+  Sub.on_keys
+    [
+      (Shortcut.char 'j', Move_down);
+      (Shortcut.down, Move_down);
+      (Shortcut.char 'k', Move_up);
+      (Shortcut.up, Move_up);
+      (Shortcut.char 'b', Toggle_breakpoint);
+      (Shortcut.char 'e', Toggle_error);
+      (Shortcut.char 'n', Toggle_numbers);
+      (Shortcut.char 'q', Quit);
+      (Shortcut.escape, Quit);
+    ]
 
 let () = run { init; update; view; subscriptions }

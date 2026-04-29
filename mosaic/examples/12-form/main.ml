@@ -160,13 +160,20 @@ let view model =
     ]
 
 let subscriptions _model =
-  Sub.on_key (fun ev ->
-      let data = Event.Key.data ev in
-      match data.key with
-      | Tab -> if data.modifier.shift then Some Focus_prev else Some Focus_next
-      | Enter -> Some Submit
-      | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-      | Escape -> Some Quit
-      | _ -> None)
+  Sub.batch
+    [
+      Sub.on_key (fun ev ->
+          let data = Event.Key.data ev in
+          match data.key with
+          | Tab ->
+              if data.modifier.shift then Some Focus_prev else Some Focus_next
+          | _ -> None);
+      Sub.on_keys
+        [
+          (Shortcut.enter, Submit);
+          (Shortcut.char 'q', Quit);
+          (Shortcut.escape, Quit);
+        ];
+    ]
 
 let () = run { init; update; view; subscriptions }

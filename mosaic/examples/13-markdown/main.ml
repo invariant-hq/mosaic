@@ -170,10 +170,6 @@ let view () =
     ]
 
 let subscriptions () =
-  Sub.on_key (fun ev ->
-      match (Event.Key.data ev).key with
-      | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-      | Escape -> Some Quit
-      | _ -> None)
+  Sub.on_keys [ (Shortcut.char 'q', Quit); (Shortcut.escape, Quit) ]
 
 let () = run { init; update; view; subscriptions }

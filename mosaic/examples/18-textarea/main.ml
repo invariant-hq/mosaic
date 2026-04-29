@@ -116,11 +116,6 @@ let view model =
     ]
 
 let subscriptions _model =
-  Sub.on_key (fun ev ->
-      let data = Event.Key.data ev in
-      match data.key with
-      | F 2 -> Some Toggle_wrap
-      | Escape -> Some Quit
-      | _ -> None)
+  Sub.on_keys [ (Shortcut.f 2, Toggle_wrap); (Shortcut.escape, Quit) ]
 
 let () = run { init; update; view; subscriptions }

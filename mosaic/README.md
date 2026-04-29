@@ -33,13 +33,13 @@ let view model =
     ]
 
 let subscriptions _model =
-  Sub.on_key (fun ev ->
-      match (Event.Key.data ev).key with
-      | Char c when Uchar.equal c (Uchar.of_char '+') -> Some Increment
-      | Char c when Uchar.equal c (Uchar.of_char '-') -> Some Decrement
-      | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-      | Escape -> Some Quit
-      | _ -> None)
+  Sub.on_keys
+    [
+      (Shortcut.char '+', Increment);
+      (Shortcut.char '-', Decrement);
+      (Shortcut.char 'q', Quit);
+      (Shortcut.escape, Quit);
+    ]
 
 let () = run { init; update; view; subscriptions }
 ```
@@ -71,9 +71,9 @@ An application is four functions:
 `Cmd.t` carries side effects: `Cmd.none`, `Cmd.quit`, `Cmd.perform`,
 `Cmd.batch`, `Cmd.set_title`, `Cmd.focus`.
 
-`Sub.t` declares event sources: `Sub.on_key`, `Sub.on_mouse`,
-`Sub.on_paste`, `Sub.on_resize`, `Sub.on_tick`, `Sub.every`,
-`Sub.on_focus`, `Sub.on_blur`.
+`Sub.t` declares event sources: `Sub.on_keys`, `Sub.on_key`, `Sub.on_mouse`,
+`Sub.on_paste`, `Sub.on_resize`, `Sub.on_tick`, `Sub.every`, `Sub.on_focus`,
+`Sub.on_blur`.
 
 Components compose via `map : ('a -> 'b) -> 'a t -> 'b t`.
 

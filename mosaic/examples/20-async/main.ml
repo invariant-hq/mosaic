@@ -173,18 +173,18 @@ let view model =
     ]
 
 let subscriptions _model =
-  Sub.on_key (fun ev ->
-      match (Event.Key.data ev).key with
-      | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-      | Escape -> Some Quit
-      | Enter -> Some Launch_all
-      | Char c when Uchar.equal c (Uchar.of_char '1') -> Some (Launch 0)
-      | Char c when Uchar.equal c (Uchar.of_char '2') -> Some (Launch 1)
-      | Char c when Uchar.equal c (Uchar.of_char '3') -> Some (Launch 2)
-      | Char c when Uchar.equal c (Uchar.of_char '4') -> Some (Launch 3)
-      | Char c when Uchar.equal c (Uchar.of_char '5') -> Some (Launch 4)
-      | Char c when Uchar.equal c (Uchar.of_char '6') -> Some (Launch 5)
-      | _ -> None)
+  Sub.on_keys
+    [
+      (Shortcut.char 'q', Quit);
+      (Shortcut.escape, Quit);
+      (Shortcut.enter, Launch_all);
+      (Shortcut.char '1', Launch 0);
+      (Shortcut.char '2', Launch 1);
+      (Shortcut.char '3', Launch 2);
+      (Shortcut.char '4', Launch 3);
+      (Shortcut.char '5', Launch 4);
+      (Shortcut.char '6', Launch 5);
+    ]
 
 let () =
   Random.self_init ();

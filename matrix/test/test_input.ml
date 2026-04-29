@@ -158,20 +158,6 @@ let test_opentui_alt_meta_regressions () =
       is_true ~msg:"kitty meta" modifier.meta
   | events -> failf "expected one Kitty Alt event, got %d" (List.length events)
 
-let test_keymap_ctrl_and_base_key_regressions () =
-  let map = Input.Keymap.add_char ~ctrl:true Input.Keymap.empty 'c' "copy" in
-  equal ~msg:"Ctrl+C binding uses lowercase normalized key" (option string)
-    (Some "copy")
-    (Input.Keymap.find map (List.hd (parse_user "\x03")));
-  let physical =
-    Input.key
-      ~modifier:{ Input.Modifier.none with ctrl = true }
-      ~base_key:(Uchar.of_char 'c')
-      (Input.Key.Char (Uchar.of_int 0x0441))
-  in
-  equal ~msg:"Kitty base key fallback" (option string) (Some "copy")
-    (Input.Keymap.find map physical)
-
 let test_csi_sub_params_with_event_type () =
   match parse_user "\x1b[1:2:3A" with
   | [ Input.Key k ] ->
@@ -1241,8 +1227,6 @@ let tests =
     test "OpenTUI ctrl normalization regressions"
       test_opentui_ctrl_normalization_regressions;
     test "OpenTUI alt/meta regressions" test_opentui_alt_meta_regressions;
-    test "keymap ctrl and base key regressions"
-      test_keymap_ctrl_and_base_key_regressions;
     test "parse special keys" test_parse_special_keys;
     test "parse arrow keys" test_parse_arrow_keys;
     test "parse function keys" test_parse_function_keys;

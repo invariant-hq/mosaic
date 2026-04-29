@@ -145,12 +145,12 @@ let subscriptions model =
     [
       (if has_running_jobs model then Sub.on_tick (fun ~dt:_ -> Tick)
        else Sub.none);
-      Sub.on_key (fun ev ->
-          match (Event.Key.data ev).key with
-          | Char c when Uchar.equal c (Uchar.of_char 'a') -> Some Add_job
-          | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-          | Escape -> Some Quit
-          | _ -> None);
+      Sub.on_keys
+        [
+          (Shortcut.char 'a', Add_job);
+          (Shortcut.char 'q', Quit);
+          (Shortcut.escape, Quit);
+        ];
     ]
 
 let () =

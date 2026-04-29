@@ -9,6 +9,73 @@ module Border = Matrix.Grid.Border
 module Event = Mosaic_ui.Event
 module Canvas = Mosaic_ui.Canvas
 
+module Shortcut = struct
+  module Key = Matrix.Input.Key
+  module Modifier = Matrix.Input.Modifier
+
+  type t = { key : Key.t; modifier : Modifier.t }
+
+  let modifier ?(ctrl = false) ?(alt = false) ?(shift = false) ?(super = false)
+      ?(hyper = false) ?(meta = false) () =
+    { Modifier.none with ctrl; alt; shift; super; hyper; meta = meta || alt }
+
+  let key ?ctrl ?alt ?shift ?super ?hyper ?meta key =
+    { key; modifier = modifier ?ctrl ?alt ?shift ?super ?hyper ?meta () }
+
+  let char ?ctrl ?alt ?shift ?super ?hyper ?meta c =
+    key ?ctrl ?alt ?shift ?super ?hyper ?meta (Key.Char (Uchar.of_char c))
+
+  let ctrl c = char ~ctrl:true c
+  let alt c = char ~alt:true c
+  let shift c = char ~shift:true c
+  let escape = key Key.Escape
+  let enter = key Key.Enter
+  let tab = key Key.Tab
+  let backspace = key Key.Backspace
+  let delete = key Key.Delete
+  let f n = key (Key.F n)
+  let up = key Key.Up
+  let down = key Key.Down
+  let left = key Key.Left
+  let right = key Key.Right
+  let space = char ' '
+
+  let matches_modifier t (actual : Modifier.t) =
+    Bool.equal t.modifier.ctrl actual.ctrl
+    && Bool.equal t.modifier.alt actual.alt
+    && Bool.equal t.modifier.shift actual.shift
+    && Bool.equal t.modifier.super actual.super
+    && Bool.equal t.modifier.hyper actual.hyper
+    && Bool.equal t.modifier.meta actual.meta
+
+  let normalized_char_key u =
+    let code = Uchar.to_int u in
+    if code >= Char.code 'A' && code <= Char.code 'Z' then
+      Key.Char (Uchar.of_int (code + 32))
+    else Key.Char u
+
+  let add_key key keys =
+    if List.exists (Key.equal key) keys then keys else key :: keys
+
+  let matching_keys key base_key =
+    let keys =
+      match key with
+      | Key.Char u -> add_key (normalized_char_key u) [ key ]
+      | _ -> [ key ]
+    in
+    match base_key with
+    | Some u -> add_key (normalized_char_key u) keys
+    | None -> keys
+
+  let matches t ev =
+    let ev = Event.Key.data ev in
+    match ev.event_type with
+    | Key.Release -> false
+    | Key.Press | Key.Repeat ->
+        matches_modifier t ev.modifier
+        && List.exists (Key.equal t.key) (matching_keys ev.key ev.base_key)
+end
+
 (* Geometry type aliases *)
 
 type 'a size = 'a Toffee.Geometry.Size.t = { width : 'a; height : 'a }
@@ -164,6 +231,17 @@ module Sub = struct
   let every interval f = Every (interval, f)
   let on_tick f = On_tick f
   let on_key f = On_key f
+
+  let on_keys bindings =
+    On_key
+      (fun ev ->
+        let rec loop = function
+          | [] -> None
+          | (shortcut, msg) :: rest ->
+              if Shortcut.matches shortcut ev then Some msg else loop rest
+        in
+        loop bindings)
+
   let on_key_all f = On_key_all f
   let on_mouse f = On_mouse f
   let on_mouse_all f = On_mouse_all f

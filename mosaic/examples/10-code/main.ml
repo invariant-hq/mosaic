@@ -98,11 +98,11 @@ let view model =
     ]
 
 let subscriptions _model =
-  Sub.on_key (fun ev ->
-      match (Event.Key.data ev).key with
-      | Char c when Uchar.equal c (Uchar.of_char 'l') -> Some Toggle_lang
-      | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-      | Escape -> Some Quit
-      | _ -> None)
+  Sub.on_keys
+    [
+      (Shortcut.char 'l', Toggle_lang);
+      (Shortcut.char 'q', Quit);
+      (Shortcut.escape, Quit);
+    ]
 
 let () = run { init; update; view; subscriptions }

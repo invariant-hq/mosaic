@@ -204,14 +204,16 @@ let subscriptions model =
     [
       Sub.on_tick (fun ~dt -> Tick dt);
       Sub.on_key (fun ev ->
-          match (Event.Key.data ev).key with
-          | Char c when Uchar.equal c (Uchar.of_char ' ') ->
-              Some (match model.state with Running -> Stop | _ -> Start)
-          | Char c when Uchar.equal c (Uchar.of_char 'r') -> Some Reset
-          | Char c when Uchar.equal c (Uchar.of_char 'R') -> Some Reset
-          | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-          | Escape -> Some Quit
-          | _ -> None);
+          if Shortcut.matches Shortcut.space ev then
+            Some (match model.state with Running -> Stop | _ -> Start)
+          else None);
+      Sub.on_keys
+        [
+          (Shortcut.char 'r', Reset);
+          (Shortcut.char ~shift:true 'r', Reset);
+          (Shortcut.char 'q', Quit);
+          (Shortcut.escape, Quit);
+        ];
     ]
 
 let () = run { init; update; view; subscriptions }

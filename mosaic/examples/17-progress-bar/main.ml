@@ -191,12 +191,12 @@ let subscriptions _model =
   Sub.batch
     [
       Sub.on_tick (fun ~dt -> Tick dt);
-      Sub.on_key (fun ev ->
-          match (Event.Key.data ev).key with
-          | Char c when Uchar.equal c (Uchar.of_char ' ') -> Some Toggle
-          | Char c when Uchar.equal c (Uchar.of_char 'q') -> Some Quit
-          | Escape -> Some Quit
-          | _ -> None);
+      Sub.on_keys
+        [
+          (Shortcut.space, Toggle);
+          (Shortcut.char 'q', Quit);
+          (Shortcut.escape, Quit);
+        ];
     ]
 
 let () = run { init; update; view; subscriptions }

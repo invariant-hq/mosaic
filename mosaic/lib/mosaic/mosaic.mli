@@ -33,6 +33,88 @@ module Border = Matrix.Grid.Border
 module Event = Mosaic_ui.Event
 (** Input event types for keyboard, mouse, and paste events. *)
 
+module Shortcut : sig
+  (** Keyboard shortcuts for subscriptions and event handlers.
+
+      A shortcut matches a key press or repeat with exact non-lock modifiers.
+      Caps Lock and Num Lock state are ignored. When a terminal reports a
+      base-layout key, matching also tries that base key so physical shortcuts
+      such as Ctrl+C keep working across keyboard layouts. *)
+
+  type t
+  (** The type for keyboard shortcuts. *)
+
+  val key :
+    ?ctrl:bool ->
+    ?alt:bool ->
+    ?shift:bool ->
+    ?super:bool ->
+    ?hyper:bool ->
+    ?meta:bool ->
+    Matrix.Input.Key.t ->
+    t
+  (** [key k] matches [k] with no modifiers. Optional modifier arguments default
+      to [false]. [alt] also implies [meta], matching terminal Alt input as
+      reported by Matrix. *)
+
+  val char :
+    ?ctrl:bool ->
+    ?alt:bool ->
+    ?shift:bool ->
+    ?super:bool ->
+    ?hyper:bool ->
+    ?meta:bool ->
+    char ->
+    t
+  (** [char c] is [key (Char c)]. Optional modifier arguments default to
+      [false]. *)
+
+  val ctrl : char -> t
+  (** [ctrl c] matches Ctrl+[c]. *)
+
+  val alt : char -> t
+  (** [alt c] matches Alt+[c]. *)
+
+  val shift : char -> t
+  (** [shift c] matches Shift+[c]. *)
+
+  val escape : t
+  (** [escape] matches Escape. *)
+
+  val enter : t
+  (** [enter] matches Enter. *)
+
+  val tab : t
+  (** [tab] matches Tab. *)
+
+  val backspace : t
+  (** [backspace] matches Backspace. *)
+
+  val delete : t
+  (** [delete] matches Delete. *)
+
+  val f : int -> t
+  (** [f n] matches function key F[n]. *)
+
+  val up : t
+  (** [up] matches the Up arrow key. *)
+
+  val down : t
+  (** [down] matches the Down arrow key. *)
+
+  val left : t
+  (** [left] matches the Left arrow key. *)
+
+  val right : t
+  (** [right] matches the Right arrow key. *)
+
+  val space : t
+  (** [space] matches Space. *)
+
+  val matches : t -> Event.key -> bool
+  (** [matches shortcut ev] is [true] iff [ev] matches [shortcut]. *)
+end
+
 module Canvas : sig
   (** Mutable cell-level drawing surface.
 
@@ -763,6 +845,11 @@ module Sub : sig
   (** [on_key f] delivers key events to [f] for the currently focused element.
       [f] returns [None] to ignore an event without dispatching. See also
       {!val-on_key_all}. *)
+
+  val on_keys : (Shortcut.t * 'msg) list -> 'msg t
+  (** [on_keys bindings] delivers key events to the first matching shortcut in
+      [bindings], dispatching its message. Key release events are ignored. See
+      {!Shortcut} for shortcut matching semantics. *)
 
   val on_key_all : (Event.key -> 'msg option) -> 'msg t
   (** [on_key_all f] is like {!val-on_key} but delivers all key events

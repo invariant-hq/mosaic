@@ -32,28 +32,10 @@
     pending events.
 
     {b Warning.} The parser is not thread-safe; use one instance per input
-    source.
-
-    {1:keymaps Key bindings}
-
-    {!Keymap} maps key combinations to application commands:
-    {[
-      let km =
-        Input.Keymap.empty
-        |> Input.Keymap.add_char ~ctrl:true 'q' `Quit
-        |> Input.Keymap.add Input.Key.Enter `Submit
-      in
-      match Input.Keymap.find km event with
-      | Some `Quit -> exit 0
-      | Some `Submit -> submit ()
-      | None -> ()
-    ]} *)
+    source. *)
 
 include module type of Event
 (** @inline *)
-
-module Keymap = Keymap
-(** Key binding maps. See {!Keymap}. *)
 
 module Parser = Parser
 (** Incremental input parser. See {!Parser}. *)
