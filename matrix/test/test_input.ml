@@ -83,9 +83,80 @@ let test_parse_control_chars () =
         is_true ~msg:"ctrl modifier" modifier.ctrl
     | _ -> fail "expected ctrl key event"
   in
-  expect "\x01" 'A';
-  expect "\x03" 'C';
-  expect "\x1a" 'Z'
+  expect "\x01" 'a';
+  expect "\x03" 'c';
+  expect "\x1a" 'z'
+
+let test_opentui_ctrl_normalization_regressions () =
+  let expect ctrl_seq letter =
+    match parse_user ctrl_seq with
+    | [ Input.Key { key = Char u; modifier; _ } ] ->
+        equal ~msg:"ctrl letter normalizes lowercase" char letter
+          (Uchar.to_char u);
+        is_true ~msg:"ctrl modifier" modifier.ctrl
+    | events ->
+        failf "expected one ctrl key event, got %d events" (List.length events)
+  in
+  expect "\x01" 'a';
+  expect "\x03" 'c';
+  expect "\x1a" 'z';
+  let expect_punct ctrl_seq punct =
+    match parse_user ctrl_seq with
+    | [ Input.Key { key = Char u; modifier; _ } ] ->
+        equal ~msg:"ctrl punctuation key" char punct (Uchar.to_char u);
+        is_true ~msg:"ctrl punctuation modifier" modifier.ctrl
+    | events ->
+        failf "expected one ctrl punctuation event, got %d events"
+          (List.length events)
+  in
+  expect_punct "\x1c" '\\';
+  expect_punct "\x1d" ']';
+  expect_punct "\x1e" '^';
+  expect_punct "\x1f" '_'
+
+let test_opentui_alt_meta_regressions () =
+  let expect_meta seq key =
+    match parse_user seq with
+    | [ Input.Key { key = actual; modifier; _ } ] ->
+        is_true ~msg:"alt modifier" modifier.alt;
+        is_true ~msg:"meta modifier follows OpenTUI Alt semantics" modifier.meta;
+        equal ~msg:"key" event_testable
+          (key_event
+             ~modifier:{ Input.Key.no_modifier with alt = true; meta = true }
+             key)
+          (Input.Key
+             {
+               key = actual;
+               modifier;
+               event_type = Input.Key.Press;
+               associated_text = "";
+               shifted_key = None;
+               base_key = None;
+             })
+    | events -> failf "expected one Alt/Meta event, got %d" (List.length events)
+  in
+  expect_meta "\x1b\r" Input.Key.Enter;
+  expect_meta "\x1b[1;3D" Input.Key.Left;
+  match parse_user "\x1b[97;3u" with
+  | [ Input.Key { key = Char u; modifier; _ } ] ->
+      equal ~msg:"kitty alt key" char 'a' (Uchar.to_char u);
+      is_true ~msg:"kitty alt" modifier.alt;
+      is_true ~msg:"kitty meta" modifier.meta
+  | events -> failf "expected one Kitty Alt event, got %d" (List.length events)
+
+let test_keymap_ctrl_and_base_key_regressions () =
+  let map = Input.Keymap.add_char ~ctrl:true Input.Keymap.empty 'c' "copy" in
+  equal ~msg:"Ctrl+C binding uses lowercase normalized key" (option string)
+    (Some "copy")
+    (Input.Keymap.find map (List.hd (parse_user "\x03")));
+  let physical =
+    Input.key
+      ~modifier:{ Input.Key.no_modifier with ctrl = true }
+      ~base_key:(Uchar.of_char 'c')
+      (Input.Key.Char (Uchar.of_int 0x0441))
+  in
+  equal ~msg:"Kitty base key fallback" (option string) (Some "copy")
+    (Input.Keymap.find map physical)
 
 let test_csi_sub_params_with_event_type () =
   match parse_user "\x1b[1:2:3A" with
@@ -118,7 +189,8 @@ let test_parse_special_keys () =
   equal ~msg:"Alt+Backspace" (list event_testable)
     [
       key_event
-        ~modifier:{ Input.Key.no_modifier with Input.Key.alt = true }
+        ~modifier:
+          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
         Input.Key.Backspace;
     ]
     events
@@ -157,6 +229,23 @@ let test_parse_function_keys () =
     [ key_event (Input.Key.F 5) ]
     (parse_user "\x1b[15~")
 
+let test_cygwin_function_key_regressions () =
+  let cases =
+    [
+      ("\x1b[[A", Input.Key.F 1);
+      ("\x1b[[B", Input.Key.F 2);
+      ("\x1b[[C", Input.Key.F 3);
+      ("\x1b[[D", Input.Key.F 4);
+      ("\x1b[[E", Input.Key.F 5);
+    ]
+  in
+  List.iter
+    (fun (seq, key) ->
+      equal ~msg:"Cygwin/libuv F-key" (list event_testable)
+        [ key_event key ]
+        (parse_user seq))
+    cases
+
 let test_parse_modifiers () =
   equal ~msg:"Shift+Tab" (list event_testable)
     [
@@ -177,7 +266,7 @@ let test_parse_modifiers () =
   equal ~msg:"Alt+Left" (list event_testable)
     [
       key_event
-        ~modifier:{ Input.Key.no_modifier with alt = true }
+        ~modifier:{ Input.Key.no_modifier with alt = true; meta = true }
         Input.Key.Left;
     ]
     (parse_user "\x1b[1;3D")
@@ -194,9 +283,47 @@ let test_parse_mouse_sgr () =
   equal ~msg:"Mouse motion" (list event_testable)
     [
       Input.mouse_motion 14 24
-        Input.Mouse.{ left = true; middle = false; right = false };
+        Input.Mouse.{ left = false; middle = false; right = false };
     ]
     (parse_user "\x1b[<32;15;25M")
+
+let test_sgr_mouse_state_regressions () =
+  let parser = Input.Parser.create () in
+  equal ~msg:"SGR motion without prior press is move" (list event_testable)
+    [
+      Input.mouse_motion 9 4
+        Input.Mouse.{ left = false; middle = false; right = false };
+    ]
+    (feed_user parser (Bytes.of_string "\x1b[<32;10;5M") 0 11);
+  let parser = Input.Parser.create () in
+  ignore (feed_user parser (Bytes.of_string "\x1b[<0;10;5M") 0 10);
+  equal ~msg:"SGR motion after left press is drag" (list event_testable)
+    [
+      Input.mouse_motion 11 4
+        Input.Mouse.{ left = true; middle = false; right = false };
+    ]
+    (feed_user parser (Bytes.of_string "\x1b[<32;12;5M") 0 11);
+  ignore (feed_user parser (Bytes.of_string "\x1b[<0;12;5m") 0 10);
+  equal ~msg:"SGR motion after release is move" (list event_testable)
+    [
+      Input.mouse_motion 13 4
+        Input.Mouse.{ left = false; middle = false; right = false };
+    ]
+    (feed_user parser (Bytes.of_string "\x1b[<32;14;5M") 0 11)
+
+let test_sgr_mouse_partial_timeout_regression () =
+  let parser = Input.Parser.create () in
+  equal ~msg:"partial SGR mouse is pending" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\x1b[<35;20") 0 8);
+  equal ~msg:"partial SGR mouse stays pending after timeout"
+    (list event_testable) []
+    (drain_user ~now:1.0 parser);
+  equal ~msg:"partial SGR mouse completes after timeout" (list event_testable)
+    [
+      Input.mouse_motion 19 4
+        Input.Mouse.{ left = false; middle = false; right = false };
+    ]
+    (feed_user parser (Bytes.of_string ";5m") 0 3)
 
 let test_parse_paste_mode () =
   match parse_user "\x1b[200~Hello, World!\x1b[201~" with
@@ -206,18 +333,19 @@ let test_parse_paste_mode () =
 
 let test_parse_utf8 () =
   equal ~msg:"UTF-8 emoji" (list event_testable)
-    [ key_event (Input.Key.Char (Uchar.of_int 0x1F600)) ]
+    [ key_event ~associated_text:"😀" (Input.Key.Char (Uchar.of_int 0x1F600)) ]
     (parse_user "😀");
 
   equal ~msg:"UTF-8 accented char" (list event_testable)
-    [ key_event (Input.Key.Char (Uchar.of_int 0xE9)) ]
+    [ key_event ~associated_text:"é" (Input.Key.Char (Uchar.of_int 0xE9)) ]
     (parse_user "é")
 
 let test_alt_and_alt_ctrl () =
   equal ~msg:"Alt+Enter" (list event_testable)
     [
       key_event
-        ~modifier:{ Input.Key.no_modifier with Input.Key.alt = true }
+        ~modifier:
+          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
         Input.Key.Enter;
     ]
     (parse_user "\x1b\r");
@@ -225,35 +353,51 @@ let test_alt_and_alt_ctrl () =
   equal ~msg:"Alt+Line_feed" (list event_testable)
     [
       key_event
-        ~modifier:{ Input.Key.no_modifier with Input.Key.alt = true }
+        ~modifier:
+          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
         Input.Key.Line_feed;
     ]
     (parse_user "\x1b\n");
 
   equal ~msg:"Alt+Ctrl+A" (list event_testable)
     [
-      char_event
+      key_event
         ~modifier:
-          { Input.Key.no_modifier with Input.Key.alt = true; ctrl = true }
-        'A';
+          {
+            Input.Key.no_modifier with
+            Input.Key.alt = true;
+            ctrl = true;
+            meta = true;
+          }
+        (Input.Key.Char (Uchar.of_char 'a'));
     ]
     (parse_user "\x1b\x01");
 
   equal ~msg:"Alt+Ctrl+Space" (list event_testable)
     [
-      char_event
+      key_event
         ~modifier:
-          { Input.Key.no_modifier with Input.Key.alt = true; ctrl = true }
-        ' ';
+          {
+            Input.Key.no_modifier with
+            Input.Key.alt = true;
+            ctrl = true;
+            meta = true;
+          }
+        (Input.Key.Char (Uchar.of_char ' '));
     ]
     (parse_user "\x1b\x00");
 
   equal ~msg:"Alt+Shift+A" (list event_testable)
     [
-      char_event
+      key_event
         ~modifier:
-          { Input.Key.no_modifier with Input.Key.alt = true; shift = true }
-        'A';
+          {
+            Input.Key.no_modifier with
+            Input.Key.alt = true;
+            shift = true;
+            meta = true;
+          }
+        (Input.Key.Char (Uchar.of_char 'A'));
     ]
     (parse_user "\x1bA")
 
@@ -384,7 +528,8 @@ let test_alt_escape_no_sticky () =
   equal ~msg:"alt+escape" (list event_testable)
     [
       key_event
-        ~modifier:{ Input.Key.no_modifier with Input.Key.alt = true }
+        ~modifier:
+          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
         Input.Key.Escape;
     ]
     events;
@@ -427,7 +572,7 @@ let test_combined_inputs () =
             shift = true;
             super = false;
             hyper = false;
-            meta = false;
+            meta = true;
             caps_lock = false;
             num_lock = false;
           }
@@ -501,7 +646,8 @@ let test_input_edge_cases () =
   equal ~msg:"first escape parsed as Alt+Escape" (list event_testable)
     [
       key_event
-        ~modifier:{ Input.Key.no_modifier with Input.Key.alt = true }
+        ~modifier:
+          { Input.Key.no_modifier with Input.Key.alt = true; meta = true }
         Input.Key.Escape;
     ]
     events;
@@ -525,6 +671,18 @@ let test_split_utf8 () =
   | [ Input.Key { key = Char u; _ } ] ->
       equal ~msg:"euro sign unicode" int 0x20AC (Uchar.to_int u)
   | _ -> fail "expected single UTF-8 character after completion"
+
+let test_invalid_split_utf8_regression () =
+  let parser = Input.Parser.create () in
+  equal ~msg:"invalid split lead is buffered first" (list event_testable) []
+    (feed_user parser (Bytes.of_string "\xE2") 0 1);
+  match feed_user parser (Bytes.of_string "(") 0 1 with
+  | [ Input.Key { key = Char u; _ } ] ->
+      equal ~msg:"invalid continuation is reparsed as text" char '('
+        (Uchar.to_char u)
+  | events ->
+      failf "expected '(' after invalid UTF-8 recovery, got %d events"
+        (List.length events)
 
 let test_buffer_overflow () =
   let large = String.make 5000 'X' in
@@ -627,6 +785,11 @@ let test_x10_mouse () =
     [ Input.mouse_press 4 9 Input.Mouse.Left ]
     (parse_user "\x1b[M \x25\x2A")
 
+let test_x10_high_byte_mouse_regression () =
+  equal ~msg:"X10 raw byte coordinate 95" (list event_testable)
+    [ Input.mouse_press 95 9 Input.Mouse.Left ]
+    (parse_user "\x1b[M \x80\x2A")
+
 let test_urxvt_mouse () =
   equal ~msg:"URXVT mouse left press at (9,19)" (list event_testable)
     [ Input.mouse_press 9 19 Input.Mouse.Left ]
@@ -688,8 +851,25 @@ let test_paste_embedded_escapes () =
   let content = "Hello\x1b[31mWorld" in
   match parse_user ("\x1b[200~" ^ content ^ "\x1b[201~") with
   | [ Input.Paste s ] ->
-      equal ~msg:"embedded escapes sanitized" string "HelloWorld" s
+      equal ~msg:"embedded escapes preserved" string content s
   | _ -> fail "expected single paste with embedded seq"
+
+let test_paste_preserves_escapes_regression () =
+  let content = "abc\x1bdef" in
+  match parse_user ("\x1b[200~" ^ content ^ "\x1b[201~") with
+  | [ Input.Paste s ] ->
+      equal ~msg:"paste preserves ESC payload bytes" string content s
+  | events -> failf "expected single paste, got %d events" (List.length events)
+
+let test_kitty_invalid_codepoint_regression () =
+  let expect_no_crash seq =
+    try ignore (parse_user seq)
+    with Invalid_argument msg ->
+      fail ("parser raised Invalid_argument: " ^ msg)
+  in
+  expect_no_crash "\x1b[1114112u";
+  expect_no_crash "\x1b[97;1;1114112u";
+  expect_no_crash ("\x1b[" ^ String.make 40 '9' ^ "u")
 
 let test_parsing_efficiency () =
   let long_invalid = "\x1b[" ^ String.make 10000 '9' ^ "X" in
@@ -857,12 +1037,21 @@ let tests =
     test "parse regular chars" test_parse_regular_chars;
     test "char associated text default" test_char_associated_text_default;
     test "parse control chars" test_parse_control_chars;
+    test "OpenTUI ctrl normalization regressions"
+      test_opentui_ctrl_normalization_regressions;
+    test "OpenTUI alt/meta regressions" test_opentui_alt_meta_regressions;
+    test "keymap ctrl and base key regressions"
+      test_keymap_ctrl_and_base_key_regressions;
     test "parse special keys" test_parse_special_keys;
     test "parse arrow keys" test_parse_arrow_keys;
     test "parse function keys" test_parse_function_keys;
+    test "Cygwin function key regressions" test_cygwin_function_key_regressions;
     test "parse modifiers" test_parse_modifiers;
     test "CSI sub params event type" test_csi_sub_params_with_event_type;
     test "parse mouse SGR" test_parse_mouse_sgr;
+    test "SGR mouse state regressions" test_sgr_mouse_state_regressions;
+    test "SGR mouse partial timeout regression"
+      test_sgr_mouse_partial_timeout_regression;
     test "parse paste mode" test_parse_paste_mode;
     test "parse UTF-8" test_parse_utf8;
     test "incremental parsing" test_incremental_parsing;
@@ -876,6 +1065,7 @@ let tests =
     test "edge cases" test_input_edge_cases;
     test "alt and alt+ctrl" test_alt_and_alt_ctrl;
     test "split UTF-8" test_split_utf8;
+    test "invalid split UTF-8 regression" test_invalid_split_utf8_regression;
     test "buffer overflow" test_buffer_overflow;
     test "paste mode collection" test_paste_mode_collection;
     test "reset aborts paste" test_reset_aborts_paste;
@@ -886,6 +1076,7 @@ let tests =
     test "color scheme report" test_color_scheme_report;
     test "user and caps split" test_user_and_caps_split;
     test "X10 mouse" test_x10_mouse;
+    test "X10 high byte mouse regression" test_x10_high_byte_mouse_regression;
     test "URXVT mouse" test_urxvt_mouse;
     test "OSC sequences" test_osc_sequences;
     test "window events" test_window_events;
@@ -893,6 +1084,10 @@ let tests =
     test "kitty advanced" test_kitty_advanced;
     test "media and modifier keys" test_media_and_modifier_keys;
     test "paste embedded escapes" test_paste_embedded_escapes;
+    test "paste preserves escapes regression"
+      test_paste_preserves_escapes_regression;
+    test "Kitty invalid codepoint regression"
+      test_kitty_invalid_codepoint_regression;
     test "modify other keys" test_modify_other_keys;
     test "kitty keyboard queries" test_kitty_keyboard_queries;
     slow "parsing efficiency" test_parsing_efficiency;
