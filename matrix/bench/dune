@@ -1,36 +1,56 @@
-(executable
+(test
  (name bench_ansi)
  (libraries thumper matrix.ansi))
 
-(executable
+(test
  (name bench_text)
  (libraries thumper matrix.text))
 
-(executable
+(test
  (name bench_input)
  (libraries thumper matrix.input))
 
-(executable
+(test
  (name bench_grid)
  (modules bench_grid)
  (libraries thumper matrix.grid matrix.ansi))
 
-(executable
+(test
  (name bench_screen)
  (modules bench_screen)
  (libraries thumper matrix.screen matrix.grid matrix.ansi))
 
 (rule
- (alias runtest)
+ (alias bench)
  (action
   (progn
-   (run %{exe:bench_ansi.exe} -q --ci)
-   (diff? ansi.thumper ansi.thumper.corrected)
-   (run %{exe:bench_text.exe} -q --ci)
-   (diff? text.thumper text.thumper.corrected)
-   (run %{exe:bench_input.exe} -q --ci)
-   (diff? input.thumper input.thumper.corrected)
-   (run %{exe:bench_grid.exe} -q --ci)
-   (diff? grid.thumper grid.thumper.corrected)
-   (run %{exe:bench_screen.exe} -q --ci)
+   (run %{exe:bench_ansi.exe} --ci)
+   (diff? ansi.thumper ansi.thumper.corrected))))
+
+(rule
+ (alias bench)
+ (action
+  (progn
+   (run %{exe:bench_text.exe} --ci)
+   (diff? text.thumper text.thumper.corrected))))
+
+(rule
+ (alias bench)
+ (action
+  (progn
+   (run %{exe:bench_input.exe} --ci)
+   (diff? input.thumper input.thumper.corrected))))
+
+(rule
+ (alias bench)
+ (action
+  (progn
+   (run %{exe:bench_grid.exe} --ci)
+   (diff? grid.thumper grid.thumper.corrected))))
+
+(rule
+ (alias bench)
+ (action
+  (progn
+   (run %{exe:bench_screen.exe} --ci)
    (diff? screen.thumper screen.thumper.corrected))))
