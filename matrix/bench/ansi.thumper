@@ -4,9 +4,9 @@
 # host: 3fdff906040e1980
 # cpu: Apple M1 Max
 # ocaml: 5.4.1
-# git: 751ab800
+# git: bf807e72
 # dirty: true
-# command: _build/default/matrix/bench/bench_ansi.exe --ci --bless --baseline matrix/bench/ansi.thumper -q
+# command: ./bench_ansi.exe -q
 
 control/cursor_script_80x24	alloc_words	4.923400e+04	4.923400e+04	4.923400e+04	0.000000e+00	30	0
 control/cursor_script_80x24	cpu_time	2.543755e-04	2.515705e-04	2.592448e-04	1.508452e-02	30	3
@@ -38,9 +38,9 @@ strip_parse/parse_tui_frame	wall_time	3.619875e-05	3.601796e-05	3.635785e-05	4.6
 strip_parse/parse_tui_frame_iter	alloc_words	3.844000e+03	3.844000e+03	3.844000e+03	0.000000e+00	30	0
 strip_parse/parse_tui_frame_iter	cpu_time	3.528543e-05	3.516285e-05	3.549548e-05	4.713429e-03	30	2
 strip_parse/parse_tui_frame_iter	wall_time	3.535917e-05	3.522376e-05	3.557270e-05	4.934277e-03	30	2
-strip_parse/strip_ansi_block	alloc_words	4.256300e+04	4.256300e+04	4.256300e+04	0.000000e+00	30	0
-strip_parse/strip_ansi_block	cpu_time	2.027787e-04	1.998480e-04	2.059206e-04	1.497337e-02	30	1
-strip_parse/strip_ansi_block	wall_time	2.051410e-04	2.004490e-04	2.118100e-04	2.769060e-02	30	2
+strip_parse/strip_ansi_block	alloc_words	3.629000e+03	3.629000e+03	3.629000e+03	0.000000e+00	15	0
+strip_parse/strip_ansi_block	cpu_time	2.117307e-05	2.097258e-05	2.164277e-05	1.582651e-02	15	0
+strip_parse/strip_ansi_block	wall_time	2.136693e-05	2.109769e-05	2.200879e-05	2.132036e-02	15	1
 strip_parse/strip_plain_block	alloc_words	0.000000e+00	0.000000e+00	0.000000e+00	inf	45	3
 strip_parse/strip_plain_block	cpu_time	1.194271e-05	1.186332e-05	1.202822e-05	6.903449e-03	45	2
 strip_parse/strip_plain_block	wall_time	1.200621e-05	1.188586e-05	1.214797e-05	1.091534e-02	45	2
