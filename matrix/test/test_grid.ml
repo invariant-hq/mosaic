@@ -622,26 +622,58 @@ let fill_rect_alpha_preserves_glyph () =
   let r, g, b, a = read_fg grid 0 0 in
   equal ~msg:"foreground tinted" rgba (fr, (fg, (fb, fa))) (r, (g, (b, a)))
 
-let fill_rect_transparent_preserves_background () =
+let fill_rect_transparent_is_noop () =
   let grid = Grid.create ~width:3 ~height:1 () in
   let bg_color = Ansi.Color.of_rgb 10 20 30 in
   Grid.fill_rect grid ~x:0 ~y:0 ~width:3 ~height:1 ~color:bg_color;
+  Grid.draw_text grid ~x:1 ~y:0 ~text:"X"
+    ~style:
+      (Ansi.Style.make
+         ~fg:(Ansi.Color.of_rgb 200 210 220)
+         ~bg:(Ansi.Color.of_rgb 40 50 60)
+         ~bold:true ());
   let transparent = Ansi.Color.of_rgba 0 0 0 0 in
   Grid.fill_rect grid ~x:0 ~y:0 ~width:3 ~height:1 ~color:transparent;
-  let expected =
-    let r, g, b, a = Ansi.Color.to_rgba bg_color in
+  equal ~msg:"left char preserved" int (Char.code ' ') (read_char grid 0 0);
+  equal ~msg:"text preserved" int (Char.code 'X') (read_char grid 1 0);
+  equal ~msg:"attrs preserved" int
+    (Ansi.Attr.pack Ansi.Attr.bold)
+    (read_attr grid 1 0);
+  equal ~msg:"right char preserved" int (Char.code ' ') (read_char grid 2 0);
+  let expected_bg x =
+    let color = if x = 1 then Ansi.Color.of_rgb 40 50 60 else bg_color in
+    let r, g, b, a = Ansi.Color.to_rgba color in
     (r, (g, (b, a)))
   in
   for x = 0 to 2 do
-    equal
-      ~msg:(Printf.sprintf "char cleared %d" x)
-      int (Char.code ' ') (read_char grid x 0);
     let r, g, b, a = read_bg grid x 0 in
     equal
-      ~msg:(Printf.sprintf "bg preserved %d" x)
-      rgba expected
+      ~msg:(Printf.sprintf "bg unchanged %d" x)
+      rgba (expected_bg x)
       (r, (g, (b, a)))
   done
+
+let clear_rect_resets_background () =
+  let grid = Grid.create ~width:3 ~height:1 () in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"ABC"
+    ~style:
+      (Ansi.Style.make
+         ~fg:(Ansi.Color.of_rgb 200 210 220)
+         ~bg:(Ansi.Color.of_rgb 10 20 30)
+         ~underline:true ());
+  Grid.clear_rect grid ~x:1 ~y:0 ~width:1 ~height:1;
+  equal ~msg:"left preserved" int (Char.code 'A') (read_char grid 0 0);
+  equal ~msg:"cleared char" int (Char.code ' ') (read_char grid 1 0);
+  equal ~msg:"right preserved" int (Char.code 'C') (read_char grid 2 0);
+  equal ~msg:"cleared attrs" int 0 (read_attr grid 1 0);
+  equal ~msg:"cleared fg" rgba
+    (255, (255, (255, 255)))
+    (let r, g, b, a = read_fg grid 1 0 in
+     (r, (g, (b, a))));
+  equal ~msg:"cleared bg" rgba
+    (0, (0, (0, 0)))
+    (let r, g, b, a = read_bg grid 1 0 in
+     (r, (g, (b, a))))
 
 let scroll_uses_transparent_background () =
   let grid = Grid.create ~width:2 ~height:2 () in
@@ -1098,8 +1130,8 @@ let tests =
     test "replace wide grapheme clears continuation colors"
       replace_wide_grapheme_clears_continuation_colors;
     test "fill rect alpha preserves glyph" fill_rect_alpha_preserves_glyph;
-    test "fill rect transparent preserves background"
-      fill_rect_transparent_preserves_background;
+    test "fill rect transparent is noop" fill_rect_transparent_is_noop;
+    test "clear_rect resets background" clear_rect_resets_background;
     test "scroll uses transparent background" scroll_uses_transparent_background;
     test "draw text overwrites grapheme span" draw_text_overwrite_clears_span;
     test "draw text overflow clears row tail" draw_text_overflow_clears_row_tail;

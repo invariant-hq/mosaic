@@ -339,7 +339,7 @@ let render_before t _self grid ~delta:_ =
       if focused then t.props.focused_background_color
       else t.props.background_color
     in
-    Grid.fill_rect grid ~x:x0 ~y:y0 ~width:w ~height:h ~color:bg;
+    Grid.clear_rect ~color:bg grid ~x:x0 ~y:y0 ~width:w ~height:h;
     if Edit_buffer.is_empty t.buf && String.length t.props.placeholder > 0 then begin
       let style = Ansi.Style.make ~fg:t.props.placeholder_color ~bg () in
       Grid.clip grid { x = x0; y = y0; width = w; height = h } (fun () ->

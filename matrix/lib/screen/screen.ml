@@ -290,9 +290,7 @@ let clear_unpresented_rows r presented_height =
   if presented_height < height then (
     let y = max 0 presented_height in
     let h = height - y in
-    let clear = Ansi.Color.of_rgba 0 0 0 0 in
-    Grid.fill_rect r.next ~x:0 ~y ~width:(Grid.width r.next) ~height:h
-      ~color:clear;
+    Grid.clear_rect r.next ~x:0 ~y ~width:(Grid.width r.next) ~height:h;
     Hit_grid.add r.hit_next ~x:0 ~y ~width:(Grid.width r.next) ~height:h
       ~id:Hit_grid.empty_id)
 
@@ -512,14 +510,16 @@ let reset t =
   Ansi.Sgr_state.reset t.sgr_state
 
 let resize t ~width ~height =
-  Grid.resize t.current ~width ~height;
-  Grid.clear t.current;
-  Grid.resize t.next ~width ~height;
-  (* Hit_grid.resize already clears unconditionally, no need to clear again *)
-  Hit_grid.resize t.hit_current ~width ~height;
-  Hit_grid.resize t.hit_next ~width ~height;
-  if width > 0 && height > 0 then
-    Cursor_state.clamp_to_bounds t.cursor ~max_row:height ~max_col:width
+  if width <= 0 || height <= 0 then
+    invalid_arg "Screen.resize: width and height must be > 0";
+  if width <> Grid.width t.current || height <> Grid.height t.current then (
+    Grid.resize t.current ~width ~height;
+    Grid.clear t.current;
+    Grid.resize t.next ~width ~height;
+    (* Hit_grid.resize already clears unconditionally, no need to clear again *)
+    Hit_grid.resize t.hit_current ~width ~height;
+    Hit_grid.resize t.hit_next ~width ~height;
+    Cursor_state.clamp_to_bounds t.cursor ~max_row:height ~max_col:width)
 
 let internal_build t ~width ~height f =
   if width <= 0 || height <= 0 then (

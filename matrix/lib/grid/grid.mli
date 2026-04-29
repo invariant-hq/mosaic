@@ -194,10 +194,17 @@ val blit_region :
 val fill_rect :
   t -> x:int -> y:int -> width:int -> height:int -> color:Ansi.Color.t -> unit
 (** [fill_rect g ~x ~y ~width ~height ~color] fills a rectangle:
-    - Transparent (alpha ≈ 0): clears content, preserves existing background.
+    - Transparent (alpha ≈ 0): leaves cells unchanged.
     - Semi-transparent: blends over existing background.
     - Opaque: overwrites entirely (space glyph, white foreground, [color]
       background).
+
+    Clipped to grid bounds and scissor. *)
+
+val clear_rect :
+  ?color:Ansi.Color.t -> t -> x:int -> y:int -> width:int -> height:int -> unit
+(** [clear_rect g ~x ~y ~width ~height] clears a rectangle to spaces, default
+    foreground, and [color] background. [color] defaults to transparent.
 
     Clipped to grid bounds and scissor. *)
 

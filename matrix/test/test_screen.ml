@@ -313,6 +313,20 @@ let test_resize_clears_both_buffers () =
   (* Verify the new content is rendered *)
   is_true ~msg:"new content rendered" (String.contains output2 'S')
 
+let test_resize_same_size_preserves_diff_baseline () =
+  let r = create_renderer ~width:8 ~height:3 () in
+  let bg = Ansi.Color.of_rgb 28 28 28 in
+  let f1 =
+    build_screen r ~width:8 ~height:3 (fun grid _hits ->
+        Grid.fill_rect grid ~x:3 ~y:1 ~width:2 ~height:1 ~color:bg)
+  in
+  ignore (Screen.render f1 : string);
+  Screen.resize r ~width:8 ~height:3;
+  let f2 = build_screen r ~width:8 ~height:3 (fun _grid _hits -> ()) in
+  let output = Screen.render f2 in
+  is_true ~msg:"same-size resize keeps baseline for clears"
+    (String.length output > 0)
+
 let test_cursor_clamped_on_resize () =
   let r = create_renderer ~width:3 ~height:3 () in
   let cursor = Screen.cursor r in
@@ -959,6 +973,8 @@ let () =
           test "Resize preserves content" test_resize_preserves_content;
           test "Resize smaller" test_resize_smaller;
           test "Resize clears both buffers" test_resize_clears_both_buffers;
+          test "Resize same size preserves diff baseline"
+            test_resize_same_size_preserves_diff_baseline;
           test "Cursor clamped on resize" test_cursor_clamped_on_resize;
         ];
       group "Post-Processing"

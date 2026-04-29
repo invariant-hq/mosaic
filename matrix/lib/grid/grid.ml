@@ -633,6 +633,33 @@ let set_cell t ~x ~y ~glyph ~fg ~bg ~attrs ?link ?(blend = t.respect_alpha) () =
 
 (* {1 Bulk operations} *)
 
+let clear_rect ?color t ~x ~y ~width ~height =
+  match clip_rect_to_grid t Rect.{ x; y; width; height } with
+  | None -> ()
+  | Some r ->
+      let bg_r, bg_g, bg_b, bg_a =
+        match color with
+        | None -> (0., 0., 0., 0.)
+        | Some c -> Ansi.Color.to_rgba_f c
+      in
+      let x0 = r.Rect.x and w = r.Rect.width in
+      let y0 = r.Rect.y in
+      let y1 = y0 + r.Rect.height - 1 in
+      for row = y0 to y1 do
+        let start_idx = (row * t.width) + x0 in
+        let end_idx = start_idx + w - 1 in
+        for i = start_idx to end_idx do
+          cleanup_overwritten_cell t i
+        done;
+        Buf.fill_glyph (Buf.sub t.chars start_idx w) space_cell;
+        Buf.fill (Buf.sub t.attrs start_idx w) 0;
+        Buf.fill (Buf.sub t.links start_idx w) no_link;
+        Buf.fill (Buf.sub t.fg (start_idx * 4) (w * 4)) 1.0;
+        for i = start_idx to end_idx do
+          Color_plane.write_rgba t.bg i bg_r bg_g bg_b bg_a
+        done
+      done
+
 let fill_rect t ~x ~y ~width ~height ~color =
   match clip_rect_to_grid t Rect.{ x; y; width; height } with
   | None -> ()
@@ -642,20 +669,7 @@ let fill_rect t ~x ~y ~width ~height ~color =
       let y0 = r.Rect.y in
       let y1 = y0 + r.Rect.height - 1 in
 
-      if bg_a <= 0.001 then begin
-        (* Transparent: clear content but leave background untouched *)
-        for row = y0 to y1 do
-          let start_idx = (row * t.width) + x0 in
-          let end_idx = start_idx + w - 1 in
-          for i = start_idx to end_idx do
-            cleanup_overwritten_cell t i
-          done;
-          Buf.fill_glyph (Buf.sub t.chars start_idx w) space_cell;
-          Buf.fill (Buf.sub t.attrs start_idx w) 0;
-          Buf.fill (Buf.sub t.links start_idx w) no_link;
-          Buf.fill (Buf.sub t.fg (start_idx * 4) (w * 4)) 1.0
-        done
-      end
+      if bg_a <= 0.001 then ()
       else if bg_a < 0.999 then
         (* Semi-transparent: per-cell alpha blending *)
         let fg_r, fg_g, fg_b, fg_a = Ansi.Color.to_rgba_f Ansi.Color.white in
@@ -912,23 +926,20 @@ let scroll t ~top ~bottom n =
   else
     let region_h = bottom - top + 1 in
     let abs_n = abs n in
-    let clear_c = Ansi.Color.of_rgba 0 0 0 0 in
     if abs_n >= region_h then
-      fill_rect t ~x:0 ~y:top ~width:t.width ~height:region_h ~color:clear_c
+      clear_rect t ~x:0 ~y:top ~width:t.width ~height:region_h
     else
       let copy_h = region_h - abs_n in
       if n > 0 then (
         (* Scroll up: shift content up, blank at bottom *)
         blit_region ~src:t ~dst:t ~src_x:0 ~src_y:(top + abs_n) ~width:t.width
           ~height:copy_h ~dst_x:0 ~dst_y:top;
-        fill_rect t ~x:0
-          ~y:(bottom - abs_n + 1)
-          ~width:t.width ~height:abs_n ~color:clear_c)
+        clear_rect t ~x:0 ~y:(bottom - abs_n + 1) ~width:t.width ~height:abs_n)
       else (
         (* Scroll down: shift content down, blank at top *)
         blit_region ~src:t ~dst:t ~src_x:0 ~src_y:top ~width:t.width
           ~height:copy_h ~dst_x:0 ~dst_y:(top + abs_n);
-        fill_rect t ~x:0 ~y:top ~width:t.width ~height:abs_n ~color:clear_c)
+        clear_rect t ~x:0 ~y:top ~width:t.width ~height:abs_n)
 
 (* {1 Text rendering} *)
 

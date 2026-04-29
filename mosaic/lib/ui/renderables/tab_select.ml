@@ -181,7 +181,7 @@ let rec render t _self grid ~delta:_ =
     let props = t.props in
     let focused = Renderable.focused t.node in
     let bg = if focused then props.focused_background else props.background in
-    Grid.fill_rect grid ~x:0 ~y:0 ~width:w ~height:h ~color:bg;
+    Grid.clear_rect ~color:bg grid ~x:0 ~y:0 ~width:w ~height:h;
     let tw = props.tab_width in
     let n = List.length props.options in
     let max_visible = max 1 (w / tw) in

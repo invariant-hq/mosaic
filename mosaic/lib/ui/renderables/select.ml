@@ -352,7 +352,7 @@ let render t _self grid ~delta:_ =
 
     (* Clear the entire area first so spacing rows and empty regions below the
        last item don't show stale content. *)
-    Grid.fill_rect grid ~x:0 ~y:0 ~width ~height ~color:base_bg;
+    Grid.clear_rect ~color:base_bg grid ~x:0 ~y:0 ~width ~height;
 
     (* Recompute layout metrics from current props and viewport size. Done each
        frame because the viewport may have resized between renders without

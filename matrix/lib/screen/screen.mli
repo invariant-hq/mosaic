@@ -234,8 +234,10 @@ val set_width_method : t -> Glyph.width_method -> unit
 
 val resize : t -> width:int -> height:int -> unit
 (** [resize t ~width ~height] resizes all internal buffers to [width] x
-    [height]. The presented diff baseline is cleared so the next render redraws
-    the resized screen; hit grids are cleared.
+    [height]. If the dimensions are unchanged, this is a no-op so the presented
+    diff baseline remains intact. Otherwise the presented diff baseline is
+    cleared so the next render redraws the resized screen; hit grids are
+    cleared.
 
     Raises [Invalid_argument] if [width <= 0] or [height <= 0].
 

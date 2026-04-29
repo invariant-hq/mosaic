@@ -640,7 +640,7 @@ let render t _self grid ~delta:_ =
     let border_bg = t.props.background in
 
     (* Background fill *)
-    Grid.fill_rect grid ~x:0 ~y:0 ~width ~height ~color:t.props.background;
+    Grid.clear_rect ~color:t.props.background grid ~x:0 ~y:0 ~width ~height;
 
     (* Compute layout positions *)
     let border_left = if border then 1 else 0 in
