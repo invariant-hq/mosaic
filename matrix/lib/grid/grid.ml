@@ -208,6 +208,13 @@ let[@inline] clear_cell t idx =
     Color_plane.write_rgba t.fg idx 1.0 1.0 1.0 1.0;
     Color_plane.write_rgba t.bg idx 0.0 0.0 0.0 0.0)
 
+let[@inline] reset_cell_no_tracker t idx =
+  Buf.set_glyph t.chars idx space_cell;
+  Buf.set t.attrs idx 0;
+  Buf.set t.links idx no_link;
+  Color_plane.write_rgba t.fg idx 1.0 1.0 1.0 1.0;
+  Color_plane.write_rgba t.bg idx 0.0 0.0 0.0 0.0
+
 (** Clean up grapheme spans when overwriting a cell. Replaces neighboring
     continuation/start cells with spaces and releases pool references. *)
 let cleanup_grapheme_at t idx =
@@ -232,6 +239,14 @@ let cleanup_grapheme_at t idx =
         for i = start_idx to end_idx do
           if i <> idx then clear_cell t i
         done
+
+let cleanup_overwritten_cell t idx =
+  let old = Buf.get_glyph t.chars idx in
+  if old <> space_cell then begin
+    if (not (Glyph.is_inline old)) || Glyph.cell_width old > 1 then
+      cleanup_grapheme_at t idx;
+    Grapheme_tracker.remove t.grapheme_tracker old
+  end
 
 (** Write a glyph code into a cell, cleaning up the previous occupant and
     maintaining grapheme tracker state. This is the factored-out core of
@@ -379,6 +394,45 @@ let[@inline] cells_equal t1 idx1 t2 idx2 =
   && Color_plane.equal_eps t1.fg idx1 t2.fg idx2
   && Color_plane.equal_eps t1.bg idx1 t2.bg idx2
 
+let rebuild_grapheme_tracker t =
+  Grapheme_tracker.clear t.grapheme_tracker;
+  let len = t.width * t.height in
+  for i = 0 to len - 1 do
+    let code = Buf.get_glyph t.chars i in
+    if Glyph.is_complex code then Grapheme_tracker.add t.grapheme_tracker code
+  done
+
+let sanitize_spans t =
+  for y = 0 to t.height - 1 do
+    let row_start = y * t.width in
+    let covered_until = ref (-1) in
+    for x = 0 to t.width - 1 do
+      let idx = row_start + x in
+      let code = Buf.get_glyph t.chars idx in
+      if Glyph.is_continuation code then begin
+        if x > !covered_until then reset_cell_no_tracker t idx
+      end
+      else
+        let w = Glyph.cell_width code in
+        if w > 1 then
+          if x + w > t.width then reset_cell_no_tracker t idx
+          else begin
+            let valid = ref true in
+            for dx = 1 to w - 1 do
+              if not (Glyph.is_continuation (Buf.get_glyph t.chars (idx + dx)))
+              then valid := false
+            done;
+            if !valid then covered_until := max !covered_until (x + w - 1)
+            else begin
+              reset_cell_no_tracker t idx;
+              for dx = 1 to w - 1 do
+                reset_cell_no_tracker t (idx + dx)
+              done
+            end
+          end
+    done
+  done
+
 (* {1 Lifecycle: clear & resize} *)
 
 let clear ?color t =
@@ -406,36 +460,6 @@ let resize t ~width ~height =
     let old_w = t.width and old_h = t.height in
     let old_chars = t.chars and old_attrs = t.attrs and old_links = t.links in
     let old_fg = t.fg and old_bg = t.bg in
-
-    (* Release graphemes in cells that will be truncated *)
-    if width < old_w || height < old_h then
-      for y = 0 to old_h - 1 do
-        for x = 0 to old_w - 1 do
-          if x >= width || y >= height then
-            Grapheme_tracker.remove t.grapheme_tracker
-              (Buf.get_glyph old_chars ((y * old_w) + x))
-        done
-      done;
-
-    (* Truncate graphemes whose span crosses the new right edge *)
-    if width < old_w then begin
-      let max_row = min (old_h - 1) (height - 1) in
-      for y = 0 to max_row do
-        let row_start = y * old_w in
-        for x = 0 to width - 1 do
-          let idx = row_start + x in
-          let code = Buf.get_glyph old_chars idx in
-          if Glyph.is_start code && Glyph.cell_width code > width - x then (
-            cleanup_grapheme_at t idx;
-            Grapheme_tracker.remove t.grapheme_tracker code;
-            Buf.set_glyph old_chars idx space_cell;
-            Buf.set old_attrs idx 0;
-            Buf.set old_links idx no_link;
-            Color_plane.write_rgba old_fg idx 1.0 1.0 1.0 1.0;
-            Color_plane.write_rgba old_bg idx 0.0 0.0 0.0 0.0)
-        done
-      done
-    end;
 
     (* Allocate new storage *)
     let new_size = width * height in
@@ -479,7 +503,10 @@ let resize t ~width ~height =
     t.attrs <- new_attrs;
     t.links <- new_links;
     t.fg <- new_fg;
-    t.bg <- new_bg
+    t.bg <- new_bg;
+
+    sanitize_spans t;
+    rebuild_grapheme_tracker t
 
 (* {1 Clipping} *)
 
@@ -617,19 +644,12 @@ let fill_rect t ~x ~y ~width ~height ~color =
 
       if bg_a <= 0.001 then begin
         (* Transparent: clear content but leave background untouched *)
-        let has_complex =
-          Grapheme_tracker.unique_count t.grapheme_tracker > 0
-        in
         for row = y0 to y1 do
           let start_idx = (row * t.width) + x0 in
           let end_idx = start_idx + w - 1 in
-          if has_complex then
-            for i = start_idx to end_idx do
-              let old = Buf.get_glyph t.chars i in
-              if not (Glyph.is_inline old) then (
-                cleanup_grapheme_at t i;
-                Grapheme_tracker.remove t.grapheme_tracker old)
-            done;
+          for i = start_idx to end_idx do
+            cleanup_overwritten_cell t i
+          done;
           Buf.fill_glyph (Buf.sub t.chars start_idx w) space_cell;
           Buf.fill (Buf.sub t.attrs start_idx w) 0;
           Buf.fill (Buf.sub t.links start_idx w) no_link;
@@ -650,20 +670,13 @@ let fill_rect t ~x ~y ~width ~height ~color =
         done
       else begin
         (* Opaque: fast bulk fill *)
-        let has_complex =
-          Grapheme_tracker.unique_count t.grapheme_tracker > 0
-        in
         for row = y0 to y1 do
           let start_idx = (row * t.width) + x0 in
           let end_idx = start_idx + w - 1 in
 
-          if has_complex then
-            for i = start_idx to end_idx do
-              let old = Buf.get_glyph t.chars i in
-              if not (Glyph.is_inline old) then (
-                cleanup_grapheme_at t i;
-                Grapheme_tracker.remove t.grapheme_tracker old)
-            done;
+          for i = start_idx to end_idx do
+            cleanup_overwritten_cell t i
+          done;
 
           Buf.fill_glyph (Buf.sub t.chars start_idx w) space_cell;
           Buf.fill (Buf.sub t.attrs start_idx w) 0;
@@ -853,9 +866,15 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
                 Glyph.is_continuation code
                 && sx - Glyph.left_extent code < src_x
               in
+              let is_right_truncated_start =
+                (not (Glyph.is_continuation code))
+                &&
+                let cw = Glyph.cell_width code in
+                cw > 1 && (sx + cw > src_x + width || dx + cw > dst_x + width)
+              in
 
               let mapped_code =
-                if is_orphan then space_cell
+                if is_orphan || is_right_truncated_start then space_cell
                 else if src.glyph_pool == dst.glyph_pool || Glyph.is_inline code
                 then code
                 else copy_glyph code
@@ -869,18 +888,18 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
               in
 
               (* Skip fully transparent source cells in cross-grid blits *)
-              if (not same_grid) && fg_a <= 0.001 && bg_a <= 0.001 then ()
-              else
-                let blending =
-                  if same_grid then dst.respect_alpha
-                  else dst.respect_alpha || fg_a < 0.999 || bg_a < 0.999
-                in
-                set_cell_internal dst
-                  ~idx:((dy * dst.width) + dx)
-                  ~code:mapped_code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
-                  ~bg_a ~attrs ~link_id ~blending;
+              (if (not same_grid) && fg_a <= 0.001 && bg_a <= 0.001 then ()
+               else
+                 let blending =
+                   if same_grid then dst.respect_alpha
+                   else dst.respect_alpha || fg_a < 0.999 || bg_a < 0.999
+                 in
+                 set_cell_internal dst
+                   ~idx:((dy * dst.width) + dx)
+                   ~code:mapped_code ~fg_r ~fg_g ~fg_b ~fg_a ~bg_r ~bg_g ~bg_b
+                   ~bg_a ~attrs ~link_id ~blending);
 
-                k := !k + x_step
+              k := !k + x_step
             done;
             i := !i + y_step
           done
@@ -983,26 +1002,25 @@ let draw_text ?style ?(tab_width = 2) t ~x ~y ~text =
                 ~bg_g:bg ~bg_b:bb ~bg_a:ba ~attrs ~link_id ~blending;
               for i = 1 to w - 1 do
                 let c_x = !cur_x + i in
-                if cell_visible c_x then
-                  let c_idx = (y * t.width) + c_x in
-                  let br_c, bg_c, bb_c, ba_c =
-                    match explicit_bg with
-                    | Some (r, g, b, a) -> (r, g, b, a)
-                    | None ->
-                        ( Color_plane.get t.bg c_idx 0,
-                          Color_plane.get t.bg c_idx 1,
-                          Color_plane.get t.bg c_idx 2,
-                          Color_plane.get t.bg c_idx 3 )
-                  in
-                  let cont =
-                    Glyph.make_continuation ~code ~left:i ~right:(w - 1 - i)
-                  in
-                  let blending_c =
-                    fg_a < 0.999 || ba_c < 0.999 || t.respect_alpha
-                  in
-                  set_cell_internal t ~idx:c_idx ~code:cont ~fg_r ~fg_g ~fg_b
-                    ~fg_a ~bg_r:br_c ~bg_g:bg_c ~bg_b:bb_c ~bg_a:ba_c ~attrs
-                    ~link_id ~blending:blending_c
+                let c_idx = (y * t.width) + c_x in
+                let br_c, bg_c, bb_c, ba_c =
+                  match explicit_bg with
+                  | Some (r, g, b, a) -> (r, g, b, a)
+                  | None ->
+                      ( Color_plane.get t.bg c_idx 0,
+                        Color_plane.get t.bg c_idx 1,
+                        Color_plane.get t.bg c_idx 2,
+                        Color_plane.get t.bg c_idx 3 )
+                in
+                let cont =
+                  Glyph.make_continuation ~code ~left:i ~right:(w - 1 - i)
+                in
+                let blending_c =
+                  fg_a < 0.999 || ba_c < 0.999 || t.respect_alpha
+                in
+                set_cell_internal t ~idx:c_idx ~code:cont ~fg_r ~fg_g ~fg_b
+                  ~fg_a ~bg_r:br_c ~bg_g:bg_c ~bg_b:bb_c ~bg_a:ba_c ~attrs
+                  ~link_id ~blending:blending_c
               done
             end
             else if (not bounds_ok) && !cur_x >= 0 && !cur_x < t.width then
@@ -1379,30 +1397,30 @@ let to_ansi ?(reset = true) t =
             let idx = (y * width) + !x in
             let code = get_glyph t idx in
             let cw = Glyph.cell_width code in
+            let step = if cw <= 0 then 1 else cw in
 
-            if cw > 0 then begin
-              Ansi.Sgr_state.update style w ~fg_r:(get_fg_r t idx)
-                ~fg_g:(get_fg_g t idx) ~fg_b:(get_fg_b t idx)
-                ~fg_a:(get_fg_a t idx) ~bg_r:(get_bg_r t idx)
-                ~bg_g:(get_bg_g t idx) ~bg_b:(get_bg_b t idx)
-                ~bg_a:(get_bg_a t idx) ~attrs:(get_attrs t idx)
-                ~link:(hyperlink_url_direct t (get_link t idx));
+            Ansi.Sgr_state.update style w ~fg_r:(get_fg_r t idx)
+              ~fg_g:(get_fg_g t idx) ~fg_b:(get_fg_b t idx)
+              ~fg_a:(get_fg_a t idx) ~bg_r:(get_bg_r t idx)
+              ~bg_g:(get_bg_g t idx) ~bg_b:(get_bg_b t idx)
+              ~bg_a:(get_bg_a t idx) ~attrs:(get_attrs t idx)
+              ~link:(hyperlink_url_direct t (get_link t idx));
 
-              if Glyph.is_continuation code || Glyph.is_empty code then
-                Ansi.emit (Ansi.char ' ') w
-              else
-                let len = Glyph.Pool.length pool code in
-                if len <= 0 then Ansi.emit (Ansi.char ' ') w
-                else begin
-                  if len > Bytes.length !scratch then
-                    scratch :=
-                      Bytes.create (max (Bytes.length !scratch * 2) len);
-                  let written = Glyph.Pool.blit pool code !scratch ~pos:0 in
-                  Ansi.emit (Ansi.bytes !scratch ~off:0 ~len:written) w
-                end
+            begin if
+              cw <= 0 || Glyph.is_continuation code || Glyph.is_empty code
+            then Ansi.emit (Ansi.char ' ') w
+            else
+              let len = Glyph.Pool.length pool code in
+              if len <= 0 then Ansi.emit (Ansi.char ' ') w
+              else begin
+                if len > Bytes.length !scratch then
+                  scratch := Bytes.create (max (Bytes.length !scratch * 2) len);
+                let written = Glyph.Pool.blit pool code !scratch ~pos:0 in
+                Ansi.emit (Ansi.bytes !scratch ~off:0 ~len:written) w
+              end
             end;
 
-            x := !x + cw
+            x := !x + step
           done;
 
           Ansi.Sgr_state.close_link style w;

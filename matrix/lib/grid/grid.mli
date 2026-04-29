@@ -11,8 +11,9 @@
 
     When {!respect_alpha} is enabled, colors with alpha < 1.0 are blended with
     existing cell colors using a perceptual curve. A stack of {e scissor}
-    clipping regions constrains drawing; cells outside the active clip are
-    silently skipped. *)
+    clipping regions constrains drawing. Wide characters are span-atomic: if the
+    start cell is accepted by a clipping region, continuation cells are written
+    with it to keep the row well-formed. *)
 
 (** {1:types Types} *)
 
@@ -186,7 +187,9 @@ val blit_region :
     The region is clamped to valid bounds in both grids. Negative coordinates
     shift the region inward. Respects the scissor on [dst]. Alpha blending
     occurs when [dst]'s {!respect_alpha} is [true] or source alpha < 1.0.
-    Same-grid overlapping regions are handled correctly. Never resizes [dst]. *)
+    Same-grid overlapping regions are handled correctly. Wide-character
+    fragments whose start or continuation is outside the copied region are
+    written as spaces. Never resizes [dst]. *)
 
 val fill_rect :
   t -> x:int -> y:int -> width:int -> height:int -> color:Ansi.Color.t -> unit
@@ -217,7 +220,9 @@ val draw_text :
     existing cells. A space on a translucent background preserves the existing
     glyph and tints its colors.
 
-    Respects the active scissor. *)
+    Respects the active scissor for start cells. If a wide character's start
+    cell is visible, its continuation cells are written as well to preserve the
+    grid's wide-span invariant. *)
 
 module Border = Border
 (** Box-drawing border character sets. *)
