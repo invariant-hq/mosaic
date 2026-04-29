@@ -43,10 +43,12 @@ type t = {
   glyph_pool : Glyph_pool.t;
   stats : stats_state;
   mutable last_metrics : frame_metrics;
-  (* Buffers (Double Buffering) *)
+  (* Buffers. [current] is the last committed terminal state. [next] is the
+     frame being built. [scroll_baseline] is scratch space for the
+     scroll-adjusted previous state used while emitting a scroll-hinted diff. *)
   mutable current : Grid.t;
   mutable next : Grid.t;
-  diff_current : Grid.t;
+  scroll_baseline : Grid.t;
   mutable hit_current : Hit_grid.t;
   mutable hit_next : Hit_grid.t;
   (* State *)
@@ -410,10 +412,10 @@ let prepare_diff_baseline (r : t) ~mode ~scroll_hint ~height_limit
   | `Diff, Some hint ->
       (* Scroll hints describe terminal-side movement. Apply them to a
          temporary baseline so output failures cannot corrupt [current]. *)
-      Grid.blit ~src:r.current ~dst:r.diff_current;
+      Grid.blit ~src:r.current ~dst:r.scroll_baseline;
       apply_scroll_hint ~writer ~row_offset:r.row_offset ~height_limit
-        ~current:r.diff_current hint;
-      Some r.diff_current
+        ~current:r.scroll_baseline hint;
+      Some r.scroll_baseline
 
 let emit_frame (r : t) ({ now; delta_seconds } : prepared_frame)
     ~(mode : render_mode) ~scroll_hint ~height_limit ~(writer : Ansi.writer) =
@@ -511,7 +513,7 @@ let create ?glyph_pool ?width_method ?respect_alpha ?(cursor_visible = true)
       next =
         Grid.create ~width:1 ~height:1 ~glyph_pool ~width_method:w_method
           ~respect_alpha:r_alpha ();
-      diff_current =
+      scroll_baseline =
         Grid.create ~width:1 ~height:1 ~glyph_pool ~width_method:w_method
           ~respect_alpha:r_alpha ();
       hit_current = Hit_grid.create ~width:0 ~height:0;
@@ -538,7 +540,7 @@ let create ?glyph_pool ?width_method ?respect_alpha ?(cursor_visible = true)
 
 let reset t =
   Grid.clear t.next;
-  Grid.clear t.diff_current;
+  Grid.clear t.scroll_baseline;
   Hit_grid.clear t.hit_current;
   Hit_grid.clear t.hit_next;
   t.last_render_time <- None;
@@ -555,8 +557,8 @@ let resize t ~width ~height =
     Grid.resize t.current ~width ~height;
     Grid.clear t.current;
     Grid.resize t.next ~width ~height;
-    Grid.resize t.diff_current ~width ~height;
-    Grid.clear t.diff_current;
+    Grid.resize t.scroll_baseline ~width ~height;
+    Grid.clear t.scroll_baseline;
     (* Hit_grid.resize already clears unconditionally, no need to clear again *)
     Hit_grid.resize t.hit_current ~width ~height;
     Hit_grid.resize t.hit_next ~width ~height;
@@ -641,7 +643,7 @@ let set_explicit_width t flag =
 
 let set_width_method (t : t) (method_ : Glyph.width_method) =
   Grid.set_width_method t.current method_;
-  Grid.set_width_method t.diff_current method_;
+  Grid.set_width_method t.scroll_baseline method_;
   Grid.set_width_method t.next method_
 
 type effect_id = int
