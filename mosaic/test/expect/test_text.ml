@@ -70,7 +70,7 @@ let%expect_test "styled text single color" =
   Text.set_styled_text txt
     [ { Text_buffer.text = "Red text"; style = red_style } ];
   Renderer.render_frame renderer ~width:20 ~height:1 ~delta:0.;
-  let grid = Screen.grid (Renderer.screen renderer) in
+  let grid = Screen.next_grid (Renderer.screen renderer) in
   print_newline ();
   print_string (grid_to_ansi grid);
   [%expect_exact
@@ -88,7 +88,7 @@ let%expect_test "styled text multiple spans" =
       { Text_buffer.text = "Green"; style = green_style };
     ];
   Renderer.render_frame renderer ~width:20 ~height:1 ~delta:0.;
-  let grid = Screen.grid (Renderer.screen renderer) in
+  let grid = Screen.next_grid (Renderer.screen renderer) in
   print_newline ();
   print_string (grid_to_ansi grid);
   [%expect_exact

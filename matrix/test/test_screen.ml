@@ -6,8 +6,13 @@ let create_renderer ?(width = 10) ?(height = 10) () =
   let r = Screen.create () in
   (* Build and render a frame to initialize buffers *)
   let _ =
-    Screen.build r ~width ~height (fun _grid _hits -> ()) |> Screen.render
+    Screen.build r ~width ~height (fun _grid _hits -> ());
+    Screen.render r
   in
+  r
+
+let build_screen r ~width ~height f =
+  Screen.build r ~width ~height f;
   r
 
 let count_cursor_moves output =
@@ -24,6 +29,12 @@ let count_cursor_moves output =
 let add_unique_by_phys acc v =
   if List.exists (fun existing -> existing == v) acc then acc else v :: acc
 
+let contains_substring needle haystack =
+  try
+    let _ = Str.search_forward (Str.regexp_string needle) haystack 0 in
+    true
+  with Not_found -> false
+
 (* 1. Core Rendering Tests *)
 
 let test_create_renderer () =
@@ -36,15 +47,15 @@ let zero_frame_expected = ""
 
 let test_zero_sized_frame () =
   (* Edge case: 0x0 frame should not crash *)
-  let r = Screen.create ~mouse_enabled:false () in
-  let frame = Screen.build r ~width:0 ~height:0 (fun _ _ -> ()) in
+  let r = Screen.create () in
+  let frame = build_screen r ~width:0 ~height:0 (fun _ _ -> ()) in
   let output = Screen.render frame in
   equal ~msg:"empty output" string zero_frame_expected output
 
 let test_single_cell_frame () =
   let r = Screen.create () in
   let frame =
-    Screen.build r ~width:1 ~height:1 (fun grid _hits ->
+    build_screen r ~width:1 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"X")
   in
   let output = Screen.render frame in
@@ -54,7 +65,7 @@ let test_single_cell_frame () =
 let test_simple_text_rendering () =
   let r = Screen.create () in
   let frame =
-    Screen.build r ~width:10 ~height:10 (fun grid _hits ->
+    build_screen r ~width:10 ~height:10 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Hello")
   in
   let output = Screen.render frame in
@@ -68,7 +79,7 @@ let test_simple_text_rendering () =
 let test_hyperlink_rendering () =
   let r = Screen.create () in
   let frame1 =
-    Screen.build r ~width:4 ~height:1 (fun grid _hits ->
+    build_screen r ~width:4 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"A")
   in
   let _ = Screen.render frame1 in
@@ -76,7 +87,7 @@ let test_hyperlink_rendering () =
     Ansi.Style.hyperlink "https://example.com" Ansi.Style.default
   in
   let frame2 =
-    Screen.build r ~width:4 ~height:1 (fun grid _hits ->
+    build_screen r ~width:4 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"A" ~style:link_style)
   in
   let output = Screen.render frame2 in
@@ -93,7 +104,7 @@ let test_row_offset_applied () =
   let r = create_renderer ~width:2 ~height:2 () in
   Screen.set_row_offset r 3;
   let frame =
-    Screen.build r ~width:2 ~height:2 (fun grid _hits ->
+    build_screen r ~width:2 ~height:2 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"A")
   in
   let output = Screen.render frame in
@@ -107,6 +118,49 @@ let test_row_offset_applied () =
   is_true ~msg:"cursor moved with offset" has_seq;
   is_true ~msg:"character rendered" (String.contains output 'A')
 
+let test_height_limit_expansion_renders_new_rows () =
+  let r = Screen.create () in
+  let draw_rows grid =
+    Grid.draw_text grid ~x:0 ~y:0 ~text:"A";
+    Grid.draw_text grid ~x:0 ~y:1 ~text:"B";
+    Grid.draw_text grid ~x:0 ~y:2 ~text:"C"
+  in
+  let frame1 =
+    build_screen r ~width:1 ~height:3 (fun grid _hits -> draw_rows grid)
+  in
+  let output1 = Screen.render ~height_limit:1 frame1 in
+  is_true ~msg:"first visible row rendered" (String.contains output1 'A');
+  is_false ~msg:"second row initially clipped" (String.contains output1 'B');
+
+  let frame2 =
+    build_screen r ~width:1 ~height:3 (fun grid _hits -> draw_rows grid)
+  in
+  let output2 = Screen.render ~height_limit:3 frame2 in
+  is_true ~msg:"newly exposed row rendered after expansion"
+    (String.contains output2 'B');
+  is_true ~msg:"newly exposed lower row rendered after expansion"
+    (String.contains output2 'C')
+
+let test_height_limit_clips_active_hit_grid () =
+  let r = Screen.create () in
+  let frame =
+    build_screen r ~width:4 ~height:4 (fun _grid hits ->
+        Screen.Hit_grid.add hits ~x:0 ~y:2 ~width:4 ~height:1 ~id:77)
+  in
+  let _ = Screen.render ~height_limit:1 frame in
+  equal ~msg:"hit below rendered height is inactive" int 0
+    (Screen.query_hit frame ~x:0 ~y:2)
+
+let test_styled_frame_resets_sgr () =
+  let r = Screen.create () in
+  let style = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 255 0 0) ~bold:true () in
+  let frame =
+    build_screen r ~width:1 ~height:1 (fun grid _hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"R" ~style)
+  in
+  let output = Screen.render frame in
+  is_true ~msg:"styled output resets SGR" (contains_substring "\027[0m" output)
+
 (* 2. Diff Algorithm Tests *)
 
 let test_diff_only_changed_cells () =
@@ -115,7 +169,7 @@ let test_diff_only_changed_cells () =
 
   (* First frame *)
   let f1 =
-    Screen.build r ~width:5 ~height:5 (fun grid _hits ->
+    build_screen r ~width:5 ~height:5 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"XXXXX")
   in
   let output1 = Screen.render f1 in
@@ -123,7 +177,7 @@ let test_diff_only_changed_cells () =
 
   (* Second frame - only change one cell *)
   let f2 =
-    Screen.build r ~width:5 ~height:5 (fun grid _hits ->
+    build_screen r ~width:5 ~height:5 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"XXXXY")
   in
   let output2 = Screen.render f2 in
@@ -145,14 +199,14 @@ let test_no_diff_when_unchanged () =
 
   (* First render *)
   let f1 =
-    Screen.build r ~width:5 ~height:5 (fun grid _hits ->
+    build_screen r ~width:5 ~height:5 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Test")
   in
   let _output1 = Screen.render f1 in
 
   (* Second render with same content; expect no output *)
   let f2 =
-    Screen.build r ~width:5 ~height:5 (fun grid _hits ->
+    build_screen r ~width:5 ~height:5 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Test")
   in
   let output2 = Screen.render f2 in
@@ -164,13 +218,13 @@ let test_wide_char_diff () =
   let r = create_renderer () in
 
   let f1 =
-    Screen.build r ~width:10 ~height:1 (fun grid _hits ->
+    build_screen r ~width:10 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Hello")
   in
   let _output1 = Screen.render f1 in
 
   let f2 =
-    Screen.build r ~width:10 ~height:1 (fun grid _hits ->
+    build_screen r ~width:10 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"你好")
   in
   (* Chinese chars, 2 cells each *)
@@ -184,7 +238,7 @@ let test_build_visual () =
   (* build_visual should not require hit grid function *)
   let r = Screen.create () in
   let frame =
-    Screen.build r ~width:5 ~height:5 (fun grid _hits ->
+    build_screen r ~width:5 ~height:5 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Hi")
   in
   let output = Screen.render frame in
@@ -195,14 +249,14 @@ let test_resize_preserves_content () =
 
   (* Draw something *)
   let f1 =
-    Screen.build r ~width:5 ~height:5 (fun grid _hits ->
+    build_screen r ~width:5 ~height:5 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"ABC")
   in
   let _output1 = Screen.render f1 in
 
   (* Resize larger *)
   let f2 =
-    Screen.build r ~width:10 ~height:10 (fun grid _hits ->
+    build_screen r ~width:10 ~height:10 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"ABC")
   in
   let output2 = Screen.render f2 in
@@ -215,13 +269,13 @@ let test_resize_smaller () =
   let r = create_renderer ~width:10 ~height:10 () in
 
   let f1 =
-    Screen.build r ~width:10 ~height:10 (fun grid _hits ->
+    build_screen r ~width:10 ~height:10 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"BigText")
   in
   let _output1 = Screen.render f1 in
 
   let f2 =
-    Screen.build r ~width:3 ~height:3 (fun grid _hits ->
+    build_screen r ~width:3 ~height:3 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Sm")
   in
   let output2 = Screen.render f2 in
@@ -235,7 +289,7 @@ let test_resize_clears_both_buffers () =
 
   (* Fill the screen with content *)
   let f1 =
-    Screen.build r ~width:5 ~height:5 (fun grid _hits ->
+    build_screen r ~width:5 ~height:5 (fun grid _hits ->
         Grid.fill_rect grid ~x:0 ~y:0 ~width:5 ~height:5
           ~color:(Ansi.Color.of_rgb 255 0 0))
   in
@@ -246,7 +300,7 @@ let test_resize_clears_both_buffers () =
 
   (* Build a frame that only draws a small region *)
   let f2 =
-    Screen.build r ~width:10 ~height:10 (fun grid _hits ->
+    build_screen r ~width:10 ~height:10 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Small")
   in
   let output2 = Screen.render f2 in
@@ -261,12 +315,15 @@ let test_resize_clears_both_buffers () =
 
 let test_cursor_clamped_on_resize () =
   let r = create_renderer ~width:3 ~height:3 () in
-  Screen.set_cursor_position r ~row:5 ~col:5;
+  let cursor = Screen.cursor r in
+  Screen.set_cursor r { cursor with position = Some (4, 4) };
   Screen.resize r ~width:2 ~height:1;
-  let _frame = Screen.build r ~width:2 ~height:1 (fun _grid _hits -> ()) in
-  let info = Screen.cursor_info r in
-  equal ~msg:"cursor row clamped" int 1 info.row;
-  equal ~msg:"cursor col clamped" int 2 info.col
+  let _frame = build_screen r ~width:2 ~height:1 (fun _grid _hits -> ()) in
+  let cursor = Screen.cursor r in
+  equal ~msg:"cursor clamped"
+    (option (pair int int))
+    (Some (1, 0))
+    cursor.position
 
 (* 4. Post-Processing Tests *)
 
@@ -274,7 +331,7 @@ let test_post_process_receives_delta () =
   let r = Screen.create () in
   let delta_received = ref None in
 
-  let frame1 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let frame1 = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _id =
     Screen.post_process
       (fun _grid ~delta -> delta_received := Some delta)
@@ -291,7 +348,7 @@ let test_post_process_chain () =
   let r = Screen.create () in
   let calls = ref [] in
 
-  let frame = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let frame = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _id1 =
     Screen.post_process (fun _grid ~delta:_ -> calls := "first" :: !calls) frame
   in
@@ -311,11 +368,11 @@ let test_post_process_persists_across_frames () =
   let call_count = ref 0 in
   let effect_ _grid ~delta:_ = incr call_count in
 
-  let frame1 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let frame1 = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _id = Screen.post_process effect_ frame1 in
   let _ = Screen.render frame1 in
 
-  let frame2 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let frame2 = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _ = Screen.render frame2 in
 
   equal ~msg:"called twice" int 2 !call_count
@@ -325,12 +382,12 @@ let test_remove_post_process () =
   let call_count = ref 0 in
   let effect_ _grid ~delta:_ = incr call_count in
 
-  let frame = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let frame = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let id = Screen.post_process effect_ frame in
   let _ = Screen.render frame in
 
-  let _frame = Screen.remove_post_process id frame in
-  let frame2 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  Screen.remove_post_process id frame;
+  let frame2 = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _ = Screen.render frame2 in
 
   equal ~msg:"effect removed" int 1 !call_count
@@ -341,14 +398,14 @@ let test_clear_post_processes () =
   let effect1 _grid ~delta:_ = incr call_count in
   let effect2 _grid ~delta:_ = incr call_count in
 
-  let frame = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let frame = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _id1 = Screen.post_process effect1 frame in
   let _id2 = Screen.post_process effect2 frame in
   let _ = Screen.render frame in
   equal ~msg:"both effects ran" int 2 !call_count;
 
-  let _ = Screen.clear_post_processes frame in
-  let frame2 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  Screen.clear_post_processes frame;
+  let frame2 = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _ = Screen.render frame2 in
 
   equal ~msg:"effects cleared" int 2 !call_count
@@ -360,7 +417,7 @@ let test_hit_grid_integration () =
   let hit_id = ref 0 in
 
   let frame =
-    Screen.build r ~width:10 ~height:10 (fun grid hits ->
+    build_screen r ~width:10 ~height:10 (fun grid hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Button";
         Screen.Hit_grid.add hits ~x:0 ~y:0 ~width:6 ~height:1 ~id:42)
   in
@@ -376,13 +433,13 @@ let test_hit_grid_cleared_each_frame () =
 
   (* First frame with hit region *)
   let f1 =
-    Screen.build r ~width:10 ~height:10 (fun _grid hits ->
+    build_screen r ~width:10 ~height:10 (fun _grid hits ->
         Screen.Hit_grid.add hits ~x:0 ~y:0 ~width:5 ~height:1 ~id:1)
   in
   let _o1 = Screen.render f1 in
 
   (* Second frame without hit region *)
-  let f2 = Screen.build r ~width:10 ~height:10 (fun _grid _hits -> ()) in
+  let f2 = build_screen r ~width:10 ~height:10 (fun _grid _hits -> ()) in
   let _o2 = Screen.render f2 in
 
   let hit_id = Screen.query_hit f2 ~x:0 ~y:0 in
@@ -392,14 +449,14 @@ let test_hit_grid_swap_on_render () =
   let r = Screen.create () in
 
   let frame1 =
-    Screen.build r ~width:3 ~height:3 (fun _grid hits ->
+    build_screen r ~width:3 ~height:3 (fun _grid hits ->
         Screen.Hit_grid.add hits ~x:1 ~y:1 ~width:1 ~height:1 ~id:1)
   in
   let _ = Screen.render frame1 in
 
   (* Building the next frame should not swap hits until render runs. *)
   let frame2 =
-    Screen.build r ~width:3 ~height:3 (fun _grid hits ->
+    build_screen r ~width:3 ~height:3 (fun _grid hits ->
         Screen.Hit_grid.add hits ~x:1 ~y:1 ~width:1 ~height:1 ~id:2)
   in
   let before = Screen.query_hit frame2 ~x:1 ~y:1 in
@@ -411,10 +468,9 @@ let test_hit_grid_swap_on_render () =
 
 let test_add_hit_region_helper () =
   let r = Screen.create () in
-  let frame1 = Screen.build r ~width:10 ~height:10 (fun _grid _hits -> ()) in
-  let frame2 =
-    Screen.add_hit_region frame1 ~x:5 ~y:5 ~width:2 ~height:2 ~id:99
-  in
+  let frame1 = build_screen r ~width:10 ~height:10 (fun _grid _hits -> ()) in
+  Screen.add_hit_region frame1 ~x:5 ~y:5 ~width:2 ~height:2 ~id:99;
+  let frame2 = frame1 in
 
   let _ = Screen.render frame2 in
   let hit_id = Screen.query_hit frame2 ~x:5 ~y:5 in
@@ -426,7 +482,7 @@ let test_stats_tracking () =
   let r = Screen.create () in
 
   let f1 =
-    Screen.build r ~width:10 ~height:10 (fun grid _hits ->
+    build_screen r ~width:10 ~height:10 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Test")
   in
   let _output1 = Screen.render f1 in
@@ -443,9 +499,10 @@ let test_stats_tracking () =
 let test_update_config () =
   let r = Screen.create () in
 
-  Screen.set_cursor_visible r false;
+  let cursor = Screen.cursor r in
+  Screen.set_cursor r { cursor with visible = false };
 
-  let frame = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let frame = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _ = Screen.render frame in
   let metrics = Screen.last_metrics r in
   is_false ~msg:"cursor visibility updated" metrics.cursor_visible
@@ -455,7 +512,7 @@ let test_reset () =
 
   (* Render a few frames *)
   for _i = 1 to 3 do
-    let f = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+    let f = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
     let _o = Screen.render f in
     ()
   done;
@@ -473,14 +530,14 @@ let test_reset_triggers_next_diff () =
   let r = create_renderer ~width:1 ~height:1 () in
 
   let f1 =
-    Screen.build r ~width:1 ~height:1 (fun grid _hits ->
+    build_screen r ~width:1 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"X")
   in
   let _ = Screen.render f1 in
 
   Screen.reset r;
 
-  let f2 = Screen.build r ~width:1 ~height:1 (fun _ _ -> ()) in
+  let f2 = build_screen r ~width:1 ~height:1 (fun _ _ -> ()) in
   let output2 = Screen.render f2 in
 
   is_true ~msg:"cursor moves after reset" (count_cursor_moves output2 >= 1);
@@ -492,7 +549,7 @@ let test_extremely_wide_char () =
   (* Test rendering with emoji that might have unusual widths *)
   let r = create_renderer () in
   let f =
-    Screen.build r ~width:20 ~height:1 (fun grid _hits ->
+    build_screen r ~width:20 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"🎨🚀✨")
   in
   let output = Screen.render f in
@@ -503,7 +560,7 @@ let test_buffer_overflow_prevention () =
      doesn't overflow *)
   let r = create_renderer ~width:200 ~height:60 () in
   let f =
-    Screen.build r ~width:200 ~height:60 (fun grid _hits ->
+    build_screen r ~width:200 ~height:60 (fun grid _hits ->
         (* Fill with complex content: mixed text, colors, attributes *)
         let rec fill y =
           if y >= 60 then ()
@@ -532,7 +589,7 @@ let test_resize_full_redraw () =
 
   (* First frame *)
   let f1 =
-    Screen.build r ~width:10 ~height:10 (fun grid _hits ->
+    build_screen r ~width:10 ~height:10 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Initial")
   in
   let _ = Screen.render f1 in
@@ -542,7 +599,7 @@ let test_resize_full_redraw () =
 
   (* Second frame - should be full redraw *)
   let f2 =
-    Screen.build r ~width:20 ~height:20 (fun grid _hits ->
+    build_screen r ~width:20 ~height:20 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Resized")
   in
   let output2 = Screen.render f2 in
@@ -557,7 +614,7 @@ let test_resize_hit_grid_cleared () =
 
   (* Add hit region *)
   let f1 =
-    Screen.build r ~width:10 ~height:10 (fun _grid hits ->
+    build_screen r ~width:10 ~height:10 (fun _grid hits ->
         Screen.Hit_grid.add hits ~x:5 ~y:5 ~width:2 ~height:2 ~id:99)
   in
   let _ = Screen.render f1 in
@@ -570,7 +627,7 @@ let test_resize_hit_grid_cleared () =
   Screen.resize r ~width:5 ~height:5;
 
   (* Build new frame *)
-  let f2 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let f2 = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _ = Screen.render f2 in
 
   (* Hit should be gone (coordinates out of bounds) *)
@@ -581,7 +638,7 @@ let test_explicit_width_sequences () =
   (* Test that explicit width OSC sequences are emitted when enabled *)
   let r = Screen.create ~explicit_width:true () in
   let f =
-    Screen.build r ~width:10 ~height:1 (fun grid _hits ->
+    build_screen r ~width:10 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"中")
     (* 2-cell wide character *)
   in
@@ -603,7 +660,7 @@ let test_hyperlink_capability_gating () =
   let r1 = Screen.create () in
   (* hyperlinks_capable defaults to true *)
   let f1 =
-    Screen.build r1 ~width:10 ~height:1 (fun grid _hits ->
+    build_screen r1 ~width:10 ~height:1 (fun grid _hits ->
         let style =
           Ansi.Style.hyperlink "https://example.com" Ansi.Style.default
         in
@@ -625,7 +682,7 @@ let test_hyperlink_capability_gating () =
   Screen.apply_capabilities r2 ~explicit_width:false
     ~explicit_cursor_positioning:false ~hyperlinks:false;
   let f2 =
-    Screen.build r2 ~width:10 ~height:1 (fun grid _hits ->
+    build_screen r2 ~width:10 ~height:1 (fun grid _hits ->
         let style =
           Ansi.Style.hyperlink "https://example.com" Ansi.Style.default
         in
@@ -643,19 +700,77 @@ let test_hyperlink_capability_gating () =
   is_false ~msg:"hyperlink not emitted when incapable"
     contains_hyperlink_disabled
 
+let test_scroll_hint_clips_to_height_limit () =
+  let r = Screen.create () in
+  let f1 =
+    build_screen r ~width:1 ~height:4 (fun grid _hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"A";
+        Grid.draw_text grid ~x:0 ~y:1 ~text:"B";
+        Grid.draw_text grid ~x:0 ~y:2 ~text:"C";
+        Grid.draw_text grid ~x:0 ~y:3 ~text:"D")
+  in
+  let _ = Screen.render ~height_limit:2 f1 in
+  let f2 =
+    build_screen r ~width:1 ~height:4 (fun grid _hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"B";
+        Grid.draw_text grid ~x:0 ~y:1 ~text:"E";
+        Grid.draw_text grid ~x:0 ~y:2 ~text:"C";
+        Grid.draw_text grid ~x:0 ~y:3 ~text:"D")
+  in
+  let output =
+    Screen.render ~height_limit:2
+      ~scroll_hint:{ Screen.top = 0; bottom = 3; delta = 1 }
+      f2
+  in
+  is_true ~msg:"scroll region clipped to rendered rows"
+    (contains_substring "\027[1;2r" output);
+  is_false ~msg:"scroll region does not include clipped rows"
+    (contains_substring "\027[1;4r" output)
+
+let test_scroll_hint_applies_row_offset () =
+  let r = Screen.create () in
+  Screen.set_row_offset r 3;
+  let f1 =
+    build_screen r ~width:1 ~height:3 (fun grid _hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"A";
+        Grid.draw_text grid ~x:0 ~y:1 ~text:"B";
+        Grid.draw_text grid ~x:0 ~y:2 ~text:"C")
+  in
+  let _ = Screen.render f1 in
+  let f2 =
+    build_screen r ~width:1 ~height:3 (fun grid _hits ->
+        Grid.draw_text grid ~x:0 ~y:0 ~text:"B";
+        Grid.draw_text grid ~x:0 ~y:1 ~text:"C";
+        Grid.draw_text grid ~x:0 ~y:2 ~text:"D")
+  in
+  let output =
+    Screen.render ~scroll_hint:{ Screen.top = 0; bottom = 2; delta = 1 } f2
+  in
+  is_true ~msg:"scroll region includes row offset"
+    (contains_substring "\027[4;6r" output);
+  is_false ~msg:"scroll region is not absolute top"
+    (contains_substring "\027[1;3r" output)
+
 let test_cursor_style_and_color () =
   (* Test cursor style and color state *)
   let r = create_renderer () in
-  Screen.set_cursor_position r ~row:5 ~col:10;
-  Screen.set_cursor_style r ~style:`Underline ~blinking:false;
-  Screen.set_cursor_color r ~r:255 ~g:0 ~b:128;
+  let cursor = Screen.cursor r in
+  Screen.set_cursor r
+    {
+      cursor with
+      position = Some (9, 4);
+      style = `Underline;
+      blinking = false;
+      color = Some (255, 0, 128);
+    };
 
-  let _f = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
-  let info = Screen.cursor_info r in
+  let _f = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let info = Screen.cursor r in
   is_true ~msg:"cursor visible" info.visible;
-  is_true ~msg:"cursor position set" info.has_position;
-  equal ~msg:"cursor row stored" int 5 info.row;
-  equal ~msg:"cursor col stored" int 5 info.col;
+  equal ~msg:"cursor position stored"
+    (option (pair int int))
+    (Some (4, 4))
+    info.position;
   is_true ~msg:"cursor underline" (info.style = `Underline);
   is_true ~msg:"cursor non-blinking" (not info.blinking);
   is_true ~msg:"cursor color stored" (info.color = Some (255, 0, 128))
@@ -665,14 +780,14 @@ let test_all_cells_changed () =
   let r = create_renderer ~width:10 ~height:10 () in
 
   let f1 =
-    Screen.build r ~width:10 ~height:10 (fun grid _hits ->
+    build_screen r ~width:10 ~height:10 (fun grid _hits ->
         Grid.fill_rect grid ~x:0 ~y:0 ~width:10 ~height:10
           ~color:(Ansi.Color.of_rgb 255 0 0))
   in
   let _o1 = Screen.render f1 in
 
   let f2 =
-    Screen.build r ~width:10 ~height:10 (fun grid _hits ->
+    build_screen r ~width:10 ~height:10 (fun grid _hits ->
         Grid.fill_rect grid ~x:0 ~y:0 ~width:10 ~height:10
           ~color:(Ansi.Color.of_rgb 0 255 0))
   in
@@ -687,13 +802,13 @@ let test_partial_row_update () =
   let r = create_renderer ~width:10 ~height:1 () in
 
   let f1 =
-    Screen.build r ~width:10 ~height:1 (fun grid _hits ->
+    build_screen r ~width:10 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"XXXXXXXXXX")
   in
   let _o1 = Screen.render f1 in
 
   let f2 =
-    Screen.build r ~width:10 ~height:1 (fun grid _hits ->
+    build_screen r ~width:10 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"XXXXXAXXXX")
   in
   let _output2 = Screen.render f2 in
@@ -708,14 +823,14 @@ let test_color_only_change () =
 
   let style1 = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 255 0 0) () in
   let f1 =
-    Screen.build r ~width:5 ~height:1 (fun grid _hits ->
+    build_screen r ~width:5 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Test" ~style:style1)
   in
   let _o1 = Screen.render f1 in
 
   let style2 = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 0 255 0) () in
   let f2 =
-    Screen.build r ~width:5 ~height:1 (fun grid _hits ->
+    build_screen r ~width:5 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Test" ~style:style2)
   in
   let output2 = Screen.render f2 in
@@ -728,14 +843,14 @@ let test_attribute_only_change () =
   let r = create_renderer () in
 
   let f1 =
-    Screen.build r ~width:5 ~height:1 (fun grid _hits ->
+    build_screen r ~width:5 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Test")
   in
   let _o1 = Screen.render f1 in
 
   let style_bold = Ansi.Style.make ~bold:true () in
   let f2 =
-    Screen.build r ~width:5 ~height:1 (fun grid _hits ->
+    build_screen r ~width:5 ~height:1 (fun grid _hits ->
         Grid.draw_text grid ~x:0 ~y:0 ~text:"Test" ~style:style_bold)
   in
   let output2 = Screen.render f2 in
@@ -751,7 +866,7 @@ let test_zero_allocation_frame_building () =
   let r = Screen.create () in
 
   (* Build and post_process should work without errors *)
-  let f1 = Screen.build r ~width:5 ~height:5 (fun _grid _hits -> ()) in
+  let f1 = build_screen r ~width:5 ~height:5 (fun _grid _hits -> ()) in
   let _id = Screen.post_process (fun _grid ~delta:_ -> ()) f1 in
   let _output = Screen.render f1 in
   (* If we get here without errors, the zero-allocation API works *)
@@ -763,12 +878,12 @@ let test_double_buffer_reuse () =
   let hits = ref [] in
 
   let record frame =
-    grids := add_unique_by_phys !grids (Screen.grid frame);
-    hits := add_unique_by_phys !hits (Screen.hit_grid frame)
+    grids := add_unique_by_phys !grids (Screen.next_grid frame);
+    hits := add_unique_by_phys !hits (Screen.next_hit_grid frame)
   in
 
   let render_once () =
-    let frame = Screen.build r ~width:4 ~height:2 (fun _grid _hits -> ()) in
+    let frame = build_screen r ~width:4 ~height:2 (fun _grid _hits -> ()) in
     record frame;
     let _ = Screen.render frame in
     ()
@@ -787,7 +902,7 @@ let test_pipeline_composition () =
   let call_order = ref [] in
 
   let f1 =
-    Screen.build r ~width:5 ~height:5 (fun _grid _hits ->
+    build_screen r ~width:5 ~height:5 (fun _grid _hits ->
         call_order := "build" :: !call_order)
   in
   let _id1 =
@@ -800,7 +915,8 @@ let test_pipeline_composition () =
       (fun _grid ~delta:_ -> call_order := "post2" :: !call_order)
       f1
   in
-  let f2 = Screen.add_hit_region f1 ~x:0 ~y:0 ~width:1 ~height:1 ~id:1 in
+  Screen.add_hit_region f1 ~x:0 ~y:0 ~width:1 ~height:1 ~id:1;
+  let f2 = f1 in
   let output = Screen.render f2 in
 
   is_true ~msg:"pipeline executed" (String.length output >= 0);
@@ -821,6 +937,11 @@ let () =
           test "Simple text rendering" test_simple_text_rendering;
           test "Hyperlink rendering" test_hyperlink_rendering;
           test "Row offset applied" test_row_offset_applied;
+          test "Height limit expansion renders new rows"
+            test_height_limit_expansion_renders_new_rows;
+          test "Height limit clips active hit grid"
+            test_height_limit_clips_active_hit_grid;
+          test "Styled frame resets SGR" test_styled_frame_resets_sgr;
         ];
       group "Diff Algorithm"
         [
@@ -871,6 +992,10 @@ let () =
           test "Resize clears hit grids" test_resize_hit_grid_cleared;
           test "Explicit width sequences" test_explicit_width_sequences;
           test "Hyperlink capability gating" test_hyperlink_capability_gating;
+          test "Scroll hint clips to height limit"
+            test_scroll_hint_clips_to_height_limit;
+          test "Scroll hint applies row offset"
+            test_scroll_hint_applies_row_offset;
           test "Cursor style and color" test_cursor_style_and_color;
         ];
       group "Performance Characteristics"

@@ -76,7 +76,7 @@ let render ~width ~height vnode =
   let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
   Reconciler.render reconciler (fill vnode);
   Renderer.render_frame renderer ~width ~height ~delta:0.;
-  let grid = Screen.grid (Renderer.screen renderer) in
+  let grid = Screen.next_grid (Renderer.screen renderer) in
   print_newline ();
   print_string (grid_to_text grid)
 
@@ -86,7 +86,7 @@ let render_ansi ~width ~height vnode =
   let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
   Reconciler.render reconciler (fill vnode);
   Renderer.render_frame renderer ~width ~height ~delta:0.;
-  let grid = Screen.grid (Renderer.screen renderer) in
+  let grid = Screen.next_grid (Renderer.screen renderer) in
   print_newline ();
   print_string (grid_to_ansi grid)
 
@@ -104,14 +104,14 @@ let reconcile app vnode = Reconciler.render app.reconciler (fill vnode)
 let frame app ~width ~height =
   set_viewport app.renderer ~width ~height;
   Renderer.render_frame app.renderer ~width ~height ~delta:0.;
-  let grid = Screen.grid (Renderer.screen app.renderer) in
+  let grid = Screen.next_grid (Renderer.screen app.renderer) in
   print_newline ();
   print_string (grid_to_text grid)
 
 let frame_ansi app ~width ~height =
   set_viewport app.renderer ~width ~height;
   Renderer.render_frame app.renderer ~width ~height ~delta:0.;
-  let grid = Screen.grid (Renderer.screen app.renderer) in
+  let grid = Screen.next_grid (Renderer.screen app.renderer) in
   print_newline ();
   print_string (grid_to_ansi grid)
 
@@ -181,7 +181,7 @@ let render_markdown ?(width = 60) ?(height = 20) ?style ?conceal ?streaming
   in
   fill_node (Markdown.node md);
   Renderer.render_frame renderer ~width ~height ~delta:0.;
-  let grid = Screen.grid (Renderer.screen renderer) in
+  let grid = Screen.next_grid (Renderer.screen renderer) in
   print_newline ();
   print_string (grid_to_text grid)
 
@@ -199,6 +199,6 @@ let make_markdown_app ?(width = 60) ?(height = 20) ?style ?conceal ?streaming
 let markdown_frame app ~width ~height =
   set_viewport app.md_renderer ~width ~height;
   Renderer.render_frame app.md_renderer ~width ~height ~delta:0.;
-  let grid = Screen.grid (Renderer.screen app.md_renderer) in
+  let grid = Screen.next_grid (Renderer.screen app.md_renderer) in
   print_newline ();
   print_string (grid_to_text grid)
