@@ -65,6 +65,33 @@ let trim_right s =
 
 let row_trimmed grid y = trim_right (row_to_string grid y)
 
+let assert_valid_spans grid =
+  for y = 0 to Grid.height grid - 1 do
+    let covered_until = ref (-1) in
+    for x = 0 to Grid.width grid - 1 do
+      let i = idx grid x y in
+      if Grid.is_continuation grid i then
+        is_true
+          ~msg:(Printf.sprintf "orphan continuation at (%d,%d)" x y)
+          (x <= !covered_until)
+      else
+        let w = Grid.cell_width grid i in
+        if w > 1 then begin
+          is_true
+            ~msg:(Printf.sprintf "wide span at (%d,%d) fits row" x y)
+            (x + w <= Grid.width grid);
+          for dx = 1 to w - 1 do
+            is_true
+              ~msg:
+                (Printf.sprintf "continuation at (%d,%d) for start (%d,%d)"
+                   (x + dx) y x y)
+              (Grid.is_continuation grid (idx grid (x + dx) y))
+          done;
+          covered_until := max !covered_until (x + w - 1)
+        end
+    done
+  done
+
 (* --- Tests --- *)
 
 let inherit_bg_on_unwritten_ascii () =
@@ -97,7 +124,8 @@ let overflow_respects_scissor_for_wide_grapheme () =
   Grid.push_clip grid { x = 0; y = 0; width = 3; height = 1 };
   Grid.draw_text grid ~x:2 ~y:0 ~text:"中";
   Grid.pop_clip grid;
-  equal ~msg:"x=3 untouched" int 32 (read_char grid 3 0)
+  is_true ~msg:"x=3 is continuation" (Grid.is_continuation grid (idx grid 3 0));
+  assert_valid_spans grid
 
 let alpha_blit_orphan_continuation_draws_space () =
   let src = Grid.create ~width:3 ~height:1 ~respect_alpha:true () in
@@ -222,6 +250,18 @@ let resize_shrink_clips_continuation () =
   equal ~msg:"row after shrink clears truncated grapheme" string ""
     (row_trimmed grid 0);
   ignore (read_char grid 0 0)
+
+let resize_shrink_clips_pool_backed_grapheme () =
+  let grid = Grid.create ~width:2 ~height:1 () in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"👩‍🚀";
+  Grid.resize grid ~width:1 ~height:1;
+  assert_valid_spans grid;
+  equal ~msg:"row after shrink clears truncated complex grapheme" string ""
+    (row_trimmed grid 0);
+  Grid.resize grid ~width:2 ~height:1;
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"👨‍🚀";
+  assert_valid_spans grid;
+  equal ~msg:"pool still usable after shrink" string "👨‍🚀" (row_trimmed grid 0)
 
 let resize_truncated_grapheme_does_not_bleed () =
   let grid = Grid.create ~width:5 ~height:2 () in
@@ -633,6 +673,66 @@ let blit_region_skips_partial_span () =
   equal ~msg:"trailing char copied" int (Char.code 'a') (read_char dst 1 0);
   equal ~msg:"trailing width" int 1 (read_width dst 1 0)
 
+let fill_rect_clears_inline_wide_start () =
+  let grid = Grid.create ~width:3 ~height:1 () in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"中";
+  Grid.fill_rect grid ~x:0 ~y:0 ~width:1 ~height:1 ~color:Ansi.Color.red;
+  assert_valid_spans grid;
+  equal ~msg:"start cell reset to space" int (Char.code ' ')
+    (read_char grid 0 0);
+  equal ~msg:"old continuation cleared" int (Char.code ' ') (read_char grid 1 0);
+  equal ~msg:"old continuation width reset" int 1 (read_width grid 1 0)
+
+let fill_rect_clears_inline_wide_continuation () =
+  let grid = Grid.create ~width:3 ~height:1 () in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"中";
+  Grid.fill_rect grid ~x:1 ~y:0 ~width:1 ~height:1 ~color:Ansi.Color.red;
+  assert_valid_spans grid;
+  equal ~msg:"old start cleared" int (Char.code ' ') (read_char grid 0 0);
+  equal ~msg:"continuation cell reset to space" int (Char.code ' ')
+    (read_char grid 1 0);
+  equal ~msg:"old start width reset" int 1 (read_width grid 0 0)
+
+let blit_region_clears_right_truncated_wide_start () =
+  let src = Grid.create ~width:3 ~height:1 () in
+  Grid.draw_text src ~x:0 ~y:0 ~text:"中a";
+  let dst = Grid.create ~width:2 ~height:1 () in
+  Grid.blit_region ~src ~dst ~src_x:0 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
+    ~dst_y:0;
+  assert_valid_spans dst;
+  equal ~msg:"right-truncated wide start becomes space" int (Char.code ' ')
+    (read_char dst 0 0);
+  equal ~msg:"width reset" int 1 (read_width dst 0 0)
+
+let blit_region_transparent_source_cell_terminates () =
+  let src = Grid.create ~width:1 ~height:1 () in
+  let transparent = Ansi.Color.of_rgba 0 0 0 0 in
+  Grid.set_cell src ~x:0 ~y:0
+    ~glyph:(Glyph.of_uchar (Uchar.of_char 'T'))
+    ~fg:transparent ~bg:transparent ~attrs:Ansi.Attr.empty ();
+  let dst = Grid.create ~width:1 ~height:1 () in
+  Grid.blit_region ~src ~dst ~src_x:0 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
+    ~dst_y:0;
+  equal ~msg:"transparent source skipped" int (Char.code ' ')
+    (read_char dst 0 0)
+
+let to_ansi_handles_empty_glyph () =
+  let grid = Grid.create ~width:1 ~height:1 () in
+  Grid.set_cell grid ~x:0 ~y:0 ~glyph:Glyph.empty ~fg:Ansi.Color.white
+    ~bg:Ansi.Color.black ~attrs:Ansi.Attr.empty ();
+  let ansi = Grid.to_ansi ~reset:false grid in
+  is_true ~msg:"serialized empty glyph as space" (String.contains ansi ' ')
+
+let to_ansi_handles_orphan_continuation () =
+  let grid = Grid.create ~width:1 ~height:1 () in
+  let wide = Glyph.of_uchar (Uchar.of_int 0x4E2D) in
+  let cont = Glyph.make_continuation ~code:wide ~left:1 ~right:0 in
+  Grid.set_cell grid ~x:0 ~y:0 ~glyph:cont ~fg:Ansi.Color.white
+    ~bg:Ansi.Color.black ~attrs:Ansi.Attr.empty ();
+  let ansi = Grid.to_ansi ~reset:false grid in
+  is_true ~msg:"serialized orphan continuation as space"
+    (String.contains ansi ' ')
+
 let draw_text_overflow_does_nothing () =
   let grid = Grid.create ~width:2 ~height:1 () in
   Grid.draw_text grid ~x:1 ~y:0 ~text:"中";
@@ -1004,6 +1104,16 @@ let tests =
     test "draw text overwrites grapheme span" draw_text_overwrite_clears_span;
     test "draw text overflow clears row tail" draw_text_overflow_clears_row_tail;
     test "blit region skips partial spans" blit_region_skips_partial_span;
+    test "fill_rect clears inline wide start" fill_rect_clears_inline_wide_start;
+    test "fill_rect clears inline wide continuation"
+      fill_rect_clears_inline_wide_continuation;
+    test "blit_region clears right-truncated wide start"
+      blit_region_clears_right_truncated_wide_start;
+    test "blit_region transparent source cell terminates"
+      blit_region_transparent_source_cell_terminates;
+    test "to_ansi handles empty glyph" to_ansi_handles_empty_glyph;
+    test "to_ansi handles orphan continuation"
+      to_ansi_handles_orphan_continuation;
     test "draw text overflow does nothing" draw_text_overflow_does_nothing;
     test "box left border spans full height"
       draw_box_left_border_spans_full_height;
@@ -1049,6 +1159,8 @@ let tests =
     test "diff detects single RGB step" diff_detects_single_rgb_step;
     test "alpha blit blends fg and bg" alpha_blit_blends_fg_bg;
     test "resize shrink clips continuation" resize_shrink_clips_continuation;
+    test "resize shrink clips pool-backed grapheme"
+      resize_shrink_clips_pool_backed_grapheme;
     test "draw_text blends FG alpha over opaque BG"
       draw_text_blends_fg_alpha_over_opaque_bg;
     test "blit_region blends semi-transparent src without respect_alpha"
