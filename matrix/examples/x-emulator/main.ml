@@ -514,9 +514,7 @@ let render state =
 
       (* Foreground: - (0,0,0,0) => default fg - otherwise literal RGBA *)
       let fg_r, fg_g, fg_b, fg_a =
-        if
-          fg_r_raw = 0 && fg_g_raw = 0 && fg_b_raw = 0 && fg_a_raw = 0
-        then
+        if fg_r_raw = 0 && fg_g_raw = 0 && fg_b_raw = 0 && fg_a_raw = 0 then
           (default_fg_r, default_fg_g, default_fg_b, default_fg_a)
         else (fg_r_raw, fg_g_raw, fg_b_raw, fg_a_raw)
       in

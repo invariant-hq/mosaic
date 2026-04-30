@@ -72,5 +72,4 @@ let%expect_test "colored bar" =
   render_ansi ~width:20 ~height:1
     (Vnode.progress_bar ~value:0.5 ~filled_color:Ansi.Color.green
        ~empty_color:Ansi.Color.red ());
-  [%expect
-    {|[0;38;2;255;255;255;48;5;2m          [48;5;1m          [0m|}]
+  [%expect {|[0;38;2;255;255;255;48;5;2m          [48;5;1m          [0m|}]
