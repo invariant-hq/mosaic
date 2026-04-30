@@ -37,6 +37,10 @@ let send_key_with_mod ta ~modifier key =
   let ev = Event.Key.of_input (Input.Key.make ~modifier key) in
   Renderable.Private.emit_default_key (Textarea.node ta) ev
 
+let send_input_event ta data =
+  let ev = Event.Key.of_input data in
+  Renderable.Private.emit_default_key (Textarea.node ta) ev
+
 let send_char ta c =
   let text = String.make 1 c in
   let ev = Event.Key.of_input (Input.Key.of_char ~associated_text:text c) in
@@ -346,6 +350,14 @@ let key_enter_inserts_newline () =
   send_char ta 'b';
   equal ~msg:"newline" string "a\nb" (Textarea.value ta)
 
+let key_kp_enter_inserts_newline () =
+  let t, ta = make_textarea () in
+  focus_textarea t ta;
+  send_char ta 'a';
+  send_key ta Input.Key.KP_enter;
+  send_char ta 'b';
+  equal ~msg:"newline" string "a\nb" (Textarea.value ta)
+
 let key_left_right_moves_cursor () =
   let t, ta = make_textarea ~value:"ab" () in
   focus_textarea t ta;
@@ -395,6 +407,18 @@ let ctrl_a_uppercase_from_parser_moves_to_line_start () =
   Edit_buffer.set_cursor buf 6;
   (* Runtime parser emits Ctrl+A as 'A' with ctrl=true. *)
   send_char_with_mod ta ~modifier:ctrl_mod 'A';
+  equal ~msg:"cursor at line start" int 4 (Edit_buffer.cursor buf)
+
+let ctrl_a_base_key_moves_to_line_start () =
+  let t, ta = make_textarea ~value:"abc\ndef" () in
+  focus_textarea t ta;
+  let buf = Textarea.buffer ta in
+  Edit_buffer.set_cursor buf 6;
+  let data =
+    Input.Key.make ~modifier:ctrl_mod ~base_key:(Uchar.of_char 'a')
+      (Input.Key.Char (Uchar.of_int 0x314a))
+  in
+  send_input_event ta data;
   equal ~msg:"cursor at line start" int 4 (Edit_buffer.cursor buf)
 
 let ctrl_e_moves_to_line_end () =
@@ -460,6 +484,13 @@ let alt_b_moves_word_backward () =
   let buf = Textarea.buffer ta in
   send_char_with_mod ta ~modifier:alt_mod 'b';
   equal ~msg:"moved to word boundary" int 6 (Edit_buffer.cursor buf)
+
+let meta_b_moves_word_backward () =
+  let t, ta = make_textarea ~value:"hello world" () in
+  focus_textarea t ta;
+  let meta_mod = { no_mod with Input.Modifier.meta = true } in
+  send_char_with_mod ta ~modifier:meta_mod 'b';
+  equal ~msg:"moved to word boundary" int 6 (Textarea.cursor ta)
 
 let alt_f_moves_word_forward () =
   let t, ta = make_textarea ~value:"hello world" () in
@@ -679,6 +710,19 @@ let mouse_selection_syncs_to_buffer () =
   equal ~msg:"selected text" string "hello"
     (Edit_buffer.selected_text (Textarea.buffer ta))
 
+let mouse_selection_disabled_when_not_selectable () =
+  let r = Renderer.create () in
+  let ta =
+    Textarea.create ~parent:(Renderer.root r)
+      ~style:(sized_style ~width:20 ~height:3)
+      ~value:"hello world" ~selectable:false ()
+  in
+  render_frame r ~width:20 ~height:3;
+  Renderer.dispatch_mouse r (mouse_down ~x:0 ~y:0);
+  Renderer.dispatch_mouse r (mouse_drag ~x:5 ~y:0);
+  Renderer.dispatch_mouse r (mouse_up ~x:5 ~y:0);
+  is_none ~msg:"selection disabled" (Textarea.selection ta)
+
 let mouse_wheel_scrolls_surface () =
   let lines = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten" in
   let _t, ta = make_textarea ~value:lines () in
@@ -707,6 +751,12 @@ let cursor_returns_some_when_focused () =
   let node = Textarea.node ta in
   let cursor = Renderable.cursor node in
   is_some ~msg:"cursor when focused" cursor
+
+let cursor_returns_none_when_hidden () =
+  let t, ta = make_textarea ~value:"hi" ~show_cursor:false () in
+  focus_textarea t ta;
+  ignore (render_textarea ta ~width:20 ~height:5 : Grid.t);
+  is_none ~msg:"cursor hidden" (Renderable.cursor (Textarea.node ta))
 
 let cursor_style_is_block_by_default () =
   let t, ta = make_textarea ~value:"hi" () in
@@ -762,6 +812,12 @@ let apply_props_selection_none_clears_buffer_selection () =
   in
   Textarea.apply_props ta
     (Textarea.Props.make ~value:"hello\nworld" ~selection:None ());
+  is_none ~msg:"selection cleared" (Textarea.selection ta)
+
+let apply_props_selectable_false_clears_selection () =
+  let _t, ta = make_textarea ~value:"hello world" ~selection:(Some (0, 5)) () in
+  Textarea.apply_props ta
+    (Textarea.Props.make ~value:"hello world" ~selectable:false ());
   is_none ~msg:"selection cleared" (Textarea.selection ta)
 
 let apply_props_schedules_render () =
@@ -888,6 +944,7 @@ let () =
         [
           test "character input inserts text" key_char_inserts_text;
           test "Enter inserts newline" key_enter_inserts_newline;
+          test "keypad Enter inserts newline" key_kp_enter_inserts_newline;
           test "Left/Right moves cursor" key_left_right_moves_cursor;
           test "Backspace deletes backward" key_backspace_deletes_backward;
           test "Backspace at line start joins" key_backspace_at_line_start_joins;
@@ -898,6 +955,8 @@ let () =
           test "Ctrl+A moves to line start" ctrl_a_moves_to_line_start;
           test "Ctrl+A uppercase from parser moves to line start"
             ctrl_a_uppercase_from_parser_moves_to_line_start;
+          test "Ctrl+A base key moves to line start"
+            ctrl_a_base_key_moves_to_line_start;
           test "Ctrl+E moves to line end" ctrl_e_moves_to_line_end;
           test "Ctrl+B moves left" ctrl_b_moves_left;
           test "Ctrl+F moves right" ctrl_f_moves_right;
@@ -909,6 +968,7 @@ let () =
       group "Alt keybindings"
         [
           test "Alt+B moves word backward" alt_b_moves_word_backward;
+          test "Meta+B moves word backward" meta_b_moves_word_backward;
           test "Alt+F moves word forward" alt_f_moves_word_forward;
           test "Alt+D deletes word forward" alt_d_deletes_word_forward;
         ];
@@ -965,12 +1025,15 @@ let () =
       group "Mouse"
         [
           test "selection syncs to buffer" mouse_selection_syncs_to_buffer;
+          test "selection disabled when not selectable"
+            mouse_selection_disabled_when_not_selectable;
           test "wheel scrolls surface" mouse_wheel_scrolls_surface;
         ];
       group "Cursor provider"
         [
           test "returns None when unfocused" cursor_returns_none_when_unfocused;
           test "returns Some when focused" cursor_returns_some_when_focused;
+          test "returns None when hidden" cursor_returns_none_when_hidden;
           test "style is Block by default" cursor_style_is_block_by_default;
           test "has correct color" cursor_has_correct_color;
         ];
@@ -983,6 +1046,8 @@ let () =
             apply_props_selection_change_updates_buffer;
           test "selection None clears buffer selection"
             apply_props_selection_none_clears_buffer_selection;
+          test "selectable false clears selection"
+            apply_props_selectable_false_clears_selection;
           test "schedules render" apply_props_schedules_render;
         ];
       group "Rendering"

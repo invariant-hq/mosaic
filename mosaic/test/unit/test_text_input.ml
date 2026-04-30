@@ -37,6 +37,10 @@ let send_key_with_mod input ~modifier key =
   let ev = Event.Key.of_input (Input.Key.make ~modifier key) in
   Renderable.Private.emit_default_key (Text_input.node input) ev
 
+let send_input_event input data =
+  let ev = Event.Key.of_input data in
+  Renderable.Private.emit_default_key (Text_input.node input) ev
+
 let send_char input c =
   let text = String.make 1 c in
   let ev = Event.Key.of_input (Input.Key.of_char ~associated_text:text c) in
@@ -406,6 +410,19 @@ let key_enter_fires_submit () =
   send_key input Input.Key.Enter;
   equal ~msg:"submitted" int 1 !count
 
+let key_kp_enter_fires_submit () =
+  let count = ref 0 in
+  let t, input = make_input ~on_submit:(fun _ -> incr count) () in
+  focus_input t input;
+  send_key input Input.Key.KP_enter;
+  equal ~msg:"submitted" int 1 !count
+
+let key_kp_left_moves_cursor () =
+  let t, input = make_input ~value:"abc" () in
+  focus_input t input;
+  send_key input Input.Key.KP_left;
+  equal ~msg:"cursor moved left" int 2 (Text_input.cursor input)
+
 let key_release_is_ignored () =
   let count = ref 0 in
   let t, input = make_input ~on_input:(fun _ -> incr count) () in
@@ -441,6 +458,16 @@ let ctrl_a_uppercase_from_parser_moves_to_start () =
   (* Runtime parser emits Ctrl+A as 'A' with ctrl=true. *)
   send_char_with_mod input ~modifier:ctrl_mod 'A';
   equal ~msg:"cursor at start" int 0 (Edit_buffer.cursor buf)
+
+let ctrl_a_base_key_moves_to_start () =
+  let t, input = make_input ~value:"hello" () in
+  focus_input t input;
+  let data =
+    Input.Key.make ~modifier:ctrl_mod ~base_key:(Uchar.of_char 'a')
+      (Input.Key.Char (Uchar.of_int 0x314a))
+  in
+  send_input_event input data;
+  equal ~msg:"cursor at start" int 0 (Text_input.cursor input)
 
 let ctrl_e_moves_to_end () =
   let t, input = make_input ~value:"hello" () in
@@ -487,6 +514,13 @@ let alt_b_moves_word_backward () =
   let buf = Text_input.buffer input in
   send_char_with_mod input ~modifier:alt_mod 'b';
   equal ~msg:"moved to word boundary" int 6 (Edit_buffer.cursor buf)
+
+let meta_b_moves_word_backward () =
+  let t, input = make_input ~value:"hello world" () in
+  focus_input t input;
+  let meta_mod = { no_mod with Input.Modifier.meta = true } in
+  send_char_with_mod input ~modifier:meta_mod 'b';
+  equal ~msg:"moved to word boundary" int 6 (Text_input.cursor input)
 
 let alt_f_moves_word_forward () =
   let t, input = make_input ~value:"hello world" () in
@@ -724,6 +758,12 @@ let cursor_returns_some_when_focused () =
   let cursor = Renderable.cursor node in
   is_some ~msg:"cursor when focused" cursor
 
+let cursor_returns_none_when_hidden () =
+  let t, input = make_input ~value:"hi" ~show_cursor:false () in
+  focus_input t input;
+  ignore (render_input input ~width:20 ~height:1 : Grid.t);
+  is_none ~msg:"cursor hidden" (Renderable.cursor (Text_input.node input))
+
 let cursor_style_is_block_by_default () =
   let t, input = make_input ~value:"hi" () in
   focus_input t input;
@@ -941,6 +981,8 @@ let () =
           test "Ctrl+K deletes to end" key_ctrl_k_deletes_to_end;
           test "Ctrl+U deletes to start" key_ctrl_u_deletes_to_start;
           test "Enter fires submit" key_enter_fires_submit;
+          test "keypad Enter fires submit" key_kp_enter_fires_submit;
+          test "keypad Left moves cursor" key_kp_left_moves_cursor;
           test "key release is ignored" key_release_is_ignored;
           test "max_length rejects excess typing"
             key_max_length_rejects_excess_typing;
@@ -950,6 +992,7 @@ let () =
           test "Ctrl+A moves to start" ctrl_a_moves_to_start;
           test "Ctrl+A uppercase from parser moves to start"
             ctrl_a_uppercase_from_parser_moves_to_start;
+          test "Ctrl+A base key moves to start" ctrl_a_base_key_moves_to_start;
           test "Ctrl+E moves to end" ctrl_e_moves_to_end;
           test "Ctrl+B moves left" ctrl_b_moves_left;
           test "Ctrl+F moves right" ctrl_f_moves_right;
@@ -959,6 +1002,7 @@ let () =
       group "Alt keybindings"
         [
           test "Alt+B moves word backward" alt_b_moves_word_backward;
+          test "Meta+B moves word backward" meta_b_moves_word_backward;
           test "Alt+F moves word forward" alt_f_moves_word_forward;
           test "Alt+D deletes word forward" alt_d_deletes_word_forward;
           test "Alt+Backspace deletes word backward"
@@ -1014,6 +1058,7 @@ let () =
         [
           test "returns None when unfocused" cursor_returns_none_when_unfocused;
           test "returns Some when focused" cursor_returns_some_when_focused;
+          test "returns None when hidden" cursor_returns_none_when_hidden;
           test "style is Block by default" cursor_style_is_block_by_default;
           test "has correct color" cursor_has_correct_color;
           test "has correct blinking" cursor_has_correct_blinking;

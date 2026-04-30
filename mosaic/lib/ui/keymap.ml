@@ -19,7 +19,10 @@ type key = {
   super : bool;
 }
 
-type 'a t = { actions : (string, 'a) Hashtbl.t }
+type 'a t = {
+  actions : (string, 'a) Hashtbl.t;
+  aliases : (string, string) Hashtbl.t;
+}
 
 let key_of_binding (b : _ binding) =
   {
@@ -97,7 +100,7 @@ let make ?(aliases = []) ~defaults ?(custom = []) () =
   let actions = Hashtbl.create (List.length defaults + List.length custom) in
   List.iter (add_binding actions aliases) defaults;
   List.iter (add_binding actions aliases) custom;
-  { actions }
+  { actions; aliases }
 
 let char_name u =
   let code = Uchar.to_int u in
@@ -182,7 +185,20 @@ let lookup t ev name =
       super = m.super;
     }
   in
-  Hashtbl.find_opt t.actions (key_string key)
+  let rec find_alias seen name =
+    if List.exists (String.equal name) seen then None
+    else
+      match Hashtbl.find_opt t.aliases name with
+      | None -> None
+      | Some alias -> (
+          let key = key_string (with_name key alias) in
+          match Hashtbl.find_opt t.actions key with
+          | Some _ as action -> action
+          | None -> find_alias (name :: seen) alias)
+  in
+  match Hashtbl.find_opt t.actions (key_string key) with
+  | Some _ as action -> action
+  | None -> find_alias [] name
 
 let lookup_base_key t ev =
   match base_name ev.Input.Key.base_key with
