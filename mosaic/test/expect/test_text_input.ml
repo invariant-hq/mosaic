@@ -116,8 +116,7 @@ hello world
 let%expect_test "placeholder color" =
   render_ansi ~width:20 ~height:1
     (Vnode.input ~placeholder:"Type here" ~placeholder_color:Ansi.Color.red ());
-  [%expect_exact
-    {|
+  [%expect_exact {|
 [0;38;5;1mType here[0;38;2;255;255;255m           [0m|}]
 
 let%expect_test "focused vs unfocused styles" =

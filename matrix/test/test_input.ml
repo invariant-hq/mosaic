@@ -841,8 +841,7 @@ let test_invalid_split_utf8_regression () =
     (feed_user parser (Bytes.of_string "\xE2") 0 1);
   match feed_user parser (Bytes.of_string "(") 0 1 with
   | [
-   Input.Key { key = Char legacy; modifier; _ };
-   Input.Key { key = Char u; _ };
+   Input.Key { key = Char legacy; modifier; _ }; Input.Key { key = Char u; _ };
   ] ->
       equal ~msg:"invalid lead maps to legacy Meta+b" char 'b'
         (Uchar.to_char legacy);
@@ -851,7 +850,9 @@ let test_invalid_split_utf8_regression () =
       equal ~msg:"invalid continuation is reparsed as text" char '('
         (Uchar.to_char u)
   | events ->
-      failf "expected legacy Meta+b then '(' after invalid UTF-8 recovery, got %d events"
+      failf
+        "expected legacy Meta+b then '(' after invalid UTF-8 recovery, got %d \
+         events"
         (List.length events)
 
 let test_legacy_high_byte_regressions () =
@@ -871,10 +872,8 @@ let test_legacy_high_byte_regressions () =
   let parser = Input.Parser.create () in
   let bytes = Bytes.of_string "\xE9x" in
   match feed_user parser bytes 0 2 with
-  | [
-   Input.Key { key = Char ui; modifier; _ };
-   Input.Key { key = Char ux; _ };
-  ] ->
+  | [ Input.Key { key = Char ui; modifier; _ }; Input.Key { key = Char ux; _ } ]
+    ->
       equal ~msg:"invalid lead maps to legacy Meta+i" char 'i'
         (Uchar.to_char ui);
       is_true ~msg:"invalid lead sets alt" modifier.alt;

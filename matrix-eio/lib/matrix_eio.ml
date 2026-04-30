@@ -64,8 +64,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     n
   in
   if input_is_tty && raw_mode then
-    Matrix.Terminal.probe ~timeout:0.5
-      ~on_event:queue_startup_event
+    Matrix.Terminal.probe ~timeout:0.5 ~on_event:queue_startup_event
       ~read_into:(fun buf off len ->
         let cs =
           if len <= Cstruct.length input_cs then Cstruct.sub input_cs 0 len
@@ -108,8 +107,8 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
           (try
              let n = read_stdin () in
              let now = Eio.Time.now clock in
-             Matrix.Input.Parser.feed parser input_buffer 0 n ~now
-               ~on_event ~on_response
+             Matrix.Input.Parser.feed parser input_buffer 0 n ~now ~on_event
+               ~on_response
            with End_of_file -> ());
           loop ())
     in

@@ -65,7 +65,6 @@ let ansi16_rgb =
   |]
 
 let cube_level = [| 0; 95; 135; 175; 215; 255 |]
-
 let[@inline] rgb24 r g b = (r lsl 16) lor (g lsl 8) lor b
 
 let[@inline] palette_rgb24 idx =
@@ -130,13 +129,15 @@ let emit_color_sgr t w first ~bg ~initial color =
       | `Truecolor | `Ansi256 -> emit_indexed_sgr w first ~bg idx
       | `Ansi16 -> emit_ansi16_sgr w first ~bg (nearest_palette_index 16 color))
   | Color.Rgb -> (
-      if Color.Packed.alpha color = 0 then (
-        if initial then first else emit_default_sgr w first ~bg)
+      if Color.Packed.alpha color = 0 then
+        if initial then first else emit_default_sgr w first ~bg
       else
         match t.color_depth with
         | `Truecolor -> emit_rgb_sgr w first ~bg color
-        | `Ansi256 -> emit_indexed_sgr w first ~bg (nearest_palette_index 256 color)
-        | `Ansi16 -> emit_ansi16_sgr w first ~bg (nearest_palette_index 16 color))
+        | `Ansi256 ->
+            emit_indexed_sgr w first ~bg (nearest_palette_index 256 color)
+        | `Ansi16 ->
+            emit_ansi16_sgr w first ~bg (nearest_palette_index 16 color))
 
 let emit_attrs w attrs =
   if attrs <> 0 then (

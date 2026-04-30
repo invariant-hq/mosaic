@@ -17,8 +17,8 @@ type line_break_kind = [ `LF | `CR | `CRLF ]
 type position = { byte_offset : int; grapheme_count : int; columns_used : int }
 (** The type for a byte position found by display width.
 
-    [grapheme_count] is a cluster count for [`Unicode] and a codepoint count
-    for [`Wcwidth]. *)
+    [grapheme_count] is a cluster count for [`Unicode] and a codepoint count for
+    [`Wcwidth]. *)
 
 type grapheme = { byte_offset : int; byte_length : int; width : int }
 (** The type for a grapheme or codepoint span.

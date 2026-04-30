@@ -25,9 +25,9 @@ module Modifier : sig
   (** The type for modifier state.
 
       Lock fields ([caps_lock], [num_lock]) indicate toggle state, not whether
-      the physical key is currently pressed. Terminal Alt/Option input also
-      sets [meta], so applications that want ordinary Alt shortcuts can match
-      either field according to their policy. *)
+      the physical key is currently pressed. Terminal Alt/Option input also sets
+      [meta], so applications that want ordinary Alt shortcuts can match either
+      field according to their policy. *)
 
   val none : t
   (** [none] is a modifier state with all fields set to [false]. Useful as a

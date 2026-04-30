@@ -351,8 +351,8 @@ let sgr_rgb_downgrades_to_ansi256 () =
   let state = Sgr_state.create () in
   Sgr_state.set_color_depth state `Ansi256;
   let w = Writer.make buf in
-  Sgr_state.update state w ~fg:(Color.of_rgb 255 0 0)
-    ~bg:(Color.of_rgb 0 0 255) ~attrs:0 ~link:"";
+  Sgr_state.update state w ~fg:(Color.of_rgb 255 0 0) ~bg:(Color.of_rgb 0 0 255)
+    ~attrs:0 ~link:"";
   check_seq "rgb downgraded to ansi256" "\x1b[0;38;5;9;48;5;12m"
     (Bytes.to_string (Writer.slice w))
 
@@ -361,8 +361,8 @@ let sgr_rgb_downgrades_to_ansi16 () =
   let state = Sgr_state.create () in
   Sgr_state.set_color_depth state `Ansi16;
   let w = Writer.make buf in
-  Sgr_state.update state w ~fg:(Color.of_rgb 255 0 0)
-    ~bg:(Color.of_rgb 0 0 255) ~attrs:0 ~link:"";
+  Sgr_state.update state w ~fg:(Color.of_rgb 255 0 0) ~bg:(Color.of_rgb 0 0 255)
+    ~attrs:0 ~link:"";
   check_seq "rgb downgraded to ansi16" "\x1b[0;91;104m"
     (Bytes.to_string (Writer.slice w))
 

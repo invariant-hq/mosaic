@@ -73,8 +73,7 @@ let%expect_test "styled text single color" =
   let grid = Screen.next_grid (Renderer.screen renderer) in
   print_newline ();
   print_string (grid_to_ansi grid);
-  [%expect_exact
-    {|
+  [%expect_exact {|
 [0;38;5;1mRed text[0;38;2;255;255;255m            [0m|}]
 
 let%expect_test "styled text multiple spans" =

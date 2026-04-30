@@ -22,8 +22,8 @@
     - Ctrl letters normalize to lowercase character keys.
     - ESC-prefixed Alt/Option input sets both {!Modifier.alt} and
       {!Modifier.meta}.
-    - invalid legacy high bytes are interpreted as Meta/Alt bytes when they
-      time out or fail UTF-8 continuation.
+    - invalid legacy high bytes are interpreted as Meta/Alt bytes when they time
+      out or fail UTF-8 continuation.
 
     Bracketed paste is emitted as {!Paste} with the exact payload between the
     markers, including empty payloads and embedded escape bytes.

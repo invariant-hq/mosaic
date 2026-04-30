@@ -484,16 +484,16 @@ let resize t ~width ~height =
     let copy_h = min old_h height in
     for y = 0 to copy_h - 1 do
       let src_off = y * old_w and dst_off = y * width in
-      Buf.blit_cell_range old_chars ~src_pos:src_off new_chars
-        ~dst_pos:dst_off ~len:copy_w;
+      Buf.blit_cell_range old_chars ~src_pos:src_off new_chars ~dst_pos:dst_off
+        ~len:copy_w;
       Buf.blit_range old_attrs ~src_pos:src_off new_attrs ~dst_pos:dst_off
         ~len:copy_w;
       Buf.blit_range old_links ~src_pos:src_off new_links ~dst_pos:dst_off
         ~len:copy_w;
-      Buf.blit_range old_fg_color ~src_pos:src_off new_fg_color
-        ~dst_pos:dst_off ~len:copy_w;
-      Buf.blit_range old_bg_color ~src_pos:src_off new_bg_color
-        ~dst_pos:dst_off ~len:copy_w
+      Buf.blit_range old_fg_color ~src_pos:src_off new_fg_color ~dst_pos:dst_off
+        ~len:copy_w;
+      Buf.blit_range old_bg_color ~src_pos:src_off new_bg_color ~dst_pos:dst_off
+        ~len:copy_w
     done;
 
     t.width <- width;
@@ -874,15 +874,20 @@ let blit_region ~src ~dst ~src_x ~src_y ~width ~height ~dst_x ~dst_y =
           let di = dst_y * dst.width in
           let len = width * height in
           bulk_update_graphemes src ~src_idx:si ~dst_idx:di ~len;
-          Buf.blit (Bigarray.Array1.sub src.chars si len)
+          Buf.blit
+            (Bigarray.Array1.sub src.chars si len)
             (Bigarray.Array1.sub dst.chars di len);
-          Buf.blit (Bigarray.Array1.sub src.attrs si len)
+          Buf.blit
+            (Bigarray.Array1.sub src.attrs si len)
             (Bigarray.Array1.sub dst.attrs di len);
-          Buf.blit (Bigarray.Array1.sub src.links si len)
+          Buf.blit
+            (Bigarray.Array1.sub src.links si len)
             (Bigarray.Array1.sub dst.links di len);
-          Buf.blit (Bigarray.Array1.sub src.fg_color si len)
+          Buf.blit
+            (Bigarray.Array1.sub src.fg_color si len)
             (Bigarray.Array1.sub dst.fg_color di len);
-          Buf.blit (Bigarray.Array1.sub src.bg_color si len)
+          Buf.blit
+            (Bigarray.Array1.sub src.bg_color si len)
             (Bigarray.Array1.sub dst.bg_color di len)
         end
         else begin

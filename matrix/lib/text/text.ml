@@ -228,7 +228,6 @@ let iter_grapheme_info ~width_method ~tab_width f str =
 (* Width-position helpers *)
 
 let zero_position = { byte_offset = 0; grapheme_count = 0; columns_used = 0 }
-
 let[@inline] is_cont_byte b = b land 0xC0 = 0x80
 let replacement = (0xFFFD, 1)
 
@@ -250,8 +249,7 @@ let[@inline] decode_codepoint str pos =
       let b2 = Char.code (String.unsafe_get str (pos + 2)) in
       if is_cont_byte b1 && is_cont_byte b2 then
         let cp =
-          ((b0 land 0x0F) lsl 12) lor ((b1 land 0x3F) lsl 6)
-          lor (b2 land 0x3F)
+          ((b0 land 0x0F) lsl 12) lor ((b1 land 0x3F) lsl 6) lor (b2 land 0x3F)
         in
         if cp >= 0x800 && (cp < 0xD800 || cp > 0xDFFF) then (cp, 3)
         else replacement
@@ -264,8 +262,10 @@ let[@inline] decode_codepoint str pos =
       let b3 = Char.code (String.unsafe_get str (pos + 3)) in
       if is_cont_byte b1 && is_cont_byte b2 && is_cont_byte b3 then
         let cp =
-          ((b0 land 0x07) lsl 18) lor ((b1 land 0x3F) lsl 12)
-          lor ((b2 land 0x3F) lsl 6) lor (b3 land 0x3F)
+          ((b0 land 0x07) lsl 18)
+          lor ((b1 land 0x3F) lsl 12)
+          lor ((b2 land 0x3F) lsl 6)
+          lor (b3 land 0x3F)
         in
         if cp >= 0x10000 && cp <= 0x10FFFF then (cp, 4) else replacement
       else replacement
@@ -277,7 +277,9 @@ let find_wrap_pos_ascii ~tab_width str len ~max_columns =
     if i >= len then
       { byte_offset = len; grapheme_count = count; columns_used = columns }
     else
-      let width = ascii_width ~tab_width (Char.code (String.unsafe_get str i)) in
+      let width =
+        ascii_width ~tab_width (Char.code (String.unsafe_get str i))
+      in
       if width <= 0 then loop (i + 1) count columns
       else
         let next_columns = columns + width in
@@ -292,7 +294,9 @@ let find_pos_ascii ~tab_width ~include_start_before str len ~columns =
     if i >= len then
       { byte_offset = len; grapheme_count = count; columns_used = used }
     else
-      let width = ascii_width ~tab_width (Char.code (String.unsafe_get str i)) in
+      let width =
+        ascii_width ~tab_width (Char.code (String.unsafe_get str i))
+      in
       if width <= 0 then loop (i + 1) count used
       else
         let next_used = used + width in
@@ -424,15 +428,15 @@ let width_at ~width_method ~tab_width str ~byte_offset =
     let b = Char.code (String.unsafe_get str byte_offset) in
     if b < 0x80 then ascii_width ~tab_width b
     else
-    match width_method with
-    | `Wcwidth ->
-        let cp, _ = decode_codepoint str byte_offset in
-        codepoint_width_wcwidth ~tab_width cp
-    | `Unicode ->
-        let seg = Uuseg_grapheme_cluster.create () in
-        let end_pos = next_boundary seg str byte_offset len in
-        cluster_width ~method_:width_method ~tab_width str byte_offset
-          (end_pos - byte_offset)
+      match width_method with
+      | `Wcwidth ->
+          let cp, _ = decode_codepoint str byte_offset in
+          codepoint_width_wcwidth ~tab_width cp
+      | `Unicode ->
+          let seg = Uuseg_grapheme_cluster.create () in
+          let end_pos = next_boundary seg str byte_offset len in
+          cluster_width ~method_:width_method ~tab_width str byte_offset
+            (end_pos - byte_offset)
 
 let prev_grapheme_wcwidth ~tab_width str ~byte_offset =
   let len = Stdlib.String.length str in
@@ -494,7 +498,8 @@ let prev_grapheme ~width_method ~tab_width str ~byte_offset =
   let tab_width = normalize_tab_width tab_width in
   match width_method with
   | `Wcwidth -> prev_grapheme_wcwidth ~tab_width str ~byte_offset
-  | `Unicode -> prev_grapheme_segmented ~width_method ~tab_width str ~byte_offset
+  | `Unicode ->
+      prev_grapheme_segmented ~width_method ~tab_width str ~byte_offset
 
 (* String Measurement *)
 

@@ -388,9 +388,7 @@ let test_resize_clears_pending_next_buffer () =
   Screen.build r ~width:5 ~height:1 (fun grid _hits ->
       Grid.draw_text grid ~x:0 ~y:0 ~text:"STALE");
   Screen.resize r ~width:10 ~height:1;
-  let f =
-    build_screen r ~width:10 ~height:1 (fun _grid _hits -> ())
-  in
+  let f = build_screen r ~width:10 ~height:1 (fun _grid _hits -> ()) in
   let grid = Screen.next_grid f in
   equal ~msg:"pending content cleared from next grid" string " "
     (Grid.get_text grid 0);

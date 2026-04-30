@@ -82,9 +82,9 @@ val drain :
   on_event:(Event.t -> unit) ->
   on_response:(Event.Response.t -> unit) ->
   unit
-(** [drain p ~now ~on_event ~on_response] emits pending input whose deadline
-    has passed. A lone {!Event.Key.Escape} only appears after this drain when
-    the terminal splits a modifier sequence across reads. A timed-out incomplete
+(** [drain p ~now ~on_event ~on_response] emits pending input whose deadline has
+    passed. A lone {!Event.Key.Escape} only appears after this drain when the
+    terminal splits a modifier sequence across reads. A timed-out incomplete
     UTF-8 high byte is emitted through the legacy Meta/Alt path. Call after
     {!deadline} has elapsed. *)
 

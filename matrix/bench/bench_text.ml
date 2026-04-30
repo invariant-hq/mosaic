@@ -41,7 +41,9 @@ let unicode_graphemes =
   |]
 
 let complex_line = cycle_concat unicode_graphemes 256
-let mixed_line = repeat ("Hello 世界 👩\u{200D}🚀 cafe\u{0301} 🇫🇷 ") 128
+
+let mixed_line = repeat "Hello 世界 👩\u{200D}🚀 cafe\u{0301} 🇫🇷 " 128
+
 let segment_counter = ref 0
 let segment_callback ~offset:_ ~len:_ = incr segment_counter
 
@@ -71,7 +73,9 @@ let wrap_pos_bench name method_ text columns =
 
 let width_at_bench name method_ text offset =
   Thumper.bench name (fun () ->
-      let w = T.width_at ~width_method:method_ ~tab_width:2 text ~byte_offset:offset in
+      let w =
+        T.width_at ~width_method:method_ ~tab_width:2 text ~byte_offset:offset
+      in
       ignore (Sys.opaque_identity w))
 
 let prev_bench name method_ text offset =
@@ -103,7 +107,8 @@ let benchmarks =
           position_bench "position/find_pos/wcwidth" `Wcwidth mixed_line 320;
           wrap_pos_bench "position/find_wrap_pos/ascii" `Unicode ascii_line 320;
           wrap_pos_bench "position/find_wrap_pos/mixed" `Unicode mixed_line 320;
-          wrap_pos_bench "position/find_wrap_pos/wcwidth" `Wcwidth mixed_line 320;
+          wrap_pos_bench "position/find_wrap_pos/wcwidth" `Wcwidth mixed_line
+            320;
           width_at_bench "position/width_at/ascii" `Unicode ascii_line 128;
           width_at_bench "position/width_at/mixed" `Unicode mixed_line 7;
           width_at_bench "position/width_at/wcwidth" `Wcwidth mixed_line 7;
