@@ -3,7 +3,7 @@
 (library
  (name mosaic_ui)
  (public_name mosaic.ui)
- (private_modules diff_patch edit_surface)
+ (private_modules diff_patch edit_surface text_renderable)
  (libraries
   toffee
   cmarkit

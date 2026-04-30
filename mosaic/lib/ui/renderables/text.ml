@@ -1,4 +1,4 @@
-(* ───── Fragment type ───── *)
+(* Fragment type *)
 
 type fragment =
   | Text of { text : string; style : Ansi.Style.t option }
@@ -6,7 +6,7 @@ type fragment =
 
 type span = { text : string; style : Ansi.Style.t option }
 
-(* ───── Props ───── *)
+(* Props *)
 
 module Props = struct
   type t = {
@@ -46,7 +46,7 @@ module Props = struct
     && a.tab_width = b.tab_width && a.truncate = b.truncate
 end
 
-(* ───── Fragment builder ───── *)
+(* Fragment builder *)
 
 module Fragment = struct
   type t = fragment
@@ -89,31 +89,29 @@ module Fragment = struct
   let styled style children = span ~style children
 end
 
-(* ───── Types ───── *)
+(* Types *)
 
 type t = {
-  node : Renderable.t;
-  buf : Text_buffer.t;
-  surface : Text_surface.t;
+  text : Text_renderable.t;
   mutable props : Props.t;
   mutable fragments : fragment list;
   mutable flat_cache : span list option;
   mutable has_styled_text : bool;
 }
 
-(* ───── Accessors ───── *)
+(* Accessors *)
 
-let node t = t.node
-let buffer t = t.buf
-let surface t = t.surface
+let node t = Text_renderable.node t.text
+let buffer t = Text_renderable.buffer t.text
+let surface t = Text_renderable.surface t.text
 
-(* ───── Style merging ───── *)
+(* Style merging *)
 
 let merge_style base = function
   | None -> base
   | Some overlay -> Ansi.Style.merge ~base ~overlay
 
-(* ───── Fragment equality and normalization ───── *)
+(* Fragment equality and normalization *)
 
 let rec fragments_equal a b =
   match (a, b) with
@@ -148,7 +146,7 @@ let normalize_fragments fragments =
   in
   aux [] fragments
 
-(* ───── Fragment to buffer conversion ───── *)
+(* Fragment to buffer conversion *)
 
 let rec collect_flat_spans acc default_style current_style = function
   | [] -> acc
@@ -168,14 +166,13 @@ let rec collect_flat_spans acc default_style current_style = function
       collect_flat_spans acc default_style current_style rest
 
 let rebuild_buffer t =
-  let default_style = Text_buffer.default_style t.buf in
+  let default_style = Text_buffer.default_style (buffer t) in
   let buf_spans =
     List.rev (collect_flat_spans [] default_style default_style t.fragments)
   in
-  Text_buffer.set_styled_text t.buf buf_spans;
-  Text_surface.invalidate t.surface
+  Text_renderable.set_styled_text t.text buf_spans
 
-(* ───── Fragment span cache ───── *)
+(* Fragment span cache *)
 
 let flat_style_option ~default_style effective =
   if Ansi.Style.equal effective default_style then None else Some effective
@@ -201,7 +198,7 @@ let spans t =
   match t.flat_cache with
   | Some spans -> spans
   | None ->
-      let default_style = Text_buffer.default_style t.buf in
+      let default_style = Text_buffer.default_style (buffer t) in
       let collected =
         List.rev (collect_spans [] default_style default_style t.fragments)
       in
@@ -224,100 +221,34 @@ let plain_text t =
   append t.fragments;
   Buffer.contents buf
 
-(* ───── Selection Callbacks ───── *)
-
-let register_selection t =
-  if t.props.selectable then
-    Renderable.set_selection t.node
-      ~should_start:(fun ~x ~y ->
-        let nx = Renderable.x t.node in
-        let ny = Renderable.y t.node in
-        let w = Renderable.width t.node in
-        let h = Renderable.height t.node in
-        x >= nx && x < nx + w && y >= ny && y < ny + h)
-      ~on_change:(fun sel ->
-        match sel with
-        | None ->
-            Text_surface.reset_selection t.surface;
-            true
-        | Some sel ->
-            let nx = Renderable.x t.node in
-            let ny = Renderable.y t.node in
-            let anchor = Selection.anchor sel in
-            let focus = Selection.focus sel in
-            let ax = anchor.x - nx and ay = anchor.y - ny in
-            let fx = focus.x - nx and fy = focus.y - ny in
-            let changed =
-              if Selection.is_start sel then
-                Text_surface.set_local_selection t.surface ~anchor_x:ax
-                  ~anchor_y:ay ~focus_x:fx ~focus_y:fy
-              else
-                Text_surface.update_local_selection t.surface ~anchor_x:ax
-                  ~anchor_y:ay ~focus_x:fx ~focus_y:fy
-            in
-            if changed then Renderable.request_render t.node;
-            Text_surface.has_selection t.surface)
-      ~clear:(fun () -> Text_surface.reset_selection t.surface)
-      ~get_text:(fun () -> Text_surface.selected_text t.surface)
-  else Renderable.unset_selection t.node
-
-(* ───── Construction ───── *)
+(* Construction *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
     ?text_style ?wrap ?selectable ?selection_bg ?selection_fg ?tab_width
     ?truncate () =
-  let node =
-    Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
-  in
   let props =
     Props.make ?content ?text_style ?wrap ?selectable ?selection_bg
       ?selection_fg ?tab_width ?truncate ()
   in
-  let buf =
-    Text_buffer.create ~default_style:props.text_style
-      ~tab_width:props.tab_width ()
+  let text =
+    Text_renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
+      ~text_style:props.text_style ~wrap:props.wrap ~selectable:props.selectable
+      ?selection_bg:props.selection_bg ?selection_fg:props.selection_fg
+      ~tab_width:props.tab_width ~truncate:props.truncate ()
   in
-  let surface = Text_surface.create node buf in
   let t =
     {
-      node;
-      buf;
-      surface;
+      text;
       props;
       fragments = [];
       flat_cache = Some [];
       has_styled_text = false;
     }
   in
-  (* Set initial content *)
-  if props.content <> "" then begin
-    Text_buffer.set_text buf props.content;
-    Text_surface.invalidate surface
-  end;
-  (* Set initial wrap mode *)
-  if props.wrap <> `None then Text_surface.set_wrap surface props.wrap;
-  (* Set initial truncation *)
-  if props.truncate then Text_surface.set_truncate surface true;
-  (* Set initial selection colors *)
-  Text_surface.set_selection_bg surface props.selection_bg;
-  Text_surface.set_selection_fg surface props.selection_fg;
-  (* Register selection callbacks *)
-  register_selection t;
-  (* Register line info provider *)
-  Renderable.set_line_info_provider node
-    (Some
-       (fun () ->
-         let di = Text_surface.display_info surface in
-         {
-           Renderable.line_count = Text_buffer.line_count buf;
-           display_line_count = Array.length di.lines;
-           line_sources = di.line_sources;
-           line_wrap_indices = di.line_wrap_indices;
-           scroll_y = Text_surface.scroll_y surface;
-         }));
+  if props.content <> "" then Text_renderable.set_text text props.content;
   t
 
-(* ───── Content ───── *)
+(* Content *)
 
 let set_content t s =
   t.has_styled_text <- false;
@@ -325,8 +256,7 @@ let set_content t s =
   t.fragments <- frag;
   t.flat_cache <-
     (if s = "" then Some [] else Some [ { text = s; style = None } ]);
-  Text_buffer.set_text t.buf s;
-  Text_surface.invalidate t.surface
+  Text_renderable.set_text t.text s
 
 let set_fragments t fragments =
   let normalized = normalize_fragments fragments in
@@ -352,8 +282,7 @@ let set_styled_text t buf_spans =
   t.has_styled_text <- true;
   t.fragments <- [];
   t.flat_cache <- None;
-  Text_buffer.set_styled_text t.buf buf_spans;
-  Text_surface.invalidate t.surface
+  Text_renderable.set_styled_text t.text buf_spans
 
 let append_span t s =
   let updated = spans t @ [ s ] in
@@ -363,54 +292,48 @@ let clear_spans t =
   t.fragments <- [];
   t.flat_cache <- Some [];
   t.has_styled_text <- false;
-  Text_buffer.set_text t.buf "";
-  Text_surface.invalidate t.surface
+  Text_renderable.set_text t.text ""
 
 let set_text_style t s =
-  let current = Text_buffer.default_style t.buf in
+  let current = Text_buffer.default_style (buffer t) in
   if Ansi.Style.equal current s then ()
   else begin
-    Text_buffer.set_default_style t.buf s;
+    Text_renderable.set_text_style t.text s;
     t.flat_cache <- None
   end
 
-(* ───── Wrapping ───── *)
+(* Wrapping *)
 
-let set_wrap t mode = Text_surface.set_wrap t.surface mode
-let set_tab_width t w = Text_buffer.set_tab_width t.buf w
+let set_wrap t mode = Text_renderable.set_wrap t.text mode
+let set_tab_width t w = Text_renderable.set_tab_width t.text w
 
-(* ───── Selection ───── *)
+(* Selection *)
 
 let set_selectable t v =
   if t.props.selectable <> v then begin
     t.props <- { t.props with selectable = v };
-    register_selection t
+    Text_renderable.set_selectable t.text v
   end
 
-let set_selection_bg t color = Text_surface.set_selection_bg t.surface color
-let set_selection_fg t color = Text_surface.set_selection_fg t.surface color
-let selected_text t = Text_surface.selected_text t.surface
+let set_selection_bg t color = Text_renderable.set_selection_bg t.text color
+let set_selection_fg t color = Text_renderable.set_selection_fg t.text color
+let selected_text t = Text_renderable.selected_text t.text
 
-(* ───── Highlights ───── *)
+(* Highlights *)
 
-let add_highlight t h =
-  Text_buffer.add_highlight t.buf h;
-  Renderable.request_render t.node
+let add_highlight t h = Text_renderable.add_highlight t.text h
 
 let remove_highlights_by_ref t ref_id =
-  Text_buffer.remove_highlights_by_ref t.buf ref_id;
-  Renderable.request_render t.node
+  Text_renderable.remove_highlights_by_ref t.text ref_id
 
-let clear_highlights t =
-  Text_buffer.clear_highlights t.buf;
-  Renderable.request_render t.node
+let clear_highlights t = Text_renderable.clear_highlights t.text
 
-(* ───── Query ───── *)
+(* Query *)
 
-let line_count t = Text_buffer.line_count t.buf
-let display_line_count t = Text_surface.display_line_count t.surface
+let line_count t = Text_renderable.line_count t.text
+let display_line_count t = Text_renderable.display_line_count t.text
 
-(* ───── Apply Props ───── *)
+(* Apply Props *)
 
 let apply_props t (props : Props.t) =
   (* Text style — must be set before content so set_text picks up the new
@@ -418,46 +341,44 @@ let apply_props t (props : Props.t) =
   let style_changed =
     not (Ansi.Style.equal t.props.text_style props.text_style)
   in
-  if style_changed then Text_buffer.set_default_style t.buf props.text_style;
+  if style_changed then Text_renderable.set_text_style t.text props.text_style;
   (* Content — only update if not using styled text *)
   let content_changed =
     (not t.has_styled_text) && not (String.equal t.props.content props.content)
   in
   if content_changed then begin
-    Text_buffer.set_text t.buf props.content;
-    Text_surface.invalidate t.surface
+    Text_renderable.set_text t.text props.content
   end;
   (* When the style changed but content didn't, re-stamp the existing content so
      the spans carry the updated default_style. *)
   if style_changed && (not content_changed) && not t.has_styled_text then begin
-    Text_buffer.set_text t.buf props.content;
-    Text_surface.invalidate t.surface
+    Text_renderable.set_text t.text props.content
   end;
   (* Wrap mode *)
-  if t.props.wrap <> props.wrap then Text_surface.set_wrap t.surface props.wrap;
+  if t.props.wrap <> props.wrap then Text_renderable.set_wrap t.text props.wrap;
   (* Tab width *)
   if t.props.tab_width <> props.tab_width then
-    Text_buffer.set_tab_width t.buf props.tab_width;
+    Text_renderable.set_tab_width t.text props.tab_width;
   (* Truncate *)
   if t.props.truncate <> props.truncate then
-    Text_surface.set_truncate t.surface props.truncate;
+    Text_renderable.set_truncate t.text props.truncate;
   (* Selection colors *)
   if not (Option.equal Ansi.Color.equal t.props.selection_bg props.selection_bg)
-  then Text_surface.set_selection_bg t.surface props.selection_bg;
+  then Text_renderable.set_selection_bg t.text props.selection_bg;
   if not (Option.equal Ansi.Color.equal t.props.selection_fg props.selection_fg)
-  then Text_surface.set_selection_fg t.surface props.selection_fg;
+  then Text_renderable.set_selection_fg t.text props.selection_fg;
   (* Selectable *)
   if t.props.selectable <> props.selectable then begin
     t.props <- { t.props with selectable = props.selectable };
-    register_selection t
+    Text_renderable.set_selectable t.text props.selectable
   end;
   t.props <- props
 
-(* ───── Pretty-printing ───── *)
+(* Pretty-printing *)
 
 let pp ppf t =
-  Format.fprintf ppf "Text(%s" (Renderable.id t.node);
-  let content = Text_buffer.plain_text t.buf in
+  Format.fprintf ppf "Text(%s" (Renderable.id (node t));
+  let content = Text_buffer.plain_text (buffer t) in
   if String.length content > 0 then begin
     let display =
       if String.length content > 20 then String.sub content 0 20 ^ "..."
