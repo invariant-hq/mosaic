@@ -406,6 +406,88 @@ let test_probe_payload_tmux_is_wrapped () =
     (contains_substring output_data "\027Ptmux;\027\027[?1016$p");
   T.close term
 
+let test_probe_xtversion_tmux_resends_pending_queries_wrapped () =
+  let caps =
+    {
+      T.term = "xterm";
+      rgb = false;
+      kitty_keyboard = false;
+      kitty_graphics = false;
+      bracketed_paste = false;
+      focus_tracking = false;
+      unicode_width = `Wcwidth;
+      sgr_pixels = false;
+      color_scheme_updates = false;
+      explicit_width = false;
+      explicit_cursor_positioning = false;
+      scaled_text = false;
+      sixel = false;
+      sync = false;
+      hyperlinks = false;
+    }
+  in
+  with_tty_terminal ~initial_caps:caps @@ fun term buf ->
+  let parser = Input.Parser.create () in
+  let input = Bytes.of_string "\027P>|tmux 3.5a\027\\" in
+  let consumed = ref false in
+  T.probe ~timeout:0.1
+    ~on_event:(fun _ -> ())
+    ~read_into:(fun buf off len ->
+      if !consumed then 0
+      else (
+        consumed := true;
+        let n = min len (Bytes.length input) in
+        Bytes.blit input 0 buf off n;
+        n))
+    ~wait_readable:(fun ~timeout:_ -> not !consumed)
+    ~parser term;
+  let output_data = Buffer.contents buf in
+  is_true ~msg:"initial probe sends unwrapped queries"
+    (contains_substring output_data "\027[?1016$p");
+  is_true ~msg:"XTVersion tmux resends pending queries wrapped"
+    (contains_substring output_data "\027Ptmux;\027\027[?1016$p");
+  T.close term
+
+let test_probe_xtversion_non_tmux_does_not_resend_wrapped () =
+  let caps =
+    {
+      T.term = "xterm";
+      rgb = false;
+      kitty_keyboard = false;
+      kitty_graphics = false;
+      bracketed_paste = false;
+      focus_tracking = false;
+      unicode_width = `Wcwidth;
+      sgr_pixels = false;
+      color_scheme_updates = false;
+      explicit_width = false;
+      explicit_cursor_positioning = false;
+      scaled_text = false;
+      sixel = false;
+      sync = false;
+      hyperlinks = false;
+    }
+  in
+  with_tty_terminal ~initial_caps:caps @@ fun term buf ->
+  let parser = Input.Parser.create () in
+  let input = Bytes.of_string "\027P>|ghostty 1.2.3\027\\" in
+  let consumed = ref false in
+  T.probe ~timeout:0.1
+    ~on_event:(fun _ -> ())
+    ~read_into:(fun buf off len ->
+      if !consumed then 0
+      else (
+        consumed := true;
+        let n = min len (Bytes.length input) in
+        Bytes.blit input 0 buf off n;
+        n))
+    ~wait_readable:(fun ~timeout:_ -> not !consumed)
+    ~parser term;
+  let output_data = Buffer.contents buf in
+  is_false ~msg:"non-tmux XTVersion does not wrap pending queries"
+    (contains_substring output_data "\027Ptmux;");
+  T.close term
+
 let test_probe_preserves_user_input_and_capabilities () =
   let caps =
     {
@@ -681,6 +763,10 @@ let () =
           test "screen probe not tmux wrapped"
             test_probe_payload_screen_is_not_tmux_wrapped;
           test "tmux probe wrapped" test_probe_payload_tmux_is_wrapped;
+          test "XTVersion tmux resends pending queries wrapped"
+            test_probe_xtversion_tmux_resends_pending_queries_wrapped;
+          test "XTVersion non-tmux does not resend wrapped"
+            test_probe_xtversion_non_tmux_does_not_resend_wrapped;
           test "probe preserves user input and capabilities"
             test_probe_preserves_user_input_and_capabilities;
           test "explicit cursor positioning env"

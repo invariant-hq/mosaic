@@ -8,11 +8,12 @@ type fake_state = {
   mutable flush_input_calls : int;
   mutable wake_calls : int;
   mutable pending_events : Matrix.Input.t list;
+  mutable pending_input_chunks : string list;
   output : Buffer.t;
   terminal_output : Buffer.t;
 }
 
-let make_state events =
+let make_state events input_chunks =
   {
     now_s = 0.;
     read_calls = 0;
@@ -21,6 +22,7 @@ let make_state events =
     flush_input_calls = 0;
     wake_calls = 0;
     pending_events = events;
+    pending_input_chunks = input_chunks;
     output = Buffer.create 256;
     terminal_output = Buffer.create 256;
   }
@@ -87,11 +89,11 @@ let is_before ~first ~second s =
 let make_app ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     ?(input_timeout = Some 0.) ?(terminal_tty = false) ?(advance_now = true)
     ?(sleep_until_timeout = false) ?(read_quantum_s = 0.0001)
-    ?(emit_event_each_read = None) ?(events = []) ?stop_after_reads
-    ?render_offset ?static_needs_newline ?(min_tui_height = 1)
+    ?(emit_event_each_read = None) ?(events = []) ?(input_chunks = [])
+    ?stop_after_reads ?render_offset ?static_needs_newline ?(min_tui_height = 1)
     ?(resize_debounce = Some 0.)
     ?(query_cursor_position = fun ~timeout:_ -> None) () =
-  let state = make_state events in
+  let state = make_state events input_chunks in
   let terminal =
     Matrix.Terminal.make
       ~output:(fun s -> Buffer.add_string state.terminal_output s)
@@ -117,6 +119,21 @@ let make_app ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
     let events = state.pending_events in
     state.pending_events <- [];
     List.iter on_event events;
+    (match state.pending_input_chunks with
+    | [] -> ()
+    | chunk :: rest ->
+        state.pending_input_chunks <- rest;
+        let input = Bytes.of_string chunk in
+        let on_response = function
+          | Matrix.Input.Response.Capability event ->
+              Matrix.Terminal.apply_capability_event terminal event
+          | Matrix.Input.Response.Clipboard _ | Matrix.Input.Response.Osc _
+          | Matrix.Input.Response.Unknown _ ->
+              ()
+        in
+        Matrix.Input.Parser.feed parser input 0 (Bytes.length input)
+          ~now:state.now_s ~on_event ~on_response;
+        Matrix.Input.Parser.drain parser ~now:state.now_s ~on_event ~on_response);
     match (stop_after_reads, !app_ref) with
     | Some max_reads, Some app when state.read_calls >= max_reads ->
         Matrix.stop app
@@ -263,6 +280,32 @@ let test_focus_restore_runs_only_after_blur_once () =
       equal ~msg:"second focus does not restore modes again" int
         after_first_focus after_second_focus
   | _ -> fail "expected blur, focus, focus input trace"
+
+let test_late_capability_response_requests_redraw () =
+  let app, _state =
+    make_app ~terminal_tty:true ~target_fps:None ~input_timeout:(Some 0.)
+      ~input_chunks:[ "\027[?2026;1$y" ] ~stop_after_reads:4 ()
+  in
+  let frames = ref 0 in
+  Matrix.run app ~on_render:(fun app ->
+      incr frames;
+      if !frames >= 2 then Matrix.stop app);
+  is_true ~msg:"late sync capability is folded"
+    (Matrix.Terminal.capabilities (Matrix.terminal app)).sync;
+  equal ~msg:"capability change requests a repaint" int 2 !frames
+
+let test_startup_capability_window_defers_split_response () =
+  let app, _state =
+    make_app ~terminal_tty:true ~target_fps:None ~input_timeout:(Some 0.)
+      ~read_quantum_s:0.2
+      ~input_chunks:[ "\027[?2026;"; ""; "1$y" ]
+      ~stop_after_reads:6 ()
+  in
+  Matrix.run app ~on_render:(fun app ->
+      if (Matrix.Terminal.capabilities (Matrix.terminal app)).sync then
+        Matrix.stop app);
+  is_true ~msg:"split late capability response is preserved"
+    (Matrix.Terminal.capabilities (Matrix.terminal app)).sync
 
 let test_resume_reanchors_primary_from_bottom_cursor () =
   let app, state =
@@ -858,6 +901,10 @@ let () =
             test_close_restores_raw_mode_if_terminal_close_raises;
           test "focus restore runs only after blur once"
             test_focus_restore_runs_only_after_blur_once;
+          test "late capability response requests redraw"
+            test_late_capability_response_requests_redraw;
+          test "startup capability window defers split response"
+            test_startup_capability_window_defers_split_response;
           test "resume reanchors primary from bottom cursor"
             test_resume_reanchors_primary_from_bottom_cursor;
         ];

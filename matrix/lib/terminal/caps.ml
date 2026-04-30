@@ -298,6 +298,10 @@ let apply_terminal_name_policy caps name =
     { caps with explicit_cursor_positioning = true; hyperlinks = true }
   else caps
 
+let terminal_info_is_tmux info =
+  info.from_xtversion
+  && contains_substring (String.lowercase_ascii info.name) "tmux"
+
 let apply_mode_report caps report =
   (* DECRQM response values: 0 = not recognized (mode not supported) 1 = set
      (mode is enabled) 2 = reset (mode is disabled but supported) 3 =
@@ -448,26 +452,22 @@ let wrap_for_tmux seq =
   Buffer.add_string buf "\027\\";
   Buffer.contents buf
 
+let decrqm_queries =
+  String.concat ""
+    [
+      decrqm_sgr_pixels;
+      decrqm_unicode;
+      decrqm_color_scheme;
+      decrqm_focus;
+      decrqm_bracketed_paste;
+      decrqm_sync;
+    ]
+
 let build_probe_payload term =
   let tmux = is_tmux ~term in
   let screen = is_screen ~term in
-  (* DECRQM queries probe whether the terminal supports specific private modes.
-     Inside tmux, these must be DCS-wrapped to reach the outer terminal, since
-     tmux intercepts DECRQM and may not know about newer modes (sync, unicode
-     width, etc.). *)
   let decrqm_block =
-    let raw =
-      String.concat ""
-        [
-          decrqm_sgr_pixels;
-          decrqm_unicode;
-          decrqm_color_scheme;
-          decrqm_focus;
-          decrqm_bracketed_paste;
-          decrqm_sync;
-        ]
-    in
-    if tmux then wrap_for_tmux raw else raw
+    if tmux then wrap_for_tmux decrqm_queries else decrqm_queries
   in
   let graphics =
     if screen then ""
@@ -498,6 +498,12 @@ let build_probe_payload term =
   in
   String.concat "" (queries @ [ cursor_restore ])
 
+let build_tmux_pending_probe_payload term =
+  let graphics =
+    if is_screen ~term then "" else wrap_for_tmux kitty_graphics_query
+  in
+  String.concat "" [ wrap_for_tmux decrqm_queries; graphics ]
+
 let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
     ~wait_readable ~send ~parser ~caps ~info () =
   let payload = build_probe_payload caps.term in
@@ -514,6 +520,12 @@ let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
   let run_probe () =
     send payload;
     let buffer = Bytes.create 4096 in
+    let tmux_pending_sent = ref (is_tmux ~term:caps.term) in
+    let maybe_send_tmux_pending info =
+      if (not !tmux_pending_sent) && terminal_info_is_tmux info then (
+        send (build_tmux_pending_probe_payload caps.term);
+        tmux_pending_sent := true)
+    in
     let deadline = Unix.gettimeofday () +. max 0. timeout in
     (* Grace period after DA: once we receive Device Attributes, the terminal has
      processed our entire query payload. Any remaining responses (CPR for
@@ -558,6 +570,7 @@ let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
                     in
                     caps_ref := caps';
                     info_ref := info';
+                    maybe_send_tmux_pending info';
                     match c with
                     | Input.Response.Device_attributes _ -> found_da := true
                     | _ -> ()));
@@ -586,7 +599,8 @@ let probe ?(timeout = 0.2) ?(apply_env_overrides = false) ~on_event ~read_into
         | Input.Response.Capability c ->
             let caps', info' = apply_event ~caps:!caps_ref ~info:!info_ref c in
             caps_ref := caps';
-            info_ref := info');
+            info_ref := info';
+            maybe_send_tmux_pending info');
     let caps =
       if apply_env_overrides then apply_environment_overrides !caps_ref
       else !caps_ref

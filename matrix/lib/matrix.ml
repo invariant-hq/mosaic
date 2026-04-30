@@ -88,6 +88,7 @@ type app = {
   mutable previous_control_state : control_state;
   mutable live_requests : int;
   mutable restore_modes_on_next_focus : bool;
+  mutable capability_window_until : float option;
 }
 
 (* Unix I/O helpers *)
@@ -297,6 +298,34 @@ let refresh_capabilities t =
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
     ~hyperlinks:caps.hyperlinks ~color_depth
 
+let startup_capability_window_s = 5.
+
+let capability_parser_context : Input.Parser.protocol_context =
+  {
+    kitty_keyboard = true;
+    explicit_width_cpr = true;
+    startup_cursor_cpr = true;
+    pixel_resolution = true;
+    private_capability_replies = true;
+  }
+
+let update_capability_parser_context t ~now =
+  match t.capability_window_until with
+  | Some deadline when now <= deadline ->
+      Input.Parser.set_protocol_context t.parser capability_parser_context
+  | Some _ ->
+      t.capability_window_until <- None;
+      Input.Parser.set_protocol_context t.parser
+        Input.Parser.default_protocol_context
+  | None -> ()
+
+let refresh_after_capability_change t before =
+  let after = Terminal.capabilities t.terminal in
+  if after <> before then (
+    refresh_capabilities t;
+    force_full_redraw t;
+    request_redraw t)
+
 let refresh_render_region ?(effective = false) t =
   match t.config.mode with
   | `Alt ->
@@ -307,10 +336,10 @@ let refresh_render_region ?(effective = false) t =
         Primary.resize t.primary ~terminal_height:(max 1 t.height)
       in
       t.primary <- primary;
-      if effective then
+      if effective then (
         let region = Primary.effective_region t.primary in
         Screen.set_row_offset t.screen region.row_offset;
-        Screen.resize t.screen ~width:t.width ~height:region.height
+        Screen.resize t.screen ~width:t.width ~height:region.height)
       else sync_primary_layout t ~resize:true
 
 (* Frame timing *)
@@ -961,6 +990,11 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
     ~hyperlinks:caps.hyperlinks ~color_depth;
   Screen.set_row_offset screen live_region.row_offset;
   Screen.resize screen ~width ~height:live_region.height;
+  let capability_window_until =
+    if c.raw_mode && Terminal.tty terminal then
+      Some (now () +. startup_capability_window_s)
+    else None
+  in
   let t =
     {
       terminal;
@@ -1011,6 +1045,7 @@ let init_app (c : config) ~write_output ~now ~wake ~terminal_size ~set_raw_mode
       previous_control_state = `Idle;
       live_requests = 0;
       restore_modes_on_next_focus = false;
+      capability_window_until;
     }
   in
   apply_config t;
@@ -1054,8 +1089,7 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
   let startup_events = ref [] in
   let queue_startup_event event = startup_events := event :: !startup_events in
   if input_is_tty && raw_mode then
-    Terminal.probe ~timeout:0.5
-      ~on_event:queue_startup_event
+    Terminal.probe ~timeout:0.5 ~on_event:queue_startup_event
       ~read_into:(fun buf off len ->
         try Unix.read input_fd buf off len with Unix.Unix_error _ -> 0)
       ~wait_readable:(fun ~timeout ->
@@ -1251,6 +1285,12 @@ let run ?on_frame ?on_input ?on_resize ?primary_required_rows ~on_render t =
           Option.iter (fun f -> f t event) on_input;
           request_redraw t
   in
+  let read_events ~now ~timeout =
+    update_capability_parser_context t ~now;
+    let caps_before = Terminal.capabilities t.terminal in
+    t.read_events ~timeout ~on_event:handle_event;
+    refresh_after_capability_change t caps_before
+  in
 
   let rec loop last_time =
     if not (running t) then ()
@@ -1271,11 +1311,11 @@ let run ?on_frame ?on_input ?on_resize ?primary_required_rows ~on_render t =
               Some (render_end +. delay)
           | None -> None);
         let timeout = compute_timeout t ~now:render_end in
-        t.read_events ~timeout ~on_event:handle_event;
+        read_events ~now:render_end ~timeout;
         loop last_time)
       else
         let timeout = compute_timeout t ~now in
-        t.read_events ~timeout ~on_event:handle_event;
+        read_events ~now ~timeout;
         loop last_time)
   in
   let start_time = t.now () in
