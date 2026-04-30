@@ -677,15 +677,39 @@ module Code : sig
   type syntax = Mosaic_ui.Code.syntax
   (** The type for source-code syntax settings. *)
 
+  module Highlighter : sig
+    type request = Mosaic_ui.Code.Highlighter.request = {
+      content : string;
+      language : string;
+    }
+
+    type result = (Mosaic_ui.Syntax_highlight.t, exn) Stdlib.result
+    type job = Mosaic_ui.Code.Highlighter.job
+    type t = Mosaic_ui.Code.Highlighter.t
+
+    val job : poll:(unit -> result option) -> cancel:(unit -> unit) -> job
+    val sync : (request -> Mosaic_ui.Syntax_highlight.t) -> t
+    val async : (request -> notify:(unit -> unit) -> job) -> t
+  end
+
   val syntax :
     ?language:string ->
     ?style:Mosaic_ui.Syntax_style.t ->
     ?conceal:bool ->
-    ?draw_unstyled:bool ->
-    ?streaming:bool ->
     Mosaic_ui.Syntax_highlight.t ->
     syntax
   (** [syntax highlights] is a source-code syntax configuration. *)
+
+  val with_highlighter :
+    language:string ->
+    ?style:Mosaic_ui.Syntax_style.t ->
+    ?conceal:bool ->
+    ?draw_unstyled:bool ->
+    ?streaming:bool ->
+    Highlighter.t ->
+    syntax
+  (** [with_highlighter ~language highlighter] is a source-code syntax
+      configuration produced by [highlighter]. *)
 end
 
 (** Syntax styles: maps capture-group names to terminal styles. *)
@@ -2309,7 +2333,7 @@ val diff :
     - [layout] -- [Diff.Unified] or [Diff.Split]. Defaults to [Diff.Unified].
     - [theme] -- colors for changed lines, gutters, and signs. Defaults to
       {!Diff.default_theme}.
-    - [highlight] -- optional pre-styled split-side content.
+    - [highlight] -- optional highlighter-backed split-side syntax.
     - [show_line_numbers] -- controls whether line-number gutters are shown.
       Defaults to [true].
     - [wrap] -- line-wrapping mode for embedded code content.

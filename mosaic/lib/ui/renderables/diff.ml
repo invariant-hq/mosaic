@@ -48,9 +48,38 @@ let theme_equal a b =
   && Ansi.Color.equal a.line_number_fg b.line_number_fg
   && Option.equal Ansi.Color.equal a.line_number_bg b.line_number_bg
 
-type highlight = { old : Code.syntax; new_ : Code.syntax }
+type syntax = {
+  language : string;
+  style : Syntax_style.t;
+  highlighter : Code.Highlighter.t;
+  conceal : bool;
+  draw_unstyled : bool;
+  streaming : bool;
+}
 
-let highlight_equal a b = a.old = b.old && a.new_ = b.new_
+let syntax ~language ?(style = Syntax_style.default) ?(conceal = true)
+    ?(draw_unstyled = true) ?(streaming = false) highlighter =
+  { language; style; highlighter; conceal; draw_unstyled; streaming }
+
+let syntax_equal a b =
+  String.equal a.language b.language
+  && a.style == b.style
+  && a.highlighter == b.highlighter
+  && Bool.equal a.conceal b.conceal
+  && Bool.equal a.draw_unstyled b.draw_unstyled
+  && Bool.equal a.streaming b.streaming
+
+let code_syntax ?draw_unstyled syntax =
+  let draw_unstyled =
+    Option.value draw_unstyled ~default:syntax.draw_unstyled
+  in
+  Code.with_highlighter ~language:syntax.language ~style:syntax.style
+    ~conceal:syntax.conceal ~draw_unstyled ~streaming:syntax.streaming
+    syntax.highlighter
+
+type highlight = { old : syntax; new_ : syntax }
+
+let highlight_equal a b = syntax_equal a.old b.old && syntax_equal a.new_ b.new_
 
 module Props = struct
   type t = {
@@ -387,6 +416,7 @@ type t = {
   mutable left_code : Code.t option;
   mutable right_code : Code.t option;
   mutable pending_rebuild : bool;
+  mutable waiting_for_highlight : bool;
 }
 
 let node t = t.node
@@ -405,17 +435,24 @@ let set_flex_direction t direction =
   Renderable.set_style t.node
     (Toffee.Style.set_flex_direction direction (Renderable.style t.node))
 
+let destroy_code = function
+  | None -> ()
+  | Some code -> Code.set_on_line_info_change code None
+
 let destroy_side = function
   | None -> ()
   | Some side -> Renderable.destroy_recursively (Line_number.node side)
 
 let destroy_children t =
+  destroy_code t.left_code;
+  destroy_code t.right_code;
   destroy_side t.left_side;
   destroy_side t.right_side;
   t.left_side <- None;
   t.right_side <- None;
   t.left_code <- None;
-  t.right_code <- None
+  t.right_code <- None;
+  t.waiting_for_highlight <- false
 
 let code_props (props : Props.t) ~content ?syntax () =
   Code.Props.make ~content ?syntax ~text_style:props.text_style ~wrap:props.wrap
@@ -436,6 +473,21 @@ let make_or_update_code existing ~parent (props : Props.t) ~content ?syntax () =
 
 let old_syntax = function Some { old; _ } -> Some old | None -> None
 let new_syntax = function Some { new_; _ } -> Some new_ | None -> None
+
+let needs_stable_concealment (props : Props.t) (syntax : syntax) =
+  props.wrap <> `None && syntax.conceal
+
+let code_syntax_for_split props syntax =
+  let draw_unstyled =
+    if needs_stable_concealment props syntax then Some false else None
+  in
+  code_syntax ?draw_unstyled syntax
+
+let old_code_syntax props highlight =
+  Option.map (code_syntax_for_split props) (old_syntax highlight)
+
+let new_code_syntax props highlight =
+  Option.map (code_syntax_for_split props) (new_syntax highlight)
 
 let make_side ~parent ~style ~theme ~props =
   let side =
@@ -460,6 +512,19 @@ let request_split_rebuild t =
     Renderable.request_render t.node
   end
 
+let set_code_line_info_callback t code =
+  Code.set_on_line_info_change code
+    (Some (fun () -> if t.waiting_for_highlight then request_split_rebuild t))
+
+let update_waiting_for_highlight t (props : Props.t) left_code right_code =
+  t.waiting_for_highlight <-
+    props.wrap <> `None
+    && Renderable.width t.node > 0
+    && Renderable.width (Code.node left_code) > 0
+    && Renderable.width (Code.node right_code) > 0
+    && ((not (Code.line_info_stable left_code))
+       || not (Code.line_info_stable right_code))
+
 let build_unified_view t (props : Props.t) =
   destroy_children t;
   set_flex_direction t Toffee.Style.Flex_direction.Column;
@@ -481,7 +546,8 @@ let build_unified_view t (props : Props.t) =
 
 let should_align_split t (props : Props.t) left_code right_code =
   props.wrap <> `None
-  && Option.is_none props.highlight
+  && Code.line_info_stable left_code
+  && Code.line_info_stable right_code
   && Renderable.width t.node > 0
   && Renderable.width (Code.node left_code) > 0
   && Renderable.width (Code.node right_code) > 0
@@ -506,7 +572,7 @@ let build_split_view t (props : Props.t) =
       ~parent:(Line_number.node left_side)
       props
       ~content:(View.content initial.View.left)
-      ?syntax:(old_syntax props.highlight)
+      ?syntax:(old_code_syntax props props.highlight)
       ()
   in
   let right_side =
@@ -518,9 +584,11 @@ let build_split_view t (props : Props.t) =
       ~parent:(Line_number.node right_side)
       props
       ~content:(View.content initial.View.right)
-      ?syntax:(new_syntax props.highlight)
+      ?syntax:(new_code_syntax props props.highlight)
       ()
   in
+  set_code_line_info_callback t left_code;
+  set_code_line_info_callback t right_code;
   Renderable.set_on_resize (Code.node left_code)
     (Some (fun _ -> request_split_rebuild t));
   Renderable.set_on_resize (Code.node right_code)
@@ -548,13 +616,14 @@ let build_split_view t (props : Props.t) =
   Code.apply_props left_code
     (code_props props
        ~content:(View.content split.View.left)
-       ?syntax:(old_syntax props.highlight)
+       ?syntax:(old_code_syntax props props.highlight)
        ());
   Code.apply_props right_code
     (code_props props
        ~content:(View.content split.View.right)
-       ?syntax:(new_syntax props.highlight)
+       ?syntax:(new_code_syntax props props.highlight)
        ());
+  update_waiting_for_highlight t props left_code right_code;
   t.left_side <- Some left_side;
   t.right_side <- Some right_side;
   t.left_code <- Some left_code;
@@ -591,6 +660,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?layout ?theme
       left_code = None;
       right_code = None;
       pending_rebuild = false;
+      waiting_for_highlight = false;
     }
   in
   Renderable.set_on_frame node

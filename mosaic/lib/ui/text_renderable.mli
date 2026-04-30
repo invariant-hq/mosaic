@@ -58,6 +58,11 @@ val set_styled_text : t -> Text_buffer.span list -> unit
 (** [set_styled_text t spans] replaces the buffer content by [spans] and
     invalidates the surface. *)
 
+val set_render_enabled : t -> bool -> unit
+(** [set_render_enabled t enabled] controls whether the backing text buffer is
+    drawn. Measurement and line metrics still use the buffer while drawing is
+    disabled. *)
+
 val set_text_style : ?restyle:string -> t -> Ansi.Style.t -> unit
 (** [set_text_style ?restyle t style] sets the buffer default style to [style].
     If [restyle] is [Some s], [s] is re-applied as plain text so existing plain

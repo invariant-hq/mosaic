@@ -80,10 +80,31 @@ type theme = {
 val default_theme : theme
 (** [default_theme] is the built-in dark-terminal theme. *)
 
-type highlight = { old : Code.syntax; new_ : Code.syntax }
-(** Syntax configurations for split-view old and new content. Highlight ranges
-    must match the rendered split-side content exactly. Unified view currently
-    renders plain content. *)
+type syntax
+(** The type for split-side syntax settings.
+
+    Diff syntax is highlighter-backed rather than precomputed because split
+    layout may insert blank alignment rows into the rendered side content. *)
+
+val syntax :
+  language:string ->
+  ?style:Syntax_style.t ->
+  ?conceal:bool ->
+  ?draw_unstyled:bool ->
+  ?streaming:bool ->
+  Code.Highlighter.t ->
+  syntax
+(** [syntax ~language highlighter] is a split-side syntax configuration.
+
+    [draw_unstyled] controls whether plain source is visible before the first
+    result is available. Wrapped concealed split views may suppress unstyled
+    text while highlighting is pending so that alignment uses final line
+    metrics. [streaming] keeps the previous rendered buffer visible while a
+    fresh result is pending. *)
+
+type highlight = { old : syntax; new_ : syntax }
+(** Syntax configurations for split-view old and new content. Unified view
+    currently renders plain content. *)
 
 type t
 (** The type for diff display renderables. *)

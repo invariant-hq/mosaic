@@ -982,7 +982,7 @@ val diff :
     Diff-specific attributes:
     - [layout] is the view layout. Defaults to [Diff.Unified].
     - [theme] is the colour theme. Defaults to {!Diff.default_theme}.
-    - [highlight] is optional pre-styled split-side content.
+    - [highlight] is optional highlighter-backed split-side syntax.
     - [show_line_numbers] controls whether gutters are shown. Defaults to
       [true].
     - [wrap] is the wrap mode for embedded {!Code} children. Defaults to

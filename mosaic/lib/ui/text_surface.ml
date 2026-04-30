@@ -28,6 +28,7 @@ type t = {
   mutable selection_bg : Ansi.Color.t option;
   mutable selection_fg : Ansi.Color.t option;
   selection : selection_state;
+  mutable render_enabled : bool;
   mutable cached_display_info : (int * int * display_info) option;
       (* (buffer_version, effective_wrap_width, info) *)
   mutable measure_cache :
@@ -41,6 +42,7 @@ type t = {
 let buffer t = t.buffer
 let node t = t.node
 let wrap t = t.wrap
+let render_enabled t = t.render_enabled
 
 (* ───── Span slicing ───── *)
 
@@ -570,7 +572,7 @@ let grapheme_style ~highlights ~sel_active ~sel_start ~sel_end ~sel_bg ~sel_fg
 let render t _self grid ~delta:_ =
   let w = Renderable.width t.node in
   let h = Renderable.height t.node in
-  if w <= 0 || h <= 0 then ()
+  if (not t.render_enabled) || w <= 0 || h <= 0 then ()
   else begin
     let info = display_info t in
     let lines = info.lines in
@@ -728,6 +730,7 @@ let create node buffer =
       selection_bg = None;
       selection_fg = None;
       selection = { anchor_offset = 0; focus_offset = 0; active = false };
+      render_enabled = true;
       cached_display_info = None;
       measure_cache = None;
     }
@@ -735,3 +738,9 @@ let create node buffer =
   Renderable.set_render node (render t);
   Renderable.set_measure node (Some (measure t));
   t
+
+let set_render_enabled t enabled =
+  if t.render_enabled <> enabled then begin
+    t.render_enabled <- enabled;
+    Renderable.request_render t.node
+  end

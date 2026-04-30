@@ -68,6 +68,11 @@ let asymmetric_wrap_diff =
  end
 |}
 
+let plain_highlight =
+  let highlighter = Code.Highlighter.sync (fun _ -> []) in
+  let syntax = Diff.syntax ~language:"text" highlighter in
+  { Diff.old = syntax; new_ = syntax }
+
 let git_diff_with_marker =
   {|diff --git a/a.txt b/a.txt
 index 1111111..2222222 100644
@@ -143,6 +148,25 @@ let%expect_test "split view aligns asymmetric wrapped lines" =
   let app = make_app () in
   reconcile app
     (Vnode.diff ~layout:Diff.Split ~wrap:`Char (parse asymmetric_wrap_diff));
+  set_viewport app.renderer ~width:44 ~height:7;
+  Renderer.render_frame app.renderer ~width:44 ~height:7 ~delta:0.;
+  ignore (Renderer.render app.renderer : string);
+  frame app ~width:44 ~height:7;
+  [%expect_exact
+    {|
+ 1   start             1   start
+ 2 - short             2 + abcdefghijklmnopq
+                           rstuvwxyz01234567
+                           89
+ 3   end               3   end
+
+|}]
+
+let%expect_test "split view aligns highlighted asymmetric wrapped lines" =
+  let app = make_app () in
+  reconcile app
+    (Vnode.diff ~layout:Diff.Split ~wrap:`Char ~highlight:plain_highlight
+       (parse asymmetric_wrap_diff));
   set_viewport app.renderer ~width:44 ~height:7;
   Renderer.render_frame app.renderer ~width:44 ~height:7 ~delta:0.;
   ignore (Renderer.render app.renderer : string);

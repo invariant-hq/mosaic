@@ -16,12 +16,39 @@ type t
 type syntax
 (** The type for source-code syntax settings. *)
 
+module Highlighter : sig
+  type request = { content : string; language : string }
+  (** The type for highlight requests. *)
+
+  type result = (Syntax_highlight.t, exn) Stdlib.result
+  (** The type for highlighter results. *)
+
+  type job
+  (** The type for an in-flight asynchronous highlight job. *)
+
+  type t
+  (** The type for source-code highlighters. *)
+
+  val job : poll:(unit -> result option) -> cancel:(unit -> unit) -> job
+  (** [job ~poll ~cancel] is an asynchronous job. [poll ()] returns [None] while
+      the job is pending and [Some outcome] once it has completed. [cancel ()]
+      asks the producer to stop work or discard its result. *)
+
+  val sync : (request -> Syntax_highlight.t) -> t
+  (** [sync f] is a synchronous highlighter. Exceptions raised by [f] are
+      treated as highlighting failures and fall back to plain text. *)
+
+  val async : (request -> notify:(unit -> unit) -> job) -> t
+  (** [async f] is an asynchronous highlighter. [f] starts a job for a request.
+      The job producer should call [notify] when [poll] may return a completed
+      result. Exceptions raised by the starter or job polling are treated as
+      highlighting failures and fall back to plain text. *)
+end
+
 val syntax :
   ?language:string ->
   ?style:Syntax_style.t ->
   ?conceal:bool ->
-  ?draw_unstyled:bool ->
-  ?streaming:bool ->
   Syntax_highlight.t ->
   syntax
 (** [syntax highlights] is a syntax configuration.
@@ -31,12 +58,22 @@ val syntax :
       {!Syntax_style.default}.
     - [highlights] are source byte ranges for [content]. Omit [syntax] to render
       plain text.
-    - [conceal] enables conceal metadata in [highlights]. Defaults to [true].
-    - [draw_unstyled] records whether plain source should be visible while
-      highlighting is pending. Synchronous highlighting always renders a final
-      buffer immediately.
-    - [streaming] records whether later asynchronous highlighters should retain
-      the previous rendered buffer while fresh highlighting is pending. *)
+    - [conceal] enables conceal metadata in [highlights]. Defaults to [true]. *)
+
+val with_highlighter :
+  language:string ->
+  ?style:Syntax_style.t ->
+  ?conceal:bool ->
+  ?draw_unstyled:bool ->
+  ?streaming:bool ->
+  Highlighter.t ->
+  syntax
+(** [with_highlighter ~language highlighter] is a syntax configuration that
+    derives highlight ranges from [highlighter].
+
+    [draw_unstyled] controls whether plain source is visible before the first
+    result is available. [streaming] keeps the previous rendered buffer visible
+    while a fresh result is pending. *)
 
 (** {1:props Props} *)
 
@@ -139,13 +176,14 @@ val set_syntax : t -> syntax option -> unit
 (** [set_syntax t syntax] sets the syntax configuration and re-renders [t]'s
     current content. [None] renders plain text. *)
 
-val set_highlights : t -> Syntax_highlight.t -> unit
-(** [set_highlights t highlights] replaces the current syntax highlights,
-    creating a default syntax configuration when needed. *)
-
 val set_on_selection : t -> ((int * int) option -> unit) option -> unit
 (** [set_on_selection t f] sets the selection-change callback used when
     [selectable = true]. [None] clears it. *)
+
+val set_on_line_info_change : t -> (unit -> unit) option -> unit
+(** [set_on_line_info_change t f] sets the callback called when content,
+    highlighting, or layout configuration may have changed [t]'s line metrics.
+    [None] clears it. *)
 
 (** {1:props_application Props application} *)
 
@@ -160,8 +198,11 @@ val line_count : t -> int
 
 val is_highlighting : t -> bool
 (** [is_highlighting t] is [true] while asynchronous highlighting work is
-    pending. The current implementation is synchronous and always returns
-    [false]. *)
+    pending. *)
+
+val line_info_stable : t -> bool
+(** [line_info_stable t] is [true] iff [t]'s current line metrics describe the
+    final visible buffer for the current content and syntax settings. *)
 
 val display_line_count : t -> int
 (** [display_line_count t] is the number of display lines in [t] after wrapping.

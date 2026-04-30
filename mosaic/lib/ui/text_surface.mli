@@ -40,6 +40,15 @@ val node : t -> Renderable.t
 val wrap : t -> wrap
 (** [wrap t] is the current wrapping mode. *)
 
+val render_enabled : t -> bool
+(** [render_enabled t] is [true] iff [t]'s text buffer is drawn during render.
+    Measurement and display-line computation still use the buffer while
+    rendering is disabled. *)
+
+val set_render_enabled : t -> bool -> unit
+(** [set_render_enabled t enabled] controls whether [t] draws its text buffer.
+    This does not affect measurement or line metrics. *)
+
 val set_wrap : t -> wrap -> unit
 (** [set_wrap t mode] changes the wrapping mode. Invalidates display lines and
     marks layout dirty. *)
