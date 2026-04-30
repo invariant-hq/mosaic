@@ -54,6 +54,12 @@
  (libraries windtrap mosaic.ui toffee matrix.ansi test_harness))
 
 (test
+ (name test_code)
+ (modules test_code)
+ (package mosaic)
+ (libraries windtrap mosaic.ui toffee matrix.ansi test_harness))
+
+(test
  (name test_canvas)
  (modules test_canvas)
  (package mosaic)

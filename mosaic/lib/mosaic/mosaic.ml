@@ -162,6 +162,7 @@ module Slider = Mosaic_ui.Slider
 module Scroll_bar = Mosaic_ui.Scroll_bar
 module Text_surface = Mosaic_ui.Text_surface
 module Line_number = Mosaic_ui.Line_number
+module Code = Mosaic_ui.Code
 module Diff = Mosaic_ui.Diff
 module Markdown = Mosaic_ui.Markdown
 module Syntax_highlight = Mosaic_ui.Syntax_highlight
@@ -1048,7 +1049,7 @@ let code ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?focusable ?autofocus ?buffered ?live ?ref
-    ?on_mouse ?on_key ?on_paste ?spans ?text_style ?wrap ?tab_width ?selectable
+    ?on_mouse ?on_key ?on_paste ?syntax ?text_style ?wrap ?tab_width ?selectable
     ?selection_bg ?selection_fg ?on_selection content =
   let style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
@@ -1061,7 +1062,7 @@ let code ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?grid_row ?grid_column ()
   in
   Vnode.code ?key ?id ~style ?visible ?z_index ?opacity ?focusable ?autofocus
-    ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?spans ?text_style ?wrap
+    ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?syntax ?text_style ?wrap
     ?tab_width ?selectable ?selection_bg ?selection_fg ?on_selection content
 
 let line_number ?key ?id ?display ?box_sizing ?position ?overflow

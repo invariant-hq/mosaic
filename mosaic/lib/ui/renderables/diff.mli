@@ -80,13 +80,10 @@ type theme = {
 val default_theme : theme
 (** [default_theme] is the built-in dark-terminal theme. *)
 
-type highlight = {
-  old_spans : Text_buffer.span list;
-  new_spans : Text_buffer.span list;
-}
-(** Pre-styled spans for split-view old and new content. The spans must match
-    the rendered split-side content exactly. Unified view currently renders
-    plain content. *)
+type highlight = { old : Code.syntax; new_ : Code.syntax }
+(** Syntax configurations for split-view old and new content. Highlight ranges
+    must match the rendered split-side content exactly. Unified view currently
+    renders plain content. *)
 
 type t
 (** The type for diff display renderables. *)
@@ -152,8 +149,8 @@ val set_theme : t -> theme -> unit
 (** [set_theme t theme] sets [t]'s theme and rebuilds the view. *)
 
 val set_highlight : t -> highlight option -> unit
-(** [set_highlight t highlight] sets split-view styled spans and rebuilds the
-    view. *)
+(** [set_highlight t highlight] sets split-view syntax highlighting and rebuilds
+    the view. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t]. *)

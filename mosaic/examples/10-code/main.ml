@@ -66,10 +66,12 @@ let hint = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) ()
 
 let view model =
   let content = lang_content model.lang in
-  let spans =
-    highlight_fn model.lang content
-    |> Syntax_highlight.of_triples
-    |> Syntax_highlight.to_spans ~style:Syntax_style.default ~content
+  let highlights =
+    highlight_fn model.lang content |> Syntax_highlight.of_triples
+  in
+  let syntax =
+    Code.syntax ~language:(lang_name model.lang) ~style:Syntax_style.default
+      highlights
   in
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = pct 100 }
@@ -91,7 +93,7 @@ let view model =
       box ~flex_grow:1. ~padding:(padding 1)
         [
           box ~border:true ~border_color ~flex_grow:1.
-            [ code ~spans ~size:{ width = pct 100; height = pct 100 } content ];
+            [ code ~syntax ~size:{ width = pct 100; height = pct 100 } content ];
         ];
       (* Footer *)
       box ~padding:(padding 1) ~background:footer_bg

@@ -1,17 +1,42 @@
 (** Syntax-highlighted code display.
 
     A leaf renderable for displaying source code with optional pre-computed
-    syntax highlighting. Uses {!Text_buffer.t} for text storage and
+    source-range highlighting. Uses {!Text_buffer.t} for text storage and
     {!Text_surface.t} for rendering.
 
     [Code] differs from {!Text} in its defaults: wrapping defaults to [`None],
-    tab width defaults to [4], it accepts pre-computed styled spans, and it
-    registers as a {!type:Renderable.line_info} provider. *)
+    tab width defaults to [4], and it registers as a
+    {!type:Renderable.line_info} provider. *)
 
 (** {1:types Types} *)
 
 type t
 (** The type for code display renderables. *)
+
+type syntax
+(** The type for source-code syntax settings. *)
+
+val syntax :
+  ?language:string ->
+  ?style:Syntax_style.t ->
+  ?conceal:bool ->
+  ?draw_unstyled:bool ->
+  ?streaming:bool ->
+  Syntax_highlight.t ->
+  syntax
+(** [syntax highlights] is a syntax configuration.
+
+    - [language] names the source language when known.
+    - [style] maps highlight scopes to terminal styles. Defaults to
+      {!Syntax_style.default}.
+    - [highlights] are source byte ranges for [content]. Omit [syntax] to render
+      plain text.
+    - [conceal] enables conceal metadata in [highlights]. Defaults to [true].
+    - [draw_unstyled] records whether plain source should be visible while
+      highlighting is pending. Synchronous highlighting always renders a final
+      buffer immediately.
+    - [streaming] records whether later asynchronous highlighters should retain
+      the previous rendered buffer while fresh highlighting is pending. *)
 
 (** {1:props Props} *)
 
@@ -21,7 +46,7 @@ module Props : sig
 
   val make :
     ?content:string ->
-    ?spans:Text_buffer.span list ->
+    ?syntax:syntax ->
     ?text_style:Ansi.Style.t ->
     ?wrap:Text_surface.wrap ->
     ?tab_width:int ->
@@ -33,9 +58,7 @@ module Props : sig
     t
   (** [make ()] is a code props value with:
       - [content] is the plain source code text. Defaults to [""].
-      - [spans] are pre-computed styled spans ({!Text_buffer.span} list). When
-        present, these override the plain [content] display. Typically produced
-        by a syntax highlighter. Defaults to [[]].
+      - [syntax] is the source-code syntax configuration. Defaults to [None].
       - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
       - [wrap] is the wrapping mode. Defaults to [`None].
       - [tab_width] is the tab stop width in columns. Defaults to [4].
@@ -63,7 +86,7 @@ val create :
   ?z_index:int ->
   ?opacity:float ->
   ?content:string ->
-  ?spans:Text_buffer.span list ->
+  ?syntax:syntax ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
@@ -83,7 +106,7 @@ val create :
     - [z_index] is the stacking order.
     - [opacity] is the opacity. Defaults to [1.0].
     - [content] is the plain source code text. Defaults to [""].
-    - [spans] are pre-computed styled spans. Defaults to [[]].
+    - [syntax] configures source-code highlighting.
     - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
     - [wrap] is the wrapping mode. Defaults to [`None].
     - [tab_width] is the tab stop width in columns. Defaults to [4].
@@ -109,12 +132,16 @@ val surface : t -> Text_surface.t
 (** {1:content Content} *)
 
 val set_content : t -> string -> unit
-(** [set_content t s] sets the plain code content to [s]. Clears any existing
-    styled spans. *)
+(** [set_content t s] sets the code content to [s] and re-applies the current
+    syntax configuration. *)
 
-val set_spans : t -> Text_buffer.span list -> unit
-(** [set_spans t spans] sets pre-computed styled spans. These override plain
-    content display. *)
+val set_syntax : t -> syntax option -> unit
+(** [set_syntax t syntax] sets the syntax configuration and re-renders [t]'s
+    current content. [None] renders plain text. *)
+
+val set_highlights : t -> Syntax_highlight.t -> unit
+(** [set_highlights t highlights] replaces the current syntax highlights,
+    creating a default syntax configuration when needed. *)
 
 val set_on_selection : t -> ((int * int) option -> unit) option -> unit
 (** [set_on_selection t f] sets the selection-change callback used when
@@ -123,13 +150,18 @@ val set_on_selection : t -> ((int * int) option -> unit) option -> unit
 (** {1:props_application Props application} *)
 
 val apply_props : t -> Props.t -> unit
-(** [apply_props t props] applies [props] to [t], updating content, spans,
+(** [apply_props t props] applies [props] to [t], updating content, syntax,
     style, and wrapping as specified. *)
 
 (** {1:query Query} *)
 
 val line_count : t -> int
 (** [line_count t] is the number of logical lines in [t]. *)
+
+val is_highlighting : t -> bool
+(** [is_highlighting t] is [true] while asynchronous highlighting work is
+    pending. The current implementation is synchronous and always returns
+    [false]. *)
 
 val display_line_count : t -> int
 (** [display_line_count t] is the number of display lines in [t] after wrapping.

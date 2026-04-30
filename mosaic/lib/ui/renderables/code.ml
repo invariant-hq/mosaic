@@ -1,9 +1,32 @@
+(* Syntax *)
+
+type syntax = {
+  language : string option;
+  style : Syntax_style.t;
+  highlights : Syntax_highlight.t;
+  conceal : bool;
+  draw_unstyled : bool;
+  streaming : bool;
+}
+
+let syntax ?language ?(style = Syntax_style.default) ?(conceal = true)
+    ?(draw_unstyled = true) ?(streaming = false) highlights =
+  { language; style; highlights; conceal; draw_unstyled; streaming }
+
+let syntax_equal a b =
+  Option.equal String.equal a.language b.language
+  && a.style == b.style
+  && a.highlights = b.highlights
+  && Bool.equal a.conceal b.conceal
+  && Bool.equal a.draw_unstyled b.draw_unstyled
+  && Bool.equal a.streaming b.streaming
+
 (* Props *)
 
 module Props = struct
   type t = {
     content : string;
-    spans : Text_buffer.span list;
+    syntax : syntax option;
     text_style : Ansi.Style.t;
     wrap : Text_surface.wrap;
     tab_width : int;
@@ -13,12 +36,12 @@ module Props = struct
     selection_fg : Ansi.Color.t option;
   }
 
-  let make ?(content = "") ?(spans = []) ?(text_style = Ansi.Style.default)
+  let make ?(content = "") ?syntax ?(text_style = Ansi.Style.default)
       ?(wrap = `None) ?(tab_width = 4) ?(truncate = false) ?(selectable = true)
       ?selection_bg ?selection_fg () =
     {
       content;
-      spans;
+      syntax;
       text_style;
       wrap;
       tab_width;
@@ -30,16 +53,9 @@ module Props = struct
 
   let default = make ()
 
-  let spans_equal a b =
-    List.compare_length_with a (List.length b) = 0
-    && List.for_all2
-         (fun (a : Text_buffer.span) (b : Text_buffer.span) ->
-           String.equal a.text b.text && Ansi.Style.equal a.style b.style)
-         a b
-
   let equal a b =
     String.equal a.content b.content
-    && spans_equal a.spans b.spans
+    && Option.equal syntax_equal a.syntax b.syntax
     && Ansi.Style.equal a.text_style b.text_style
     && a.wrap = b.wrap && a.tab_width = b.tab_width && a.truncate = b.truncate
     && a.selectable = b.selectable
@@ -52,7 +68,7 @@ end
 type t = {
   text : Text_renderable.t;
   mutable props : Props.t;
-  mutable has_spans : bool;
+  highlighting : bool;
 }
 
 (* Accessors *)
@@ -62,13 +78,35 @@ let buffer t = Text_renderable.buffer t.text
 let surface t = Text_renderable.surface t.text
 let set_on_selection t h = Text_renderable.set_on_selection t.text h
 
+(* Rendering *)
+
+let spans_for_syntax content syntax =
+  try
+    Some
+      (Syntax_highlight.to_spans ~conceal:syntax.conceal ~style:syntax.style
+         ~content syntax.highlights)
+  with _ -> None
+
+let render_content t (props : Props.t) =
+  if String.equal props.content "" then begin
+    Text_renderable.set_text t.text ""
+  end
+  else
+    match props.syntax with
+    | Some syntax -> begin
+        match spans_for_syntax props.content syntax with
+        | Some spans -> Text_renderable.set_styled_text t.text spans
+        | None -> Text_renderable.set_text t.text props.content
+      end
+    | None -> Text_renderable.set_text t.text props.content
+
 (* Construction *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?spans
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?syntax
     ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
     ?selection_fg ?on_selection () =
   let props =
-    Props.make ?content ?spans ?text_style ?wrap ?tab_width ?truncate
+    Props.make ?content ?syntax ?text_style ?wrap ?tab_width ?truncate
       ?selectable ?selection_bg ?selection_fg ()
   in
   let text =
@@ -78,23 +116,29 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?spans
       ?selection_bg:props.selection_bg ?selection_fg:props.selection_fg
       ?on_selection ()
   in
-  let t = { text; props; has_spans = false } in
-  if props.spans <> [] then begin
-    Text_renderable.set_styled_text text props.spans;
-    t.has_spans <- true
-  end
-  else if props.content <> "" then Text_renderable.set_text text props.content;
+  let t = { text; props; highlighting = false } in
+  render_content t props;
   t
 
 (* Content *)
 
 let set_content t s =
-  t.has_spans <- false;
-  Text_renderable.set_text t.text s
+  let props = { t.props with content = s } in
+  render_content t props;
+  t.props <- props
 
-let set_spans t spans =
-  t.has_spans <- true;
-  Text_renderable.set_styled_text t.text spans
+let set_syntax t syntax =
+  let props = { t.props with syntax } in
+  render_content t props;
+  t.props <- props
+
+let set_highlights t highlights =
+  let syntax =
+    match t.props.syntax with
+    | Some syntax -> { syntax with highlights }
+    | None -> syntax highlights
+  in
+  set_syntax t (Some syntax)
 
 (* Apply Props *)
 
@@ -103,24 +147,11 @@ let apply_props t (props : Props.t) =
     not (Ansi.Style.equal t.props.text_style props.text_style)
   in
   if style_changed then Text_renderable.set_text_style t.text props.text_style;
-  (* Styled spans take priority over plain content *)
-  if props.spans <> [] then begin
-    if not (Props.spans_equal t.props.spans props.spans) then begin
-      t.has_spans <- true;
-      Text_renderable.set_styled_text t.text props.spans
-    end
-  end
-  else if t.has_spans then begin
-    (* Switching from styled spans to plain content *)
-    t.has_spans <- false;
-    Text_renderable.set_text t.text props.content
-  end
-  else if not (String.equal t.props.content props.content) then begin
-    Text_renderable.set_text t.text props.content
-  end
-  else if style_changed then begin
-    Text_renderable.set_text t.text props.content
-  end;
+  if
+    (not (String.equal t.props.content props.content))
+    || (not (Option.equal syntax_equal t.props.syntax props.syntax))
+    || style_changed
+  then render_content t props;
   (* Wrap mode *)
   if t.props.wrap <> props.wrap then Text_renderable.set_wrap t.text props.wrap;
   (* Tab width *)
@@ -141,5 +172,6 @@ let apply_props t (props : Props.t) =
 
 (* Query *)
 
+let is_highlighting t = t.highlighting
 let line_count t = Text_renderable.line_count t.text
 let display_line_count t = Text_renderable.display_line_count t.text

@@ -496,12 +496,12 @@ let table ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 
 let code ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
-    ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?spans
+    ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?syntax
     ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
     ?selection_fg ?on_selection content =
   let kind =
     Code
-      (Code.Props.make ~content ?spans ?text_style ?wrap ?tab_width ?truncate
+      (Code.Props.make ~content ?syntax ?text_style ?wrap ?tab_width ?truncate
          ?selectable ?selection_bg ?selection_fg ())
   in
   let attrs =

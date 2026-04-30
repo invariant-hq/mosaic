@@ -841,7 +841,7 @@ val code :
   ?on_mouse:(Event.mouse -> 'msg) ->
   ?on_key:(Event.key -> 'msg) ->
   ?on_paste:(Event.paste -> 'msg) ->
-  ?spans:Text_buffer.span list ->
+  ?syntax:Code.syntax ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
@@ -856,8 +856,7 @@ val code :
     not accept children.
 
     Code-specific attributes:
-    - [spans] is the list of pre-computed syntax highlighting spans. Defaults to
-      [[]].
+    - [syntax] configures source-code highlighting. Defaults to plain text.
     - [text_style] is the base ANSI style applied to the text. Defaults to
       {!Ansi.Style.default}.
     - [wrap] is the line-wrapping mode. Defaults to [`None].

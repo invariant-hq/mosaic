@@ -286,8 +286,8 @@ type length_percentage_auto = Toffee.Style.Length_percentage_auto.t
     such as {!val-margin}, {!val-margin_xy}, and {!val-inset}. *)
 
 type span = Mosaic_ui.Text_buffer.span = { text : string; style : Ansi.Style.t }
-(** A contiguous run of text with a single visual style. Used by {!val-code} for
-    syntax highlighting via its [~spans] argument. *)
+(** A contiguous run of text with a single visual style. Used by editable text
+    widgets that accept pre-styled content. *)
 
 (** {1:layout_enums Layout enum modules} *)
 
@@ -671,6 +671,21 @@ module Markdown : sig
 
   val default_style : style
   (** The built-in terminal style resolver. *)
+end
+
+module Code : sig
+  type syntax = Mosaic_ui.Code.syntax
+  (** The type for source-code syntax settings. *)
+
+  val syntax :
+    ?language:string ->
+    ?style:Mosaic_ui.Syntax_style.t ->
+    ?conceal:bool ->
+    ?draw_unstyled:bool ->
+    ?streaming:bool ->
+    Mosaic_ui.Syntax_highlight.t ->
+    syntax
+  (** [syntax highlights] is a source-code syntax configuration. *)
 end
 
 (** Syntax styles: maps capture-group names to terminal styles. *)
@@ -2119,7 +2134,7 @@ val code :
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
-  ?spans:span list ->
+  ?syntax:Code.syntax ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
@@ -2130,13 +2145,12 @@ val code :
   string ->
   'msg t
 (** [code s] is a read-only code display element that renders [s] with optional
-    syntax highlighting spans.
+    syntax highlighting.
 
     Wrap with {!val-line_number} to add a gutter with line numbers.
 
     Code-specific optional arguments:
-    - [spans] -- list of {!type-span} values that apply syntax-highlighting
-      styles to ranges of the text.
+    - [syntax] -- source-code syntax configuration.
     - [text_style] -- base ANSI style applied to unstyled text.
     - [wrap] -- line-wrapping mode. Defaults to no wrap.
     - [tab_width] -- number of cells a tab character expands to. Defaults to

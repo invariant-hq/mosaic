@@ -48,20 +48,9 @@ let theme_equal a b =
   && Ansi.Color.equal a.line_number_fg b.line_number_fg
   && Option.equal Ansi.Color.equal a.line_number_bg b.line_number_bg
 
-type highlight = {
-  old_spans : Text_buffer.span list;
-  new_spans : Text_buffer.span list;
-}
+type highlight = { old : Code.syntax; new_ : Code.syntax }
 
-let spans_equal a b =
-  List.compare_lengths a b = 0
-  && List.for_all2
-       (fun (x : Text_buffer.span) (y : Text_buffer.span) ->
-         String.equal x.text y.text && Ansi.Style.equal x.style y.style)
-       a b
-
-let highlight_equal a b =
-  spans_equal a.old_spans b.old_spans && spans_equal a.new_spans b.new_spans
+let highlight_equal a b = a.old = b.old && a.new_ = b.new_
 
 module Props = struct
   type t = {
@@ -358,18 +347,13 @@ let destroy_children t =
   t.left_side <- None;
   t.right_side <- None
 
-let spans_or_content ~content = function
-  | [] -> (content, [])
-  | spans -> ("", spans)
-
-let make_code ~parent (props : Props.t) ~content ~spans =
-  let content, spans = spans_or_content ~content spans in
-  Code.create ~parent ~style:full_style ~content ~spans
+let make_code ~parent (props : Props.t) ~content ?syntax () =
+  Code.create ~parent ~style:full_style ~content ?syntax
     ~text_style:props.text_style ~wrap:props.wrap ~selectable:props.selectable
     ()
 
-let old_spans = function Some { old_spans; _ } -> old_spans | None -> []
-let new_spans = function Some { new_spans; _ } -> new_spans | None -> []
+let old_syntax = function Some { old; _ } -> Some old | None -> None
+let new_syntax = function Some { new_; _ } -> Some new_ | None -> None
 
 let make_side ~parent ~style ~theme ~props =
   let side =
@@ -418,7 +402,8 @@ let build_split_view t (props : Props.t) =
       ~parent:(Line_number.node left_side)
       props
       ~content:(View.content split.View.left)
-      ~spans:(old_spans props.highlight)
+      ?syntax:(old_syntax props.highlight)
+      ()
   in
   let right_side =
     make_side ~parent:t.node ~style:half_style ~theme:props.theme
@@ -429,7 +414,8 @@ let build_split_view t (props : Props.t) =
       ~parent:(Line_number.node right_side)
       props
       ~content:(View.content split.View.right)
-      ~spans:(new_spans props.highlight)
+      ?syntax:(new_syntax props.highlight)
+      ()
   in
   t.left_side <- Some left_side;
   t.right_side <- Some right_side
