@@ -17,6 +17,7 @@
 type t
 (** The type for single-line text inputs. *)
 
+(** Editing actions resolved from key bindings. *)
 type action = Textarea.action =
   | Move_left
   | Move_right
@@ -54,7 +55,6 @@ type action = Textarea.action =
   | Delete_word_backward
   | Select_all
   | Submit
-(** Editing actions resolved from key bindings. *)
 
 type key_binding = Textarea.key_binding
 (** The type for text input key bindings. *)
