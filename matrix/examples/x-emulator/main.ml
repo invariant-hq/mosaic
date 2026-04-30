@@ -464,12 +464,6 @@ let render state =
     (230, 230, 230, 255)
   in
 
-  let scale v =
-    let x = v *. 255.0 in
-    let x = if x < 0.0 then 0.0 else if x > 255.0 then 255.0 else x in
-    int_of_float (Float.round x)
-  in
-
   (* Cache glyph textures by (text, fg color, attrs); bg is drawn separately. *)
   let get_or_create_texture (text : string) ~(fg_r : int) ~(fg_g : int)
       ~(fg_b : int) ~(fg_a : int) (attr : Ansi.Attr.t) =
@@ -511,30 +505,27 @@ let render state =
       let raw_width = Grid.cell_width grid idx in
       let cell_width = if raw_width <= 0 then 1 else raw_width in
 
-      (* Per-channel colors from grid (normalized floats 0.0–1.0) *)
-      let fg_r_f = Grid.get_fg_r grid idx in
-      let fg_g_f = Grid.get_fg_g grid idx in
-      let fg_b_f = Grid.get_fg_b grid idx in
-      let fg_a_f = Grid.get_fg_a grid idx in
-
-      let bg_r_f = Grid.get_bg_r grid idx in
-      let bg_g_f = Grid.get_bg_g grid idx in
-      let bg_b_f = Grid.get_bg_b grid idx in
-      let bg_a_f = Grid.get_bg_a grid idx in
-
-      (* Foreground: - (0.,0.,0.,0.) => default fg - otherwise literal scaled
-         RGBA *)
-      let fg_r, fg_g, fg_b, fg_a =
-        if fg_r_f = 0.0 && fg_g_f = 0.0 && fg_b_f = 0.0 && fg_a_f = 0.0 then
-          (default_fg_r, default_fg_g, default_fg_b, default_fg_a)
-        else (scale fg_r_f, scale fg_g_f, scale fg_b_f, scale fg_a_f)
+      let fg_r_raw, fg_g_raw, fg_b_raw, fg_a_raw =
+        Grid.get_fg grid idx |> Ansi.Color.to_rgba
+      in
+      let bg_r_raw, bg_g_raw, bg_b_raw, bg_a_raw =
+        Grid.get_bg grid idx |> Ansi.Color.to_rgba
       in
 
-      (* Background: - bg_a_f = 0. => no background fill (transparent) -
-         otherwise literal scaled RGBA (including 0,0,0,255 for real black) *)
+      (* Foreground: - (0,0,0,0) => default fg - otherwise literal RGBA *)
+      let fg_r, fg_g, fg_b, fg_a =
+        if
+          fg_r_raw = 0 && fg_g_raw = 0 && fg_b_raw = 0 && fg_a_raw = 0
+        then
+          (default_fg_r, default_fg_g, default_fg_b, default_fg_a)
+        else (fg_r_raw, fg_g_raw, fg_b_raw, fg_a_raw)
+      in
+
+      (* Background: - bg_a = 0 => no background fill (transparent) - otherwise
+         literal RGBA (including 0,0,0,255 for real black) *)
       let bg_r, bg_g, bg_b, bg_a =
-        if bg_a_f = 0.0 then (0, 0, 0, 0)
-        else (scale bg_r_f, scale bg_g_f, scale bg_b_f, scale bg_a_f)
+        if bg_a_raw = 0 then (0, 0, 0, 0)
+        else (bg_r_raw, bg_g_raw, bg_b_raw, bg_a_raw)
       in
 
       let attr = Grid.get_attrs grid idx |> Ansi.Attr.unpack in
