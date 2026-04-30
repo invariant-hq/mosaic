@@ -1,19 +1,61 @@
 type t = Edit_surface.t
 
+type action = Edit_surface.action =
+  | Move_left
+  | Move_right
+  | Move_up
+  | Move_down
+  | Select_left
+  | Select_right
+  | Select_up
+  | Select_down
+  | Line_home
+  | Line_end
+  | Select_line_home
+  | Select_line_end
+  | Visual_line_home
+  | Visual_line_end
+  | Select_visual_line_home
+  | Select_visual_line_end
+  | Buffer_home
+  | Buffer_end
+  | Select_buffer_home
+  | Select_buffer_end
+  | Delete_line
+  | Delete_to_line_end
+  | Delete_to_line_start
+  | Backspace
+  | Delete
+  | Newline
+  | Undo
+  | Redo
+  | Word_forward
+  | Word_backward
+  | Select_word_forward
+  | Select_word_backward
+  | Delete_word_forward
+  | Delete_word_backward
+  | Select_all
+  | Submit
+
+type key_binding = Edit_surface.key_binding
+
+let key_binding = Edit_surface.key_binding
+
 module Props = Edit_surface.Props
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder ?wrap
     ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?on_input ?on_change
-    ?on_submit ?on_cursor () =
+    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
+    ?key_aliases ?on_input ?on_change ?on_submit ?on_cursor () =
   Edit_surface.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     ?value ?cursor ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder
     ?wrap ?text_color ?background_color ?focused_text_color
     ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
     ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
-    ?on_input ?on_change ?on_submit ?on_cursor ()
+    ?key_bindings ?key_aliases ?on_input ?on_change ?on_submit ?on_cursor ()
 
 let node = Edit_surface.node
 let buffer = Edit_surface.buffer

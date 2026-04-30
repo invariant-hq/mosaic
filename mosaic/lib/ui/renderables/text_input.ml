@@ -12,6 +12,48 @@ let default_cursor_blinking = true
 
 (* Props *)
 
+type action = Textarea.action =
+  | Move_left
+  | Move_right
+  | Move_up
+  | Move_down
+  | Select_left
+  | Select_right
+  | Select_up
+  | Select_down
+  | Line_home
+  | Line_end
+  | Select_line_home
+  | Select_line_end
+  | Visual_line_home
+  | Visual_line_end
+  | Select_visual_line_home
+  | Select_visual_line_end
+  | Buffer_home
+  | Buffer_end
+  | Select_buffer_home
+  | Select_buffer_end
+  | Delete_line
+  | Delete_to_line_end
+  | Delete_to_line_start
+  | Backspace
+  | Delete
+  | Newline
+  | Undo
+  | Redo
+  | Word_forward
+  | Word_backward
+  | Select_word_forward
+  | Select_word_backward
+  | Delete_word_forward
+  | Delete_word_backward
+  | Select_all
+  | Submit
+
+type key_binding = Textarea.key_binding
+
+let key_binding = Textarea.key_binding
+
 module Props = struct
   type t = {
     value : string;
@@ -31,6 +73,8 @@ module Props = struct
     cursor_blinking : bool;
     selectable : bool;
     show_cursor : bool;
+    key_bindings : key_binding list;
+    key_aliases : (string * string) list;
   }
 
   let make ?(value = "") ?cursor ?selection ?(placeholder = "")
@@ -43,7 +87,7 @@ module Props = struct
       ?(cursor_style = default_cursor_style)
       ?(cursor_color = default_cursor_color)
       ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
-      ?(show_cursor = true) () =
+      ?(show_cursor = true) ?(key_bindings = []) ?(key_aliases = []) () =
     {
       value;
       cursor;
@@ -62,6 +106,8 @@ module Props = struct
       cursor_blinking;
       selectable;
       show_cursor;
+      key_bindings;
+      key_aliases;
     }
 
   let default = make ()
@@ -86,6 +132,10 @@ module Props = struct
     && a.cursor_blinking = b.cursor_blinking
     && a.selectable = b.selectable
     && a.show_cursor = b.show_cursor
+    && List.equal (Keymap.binding_equal ( = )) a.key_bindings b.key_bindings
+    && List.equal
+         (fun (ak, av) (bk, bv) -> String.equal ak bk && String.equal av bv)
+         a.key_aliases b.key_aliases
 end
 
 type t = { surface : Edit_surface.t; mutable props : Props.t }
@@ -102,7 +152,8 @@ let surface_props (props : Props.t) =
     ~selection_color:props.selection_color ?selection_fg:props.selection_fg
     ~cursor_style:props.cursor_style ~cursor_color:props.cursor_color
     ~cursor_blinking:props.cursor_blinking ~selectable:props.selectable
-    ~show_cursor:props.show_cursor ()
+    ~show_cursor:props.show_cursor ~key_bindings:props.key_bindings
+    ~key_aliases:props.key_aliases ()
 
 let node t = Edit_surface.node t.surface
 let buffer t = Edit_surface.buffer t.surface
@@ -119,12 +170,14 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     ?selection ?placeholder ?max_length ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
     ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?selectable ?show_cursor ?on_input ?on_change ?on_submit ?on_cursor () =
+    ?selectable ?show_cursor ?key_bindings ?key_aliases ?on_input ?on_change
+    ?on_submit ?on_cursor () =
   let props =
     Props.make ?value ?cursor ?selection ?placeholder ?max_length ?text_color
       ?background_color ?focused_text_color ?focused_background_color
       ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-      ?cursor_color ?cursor_blinking ?selectable ?show_cursor ()
+      ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
+      ?key_aliases ()
   in
   let surface =
     Edit_surface.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
@@ -139,6 +192,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
       ~cursor_style:props.cursor_style ~cursor_color:props.cursor_color
       ~cursor_blinking:props.cursor_blinking ~selectable:props.selectable
       ~show_cursor:props.show_cursor ~mode:`Single_line
+      ~key_bindings:props.key_bindings ~key_aliases:props.key_aliases
       ~max_length:props.max_length ?on_input ?on_change ?on_submit ?on_cursor ()
   in
   { surface; props }

@@ -257,6 +257,14 @@ val cursor : t -> cursor option
 (** [cursor t] is the current hardware cursor state as reported by [t]'s cursor
     provider, or [None] if no provider is set. *)
 
+val set_on_focus : t -> (t -> unit) option -> unit
+(** [set_on_focus t callback] registers a focus lifecycle hook. The callback is
+    called immediately after [t] becomes focused. [None] clears the hook. *)
+
+val set_on_blur : t -> (t -> unit) option -> unit
+(** [set_on_blur t callback] registers a blur lifecycle hook. The callback is
+    called immediately after [t] loses focus. [None] clears the hook. *)
+
 (** {1:events Events} *)
 
 val on_mouse : t -> (Event.mouse -> unit) -> unit
@@ -268,14 +276,20 @@ val on_key : t -> (Event.key -> unit) -> unit
 (** [on_key t handler] registers a keyboard handler on [t]. Handlers accumulate
     and run newest-first until one calls {!Event.Key.prevent_default}. *)
 
+val on_paste : t -> (Event.paste -> unit) -> unit
+(** [on_paste t handler] registers a paste handler on [t]. Handlers accumulate
+    and run newest-first until one calls {!Event.Paste.prevent_default}. The
+    default paste handler runs afterwards if the event was not prevented. *)
+
 val set_default_key_handler : t -> (Event.key -> unit) option -> unit
 (** [set_default_key_handler t handler] assigns a fallback key handler that runs
     after {!on_key} handlers. Only one fallback handler per node. [None] clears
     it. *)
 
 val set_paste_handler : t -> (Event.paste -> unit) option -> unit
-(** [set_paste_handler t handler] assigns a paste handler on [t]. Only one paste
-    handler per node. [None] clears it. *)
+(** [set_paste_handler t handler] assigns the default paste handler on [t]. It
+    runs after {!on_paste} handlers when the paste event was not prevented. Only
+    one default handler per node. [None] clears it. *)
 
 (** {1:selection Selection} *)
 

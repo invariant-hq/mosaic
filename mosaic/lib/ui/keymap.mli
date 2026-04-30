@@ -20,6 +20,10 @@ val binding :
     Matrix reports terminal Alt input as either [alt] or [meta], and lookup
     accepts both. *)
 
+val binding_equal : ('a -> 'a -> bool) -> 'a binding -> 'a binding -> bool
+(** [binding_equal equal_action a b] is [true] iff [a] and [b] bind the same key
+    shape to equal actions. *)
+
 type 'a t
 (** The type for action lookup maps. *)
 

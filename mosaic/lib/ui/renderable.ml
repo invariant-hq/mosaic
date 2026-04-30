@@ -102,9 +102,12 @@ and node = {
   mutable focusable : bool;
   mutable focused : bool;
   mutable cursor_provider : (node -> cursor option) option;
+  mutable focus_handler : (node -> unit) option;
+  mutable blur_handler : (node -> unit) option;
   (* Events *)
   mutable mouse_handlers : (Event.mouse -> unit) list;
   mutable key_handlers : (Event.key -> unit) list;
+  mutable paste_handlers : (Event.paste -> unit) list;
   mutable default_key_handler : (Event.key -> unit) option;
   mutable paste_handler : (Event.paste -> unit) option;
   (* Selection *)
@@ -313,8 +316,11 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     focusable = false;
     focused = false;
     cursor_provider = None;
+    focus_handler = None;
+    blur_handler = None;
     mouse_handlers = [];
     key_handlers = [];
+    paste_handlers = [];
     default_key_handler = None;
     paste_handler = None;
     selection = None;
@@ -400,12 +406,14 @@ let focus_direct t =
   else if t.focused then true
   else (
     t.focused <- true;
+    Option.iter (fun handler -> handler t) t.focus_handler;
     t.ctx.schedule ();
     true)
 
 let blur_direct t =
   if t.focused then (
     t.focused <- false;
+    Option.iter (fun handler -> handler t) t.blur_handler;
     t.ctx.schedule ())
 
 let focus t = if not t.focusable then false else t.ctx.focus t
@@ -421,6 +429,8 @@ let clear_cursor_provider t =
     t.ctx.schedule ())
 
 let cursor t = Option.bind t.cursor_provider (fun f -> f t)
+let set_on_focus t handler = t.focus_handler <- handler
+let set_on_blur t handler = t.blur_handler <- handler
 
 (* ───── Rendering ───── *)
 
@@ -629,8 +639,11 @@ let destroy t =
     t.child_target <- None;
     t.mouse_handlers <- [];
     t.key_handlers <- [];
+    t.paste_handlers <- [];
     t.default_key_handler <- None;
     t.paste_handler <- None;
+    t.focus_handler <- None;
+    t.blur_handler <- None;
     t.selection <- None;
     t.child_clip <- None;
     t.line_info_provider <- None;
@@ -870,10 +883,13 @@ let set_live t v =
    [prevent_default]. No bubbling — keys target the focused node only. A
    separate [default_key_handler] runs after all regular handlers as a fallback
    (used by widgets to provide base key behavior that can be overridden by user
-   handlers). - Paste: single handler per node (last wins). No bubbling. *)
+   handlers). - Paste: handlers run newest-first, stopping when one calls
+   [prevent_default]. No bubbling. A separate [paste_handler] runs after regular
+   handlers as the default widget behavior. *)
 
 let on_mouse t handler = t.mouse_handlers <- handler :: t.mouse_handlers
 let on_key t handler = t.key_handlers <- handler :: t.key_handlers
+let on_paste t handler = t.paste_handlers <- handler :: t.paste_handlers
 let set_default_key_handler t handler = t.default_key_handler <- handler
 let set_paste_handler t handler = t.paste_handler <- handler
 
@@ -895,7 +911,15 @@ let emit_default_key t event =
   Option.iter (fun handler -> handler event) t.default_key_handler
 
 let emit_paste t event =
-  Option.iter (fun handler -> handler event) t.paste_handler
+  let rec run = function
+    | [] -> ()
+    | handler :: rest ->
+        handler event;
+        if not (Event.Paste.default_prevented event) then run rest
+  in
+  run t.paste_handlers;
+  if not (Event.Paste.default_prevented event) then
+    Option.iter (fun handler -> handler event) t.paste_handler
 
 (* ───── Selection ───── *)
 

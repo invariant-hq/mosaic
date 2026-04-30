@@ -814,7 +814,7 @@ let input ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?max_length ?text_color ?background_color ?focused_text_color
     ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
     ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
-    ?on_input ?on_change ?on_submit ?on_cursor () =
+    ?key_bindings ?key_aliases ?on_input ?on_change ?on_submit ?on_cursor () =
   let style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
@@ -830,7 +830,7 @@ let input ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?placeholder ?max_length ?text_color ?background_color ?focused_text_color
     ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
     ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
-    ?on_input ?on_change ?on_submit ?on_cursor ()
+    ?key_bindings ?key_aliases ?on_input ?on_change ?on_submit ?on_cursor ()
 
 let select ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
@@ -1022,7 +1022,8 @@ let textarea ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
     ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?selectable ?show_cursor ?on_input ?on_change ?on_submit ?on_cursor () =
+    ?selectable ?show_cursor ?key_bindings ?key_aliases ?on_input ?on_change
+    ?on_submit ?on_cursor () =
   let style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
@@ -1039,7 +1040,7 @@ let textarea ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
     ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?on_input ?on_change
-    ?on_submit ?on_cursor ()
+    ?key_bindings ?key_aliases ?on_submit ?on_cursor ()
 
 let code ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

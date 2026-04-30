@@ -196,14 +196,15 @@ let input ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?cursor ?selection ?placeholder ?max_length ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
     ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?selectable ?show_cursor ?on_input ?on_change ?on_submit ?on_cursor () =
+    ?selectable ?show_cursor ?key_bindings ?key_aliases ?on_input ?on_change
+    ?on_submit ?on_cursor () =
   let kind =
     Text_input
       (Text_input.Props.make ?value ?cursor ?selection ?placeholder ?max_length
          ?text_color ?background_color ?focused_text_color
          ?focused_background_color ?placeholder_color ?selection_color
          ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
-         ?show_cursor ())
+         ?show_cursor ?key_bindings ?key_aliases ())
   in
   let attrs =
     {
@@ -428,15 +429,15 @@ let textarea ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?cursor ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder ?wrap
     ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?on_input ?on_change
-    ?on_submit ?on_cursor () =
+    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
+    ?key_aliases ?on_input ?on_change ?on_submit ?on_cursor () =
   let kind =
     Textarea
       (Textarea.Props.make ?value ?cursor ?selection ?spans ?ghost_text
          ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
          ?focused_text_color ?focused_background_color ?placeholder_color
          ?selection_color ?selection_fg ?cursor_style ?cursor_color
-         ?cursor_blinking ?selectable ?show_cursor ())
+         ?cursor_blinking ?selectable ?show_cursor ?key_bindings ?key_aliases ())
   in
   let attrs =
     {

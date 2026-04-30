@@ -655,26 +655,8 @@ let create_fiber ~(parent : Renderable.t) (elem : unit Vnode.element) : fiber =
       match !mouse_ref with Some h -> h ev | None -> ());
   Renderable.on_key node (fun ev ->
       match !key_ref with Some h -> h ev | None -> ());
-  (* For Input/Textarea instances, chain paste handling: the widget processes
-     the paste first, then the user's on_paste handler runs. *)
-  (match instance with
-  | Text_input_instance input ->
-      Renderable.set_paste_handler node
-        (Some
-           (fun ev ->
-             if not (Event.Paste.default_prevented ev) then
-               Text_input.handle_paste input (Event.Paste.text ev);
-             match !paste_ref with Some h -> h ev | None -> ()))
-  | Textarea_instance textarea ->
-      Renderable.set_paste_handler node
-        (Some
-           (fun ev ->
-             if not (Event.Paste.default_prevented ev) then
-               Textarea.handle_paste textarea (Event.Paste.text ev);
-             match !paste_ref with Some h -> h ev | None -> ()))
-  | _ ->
-      Renderable.set_paste_handler node
-        (Some (fun ev -> match !paste_ref with Some h -> h ev | None -> ())));
+  Renderable.on_paste node (fun ev ->
+      match !paste_ref with Some h -> h ev | None -> ());
   {
     kind = elem.kind;
     key = elem.key;

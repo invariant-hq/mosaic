@@ -316,6 +316,8 @@ val input :
   ?cursor_blinking:bool ->
   ?selectable:bool ->
   ?show_cursor:bool ->
+  ?key_bindings:Text_input.key_binding list ->
+  ?key_aliases:(string * string) list ->
   ?on_input:(string -> 'msg) ->
   ?on_change:(string -> 'msg) ->
   ?on_submit:(string -> 'msg) ->
@@ -701,6 +703,8 @@ val textarea :
   ?cursor_blinking:bool ->
   ?selectable:bool ->
   ?show_cursor:bool ->
+  ?key_bindings:Textarea.key_binding list ->
+  ?key_aliases:(string * string) list ->
   ?on_input:(string -> 'msg) ->
   ?on_change:(string -> 'msg) ->
   ?on_submit:(string -> 'msg) ->

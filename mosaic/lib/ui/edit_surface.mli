@@ -14,6 +14,59 @@ type t
 type mode = [ `Multiline | `Single_line ]
 (** The editing mode. [`Single_line] strips newlines and submits on Enter. *)
 
+(** Editing actions resolved from key bindings. *)
+type action =
+  | Move_left
+  | Move_right
+  | Move_up
+  | Move_down
+  | Select_left
+  | Select_right
+  | Select_up
+  | Select_down
+  | Line_home
+  | Line_end
+  | Select_line_home
+  | Select_line_end
+  | Visual_line_home
+  | Visual_line_end
+  | Select_visual_line_home
+  | Select_visual_line_end
+  | Buffer_home
+  | Buffer_end
+  | Select_buffer_home
+  | Select_buffer_end
+  | Delete_line
+  | Delete_to_line_end
+  | Delete_to_line_start
+  | Backspace
+  | Delete
+  | Newline
+  | Undo
+  | Redo
+  | Word_forward
+  | Word_backward
+  | Select_word_forward
+  | Select_word_backward
+  | Delete_word_forward
+  | Delete_word_backward
+  | Select_all
+  | Submit
+
+type key_binding = action Keymap.binding
+(** The type for editing key bindings. *)
+
+val key_binding :
+  ?ctrl:bool ->
+  ?shift:bool ->
+  ?alt:bool ->
+  ?super:bool ->
+  string ->
+  action ->
+  key_binding
+(** [key_binding name action] binds [name] with optional modifiers to [action].
+*)
+
 (** {1:properties Properties} *)
 
 module Props : sig
@@ -41,6 +94,8 @@ module Props : sig
     ?cursor_blinking:bool ->
     ?selectable:bool ->
     ?show_cursor:bool ->
+    ?key_bindings:key_binding list ->
+    ?key_aliases:(string * string) list ->
     unit ->
     t
   (** [make ()] is a property set with textarea defaults. *)
@@ -87,6 +142,8 @@ val create :
   ?selectable:bool ->
   ?show_cursor:bool ->
   ?mode:mode ->
+  ?key_bindings:key_binding list ->
+  ?key_aliases:(string * string) list ->
   ?max_length:int ->
   ?on_input:(string -> unit) ->
   ?on_change:(string -> unit) ->

@@ -11,6 +11,11 @@ let binding ?(ctrl = false) ?(shift = false) ?(alt = false) ?(super = false)
     name action =
   { name; action; ctrl; shift; alt; super }
 
+let binding_equal equal_action a b =
+  String.equal a.name b.name && a.ctrl = b.ctrl && a.shift = b.shift
+  && a.alt = b.alt && a.super = b.super
+  && equal_action a.action b.action
+
 type key = {
   name : string;
   ctrl : bool;

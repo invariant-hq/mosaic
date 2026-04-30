@@ -17,6 +17,59 @@
 type t
 (** The type for single-line text inputs. *)
 
+type action = Textarea.action =
+  | Move_left
+  | Move_right
+  | Move_up
+  | Move_down
+  | Select_left
+  | Select_right
+  | Select_up
+  | Select_down
+  | Line_home
+  | Line_end
+  | Select_line_home
+  | Select_line_end
+  | Visual_line_home
+  | Visual_line_end
+  | Select_visual_line_home
+  | Select_visual_line_end
+  | Buffer_home
+  | Buffer_end
+  | Select_buffer_home
+  | Select_buffer_end
+  | Delete_line
+  | Delete_to_line_end
+  | Delete_to_line_start
+  | Backspace
+  | Delete
+  | Newline
+  | Undo
+  | Redo
+  | Word_forward
+  | Word_backward
+  | Select_word_forward
+  | Select_word_backward
+  | Delete_word_forward
+  | Delete_word_backward
+  | Select_all
+  | Submit
+(** Editing actions resolved from key bindings. *)
+
+type key_binding = Textarea.key_binding
+(** The type for text input key bindings. *)
+
+val key_binding :
+  ?ctrl:bool ->
+  ?shift:bool ->
+  ?alt:bool ->
+  ?super:bool ->
+  string ->
+  action ->
+  key_binding
+(** [key_binding name action] binds [name] with optional modifiers to [action].
+*)
+
 (** {1:construction Construction} *)
 
 val create :
@@ -44,6 +97,8 @@ val create :
   ?cursor_blinking:bool ->
   ?selectable:bool ->
   ?show_cursor:bool ->
+  ?key_bindings:key_binding list ->
+  ?key_aliases:(string * string) list ->
   ?on_input:(string -> unit) ->
   ?on_change:(string -> unit) ->
   ?on_submit:(string -> unit) ->
@@ -74,6 +129,8 @@ val create :
     - [cursor_blinking]: whether the cursor blinks. Defaults to [true].
     - [selectable]: whether mouse selection is enabled. Defaults to [true].
     - [show_cursor]: whether the focused cursor is shown. Defaults to [true].
+    - [key_bindings]: custom bindings that override default bindings.
+    - [key_aliases]: custom key aliases merged with default keypad aliases.
     - [on_input]: called after every text change.
     - [on_change]: called when committed value changes (blur or submit).
     - [on_submit]: called when Enter is pressed.
@@ -112,6 +169,8 @@ module Props : sig
     ?cursor_blinking:bool ->
     ?selectable:bool ->
     ?show_cursor:bool ->
+    ?key_bindings:key_binding list ->
+    ?key_aliases:(string * string) list ->
     unit ->
     t
   (** [make ()] is a property set with the same defaults as {!val-create}. *)

@@ -15,45 +15,45 @@ let default_ghost_text_color = Ansi.Color.grayscale ~level:12
 
 type mode = [ `Multiline | `Single_line ]
 
-module Action = struct
-  type t =
-    | Move_left
-    | Move_right
-    | Move_up
-    | Move_down
-    | Select_left
-    | Select_right
-    | Select_up
-    | Select_down
-    | Line_home
-    | Line_end
-    | Select_line_home
-    | Select_line_end
-    | Visual_line_home
-    | Visual_line_end
-    | Select_visual_line_home
-    | Select_visual_line_end
-    | Buffer_home
-    | Buffer_end
-    | Select_buffer_home
-    | Select_buffer_end
-    | Delete_line
-    | Delete_to_line_end
-    | Delete_to_line_start
-    | Backspace
-    | Delete
-    | Newline
-    | Undo
-    | Redo
-    | Word_forward
-    | Word_backward
-    | Select_word_forward
-    | Select_word_backward
-    | Delete_word_forward
-    | Delete_word_backward
-    | Select_all
-    | Submit
+type action =
+  | Move_left
+  | Move_right
+  | Move_up
+  | Move_down
+  | Select_left
+  | Select_right
+  | Select_up
+  | Select_down
+  | Line_home
+  | Line_end
+  | Select_line_home
+  | Select_line_end
+  | Visual_line_home
+  | Visual_line_end
+  | Select_visual_line_home
+  | Select_visual_line_end
+  | Buffer_home
+  | Buffer_end
+  | Select_buffer_home
+  | Select_buffer_end
+  | Delete_line
+  | Delete_to_line_end
+  | Delete_to_line_start
+  | Backspace
+  | Delete
+  | Newline
+  | Undo
+  | Redo
+  | Word_forward
+  | Word_backward
+  | Select_word_forward
+  | Select_word_backward
+  | Delete_word_forward
+  | Delete_word_backward
+  | Select_all
+  | Submit
 
+module Action = struct
   let b = Keymap.binding
 
   let defaults =
@@ -131,10 +131,15 @@ module Action = struct
 
   let input_overrides = [ b "return" Submit; b "linefeed" Submit ]
 
-  let keymap = function
-    | `Multiline -> Keymap.make ~defaults ()
-    | `Single_line -> Keymap.make ~defaults ~custom:input_overrides ()
+  let keymap ?(aliases = []) ?(custom = []) = function
+    | `Multiline -> Keymap.make ~aliases ~defaults ~custom ()
+    | `Single_line ->
+        Keymap.make ~aliases ~defaults ~custom:(input_overrides @ custom) ()
 end
+
+type key_binding = action Keymap.binding
+
+let key_binding = Keymap.binding
 
 module Props = struct
   type t = {
@@ -158,6 +163,8 @@ module Props = struct
     cursor_blinking : bool;
     selectable : bool;
     show_cursor : bool;
+    key_bindings : key_binding list;
+    key_aliases : (string * string) list;
   }
 
   let make ?(value = "") ?cursor ?selection ?(spans = []) ?ghost_text
@@ -171,7 +178,7 @@ module Props = struct
       ?(cursor_style = default_cursor_style)
       ?(cursor_color = default_cursor_color)
       ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
-      ?(show_cursor = true) () =
+      ?(show_cursor = true) ?(key_bindings = []) ?(key_aliases = []) () =
     {
       value;
       cursor;
@@ -193,6 +200,8 @@ module Props = struct
       cursor_blinking;
       selectable;
       show_cursor;
+      key_bindings;
+      key_aliases;
     }
 
   let default = make ()
@@ -227,6 +236,10 @@ module Props = struct
     && a.cursor_blinking = b.cursor_blinking
     && a.selectable = b.selectable
     && a.show_cursor = b.show_cursor
+    && List.equal (Keymap.binding_equal ( = )) a.key_bindings b.key_bindings
+    && List.equal
+         (fun (ak, av) (bk, bv) -> String.equal ak bk && String.equal av bv)
+         a.key_aliases b.key_aliases
 end
 
 (* Types *)
@@ -237,7 +250,6 @@ type t = {
   text_buf : Text_buffer.t;
   surface : Text_surface.t;
   mutable props : Props.t;
-  mutable was_focused : bool;
   mutable last_committed_value : string;
   mutable preferred_col : int option;
   mutable on_input : (string -> unit) option;
@@ -248,7 +260,7 @@ type t = {
   mutable last_cursor : int;
   mutable last_selection : (int * int) option;
   mode : mode;
-  keymap : Action.t Keymap.t;
+  mutable keymap : action Keymap.t;
 }
 
 (* Accessors *)
@@ -364,6 +376,14 @@ let sync_style t ~focused =
   Text_buffer.set_default_style t.text_buf (Ansi.Style.make ~fg ~bg ());
   sync_content t;
   Text_surface.invalidate t.surface
+
+let handle_focus t =
+  t.last_committed_value <- value t;
+  sync_style t ~focused:true
+
+let handle_blur t =
+  fire_on_change t;
+  sync_style t ~focused:false
 
 (* Display line mapping *)
 
@@ -499,15 +519,6 @@ let render_before t _self grid ~delta:_ =
     let x0 = Renderable.x t.node in
     let y0 = Renderable.y t.node in
     let focused = Renderable.focused t.node in
-    if focused && not t.was_focused then begin
-      t.last_committed_value <- value t;
-      sync_style t ~focused:true
-    end
-    else if (not focused) && t.was_focused then begin
-      fire_on_change t;
-      sync_style t ~focused:false
-    end;
-    t.was_focused <- focused;
     let bg =
       if focused then t.props.focused_background_color
       else t.props.background_color
@@ -740,7 +751,6 @@ let regular_text data c =
       if code < 32 || code = 127 then None else Some text
 
 let run_action t action =
-  let open Action in
   match action with
   | Move_left -> key_result ~moved:(Edit_buffer.move_left t.buf) ()
   | Move_right -> key_result ~moved:(Edit_buffer.move_right t.buf) ()
@@ -878,7 +888,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
     ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?(mode = `Multiline)
-    ?max_length ?on_input ?on_change ?on_submit ?on_cursor () =
+    ?key_bindings ?key_aliases ?max_length ?on_input ?on_change ?on_submit
+    ?on_cursor () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -887,7 +898,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
       ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
       ?focused_background_color ?placeholder_color ?selection_color
       ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
-      ?show_cursor ()
+      ?show_cursor ?key_bindings ?key_aliases ()
   in
   let max_length =
     match max_length with
@@ -925,7 +936,6 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
       text_buf;
       surface;
       props;
-      was_focused = false;
       last_committed_value = initial_value;
       preferred_col = None;
       on_input;
@@ -935,13 +945,21 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
       last_cursor = initial_cursor;
       last_selection = initial_selection;
       mode;
-      keymap = Action.keymap mode;
+      keymap =
+        Action.keymap ~aliases:props.key_aliases ~custom:props.key_bindings mode;
     }
   in
   Renderable.set_render_before node (Some (render_before t));
   Renderable.set_render_after node (Some (render_after t));
   Renderable.set_cursor_provider node (cursor_provider t);
+  Renderable.set_on_focus node (Some (fun _ -> handle_focus t));
+  Renderable.set_on_blur node (Some (fun _ -> handle_blur t));
   Renderable.set_default_key_handler node (Some (handle_key t));
+  Renderable.set_paste_handler node
+    (Some
+       (fun ev ->
+         if not (Event.Paste.default_prevented ev) then
+           handle_paste t (Event.Paste.text ev)));
   (match mode with
   | `Multiline -> ()
   | `Single_line -> Renderable.set_measure node (Some (measure_single_line t)));
@@ -954,9 +972,12 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
 (* Value *)
 
 let set_value t s =
+  let before = value t in
   Edit_buffer.set_text t.buf (sanitize_text t s);
+  let changed = not (String.equal before (value t)) in
   ignore (fire_on_cursor t : bool);
   sync t;
+  if changed then fire_on_input t;
   ensure_cursor_visible t;
   t.preferred_col <- None;
   Renderable.request_render t.node
@@ -993,6 +1014,16 @@ let set_max_length t n =
 let apply_props t (props : Props.t) =
   let spans_changed = not (Props.spans_equal t.props.spans props.spans) in
   let selectable_changed = t.props.selectable <> props.selectable in
+  let keymap_changed =
+    (not
+       (List.equal
+          (Keymap.binding_equal ( = ))
+          t.props.key_bindings props.key_bindings))
+    || not
+         (List.equal
+            (fun (ak, av) (bk, bv) -> String.equal ak bk && String.equal av bv)
+            t.props.key_aliases props.key_aliases)
+  in
   let style_changed =
     (not (Ansi.Color.equal t.props.text_color props.text_color))
     || (not (Ansi.Color.equal t.props.background_color props.background_color))
@@ -1029,6 +1060,9 @@ let apply_props t (props : Props.t) =
   in
   if t.props.wrap <> props.wrap then Text_surface.set_wrap t.surface props.wrap;
   t.props <- props;
+  if keymap_changed then
+    t.keymap <-
+      Action.keymap ~aliases:props.key_aliases ~custom:props.key_bindings t.mode;
   if selectable_changed then register_selection t;
   if style_changed then sync_style t ~focused:(Renderable.focused t.node)
   else if !value_replaced || spans_changed then sync t;

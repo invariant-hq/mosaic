@@ -1442,6 +1442,8 @@ val input :
   ?cursor_blinking:bool ->
   ?selectable:bool ->
   ?show_cursor:bool ->
+  ?key_bindings:Mosaic_ui.Text_input.key_binding list ->
+  ?key_aliases:(string * string) list ->
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->
@@ -2088,6 +2090,8 @@ val textarea :
   ?cursor_blinking:bool ->
   ?selectable:bool ->
   ?show_cursor:bool ->
+  ?key_bindings:Mosaic_ui.Textarea.key_binding list ->
+  ?key_aliases:(string * string) list ->
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->
