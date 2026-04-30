@@ -52,6 +52,27 @@ let focus_textarea t ta =
   ()
 
 let blur_textarea ta = Renderable.Private.blur_direct (Textarea.node ta)
+
+let sized_style ~width ~height =
+  Toffee.Style.default
+  |> Toffee.Style.set_width (Toffee.Style.Dimension.length (Float.of_int width))
+  |> Toffee.Style.set_height
+       (Toffee.Style.Dimension.length (Float.of_int height))
+
+let render_frame r ~width ~height =
+  Renderer.render_frame r ~width ~height ~delta:0.;
+  ignore (Renderer.render ~full:true r : string)
+
+let mouse_down ~x ~y =
+  Input.Mouse.make ~x ~y ~modifiers:Input.Modifier.none (Down { button = Left })
+
+let mouse_drag ~x ~y =
+  Input.Mouse.make ~x ~y ~modifiers:Input.Modifier.none (Drag { button = Left })
+
+let mouse_up ~x ~y =
+  Input.Mouse.make ~x ~y ~modifiers:Input.Modifier.none
+    (Up { button = Some Left })
+
 let ctrl_mod = { no_mod with Input.Modifier.ctrl = true }
 let shift_mod = { no_mod with Input.Modifier.shift = true }
 let alt_mod = { no_mod with Input.Modifier.alt = true }
@@ -628,12 +649,46 @@ let handle_paste_preserves_newlines () =
   is_true ~msg:"has newlines" (String.contains v '\n');
   equal ~msg:"value" string "line1\nline2\nline3" v
 
+let handle_paste_strips_ansi () =
+  let _t, ta = make_textarea () in
+  Textarea.handle_paste ta "\027[31mred\027[0m";
+  equal ~msg:"stripped" string "red" (Textarea.value ta)
+
 let handle_paste_with_selection_replaces () =
   let _t, ta = make_textarea ~value:"old" () in
   let buf = Textarea.buffer ta in
   Edit_buffer.select_all buf;
   Textarea.handle_paste ta "new\ntext";
   equal ~msg:"replaced" string "new\ntext" (Textarea.value ta)
+
+(* ── Mouse ── *)
+
+let mouse_selection_syncs_to_buffer () =
+  let r = Renderer.create () in
+  let ta =
+    Textarea.create ~parent:(Renderer.root r)
+      ~style:(sized_style ~width:20 ~height:3)
+      ~value:"hello world" ()
+  in
+  render_frame r ~width:20 ~height:3;
+  Renderer.dispatch_mouse r (mouse_down ~x:0 ~y:0);
+  Renderer.dispatch_mouse r (mouse_drag ~x:5 ~y:0);
+  Renderer.dispatch_mouse r (mouse_up ~x:5 ~y:0);
+  some ~msg:"selection" (pair int int) (0, 5) (Textarea.selection ta);
+  equal ~msg:"selected text" string "hello"
+    (Edit_buffer.selected_text (Textarea.buffer ta))
+
+let mouse_wheel_scrolls_surface () =
+  let lines = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten" in
+  let _t, ta = make_textarea ~value:lines () in
+  ignore (render_textarea ta ~width:20 ~height:3 : Grid.t);
+  let ev =
+    Event.Mouse.make ~x:0 ~y:0 ~modifiers:Event.Mouse.no_modifier
+      (Scroll { direction = Scroll_down; delta = 2 })
+  in
+  Renderable.Private.emit_mouse (Textarea.node ta) ev;
+  is_true ~msg:"scroll default prevented" (Event.Mouse.default_prevented ev);
+  equal ~msg:"scroll_y" int 2 (Text_surface.scroll_y (Textarea.surface ta))
 
 (* ── Cursor Provider ── *)
 
@@ -902,8 +957,14 @@ let () =
         [
           test "handle_paste inserts text" handle_paste_inserts_text;
           test "handle_paste preserves newlines" handle_paste_preserves_newlines;
+          test "handle_paste strips ansi" handle_paste_strips_ansi;
           test "handle_paste with selection replaces"
             handle_paste_with_selection_replaces;
+        ];
+      group "Mouse"
+        [
+          test "selection syncs to buffer" mouse_selection_syncs_to_buffer;
+          test "wheel scrolls surface" mouse_wheel_scrolls_surface;
         ];
       group "Cursor provider"
         [

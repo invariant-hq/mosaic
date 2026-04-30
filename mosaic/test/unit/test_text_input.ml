@@ -23,7 +23,7 @@ let render_input input ~width ~height =
   let node = Text_input.node input in
   layout_node node ~x:0 ~y:0 ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render node grid ~delta:0.;
+  Renderable.Private.render_full node ~grid ~delta:0.;
   grid
 
 let no_mod = Input.Modifier.none
@@ -684,6 +684,11 @@ let handle_paste_strips_newlines () =
   let v = Text_input.value input in
   is_false ~msg:"no newlines" (String.contains v '\n')
 
+let handle_paste_strips_ansi () =
+  let _t, input = make_input () in
+  Text_input.handle_paste input "\027[31mred\027[0m";
+  equal ~msg:"stripped" string "red" (Text_input.value input)
+
 let handle_paste_with_selection_replaces () =
   let _t, input = make_input ~value:"old" () in
   let buf = Text_input.buffer input in
@@ -998,6 +1003,7 @@ let () =
         [
           test "handle_paste inserts text" handle_paste_inserts_text;
           test "handle_paste strips newlines" handle_paste_strips_newlines;
+          test "handle_paste strips ansi" handle_paste_strips_ansi;
           test "handle_paste with selection replaces"
             handle_paste_with_selection_replaces;
         ];

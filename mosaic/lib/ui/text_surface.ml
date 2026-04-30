@@ -358,9 +358,17 @@ let scroll_height t = display_line_count t
 let scroll_width t = (display_info t).max_line_width
 let max_scroll_x t = max 0 (scroll_width t - Renderable.width t.node)
 let max_scroll_y t = max 0 (scroll_height t - Renderable.height t.node)
+let max_cursor_scroll_x t = max 0 (scroll_width t - Renderable.width t.node + 1)
 
 let set_scroll_x t x =
   let clamped = max 0 (min x (max_scroll_x t)) in
+  if t.scroll_x <> clamped then begin
+    t.scroll_x <- clamped;
+    Renderable.request_render t.node
+  end
+
+let set_scroll_x_for_cursor t x =
+  let clamped = max 0 (min x (max_cursor_scroll_x t)) in
   if t.scroll_x <> clamped then begin
     t.scroll_x <- clamped;
     Renderable.request_render t.node

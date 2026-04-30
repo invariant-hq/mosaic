@@ -74,6 +74,12 @@ val set_scroll_x : t -> int -> unit
 (** [set_scroll_x t x] sets the horizontal scroll offset, clamped to
     \[[0];{!max_scroll_x}\]. Requests a render if changed. *)
 
+val set_scroll_x_for_cursor : t -> int -> unit
+(** [set_scroll_x_for_cursor t x] sets the horizontal scroll offset for an
+    editable insertion cursor. Unlike {!set_scroll_x}, this may scroll one extra
+    cell past the last content column so a cursor at end-of-line remains
+    visible. *)
+
 val set_scroll_y : t -> int -> unit
 (** [set_scroll_y t y] sets the vertical scroll offset, clamped to
     \[[0];{!max_scroll_y}\]. Requests a render if changed. *)

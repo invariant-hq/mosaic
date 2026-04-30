@@ -3,6 +3,7 @@
 (library
  (name mosaic_ui)
  (public_name mosaic.ui)
+ (private_modules edit_surface)
  (libraries
   toffee
   cmarkit

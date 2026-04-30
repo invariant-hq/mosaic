@@ -136,7 +136,7 @@ val selection : t -> (int * int) option
 
 val set_value : t -> string -> unit
 (** [set_value t s] replaces the text content with [s] (newlines stripped).
-    Resets scroll to [0] and ensures cursor visibility. *)
+    Ensures the cursor remains visible. *)
 
 (** {1:callbacks Callbacks} *)
 
@@ -163,8 +163,8 @@ val set_on_cursor :
 (** {1:paste Paste} *)
 
 val handle_paste : t -> string -> unit
-(** [handle_paste t text] inserts [text] as if pasted, stripping newlines. Fires
-    [on_input] if the buffer changed. *)
+(** [handle_paste t text] inserts [text] as if pasted, stripping ANSI escape
+    sequences and newlines. Fires [on_input] if the buffer changed. *)
 
 (** {1:fmt Formatting} *)
 
