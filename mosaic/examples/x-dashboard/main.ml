@@ -1208,7 +1208,8 @@ let config_tab (r : run) =
   let json = config_json r in
   let spans =
     Tree_sitter_json.highlight json
-    |> Syntax_theme.apply Syntax_theme.default ~content:json
+    |> Syntax_highlight.of_triples
+    |> Syntax_highlight.to_spans ~style:Syntax_style.default ~content:json
   in
   let columns =
     [

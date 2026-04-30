@@ -14,8 +14,8 @@
       {!Canvas}, {!Select}, {!Tab_select}, {!Markdown}, {!Spinner},
       {!Progress_bar}, {!Textarea}, {!Scroll_bar}, {!Scroll_box}, {!Table},
       {!Tree}, {!Code}, {!Line_number}, and {!Diff}.
-    - {b Theming.} {!Syntax_theme} for tree-sitter/TextMate-style syntax
-      colouring. *)
+    - {b Theming.} {!Syntax_style} for tree-sitter/TextMate-style syntax
+      colouring and {!Syntax_highlight} for source highlight ranges. *)
 
 (** {1:events Events and input} *)
 
@@ -43,6 +43,12 @@ module Text_surface = Text_surface
 
 module Edit_buffer = Edit_buffer
 (** Grapheme-aware text editing buffer with cursor, selection, and undo. *)
+
+module Syntax_highlight = Syntax_highlight
+(** Source highlight ranges consumed by code renderables. *)
+
+module Syntax_style = Syntax_style
+(** Syntax styles: maps capture-group names to terminal styles. *)
 
 (** {1:widgets Widget catalogue} *)
 
@@ -101,9 +107,6 @@ module Diff = Diff
 (** Unified and split-view diff display. *)
 
 (** {1:theming Theming} *)
-
-module Syntax_theme = Syntax_theme
-(** Syntax themes: maps capture-group names to terminal styles. *)
 
 (** {1:vdom Declarative UI} *)
 

@@ -164,7 +164,8 @@ module Text_surface = Mosaic_ui.Text_surface
 module Line_number = Mosaic_ui.Line_number
 module Diff = Mosaic_ui.Diff
 module Markdown = Mosaic_ui.Markdown
-module Syntax_theme = Mosaic_ui.Syntax_theme
+module Syntax_highlight = Mosaic_ui.Syntax_highlight
+module Syntax_style = Mosaic_ui.Syntax_style
 
 (* Internal modules for tests *)
 

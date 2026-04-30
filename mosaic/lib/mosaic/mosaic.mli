@@ -673,27 +673,64 @@ module Markdown : sig
   (** The built-in terminal style resolver. *)
 end
 
-(** Syntax themes: maps capture-group names to terminal styles. *)
-module Syntax_theme : sig
-  type t = Mosaic_ui.Syntax_theme.t
-  (** The type for syntax themes. *)
+(** Syntax styles: maps capture-group names to terminal styles. *)
+module Syntax_style : sig
+  type t = Mosaic_ui.Syntax_style.t
+  (** The type for syntax styles. *)
 
   val make : base:Ansi.Style.t -> (string * Ansi.Style.t) list -> t
-  (** [make ~base mappings] is a theme with [base] as the default style. *)
+  (** [make ~base mappings] is a syntax style with [base] as the default style.
+  *)
 
   val default : t
-  (** The built-in dark theme. *)
+  (** The built-in dark syntax style. *)
+
+  val base : t -> Ansi.Style.t
+  (** [base style] is the default style for text outside highlighted ranges. *)
 
   val resolve_overlay : t -> string -> Ansi.Style.t
-  (** [resolve_overlay theme group] is the raw overlay style for [group]. *)
+  (** [resolve_overlay style group] is the raw overlay style for [group]. *)
 
   val resolve : t -> string -> Ansi.Style.t
-  (** [resolve theme group] is the complete style for [group]: overlay merged on
+  (** [resolve style group] is the complete style for [group]: overlay merged on
       top of the base style. *)
+end
 
-  val apply : t -> content:string -> (int * int * string) list -> span list
-  (** [apply theme ~content ranges] is the list of styled spans for [content]
-      under [theme]. *)
+(** Source highlight ranges. *)
+module Syntax_highlight : sig
+  type meta = Mosaic_ui.Syntax_highlight.meta = {
+    is_injection : bool;
+    contains_injection : bool;
+    conceal : string option;
+    conceal_lines : bool;
+  }
+  (** Metadata attached to a highlight range. *)
+
+  val default_meta : meta
+  (** [default_meta] has all flags disabled and no conceal replacement. *)
+
+  type range = Mosaic_ui.Syntax_highlight.range
+  (** A highlighted source byte range. *)
+
+  type t = Mosaic_ui.Syntax_highlight.t
+  (** A list of highlighted source byte ranges. *)
+
+  val range :
+    ?meta:meta ->
+    start_byte:int ->
+    end_byte:int ->
+    scope:string ->
+    unit ->
+    range
+  (** [range ~start_byte ~end_byte ~scope ()] highlights a source byte range. *)
+
+  val of_triples : (int * int * string) list -> t
+  (** [of_triples ranges] converts legacy range triples. *)
+
+  val to_spans :
+    ?conceal:bool -> style:Syntax_style.t -> content:string -> t -> span list
+  (** [to_spans ~style ~content ranges] converts highlight ranges to styled
+      spans. *)
 end
 
 (** {1:views Views} *)

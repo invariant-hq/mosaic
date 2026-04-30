@@ -68,7 +68,8 @@ let view model =
   let content = lang_content model.lang in
   let spans =
     highlight_fn model.lang content
-    |> Syntax_theme.apply Syntax_theme.default ~content
+    |> Syntax_highlight.of_triples
+    |> Syntax_highlight.to_spans ~style:Syntax_style.default ~content
   in
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = pct 100 }

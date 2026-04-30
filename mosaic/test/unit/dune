@@ -42,6 +42,12 @@
   test_harness))
 
 (test
+ (name test_syntax_highlight)
+ (modules test_syntax_highlight)
+ (package mosaic)
+ (libraries windtrap mosaic.ui matrix.ansi))
+
+(test
  (name test_text)
  (modules test_text)
  (package mosaic)

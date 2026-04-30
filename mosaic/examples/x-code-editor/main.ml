@@ -447,7 +447,8 @@ let completion_panel model =
 
 let highlight_ocaml code =
   let ranges = Tree_sitter_ocaml.highlight_ocaml code in
-  Syntax_theme.apply Syntax_theme.default ~content:code ranges
+  ranges |> Syntax_highlight.of_triples
+  |> Syntax_highlight.to_spans ~style:Syntax_style.default ~content:code
 
 let view model =
   let spans = highlight_ocaml model.code in
