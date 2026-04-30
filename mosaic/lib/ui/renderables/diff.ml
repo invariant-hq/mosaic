@@ -614,6 +614,9 @@ let old_code_syntax props highlight =
 let new_code_syntax props highlight =
   Option.map (code_syntax_for_split props) (new_syntax highlight)
 
+let unified_code_syntax highlight =
+  Option.map code_syntax (new_syntax highlight)
+
 let make_side ~parent ~style ~theme ~props =
   let side =
     Line_number.create ~parent ~style ~fg:theme.line_number_fg
@@ -674,6 +677,7 @@ let build_unified_view t (props : Props.t) =
   let code =
     Code.create ~parent:(Line_number.node side) ~style:full_style
       ~content:unified.View.content ~text_style:props.text_style
+      ?syntax:(unified_code_syntax props.highlight)
       ~wrap:props.wrap ~selectable:props.selectable ()
   in
   t.left_side <- Some side;

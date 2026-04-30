@@ -2362,7 +2362,7 @@ val diff :
     - [layout] -- [Diff.Unified] or [Diff.Split]. Defaults to [Diff.Unified].
     - [theme] -- colors for changed lines, gutters, and signs. Defaults to
       {!Diff.default_theme}.
-    - [highlight] -- optional highlighter-backed split-side syntax.
+    - [highlight] -- optional highlighter-backed syntax.
     - [line_highlights] -- source-line background highlights, using inclusive
       1-based old/new source line numbers. Earlier entries win when ranges
       overlap.
