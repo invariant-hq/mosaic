@@ -39,6 +39,8 @@ module Props : sig
     ?cursor_style:[ `Block | `Line | `Underline ] ->
     ?cursor_color:Ansi.Color.t ->
     ?cursor_blinking:bool ->
+    ?selectable:bool ->
+    ?show_cursor:bool ->
     unit ->
     t
   (** [make ()] is a property set with textarea defaults. *)
@@ -82,6 +84,8 @@ val create :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
+  ?selectable:bool ->
+  ?show_cursor:bool ->
   ?mode:mode ->
   ?max_length:int ->
   ?on_input:(string -> unit) ->

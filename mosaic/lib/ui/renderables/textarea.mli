@@ -47,6 +47,8 @@ val create :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
+  ?selectable:bool ->
+  ?show_cursor:bool ->
   ?on_input:(string -> unit) ->
   ?on_change:(string -> unit) ->
   ?on_submit:(string -> unit) ->
@@ -80,6 +82,8 @@ val create :
     - [cursor_color]: cursor color when focused. Defaults to
       {!Ansi.Color.white}.
     - [cursor_blinking]: whether the cursor blinks. Defaults to [true].
+    - [selectable]: whether mouse selection is enabled. Defaults to [true].
+    - [show_cursor]: whether the focused cursor is shown. Defaults to [true].
     - [on_input]: called after every text change.
     - [on_change]: called when committed value changes (blur or submit).
     - [on_submit]: called when Cmd+Enter or Ctrl+Enter is pressed.
@@ -121,6 +125,8 @@ module Props : sig
     ?cursor_style:[ `Block | `Line | `Underline ] ->
     ?cursor_color:Ansi.Color.t ->
     ?cursor_blinking:bool ->
+    ?selectable:bool ->
+    ?show_cursor:bool ->
     unit ->
     t
   (** [make ()] is a property set with the same defaults as {!val-create}. *)

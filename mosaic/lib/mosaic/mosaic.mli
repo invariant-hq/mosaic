@@ -1401,6 +1401,8 @@ val input :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
+  ?selectable:bool ->
+  ?show_cursor:bool ->
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->
@@ -1433,6 +1435,10 @@ val input :
       Defaults to [`Block].
     - [cursor_color] -- color of the cursor. Defaults to white.
     - [cursor_blinking] -- when [true] the cursor blinks. Defaults to [true].
+    - [selectable] -- when [true] mouse selection is enabled. Defaults to
+      [true].
+    - [show_cursor] -- when [true] the focused cursor is shown. Defaults to
+      [true].
     - [on_input] -- fired on every keystroke; receives the full current value
       after the change.
     - [on_change] -- fired when the value changes after editing; semantics may
@@ -2041,6 +2047,8 @@ val textarea :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
+  ?selectable:bool ->
+  ?show_cursor:bool ->
   ?on_input:(string -> 'msg option) ->
   ?on_change:(string -> 'msg option) ->
   ?on_submit:(string -> 'msg option) ->

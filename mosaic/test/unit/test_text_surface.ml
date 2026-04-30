@@ -250,9 +250,16 @@ let buffer_version_triggers_recompute () =
   let s = make_surface ~content:"hello" () in
   let _ = Text_surface.display_info s in
   Text_buffer.set_text (Text_surface.buffer s) "ab\ncd\nef";
-  Text_surface.invalidate s;
   let info = Text_surface.display_info s in
   equal ~msg:"3 lines" int 3 (Array.length info.lines)
+
+let buffer_tab_width_triggers_recompute () =
+  let s = make_surface ~content:"a\tb" () in
+  let info = Text_surface.display_info s in
+  equal ~msg:"width with default tab" int 4 info.max_line_width;
+  Text_buffer.set_tab_width (Text_surface.buffer s) 8;
+  let info = Text_surface.display_info s in
+  equal ~msg:"width with updated tab" int 10 info.max_line_width
 
 (* ── Measurement ── *)
 
@@ -523,6 +530,8 @@ let () =
           test "invalidate clears cache" invalidate_clears_cache;
           test "buffer version triggers recompute"
             buffer_version_triggers_recompute;
+          test "buffer tab width triggers recompute"
+            buffer_tab_width_triggers_recompute;
         ];
       group "Measurement"
         [

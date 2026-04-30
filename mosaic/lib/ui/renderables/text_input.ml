@@ -29,6 +29,8 @@ module Props = struct
     cursor_style : [ `Block | `Line | `Underline ];
     cursor_color : Ansi.Color.t;
     cursor_blinking : bool;
+    selectable : bool;
+    show_cursor : bool;
   }
 
   let make ?(value = "") ?cursor ?selection ?(placeholder = "")
@@ -40,7 +42,8 @@ module Props = struct
       ?(selection_color = default_selection_color) ?selection_fg
       ?(cursor_style = default_cursor_style)
       ?(cursor_color = default_cursor_color)
-      ?(cursor_blinking = default_cursor_blinking) () =
+      ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
+      ?(show_cursor = true) () =
     {
       value;
       cursor;
@@ -57,6 +60,8 @@ module Props = struct
       cursor_style;
       cursor_color;
       cursor_blinking;
+      selectable;
+      show_cursor;
     }
 
   let default = make ()
@@ -79,6 +84,8 @@ module Props = struct
     && a.cursor_style = b.cursor_style
     && Ansi.Color.equal a.cursor_color b.cursor_color
     && a.cursor_blinking = b.cursor_blinking
+    && a.selectable = b.selectable
+    && a.show_cursor = b.show_cursor
 end
 
 type t = { surface : Edit_surface.t; mutable props : Props.t }
@@ -94,7 +101,8 @@ let surface_props (props : Props.t) =
     ~placeholder_color:props.placeholder_color
     ~selection_color:props.selection_color ?selection_fg:props.selection_fg
     ~cursor_style:props.cursor_style ~cursor_color:props.cursor_color
-    ~cursor_blinking:props.cursor_blinking ()
+    ~cursor_blinking:props.cursor_blinking ~selectable:props.selectable
+    ~show_cursor:props.show_cursor ()
 
 let node t = Edit_surface.node t.surface
 let buffer t = Edit_surface.buffer t.surface
@@ -111,12 +119,12 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     ?selection ?placeholder ?max_length ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
     ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?on_input ?on_change ?on_submit ?on_cursor () =
+    ?selectable ?show_cursor ?on_input ?on_change ?on_submit ?on_cursor () =
   let props =
     Props.make ?value ?cursor ?selection ?placeholder ?max_length ?text_color
       ?background_color ?focused_text_color ?focused_background_color
       ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-      ?cursor_color ?cursor_blinking ()
+      ?cursor_color ?cursor_blinking ?selectable ?show_cursor ()
   in
   let surface =
     Edit_surface.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
@@ -129,7 +137,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
       ~placeholder_color:props.placeholder_color
       ~selection_color:props.selection_color ?selection_fg:props.selection_fg
       ~cursor_style:props.cursor_style ~cursor_color:props.cursor_color
-      ~cursor_blinking:props.cursor_blinking ~mode:`Single_line
+      ~cursor_blinking:props.cursor_blinking ~selectable:props.selectable
+      ~show_cursor:props.show_cursor ~mode:`Single_line
       ~max_length:props.max_length ?on_input ?on_change ?on_submit ?on_cursor ()
   in
   { surface; props }

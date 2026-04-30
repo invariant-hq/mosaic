@@ -15,6 +15,127 @@ let default_ghost_text_color = Ansi.Color.grayscale ~level:12
 
 type mode = [ `Multiline | `Single_line ]
 
+module Action = struct
+  type t =
+    | Move_left
+    | Move_right
+    | Move_up
+    | Move_down
+    | Select_left
+    | Select_right
+    | Select_up
+    | Select_down
+    | Line_home
+    | Line_end
+    | Select_line_home
+    | Select_line_end
+    | Visual_line_home
+    | Visual_line_end
+    | Select_visual_line_home
+    | Select_visual_line_end
+    | Buffer_home
+    | Buffer_end
+    | Select_buffer_home
+    | Select_buffer_end
+    | Delete_line
+    | Delete_to_line_end
+    | Delete_to_line_start
+    | Backspace
+    | Delete
+    | Newline
+    | Undo
+    | Redo
+    | Word_forward
+    | Word_backward
+    | Select_word_forward
+    | Select_word_backward
+    | Delete_word_forward
+    | Delete_word_backward
+    | Select_all
+    | Submit
+
+  let b = Keymap.binding
+
+  let defaults =
+    [
+      b "left" Move_left;
+      b "right" Move_right;
+      b "up" Move_up;
+      b "down" Move_down;
+      b ~shift:true "left" Select_left;
+      b ~shift:true "right" Select_right;
+      b ~shift:true "up" Select_up;
+      b ~shift:true "down" Select_down;
+      b "home" Buffer_home;
+      b "end" Buffer_end;
+      b ~shift:true "home" Select_buffer_home;
+      b ~shift:true "end" Select_buffer_end;
+      b ~ctrl:true "a" Line_home;
+      b ~ctrl:true "e" Line_end;
+      b ~ctrl:true ~shift:true "a" Select_line_home;
+      b ~ctrl:true ~shift:true "e" Select_line_end;
+      b ~alt:true "a" Visual_line_home;
+      b ~alt:true "e" Visual_line_end;
+      b ~alt:true ~shift:true "a" Select_visual_line_home;
+      b ~alt:true ~shift:true "e" Select_visual_line_end;
+      b ~ctrl:true "f" Move_right;
+      b ~ctrl:true "b" Move_left;
+      b ~ctrl:true "w" Delete_word_backward;
+      b ~ctrl:true "backspace" Delete_word_backward;
+      b ~alt:true "d" Delete_word_forward;
+      b ~alt:true "delete" Delete_word_forward;
+      b ~ctrl:true "delete" Delete_word_forward;
+      b ~ctrl:true ~shift:true "d" Delete_line;
+      b ~ctrl:true "k" Delete_to_line_end;
+      b ~ctrl:true "u" Delete_to_line_start;
+      b "backspace" Backspace;
+      b ~shift:true "backspace" Backspace;
+      b ~ctrl:true "d" Delete;
+      b "delete" Delete;
+      b ~shift:true "delete" Delete;
+      b "return" Newline;
+      b "linefeed" Newline;
+      b ~alt:true "return" Submit;
+      b ~ctrl:true "return" Submit;
+      b ~super:true "return" Submit;
+      b ~alt:true "linefeed" Submit;
+      b ~ctrl:true "linefeed" Submit;
+      b ~super:true "linefeed" Submit;
+      b ~ctrl:true "-" Undo;
+      b ~ctrl:true "." Redo;
+      b ~ctrl:true "z" Undo;
+      b ~ctrl:true ~shift:true "z" Redo;
+      b ~super:true "z" Undo;
+      b ~super:true ~shift:true "z" Redo;
+      b ~alt:true "f" Word_forward;
+      b ~alt:true "b" Word_backward;
+      b ~alt:true "right" Word_forward;
+      b ~alt:true "left" Word_backward;
+      b ~ctrl:true "right" Word_forward;
+      b ~ctrl:true "left" Word_backward;
+      b ~alt:true ~shift:true "f" Select_word_forward;
+      b ~alt:true ~shift:true "b" Select_word_backward;
+      b ~alt:true ~shift:true "right" Select_word_forward;
+      b ~alt:true ~shift:true "left" Select_word_backward;
+      b ~alt:true "backspace" Delete_word_backward;
+      b ~super:true "left" Visual_line_home;
+      b ~super:true "right" Visual_line_end;
+      b ~super:true "up" Buffer_home;
+      b ~super:true "down" Buffer_end;
+      b ~super:true ~shift:true "left" Select_visual_line_home;
+      b ~super:true ~shift:true "right" Select_visual_line_end;
+      b ~super:true ~shift:true "up" Select_buffer_home;
+      b ~super:true ~shift:true "down" Select_buffer_end;
+      b ~super:true "a" Select_all;
+    ]
+
+  let input_overrides = [ b "return" Submit; b "linefeed" Submit ]
+
+  let keymap = function
+    | `Multiline -> Keymap.make ~defaults ()
+    | `Single_line -> Keymap.make ~defaults ~custom:input_overrides ()
+end
+
 module Props = struct
   type t = {
     value : string;
@@ -35,6 +156,8 @@ module Props = struct
     cursor_style : [ `Block | `Line | `Underline ];
     cursor_color : Ansi.Color.t;
     cursor_blinking : bool;
+    selectable : bool;
+    show_cursor : bool;
   }
 
   let make ?(value = "") ?cursor ?selection ?(spans = []) ?ghost_text
@@ -47,7 +170,8 @@ module Props = struct
       ?(selection_color = default_selection_color) ?selection_fg
       ?(cursor_style = default_cursor_style)
       ?(cursor_color = default_cursor_color)
-      ?(cursor_blinking = default_cursor_blinking) () =
+      ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
+      ?(show_cursor = true) () =
     {
       value;
       cursor;
@@ -67,6 +191,8 @@ module Props = struct
       cursor_style;
       cursor_color;
       cursor_blinking;
+      selectable;
+      show_cursor;
     }
 
   let default = make ()
@@ -99,6 +225,8 @@ module Props = struct
     && a.cursor_style = b.cursor_style
     && Ansi.Color.equal a.cursor_color b.cursor_color
     && a.cursor_blinking = b.cursor_blinking
+    && a.selectable = b.selectable
+    && a.show_cursor = b.show_cursor
 end
 
 (* Types *)
@@ -120,6 +248,7 @@ type t = {
   mutable last_cursor : int;
   mutable last_selection : (int * int) option;
   mode : mode;
+  keymap : Action.t Keymap.t;
 }
 
 (* Accessors *)
@@ -430,7 +559,7 @@ let render_after t _self grid ~delta:_ =
 (* Cursor *)
 
 let cursor_provider t _self =
-  if not (Renderable.focused t.node) then None
+  if (not t.props.show_cursor) || not (Renderable.focused t.node) then None
   else
     let dl = find_cursor_display_line t in
     let sy = Text_surface.scroll_y t.surface in
@@ -462,47 +591,54 @@ let sync_buffer_selection_from_surface t =
       Edit_buffer.set_cursor_offset ~select:true t.buf hi
 
 let register_selection t =
-  Renderable.set_selection t.node
-    ~should_start:(fun ~x ~y ->
-      let nx = Renderable.x t.node in
-      let ny = Renderable.y t.node in
-      let w = Renderable.width t.node in
-      let h = Renderable.height t.node in
-      x >= nx && x < nx + w && y >= ny && y < ny + h)
-    ~on_change:(fun sel ->
-      match sel with
-      | None ->
-          Text_surface.reset_selection t.surface;
-          Edit_buffer.clear_selection t.buf;
-          ignore (fire_on_cursor t : bool);
-          true
-      | Some sel ->
-          let nx = Renderable.x t.node in
-          let ny = Renderable.y t.node in
-          let anchor = Selection.anchor sel in
-          let focus = Selection.focus sel in
-          let ax = anchor.x - nx and ay = anchor.y - ny in
-          let fx = focus.x - nx and fy = focus.y - ny in
-          let changed =
-            if Selection.is_start sel then
-              Text_surface.set_local_selection t.surface ~anchor_x:ax
-                ~anchor_y:ay ~focus_x:fx ~focus_y:fy
-            else
-              Text_surface.update_local_selection t.surface ~anchor_x:ax
-                ~anchor_y:ay ~focus_x:fx ~focus_y:fy
-          in
-          if changed then begin
-            sync_buffer_selection_from_surface t;
+  if t.props.selectable then
+    Renderable.set_selection t.node
+      ~should_start:(fun ~x ~y ->
+        let nx = Renderable.x t.node in
+        let ny = Renderable.y t.node in
+        let w = Renderable.width t.node in
+        let h = Renderable.height t.node in
+        x >= nx && x < nx + w && y >= ny && y < ny + h)
+      ~on_change:(fun sel ->
+        match sel with
+        | None ->
+            Text_surface.reset_selection t.surface;
+            Edit_buffer.clear_selection t.buf;
             ignore (fire_on_cursor t : bool);
-            ensure_cursor_visible t;
-            Renderable.request_render t.node
-          end;
-          Edit_buffer.has_selection t.buf)
-    ~clear:(fun () ->
-      Text_surface.reset_selection t.surface;
-      Edit_buffer.clear_selection t.buf;
-      ignore (fire_on_cursor t : bool))
-    ~get_text:(fun () -> Edit_buffer.selected_text t.buf)
+            true
+        | Some sel ->
+            let nx = Renderable.x t.node in
+            let ny = Renderable.y t.node in
+            let anchor = Selection.anchor sel in
+            let focus = Selection.focus sel in
+            let ax = anchor.x - nx and ay = anchor.y - ny in
+            let fx = focus.x - nx and fy = focus.y - ny in
+            let changed =
+              if Selection.is_start sel then
+                Text_surface.set_local_selection t.surface ~anchor_x:ax
+                  ~anchor_y:ay ~focus_x:fx ~focus_y:fy
+              else
+                Text_surface.update_local_selection t.surface ~anchor_x:ax
+                  ~anchor_y:ay ~focus_x:fx ~focus_y:fy
+            in
+            if changed then begin
+              sync_buffer_selection_from_surface t;
+              ignore (fire_on_cursor t : bool);
+              ensure_cursor_visible t;
+              Renderable.request_render t.node
+            end;
+            Edit_buffer.has_selection t.buf)
+      ~clear:(fun () ->
+        Text_surface.reset_selection t.surface;
+        Edit_buffer.clear_selection t.buf;
+        ignore (fire_on_cursor t : bool))
+      ~get_text:(fun () -> Edit_buffer.selected_text t.buf)
+  else begin
+    Text_surface.reset_selection t.surface;
+    Edit_buffer.clear_selection t.buf;
+    ignore (fire_on_cursor t : bool);
+    Renderable.unset_selection t.node
+  end
 
 (* Vertical movement *)
 
@@ -555,129 +691,161 @@ let move_visual_line_end t ~select =
 
 (* Key handling *)
 
-let normalize_modified_char_code (m : Input.Modifier.t) c =
-  let code = Uchar.to_int c in
-  if
-    (m.ctrl || m.alt || m.super || m.meta || m.hyper)
-    && code >= Char.code 'A'
-    && code <= Char.code 'Z'
-  then code + 32
-  else code
+type key_result = {
+  handled : bool;
+  changed : bool;
+  moved : bool;
+  vertical : bool;
+}
+
+let key_result ?(changed = false) ?(moved = false) ?(vertical = false) () =
+  { handled = true; changed; moved; vertical }
+
+let unhandled =
+  { handled = false; changed = false; moved = false; vertical = false }
+
+let line_home t ~select =
+  if Edit_buffer.move_line_start ~select t.buf then true
+  else
+    let line = Edit_buffer.cursor_line t.buf in
+    line > 0 && Edit_buffer.move_left ~select t.buf
+
+let line_end t ~select =
+  if Edit_buffer.move_line_end ~select t.buf then true
+  else
+    let line = Edit_buffer.cursor_line t.buf in
+    line < Edit_buffer.line_count t.buf - 1
+    && Edit_buffer.move_right ~select t.buf
+
+let select_all_changed t =
+  let old_cursor = cursor t in
+  let old_selection = selection t in
+  Edit_buffer.select_all t.buf;
+  old_cursor <> cursor t || old_selection <> selection t
+
+let regular_text data c =
+  let m = data.Input.Key.modifier in
+  if m.ctrl || m.alt || m.super || m.meta || m.hyper then None
+  else
+    let text =
+      if String.length data.associated_text > 0 then data.associated_text
+      else
+        let buf = Buffer.create 4 in
+        Buffer.add_utf_8_uchar buf c;
+        Buffer.contents buf
+    in
+    if String.length text = 0 then None
+    else
+      let code = Char.code text.[0] in
+      if code < 32 || code = 127 then None else Some text
+
+let run_action t action =
+  let open Action in
+  match action with
+  | Move_left -> key_result ~moved:(Edit_buffer.move_left t.buf) ()
+  | Move_right -> key_result ~moved:(Edit_buffer.move_right t.buf) ()
+  | Move_up when t.mode = `Multiline ->
+      key_result
+        ~moved:(move_vertical t ~select:false ~delta:(-1))
+        ~vertical:true ()
+  | Move_down when t.mode = `Multiline ->
+      key_result
+        ~moved:(move_vertical t ~select:false ~delta:1)
+        ~vertical:true ()
+  | Move_up | Move_down -> unhandled
+  | Select_left ->
+      key_result ~moved:(Edit_buffer.move_left ~select:true t.buf) ()
+  | Select_right ->
+      key_result ~moved:(Edit_buffer.move_right ~select:true t.buf) ()
+  | Select_up when t.mode = `Multiline ->
+      key_result
+        ~moved:(move_vertical t ~select:true ~delta:(-1))
+        ~vertical:true ()
+  | Select_down when t.mode = `Multiline ->
+      key_result
+        ~moved:(move_vertical t ~select:true ~delta:1)
+        ~vertical:true ()
+  | Select_up | Select_down -> unhandled
+  | Line_home -> key_result ~moved:(line_home t ~select:false) ()
+  | Line_end -> key_result ~moved:(line_end t ~select:false) ()
+  | Select_line_home -> key_result ~moved:(line_home t ~select:true) ()
+  | Select_line_end -> key_result ~moved:(line_end t ~select:true) ()
+  | Visual_line_home ->
+      key_result ~moved:(move_visual_line_start t ~select:false) ()
+  | Visual_line_end ->
+      key_result ~moved:(move_visual_line_end t ~select:false) ()
+  | Select_visual_line_home ->
+      key_result ~moved:(move_visual_line_start t ~select:true) ()
+  | Select_visual_line_end ->
+      key_result ~moved:(move_visual_line_end t ~select:true) ()
+  | Buffer_home -> key_result ~moved:(Edit_buffer.move_home t.buf) ()
+  | Buffer_end -> key_result ~moved:(Edit_buffer.move_end t.buf) ()
+  | Select_buffer_home ->
+      key_result ~moved:(Edit_buffer.move_home ~select:true t.buf) ()
+  | Select_buffer_end ->
+      key_result ~moved:(Edit_buffer.move_end ~select:true t.buf) ()
+  | Delete_line -> key_result ~changed:(Edit_buffer.delete_line t.buf) ()
+  | Delete_to_line_end ->
+      key_result ~changed:(Edit_buffer.delete_to_line_end t.buf) ()
+  | Delete_to_line_start ->
+      key_result ~changed:(Edit_buffer.delete_to_line_start t.buf) ()
+  | Backspace -> key_result ~changed:(Edit_buffer.delete_backward t.buf) ()
+  | Delete -> key_result ~changed:(Edit_buffer.delete_forward t.buf) ()
+  | Newline when t.mode = `Multiline ->
+      key_result ~changed:(Edit_buffer.insert t.buf "\n") ()
+  | Newline ->
+      fire_on_submit t;
+      key_result ()
+  | Undo -> key_result ~changed:(Edit_buffer.undo t.buf) ()
+  | Redo -> key_result ~changed:(Edit_buffer.redo t.buf) ()
+  | Word_forward -> key_result ~moved:(Edit_buffer.move_word_forward t.buf) ()
+  | Word_backward -> key_result ~moved:(Edit_buffer.move_word_backward t.buf) ()
+  | Select_word_forward ->
+      key_result ~moved:(Edit_buffer.move_word_forward ~select:true t.buf) ()
+  | Select_word_backward ->
+      key_result ~moved:(Edit_buffer.move_word_backward ~select:true t.buf) ()
+  | Delete_word_forward ->
+      key_result ~changed:(Edit_buffer.delete_word_forward t.buf) ()
+  | Delete_word_backward ->
+      key_result ~changed:(Edit_buffer.delete_word_backward t.buf) ()
+  | Select_all -> key_result ~moved:(select_all_changed t) ()
+  | Submit ->
+      fire_on_submit t;
+      key_result ()
+
+let key_result_of_event t data =
+  match Keymap.action t.keymap data with
+  | Some action -> run_action t action
+  | None -> (
+      match data.Input.Key.key with
+      | Input.Key.Char c -> (
+          match regular_text data c with
+          | Some text ->
+              key_result
+                ~changed:(Edit_buffer.insert t.buf (sanitize_text t text))
+                ()
+          | None -> unhandled)
+      | _ -> unhandled)
+
+let apply_key_result t ev result =
+  if result.handled then begin
+    Event.Key.prevent_default ev;
+    if result.changed then sync t;
+    if result.changed then fire_on_input t;
+    let cursor_changed = fire_on_cursor t in
+    if result.changed || result.moved || cursor_changed then
+      ensure_cursor_visible t;
+    if not result.vertical then t.preferred_col <- None;
+    Renderable.request_render t.node
+  end
 
 let handle_key t (ev : Event.key) =
   let data = Event.Key.data ev in
-  if data.event_type = Release then ()
-  else if Event.Key.default_prevented ev then ()
-  else begin
-    let m = data.modifier in
-    let changed = ref false in
-    let handled = ref true in
-    let moved = ref false in
-    (match data.key with
-    | Left when m.super -> moved := move_visual_line_start t ~select:m.shift
-    | Left when m.ctrl || m.alt ->
-        moved := Edit_buffer.move_word_backward ~select:m.shift t.buf
-    | Left -> moved := Edit_buffer.move_left ~select:m.shift t.buf
-    | Right when m.super -> moved := move_visual_line_end t ~select:m.shift
-    | Right when m.ctrl || m.alt ->
-        moved := Edit_buffer.move_word_forward ~select:m.shift t.buf
-    | Right -> moved := Edit_buffer.move_right ~select:m.shift t.buf
-    | Up when m.super -> moved := Edit_buffer.move_home ~select:m.shift t.buf
-    | Down when m.super -> moved := Edit_buffer.move_end ~select:m.shift t.buf
-    | Up when t.mode = `Multiline ->
-        moved := move_vertical t ~select:m.shift ~delta:(-1)
-    | Down when t.mode = `Multiline ->
-        moved := move_vertical t ~select:m.shift ~delta:1
-    | Up | Down -> handled := false
-    | Home -> moved := Edit_buffer.move_home ~select:m.shift t.buf
-    | End -> moved := Edit_buffer.move_end ~select:m.shift t.buf
-    | Backspace when m.ctrl || m.alt ->
-        changed := Edit_buffer.delete_word_backward t.buf
-    | Backspace -> changed := Edit_buffer.delete_backward t.buf
-    | Delete when m.ctrl || m.alt ->
-        changed := Edit_buffer.delete_word_forward t.buf
-    | Delete -> changed := Edit_buffer.delete_forward t.buf
-    | (Enter | Line_feed) when t.mode = `Single_line -> fire_on_submit t
-    | (Enter | Line_feed) when m.super || m.ctrl || m.alt -> fire_on_submit t
-    | Enter | Line_feed -> changed := Edit_buffer.insert t.buf "\n"
-    | Char c ->
-        let code = normalize_modified_char_code m c in
-        if m.super && code = 0x61 then Edit_buffer.select_all t.buf
-        else if m.ctrl then begin
-          match code with
-          | 0x61 ->
-              if not (Edit_buffer.move_line_start ~select:m.shift t.buf) then begin
-                let line = Edit_buffer.cursor_line t.buf in
-                if line > 0 then
-                  moved := Edit_buffer.move_left ~select:m.shift t.buf
-              end
-              else moved := true
-          | 0x65 ->
-              if not (Edit_buffer.move_line_end ~select:m.shift t.buf) then begin
-                let line = Edit_buffer.cursor_line t.buf in
-                if line < Edit_buffer.line_count t.buf - 1 then
-                  moved := Edit_buffer.move_right ~select:m.shift t.buf
-              end
-              else moved := true
-          | 0x62 -> moved := Edit_buffer.move_left ~select:m.shift t.buf
-          | 0x66 -> moved := Edit_buffer.move_right ~select:m.shift t.buf
-          | 0x64 when m.shift -> changed := Edit_buffer.delete_line t.buf
-          | 0x64 -> changed := Edit_buffer.delete_forward t.buf
-          | 0x6B -> changed := Edit_buffer.delete_to_line_end t.buf
-          | 0x75 -> changed := Edit_buffer.delete_to_line_start t.buf
-          | 0x77 -> changed := Edit_buffer.delete_word_backward t.buf
-          | 0x2D -> changed := Edit_buffer.undo t.buf
-          | 0x2E -> changed := Edit_buffer.redo t.buf
-          | _ ->
-              if m.shift then begin
-                match code with
-                | 0x7A -> changed := Edit_buffer.redo t.buf
-                | _ -> handled := false
-              end
-              else begin
-                match code with
-                | 0x7A -> changed := Edit_buffer.undo t.buf
-                | _ -> handled := false
-              end
-        end
-        else if m.alt then begin
-          match code with
-          | 0x61 -> moved := move_visual_line_start t ~select:m.shift
-          | 0x65 -> moved := move_visual_line_end t ~select:m.shift
-          | 0x62 ->
-              moved := Edit_buffer.move_word_backward ~select:m.shift t.buf
-          | 0x66 -> moved := Edit_buffer.move_word_forward ~select:m.shift t.buf
-          | 0x64 -> changed := Edit_buffer.delete_word_forward t.buf
-          | _ -> handled := false
-        end
-        else if m.super then begin
-          match code with
-          | 0x7A when m.shift -> changed := Edit_buffer.redo t.buf
-          | 0x7A -> changed := Edit_buffer.undo t.buf
-          | _ -> handled := false
-        end
-        else begin
-          let text_to_insert =
-            if String.length data.associated_text > 0 then data.associated_text
-            else
-              let buf = Buffer.create 4 in
-              Buffer.add_utf_8_uchar buf c;
-              Buffer.contents buf
-          in
-          changed := Edit_buffer.insert t.buf (sanitize_text t text_to_insert)
-        end
-    | _ -> handled := false);
-    if !handled then begin
-      Event.Key.prevent_default ev;
-      if !changed then sync t;
-      if !changed then fire_on_input t;
-      let cursor_changed = fire_on_cursor t in
-      if !changed || !moved || cursor_changed then ensure_cursor_visible t;
-      let is_vertical = match data.key with Up | Down -> true | _ -> false in
-      if not is_vertical then t.preferred_col <- None;
-      Renderable.request_render t.node
-    end
-  end
+  let open Input.Key in
+  match data.event_type with
+  | Release -> ()
+  | _ when Event.Key.default_prevented ev -> ()
+  | _ -> apply_key_result t ev (key_result_of_event t data)
 
 (* Mouse handling *)
 
@@ -709,8 +877,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder ?wrap
     ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?(mode = `Multiline) ?max_length ?on_input
-    ?on_change ?on_submit ?on_cursor () =
+    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?(mode = `Multiline)
+    ?max_length ?on_input ?on_change ?on_submit ?on_cursor () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -718,7 +886,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     Props.make ?value ?cursor ?selection ?spans ?ghost_text ?ghost_text_color
       ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
       ?focused_background_color ?placeholder_color ?selection_color
-      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ()
+      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+      ?show_cursor ()
   in
   let max_length =
     match max_length with
@@ -766,6 +935,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
       last_cursor = initial_cursor;
       last_selection = initial_selection;
       mode;
+      keymap = Action.keymap mode;
     }
   in
   Renderable.set_render_before node (Some (render_before t));
@@ -822,6 +992,7 @@ let set_max_length t n =
 
 let apply_props t (props : Props.t) =
   let spans_changed = not (Props.spans_equal t.props.spans props.spans) in
+  let selectable_changed = t.props.selectable <> props.selectable in
   let style_changed =
     (not (Ansi.Color.equal t.props.text_color props.text_color))
     || (not (Ansi.Color.equal t.props.background_color props.background_color))
@@ -858,6 +1029,7 @@ let apply_props t (props : Props.t) =
   in
   if t.props.wrap <> props.wrap then Text_surface.set_wrap t.surface props.wrap;
   t.props <- props;
+  if selectable_changed then register_selection t;
   if style_changed then sync_style t ~focused:(Renderable.focused t.node)
   else if !value_replaced || spans_changed then sync t;
   let state_changed = fire_on_cursor t in

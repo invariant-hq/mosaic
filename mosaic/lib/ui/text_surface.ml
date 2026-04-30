@@ -28,8 +28,8 @@ type t = {
   mutable selection_bg : Ansi.Color.t option;
   mutable selection_fg : Ansi.Color.t option;
   selection : selection_state;
-  mutable cached_display_info : (int * display_info) option;
-      (* (effective_wrap_width, info) — keyed on width to invalidate on resize *)
+  mutable cached_display_info : (int * int * display_info) option;
+      (* (buffer_version, effective_wrap_width, info) *)
   mutable measure_cache :
     (wrap * int * int * int * int)
     (* wrap_mode, width, version -> lines, max_w *)
@@ -341,11 +341,12 @@ let compute_display_info t ?wrap_width () =
 
 let display_info t =
   let ew = effective_wrap_width t () in
+  let version = Text_buffer.version t.buffer in
   match t.cached_display_info with
-  | Some (w, info) when w = ew -> info
+  | Some (v, w, info) when v = version && w = ew -> info
   | _ ->
       let info = compute_display_info t () in
-      t.cached_display_info <- Some (ew, info);
+      t.cached_display_info <- Some (version, ew, info);
       info
 
 let display_line_count t = Array.length (display_info t).lines

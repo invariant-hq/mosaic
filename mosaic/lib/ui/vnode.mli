@@ -314,6 +314,8 @@ val input :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
+  ?selectable:bool ->
+  ?show_cursor:bool ->
   ?on_input:(string -> 'msg) ->
   ?on_change:(string -> 'msg) ->
   ?on_submit:(string -> 'msg) ->
@@ -348,6 +350,10 @@ val input :
     - [cursor_color] is the cursor color when focused. Defaults to
       {!Ansi.Color.white}.
     - [cursor_blinking] controls whether the cursor blinks. Defaults to [true].
+    - [selectable] controls whether mouse selection is enabled. Defaults to
+      [true].
+    - [show_cursor] controls whether the focused cursor is shown. Defaults to
+      [true].
     - [on_input] is called after every text change at keystroke-level.
     - [on_change] is called when the committed value changes (on blur or
       submit).
@@ -693,6 +699,8 @@ val textarea :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
+  ?selectable:bool ->
+  ?show_cursor:bool ->
   ?on_input:(string -> 'msg) ->
   ?on_change:(string -> 'msg) ->
   ?on_submit:(string -> 'msg) ->
@@ -731,6 +739,10 @@ val textarea :
     - [cursor_color] is the cursor color when focused. Defaults to
       {!Ansi.Color.white}.
     - [cursor_blinking] controls whether the cursor blinks. Defaults to [true].
+    - [selectable] controls whether mouse selection is enabled. Defaults to
+      [true].
+    - [show_cursor] controls whether the focused cursor is shown. Defaults to
+      [true].
     - [on_input] is called after every text change at keystroke-level.
     - [on_change] is called when the committed value changes (on blur or
       submit).

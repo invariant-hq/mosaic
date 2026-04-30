@@ -7,15 +7,16 @@ open Test_harness
 let make_textarea ?value ?placeholder ?wrap ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
     ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?cursor ?selection ?on_input ?on_change ?on_submit ?on_cursor () =
+    ?selectable ?show_cursor ?cursor ?selection ?on_input ?on_change ?on_submit
+    ?on_cursor () =
   let t = make_ctx () in
   let root = make_root t in
   let ta =
     Textarea.create ~parent:root ?value ?placeholder ?wrap ?text_color
       ?background_color ?focused_text_color ?focused_background_color
       ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-      ?cursor_color ?cursor_blinking ?cursor ?selection ?on_input ?on_change
-      ?on_submit ?on_cursor ()
+      ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?cursor ?selection
+      ?on_input ?on_change ?on_submit ?on_cursor ()
   in
   (t, ta)
 

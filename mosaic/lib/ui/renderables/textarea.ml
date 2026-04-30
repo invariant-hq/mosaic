@@ -6,14 +6,14 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
     ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder ?wrap
     ?text_color ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit ?on_cursor ()
-    =
+    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?on_input ?on_change
+    ?on_submit ?on_cursor () =
   Edit_surface.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     ?value ?cursor ?selection ?spans ?ghost_text ?ghost_text_color ?placeholder
     ?wrap ?text_color ?background_color ?focused_text_color
     ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?on_input ?on_change ?on_submit
-    ?on_cursor ()
+    ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
+    ?on_input ?on_change ?on_submit ?on_cursor ()
 
 let node = Edit_surface.node
 let buffer = Edit_surface.buffer
