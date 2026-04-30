@@ -41,6 +41,17 @@ val equal_cursor : cursor -> cursor -> bool
 val pp_cursor : Format.formatter -> cursor -> unit
 (** [pp_cursor ppf c] formats [c] on [ppf] for debugging. *)
 
+module Pending : sig
+  type t = private { kind : string; label : string option }
+  (** The type for pending render work reported by a node.
+
+      [kind] identifies the producer class, for example ["code.highlight"].
+      [label] optionally identifies the specific work item for diagnostics. *)
+
+  val make : ?label:string -> kind:string -> unit -> t
+  (** [make ~kind ()] is a pending render-work description. *)
+end
+
 (** {1:constructors Constructors} *)
 
 val create :
@@ -343,6 +354,14 @@ val line_info : t -> line_info option
 (** [line_info t] is the current line metrics from [t]'s provider, or [None] if
     no provider is registered. *)
 
+(** {1:pending_work Pending render work} *)
+
+val set_pending_provider : t -> (unit -> Pending.t option) option -> unit
+(** [set_pending_provider t f] registers a provider for render work that has not
+    yet reached its final visible state. The renderer uses these providers to
+    settle snapshots without knowing concrete widget types. [None] clears the
+    provider. *)
+
 (** {1:lifecycle Lifecycle} *)
 
 val set_on_frame : t -> (t -> delta:float -> unit) option -> unit
@@ -443,6 +462,9 @@ module Private : sig
   (** [render_full t ~grid ~delta] runs the complete render sequence for [t]:
       frame buffer selection, pre-render hook, render callback, post-render
       hook, and frame buffer blit. *)
+
+  val pending_work : t -> Pending.t option
+  (** [pending_work t] is [Some work] when [t] reports pending render work. *)
 
   (** {2:children Children} *)
 

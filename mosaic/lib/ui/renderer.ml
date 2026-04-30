@@ -48,6 +48,15 @@ type t = {
   mutable frame_callbacks : (float -> unit) list;
 }
 
+module Pending = struct
+  type t = { node : Renderable.t; work : Renderable.Pending.t }
+
+  let node t = t.node
+  let work t = t.work
+end
+
+type settle_result = [ `Settled | `Pending of Pending.t list ]
+
 (* ───── Helpers ───── *)
 
 let toffee_exn = function
@@ -525,6 +534,23 @@ let selection t = t.selection
 let captured t = t.captured
 let hover t = t.hover_node
 
+(* ───── Pending Render Work ───── *)
+
+let pending_work t =
+  let rec collect acc node =
+    if Renderable.destroyed node || not (Renderable.visible node) then acc
+    else
+      let acc =
+        match Renderable.Private.pending_work node with
+        | None -> acc
+        | Some work -> { Pending.node; work } :: acc
+      in
+      Array.fold_left collect acc (Renderable.Private.children_z node)
+  in
+  List.rev (collect [] t.root)
+
+let is_settled t = match pending_work t with [] -> true | _ :: _ -> false
+
 (* ───── Measure Function ───── *)
 
 (* O(1) lookup via toffee_map reverse index. *)
@@ -675,6 +701,20 @@ let render ?full t =
   output
 
 let needs_render t = !(t.dirty) || Renderable.Private.live_count t.root > 0
+
+let render_frame_until_settled ?(max_passes = 4) t ~width ~height ~delta =
+  let max_passes = max 1 max_passes in
+  let rec loop pass last_pending =
+    if pass >= max_passes then `Pending last_pending
+    else begin
+      render_frame t ~width ~height ~delta;
+      match pending_work t with
+      | [] -> `Settled
+      | pending -> loop (pass + 1) pending
+    end
+  in
+  render_frame t ~width ~height ~delta;
+  match pending_work t with [] -> `Settled | pending -> loop 1 pending
 
 (* ───── Event Dispatch ───── *)
 

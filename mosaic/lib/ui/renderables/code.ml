@@ -166,6 +166,16 @@ let set_on_line_info_change t h = t.on_line_info_change <- h
 let notify_line_info_change t =
   Option.iter (fun f -> f ()) t.on_line_info_change
 
+let pending_work t =
+  if t.highlighting then
+    let label =
+      match t.job with
+      | Some { syntax = { language = Some language; _ }; _ } -> Some language
+      | _ -> None
+    in
+    Some (Renderable.Pending.make ?label ~kind:"code.highlight" ())
+  else None
+
 (* Rendering *)
 
 let request_render t = Renderable.request_render (Text_renderable.node t.text)
@@ -305,6 +315,9 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?syntax
   Renderable.set_render_before
     (Text_renderable.node text)
     (Some (render_before t));
+  Renderable.set_pending_provider
+    (Text_renderable.node text)
+    (Some (fun () -> pending_work t));
   render_content t props;
   t
 

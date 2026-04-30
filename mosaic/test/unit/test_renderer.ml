@@ -138,6 +138,91 @@ let clear_removes_all_callbacks () =
   equal ~msg:"c1 not called" int 1 !c1;
   equal ~msg:"c2 not called" int 1 !c2
 
+(* ── Settlement ── *)
+
+type async_highlight_job = {
+  notify : unit -> unit;
+  mutable outcome : Code.Highlighter.result option;
+}
+
+let async_highlighter () =
+  let jobs = ref [] in
+  let highlighter =
+    Code.Highlighter.async (fun _request ~notify ->
+        let job = { notify; outcome = None } in
+        jobs := !jobs @ [ job ];
+        Code.Highlighter.job
+          ~poll:(fun () ->
+            match job.outcome with
+            | None -> None
+            | Some outcome ->
+                job.outcome <- None;
+                Some outcome)
+          ~cancel:(fun () -> ()))
+  in
+  (jobs, highlighter)
+
+let complete_highlight job outcome =
+  job.outcome <- Some outcome;
+  job.notify ()
+
+let pending_provider_reports_work () =
+  let t = make_renderer () in
+  let child = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:5 () in
+  Renderable.set_pending_provider child
+    (Some
+       (fun () ->
+         Some (Renderable.Pending.make ~label:"example" ~kind:"test.work" ())));
+  match Renderer.pending_work t with
+  | [ pending ] ->
+      is_true ~msg:"node" (Renderer.Pending.node pending == child);
+      let work = Renderer.Pending.work pending in
+      equal ~msg:"kind" string "test.work" work.kind;
+      equal ~msg:"label" (option string) (Some "example") work.label
+  | pending ->
+      fail
+        (Printf.sprintf "expected one pending work item, got %d"
+           (List.length pending))
+
+let render_frame_until_settled_reports_pending_code () =
+  let t = make_renderer () in
+  let _jobs, highlighter = async_highlighter () in
+  let syntax = Code.with_highlighter ~language:"ocaml" highlighter in
+  let _code =
+    Code.create ~parent:(Renderer.root t) ~content:"let x" ~syntax ()
+  in
+  match
+    Renderer.render_frame_until_settled ~max_passes:1 t ~width:40 ~height:5
+      ~delta:0.
+  with
+  | `Settled -> fail "expected pending highlighting"
+  | `Pending [ pending ] ->
+      let work = Renderer.Pending.work pending in
+      equal ~msg:"kind" string "code.highlight" work.kind;
+      equal ~msg:"label" (option string) (Some "ocaml") work.label
+  | `Pending pending ->
+      fail
+        (Printf.sprintf "expected one pending work item, got %d"
+           (List.length pending))
+
+let render_frame_until_settled_completes_code () =
+  let t = make_renderer () in
+  let jobs, highlighter = async_highlighter () in
+  let highlights = Syntax_highlight.of_triples [ (0, 3, "keyword") ] in
+  let syntax = Code.with_highlighter ~language:"ocaml" highlighter in
+  let code =
+    Code.create ~parent:(Renderer.root t) ~content:"let x" ~syntax ()
+  in
+  complete_highlight (List.hd !jobs) (Ok highlights);
+  match Renderer.render_frame_until_settled t ~width:40 ~height:5 ~delta:0. with
+  | `Pending pending ->
+      fail
+        (Printf.sprintf "expected settlement, got %d pending item(s)"
+           (List.length pending))
+  | `Settled ->
+      is_false ~msg:"not highlighting" (Code.is_highlighting code);
+      equal ~msg:"pending work" int 0 (List.length (Renderer.pending_work t))
+
 let post_process_runs () =
   let t = make_renderer () in
   let ran = ref false in
@@ -784,6 +869,14 @@ let () =
           test "clear removes all callbacks" clear_removes_all_callbacks;
           test "post-process runs" post_process_runs;
           test "remove post-process" remove_post_process;
+        ];
+      group "Settlement"
+        [
+          test "pending provider reports work" pending_provider_reports_work;
+          test "render_frame_until_settled reports pending code"
+            render_frame_until_settled_reports_pending_code;
+          test "render_frame_until_settled completes code"
+            render_frame_until_settled_completes_code;
         ];
       group "Focus"
         [

@@ -452,6 +452,7 @@ let destroy_children t =
   t.right_side <- None;
   t.left_code <- None;
   t.right_code <- None;
+  t.pending_rebuild <- false;
   t.waiting_for_highlight <- false
 
 let code_props (props : Props.t) ~content ?syntax () =
@@ -524,6 +525,13 @@ let update_waiting_for_highlight t (props : Props.t) left_code right_code =
     && Renderable.width (Code.node right_code) > 0
     && ((not (Code.line_info_stable left_code))
        || not (Code.line_info_stable right_code))
+
+let pending_work t =
+  if t.pending_rebuild then
+    Some (Renderable.Pending.make ~kind:"diff.rebuild" ())
+  else if t.waiting_for_highlight then
+    Some (Renderable.Pending.make ~kind:"diff.highlight" ())
+  else None
 
 let build_unified_view t (props : Props.t) =
   destroy_children t;
@@ -674,6 +682,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?layout ?theme
          if not t.pending_rebuild then begin
            Renderable.set_live t.node false
          end));
+  Renderable.set_pending_provider node (Some (fun () -> pending_work t));
   rebuild t;
   t
 

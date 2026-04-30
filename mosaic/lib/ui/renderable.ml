@@ -16,6 +16,12 @@ type cursor = {
   blinking : bool;
 }
 
+module Pending = struct
+  type t = { kind : string; label : string option }
+
+  let make ?label ~kind () = { kind; label }
+end
+
 let equal_cursor a b =
   Int.equal a.x b.x && Int.equal a.y b.y && a.style = b.style
   && Ansi.Color.equal a.color b.color
@@ -116,6 +122,8 @@ and node = {
   mutable child_clip : (node -> Grid.region option) option;
   (* Line information *)
   mutable line_info_provider : (unit -> line_info) option;
+  (* Pending render work *)
+  mutable pending_provider : (unit -> Pending.t option) option;
   (* Lifecycle *)
   mutable on_frame : (node -> delta:float -> unit) option;
   mutable on_resize : (node -> unit) option;
@@ -326,6 +334,7 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     selection = None;
     child_clip = None;
     line_info_provider = None;
+    pending_provider = None;
     on_frame = None;
     on_resize = None;
     on_lifecycle_pass = None;
@@ -647,6 +656,7 @@ let destroy t =
     t.selection <- None;
     t.child_clip <- None;
     t.line_info_provider <- None;
+    t.pending_provider <- None;
     t.on_frame <- None;
     t.on_resize <- None;
     t.on_lifecycle_pass <- None;
@@ -945,6 +955,13 @@ let get_selected_text t =
 let set_line_info_provider t provider = t.line_info_provider <- provider
 let line_info t = Option.map (fun f -> f ()) t.line_info_provider
 
+(* ───── Pending Render Work ───── *)
+
+let set_pending_provider t provider = t.pending_provider <- provider
+
+let pending_work t =
+  match t.pending_provider with None -> None | Some provider -> provider ()
+
 (* ───── Lifecycle ───── *)
 
 let set_on_frame t cb = t.on_frame <- cb
@@ -1083,6 +1100,7 @@ module Private = struct
   let ensure_frame_buffer = ensure_frame_buffer
   let blit_frame_buffer = blit_frame_buffer
   let render_full = render_full
+  let pending_work = pending_work
   let children_z = children_z
   let iter_children_z = iter_children_z
   let children_in_viewport = children_in_viewport

@@ -38,6 +38,29 @@ val root : t -> Renderable.t
 val screen : t -> Screen.t
 (** [screen t] is the underlying screen. *)
 
+(** {1:pending_work Pending render work} *)
+
+module Pending : sig
+  type t
+  (** The type for pending render work associated with the node reporting it. *)
+
+  val node : t -> Renderable.t
+  (** [node t] is the renderable reporting pending work. *)
+
+  val work : t -> Renderable.Pending.t
+  (** [work t] is the pending work description. *)
+end
+
+type settle_result = [ `Settled | `Pending of Pending.t list ]
+(** The result of a bounded settlement render. *)
+
+val pending_work : t -> Pending.t list
+(** [pending_work t] is the pending render work currently reported by visible
+    nodes in [t]'s tree. *)
+
+val is_settled : t -> bool
+(** [is_settled t] is [true] iff [pending_work t] is empty. *)
+
 (** {1:rendering Rendering} *)
 
 val render_frame : t -> width:int -> height:int -> delta:float -> unit
@@ -64,6 +87,20 @@ val render : ?full:bool -> t -> string
 val needs_render : t -> bool
 (** [needs_render t] is [true] iff a renderable has requested a re-render or
     live nodes are active. *)
+
+val render_frame_until_settled :
+  ?max_passes:int ->
+  t ->
+  width:int ->
+  height:int ->
+  delta:float ->
+  settle_result
+(** [render_frame_until_settled t ~width ~height ~delta] renders bounded frame
+    passes until visible nodes report no pending render work.
+
+    [max_passes] defaults to [4]. The function does not block for external
+    asynchronous work; if work remains after the pass budget, it returns
+    [`Pending pending]. *)
 
 (** {1:events Event dispatch} *)
 
