@@ -398,12 +398,12 @@ let scroll_bar ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 let scroll_box ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = true) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste
-    ?scroll_x ?scroll_y ?sticky_scroll ?sticky_start ?background ?on_scroll
-    children =
+    ?scroll_x ?scroll_y ?sticky_scroll ?sticky_start ?background ?reveal
+    ?on_scroll children =
   let kind =
     Scroll_box
       (Scroll_box.Props.make ?scroll_x ?scroll_y ?sticky_scroll ?sticky_start
-         ?background ())
+         ?background ?reveal ())
   in
   let attrs =
     {

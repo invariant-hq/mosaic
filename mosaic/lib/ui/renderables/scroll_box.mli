@@ -39,6 +39,26 @@ module Scroll_accel : sig
   (** [reset t] clears the velocity history of [t]. *)
 end
 
+(** {1:reveal Reveal requests} *)
+
+type reveal_align = [ `Start | `Center | `End | `Nearest ]
+(** The type for aligning a revealed coordinate in the viewport. *)
+
+type reveal = {
+  key : string;
+  x : int option;
+  y : int option;
+  align_x : reveal_align;
+  align_y : reveal_align;
+  margin : int;
+}
+(** The type for one-shot scroll reveal requests.
+
+    [key] identifies the request. Reusing the same key does not reapply the
+    reveal after the user scrolls manually. [x] and [y] are content coordinates
+    in cells. [margin] is clamped to a non-negative value and used by [`Nearest]
+    to keep a small distance from the viewport edge. *)
+
 (** {1:props Props} *)
 
 module Props : sig
@@ -54,6 +74,7 @@ module Props : sig
     ?scrollbar_props:Scroll_bar.Props.t ->
     ?vertical_bar_props:Scroll_bar.Props.t ->
     ?horizontal_bar_props:Scroll_bar.Props.t ->
+    ?reveal:reveal ->
     unit ->
     t
   (** [make ()] is a scroll box property bundle with:
@@ -66,6 +87,7 @@ module Props : sig
       - [vertical_bar_props] overrides [scrollbar_props] for the vertical bar.
       - [horizontal_bar_props] overrides [scrollbar_props] for the horizontal
         bar.
+      - [reveal] requests a one-shot scroll to a content coordinate.
 
       See also {!val-default}. *)
 
@@ -100,6 +122,7 @@ val create :
   ?scrollbar_props:Scroll_bar.Props.t ->
   ?vertical_bar_props:Scroll_bar.Props.t ->
   ?horizontal_bar_props:Scroll_bar.Props.t ->
+  ?reveal:reveal ->
   ?on_scroll:(x:int -> y:int -> unit) ->
   unit ->
   t
@@ -119,6 +142,7 @@ val create :
     - [scrollbar_props] visual properties applied to both scroll bars.
     - [vertical_bar_props] overrides [scrollbar_props] for the vertical bar.
     - [horizontal_bar_props] overrides [scrollbar_props] for the horizontal bar.
+    - [reveal] requests a one-shot scroll to a content coordinate.
     - [on_scroll] callback invoked with the new scroll position whenever it
       changes. *)
 
@@ -218,6 +242,12 @@ val reset_sticky : t -> unit
 val set_background : t -> Ansi.Color.t option -> unit
 (** [set_background t color] sets the container background color of [t] to
     [color]. [None] removes the background. *)
+
+(** {1:reveal Reveal requests} *)
+
+val set_reveal : t -> reveal option -> unit
+(** [set_reveal t reveal] sets the pending one-shot reveal request. Reusing a
+    previously applied reveal key does not reapply the reveal. *)
 
 (** {1:callbacks Callbacks} *)
 

@@ -89,3 +89,47 @@ let%expect_test "scroll box stays constrained in column flex layout" =
     line 5
     line 6
     foot |}]
+
+let reveal ?x ?y ?(align_x = `Nearest) ?(align_y = `Start) ?(margin = 0) key :
+    Scroll_box.reveal =
+  { key; x; y; align_x; align_y; margin }
+
+let numbered_lines count =
+  List.init count (fun i -> Vnode.text (Printf.sprintf "line %d" (i + 1)))
+
+let%expect_test "scroll box reveal scrolls to content coordinate" =
+  render ~width:20 ~height:5
+    (Vnode.scroll_box
+       ~style:
+         (Toffee.Style.default
+         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:5))
+       ~reveal:(reveal ~y:6 "line-7") (numbered_lines 12));
+  [%expect {|
+    line 7
+    line 8
+    line 9
+    line 10
+    line 11 |}]
+
+let%expect_test "scroll box reveal overrides sticky scroll" =
+  let app = make_app () in
+  reconcile app
+    (Vnode.scroll_box
+       ~style:
+         (Toffee.Style.default
+         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:5))
+       ~sticky_scroll:true ~sticky_start:`Bottom ~reveal:(reveal ~y:2 "line-3")
+       (numbered_lines 12));
+  frame app ~width:20 ~height:5;
+  frame app ~width:20 ~height:5;
+  [%expect
+    {|line 3
+line 4
+line 5
+line 6
+line 7
+line 3
+line 4             █
+line 5             █
+line 6
+line 7|}]

@@ -159,6 +159,7 @@ module Table = Mosaic_ui.Table
 module Tree = Mosaic_ui.Tree
 module Spinner = Mosaic_ui.Spinner
 module Slider = Mosaic_ui.Slider
+module Scroll_box = Mosaic_ui.Scroll_box
 module Scroll_bar = Mosaic_ui.Scroll_bar
 module Text_surface = Mosaic_ui.Text_surface
 module Line_number = Mosaic_ui.Line_number
@@ -995,7 +996,7 @@ let scroll_box ?key ?id ?display ?box_sizing ?position ?overflow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?focusable ?autofocus
     ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?scroll_x ?scroll_y
-    ?sticky_scroll ?sticky_start ?background ?on_scroll children =
+    ?sticky_scroll ?sticky_start ?background ?reveal ?on_scroll children =
   let style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
@@ -1008,7 +1009,8 @@ let scroll_box ?key ?id ?display ?box_sizing ?position ?overflow
   in
   Vnode.scroll_box ?key ?id ~style ?visible ?z_index ?opacity ?focusable
     ?autofocus ?buffered ?live ?ref ?on_mouse ?on_key ?on_paste ?scroll_x
-    ?scroll_y ?sticky_scroll ?sticky_start ?background ?on_scroll children
+    ?scroll_y ?sticky_scroll ?sticky_start ?background ?reveal ?on_scroll
+    children
 
 let textarea ?key ?id ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

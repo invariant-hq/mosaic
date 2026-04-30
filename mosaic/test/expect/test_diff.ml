@@ -80,6 +80,11 @@ let selected_line_color =
 let line_highlight side first last : Diff.line_highlight =
   { side; first; last; color = selected_line_color }
 
+let print_source_line_row patch ~layout source =
+  match Diff.source_line_row patch ~layout source with
+  | None -> Format.printf "none\n"
+  | Some row -> Format.printf "row=%d\n" row
+
 let grid_of_vnode ~width ~height vnode =
   let app = make_app () in
   reconcile app vnode;
@@ -231,6 +236,21 @@ let%expect_test "set source line highlights rebuilds colors" =
   assert_background ~msg:"updated selected content" highlighted ~x:8 ~y:2
     selected;
   [%expect_exact {||}]
+
+let%expect_test "source line rows" =
+  let patch = parse multi_line_diff in
+  print_source_line_row patch ~layout:Diff.Unified
+    { side = Diff.New; line = 10 };
+  print_source_line_row patch ~layout:Diff.Split { side = Diff.New; line = 10 };
+  print_source_line_row patch ~layout:Diff.Unified { side = Diff.Old; line = 6 };
+  print_source_line_row patch ~layout:Diff.Split { side = Diff.Old; line = 6 };
+  print_source_line_row patch ~layout:Diff.Split { side = Diff.New; line = 99 };
+  [%expect_exact {|row=10
+row=9
+row=9
+row=9
+none
+|}]
 
 let%expect_test "split view aligns asymmetric wrapped lines" =
   let app = make_app () in

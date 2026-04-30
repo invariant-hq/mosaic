@@ -651,6 +651,7 @@ val scroll_box :
   ?sticky_scroll:bool ->
   ?sticky_start:[ `Top | `Bottom | `Left | `Right ] ->
   ?background:Ansi.Color.t ->
+  ?reveal:Scroll_box.reveal ->
   ?on_scroll:(x:int -> y:int -> 'msg) ->
   'msg t list ->
   'msg t
@@ -665,6 +666,7 @@ val scroll_box :
     - [sticky_start] is the edge to stick to when [sticky_scroll] is [true].
       Defaults to [`Bottom].
     - [background] is the optional background fill color.
+    - [reveal] requests a one-shot scroll to a content coordinate.
     - [on_scroll] is called when the scroll position changes, receiving the new
       offsets as [~x] and [~y]. *)
 

@@ -10,6 +10,8 @@ type line_highlight = {
   color : Line_number.line_color;
 }
 
+type source_line = { side : side; line : int }
+
 let equal_side a b =
   match (a, b) with Old, Old | New, New -> true | _ -> false
 
@@ -17,7 +19,7 @@ let equal_line_color (a : Line_number.line_color) (b : Line_number.line_color) =
   Ansi.Color.equal a.gutter b.gutter
   && Option.equal Ansi.Color.equal a.content b.content
 
-let equal_line_highlight a b =
+let equal_line_highlight (a : line_highlight) (b : line_highlight) =
   equal_side a.side b.side && a.first = b.first && a.last = b.last
   && equal_line_color a.color b.color
 
@@ -404,6 +406,66 @@ module View = struct
       ~hidden_line_numbers:(List.rev !hidden_line_numbers)
       ()
 end
+
+let line_matches source (line : View.source_line) =
+  source.side = line.side && source.line = line.number
+
+let source_line_row_unified patch source =
+  let row = ref 0 in
+  let result = ref None in
+  List.iter
+    (fun (hunk : Patch.hunk) ->
+      let old_line = ref hunk.old_start in
+      let new_line = ref hunk.new_start in
+      List.iter
+        (fun (line : Patch.line) ->
+          (if Option.is_none !result then
+             let sources =
+               match line.tag with
+               | Added -> [ { View.side = New; number = !new_line } ]
+               | Removed -> [ { View.side = Old; number = !old_line } ]
+               | Context ->
+                   [
+                     { View.side = Old; number = !old_line };
+                     { View.side = New; number = !new_line };
+                   ]
+             in
+             if List.exists (line_matches source) sources then
+               result := Some !row);
+          (match line.tag with
+          | Added -> incr new_line
+          | Removed -> incr old_line
+          | Context ->
+              incr old_line;
+              incr new_line);
+          incr row)
+        hunk.lines)
+    (Patch.hunks patch);
+  !result
+
+let source_line_row_split patch source =
+  let split = View.split patch in
+  let find lines =
+    let rec loop row = function
+      | [] -> None
+      | line :: rest -> (
+          match (line.View.side, line.line_num) with
+          | Some side, Some number
+            when source.side = side && source.line = number ->
+              Some row
+          | Some _, Some _ | Some _, None | None, Some _ | None, None ->
+              loop (row + 1) rest)
+    in
+    loop 0 lines
+  in
+  match find split.left with
+  | Some _ as location -> location
+  | None -> find split.right
+
+let source_line_row patch ~layout source =
+  match layout with
+  | Unified -> source_line_row_unified patch source
+  | Split -> source_line_row_split patch source
 
 module Split_layout = struct
   let visual_counts line_count (info : Renderable.line_info) =

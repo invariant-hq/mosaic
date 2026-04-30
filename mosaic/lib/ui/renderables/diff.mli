@@ -74,6 +74,18 @@ type line_highlight = {
     overlap, the first matching highlight in the list wins. In unified layout,
     context lines can match either {!Old} or {!New}. *)
 
+type source_line = { side : side; line : int }
+(** The type for a 1-based source line on one side of a diff. *)
+
+val source_line_row : Patch.t -> layout:layout -> source_line -> int option
+(** [source_line_row patch ~layout source] is the zero-based logical diff row of
+    [source] in [patch], if [source] is present.
+
+    In unified layout, context lines can be found through either side. In split
+    layout, blank alignment rows are skipped. The result is independent of line
+    wrapping and is an exact scroll coordinate only when wrapping is disabled.
+*)
+
 type theme = {
   added_bg : Ansi.Color.t;
   removed_bg : Ansi.Color.t;

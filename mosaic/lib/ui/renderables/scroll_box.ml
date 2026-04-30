@@ -61,6 +61,30 @@ end
 
 (* ───── Props ───── *)
 
+type reveal_align = [ `Start | `Center | `End | `Nearest ]
+
+type reveal = {
+  key : string;
+  x : int option;
+  y : int option;
+  align_x : reveal_align;
+  align_y : reveal_align;
+  margin : int;
+}
+
+let equal_reveal_align a b =
+  match (a, b) with
+  | `Start, `Start | `Center, `Center | `End, `End | `Nearest, `Nearest -> true
+  | _ -> false
+
+let equal_reveal a b =
+  String.equal a.key b.key
+  && Option.equal Int.equal a.x b.x
+  && Option.equal Int.equal a.y b.y
+  && equal_reveal_align a.align_x b.align_x
+  && equal_reveal_align a.align_y b.align_y
+  && Int.equal a.margin b.margin
+
 module Props = struct
   type t = {
     scroll_x : bool;
@@ -71,11 +95,12 @@ module Props = struct
     scrollbar_props : Scroll_bar.Props.t option;
     vertical_bar_props : Scroll_bar.Props.t option;
     horizontal_bar_props : Scroll_bar.Props.t option;
+    reveal : reveal option;
   }
 
   let make ?(scroll_x = false) ?(scroll_y = true) ?(sticky_scroll = false)
       ?sticky_start ?background ?scrollbar_props ?vertical_bar_props
-      ?horizontal_bar_props () =
+      ?horizontal_bar_props ?reveal () =
     {
       scroll_x;
       scroll_y;
@@ -85,6 +110,7 @@ module Props = struct
       scrollbar_props;
       vertical_bar_props;
       horizontal_bar_props;
+      reveal;
     }
 
   let default = make ()
@@ -99,6 +125,7 @@ module Props = struct
          b.vertical_bar_props
     && Option.equal Scroll_bar.Props.equal a.horizontal_bar_props
          b.horizontal_bar_props
+    && Option.equal equal_reveal a.reveal b.reveal
 end
 
 (* ───── Scroll Box ───── *)
@@ -127,6 +154,8 @@ type t = {
   mutable wheel_acc_x : float;
   mutable wheel_acc_y : float;
   mutable is_applying_sticky : bool;
+  mutable pending_reveal : reveal option;
+  mutable applied_reveal_key : string option;
 }
 
 let node t = t.node
@@ -141,6 +170,18 @@ let scroll_height t = t.content_h
 let viewport_width t = Renderable.width t.viewport
 let viewport_height t = Renderable.height t.viewport
 let clamp v ~lo ~hi = max lo (min hi v)
+
+let reveal_axis ~align ~margin ~viewport ~current coordinate =
+  let margin = max 0 margin in
+  match align with
+  | `Start -> coordinate - margin
+  | `Center -> coordinate - (viewport / 2)
+  | `End -> coordinate - viewport + 1 + margin
+  | `Nearest ->
+      if coordinate - margin < current then coordinate - margin
+      else if coordinate + margin >= current + viewport then
+        coordinate + margin - viewport + 1
+      else current
 
 (* ───── Content Translation ───── *)
 
@@ -245,6 +286,37 @@ let scroll_by_unit t ?x ?y ~(unit : Scroll_bar.scroll_unit) () =
   Option.iter (fun dx -> Scroll_bar.scroll_by t.horizontal_bar dx ~unit) x;
   Option.iter (fun dy -> Scroll_bar.scroll_by t.vertical_bar dy ~unit) y
 
+let apply_reveal t (reveal : reveal) =
+  let prev_x = t.scroll_x in
+  let prev_y = t.scroll_y in
+  let x =
+    Option.map
+      (reveal_axis ~align:reveal.align_x ~margin:reveal.margin
+         ~viewport:(viewport_width t) ~current:t.scroll_x)
+      reveal.x
+  in
+  let y =
+    Option.map
+      (reveal_axis ~align:reveal.align_y ~margin:reveal.margin
+         ~viewport:(viewport_height t) ~current:t.scroll_y)
+      reveal.y
+  in
+  scroll_to_internal t ~manual:false ?x ?y ();
+  if
+    (t.scroll_x <> prev_x || t.scroll_y <> prev_y)
+    && t.props.sticky_scroll
+    && not (is_at_sticky_position t)
+  then t.has_manual_scroll <- true;
+  t.applied_reveal_key <- Some reveal.key
+
+let apply_pending_reveal t =
+  match t.pending_reveal with
+  | None -> ()
+  | Some reveal ->
+      t.pending_reveal <- None;
+      if not (Option.equal String.equal t.applied_reveal_key (Some reveal.key))
+      then apply_reveal t reveal
+
 (* ───── Metrics Recalculation ───── *)
 
 let recalc_metrics t =
@@ -302,6 +374,7 @@ let render_scroll_box t _self grid ~delta =
     t.is_applying_sticky <- true;
     recalc_metrics t;
     apply_sticky t;
+    apply_pending_reveal t;
     t.is_applying_sticky <- was_applying;
     set_child_offsets t)
 
@@ -388,6 +461,13 @@ let set_background t color =
     t.props <- { t.props with background = color };
     Renderable.request_render t.node)
 
+let set_reveal t reveal =
+  if not (Option.equal equal_reveal t.props.reveal reveal) then (
+    t.props <- { t.props with reveal };
+    t.pending_reveal <- reveal;
+    if Option.is_none reveal then t.applied_reveal_key <- None;
+    Renderable.request_render t.node)
+
 let set_on_scroll t cb = t.on_scroll <- cb
 let set_scroll_accel t accel = t.scroll_accel <- accel
 
@@ -404,6 +484,7 @@ let apply_props t (props : Props.t) =
   set_background t props.background;
   set_sticky_scroll t props.sticky_scroll;
   set_sticky_start t props.sticky_start;
+  set_reveal t props.reveal;
   (match resolve_bar_props props.scrollbar_props props.vertical_bar_props with
   | Some p -> Scroll_bar.apply_props t.vertical_bar p
   | None -> ());
@@ -416,7 +497,8 @@ let apply_props t (props : Props.t) =
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     ?(scroll_x = false) ?(scroll_y = true) ?(sticky_scroll = false)
     ?sticky_start ?background ?(scroll_accel = Scroll_accel.linear ())
-    ?scrollbar_props ?vertical_bar_props ?horizontal_bar_props ?on_scroll () =
+    ?scrollbar_props ?vertical_bar_props ?horizontal_bar_props ?reveal
+    ?on_scroll () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -502,6 +584,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       scrollbar_props;
       vertical_bar_props;
       horizontal_bar_props;
+      reveal;
     }
   in
   let t =
@@ -529,6 +612,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       wheel_acc_x = 0.;
       wheel_acc_y = 0.;
       is_applying_sticky = false;
+      pending_reveal = reveal;
+      applied_reveal_key = None;
     }
   in
   (* Wire scroll bar change → scroll position *)

@@ -618,6 +618,28 @@ module Scroll_bar : sig
   (** The type for scroll bar orientation: [`Vertical] or [`Horizontal]. *)
 end
 
+(** Companion types for the {!val-scroll_box} widget. *)
+module Scroll_box : sig
+  type reveal_align = Mosaic_ui.Scroll_box.reveal_align
+  (** The type for reveal alignment along one axis: [`Start], [`Center], [`End],
+      or [`Nearest]. *)
+
+  type reveal = Mosaic_ui.Scroll_box.reveal = {
+    key : string;
+    x : int option;
+    y : int option;
+    align_x : reveal_align;
+    align_y : reveal_align;
+    margin : int;
+  }
+  (** The type for one-shot content reveal requests.
+
+      [key] identifies the request. Reusing a key after it has been applied does
+      not scroll again. [x] and [y] are content coordinates. [align_x] and
+      [align_y] select the placement when the target is outside the viewport.
+      [margin] keeps that many cells around the target when possible. *)
+end
+
 (** Companion types for the {!val-text} and {!val-code} widgets. *)
 module Text_surface : sig
   type wrap = Mosaic_ui.Text_surface.wrap
@@ -2002,6 +2024,7 @@ val scroll_box :
   ?sticky_scroll:bool ->
   ?sticky_start:[ `Top | `Bottom | `Left | `Right ] ->
   ?background:Ansi.Color.t ->
+  ?reveal:Scroll_box.reveal ->
   ?on_scroll:(x:int -> y:int -> 'msg option) ->
   'msg t list ->
   'msg t
@@ -2017,6 +2040,7 @@ val scroll_box :
     - [sticky_start] -- the edge to which sticky scrolling anchors. Defaults to
       [`Bottom].
     - [background] -- background fill color of the scroll area.
+    - [reveal] -- one-shot scroll request to a content coordinate.
     - [on_scroll] -- fired after a scroll event; receives the new scroll
       position [~x] and [~y] in cells. *)
 
