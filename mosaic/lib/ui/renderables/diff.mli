@@ -59,6 +59,21 @@ type layout =
       (** The diff layout. [Unified] renders one column; [Split] renders
           removals on the left and additions on the right. *)
 
+type side = Old | New  (** The side of a source line in a diff. *)
+
+type line_highlight = {
+  side : side;
+  first : int;
+  last : int;
+  color : Line_number.line_color;
+}
+(** The type for a source-line highlight.
+
+    [first] and [last] are inclusive 1-based source line numbers. Highlights
+    whose [first] is greater than [last] do not match any line. When highlights
+    overlap, the first matching highlight in the list wins. In unified layout,
+    context lines can match either {!Old} or {!New}. *)
+
 type theme = {
   added_bg : Ansi.Color.t;
   removed_bg : Ansi.Color.t;
@@ -117,6 +132,7 @@ module Props : sig
     ?layout:layout ->
     ?theme:theme ->
     ?highlight:highlight ->
+    ?line_highlights:line_highlight list ->
     ?show_line_numbers:bool ->
     ?wrap:Text_surface.wrap ->
     ?selectable:bool ->
@@ -125,8 +141,8 @@ module Props : sig
     t
   (** [make ()] is a diff props value. [patch] defaults to an empty patch,
       [layout] to [Unified], [theme] to {!default_theme}, [show_line_numbers] to
-      [true], [wrap] to [`None], [selectable] to [true], and [text_style] to
-      {!Ansi.Style.default}. *)
+      [true], [line_highlights] to [[]], [wrap] to [`None], [selectable] to
+      [true], and [text_style] to {!Ansi.Style.default}. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -146,6 +162,7 @@ val create :
   ?layout:layout ->
   ?theme:theme ->
   ?highlight:highlight ->
+  ?line_highlights:line_highlight list ->
   ?show_line_numbers:bool ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
@@ -172,6 +189,10 @@ val set_theme : t -> theme -> unit
 val set_highlight : t -> highlight option -> unit
 (** [set_highlight t highlight] sets split-view syntax highlighting and rebuilds
     the view. *)
+
+val set_line_highlights : t -> line_highlight list -> unit
+(** [set_line_highlights t highlights] sets source-line background highlights
+    and rebuilds the view. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t]. *)

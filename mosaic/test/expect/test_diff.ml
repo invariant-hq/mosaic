@@ -73,6 +73,38 @@ let plain_highlight =
   let syntax = Diff.syntax ~language:"text" highlighter in
   { Diff.old = syntax; new_ = syntax }
 
+let selected_line_color =
+  let color = Ansi.Color.of_rgb 80 90 120 in
+  { Line_number.gutter = color; content = Some color }
+
+let line_highlight side first last : Diff.line_highlight =
+  { side; first; last; color = selected_line_color }
+
+let grid_of_vnode ~width ~height vnode =
+  let app = make_app () in
+  reconcile app vnode;
+  set_viewport app.renderer ~width ~height;
+  Renderer.render_frame app.renderer ~width ~height ~delta:0.;
+  Screen.next_grid (Renderer.screen app.renderer)
+
+let color_to_string color = Format.asprintf "%a" Ansi.Color.pp color
+
+let background_at grid ~x ~y =
+  Cell_grid.get_background grid (Cell_grid.idx grid ~x ~y)
+
+let assert_background ~msg grid ~x ~y color =
+  let actual = background_at grid ~x ~y in
+  if not (Ansi.Color.equal actual color) then
+    failwith
+      (Printf.sprintf "%s: expected %s, got %s" msg (color_to_string color)
+         (color_to_string actual))
+
+let assert_not_background ~msg grid ~x ~y color =
+  let actual = background_at grid ~x ~y in
+  if Ansi.Color.equal actual color then
+    failwith
+      (Printf.sprintf "%s: did not expect %s" msg (color_to_string color))
+
 let git_diff_with_marker =
   {|diff --git a/a.txt b/a.txt
 index 1111111..2222222 100644
@@ -143,6 +175,62 @@ let%expect_test "split view simple diff" =
  3   }                                   3   }
 
 |}]
+
+let%expect_test "source line highlights preserve diff text" =
+  let line_highlights = [ line_highlight Diff.New 2 2 ] in
+  render ~width:60 ~height:5
+    (Vnode.diff ~layout:Diff.Unified ~line_highlights (parse simple_diff));
+  render ~width:80 ~height:5
+    (Vnode.diff ~layout:Diff.Split ~line_highlights (parse simple_diff));
+  let selected = selected_line_color.gutter in
+  let unified =
+    grid_of_vnode ~width:60 ~height:5
+      (Vnode.diff ~layout:Diff.Unified ~line_highlights (parse simple_diff))
+  in
+  assert_not_background ~msg:"unified old line is not selected" unified ~x:8
+    ~y:1 selected;
+  assert_background ~msg:"unified selected gutter" unified ~x:1 ~y:2 selected;
+  assert_background ~msg:"unified selected content" unified ~x:8 ~y:2 selected;
+  let split =
+    grid_of_vnode ~width:80 ~height:5
+      (Vnode.diff ~layout:Diff.Split ~line_highlights (parse simple_diff))
+  in
+  assert_not_background ~msg:"split old side is not selected" split ~x:8 ~y:1
+    selected;
+  assert_background ~msg:"split selected gutter" split ~x:41 ~y:1 selected;
+  assert_background ~msg:"split selected content" split ~x:48 ~y:1 selected;
+  [%expect_exact
+    {|
+ 1   function hello() {
+ 2 -   console.log("Hello");
+ 2 +   console.log("Hello, World!");
+ 3   }
+
+ 1   function hello() {                  1   function hello() {
+ 2 -   console.log("Hello");             2 +   console.log("Hello, World!");
+ 3   }                                   3   }
+
+|}]
+
+let%expect_test "set source line highlights rebuilds colors" =
+  let selected = selected_line_color.gutter in
+  let renderer = Renderer.create () in
+  set_viewport renderer ~width:60 ~height:5;
+  let diff =
+    Diff.create ~parent:(Renderer.root renderer) ~layout:Diff.Unified
+      (parse simple_diff)
+  in
+  fill_node (Diff.node diff);
+  Renderer.render_frame renderer ~width:60 ~height:5 ~delta:0.;
+  let initial = Screen.next_grid (Renderer.screen renderer) in
+  assert_not_background ~msg:"initial line is not selected" initial ~x:8 ~y:2
+    selected;
+  Diff.set_line_highlights diff [ line_highlight Diff.New 2 2 ];
+  Renderer.render_frame renderer ~width:60 ~height:5 ~delta:0.;
+  let highlighted = Screen.next_grid (Renderer.screen renderer) in
+  assert_background ~msg:"updated selected content" highlighted ~x:8 ~y:2
+    selected;
+  [%expect_exact {||}]
 
 let%expect_test "split view aligns asymmetric wrapped lines" =
   let app = make_app () in

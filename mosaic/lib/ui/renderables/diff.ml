@@ -1,6 +1,25 @@
 module Patch = Diff_patch
 
 type layout = Unified | Split
+type side = Old | New
+
+type line_highlight = {
+  side : side;
+  first : int;
+  last : int;
+  color : Line_number.line_color;
+}
+
+let equal_side a b =
+  match (a, b) with Old, Old | New, New -> true | _ -> false
+
+let equal_line_color (a : Line_number.line_color) (b : Line_number.line_color) =
+  Ansi.Color.equal a.gutter b.gutter
+  && Option.equal Ansi.Color.equal a.content b.content
+
+let equal_line_highlight a b =
+  equal_side a.side b.side && a.first = b.first && a.last = b.last
+  && equal_line_color a.color b.color
 
 type theme = {
   added_bg : Ansi.Color.t;
@@ -87,6 +106,7 @@ module Props = struct
     layout : layout;
     theme : theme;
     highlight : highlight option;
+    line_highlights : line_highlight list;
     show_line_numbers : bool;
     wrap : Text_surface.wrap;
     selectable : bool;
@@ -96,13 +116,15 @@ module Props = struct
   let empty_patch = Patch.empty
 
   let make ?(patch = empty_patch) ?(layout = Unified) ?(theme = default_theme)
-      ?highlight ?(show_line_numbers = true) ?(wrap = `None)
-      ?(selectable = true) ?(text_style = Ansi.Style.default) () =
+      ?highlight ?(line_highlights = []) ?(show_line_numbers = true)
+      ?(wrap = `None) ?(selectable = true) ?(text_style = Ansi.Style.default) ()
+      =
     {
       patch;
       layout;
       theme;
       highlight;
+      line_highlights;
       show_line_numbers;
       wrap;
       selectable;
@@ -116,6 +138,7 @@ module Props = struct
     && a.layout = b.layout
     && theme_equal a.theme b.theme
     && Option.equal highlight_equal a.highlight b.highlight
+    && List.equal equal_line_highlight a.line_highlights b.line_highlights
     && a.show_line_numbers = b.show_line_numbers
     && a.wrap = b.wrap
     && a.selectable = b.selectable
@@ -160,6 +183,27 @@ module View = struct
   let added_sign theme = after_sign ~color:theme.added_sign_color " +"
   let removed_sign theme = after_sign ~color:theme.removed_sign_color " -"
 
+  type source_line = { side : side; number : int }
+
+  let highlight_matches source (highlight : line_highlight) =
+    source.side = highlight.side
+    && source.number >= highlight.first
+    && source.number <= highlight.last
+
+  let find_highlight sources highlights =
+    List.find_map
+      (fun highlight ->
+        if
+          List.exists (fun source -> highlight_matches source highlight) sources
+        then Some highlight.color
+        else None)
+      highlights
+
+  let line_color_of_sources ~theme ~line_highlights tag sources =
+    match find_highlight sources line_highlights with
+    | Some color -> color
+    | None -> line_color_of ~theme tag
+
   type unified = {
     content : string;
     line_colors : (int * Line_number.line_color) list;
@@ -167,17 +211,19 @@ module View = struct
     line_numbers : (int * int) list;
   }
 
-  let unified ~theme (patch : Patch.t) =
+  let unified ~theme ~line_highlights (patch : Patch.t) =
     let buf = Buffer.create 256 in
     let line_colors = ref [] in
     let line_signs = ref [] in
     let line_numbers = ref [] in
     let line_index = ref 0 in
-    let push_line tag line_no (line : Patch.line) =
+    let push_line tag line_no sources (line : Patch.line) =
       let index = !line_index in
       if index > 0 then Buffer.add_char buf '\n';
       Buffer.add_string buf line.content;
-      line_colors := (index, line_color_of ~theme tag) :: !line_colors;
+      line_colors :=
+        (index, line_color_of_sources ~theme ~line_highlights tag sources)
+        :: !line_colors;
       line_numbers := (index, line_no) :: !line_numbers;
       (match tag with
       | Patch.Added -> line_signs := (index, added_sign theme) :: !line_signs
@@ -194,13 +240,22 @@ module View = struct
           (fun (line : Patch.line) ->
             match line.tag with
             | Added ->
-                push_line Added !new_line line;
+                push_line Added !new_line
+                  [ { side = New; number = !new_line } ]
+                  line;
                 incr new_line
             | Removed ->
-                push_line Removed !old_line line;
+                push_line Removed !old_line
+                  [ { side = Old; number = !old_line } ]
+                  line;
                 incr old_line
             | Context ->
-                push_line Context !new_line line;
+                push_line Context !new_line
+                  [
+                    { side = Old; number = !old_line };
+                    { side = New; number = !new_line };
+                  ]
+                  line;
                 incr old_line;
                 incr new_line)
           hunk.lines)
@@ -217,15 +272,16 @@ module View = struct
   type split_line = {
     content : string;
     line_num : int option;
+    side : side option;
     kind : split_kind;
   }
 
   type split = { left : split_line list; right : split_line list }
 
-  let blank_line = { content = ""; line_num = None; kind = Blank }
+  let blank_line = { content = ""; line_num = None; side = None; kind = Blank }
 
-  let context_line ~line_num content =
-    { content; line_num = Some line_num; kind = Context }
+  let context_line ~side ~line_num content =
+    { content; line_num = Some line_num; side = Some side; kind = Context }
 
   let split_run_lines (run : Patch.line array) =
     let removes = ref [] in
@@ -265,8 +321,8 @@ module View = struct
           match lines.(!i).tag with
           | Context ->
               let content = lines.(!i).content in
-              push_left (context_line ~line_num:!old_line content);
-              push_right (context_line ~line_num:!new_line content);
+              push_left (context_line ~side:Old ~line_num:!old_line content);
+              push_right (context_line ~side:New ~line_num:!new_line content);
               incr old_line;
               incr new_line;
               incr i
@@ -285,6 +341,7 @@ module View = struct
                     {
                       content = line.content;
                       line_num = Some line_num;
+                      side = Some Old;
                       kind = Removed;
                     })
                   removes
@@ -297,6 +354,7 @@ module View = struct
                     {
                       content = line.content;
                       line_num = Some line_num;
+                      side = Some New;
                       kind = Added;
                     })
                   adds
@@ -312,7 +370,7 @@ module View = struct
     String.concat "\n"
       (List.map (fun (line : split_line) -> line.content) lines)
 
-  let line_number_props ~theme ~show_line_numbers lines =
+  let line_number_props ~theme ~line_highlights ~show_line_numbers lines =
     let line_colors = ref [] in
     let line_signs = ref [] in
     let line_numbers = ref [] in
@@ -322,18 +380,22 @@ module View = struct
         (match line.line_num with
         | Some line_num -> line_numbers := (index, line_num) :: !line_numbers
         | None -> hidden_line_numbers := index :: !hidden_line_numbers);
+        let color tag =
+          let sources =
+            match (line.side, line.line_num) with
+            | Some side, Some number -> [ { side; number } ]
+            | Some _, None | None, Some _ | None, None -> []
+          in
+          line_color_of_sources ~theme ~line_highlights tag sources
+        in
         match line.kind with
         | Added ->
-            line_colors :=
-              (index, line_color_of ~theme Patch.Added) :: !line_colors;
+            line_colors := (index, color Patch.Added) :: !line_colors;
             line_signs := (index, added_sign theme) :: !line_signs
         | Removed ->
-            line_colors :=
-              (index, line_color_of ~theme Patch.Removed) :: !line_colors;
+            line_colors := (index, color Patch.Removed) :: !line_colors;
             line_signs := (index, removed_sign theme) :: !line_signs
-        | Context ->
-            line_colors :=
-              (index, line_color_of ~theme Patch.Context) :: !line_colors
+        | Context -> line_colors := (index, color Patch.Context) :: !line_colors
         | Blank -> ())
       lines;
     Line_number.Props.make ~fg:theme.line_number_fg ?bg:theme.line_number_bg
@@ -536,7 +598,10 @@ let pending_work t =
 let build_unified_view t (props : Props.t) =
   destroy_children t;
   set_flex_direction t Toffee.Style.Flex_direction.Column;
-  let unified = View.unified ~theme:props.theme props.patch in
+  let unified =
+    View.unified ~theme:props.theme ~line_highlights:props.line_highlights
+      props.patch
+  in
   let side =
     Line_number.create ~parent:t.node ~style:full_style
       ~fg:props.theme.line_number_fg ?bg:props.theme.line_number_bg
@@ -565,10 +630,12 @@ let build_split_view t (props : Props.t) =
   let initial = View.split props.patch in
   let initial_left_props =
     View.line_number_props ~theme:props.theme
+      ~line_highlights:props.line_highlights
       ~show_line_numbers:props.show_line_numbers initial.View.left
   in
   let initial_right_props =
     View.line_number_props ~theme:props.theme
+      ~line_highlights:props.line_highlights
       ~show_line_numbers:props.show_line_numbers initial.View.right
   in
   let left_side =
@@ -613,10 +680,12 @@ let build_split_view t (props : Props.t) =
   in
   let left_props =
     View.line_number_props ~theme:props.theme
+      ~line_highlights:props.line_highlights
       ~show_line_numbers:props.show_line_numbers split.View.left
   in
   let right_props =
     View.line_number_props ~theme:props.theme
+      ~line_highlights:props.line_highlights
       ~show_line_numbers:props.show_line_numbers split.View.right
   in
   Line_number.apply_props left_side left_props;
@@ -651,13 +720,14 @@ let rebuild t =
     | Split -> build_split_view t t.props
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?layout ?theme
-    ?highlight ?show_line_numbers ?wrap ?selectable ?text_style patch =
+    ?highlight ?line_highlights ?show_line_numbers ?wrap ?selectable ?text_style
+    patch =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ~patch ?layout ?theme ?highlight ?show_line_numbers ?wrap
-      ?selectable ?text_style ()
+    Props.make ~patch ?layout ?theme ?highlight ?line_highlights
+      ?show_line_numbers ?wrap ?selectable ?text_style ()
   in
   let t =
     {
@@ -697,4 +767,8 @@ let set_patch t patch = update t { t.props with patch }
 let set_layout t layout = update t { t.props with layout }
 let set_theme t theme = update t { t.props with theme }
 let set_highlight t highlight = update t { t.props with highlight }
+
+let set_line_highlights t line_highlights =
+  update t { t.props with line_highlights }
+
 let apply_props = update

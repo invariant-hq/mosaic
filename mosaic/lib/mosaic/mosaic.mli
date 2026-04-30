@@ -2325,6 +2325,7 @@ val diff :
   ?layout:Diff.layout ->
   ?theme:Diff.theme ->
   ?highlight:Diff.highlight ->
+  ?line_highlights:Diff.line_highlight list ->
   ?show_line_numbers:bool ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
@@ -2338,6 +2339,9 @@ val diff :
     - [theme] -- colors for changed lines, gutters, and signs. Defaults to
       {!Diff.default_theme}.
     - [highlight] -- optional highlighter-backed split-side syntax.
+    - [line_highlights] -- source-line background highlights, using inclusive
+      1-based old/new source line numbers. Earlier entries win when ranges
+      overlap.
     - [show_line_numbers] -- controls whether line-number gutters are shown.
       Defaults to [true].
     - [wrap] -- line-wrapping mode for embedded code content.

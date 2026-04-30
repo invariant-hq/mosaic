@@ -975,6 +975,7 @@ val diff :
   ?layout:Diff.layout ->
   ?theme:Diff.theme ->
   ?highlight:Diff.highlight ->
+  ?line_highlights:Diff.line_highlight list ->
   ?show_line_numbers:bool ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
@@ -987,6 +988,9 @@ val diff :
     - [layout] is the view layout. Defaults to [Diff.Unified].
     - [theme] is the colour theme. Defaults to {!Diff.default_theme}.
     - [highlight] is optional highlighter-backed split-side syntax.
+    - [line_highlights] are source-line background highlights, using inclusive
+      1-based old/new source line numbers. Earlier entries win when ranges
+      overlap. Defaults to [[]].
     - [show_line_numbers] controls whether gutters are shown. Defaults to
       [true].
     - [wrap] is the wrap mode for embedded {!Code} children. Defaults to
