@@ -58,6 +58,16 @@ let remove_only_diff =
 -}
 |}
 
+let asymmetric_wrap_diff =
+  {|--- a/wrap.txt
++++ b/wrap.txt
+@@ -1,3 +1,3 @@
+ start
+-short
++abcdefghijklmnopqrstuvwxyz0123456789
+ end
+|}
+
 let git_diff_with_marker =
   {|diff --git a/a.txt b/a.txt
 index 1111111..2222222 100644
@@ -126,6 +136,24 @@ let%expect_test "split view simple diff" =
  1   function hello() {                  1   function hello() {
  2 -   console.log("Hello");             2 +   console.log("Hello, World!");
  3   }                                   3   }
+
+|}]
+
+let%expect_test "split view aligns asymmetric wrapped lines" =
+  let app = make_app () in
+  reconcile app
+    (Vnode.diff ~layout:Diff.Split ~wrap:`Char (parse asymmetric_wrap_diff));
+  set_viewport app.renderer ~width:44 ~height:7;
+  Renderer.render_frame app.renderer ~width:44 ~height:7 ~delta:0.;
+  ignore (Renderer.render app.renderer : string);
+  frame app ~width:44 ~height:7;
+  [%expect_exact
+    {|
+ 1   start             1   start
+ 2 - short             2 + abcdefghijklmnopq
+                           rstuvwxyz01234567
+                           89
+ 3   end               3   end
 
 |}]
 

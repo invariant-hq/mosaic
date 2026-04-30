@@ -314,11 +314,79 @@ module View = struct
       ()
 end
 
+module Split_layout = struct
+  let visual_counts line_count (info : Renderable.line_info) =
+    let counts = Array.make line_count 0 in
+    Array.iter
+      (fun source ->
+        if source >= 0 && source < line_count then
+          counts.(source) <- counts.(source) + 1)
+      info.line_sources;
+    for i = 0 to line_count - 1 do
+      if counts.(i) = 0 then counts.(i) <- 1
+    done;
+    counts
+
+  let pad acc n =
+    let rec loop acc n =
+      if n = 0 then acc else loop (View.blank_line :: acc) (n - 1)
+    in
+    loop acc n
+
+  let align (split : View.split) ~left_info ~right_info =
+    let left_count = List.length split.left in
+    let right_count = List.length split.right in
+    let left_visual_counts = visual_counts left_count left_info in
+    let right_visual_counts = visual_counts right_count right_info in
+    let rec loop acc_left acc_right left_visual right_visual i left right =
+      match (left, right) with
+      | [], [] ->
+          if left_visual < right_visual then
+            {
+              View.left = List.rev (pad acc_left (right_visual - left_visual));
+              right = List.rev acc_right;
+            }
+          else if right_visual < left_visual then
+            {
+              left = List.rev acc_left;
+              right = List.rev (pad acc_right (left_visual - right_visual));
+            }
+          else { left = List.rev acc_left; right = List.rev acc_right }
+      | left_line :: left_tail, right_line :: right_tail ->
+          let acc_left, left_visual =
+            if left_visual < right_visual then
+              let n = right_visual - left_visual in
+              (pad acc_left n, left_visual + n)
+            else (acc_left, left_visual)
+          in
+          let acc_right, right_visual =
+            if right_visual < left_visual then
+              let n = left_visual - right_visual in
+              (pad acc_right n, right_visual + n)
+            else (acc_right, right_visual)
+          in
+          let left_visual =
+            left_visual + if i < left_count then left_visual_counts.(i) else 1
+          in
+          let right_visual =
+            right_visual
+            + if i < right_count then right_visual_counts.(i) else 1
+          in
+          loop (left_line :: acc_left) (right_line :: acc_right) left_visual
+            right_visual (i + 1) left_tail right_tail
+      | _ -> split
+    in
+    loop [] [] 0 0 0 split.left split.right
+end
+
 type t = {
   node : Renderable.t;
   mutable props : Props.t;
   mutable left_side : Line_number.t option;
   mutable right_side : Line_number.t option;
+  mutable left_code : Code.t option;
+  mutable right_code : Code.t option;
+  mutable pending_rebuild : bool;
 }
 
 let node t = t.node
@@ -345,12 +413,26 @@ let destroy_children t =
   destroy_side t.left_side;
   destroy_side t.right_side;
   t.left_side <- None;
-  t.right_side <- None
+  t.right_side <- None;
+  t.left_code <- None;
+  t.right_code <- None
+
+let code_props (props : Props.t) ~content ?syntax () =
+  Code.Props.make ~content ?syntax ~text_style:props.text_style ~wrap:props.wrap
+    ~selectable:props.selectable ()
 
 let make_code ~parent (props : Props.t) ~content ?syntax () =
   Code.create ~parent ~style:full_style ~content ?syntax
     ~text_style:props.text_style ~wrap:props.wrap ~selectable:props.selectable
     ()
+
+let make_or_update_code existing ~parent (props : Props.t) ~content ?syntax () =
+  match existing with
+  | None -> make_code ~parent props ~content ?syntax ()
+  | Some code ->
+      Renderable.set_style (Code.node code) full_style;
+      Code.apply_props code (code_props props ~content ?syntax ());
+      code
 
 let old_syntax = function Some { old; _ } -> Some old | None -> None
 let new_syntax = function Some { new_; _ } -> Some new_ | None -> None
@@ -363,6 +445,21 @@ let make_side ~parent ~style ~theme ~props =
   Line_number.apply_props side props;
   side
 
+let make_or_update_side existing ~parent ~style ~theme ~props =
+  match existing with
+  | None -> make_side ~parent ~style ~theme ~props
+  | Some side ->
+      Renderable.set_style (Line_number.node side) style;
+      Line_number.apply_props side props;
+      side
+
+let request_split_rebuild t =
+  if t.props.layout = Split && t.props.wrap <> `None then begin
+    t.pending_rebuild <- true;
+    Renderable.set_live t.node true;
+    Renderable.request_render t.node
+  end
+
 let build_unified_view t (props : Props.t) =
   destroy_children t;
   set_flex_direction t Toffee.Style.Flex_direction.Column;
@@ -374,17 +471,70 @@ let build_unified_view t (props : Props.t) =
       ~line_colors:unified.View.line_colors ~line_signs:unified.View.line_signs
       ~line_numbers:unified.View.line_numbers ()
   in
-  let _code =
+  let code =
     Code.create ~parent:(Line_number.node side) ~style:full_style
       ~content:unified.View.content ~text_style:props.text_style
       ~wrap:props.wrap ~selectable:props.selectable ()
   in
-  t.left_side <- Some side
+  t.left_side <- Some side;
+  t.left_code <- Some code
+
+let should_align_split t (props : Props.t) left_code right_code =
+  props.wrap <> `None
+  && Option.is_none props.highlight
+  && Renderable.width t.node > 0
+  && Renderable.width (Code.node left_code) > 0
+  && Renderable.width (Code.node right_code) > 0
 
 let build_split_view t (props : Props.t) =
-  destroy_children t;
   set_flex_direction t Toffee.Style.Flex_direction.Row;
-  let split = View.split props.patch in
+  let initial = View.split props.patch in
+  let initial_left_props =
+    View.line_number_props ~theme:props.theme
+      ~show_line_numbers:props.show_line_numbers initial.View.left
+  in
+  let initial_right_props =
+    View.line_number_props ~theme:props.theme
+      ~show_line_numbers:props.show_line_numbers initial.View.right
+  in
+  let left_side =
+    make_or_update_side t.left_side ~parent:t.node ~style:half_style
+      ~theme:props.theme ~props:initial_left_props
+  in
+  let left_code =
+    make_or_update_code t.left_code
+      ~parent:(Line_number.node left_side)
+      props
+      ~content:(View.content initial.View.left)
+      ?syntax:(old_syntax props.highlight)
+      ()
+  in
+  let right_side =
+    make_or_update_side t.right_side ~parent:t.node ~style:half_style
+      ~theme:props.theme ~props:initial_right_props
+  in
+  let right_code =
+    make_or_update_code t.right_code
+      ~parent:(Line_number.node right_side)
+      props
+      ~content:(View.content initial.View.right)
+      ?syntax:(new_syntax props.highlight)
+      ()
+  in
+  Renderable.set_on_resize (Code.node left_code)
+    (Some (fun _ -> request_split_rebuild t));
+  Renderable.set_on_resize (Code.node right_code)
+    (Some (fun _ -> request_split_rebuild t));
+  let split =
+    match
+      ( Renderable.line_info (Code.node left_code),
+        Renderable.line_info (Code.node right_code) )
+    with
+    | Some left_info, Some right_info
+      when should_align_split t props left_code right_code ->
+        Split_layout.align initial ~left_info ~right_info
+    | _ -> initial
+  in
   let left_props =
     View.line_number_props ~theme:props.theme
       ~show_line_numbers:props.show_line_numbers split.View.left
@@ -393,32 +543,22 @@ let build_split_view t (props : Props.t) =
     View.line_number_props ~theme:props.theme
       ~show_line_numbers:props.show_line_numbers split.View.right
   in
-  let left_side =
-    make_side ~parent:t.node ~style:half_style ~theme:props.theme
-      ~props:left_props
-  in
-  let _left_code =
-    make_code
-      ~parent:(Line_number.node left_side)
-      props
-      ~content:(View.content split.View.left)
-      ?syntax:(old_syntax props.highlight)
-      ()
-  in
-  let right_side =
-    make_side ~parent:t.node ~style:half_style ~theme:props.theme
-      ~props:right_props
-  in
-  let _right_code =
-    make_code
-      ~parent:(Line_number.node right_side)
-      props
-      ~content:(View.content split.View.right)
-      ?syntax:(new_syntax props.highlight)
-      ()
-  in
+  Line_number.apply_props left_side left_props;
+  Line_number.apply_props right_side right_props;
+  Code.apply_props left_code
+    (code_props props
+       ~content:(View.content split.View.left)
+       ?syntax:(old_syntax props.highlight)
+       ());
+  Code.apply_props right_code
+    (code_props props
+       ~content:(View.content split.View.right)
+       ?syntax:(new_syntax props.highlight)
+       ());
   t.left_side <- Some left_side;
-  t.right_side <- Some right_side
+  t.right_side <- Some right_side;
+  t.left_code <- Some left_code;
+  t.right_code <- Some right_code
 
 let rebuild t =
   if Patch.is_empty t.props.patch then begin
@@ -442,7 +582,28 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?layout ?theme
     Props.make ~patch ?layout ?theme ?highlight ?show_line_numbers ?wrap
       ?selectable ?text_style ()
   in
-  let t = { node; props; left_side = None; right_side = None } in
+  let t =
+    {
+      node;
+      props;
+      left_side = None;
+      right_side = None;
+      left_code = None;
+      right_code = None;
+      pending_rebuild = false;
+    }
+  in
+  Renderable.set_on_frame node
+    (Some
+       (fun _ ~delta:_ ->
+         if t.pending_rebuild then begin
+           t.pending_rebuild <- false;
+           rebuild t;
+           Renderable.request_render t.node
+         end;
+         if not t.pending_rebuild then begin
+           Renderable.set_live t.node false
+         end));
   rebuild t;
   t
 
