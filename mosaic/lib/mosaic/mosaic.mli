@@ -2354,6 +2354,7 @@ val diff :
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
   ?text_style:Ansi.Style.t ->
+  ?on_line_click:(Diff.line_hit -> 'msg option) ->
   Diff.Patch.t ->
   'msg t
 (** [diff patch] renders [patch] as a unified or split diff.
@@ -2370,7 +2371,9 @@ val diff :
       Defaults to [true].
     - [wrap] -- line-wrapping mode for embedded code content.
     - [selectable] -- when [true], embedded code content can be selected.
-    - [text_style] -- base ANSI style applied to code content. *)
+    - [text_style] -- base ANSI style applied to code content.
+    - [on_line_click] -- fired with a semantic diff hit when the user clicks a
+      rendered diff line without dragging. *)
 
 val markdown :
   ?key:string ->

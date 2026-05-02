@@ -77,6 +77,31 @@ type line_highlight = {
 type source_line = { side : side; line : int }
 (** The type for a 1-based source line on one side of a diff. *)
 
+(** The kind of rendered diff line under a pointer hit. [Blank] is used for
+    split-view alignment rows that do not correspond to source content. *)
+type line_kind = Context | Added | Removed | Blank
+
+(** The region of the diff row under a pointer hit. *)
+type hit_region = Gutter | Sign | Content | Padding
+
+type line_hit = {
+  source : source_line option;
+  kind : line_kind;
+  region : hit_region;
+  logical_row : int;
+  visual_row : int;
+}
+(** A semantic hit-test result for a rendered diff line.
+
+    [source] is [None] for split-view blank alignment rows. [logical_row] is the
+    zero-based row in the diff content for the relevant layout side.
+    [visual_row] is the zero-based display row under the pointer after wrapping.
+    These row fields are display coordinates for the current render, not stable
+    source positions or persistence keys. *)
+
+type t
+(** The type for diff display renderables. *)
+
 val source_line_row : Patch.t -> layout:layout -> source_line -> int option
 (** [source_line_row patch ~layout source] is the zero-based logical diff row of
     [source] in [patch], if [source] is present.
@@ -85,6 +110,10 @@ val source_line_row : Patch.t -> layout:layout -> source_line -> int option
     layout, blank alignment rows are skipped. The result is independent of line
     wrapping and is an exact scroll coordinate only when wrapping is disabled.
 *)
+
+val hit_test : t -> x:int -> y:int -> line_hit option
+(** [hit_test t ~x ~y] is the semantic diff hit at global screen coordinate
+    [(x, y)], if the coordinate falls inside [t]. *)
 
 type theme = {
   added_bg : Ansi.Color.t;
@@ -136,9 +165,6 @@ type highlight = { old : syntax; new_ : syntax }
     Unified layout uses [new_] because the rendered buffer combines context,
     additions, and removals from a single file language. Split layout uses [old]
     for the left side and [new_] for the right side. *)
-
-type t
-(** The type for diff display renderables. *)
 
 module Props : sig
   type t
@@ -212,3 +238,7 @@ val set_line_highlights : t -> line_highlight list -> unit
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t]. *)
+
+val set_on_line_click : t -> (line_hit -> unit) option -> unit
+(** [set_on_line_click t f] sets the callback fired when the user clicks a
+    rendered diff line. Drag selections do not trigger the callback. *)

@@ -76,6 +76,7 @@ type 'msg widget_callbacks =
       on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
   | Code_callbacks of { on_selection : ((int * int) option -> 'msg) option }
+  | Diff_callbacks of { on_line_click : (Diff.line_hit -> 'msg) option }
   | Table_callbacks of {
       on_change : (int -> 'msg) option;
       on_activate : (int -> 'msg) option;
@@ -982,6 +983,7 @@ val diff :
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
   ?text_style:Ansi.Style.t ->
+  ?on_line_click:(Diff.line_hit -> 'msg) ->
   Diff.Patch.t ->
   'msg t
 (** [diff patch] is a diff display leaf element rendering [patch].
@@ -999,7 +1001,9 @@ val diff :
       [`None].
     - [selectable] controls text selection on embedded {!Code} children.
       Defaults to [true].
-    - [text_style] is the base text style. Defaults to {!Ansi.Style.default}. *)
+    - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
+    - [on_line_click] is called with a semantic diff hit when the user clicks a
+      rendered diff line without dragging. *)
 
 val tree :
   ?key:string ->

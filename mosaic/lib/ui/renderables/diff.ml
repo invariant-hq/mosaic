@@ -11,6 +11,16 @@ type line_highlight = {
 }
 
 type source_line = { side : side; line : int }
+type line_kind = Context | Added | Removed | Blank
+type hit_region = Gutter | Sign | Content | Padding
+
+type line_hit = {
+  source : source_line option;
+  kind : line_kind;
+  region : hit_region;
+  logical_row : int;
+  visual_row : int;
+}
 
 let equal_side a b =
   match (a, b) with Old, Old | New, New -> true | _ -> false
@@ -467,6 +477,79 @@ let source_line_row patch ~layout source =
   | Unified -> source_line_row_unified patch source
   | Split -> source_line_row_split patch source
 
+let line_kind_of_patch_tag = function
+  | Patch.Context -> Context
+  | Patch.Added -> Added
+  | Patch.Removed -> Removed
+
+let line_kind_of_split_kind = function
+  | View.Context -> Context
+  | Added -> Added
+  | Removed -> Removed
+  | Blank -> Blank
+
+let source_line_at_row_unified patch target =
+  let row = ref 0 in
+  let result = ref None in
+  List.iter
+    (fun (hunk : Patch.hunk) ->
+      let old_line = ref hunk.old_start in
+      let new_line = ref hunk.new_start in
+      List.iter
+        (fun (line : Patch.line) ->
+          (if Option.is_none !result && !row = target then
+             let source =
+               match line.tag with
+               | Patch.Added -> Some { side = New; line = !new_line }
+               | Patch.Removed -> Some { side = Old; line = !old_line }
+               | Patch.Context -> Some { side = New; line = !new_line }
+             in
+             result := Some (line_kind_of_patch_tag line.tag, source));
+          (match line.tag with
+          | Patch.Added -> incr new_line
+          | Patch.Removed -> incr old_line
+          | Patch.Context ->
+              incr old_line;
+              incr new_line);
+          incr row)
+        hunk.lines)
+    (Patch.hunks patch);
+  !result
+
+let split_line_at_row lines target =
+  if target < 0 then None
+  else
+    let rec loop row = function
+      | [] -> None
+      | line :: rest ->
+          if row = target then
+            let source =
+              match (line.View.side, line.line_num) with
+              | Some side, Some number -> Some { side; line = number }
+              | Some _, None | None, Some _ | None, None -> None
+            in
+            Some (line_kind_of_split_kind line.kind, source)
+          else loop (row + 1) rest
+    in
+    loop 0 lines
+
+let source_line_at_row_split patch ?side row =
+  let split = View.split patch in
+  match side with
+  | Some Old -> split_line_at_row split.left row
+  | Some New -> split_line_at_row split.right row
+  | None -> (
+      match split_line_at_row split.left row with
+      | Some (Blank, None) | None -> split_line_at_row split.right row
+      | Some _ as result -> result)
+
+let source_line_at_row_with_kind patch ~layout ?side row =
+  if row < 0 then None
+  else
+    match layout with
+    | Unified -> source_line_at_row_unified patch row
+    | Split -> source_line_at_row_split patch ?side row
+
 module Split_layout = struct
   let visual_counts line_count (info : Renderable.line_info) =
     let counts = Array.make line_count 0 in
@@ -539,12 +622,112 @@ type t = {
   mutable right_side : Line_number.t option;
   mutable left_code : Code.t option;
   mutable right_code : Code.t option;
+  mutable left_lines : View.split_line list;
+  mutable right_lines : View.split_line list;
+  mutable on_line_click : (line_hit -> unit) option;
+  mutable mouse_down : (int * int) option;
   mutable pending_rebuild : bool;
   mutable waiting_for_highlight : bool;
 }
 
 let node t = t.node
 let patch t = t.props.patch
+
+let inside_side ~side_node x =
+  let side_x = Renderable.x side_node in
+  let side_w = Renderable.width side_node in
+  x >= side_x && x < side_x + side_w
+
+let region_of_x ~code_node kind x =
+  let code_x = Renderable.x code_node in
+  let code_w = Renderable.width code_node in
+  if x >= code_x && x < code_x + code_w then Content
+  else if x = code_x - 1 then Padding
+  else
+    match kind with
+    | (Added | Removed) when x >= code_x - 3 && x < code_x - 1 -> Sign
+    | Context | Added | Removed | Blank -> Gutter
+
+let logical_row_at_visual code visual_row =
+  if visual_row < 0 then None
+  else
+    match Renderable.line_info (Code.node code) with
+    | Some info ->
+        let display_row = info.scroll_y + visual_row in
+        if display_row < 0 || display_row >= Array.length info.line_sources then
+          None
+        else Some info.line_sources.(display_row)
+    | None -> Some visual_row
+
+let side_hit t ~x ~y side line_number code =
+  let side_node = Line_number.node line_number in
+  let code_node = Code.node code in
+  if not (inside_side ~side_node x) then None
+  else
+    let visual_row = y - Renderable.y code_node in
+    Option.bind (logical_row_at_visual code visual_row) (fun logical_row ->
+        let line =
+          match t.props.layout with
+          | Unified ->
+              source_line_at_row_with_kind t.props.patch ~layout:Unified
+                logical_row
+          | Split ->
+              let lines =
+                match side with Old -> t.left_lines | New -> t.right_lines
+              in
+              split_line_at_row lines logical_row
+        in
+        match line with
+        | None -> None
+        | Some (kind, source) ->
+            let region = region_of_x ~code_node kind x in
+            Some { source; kind; region; logical_row; visual_row })
+
+let hit_test t ~x ~y =
+  let nx = Renderable.x t.node in
+  let ny = Renderable.y t.node in
+  let nw = Renderable.width t.node in
+  let nh = Renderable.height t.node in
+  if x < nx || x >= nx + nw || y < ny || y >= ny + nh then None
+  else
+    match t.props.layout with
+    | Unified -> (
+        match (t.left_side, t.left_code) with
+        | Some side, Some code -> side_hit t ~x ~y New side code
+        | _ -> None)
+    | Split -> (
+        match (t.left_side, t.left_code, t.right_side, t.right_code) with
+        | Some left_side, Some left_code, Some right_side, Some right_code -> (
+            match side_hit t ~x ~y Old left_side left_code with
+            | Some _ as hit -> hit
+            | None -> side_hit t ~x ~y New right_side right_code)
+        | _ -> None)
+
+let click_distance_ok (down_x, down_y) ~x ~y =
+  abs (x - down_x) <= 1 && abs (y - down_y) <= 1
+
+let handle_mouse t event =
+  match Event.Mouse.kind event with
+  | Down { button = Left } ->
+      t.mouse_down <- Some (Event.Mouse.x event, Event.Mouse.y event)
+  | Up { button = Left; is_dragging = _ } -> (
+      let x = Event.Mouse.x event in
+      let y = Event.Mouse.y event in
+      let down = t.mouse_down in
+      t.mouse_down <- None;
+      match down with
+      | Some down when click_distance_ok down ~x ~y -> (
+          match (t.on_line_click, hit_test t ~x ~y) with
+          | Some on_line_click, Some hit ->
+              on_line_click hit;
+              Event.Mouse.stop_propagation event
+          | Some _, None | None, Some _ | None, None -> ())
+      | Some _ | None -> ())
+  | Drag { button = Left; _ } | Drag_end { button = Left } ->
+      t.mouse_down <- None
+  | Down _ | Up _ | Move | Drag _ | Drag_end _ | Drop _ | Over _ | Out
+  | Scroll _ ->
+      ()
 
 let full_style =
   let pct100 = Toffee.Style.Dimension.pct 100. in
@@ -576,6 +759,8 @@ let destroy_children t =
   t.right_side <- None;
   t.left_code <- None;
   t.right_code <- None;
+  t.left_lines <- [];
+  t.right_lines <- [];
   t.pending_rebuild <- false;
   t.waiting_for_highlight <- false
 
@@ -681,7 +866,9 @@ let build_unified_view t (props : Props.t) =
       ~wrap:props.wrap ~selectable:props.selectable ()
   in
   t.left_side <- Some side;
-  t.left_code <- Some code
+  t.left_code <- Some code;
+  t.left_lines <- [];
+  t.right_lines <- []
 
 let should_align_split t (props : Props.t) left_code right_code =
   props.wrap <> `None
@@ -770,7 +957,9 @@ let build_split_view t (props : Props.t) =
   t.left_side <- Some left_side;
   t.right_side <- Some right_side;
   t.left_code <- Some left_code;
-  t.right_code <- Some right_code
+  t.right_code <- Some right_code;
+  t.left_lines <- split.View.left;
+  t.right_lines <- split.View.right
 
 let rebuild t =
   if Patch.is_empty t.props.patch then begin
@@ -803,10 +992,15 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?layout ?theme
       right_side = None;
       left_code = None;
       right_code = None;
+      left_lines = [];
+      right_lines = [];
+      on_line_click = None;
+      mouse_down = None;
       pending_rebuild = false;
       waiting_for_highlight = false;
     }
   in
+  Renderable.on_mouse node (handle_mouse t);
   Renderable.set_on_frame node
     (Some
        (fun _ ~delta:_ ->
@@ -838,3 +1032,4 @@ let set_line_highlights t line_highlights =
   update t { t.props with line_highlights }
 
 let apply_props = update
+let set_on_line_click t callback = t.on_line_click <- callback

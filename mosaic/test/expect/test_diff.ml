@@ -85,6 +85,52 @@ let print_source_line_row patch ~layout source =
   | None -> Format.printf "none\n"
   | Some row -> Format.printf "row=%d\n" row
 
+let string_of_side = function Diff.Old -> "old" | New -> "new"
+
+let string_of_line_kind = function
+  | Diff.Context -> "context"
+  | Added -> "added"
+  | Removed -> "removed"
+  | Blank -> "blank"
+
+let string_of_hit_region = function
+  | Diff.Gutter -> "gutter"
+  | Sign -> "sign"
+  | Content -> "content"
+  | Padding -> "padding"
+
+let print_hit = function
+  | None -> Format.printf "none\n"
+  | Some hit ->
+      let source =
+        match hit.Diff.source with
+        | None -> "none"
+        | Some source ->
+            Printf.sprintf "%s:%d" (string_of_side source.side) source.line
+      in
+      Format.printf "source=%s kind=%s region=%s logical=%d visual=%d\n" source
+        (string_of_line_kind hit.kind)
+        (string_of_hit_region hit.region)
+        hit.logical_row hit.visual_row
+
+let mouse_down ~x ~y =
+  Input.Mouse.make ~x ~y ~modifiers:Input.Modifier.none (Down { button = Left })
+
+let mouse_up ~x ~y =
+  Input.Mouse.make ~x ~y ~modifiers:Input.Modifier.none
+    (Up { button = Some Left })
+
+let mouse_drag ~x ~y =
+  Input.Mouse.make ~x ~y ~modifiers:Input.Modifier.none (Drag { button = Left })
+
+let full_style =
+  Toffee.Style.make
+    ~size:
+      (Toffee.Geometry.Size.make
+         (Toffee.Style.Dimension.percent 1.)
+         (Toffee.Style.Dimension.percent 1.))
+    ()
+
 let grid_of_vnode ~width ~height vnode =
   let app = make_app () in
   reconcile app vnode;
@@ -250,6 +296,141 @@ row=9
 row=9
 row=9
 none
+|}]
+
+let%expect_test "hit test rendered diff rows" =
+  let renderer = Renderer.create () in
+  set_viewport renderer ~width:80 ~height:5;
+  let diff =
+    Diff.create ~parent:(Renderer.root renderer) ~layout:Diff.Split
+      (parse simple_diff)
+  in
+  fill_node (Diff.node diff);
+  Renderer.render_frame renderer ~width:80 ~height:5 ~delta:0.;
+  print_hit (Diff.hit_test diff ~x:1 ~y:1);
+  print_hit (Diff.hit_test diff ~x:3 ~y:1);
+  print_hit (Diff.hit_test diff ~x:4 ~y:1);
+  print_hit (Diff.hit_test diff ~x:8 ~y:1);
+  print_hit (Diff.hit_test diff ~x:43 ~y:1);
+  print_hit (Diff.hit_test diff ~x:48 ~y:1);
+  print_hit (Diff.hit_test diff ~x:0 ~y:4);
+  [%expect_exact
+    {|source=old:2 kind=removed region=gutter logical=1 visual=1
+source=old:2 kind=removed region=sign logical=1 visual=1
+source=old:2 kind=removed region=padding logical=1 visual=1
+source=old:2 kind=removed region=content logical=1 visual=1
+source=new:2 kind=added region=sign logical=1 visual=1
+source=new:2 kind=added region=content logical=1 visual=1
+none
+|}]
+
+let%expect_test "hit test uses aligned split rows after wrapping" =
+  let renderer = Renderer.create () in
+  set_viewport renderer ~width:44 ~height:7;
+  let diff =
+    Diff.create ~parent:(Renderer.root renderer) ~layout:Diff.Split ~wrap:`Char
+      (parse asymmetric_wrap_diff)
+  in
+  fill_node (Diff.node diff);
+  Renderer.render_frame renderer ~width:44 ~height:7 ~delta:0.;
+  ignore (Renderer.render renderer : string);
+  Renderer.render_frame renderer ~width:44 ~height:7 ~delta:0.;
+  print_hit (Diff.hit_test diff ~x:8 ~y:2);
+  print_hit (Diff.hit_test diff ~x:8 ~y:4);
+  print_hit (Diff.hit_test diff ~x:30 ~y:4);
+  [%expect_exact
+    {|source=none kind=blank region=content logical=2 visual=2
+source=old:3 kind=context region=content logical=4 visual=4
+source=new:3 kind=context region=content logical=2 visual=4
+|}]
+
+let%expect_test "diff line click callback reports hit" =
+  let app = make_app () in
+  let clicked = ref None in
+  reconcile app
+    (Vnode.diff ~layout:Diff.Unified
+       ~on_line_click:(fun hit -> clicked := Some hit)
+       (parse simple_diff));
+  set_viewport app.renderer ~width:60 ~height:5;
+  Renderer.render_frame app.renderer ~width:60 ~height:5 ~delta:0.;
+  ignore (Renderer.render app.renderer : string);
+  Renderer.dispatch_mouse app.renderer (mouse_down ~x:8 ~y:2);
+  Renderer.dispatch_mouse app.renderer (mouse_up ~x:8 ~y:2);
+  print_hit !clicked;
+  [%expect_exact {|source=new:2 kind=added region=content logical=2 visual=2
+|}]
+
+let%expect_test "diff line click callback ignores drags" =
+  let app = make_app () in
+  let clicked = ref false in
+  reconcile app
+    (Vnode.diff ~layout:Diff.Unified
+       ~on_line_click:(fun _ -> clicked := true)
+       (parse simple_diff));
+  set_viewport app.renderer ~width:60 ~height:5;
+  Renderer.render_frame app.renderer ~width:60 ~height:5 ~delta:0.;
+  ignore (Renderer.render app.renderer : string);
+  Renderer.dispatch_mouse app.renderer (mouse_down ~x:8 ~y:2);
+  Renderer.dispatch_mouse app.renderer (mouse_drag ~x:20 ~y:2);
+  Renderer.dispatch_mouse app.renderer (mouse_up ~x:20 ~y:2);
+  Format.printf "clicked=%b\n" !clicked;
+  [%expect_exact {|clicked=false
+|}]
+
+let%expect_test "diff without line click callback lets mouse up bubble" =
+  let app = make_app () in
+  let parent_ups = ref 0 in
+  reconcile app
+    (Vnode.box
+       ~on_mouse:(fun event ->
+         match Event.Mouse.kind event with
+         | Up { button = Left; _ } -> incr parent_ups
+         | Down _ | Up _ | Move | Drag _ | Drag_end _ | Drop _ | Over _ | Out
+         | Scroll _ ->
+             ())
+       [ Vnode.diff ~style:full_style ~layout:Diff.Unified (parse simple_diff) ]);
+  set_viewport app.renderer ~width:60 ~height:5;
+  Renderer.render_frame app.renderer ~width:60 ~height:5 ~delta:0.;
+  ignore (Renderer.render app.renderer : string);
+  Renderer.dispatch_mouse app.renderer (mouse_down ~x:8 ~y:2);
+  Renderer.dispatch_mouse app.renderer (mouse_up ~x:8 ~y:2);
+  Format.printf "parent_ups=%d\n" !parent_ups;
+  [%expect_exact {|parent_ups=1
+|}]
+
+let%expect_test "diff line click callback can be removed" =
+  let app = make_app () in
+  let clicked = ref 0 in
+  let parent_ups = ref 0 in
+  let parent child =
+    Vnode.box
+      ~on_mouse:(fun event ->
+        match Event.Mouse.kind event with
+        | Up { button = Left; _ } -> incr parent_ups
+        | Down _ | Up _ | Move | Drag _ | Drag_end _ | Drop _ | Over _ | Out
+        | Scroll _ ->
+            ())
+      [ child ]
+  in
+  reconcile app
+    (parent
+       (Vnode.diff ~style:full_style ~layout:Diff.Unified
+          ~on_line_click:(fun _ -> incr clicked)
+          (parse simple_diff)));
+  set_viewport app.renderer ~width:60 ~height:5;
+  Renderer.render_frame app.renderer ~width:60 ~height:5 ~delta:0.;
+  ignore (Renderer.render app.renderer : string);
+  Renderer.dispatch_mouse app.renderer (mouse_down ~x:8 ~y:2);
+  Renderer.dispatch_mouse app.renderer (mouse_up ~x:8 ~y:2);
+  reconcile app
+    (parent
+       (Vnode.diff ~style:full_style ~layout:Diff.Unified (parse simple_diff)));
+  Renderer.render_frame app.renderer ~width:60 ~height:5 ~delta:0.;
+  ignore (Renderer.render app.renderer : string);
+  Renderer.dispatch_mouse app.renderer (mouse_down ~x:8 ~y:2);
+  Renderer.dispatch_mouse app.renderer (mouse_up ~x:8 ~y:2);
+  Format.printf "clicked=%d parent_ups=%d\n" !clicked !parent_ups;
+  [%expect_exact {|clicked=1 parent_ups=1
 |}]
 
 let%expect_test "split view aligns asymmetric wrapped lines" =

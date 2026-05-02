@@ -59,6 +59,7 @@ type 'msg widget_callbacks =
       on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
   | Code_callbacks of { on_selection : ((int * int) option -> 'msg) option }
+  | Diff_callbacks of { on_line_click : (Diff.line_hit -> 'msg) option }
   | Table_callbacks of {
       on_change : (int -> 'msg) option;
       on_activate : (int -> 'msg) option;
@@ -589,7 +590,7 @@ let diff ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?layout
     ?theme ?highlight ?line_highlights ?show_line_numbers ?wrap ?selectable
-    ?text_style patch =
+    ?text_style ?on_line_click patch =
   let kind =
     Diff
       (Diff.Props.make ~patch ?layout ?theme ?highlight ?line_highlights
@@ -610,8 +611,8 @@ let diff ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     }
   in
   let handlers = { on_mouse; on_key; on_paste } in
-  Element
-    { kind; key; attrs; handlers; callbacks = No_callbacks; children = [] }
+  let callbacks = Diff_callbacks { on_line_click } in
+  Element { kind; key; attrs; handlers; callbacks; children = [] }
 
 let tree ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = true) ?(autofocus = false)
@@ -706,6 +707,9 @@ let map_callbacks (f : 'a -> 'b) : 'a widget_callbacks -> 'b widget_callbacks =
   | Code_callbacks { on_selection } ->
       Code_callbacks
         { on_selection = Option.map (fun g sel -> f (g sel)) on_selection }
+  | Diff_callbacks { on_line_click } ->
+      Diff_callbacks
+        { on_line_click = Option.map (fun g hit -> f (g hit)) on_line_click }
   | Table_callbacks { on_change; on_activate } ->
       Table_callbacks
         {
