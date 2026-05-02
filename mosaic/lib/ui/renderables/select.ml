@@ -319,8 +319,8 @@ let handle_key t (event : Event.key) =
 let handle_mouse t (event : Event.mouse) =
   let width = Renderable.width t.node in
   let height = Renderable.height t.node in
-  let x = Event.Mouse.x event in
-  let y = Event.Mouse.y event in
+  let x = Event.Mouse.x event - Renderable.x t.node in
+  let y = Event.Mouse.y event - Renderable.y t.node in
   match Event.Mouse.kind event with
   | Down { button = Left } ->
       if x >= 0 && x < width && y >= 0 && y < height then

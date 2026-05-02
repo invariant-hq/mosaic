@@ -67,6 +67,9 @@ let emit_mouse sel ev = Renderable.Private.emit_mouse (Select.node sel) ev
 let with_layout sel ~width ~height =
   layout_node (Select.node sel) ~x:0 ~y:0 ~width ~height
 
+let with_layout_at sel ~x ~y ~width ~height =
+  layout_node (Select.node sel) ~x ~y ~width ~height
+
 (* ── Props ── *)
 
 let props_defaults () =
@@ -291,6 +294,13 @@ let mouse_click_selects_item () =
   (* show_description=true so lines_per_item=2; click at y=2 -> item 1 *)
   emit_mouse sel (mouse_down ~x:5 ~y:2);
   equal ~msg:"selected" int 1 (Select.selected_index sel)
+
+let mouse_click_uses_local_coordinates () =
+  let _t, sel = make_select ~options:sample_items () in
+  with_layout_at sel ~x:10 ~y:6 ~width:30 ~height:20;
+  (* Global y=10 is local y=4, which maps to item 2. *)
+  emit_mouse sel (mouse_down ~x:15 ~y:10);
+  equal ~msg:"selected" int 2 (Select.selected_index sel)
 
 let mouse_click_fires_on_change () =
   let _t, sel = make_select ~options:sample_items () in
@@ -545,6 +555,7 @@ let () =
       group "Mouse"
         [
           test "click selects item" mouse_click_selects_item;
+          test "click uses local coordinates" mouse_click_uses_local_coordinates;
           test "click fires on_change" mouse_click_fires_on_change;
           test "click same item no-op" mouse_click_same_item_noop;
           test "click beyond items ignored" mouse_click_beyond_items_ignored;
