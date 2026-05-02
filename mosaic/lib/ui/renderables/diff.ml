@@ -202,6 +202,42 @@ module View = struct
     && source.number >= highlight.first
     && source.number <= highlight.last
 
+  let blend_channel base overlay alpha =
+    Float.round
+      ((float_of_int overlay *. alpha) +. (float_of_int base *. (1. -. alpha)))
+    |> int_of_float
+
+  let blend_color ~base overlay =
+    let _, _, _, overlay_alpha = Ansi.Color.to_rgba overlay in
+    if overlay_alpha <= 0 then base
+    else if overlay_alpha >= 255 then overlay
+    else
+      let _, _, _, base_alpha = Ansi.Color.to_rgba base in
+      if base_alpha <= 0 then overlay
+      else
+        let br, bg, bb = Ansi.Color.to_rgb base in
+        let or_, og, ob = Ansi.Color.to_rgb overlay in
+        let alpha = float_of_int overlay_alpha /. 255. in
+        Ansi.Color.of_rgb
+          (blend_channel br or_ alpha)
+          (blend_channel bg og alpha)
+          (blend_channel bb ob alpha)
+
+  let blend_content_color (base : Line_number.line_color)
+      (overlay : Line_number.line_color) =
+    match (base.content, overlay.content) with
+    | None, None -> None
+    | Some base, None -> Some (blend_color ~base overlay.gutter)
+    | None, Some overlay -> Some overlay
+    | Some base, Some overlay -> Some (blend_color ~base overlay)
+
+  let blend_line_color ~(base : Line_number.line_color)
+      (overlay : Line_number.line_color) : Line_number.line_color =
+    {
+      gutter = blend_color ~base:base.gutter overlay.gutter;
+      content = blend_content_color base overlay;
+    }
+
   let find_highlight sources highlights =
     List.find_map
       (fun highlight ->
@@ -212,9 +248,10 @@ module View = struct
       highlights
 
   let line_color_of_sources ~theme ~line_highlights tag sources =
+    let base = line_color_of ~theme tag in
     match find_highlight sources line_highlights with
-    | Some color -> color
-    | None -> line_color_of ~theme tag
+    | Some color -> blend_line_color ~base color
+    | None -> base
 
   type unified = {
     content : string;

@@ -156,6 +156,20 @@ let assert_not_background ~msg grid ~x ~y color =
     failwith
       (Printf.sprintf "%s: did not expect %s" msg (color_to_string color))
 
+let blend_channel base overlay alpha =
+  Float.round
+    ((float_of_int overlay *. alpha) +. (float_of_int base *. (1. -. alpha)))
+  |> int_of_float
+
+let blend_color ~base overlay =
+  let br, bg, bb = Ansi.Color.to_rgb base in
+  let or_, og, ob, oa = Ansi.Color.to_rgba overlay in
+  let alpha = float_of_int oa /. 255. in
+  Ansi.Color.of_rgb
+    (blend_channel br or_ alpha)
+    (blend_channel bg og alpha)
+    (blend_channel bb ob alpha)
+
 let git_diff_with_marker =
   {|diff --git a/a.txt b/a.txt
 index 1111111..2222222 100644
@@ -262,6 +276,24 @@ let%expect_test "source line highlights preserve diff text" =
  3   }                                   3   }
 
 |}]
+
+let%expect_test "translucent source line highlights blend with diff color" =
+  let overlay = Ansi.Color.of_rgba 80 90 120 96 in
+  let color = { Line_number.gutter = overlay; content = Some overlay } in
+  let line_highlights = [ { Diff.side = New; first = 2; last = 2; color } ] in
+  let grid =
+    grid_of_vnode ~width:60 ~height:5
+      (Vnode.diff ~layout:Diff.Unified ~line_highlights (parse simple_diff))
+  in
+  let selected = background_at grid ~x:8 ~y:2 in
+  let expected = blend_color ~base:Diff.default_theme.added_bg overlay in
+  assert_background ~msg:"highlight blends with added background" grid ~x:8 ~y:2
+    expected;
+  if Ansi.Color.equal selected overlay then
+    failwith "highlight should not replace added background";
+  if Ansi.Color.equal selected Diff.default_theme.added_bg then
+    failwith "highlight should change added background";
+  [%expect_exact {||}]
 
 let%expect_test "set source line highlights rebuilds colors" =
   let selected = selected_line_color.gutter in

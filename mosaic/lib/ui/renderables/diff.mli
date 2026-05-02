@@ -72,7 +72,9 @@ type line_highlight = {
     [first] and [last] are inclusive 1-based source line numbers. Highlights
     whose [first] is greater than [last] do not match any line. When highlights
     overlap, the first matching highlight in the list wins. In unified layout,
-    context lines can match either {!Old} or {!New}. *)
+    context lines can match either {!Old} or {!New}. Highlight colours are
+    alpha-blended over the normal diff line colour; opaque colours fully replace
+    it. *)
 
 type source_line = { side : side; line : int }
 (** The type for a 1-based source line on one side of a diff. *)
