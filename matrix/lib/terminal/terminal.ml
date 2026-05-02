@@ -78,61 +78,42 @@ type t = {
 
 (* Pre-computed escape sequences *)
 
-let alternate_on = Ansi.(to_string (enable Alternate_screen))
-let alternate_off = Ansi.(to_string (disable Alternate_screen))
-let focus_on = Ansi.(to_string (enable Focus_tracking))
-let focus_off = Ansi.(to_string (disable Focus_tracking))
-let paste_on = Ansi.(to_string (enable Bracketed_paste))
-let paste_off = Ansi.(to_string (disable Bracketed_paste))
+let alternate_on = "\027[?1049h"
+let alternate_off = "\027[?1049l"
+let focus_on = "\027[?1004h"
+let focus_off = "\027[?1004l"
+let paste_on = "\027[?2004h"
+let paste_off = "\027[?2004l"
 let kitty_kb_push flags = Ansi.(to_string (csi_u_push ~flags))
-let kitty_kb_pop = Ansi.(to_string csi_u_pop)
-let modify_other_keys_on_seq = Ansi.(to_string modify_other_keys_on)
-let modify_other_keys_off_seq = Ansi.(to_string modify_other_keys_off)
-let cursor_show = Ansi.(to_string (enable Cursor_visible))
-let cursor_hide = Ansi.(to_string (disable Cursor_visible))
-let sgr_enable = Ansi.(to_string (enable Mouse_sgr))
-let unicode_on = Ansi.(to_string (enable Unicode))
-let unicode_off = Ansi.(to_string (disable Unicode))
-let reset_sgr = Ansi.(to_string reset)
-let erase_below = Ansi.(to_string erase_below_cursor)
-let cursor_default = Ansi.(to_string (cursor_style ~shape:`Default))
-
-let reset_cursor_color_fallback_seq =
-  Ansi.(to_string reset_cursor_color_fallback)
-
-let reset_cursor_color_seq = Ansi.(to_string reset_cursor_color)
-let cursor_block = Ansi.(to_string (cursor_style ~shape:`Block))
-let cursor_block_blink = Ansi.(to_string (cursor_style ~shape:`Blinking_block))
-let cursor_line = Ansi.(to_string (cursor_style ~shape:`Bar))
-let cursor_line_blink = Ansi.(to_string (cursor_style ~shape:`Blinking_bar))
-let cursor_underline = Ansi.(to_string (cursor_style ~shape:`Underline))
-
-let cursor_underline_blink =
-  Ansi.(to_string (cursor_style ~shape:`Blinking_underline))
-
-let mouse_x10 = Ansi.(to_string (enable Mouse_x10))
-let mouse_tracking = Ansi.(to_string (enable Mouse_tracking))
-let mouse_button = Ansi.(to_string (enable Mouse_button_tracking))
-let mouse_motion = Ansi.(to_string (enable Mouse_motion))
+let kitty_kb_pop = "\027[<u"
+let modify_other_keys_on_seq = "\027[>4;1m"
+let modify_other_keys_off_seq = "\027[>4;0m"
+let cursor_show = "\027[?25h"
+let cursor_hide = "\027[?25l"
+let unicode_on = "\027[?2027h"
+let unicode_off = "\027[?2027l"
+let reset_sgr = "\027[0m"
+let erase_below = "\027[J"
+let cursor_default = "\027[0 q"
+let reset_cursor_color_fallback_seq = "\027]12;default\007"
+let reset_cursor_color_seq = "\027]112\007"
+let cursor_block = "\027[2 q"
+let cursor_block_blink = "\027[1 q"
+let cursor_line = "\027[6 q"
+let cursor_line_blink = "\027[5 q"
+let cursor_underline = "\027[4 q"
+let cursor_underline_blink = "\027[3 q"
+let mouse_x10 = "\027[?9h"
+let mouse_tracking = "\027[?1000h"
+let mouse_button = "\027[?1002h"
+let mouse_motion = "\027[?1003h"
 
 let disable_all_mouse_seq =
-  String.concat ""
-    [
-      Ansi.(to_string (disable Mouse_x10));
-      Ansi.(to_string (disable Mouse_tracking));
-      Ansi.(to_string (disable Mouse_button_tracking));
-      Ansi.(to_string (disable Mouse_motion));
-      Ansi.(to_string (disable Urxvt_mouse));
-      Ansi.(to_string (disable Mouse_sgr));
-    ]
+  "\027[?9l\027[?1000l\027[?1002l\027[?1003l\027[?1015l\027[?1006l"
 
-let sgr_normal_seq = String.concat "" [ sgr_enable; mouse_tracking ]
-
-let sgr_button_seq =
-  String.concat "" [ sgr_enable; mouse_tracking; mouse_button ]
-
-let sgr_any_seq =
-  String.concat "" [ sgr_enable; mouse_tracking; mouse_button; mouse_motion ]
+let sgr_normal_seq = "\027[?1006h\027[?1000h"
+let sgr_button_seq = "\027[?1006h\027[?1000h\027[?1002h"
+let sgr_any_seq = "\027[?1006h\027[?1000h\027[?1002h\027[?1003h"
 
 (* Helpers *)
 

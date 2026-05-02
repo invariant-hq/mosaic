@@ -1321,14 +1321,7 @@ type line_symbols = {
 let default_line_symbols = { h = "─"; v = "│"; diag_up = "╱"; diag_down = "╲" }
 
 let ascii_line_symbols = { h = "-"; v = "|"; diag_up = "/"; diag_down = "\\" }
-
-(* Precomputed braille lookup table: all 256 patterns as UTF-8 strings. *)
-let braille_lut =
-  Array.init 256 (fun bits ->
-      let b = Buffer.create 4 in
-      Buffer.add_utf_8_uchar b (Uchar.of_int (0x2800 + bits));
-      Buffer.contents b)
-
+let braille_lut = Grid_data.braille_lut
 let braille_base = 0x2800
 let braille_max = 0x28FF
 

@@ -6,56 +6,6 @@ let clamp_channel_f v = max 0. (min 1. v)
 let float_of_byte v = float_of_int v /. 255.
 let byte_of_float v = int_of_float (Float.round (clamp_channel_f v *. 255.))
 
-(* Standard ANSI16 fallback color palette. *)
-let ansi_16_rgb =
-  [|
-    (0x00, 0x00, 0x00);
-    (0x80, 0x00, 0x00);
-    (0x00, 0x80, 0x00);
-    (0x80, 0x80, 0x00);
-    (0x00, 0x00, 0x80);
-    (0x80, 0x00, 0x80);
-    (0x00, 0x80, 0x80);
-    (0xc0, 0xc0, 0xc0);
-    (0x80, 0x80, 0x80);
-    (0xff, 0x00, 0x00);
-    (0x00, 0xff, 0x00);
-    (0xff, 0xff, 0x00);
-    (0x00, 0x00, 0xff);
-    (0xff, 0x00, 0xff);
-    (0x00, 0xff, 0xff);
-    (0xff, 0xff, 0xff);
-  |]
-
-let cube_level = [| 0; 95; 135; 175; 215; 255 |]
-
-(* Pre-computed flat palette: 256 colors * 3 channels = 768 values. Avoids
-   tuple allocation when looking up palette colors. *)
-let palette_flat =
-  let arr = Array.make 768 0 in
-  for i = 0 to 255 do
-    let base = i * 3 in
-    if i < 16 then begin
-      let r, g, b = ansi_16_rgb.(i) in
-      arr.(base) <- r;
-      arr.(base + 1) <- g;
-      arr.(base + 2) <- b
-    end
-    else if i < 232 then begin
-      let n = i - 16 in
-      arr.(base) <- cube_level.(n / 36);
-      arr.(base + 1) <- cube_level.(n / 6 mod 6);
-      arr.(base + 2) <- cube_level.(n mod 6)
-    end
-    else begin
-      let gray = 8 + ((i - 232) * 10) in
-      arr.(base) <- gray;
-      arr.(base + 1) <- gray;
-      arr.(base + 2) <- gray
-    end
-  done;
-  arr
-
 module Packed = struct
   type color = t
 
@@ -137,18 +87,52 @@ let[@inline] of_rgba r g b a =
   let a = clamp_byte a in
   make_rgba_unchecked r g b a
 
-let make_indexed idx =
-  let base = idx * 3 in
-  let r = Array.unsafe_get palette_flat base in
-  let g = Array.unsafe_get palette_flat (base + 1) in
-  let b = Array.unsafe_get palette_flat (base + 2) in
-  Packed.make ~intent:Packed.intent_indexed ~slot:idx ~r ~g ~b ~a:255
+let[@inline] make_indexed_unchecked slot r g b =
+  255 lor (b lsl Packed.blue_shift) lor (g lsl Packed.green_shift)
+  lor (r lsl Packed.red_shift)
+  lor (slot lsl Packed.slot_shift)
+  lor (Packed.intent_indexed lsl Packed.intent_shift)
 
-let indexed_colors = Array.init 256 make_indexed
+let[@inline] cube_level = function
+  | 0 -> 0
+  | 1 -> 95
+  | 2 -> 135
+  | 3 -> 175
+  | 4 -> 215
+  | _ -> 255
+
+let make_indexed idx =
+  if idx < 16 then
+    match idx with
+    | 0 -> make_indexed_unchecked 0 0x00 0x00 0x00
+    | 1 -> make_indexed_unchecked 1 0x80 0x00 0x00
+    | 2 -> make_indexed_unchecked 2 0x00 0x80 0x00
+    | 3 -> make_indexed_unchecked 3 0x80 0x80 0x00
+    | 4 -> make_indexed_unchecked 4 0x00 0x00 0x80
+    | 5 -> make_indexed_unchecked 5 0x80 0x00 0x80
+    | 6 -> make_indexed_unchecked 6 0x00 0x80 0x80
+    | 7 -> make_indexed_unchecked 7 0xc0 0xc0 0xc0
+    | 8 -> make_indexed_unchecked 8 0x80 0x80 0x80
+    | 9 -> make_indexed_unchecked 9 0xff 0x00 0x00
+    | 10 -> make_indexed_unchecked 10 0x00 0xff 0x00
+    | 11 -> make_indexed_unchecked 11 0xff 0xff 0x00
+    | 12 -> make_indexed_unchecked 12 0x00 0x00 0xff
+    | 13 -> make_indexed_unchecked 13 0xff 0x00 0xff
+    | 14 -> make_indexed_unchecked 14 0x00 0xff 0xff
+    | _ -> make_indexed_unchecked 15 0xff 0xff 0xff
+  else if idx < 232 then
+    let n = idx - 16 in
+    make_indexed_unchecked idx
+      (cube_level (n / 36))
+      (cube_level (n / 6 mod 6))
+      (cube_level (n mod 6))
+  else
+    let gray = 8 + ((idx - 232) * 10) in
+    make_indexed_unchecked idx gray gray gray
 
 let indexed idx =
   let idx = clamp_byte idx in
-  Array.unsafe_get indexed_colors idx
+  make_indexed idx
 
 let of_palette_index = indexed
 let black = indexed 0
