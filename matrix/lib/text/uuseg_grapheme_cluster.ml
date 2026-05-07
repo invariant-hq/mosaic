@@ -1,4 +1,3 @@
-[@@@ocamlformat "disable"]
 (*---------------------------------------------------------------------------
    Copyright (c) 2014 The uuseg programmers. All rights reserved.
    SPDX-License-Identifier: ISC

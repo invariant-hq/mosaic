@@ -1,3 +1,7 @@
 matrix/lib/glyph/uuseg_base.mli
 matrix/lib/glyph/uuseg_grapheme_cluster.mli
 matrix/lib/glyph/unicode_data.mli
+matrix/lib/text/uuseg_base.ml
+matrix/lib/text/uuseg_base.mli
+matrix/lib/text/uuseg_grapheme_cluster.ml
+matrix/lib/text/uuseg_grapheme_cluster.mli
