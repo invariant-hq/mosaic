@@ -262,6 +262,11 @@ let erase_region t ~x ~y ~width ~height =
     let base_bg =
       match t.style.Ansi.Style.bg with Some c -> c | None -> t.default_bg
     in
+    let base_bg =
+      match Ansi.Color.intent base_bg with
+      | Default -> t.default_bg
+      | Indexed _ | Rgb -> base_bg
+    in
     let r, g, b, a = Ansi.Color.to_rgba base_bg in
     let bg_color = Ansi.Color.of_rgba r g b a in
     Grid.fill_rect t.active_grid ~x ~y ~width ~height ~color:bg_color
@@ -478,8 +483,19 @@ let scroll_down t n =
    string into pieces that fit in the current line, using an ASCII fast path and
    falling back to grapheme segmentation for complex text. *)
 let put_text t text =
-  let fg = Option.value t.style.Ansi.Style.fg ~default:t.default_fg in
-  let bg = Option.value t.style.Ansi.Style.bg ~default:t.default_bg in
+  let resolve_color ~default color =
+    match Ansi.Color.intent color with
+    | Default -> default
+    | Indexed _ | Rgb -> color
+  in
+  let fg =
+    Option.value t.style.Ansi.Style.fg ~default:t.default_fg
+    |> resolve_color ~default:t.default_fg
+  in
+  let bg =
+    Option.value t.style.Ansi.Style.bg ~default:t.default_bg
+    |> resolve_color ~default:t.default_bg
+  in
   let attrs = t.style.Ansi.Style.attrs in
   let style =
     Ansi.Style.default |> Ansi.Style.fg fg |> Ansi.Style.bg bg

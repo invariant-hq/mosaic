@@ -166,6 +166,16 @@ let erase_line_all () =
   Vte.feed_string vte "Hello World\r\x1b[5C\x1b[2K";
   equal ~msg:"entire line erased" string "" (get_line (Vte.grid vte) 0)
 
+let default_background_spaces_overwrite_text () =
+  let vte = Vte.create ~rows:3 ~cols:30 () in
+  let replacement = " 1 + let status" in
+  Vte.feed_string vte "› Find and fix a bug";
+  Vte.feed_string vte ("\x1b[1;1H\x1b[49m" ^ replacement);
+  let line = get_line (Vte.grid vte) 0 in
+  equal ~msg:"leading and interior spaces overwrite previous glyphs" string
+    replacement
+    (String.sub line 0 (String.length replacement))
+
 let insert_lines () =
   let vte = Vte.create ~rows:5 ~cols:20 () in
   Vte.feed_string vte "Line1\nLine2\nLine3\x1b[2;1H\x1b[LNew";
@@ -566,6 +576,8 @@ let tests =
     test "erase line to end" erase_line_to_end;
     test "erase line to beginning" erase_line_to_beginning;
     test "erase line all" erase_line_all;
+    test "default background spaces overwrite text"
+      default_background_spaces_overwrite_text;
     test "insert lines" insert_lines;
     test "delete lines" delete_lines;
     test "insert characters" insert_characters;
