@@ -188,7 +188,14 @@
  (name test_markdown)
  (modules test_markdown)
  (package mosaic)
- (libraries windtrap mosaic.ui toffee matrix.ansi cmarkit test_harness))
+ (libraries
+  windtrap
+  mosaic.ui
+  toffee
+  matrix.ansi
+  matrix.input
+  cmarkit
+  test_harness))
 
 (test
  (name test_spinner)

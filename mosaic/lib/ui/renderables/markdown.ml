@@ -50,17 +50,37 @@ let default_style = function
 (* ───── Props ───── *)
 
 module Props = struct
-  type t = { content : string; conceal : bool; streaming : bool; style : style }
+  type t = {
+    content : string;
+    conceal : bool;
+    streaming : bool;
+    style : style;
+    selectable : bool;
+    selection_bg : Ansi.Color.t option;
+    selection_fg : Ansi.Color.t option;
+  }
 
   let make ?(content = "") ?(conceal = true) ?(streaming = false)
-      ?(style = default_style) () =
-    { content; conceal; streaming; style }
+      ?(style = default_style) ?(selectable = true) ?selection_bg ?selection_fg
+      () =
+    {
+      content;
+      conceal;
+      streaming;
+      style;
+      selectable;
+      selection_bg;
+      selection_fg;
+    }
 
   let default = make ()
 
   let equal a b =
     String.equal a.content b.content
     && a.conceal = b.conceal && a.streaming = b.streaming && a.style == b.style
+    && a.selectable = b.selectable
+    && Option.equal Ansi.Color.equal a.selection_bg b.selection_bg
+    && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
 end
 
 (* ───── Hooks ───── *)
@@ -92,6 +112,10 @@ type render_env = {
   conceal : bool;
   defs : Cmarkit.Label.defs;
   streaming : bool;
+  selectable : bool;
+  selection_bg : Ansi.Color.t option;
+  selection_fg : Ansi.Color.t option;
+  on_text_selection : ((int * int) option -> unit) option;
   render_node :
     (Cmarkit.Block.t ->
     parent:Renderable.t ->
@@ -114,6 +138,10 @@ type t = {
   mutable style : style;
   mutable conceal : bool;
   mutable streaming : bool;
+  mutable selectable : bool;
+  mutable selection_bg : Ansi.Color.t option;
+  mutable selection_fg : Ansi.Color.t option;
+  mutable on_selection : (string option -> unit) option;
   mutable blocks : tagged_block list;
   mutable last_defs : Cmarkit.Label.defs;
   mutable last_ast_blocks : Cmarkit.Block.t list;
@@ -133,6 +161,40 @@ type t = {
 
 let node t = t.node
 let content t = t.content
+
+let rec selected_text_of_widget acc = function
+  | Text_widget text ->
+      let selected = String.trim (Text.selected_text text) in
+      if String.equal selected "" then acc else selected :: acc
+  | Box_widget (_, children) | Container_widget (_, children) ->
+      List.fold_left selected_text_of_widget acc children
+
+let selected_text t =
+  t.blocks
+  |> List.fold_left
+       (fun acc block -> selected_text_of_widget acc block.widget)
+       []
+  |> List.rev |> String.concat "\n"
+
+let fire_on_selection t =
+  match t.on_selection with
+  | None -> ()
+  | Some f ->
+      let text = String.trim (selected_text t) in
+      f (if String.equal text "" then None else Some text)
+
+let configure_text (env : render_env) text =
+  Text.set_selectable text env.selectable;
+  Text.set_selection_bg text env.selection_bg;
+  Text.set_selection_fg text env.selection_fg;
+  Text.set_on_selection text env.on_text_selection
+
+let create_text ~(env : render_env) ~parent ?index ?id ?style ?visible ?z_index
+    ?opacity ?content ?text_style ?(wrap = `None) ?tab_width ?truncate () =
+  Text.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
+    ?text_style ~wrap ~selectable:env.selectable ?selection_bg:env.selection_bg
+    ?selection_fg:env.selection_fg ?on_selection:env.on_text_selection
+    ?tab_width ?truncate ()
 
 (* ───── Inline Rendering ───── *)
 
@@ -342,7 +404,7 @@ let render_paragraph ~(env : render_env) ~parent ?index ~is_last
       inline
   in
   let text =
-    Text.create ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
+    create_text ~env ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
   in
   Text.set_styled_text text spans;
   { tag = Para_tag; widget = Text_widget text }
@@ -366,7 +428,7 @@ let render_heading ~(env : render_env) ~parent ?index ~is_last
       { Text_buffer.text = marker; style = heading_style } :: spans
   in
   let text =
-    Text.create ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
+    create_text ~env ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
   in
   Text.set_styled_text text spans;
   { tag = Head_tag; widget = Text_widget text }
@@ -383,7 +445,8 @@ let render_code_block_default ~(env : render_env) ~parent ?index ~is_last
       ()
   in
   let text =
-    Text.create ~parent:(Box.node box) ~content:code_text ~text_style:code_style
+    create_text ~env ~parent:(Box.node box) ~content:code_text
+      ~text_style:code_style
       ~style:
         (Toffee.Style.make
            ~size:
@@ -397,7 +460,7 @@ let render_thematic_break ~(env : render_env) ~parent ?index ~is_last
     (_tb : Cmarkit.Block.Thematic_break.t) =
   let hr_style = env.style Thematic_break in
   let text =
-    Text.create ~parent ?index
+    create_text ~env ~parent ?index
       ~content:"───────────────────────────────────────" ~text_style:hr_style
       ~style:(block_style ~is_last) ~truncate:true ()
   in
@@ -409,7 +472,7 @@ let render_html_block ~(env : render_env) ~parent ?index ~is_last
     String.concat "\n" (List.map Cmarkit.Block_line.to_string lines)
   in
   let text =
-    Text.create ~parent ?index ~content:text_content
+    create_text ~env ~parent ?index ~content:text_content
       ~text_style:(env.style Default) ~style:(block_style ~is_last) ()
   in
   { tag = Html_tag; widget = Text_widget text }
@@ -472,7 +535,7 @@ and render_list_item ~(env : render_env) ~parent ~is_last ~tight ~list_type
         string_of_int n ^ ". "
   in
   let _marker =
-    Text.create ~parent:row ~content:marker_text
+    create_text ~env ~parent:row ~content:marker_text
       ~text_style:(env.style List_marker)
       ~style:
         (Toffee.Style.make
@@ -555,7 +618,8 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
   (* Fallback: no columns, or no header and no data rows *)
   if col_count = 0 || (Option.is_none !header_cells && data_rows = []) then begin
     let text =
-      Text.create ~parent ?index ~content:"" ~style:(block_style ~is_last) ()
+      create_text ~env ~parent ?index ~content:"" ~style:(block_style ~is_last)
+        ()
     in
     { tag = Table_tag; widget = Text_widget text }
   end
@@ -632,7 +696,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                     ~border_sides:[ `Bottom ] ~border_color ()
                 in
                 let text =
-                  Text.create ~parent:(Box.node header_box)
+                  create_text ~env ~parent:(Box.node header_box)
                     ~style:cell_text_style ~truncate:true ()
                 in
                 Text.set_styled_text text spans;
@@ -655,7 +719,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                 let is_last_row = row_idx = data_count - 1 in
                 if is_last_row then begin
                   let text =
-                    Text.create ~parent:(Box.node col_box)
+                    create_text ~env ~parent:(Box.node col_box)
                       ~style:cell_text_style ~truncate:true ()
                   in
                   Text.set_styled_text text spans;
@@ -667,7 +731,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                       ~border_sides:[ `Bottom ] ~border_color ()
                   in
                   let text =
-                    Text.create ~parent:(Box.node cell_box)
+                    create_text ~env ~parent:(Box.node cell_box)
                       ~style:cell_text_style ~truncate:true ()
                   in
                   Text.set_styled_text text spans;
@@ -879,6 +943,22 @@ let renderable_blocks (block : Cmarkit.Block.t) : Cmarkit.Block.t list =
       []
   | other -> [ other ]
 
+let render_env t defs =
+  {
+    style = t.style;
+    conceal = t.conceal;
+    defs;
+    streaming = t.streaming;
+    selectable = t.selectable;
+    selection_bg = t.selection_bg;
+    selection_fg = t.selection_fg;
+    on_text_selection =
+      (if Option.is_some t.on_selection then Some (fun _ -> fire_on_selection t)
+       else None);
+    render_node = t.render_node;
+    render_code = t.render_code;
+  }
+
 (* ───── Reconciliation ───── *)
 
 let reconcile_blocks ~(env : render_env) ~parent old_blocks new_ast_blocks =
@@ -922,16 +1002,7 @@ let update_blocks t =
   let new_ast_blocks = renderable_blocks block in
   t.last_defs <- defs;
   t.last_ast_blocks <- new_ast_blocks;
-  let env =
-    {
-      style = t.style;
-      conceal = t.conceal;
-      defs;
-      streaming = t.streaming;
-      render_node = t.render_node;
-      render_code = t.render_code;
-    }
-  in
+  let env = render_env t defs in
   let new_blocks =
     reconcile_blocks ~env ~parent:t.node t.blocks new_ast_blocks
   in
@@ -940,7 +1011,7 @@ let update_blocks t =
      raw *)
   if new_blocks = [] && t.content <> "" then begin
     let text =
-      Text.create ~parent:t.node ~content:t.content
+      create_text ~env ~parent:t.node ~content:t.content
         ~style:(block_style ~is_last:true)
         ~wrap:`Word ()
     in
@@ -950,16 +1021,7 @@ let update_blocks t =
 
 (* Re-render existing blocks with new style/conceal without re-parsing. *)
 let rerender_blocks t =
-  let env =
-    {
-      style = t.style;
-      conceal = t.conceal;
-      defs = t.last_defs;
-      streaming = t.streaming;
-      render_node = t.render_node;
-      render_code = t.render_code;
-    }
-  in
+  let env = render_env t t.last_defs in
   let total = List.length t.blocks in
   let ast_blocks = t.last_ast_blocks in
   let rec go i blocks ast =
@@ -986,7 +1048,8 @@ let rerender_blocks t =
 
 let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
     ?opacity ?(content = "") ?(style = default_style) ?(conceal = true)
-    ?(streaming = false) ?render_node ?render_code () =
+    ?(streaming = false) ?(selectable = true) ?selection_bg ?selection_fg
+    ?on_selection ?render_node ?render_code () =
   let node =
     Renderable.create ~parent ?index ?id ~style:layout_style ?visible ?z_index
       ?opacity ()
@@ -1006,6 +1069,10 @@ let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
       style;
       conceal;
       streaming;
+      selectable;
+      selection_bg;
+      selection_fg;
+      on_selection;
       blocks = [];
       last_defs = Cmarkit.Label.Map.empty;
       last_ast_blocks = [];
@@ -1050,12 +1117,46 @@ let set_streaming t v =
     update_blocks t
   end
 
+let rec apply_selection_to_widget env = function
+  | Text_widget text -> configure_text env text
+  | Box_widget (_, children) | Container_widget (_, children) ->
+      List.iter (apply_selection_to_widget env) children
+
+let apply_selection t =
+  let env = render_env t t.last_defs in
+  List.iter (fun block -> apply_selection_to_widget env block.widget) t.blocks
+
+let set_selectable t v =
+  if t.selectable <> v then begin
+    t.selectable <- v;
+    apply_selection t
+  end
+
+let set_selection_bg t color =
+  if not (Option.equal Ansi.Color.equal t.selection_bg color) then begin
+    t.selection_bg <- color;
+    apply_selection t
+  end
+
+let set_selection_fg t color =
+  if not (Option.equal Ansi.Color.equal t.selection_fg color) then begin
+    t.selection_fg <- color;
+    apply_selection t
+  end
+
+let set_on_selection t f =
+  t.on_selection <- f;
+  apply_selection t
+
 (* ───── Props Application ───── *)
 
 let apply_props t (props : Props.t) =
   set_style t props.style;
   set_conceal t props.conceal;
   set_streaming t props.streaming;
+  set_selectable t props.selectable;
+  set_selection_bg t props.selection_bg;
+  set_selection_fg t props.selection_fg;
   set_content t props.content
 
 (* ───── Pretty-printing ───── *)

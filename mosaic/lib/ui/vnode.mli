@@ -76,6 +76,7 @@ type 'msg widget_callbacks =
       on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
   | Code_callbacks of { on_selection : ((int * int) option -> 'msg) option }
+  | Markdown_callbacks of { on_selection : (string option -> 'msg) option }
   | Diff_callbacks of { on_line_click : (Diff.line_hit -> 'msg) option }
   | Table_callbacks of {
       on_change : (int -> 'msg) option;
@@ -945,6 +946,10 @@ val markdown :
   ?md_style:Markdown.style ->
   ?conceal:bool ->
   ?streaming:bool ->
+  ?selectable:bool ->
+  ?selection_bg:Ansi.Color.t ->
+  ?selection_fg:Ansi.Color.t ->
+  ?on_selection:(string option -> 'msg) ->
   string ->
   'msg t
 (** [markdown content] is a markdown display leaf element. Parses [content] as
@@ -958,7 +963,12 @@ val markdown :
     - [conceal] controls whether markdown syntax characters are hidden. Defaults
       to [true].
     - [streaming] enables graceful handling of incomplete trailing content,
-      useful when content arrives incrementally. Defaults to [false]. *)
+      useful when content arrives incrementally. Defaults to [false].
+    - [selectable] controls text selection on rendered text children. Defaults
+      to [true].
+    - [selection_bg] and [selection_fg] are the selection colours.
+    - [on_selection] is called with selected rendered text, or [None] when no
+      text is selected. *)
 
 val diff :
   ?key:string ->

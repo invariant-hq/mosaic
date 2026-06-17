@@ -59,6 +59,7 @@ type 'msg widget_callbacks =
       on_cursor : (cursor:int -> selection:(int * int) option -> 'msg) option;
     }
   | Code_callbacks of { on_selection : ((int * int) option -> 'msg) option }
+  | Markdown_callbacks of { on_selection : (string option -> 'msg) option }
   | Diff_callbacks of { on_line_click : (Diff.line_hit -> 'msg) option }
   | Table_callbacks of {
       on_change : (int -> 'msg) option;
@@ -563,10 +564,12 @@ let line_number ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 let markdown ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste
-    ?md_style ?conceal ?streaming content =
+    ?md_style ?conceal ?streaming ?selectable ?selection_bg ?selection_fg
+    ?on_selection content =
   let kind =
     Markdown
-      (Markdown.Props.make ~content ?style:md_style ?conceal ?streaming ())
+      (Markdown.Props.make ~content ?style:md_style ?conceal ?streaming
+         ?selectable ?selection_bg ?selection_fg ())
   in
   let attrs =
     {
@@ -583,8 +586,8 @@ let markdown ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     }
   in
   let handlers = { on_mouse; on_key; on_paste } in
-  Element
-    { kind; key; attrs; handlers; callbacks = No_callbacks; children = [] }
+  let callbacks = Markdown_callbacks { on_selection } in
+  Element { kind; key; attrs; handlers; callbacks; children = [] }
 
 let diff ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
@@ -706,6 +709,9 @@ let map_callbacks (f : 'a -> 'b) : 'a widget_callbacks -> 'b widget_callbacks =
         }
   | Code_callbacks { on_selection } ->
       Code_callbacks
+        { on_selection = Option.map (fun g sel -> f (g sel)) on_selection }
+  | Markdown_callbacks { on_selection } ->
+      Markdown_callbacks
         { on_selection = Option.map (fun g sel -> f (g sel)) on_selection }
   | Diff_callbacks { on_line_click } ->
       Diff_callbacks

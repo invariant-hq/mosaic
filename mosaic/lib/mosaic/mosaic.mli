@@ -2438,6 +2438,10 @@ val markdown :
   ?md_style:Markdown.style ->
   ?conceal:bool ->
   ?streaming:bool ->
+  ?selectable:bool ->
+  ?selection_bg:Ansi.Color.t ->
+  ?selection_fg:Ansi.Color.t ->
+  ?on_selection:(string option -> 'msg option) ->
   string ->
   'msg t
 (** [markdown s] is a rendered Markdown view of the string [s].
@@ -2449,7 +2453,12 @@ val markdown :
       backticks, etc.) from the rendered output. Defaults to [false].
     - [streaming] -- when [true] the renderer tolerates incomplete Markdown
       (e.g. an unclosed code fence) as it arrives from a streaming source.
-      Defaults to [false]. *)
+      Defaults to [false].
+    - [selectable] -- when [true], rendered Markdown text can be selected.
+      Defaults to [true].
+    - [selection_bg] and [selection_fg] -- selection colours.
+    - [on_selection] -- fired with selected rendered text, or [None] when no
+      text is selected. *)
 
 val table :
   ?key:string ->

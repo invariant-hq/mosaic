@@ -225,7 +225,7 @@ let plain_text t =
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
     ?text_style ?wrap ?selectable ?selection_bg ?selection_fg ?tab_width
-    ?truncate () =
+    ?on_selection ?truncate () =
   let props =
     Props.make ?content ?text_style ?wrap ?selectable ?selection_bg
       ?selection_fg ?tab_width ?truncate ()
@@ -234,7 +234,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
     Text_renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       ~text_style:props.text_style ~wrap:props.wrap ~selectable:props.selectable
       ?selection_bg:props.selection_bg ?selection_fg:props.selection_fg
-      ~tab_width:props.tab_width ~truncate:props.truncate ()
+      ~tab_width:props.tab_width ~truncate:props.truncate ?on_selection ()
   in
   let t =
     {
@@ -317,6 +317,7 @@ let set_selectable t v =
 
 let set_selection_bg t color = Text_renderable.set_selection_bg t.text color
 let set_selection_fg t color = Text_renderable.set_selection_fg t.text color
+let set_on_selection t f = Text_renderable.set_on_selection t.text f
 let selected_text t = Text_renderable.selected_text t.text
 
 (* Highlights *)

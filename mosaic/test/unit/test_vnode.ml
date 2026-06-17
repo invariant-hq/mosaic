@@ -122,6 +122,21 @@ let map_transforms_code_on_selection_callback () =
       equal ~msg:"on_selection mapped" (list int) [ 5 ] !log
   | _ -> fail "expected Code_callbacks with on_selection"
 
+let map_transforms_markdown_on_selection_callback () =
+  let v : int Vnode.t =
+    Vnode.markdown
+      ~on_selection:(function Some text -> String.length text | None -> 0)
+      "x"
+  in
+  let log = ref [] in
+  let mapped : unit Vnode.t = Vnode.map (fun n -> log := n :: !log) v in
+  match mapped with
+  | Vnode.Element
+      { callbacks = Vnode.Markdown_callbacks { on_selection = Some cb }; _ } ->
+      cb (Some "hello");
+      equal ~msg:"on_selection mapped" (list int) [ 5 ] !log
+  | _ -> fail "expected Markdown_callbacks with on_selection"
+
 (* map on Embed must return the same node unchanged — embeds have no handlers to
    transform. *)
 let map_embed_identity () =
@@ -204,6 +219,8 @@ let () =
             map_transforms_input_on_cursor_callback;
           test "transforms code on_selection callback"
             map_transforms_code_on_selection_callback;
+          test "transforms markdown on_selection callback"
+            map_transforms_markdown_on_selection_callback;
           test "embed unchanged" map_embed_identity;
         ];
     ]

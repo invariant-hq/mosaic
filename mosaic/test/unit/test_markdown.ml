@@ -86,6 +86,47 @@ let set_style_custom () =
   in
   Markdown.set_style md custom_style
 
+let selection_callback_reports_rendered_text () =
+  let renderer = Renderer.create () in
+  let selected = ref None in
+  let _md =
+    Markdown.create ~parent:(Renderer.root renderer) ~content:"Hello **world**"
+      ~on_selection:(fun text -> selected := text)
+      ()
+  in
+  Renderer.render_frame renderer ~width:40 ~height:5 ~delta:0.;
+  ignore (Renderer.render ~full:true renderer : string);
+  let mouse kind =
+    Input.Mouse.make ~x:0 ~y:0 ~modifiers:Input.Modifier.none kind
+  in
+  Renderer.dispatch_mouse renderer (mouse (Down { button = Left }));
+  Renderer.dispatch_mouse renderer
+    (Input.Mouse.make ~x:5 ~y:0 ~modifiers:Input.Modifier.none
+       (Drag { button = Left }));
+  some ~msg:"selected markdown text" string "Hello" !selected
+
+let selection_callback_clears () =
+  let renderer = Renderer.create () in
+  let selected = ref (Some "stale") in
+  let md =
+    Markdown.create ~parent:(Renderer.root renderer) ~content:"Hello"
+      ~on_selection:(fun text -> selected := text)
+      ()
+  in
+  Renderer.render_frame renderer ~width:40 ~height:5 ~delta:0.;
+  ignore (Renderer.render ~full:true renderer : string);
+  Markdown.set_on_selection md None;
+  Markdown.set_on_selection md (Some (fun text -> selected := text));
+  Markdown.set_selectable md false;
+  let mouse kind =
+    Input.Mouse.make ~x:0 ~y:0 ~modifiers:Input.Modifier.none kind
+  in
+  Renderer.dispatch_mouse renderer (mouse (Down { button = Left }));
+  Renderer.dispatch_mouse renderer
+    (Input.Mouse.make ~x:5 ~y:0 ~modifiers:Input.Modifier.none
+       (Drag { button = Left }));
+  some ~msg:"selection did not change while disabled" string "stale" !selected
+
 (* ── Lifecycle ── *)
 
 let create_streaming () =
@@ -149,6 +190,10 @@ let () =
           test "set_streaming toggles" set_streaming_toggles;
           test "set_streaming same no-op" set_streaming_same_is_noop;
           test "set_style custom" set_style_custom;
+          test "selection callback reports rendered text"
+            selection_callback_reports_rendered_text;
+          test "selection disabled suppresses callback"
+            selection_callback_clears;
         ];
       group "Lifecycle"
         [

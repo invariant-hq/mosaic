@@ -60,6 +60,9 @@ module Props : sig
     ?conceal:bool ->
     ?streaming:bool ->
     ?style:style ->
+    ?selectable:bool ->
+    ?selection_bg:Ansi.Color.t ->
+    ?selection_fg:Ansi.Color.t ->
     unit ->
     t
   (** [make ()] is a props value. With:
@@ -67,7 +70,11 @@ module Props : sig
       - [conceal]: whether to hide markdown syntax characters. Defaults to
         [true].
       - [streaming]: whether to enable streaming mode. Defaults to [false].
-      - [style]: the style resolver. Defaults to {!default_style}. *)
+      - [style]: the style resolver. Defaults to {!default_style}.
+      - [selectable]: whether rendered markdown text can be selected. Defaults
+        to [true].
+      - [selection_bg]: background color for selected text.
+      - [selection_fg]: foreground color for selected text. *)
 
   val default : t
   (** [default] is the default props value, equivalent to [make ()]. *)
@@ -90,6 +97,10 @@ val create :
   ?style:style ->
   ?conceal:bool ->
   ?streaming:bool ->
+  ?selectable:bool ->
+  ?selection_bg:Ansi.Color.t ->
+  ?selection_fg:Ansi.Color.t ->
+  ?on_selection:(string option -> unit) ->
   ?render_node:
     (Cmarkit.Block.t ->
     parent:Renderable.t ->
@@ -110,6 +121,12 @@ val create :
     - [streaming]: when [true], incomplete trailing content is handled
       gracefully; the last table row is skipped to avoid flickering during
       incremental appends. Defaults to [false].
+    - [selectable]: whether rendered markdown text can be selected. Defaults to
+      [true].
+    - [selection_bg] and [selection_fg]: selection colors applied to internal
+      text children.
+    - [on_selection]: called with the selected rendered text when selection
+      changes. [None] means no active selected text.
     - [render_node]: a custom block renderer called for every {!Cmarkit.Block.t}
       before default rendering. Return [Some r] to replace default rendering
       with renderable [r], or [None] to fall through to the default. The
@@ -157,6 +174,26 @@ val set_streaming : t -> bool -> unit
 (** [set_streaming t v] enables ([true]) or disables ([false]) streaming mode on
     [t]. When enabled, incomplete trailing table rows are skipped. No-op when
     [v] equals the current value. *)
+
+val set_selectable : t -> bool -> unit
+(** [set_selectable t v] enables or disables text selection for the rendered
+    markdown text children. *)
+
+val set_selection_bg : t -> Ansi.Color.t option -> unit
+(** [set_selection_bg t c] sets the selection background color on rendered text
+    children. *)
+
+val set_selection_fg : t -> Ansi.Color.t option -> unit
+(** [set_selection_fg t c] sets the selection foreground color on rendered text
+    children. *)
+
+val set_on_selection : t -> (string option -> unit) option -> unit
+(** [set_on_selection t f] sets the aggregate markdown selection callback.
+    [None] clears it. *)
+
+val selected_text : t -> string
+(** [selected_text t] is the selected rendered text across all markdown text
+    children, in render order. Returns [""] if no text is selected. *)
 
 (** {1:apply Props application} *)
 

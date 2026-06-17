@@ -111,6 +111,7 @@ val create :
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
+  ?on_selection:((int * int) option -> unit) ->
   ?truncate:bool ->
   unit ->
   t
@@ -122,6 +123,7 @@ val create :
     - [selectable]: whether text can be selected. Defaults to [true].
     - [selection_bg]: background color for selected text. Defaults to [None].
     - [selection_fg]: foreground color for selected text. Defaults to [None].
+    - [on_selection]: selection-change callback used when [selectable = true].
     - [tab_width]: tab stop width. Defaults to [2].
     - [truncate]: whether to truncate with ellipsis when [wrap = `None].
       Defaults to [false]. *)
@@ -232,6 +234,10 @@ val set_selection_bg : t -> Ansi.Color.t option -> unit
 
 val set_selection_fg : t -> Ansi.Color.t option -> unit
 (** [set_selection_fg t color] sets the selection foreground color. *)
+
+val set_on_selection : t -> ((int * int) option -> unit) option -> unit
+(** [set_on_selection t f] sets the selection-change callback used when
+    [selectable = true]. [None] clears it. *)
 
 val selected_text : t -> string
 (** [selected_text t] is the currently selected text. Returns [""] if no

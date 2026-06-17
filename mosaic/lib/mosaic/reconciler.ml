@@ -409,6 +409,9 @@ type callback_refs =
   | Code_callback_refs of {
       code_selection_ref : ((int * int) option -> unit) option ref;
     }
+  | Markdown_callback_refs of {
+      markdown_selection_ref : (string option -> unit) option ref;
+    }
   | Diff_callback_refs of {
       set_diff_line_click : (Diff.line_hit -> unit) option -> unit;
     }
@@ -609,6 +612,18 @@ let create_callback_refs (instance : instance)
                  | None -> ()))
       | _ -> ());
       Code_callback_refs { code_selection_ref }
+  | Vnode.Markdown_callbacks { on_selection } ->
+      let markdown_selection_ref = ref on_selection in
+      (match instance with
+      | Markdown_instance markdown ->
+          Markdown.set_on_selection markdown
+            (Some
+               (fun selection ->
+                 match !markdown_selection_ref with
+                 | Some h -> h selection
+                 | None -> ()))
+      | _ -> ());
+      Markdown_callback_refs { markdown_selection_ref }
   | Vnode.Diff_callbacks { on_line_click } ->
       let diff_line_click_ref = ref on_line_click in
       let dispatch hit =
@@ -727,6 +742,9 @@ let update_callback_refs (callback_refs : callback_refs)
       textarea_cursor_ref := e.on_cursor
   | Code_callback_refs { code_selection_ref }, Vnode.Code_callbacks e ->
       code_selection_ref := e.on_selection
+  | ( Markdown_callback_refs { markdown_selection_ref },
+      Vnode.Markdown_callbacks e ) ->
+      markdown_selection_ref := e.on_selection
   | Diff_callback_refs { set_diff_line_click }, Vnode.Diff_callbacks e ->
       set_diff_line_click e.on_line_click
   | ( Table_callback_refs { table_change_ref; table_activate_ref },
