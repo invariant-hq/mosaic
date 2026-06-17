@@ -424,19 +424,24 @@ let apply_primary_op buf = function
   | Primary.Reset_scroll_region ->
       Buffer.add_string buf Ansi.(to_string reset_scrolling_region)
 
-let apply_primary_plan t ~buf (plan : Primary.plan) =
+let apply_primary_plan ?(resize_screen = true) t ~buf (plan : Primary.plan) =
   List.iter (apply_primary_op buf) plan.terminal_ops;
   if plan.invalidate_presented then Screen.invalidate_presented t.screen;
-  if plan.region_changed then sync_primary_layout t ~resize:true;
+  if plan.region_changed then
+    begin if resize_screen then sync_primary_layout t ~resize:true
+    else
+      let region = Primary.live_region t.primary in
+      Screen.set_row_offset t.screen region.row_offset
+    end;
   if plan.force_full_redraw then t.force_full_next_frame <- true
 
 (* Apply queued primary static writes before the live viewport render. The
    Primary planner owns the viewport movement, DECSTBM lifetime, and baseline
    invalidation decisions. *)
-let flush_static_queue t ~buf =
+let flush_static_queue ?(resize_screen = true) t ~buf =
   let primary, plan = Primary.flush_static t.primary in
   t.primary <- primary;
-  apply_primary_plan t ~buf plan
+  apply_primary_plan ~resize_screen t ~buf plan
 
 let effective_size t =
   match t.config.mode with
@@ -521,7 +526,7 @@ let adjust_primary_layout t ~buf ~required_rows_hint =
       ~required_rows:required_rows_hint
   in
   t.primary <- primary;
-  apply_primary_plan t ~buf plan;
+  apply_primary_plan ~resize_screen:false t ~buf plan;
   match render_height with
   | Some _ as limit -> limit
   | None ->
@@ -604,16 +609,25 @@ let submit ?primary_required_rows t =
     Buffer.add_string buf Ansi.(to_string (disable Cursor_visible));
     let preamble_len = Buffer.length buf in
 
-    (* Mode-specific pre-render work. *)
-    (match t.config.mode with
-    | `Primary -> flush_static_queue t ~buf
-    | `Alt -> Buffer.add_string buf Ansi.(to_string home));
-
     let render_height =
       match t.config.mode with
       | `Primary ->
           adjust_primary_layout t ~buf ~required_rows_hint:primary_required_rows
-      | `Alt -> None
+      | `Alt ->
+          Buffer.add_string buf Ansi.(to_string home);
+          None
+    in
+    if t.config.mode = `Primary then
+      flush_static_queue ~resize_screen:false t ~buf;
+    let render_height =
+      match t.config.mode with
+      | `Alt -> render_height
+      | `Primary ->
+          let live_height = (Primary.live_region t.primary).height in
+          Some
+            (match render_height with
+            | Some limit -> min limit live_height
+            | None -> live_height)
     in
 
     let forced_full =

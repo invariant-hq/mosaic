@@ -286,6 +286,9 @@ let test_late_capability_response_requests_redraw () =
     make_app ~terminal_tty:true ~target_fps:None ~input_timeout:(Some 0.)
       ~input_chunks:[ "\027[?2026;1$y" ] ~stop_after_reads:4 ()
   in
+  let terminal = Matrix.terminal app in
+  let caps = Matrix.Terminal.capabilities terminal in
+  Matrix.Terminal.set_capabilities terminal { caps with sync = false };
   let frames = ref 0 in
   Matrix.run app ~on_render:(fun app ->
       incr frames;
@@ -301,6 +304,9 @@ let test_startup_capability_window_defers_split_response () =
       ~input_chunks:[ "\027[?2026;"; ""; "1$y" ]
       ~stop_after_reads:6 ()
   in
+  let terminal = Matrix.terminal app in
+  let caps = Matrix.Terminal.capabilities terminal in
+  Matrix.Terminal.set_capabilities terminal { caps with sync = false };
   Matrix.run app ~on_render:(fun app ->
       if (Matrix.Terminal.capabilities (Matrix.terminal app)).sync then
         Matrix.stop app);
@@ -679,6 +685,23 @@ let test_pinned_static_write_keeps_live_size () =
   equal ~msg:"pinned output keeps live size after submit" (pair int int) before
     (Matrix.size app)
 
+let test_primary_required_rows_apply_before_static_flush () =
+  let app, state =
+    make_app ~mode:`Primary ~render_offset:10 ~min_tui_height:1 ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:1 "prompt\n";
+  Matrix.prepare app;
+  Matrix.Grid.draw_text (Matrix.grid app) ~x:0 ~y:0 ~text:"live";
+  Matrix.submit app ~primary_required_rows:20;
+  let output = output state in
+  equal ~msg:"static output settles against the expanded primary region"
+    (pair int int) (80, 19) (Matrix.size app);
+  is_true ~msg:"primary growth happens before static output is flushed"
+    (is_before ~first:"\027[24;1H" ~second:"prompt" output)
+
 let test_full_height_static_write_scrolls_into_scrollback () =
   let app, state =
     make_app ~mode:`Primary ~min_tui_height:24 ~target_fps:None
@@ -993,6 +1016,8 @@ let () =
             test_static_write_and_live_repaint_share_sync_frame;
           test "pinned static write keeps live size"
             test_pinned_static_write_keeps_live_size;
+          test "primary required rows apply before static flush"
+            test_primary_required_rows_apply_before_static_flush;
           test "full-height static write scrolls into scrollback"
             test_full_height_static_write_scrolls_into_scrollback;
           test "full-height consecutive static writes scroll once per row"

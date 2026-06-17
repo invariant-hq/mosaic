@@ -723,6 +723,15 @@ let run ?matrix
       render runtime;
       let width, height = Matrix.effective_size runtime.matrix_app in
       Renderer.render_frame runtime.renderer ~width ~height ~delta:!frame_delta;
+      (match Matrix.mode runtime.matrix_app with
+      | `Alt -> ()
+      | `Primary ->
+          let required =
+            max 1 (Renderable.height (Renderer.root runtime.renderer))
+          in
+          if required > height then
+            Renderer.render_frame runtime.renderer ~width ~height:required
+              ~delta:!frame_delta);
       let renderer_screen = Renderer.screen runtime.renderer in
       let renderer_grid = Matrix.Screen.next_grid renderer_screen in
       let renderer_hits = Matrix.Screen.next_hit_grid renderer_screen in
