@@ -131,8 +131,8 @@ val initial : ?provided:t -> term:string -> unit -> t * terminal_info
 
     When [provided] is [None], constructs a baseline from [term] and environment
     heuristics, then applies environment overrides such as
-    [MATRIX_FORCE_WCWIDTH], [MATRIX_FORCE_UNICODE], [$TERM_PROGRAM], tmux/screen
-    fallbacks, and platform-specific quirks.
+    [MATRIX_FORCE_WCWIDTH], [MATRIX_FORCE_UNICODE], [$TERM_PROGRAM], modern
+    terminal sync hints, tmux/screen fallbacks, and platform-specific quirks.
 
     In both cases [terminal_info.from_xtversion] is [false]; XTVersion replies
     processed later via {!apply_events} take precedence. *)

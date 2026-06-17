@@ -179,6 +179,15 @@ let test_terminal_info_from_env () =
       | Some v -> Unix.putenv "TERM_PROGRAM_VERSION" v
       | None -> Unix.putenv "TERM_PROGRAM_VERSION" "")
 
+let test_modern_terminal_env_enables_sync () =
+  with_env
+    [ ("TERM", "xterm-ghostty"); ("TERM_PROGRAM", "ghostty"); ("TMUX", "") ]
+    (fun () ->
+      with_terminal @@ fun term _buf ->
+      is_true ~msg:"ghostty enables synchronized output"
+        (T.capabilities term).sync;
+      T.close term)
+
 (* Test: Cursor position clamping *)
 let test_cursor_position_clamping () =
   with_terminal @@ fun term _buf ->
@@ -756,6 +765,8 @@ let () =
           test "normalization" test_capability_normalization;
           test "environment overrides" test_env_overrides;
           test "terminal info env" test_terminal_info_from_env;
+          test "modern terminal env enables sync"
+            test_modern_terminal_env_enables_sync;
           test "make with caps" test_make_with_caps;
           test "kitty keyboard level zero"
             test_kitty_keyboard_level_zero_capability;

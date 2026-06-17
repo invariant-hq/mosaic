@@ -63,10 +63,19 @@ let is_hyperlink_term name =
   || contains_substring lower "alacritty"
   || contains_substring lower "iterm"
 
+let is_sync_term name =
+  let lower = String.lowercase_ascii name in
+  contains_substring lower "ghostty"
+  || contains_substring lower "kitty"
+  || contains_substring lower "wezterm"
+  || contains_substring lower "alacritty"
+  || contains_substring lower "iterm"
+
 let make_initial_capabilities ~term =
   let rgb = detect_rgb () in
   let kitty = detect_kitty ~term in
   let hyperlinks = is_hyperlink_term term || rgb in
+  let sync = is_sync_term term in
   {
     term;
     rgb;
@@ -81,7 +90,7 @@ let make_initial_capabilities ~term =
     explicit_cursor_positioning = false;
     scaled_text = false;
     sixel = false;
-    sync = false;
+    sync;
     hyperlinks;
   }
 
@@ -146,6 +155,9 @@ let apply_environment_overrides caps =
         let caps =
           if is_hyperlink_term prog then { caps with hyperlinks = true }
           else caps
+        in
+        let caps =
+          if is_sync_term prog then { caps with sync = true } else caps
         in
         match String.lowercase_ascii prog with
         | "vscode" ->
