@@ -732,19 +732,17 @@ let test_full_height_static_write_scrolls_into_scrollback () =
   equal ~msg:"full-height static write keeps live size" (pair int int) before
     (Matrix.size app)
 
-let test_primary_column_one_anchor_starts_static_on_current_row () =
+let test_primary_column_one_anchor_preserves_current_row () =
   let app, state =
     make_app ~mode:`Primary ~terminal_tty:true ~target_fps:None
-      ~input_timeout:(Some 0.)
-      ~query_cursor_position:(fun ~timeout:_ -> Some (1, 1))
-      ()
+      ~input_timeout:(Some 0.) ~static_needs_newline:true ()
   in
   Buffer.clear state.output;
   Matrix.static_write app ~rows:1 "HEADER\n";
   Matrix.submit app;
   let output = output state in
   is_true ~msg:"static payload is emitted" (contains_substring "HEADER" output);
-  is_false ~msg:"column-one anchor must not prefix a blank row"
+  is_true ~msg:"column-one anchor preserves the shell-owned row"
     (contains_substring "\r\nHEADER" output)
 
 let test_full_height_consecutive_static_writes_scroll_once_per_row () =
@@ -1000,8 +998,8 @@ let () =
             test_static_write_normalizes_lf_in_raw_mode;
           test "static write preserves LF outside raw mode"
             test_static_write_preserves_lf_outside_raw_mode;
-          test "column-one anchor starts static on current row"
-            test_primary_column_one_anchor_starts_static_on_current_row;
+          test "column-one anchor preserves current row"
+            test_primary_column_one_anchor_preserves_current_row;
           test "static write tracks mid-line continuation"
             test_static_write_tracks_mid_line_continuation;
           test "pinned static write uses bounded scroll region"
