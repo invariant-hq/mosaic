@@ -29,6 +29,8 @@ type control =
   | DL of int  (** Delete [n] Lines. *)
   | DCH of int  (** Delete [n] Characters. *)
   | ICH of int  (** Insert [n] blank Characters. *)
+  | DECSTBM of int * int
+      (** Set top and bottom scrolling margins ([CSI top ; bottom r]). *)
   | OSC of int * string  (** Generic OSC with code and payload. *)
   | DCS of string  (** Device Control String payload. *)
   | APC of string  (** Application Program Command payload. *)
@@ -41,6 +43,7 @@ type control =
   | Reset  (** RIS — reset to initial state ([ESC c]). *)
   | DECSC  (** Save cursor position ([ESC 7]). *)
   | DECRC  (** Restore cursor position ([ESC 8]). *)
+  | RI  (** Reverse index ([ESC M]). *)
   | Unknown of string  (** Unrecognized sequence, preserved as raw bytes. *)
 
 type sgr_attr =

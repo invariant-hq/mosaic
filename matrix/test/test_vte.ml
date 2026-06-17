@@ -317,6 +317,24 @@ let scroll_on_bottom_line () =
   equal ~msg:"first line scrolled off" string "L2" (get_line (Vte.grid vte) 0);
   equal ~msg:"new line at bottom" string "L4" (get_line (Vte.grid vte) 2)
 
+let reverse_index_moves_cursor_up () =
+  let vte = Vte.create ~rows:5 ~cols:10 () in
+  Vte.feed_string vte "\x1b[3;4H\x1bM";
+  equal ~msg:"RI moves cursor up" (pair int int) (1, 3) (Vte.cursor_pos vte)
+
+let reverse_index_scrolls_region_down () =
+  let vte = Vte.create ~rows:4 ~cols:10 () in
+  Vte.feed_string vte "\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[4;1HD";
+  Vte.feed_string vte "\x1b[2;4r\x1b[2;1H\x1bM";
+  equal ~msg:"line above region unchanged" string "A"
+    (get_line (Vte.grid vte) 0);
+  equal ~msg:"top margin cleared" string "" (get_line (Vte.grid vte) 1);
+  equal ~msg:"region scrolled down" string "B" (get_line (Vte.grid vte) 2);
+  equal ~msg:"region bottom receives previous row" string "C"
+    (get_line (Vte.grid vte) 3);
+  equal ~msg:"cursor remains at top margin" (pair int int) (1, 0)
+    (Vte.cursor_pos vte)
+
 (** {1 Scrollback} *)
 
 let scrollback_accumulates () =
@@ -567,6 +585,8 @@ let tests =
     test "scroll up basic" scroll_up_basic;
     test "scroll down basic" scroll_down_basic;
     test "scroll on bottom line" scroll_on_bottom_line;
+    test "reverse index moves cursor up" reverse_index_moves_cursor_up;
+    test "reverse index scrolls region down" reverse_index_scrolls_region_down;
     test "scrollback accumulates" scrollback_accumulates;
     test "scrollback ring buffer" scrollback_ring_buffer;
     test "scrollback disabled" scrollback_disabled;

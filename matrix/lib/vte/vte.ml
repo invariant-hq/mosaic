@@ -826,6 +826,13 @@ let handle_control t ctrl =
                     ~width:(t.cols - right_start) ~height:1);
               erase_region t ~x:start_col ~y:row ~width:insert_span ~height:1;
               mark_row_dirty t row)
+  | Ansi.Parser.DECSTBM (top, bottom) ->
+      let top = max 1 (min top t.rows) in
+      let bottom = if bottom <= 0 then t.rows else max 1 (min bottom t.rows) in
+      if top < bottom then (
+        t.scroll_region.top <- top - 1;
+        t.scroll_region.bottom <- bottom - 1;
+        set_cursor_pos t ~row:0 ~col:0)
   | Ansi.Parser.OSC (0, title) | Ansi.Parser.OSC (2, title) -> t.title <- title
   | Ansi.Parser.OSC _ -> () (* Ignore other OSC *)
   | Ansi.Parser.DCS _ | Ansi.Parser.APC _ | Ansi.Parser.PM _ | Ansi.Parser.SOS _
@@ -845,6 +852,9 @@ let handle_control t ctrl =
           set_cursor_visible t visible
       | None -> (
           match t.saved_style with Some style -> t.style <- style | None -> ()))
+  | Ansi.Parser.RI ->
+      if t.cursor.row = t.scroll_region.top then scroll_down t 1
+      else set_cursor_pos t ~row:(t.cursor.row - 1) ~col:t.cursor.col
   | Ansi.Parser.Reset ->
       t.style <- Ansi.Style.default;
       Grid.clear ~color:t.default_bg t.active_grid;

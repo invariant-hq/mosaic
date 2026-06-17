@@ -17,6 +17,7 @@ type control =
   | DL of int
   | DCH of int
   | ICH of int
+  | DECSTBM of int * int
   | OSC of int * string
   | DCS of string
   | APC of string
@@ -26,6 +27,7 @@ type control =
   | Reset
   | DECSC
   | DECRC
+  | RI
   | Unknown of string
 
 type sgr_attr =
@@ -176,6 +178,7 @@ let parse_csi ~params body final : token option =
   | 'M' -> Some (Control (DL (get 0 1)))
   | 'P' -> Some (Control (DCH (get 0 1)))
   | '@' -> Some (Control (ICH (get 0 1)))
+  | 'r' -> Some (Control (DECSTBM (get 0 1, get 1 0)))
   | 'm' ->
       let attrs =
         if param_count = 0 then [ `Reset ]
@@ -474,6 +477,10 @@ let feed p src ~off ~len emit =
           | '8' ->
               p.state <- Normal;
               emit (Control DECRC);
+              loop (pos + 1)
+          | 'M' ->
+              p.state <- Normal;
+              emit (Control RI);
               loop (pos + 1)
           | '%' | '(' | ')' | '*' | '+' ->
               (* Character set selection - skip next byte *)
