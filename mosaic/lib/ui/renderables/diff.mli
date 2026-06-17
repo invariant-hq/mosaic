@@ -76,6 +76,21 @@ type line_highlight = {
     alpha-blended over the normal diff line colour; opaque colours fully replace
     it. *)
 
+type line_sign = {
+  side : side;
+  first : int;
+  last : int;
+  sign : Line_number.line_sign;
+}
+(** The type for a source-line gutter sign.
+
+    [first] and [last] are inclusive 1-based source line numbers. Signs whose
+    [first] is greater than [last] do not match any line. When signs overlap,
+    the first matching sign in the list wins. In unified layout, context lines
+    can match either {!Old} or {!New}. Custom signs are merged with built-in
+    diff signs so that callers can use {!Line_number.line_sign.before} while the
+    diff keeps its [+] and [-] signs in {!Line_number.line_sign.after}. *)
+
 type source_line = { side : side; line : int }
 (** The type for a 1-based source line on one side of a diff. *)
 
@@ -177,6 +192,7 @@ module Props : sig
     ?theme:theme ->
     ?highlight:highlight ->
     ?line_highlights:line_highlight list ->
+    ?line_signs:line_sign list ->
     ?show_line_numbers:bool ->
     ?wrap:Text_surface.wrap ->
     ?selectable:bool ->
@@ -207,6 +223,7 @@ val create :
   ?theme:theme ->
   ?highlight:highlight ->
   ?line_highlights:line_highlight list ->
+  ?line_signs:line_sign list ->
   ?show_line_numbers:bool ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
@@ -237,6 +254,10 @@ val set_highlight : t -> highlight option -> unit
 val set_line_highlights : t -> line_highlight list -> unit
 (** [set_line_highlights t highlights] sets source-line background highlights
     and rebuilds the view. *)
+
+val set_line_signs : t -> line_sign list -> unit
+(** [set_line_signs t signs] sets source-line gutter signs and rebuilds the
+    view. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t]. *)

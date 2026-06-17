@@ -592,12 +592,12 @@ let markdown ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
 let diff ?key ?id ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(autofocus = false)
     ?(buffered = false) ?(live = false) ?ref ?on_mouse ?on_key ?on_paste ?layout
-    ?theme ?highlight ?line_highlights ?show_line_numbers ?wrap ?selectable
-    ?text_style ?on_line_click patch =
+    ?theme ?highlight ?line_highlights ?line_signs ?show_line_numbers ?wrap
+    ?selectable ?text_style ?on_line_click patch =
   let kind =
     Diff
       (Diff.Props.make ~patch ?layout ?theme ?highlight ?line_highlights
-         ?show_line_numbers ?wrap ?selectable ?text_style ())
+         ?line_signs ?show_line_numbers ?wrap ?selectable ?text_style ())
   in
   let attrs =
     {

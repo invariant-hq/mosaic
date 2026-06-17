@@ -989,6 +989,7 @@ val diff :
   ?theme:Diff.theme ->
   ?highlight:Diff.highlight ->
   ?line_highlights:Diff.line_highlight list ->
+  ?line_signs:Diff.line_sign list ->
   ?show_line_numbers:bool ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
@@ -1005,6 +1006,9 @@ val diff :
     - [line_highlights] are source-line background highlights, using inclusive
       1-based old/new source line numbers. Earlier entries win when ranges
       overlap. Defaults to [[]].
+    - [line_signs] are source-line gutter signs, using inclusive 1-based old/new
+      source line numbers. Earlier entries win when ranges overlap. Defaults to
+      [[]].
     - [show_line_numbers] controls whether gutters are shown. Defaults to
       [true].
     - [wrap] is the wrap mode for embedded {!Code} children. Defaults to
