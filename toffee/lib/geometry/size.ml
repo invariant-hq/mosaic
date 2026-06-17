@@ -106,9 +106,6 @@ let to_string f size =
 let pp f fmt size =
   Format.fprintf fmt "{ width: %a; height: %a }" f size.width f size.height
 
-(* For compatibility with existing code that might use equal_option *)
-let equal_option eq a b = equal_with (Option.equal eq) a b
-
 (* Operations with optional values - implementing Taffy's MaybeMath patterns *)
 
 (* Option → Option operations *)

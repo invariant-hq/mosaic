@@ -68,9 +68,6 @@ let size_maybe_set (t : size) (value : float option Geometry.size) : size =
     height = set_or_self t.height value.height;
   }
 
-let maybe_set =
-  set_or_self (* Alias for backward compatibility in struct field *)
-
 let to_string = function
   | Definite value -> Printf.sprintf "Definite(%g)" value
   | Min_content -> "MinContent"

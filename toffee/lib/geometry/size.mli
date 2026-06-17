@@ -152,10 +152,6 @@ val to_string : ('a -> string) -> 'a t -> string
 val pp : (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
 (** [pp f fmt size] formats [size] using [fmt] and [f] for each dimension. *)
 
-val equal_option : ('a -> 'a -> bool) -> 'a option t -> 'a option t -> bool
-(** [equal_option eq a b] tests equality of optional sizes using [eq] for the
-    contained values. *)
-
 (** {1 Option Operations}
 
     These operations implement Taffy's MaybeMath patterns for working with

@@ -99,9 +99,6 @@ val set_or_self : t -> float option -> t
 (** [set_or_self t value] returns [Definite v] if [value] is [Some v], else [t].
 *)
 
-val maybe_set : t -> float option -> t
-(** [maybe_set t value] is an alias for {!set_or_self}. *)
-
 (** {1 Transformation} *)
 
 val map_definite_value : t -> (float -> float) -> t
