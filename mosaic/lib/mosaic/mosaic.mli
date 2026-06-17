@@ -786,7 +786,7 @@ module Syntax_highlight : sig
   (** [range ~start_byte ~end_byte ~scope ()] highlights a source byte range. *)
 
   val of_triples : (int * int * string) list -> t
-  (** [of_triples ranges] converts legacy range triples. *)
+  (** [of_triples ranges] converts range triples. *)
 
   val to_spans :
     ?conceal:bool -> style:Syntax_style.t -> content:string -> t -> span list
@@ -1034,18 +1034,18 @@ val run :
     [matrix_eio] library:
 
     {[
-      Eio_main.run @@ fun env ->
-      Eio.Switch.run @@ fun sw ->
-      let matrix =
-        Matrix_eio.create ~sw ~clock:(Eio.Stdenv.clock env) ~stdin:env#stdin
-          ~stdout:env#stdout ()
-      in
-      let process_perform thunk =
-        Eio.Fiber.fork_daemon ~sw (fun () ->
-            thunk ();
-            `Stop_daemon)
-      in
-      Mosaic.run ~matrix ~process_perform { init; update; view; subscriptions }
+    Eio_main.run @@ fun env ->
+    Eio.Switch.run @@ fun sw ->
+    let matrix =
+      Matrix_eio.create ~sw ~clock:(Eio.Stdenv.clock env) ~stdin:env#stdin
+        ~stdout:env#stdout ()
+    in
+    let process_perform thunk =
+      Eio.Fiber.fork_daemon ~sw (fun () ->
+          thunk ();
+          `Stop_daemon)
+    in
+    Mosaic.run ~matrix ~process_perform { init; update; view; subscriptions }
     ]}
 
     Daemon fibers are cancelled when the switch completes, so long-running
