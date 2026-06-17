@@ -415,9 +415,9 @@ let sanitize_spans t =
     for x = 0 to t.width - 1 do
       let idx = row_start + x in
       let code = Buf.get_cell t.chars idx in
-      if Packed_cell.is_continuation code then begin
-        if x > !covered_until then reset_cell_no_tracker t idx
-      end
+      if Packed_cell.is_continuation code then
+        begin if x > !covered_until then reset_cell_no_tracker t idx
+        end
       else
         let w = Packed_cell.cell_width code in
         if w > 1 then

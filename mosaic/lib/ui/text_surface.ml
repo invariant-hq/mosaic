@@ -236,8 +236,8 @@ let truncate_line ~width ~tab_width ~width_method spans =
               let chunk_end = ref 0 in
               Matrix.Text.iter_grapheme_info ~width_method ~tab_width
                 (fun ~offset ~len ~width:gw ->
-                  if not !done_ then begin
-                    if !col + gw > target then begin
+                  if not !done_ then
+                    begin if !col + gw > target then begin
                       if !chunk_end > 0 then
                         result :=
                           {
@@ -251,7 +251,7 @@ let truncate_line ~width ~tab_width ~width_method spans =
                       col := !col + gw;
                       chunk_end := offset + len
                     end
-                  end)
+                    end)
                 text;
               if not !done_ then
                 result := { Text_buffer.text; style = span.style } :: !result
@@ -469,13 +469,13 @@ let local_coords_to_offset t ~x ~y =
           if not !stop then
             Matrix.Text.iter_grapheme_info ~width_method ~tab_width
               (fun ~offset:_ ~len:_ ~width:gw ->
-                if not !stop then begin
-                  if !col + gw > target_col then stop := true
+                if not !stop then
+                  begin if !col + gw > target_col then stop := true
                   else begin
                     col := !col + gw;
                     incr gi
                   end
-                end)
+                  end)
               span.text)
         spans;
       base_offset + !gi

@@ -4,8 +4,8 @@
     {!highlight} function that parses and highlights in one step.
 
     {[
-      let ranges = Tree_sitter_json.highlight {|{"key": "value"}|}
-      (* ranges : (int * int * string) list *)
+    let ranges = Tree_sitter_json.highlight {|{"key": "value"}|}
+    (* ranges : (int * int * string) list *)
     ]} *)
 
 (** {1:language Language} *)

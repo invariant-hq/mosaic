@@ -5,8 +5,8 @@
     together with convenience highlighting functions.
 
     {[
-      let ranges = Tree_sitter_ocaml.highlight_ocaml "let x = 1"
-      (* ranges : (int * int * string) list *)
+    let ranges = Tree_sitter_ocaml.highlight_ocaml "let x = 1"
+    (* ranges : (int * int * string) list *)
     ]} *)
 
 (** {1:languages Languages} *)

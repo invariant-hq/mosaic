@@ -30,7 +30,8 @@ let grid_line_to_origin_zero_line gl explicit_track_count =
 let try_origin_zero_line_to_track_vec_index ozl track_counts =
   (* OriginZero grid line cannot be less than the number of negative grid
      lines *)
-  if ozl < -track_counts.Grid.negative_implicit then None
+  if ozl < -track_counts.Grid.negative_implicit then
+    None
     (* OriginZero grid line cannot be more than the number of positive grid
        lines *)
   else if ozl > track_counts.Grid.explicit + track_counts.Grid.positive_implicit

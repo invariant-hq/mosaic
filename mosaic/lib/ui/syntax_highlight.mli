@@ -38,8 +38,8 @@ val range :
     Raises [Invalid_argument] if [start_byte < 0] or [end_byte < start_byte]. *)
 
 val of_triples : (int * int * string) list -> t
-(** [of_triples ranges] converts legacy [(start_byte, end_byte, scope)] ranges
-    to highlight ranges with {!default_meta}. *)
+(** [of_triples ranges] converts [(start_byte, end_byte, scope)] ranges to
+    highlight ranges with {!default_meta}. *)
 
 val start_byte : range -> int
 (** [start_byte r] is the inclusive byte start of [r]. *)

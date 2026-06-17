@@ -21,21 +21,21 @@
 
     Create a margin set from a single margin:
     {[
-      let margin_set = Collapsible_margin_set.from_margin 16.0
+    let margin_set = Collapsible_margin_set.from_margin 16.0
     ]}
 
     Collapse additional margins into the set:
     {[
-      let collapsed =
-        margin_set
-        |> Collapsible_margin_set.collapse_with_margin 24.0
-        |> Collapsible_margin_set.collapse_with_margin (-8.0)
+    let collapsed =
+      margin_set
+      |> Collapsible_margin_set.collapse_with_margin 24.0
+      |> Collapsible_margin_set.collapse_with_margin (-8.0)
     ]}
 
     Resolve the final collapsed margin:
     {[
-      let final_margin = Collapsible_margin_set.resolve collapsed
-      (* = 24.0 + (-8.0) = 16.0 *)
+    let final_margin = Collapsible_margin_set.resolve collapsed
+    (* = 24.0 + (-8.0) = 16.0 *)
     ]} *)
 
 type t = { positive : float; negative : float }

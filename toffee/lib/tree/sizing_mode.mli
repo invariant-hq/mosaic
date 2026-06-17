@@ -35,14 +35,14 @@
 
     Example from final layout:
     {[
-      (* Apply all size styles during final layout *)
-      let final_layout =
-        Tree.compute_child_layout tree node
-          (Layout_input.make ~run_mode:Run_mode.Perform_layout
-             ~sizing_mode:Sizing_mode.Inherent_size ~axis:Requested_axis.Both
-             ~known_dimensions:final_size ~parent_size:container_size
-             ~available_space:available
-             ~vertical_margins_are_collapsible:Line.false_)
+    (* Apply all size styles during final layout *)
+    let final_layout =
+      Tree.compute_child_layout tree node
+        (Layout_input.make ~run_mode:Run_mode.Perform_layout
+           ~sizing_mode:Sizing_mode.Inherent_size ~axis:Requested_axis.Both
+           ~known_dimensions:final_size ~parent_size:container_size
+           ~available_space:available
+           ~vertical_margins_are_collapsible:Line.false_)
     ]} *)
 
 type t =

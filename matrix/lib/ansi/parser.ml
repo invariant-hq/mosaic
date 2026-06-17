@@ -375,9 +375,9 @@ let decode_utf8 p src off len =
         p.utf8_len <- available;
         i := end_pos
       end
-      else begin
-        if emit_utf8_decode buf src !i then i := !i + expected else incr i
-      end
+      else
+        begin if emit_utf8_decode buf src !i then i := !i + expected else incr i
+        end
     done
   end
 

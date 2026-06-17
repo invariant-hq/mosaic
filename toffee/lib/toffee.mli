@@ -27,42 +27,41 @@
     Create a simple flexbox layout:
 
     {[
-      let tree = Toffee.new_tree () in
+    let tree = Toffee.new_tree () in
 
-      (* Create a container with two children *)
-      let child1 =
-        Toffee.new_leaf tree
-          Style.(
-            make
-              ~size:
-                Size.{ width = Dimension.px 100.; height = Dimension.px 50. }
-              ())
-        |> Result.get_ok
-      in
-      let child2 =
-        Toffee.new_leaf tree Style.(make ~flex_grow:1.0 ()) |> Result.get_ok
-      in
+    (* Create a container with two children *)
+    let child1 =
+      Toffee.new_leaf tree
+        Style.(
+          make
+            ~size:Size.{ width = Dimension.px 100.; height = Dimension.px 50. }
+            ())
+      |> Result.get_ok
+    in
+    let child2 =
+      Toffee.new_leaf tree Style.(make ~flex_grow:1.0 ()) |> Result.get_ok
+    in
 
-      let root =
-        Toffee.new_with_children tree
-          Style.(make ~display:Display.Flex ())
-          [| child1; child2 |]
-        |> Result.get_ok
-      in
+    let root =
+      Toffee.new_with_children tree
+        Style.(make ~display:Display.Flex ())
+        [| child1; child2 |]
+      |> Result.get_ok
+    in
 
-      (* Compute layout with 500x300 available space *)
-      Toffee.compute_layout tree root
-        Size.
-          {
-            width = Available_space.of_length 500.;
-            height = Available_space.of_length 300.;
-          }
-      |> Result.get_ok;
+    (* Compute layout with 500x300 available space *)
+    Toffee.compute_layout tree root
+      Size.
+        {
+          width = Available_space.of_length 500.;
+          height = Available_space.of_length 300.;
+        }
+    |> Result.get_ok;
 
-      (* Query the computed layout *)
-      let root_layout = Toffee.layout tree root |> Result.get_ok in
-      Printf.printf "Root: %fx%f\n" root_layout.Layout.size.width
-        root_layout.size.height
+    (* Query the computed layout *)
+    let root_layout = Toffee.layout tree root |> Result.get_ok in
+    Printf.printf "Root: %fx%f\n" root_layout.Layout.size.width
+      root_layout.size.height
     ]}
 
     {1 Layout Algorithms}

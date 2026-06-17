@@ -6,15 +6,15 @@
 
     For quick one-off output, convert to a string with {!to_string}:
     {[
-      Ansi.(to_string (cursor_position ~row:10 ~col:5))
+    Ansi.(to_string (cursor_position ~row:10 ~col:5))
     ]}
 
     For render loops, use {!emit} with a pre-allocated buffer:
     {[
-      let buf = Bytes.create 65536 in
-      let w = Ansi.Writer.make buf in
-      Ansi.emit (Ansi.cursor_position ~row:1 ~col:1) w;
-      Ansi.emit (Ansi.literal "Hello") w
+    let buf = Bytes.create 65536 in
+    let w = Ansi.Writer.make buf in
+    Ansi.emit (Ansi.cursor_position ~row:1 ~col:1) w;
+    Ansi.emit (Ansi.literal "Hello") w
     ]}
 
     For hot loops where even closure allocation matters, use {!sgr_direct} or

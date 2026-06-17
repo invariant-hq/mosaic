@@ -32,9 +32,9 @@
 
     Create a {!Parser} and feed it raw terminal bytes:
     {[
-      let p = Input.Parser.create () in
-      Input.Parser.feed p buf 0 len ~now ~on_event:handle_event
-        ~on_response:handle_response
+    let p = Input.Parser.create () in
+    Input.Parser.feed p buf 0 len ~now ~on_event:handle_event
+      ~on_response:handle_response
     ]}
 
     Escape sequences and UTF-8 byte sequences may arrive fragmented across

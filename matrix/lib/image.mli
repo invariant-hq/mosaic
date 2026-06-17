@@ -9,19 +9,19 @@
     {1:quick_start Quick start}
 
     {[
-      let header =
-        Image.hcat
-          [
-            Image.text "Status: ";
-            Image.text ~style:(Ansi.Style.make ~fg:Ansi.Color.green ()) "OK";
-          ]
-      in
-      let panel =
-        Image.vcat
-          [ header; Image.rule_h ~width:20 (); Image.text "System ready" ]
-      in
-      let grid = Grid.create ~width:80 ~height:24 () in
-      Image.render grid panel ~x:0 ~y:0
+    let header =
+      Image.hcat
+        [
+          Image.text "Status: ";
+          Image.text ~style:(Ansi.Style.make ~fg:Ansi.Color.green ()) "OK";
+        ]
+    in
+    let panel =
+      Image.vcat
+        [ header; Image.rule_h ~width:20 (); Image.text "System ready" ]
+    in
+    let grid = Grid.create ~width:80 ~height:24 () in
+    Image.render grid panel ~x:0 ~y:0
     ]}
 
     {1:coords Coordinate system}

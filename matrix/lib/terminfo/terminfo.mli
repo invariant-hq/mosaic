@@ -15,18 +15,17 @@
     {1:quick_start Quick start}
 
     {[
-      match Terminfo.load () with
-      | Error (`Parse_error msg) ->
-          prerr_endline ("terminfo parse error: " ^ msg)
-      | Error `Not_found -> prerr_endline "no terminfo entry"
-      | Ok ti -> (
-          Option.iter print_string (Terminfo.get ti Terminfo.Clear_screen);
-          (match Terminfo.get ti Terminfo.Cursor_position with
-          | Some goto -> print_string (goto (5, 10))
-          | None -> ());
-          match Terminfo.get ti Terminfo.Has_colors with
-          | Some true -> print_endline "colors"
-          | _ -> print_endline "monochrome")
+    match Terminfo.load () with
+    | Error (`Parse_error msg) -> prerr_endline ("terminfo parse error: " ^ msg)
+    | Error `Not_found -> prerr_endline "no terminfo entry"
+    | Ok ti -> (
+        Option.iter print_string (Terminfo.get ti Terminfo.Clear_screen);
+        (match Terminfo.get ti Terminfo.Cursor_position with
+        | Some goto -> print_string (goto (5, 10))
+        | None -> ());
+        match Terminfo.get ti Terminfo.Has_colors with
+        | Some true -> print_endline "colors"
+        | _ -> print_endline "monochrome")
     ]} *)
 
 (** {1:caps Capabilities} *)

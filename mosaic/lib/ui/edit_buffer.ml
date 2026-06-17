@@ -6,10 +6,11 @@ let strip_newlines s =
   let i = ref 0 in
   while !i < len do
     let c = String.unsafe_get s !i in
-    if c = '\r' then begin
-      if !i + 1 < len && String.unsafe_get s (!i + 1) = '\n' then i := !i + 2
+    if c = '\r' then
+      begin if !i + 1 < len && String.unsafe_get s (!i + 1) = '\n' then
+        i := !i + 2
       else incr i
-    end
+      end
     else if c = '\n' then incr i
     else begin
       Buffer.add_char buf c;

@@ -8,16 +8,16 @@
     {1:quick_start Quick start}
 
     {[
-      Eio_main.run @@ fun env ->
-      Eio.Switch.run @@ fun sw ->
-      let app =
-        Matrix_eio.create ~sw ~clock:(Eio.Stdenv.clock env) ~stdin:env#stdin
-          ~stdout:env#stdout ()
-      in
-      Matrix.run app ~on_render:(fun app ->
-          let g = Matrix.grid app in
-          (* draw … *)
-          ())
+    Eio_main.run @@ fun env ->
+    Eio.Switch.run @@ fun sw ->
+    let app =
+      Matrix_eio.create ~sw ~clock:(Eio.Stdenv.clock env) ~stdin:env#stdin
+        ~stdout:env#stdout ()
+    in
+    Matrix.run app ~on_render:(fun app ->
+        let g = Matrix.grid app in
+        (* draw … *)
+        ())
     ]} *)
 
 (** {1:creating Creating} *)

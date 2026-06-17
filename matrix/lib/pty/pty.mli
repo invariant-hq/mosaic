@@ -13,17 +13,17 @@
 
     The simplest way to run a program in a PTY is {!with_spawn}:
     {[
-      Pty.with_spawn ~prog:"/bin/echo" ~args:[ "hello" ] (fun pty ->
-          let buf = Bytes.create 1024 in
-          let n = Pty.read pty buf 0 1024 in
-          Bytes.sub_string buf 0 n)
+    Pty.with_spawn ~prog:"/bin/echo" ~args:[ "hello" ] (fun pty ->
+        let buf = Bytes.create 1024 in
+        let n = Pty.read pty buf 0 1024 in
+        Bytes.sub_string buf 0 n)
     ]}
 
     For manual lifetime control use {!spawn} and {!close}:
     {[
-      let pty = Pty.spawn ~prog:"/bin/bash" ~args:[] () in
-      (* … interact … *)
-      Pty.close pty
+    let pty = Pty.spawn ~prog:"/bin/bash" ~args:[] () in
+    (* … interact … *)
+    Pty.close pty
     ]}
 
     {1:io I/O}
