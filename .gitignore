@@ -13,5 +13,6 @@ dune.lock/
 # Agent configurations
 .claude/
 .agents/
+.spice/
 AGENTS.md
 prompts/
