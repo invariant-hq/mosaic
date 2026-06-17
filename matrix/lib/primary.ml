@@ -76,7 +76,7 @@ let anchor_of_cursor ~terminal_height ~row ~col =
     }
   else
     let render_offset, static_needs_newline =
-      if col = 1 then (max 0 (row - 1), true) else (row, true)
+      if col = 1 then (max 0 (row - 1), false) else (row, true)
     in
     { render_offset; static_needs_newline; scroll_bottom = false }
 

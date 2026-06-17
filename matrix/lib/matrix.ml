@@ -1114,8 +1114,8 @@ let create ?(mode = `Alt) ?(raw_mode = true) ?(target_fps = Some 30.)
           in
           if anchor.scroll_bottom then Terminal.send terminal "\r\n";
           (anchor.render_offset, anchor.static_needs_newline)
-      | None -> (0, true)
-    else if mode = `Primary then (0, true)
+      | None -> (0, false)
+    else if mode = `Primary then (0, false)
     else (0, false)
   in
   let pending_startup_events = ref (List.rev !startup_events) in
