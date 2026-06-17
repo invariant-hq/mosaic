@@ -173,6 +173,24 @@ let sub_on_keys_uses_first_matching_binding () =
       | None -> fail "expected Quit")
   | _ -> fail "expected On_key"
 
+let cmd_copy_to_clipboard_maps_without_changing_payload () =
+  match Cmd.map (fun msg -> msg) (Cmd.copy_to_clipboard "hello") with
+  | Cmd.Copy_to_clipboard "hello" -> ()
+  | Cmd.Copy_to_clipboard other ->
+      failf "unexpected clipboard payload: %S" other
+  | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Quit | Cmd.Set_title _
+  | Cmd.Clear_selection | Cmd.Focus _ | Cmd.Static_commit _ | Cmd.Static_clear
+    ->
+      fail "expected Copy_to_clipboard"
+
+let cmd_clear_selection_maps_to_itself () =
+  match Cmd.map (fun msg -> msg) Cmd.clear_selection with
+  | Cmd.Clear_selection -> ()
+  | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Quit | Cmd.Set_title _
+  | Cmd.Copy_to_clipboard _ | Cmd.Focus _ | Cmd.Static_commit _
+  | Cmd.Static_clear ->
+      fail "expected Clear_selection"
+
 let () =
   Windtrap.run "subscriptions"
     [
@@ -190,4 +208,8 @@ let () =
       test "Shortcut Alt matches Matrix Alt/Meta"
         shortcut_alt_matches_matrix_alt_meta;
       test "Sub.on_keys first match" sub_on_keys_uses_first_matching_binding;
+      test "Cmd.copy_to_clipboard maps without changing payload"
+        cmd_copy_to_clipboard_maps_without_changing_payload;
+      test "Cmd.clear_selection maps to itself"
+        cmd_clear_selection_maps_to_itself;
     ]

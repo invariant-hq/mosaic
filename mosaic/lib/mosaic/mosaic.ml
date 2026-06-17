@@ -188,6 +188,8 @@ module Cmd = struct
     | Perform of (('msg -> unit) -> unit)
     | Quit
     | Set_title of string
+    | Copy_to_clipboard of string
+    | Clear_selection
     | Focus of string
     | Static_commit of 'msg option Vnode.t
     | Static_clear
@@ -197,6 +199,8 @@ module Cmd = struct
   let perform f = Perform f
   let quit = Quit
   let set_title title = Set_title title
+  let copy_to_clipboard text = Copy_to_clipboard text
+  let clear_selection = Clear_selection
   let focus id = Focus id
   let static_commit view = Static_commit view
   let static_clear = Static_clear
@@ -208,6 +212,8 @@ module Cmd = struct
     | Perform g -> Perform (fun dispatch -> g (fun msg -> dispatch (f msg)))
     | Quit -> Quit
     | Set_title title -> Set_title title
+    | Copy_to_clipboard text -> Copy_to_clipboard text
+    | Clear_selection -> Clear_selection
     | Focus id -> Focus id
     | Static_commit view -> Static_commit (Vnode.map (Option.map f) view)
     | Static_clear -> Static_clear
@@ -384,6 +390,42 @@ let render_static_view runtime (view : _ t) =
   in
   render_with_height (max 1 full_height)
 
+let base64_encode input =
+  let alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  in
+  let len = String.length input in
+  if len = 0 then ""
+  else
+    let out = Bytes.create ((len + 2) / 3 * 4) in
+    let rec loop i j =
+      if i >= len then ()
+      else
+        let b0 = Char.code (String.unsafe_get input i) in
+        let rem = len - i in
+        let b1 =
+          if rem > 1 then Char.code (String.unsafe_get input (i + 1)) else 0
+        in
+        let b2 =
+          if rem > 2 then Char.code (String.unsafe_get input (i + 2)) else 0
+        in
+        let n = (b0 lsl 16) lor (b1 lsl 8) lor b2 in
+        Bytes.unsafe_set out j
+          (String.unsafe_get alphabet ((n lsr 18) land 0x3f));
+        Bytes.unsafe_set out (j + 1)
+          (String.unsafe_get alphabet ((n lsr 12) land 0x3f));
+        Bytes.unsafe_set out (j + 2)
+          (if rem > 1 then String.unsafe_get alphabet ((n lsr 6) land 0x3f)
+           else '=');
+        Bytes.unsafe_set out (j + 3)
+          (if rem > 2 then String.unsafe_get alphabet (n land 0x3f) else '=');
+        loop (i + 3) (j + 4)
+    in
+    loop 0 0;
+    Bytes.unsafe_to_string out
+
+let clipboard_sequence text = "\027]52;c;" ^ base64_encode text ^ "\007"
+
 let rec process_cmd runtime (cmd : _ Cmd.t) =
   match cmd with
   | Cmd.None -> ()
@@ -398,6 +440,10 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
   | Cmd.Set_title title ->
       let term = Matrix.terminal runtime.matrix_app in
       Matrix.Terminal.set_title term title
+  | Cmd.Copy_to_clipboard text ->
+      let term = Matrix.terminal runtime.matrix_app in
+      Matrix.Terminal.send term (clipboard_sequence text)
+  | Cmd.Clear_selection -> Renderer.clear_selection runtime.renderer
   | Cmd.Focus id ->
       if not (try_focus runtime id) then (
         enqueue_focus runtime id;

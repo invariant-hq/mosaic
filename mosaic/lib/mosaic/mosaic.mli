@@ -830,6 +830,9 @@ module Cmd : sig
     | Quit  (** Request orderly termination of the application. *)
     | Set_title of string
         (** Set the terminal window title to the given string. *)
+    | Copy_to_clipboard of string
+        (** Copy text to the terminal clipboard when supported. *)
+    | Clear_selection  (** Clear the active text selection, if any. *)
     | Focus of string
         (** Move keyboard focus to the element identified by the given [id]. Has
             no effect if no element carries that [id]. *)
@@ -861,6 +864,13 @@ module Cmd : sig
 
   val set_title : string -> 'msg t
   (** [set_title s] sets the terminal window title to [s]. *)
+
+  val copy_to_clipboard : string -> 'msg t
+  (** [copy_to_clipboard s] copies [s] to the terminal clipboard when supported.
+  *)
+
+  val clear_selection : 'msg t
+  (** [clear_selection] clears the active text selection, if any. *)
 
   val focus : string -> 'msg t
   (** [focus id] moves keyboard focus to the element whose [id] attribute equals
