@@ -30,6 +30,8 @@ let make_ctx () =
         (fun n ->
           blur_log := Renderable.id n :: !blur_log;
           Renderable.Private.blur_direct n);
+      get_selection = (fun () -> None);
+      request_selection_update = (fun () -> ());
       register_lifecycle = (fun _ -> ());
       unregister_lifecycle = (fun _ -> ());
       alloc_num =

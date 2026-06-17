@@ -10,6 +10,18 @@ type render_command =
   | Push_opacity of float
   | Pop_opacity
 
+type pointer_state = {
+  mutable position : (int * int) option;
+  mutable modifiers : Input.Modifier.t;
+}
+
+type selection_state = {
+  mutable current : Selection.t option;
+  mutable anchor_node : Renderable.t option;
+  mutable containers : Renderable.t list;
+  mutable touched_selectables : Renderable.t list;
+}
+
 (* ───── Types ───── *)
 
 type t = {
@@ -36,14 +48,11 @@ type t = {
   (* Hover tracking *)
   mutable hover_node : Renderable.t option;
   mutable hover_num : int;
-  mutable pointer : (int * int) option;
-  mutable pointer_modifiers : Input.Modifier.t;
+  pointer : pointer_state;
   (* Drag capture *)
   mutable captured : Renderable.t option;
   (* Selection *)
-  mutable selection : Selection.t option;
-  mutable selection_containers : Renderable.t list;
-  mutable touched_selectables : Renderable.t list;
+  selection_state : selection_state;
   (* Frame callbacks *)
   mutable frame_callbacks : (float -> unit) list;
 }
@@ -146,8 +155,11 @@ let list_take n lst =
   in
   go [] n lst
 
-let notify_selectables t sel =
-  match t.selection_containers with
+let parent_or_self node =
+  match Renderable.parent node with Some p -> p | None -> node
+
+let notify_selectables state sel =
+  match state.containers with
   | [] -> ()
   | container :: _ ->
       let new_touched = ref [] in
@@ -161,11 +173,11 @@ let notify_selectables t sel =
             && not (Renderable.destroyed prev)
           then
             ignore (Renderable.Private.emit_selection_changed prev None : bool))
-        t.touched_selectables;
-      t.touched_selectables <- !new_touched
+        state.touched_selectables;
+      state.touched_selectables <- !new_touched
 
 let clear_active_selection t =
-  match t.selection with
+  match t.selection_state.current with
   | None -> ()
   | Some _ ->
       List.iter
@@ -173,10 +185,66 @@ let clear_active_selection t =
           if not (Renderable.destroyed node) then (
             ignore (Renderable.Private.emit_selection_changed node None : bool);
             Renderable.Private.clear_selection node))
-        t.touched_selectables;
-      t.selection <- None;
-      t.selection_containers <- [];
-      t.touched_selectables <- []
+        t.selection_state.touched_selectables;
+      t.selection_state.current <- None;
+      t.selection_state.anchor_node <- None;
+      t.selection_state.containers <- [];
+      t.selection_state.touched_selectables <- []
+
+let update_selection_state state ~x ~y ~target_node =
+  match state.current with
+  | Some sel when Selection.is_dragging sel ->
+      Selection.set_focus sel { x; y };
+      Selection.set_is_start sel false;
+      (match state.containers with
+      | [] -> ()
+      | current_container :: _ as containers -> (
+          match target_node with
+          | None ->
+              let parent_container = parent_or_self current_container in
+              if not (parent_container == current_container) then
+                state.containers <- parent_container :: containers
+          | Some node ->
+              if not (is_within_container node current_container) then (
+                let parent_container = parent_or_self current_container in
+                if not (parent_container == current_container) then
+                  state.containers <- parent_container :: containers)
+              else if List.length containers > 1 then
+                let idx = list_phys_index node state.containers in
+                let idx =
+                  if idx >= 0 then idx
+                  else
+                    let p = parent_or_self node in
+                    list_phys_index p state.containers
+                in
+                if idx >= 0 then
+                  state.containers <- list_take (idx + 1) state.containers));
+      notify_selectables state (Some sel);
+      true
+  | _ -> false
+
+let request_selection_update ~selection_state ~pointer ~screen ~node_map =
+  match (selection_state.current, pointer.position) with
+  | Some sel, Some (x, y) when Selection.is_dragging sel ->
+      let hit_num = Screen.query_hit screen ~x ~y in
+      let target_node =
+        if hit_num > 0 then Hashtbl.find_opt node_map hit_num else None
+      in
+      ignore (update_selection_state selection_state ~x ~y ~target_node : bool)
+  | _ -> ()
+
+let emit_selection_mouse t ~x ~y ~modifiers ~target_node ~target_id kind =
+  let node, target =
+    match t.selection_state.anchor_node with
+    | Some anchor when not (Renderable.destroyed anchor) ->
+        (Some anchor, Some (Renderable.Private.num anchor))
+    | _ -> (target_node, target_id)
+  in
+  match node with
+  | Some node ->
+      let ev = Event.Mouse.make ~x ~y ~modifiers ?target kind in
+      Renderable.Private.emit_mouse node ev
+  | None -> ()
 
 (* ───── Hover Tracking ───── *)
 
@@ -205,7 +273,7 @@ let update_hover t ~x ~y ~modifiers ~target_node ~target_num kind =
 let recheck_hover t =
   if Option.is_some t.captured then ()
   else
-    match t.pointer with
+    match t.pointer.position with
     | None -> ()
     | Some (x, y) ->
         let hit_num = Screen.query_hit t.screen ~x ~y in
@@ -216,7 +284,7 @@ let recheck_hover t =
           | None -> 0
         in
         if target_num <> t.hover_num then (
-          let modifiers = t.pointer_modifiers in
+          let modifiers = t.pointer.modifiers in
           (match t.hover_node with
           | Some old ->
               let ev = Event.Mouse.make ~x ~y ~modifiers Event.Mouse.Out in
@@ -246,14 +314,24 @@ let handle_selection t ~x ~y ~(modifiers : Input.Modifier.t) ~target_node
              && Renderable.Private.should_start_selection node ~x ~y ->
           clear_active_selection t;
           let p = Selection.{ x; y } in
-          let sel = Selection.create ~anchor:p ~focus:p () in
-          t.selection <- Some sel;
-          t.selection_containers <-
+          let local_x = x - Renderable.x node in
+          let local_y = y - Renderable.y node in
+          let anchor_position () =
+            Selection.
+              {
+                x = Renderable.x node + local_x;
+                y = Renderable.y node + local_y;
+              }
+          in
+          let sel = Selection.create ~anchor_position ~anchor:p ~focus:p () in
+          t.selection_state.current <- Some sel;
+          t.selection_state.anchor_node <- Some node;
+          t.selection_state.containers <-
             [
               (match Renderable.parent node with Some p -> p | None -> t.root);
             ];
-          t.touched_selectables <- [];
-          notify_selectables t (Some sel);
+          t.selection_state.touched_selectables <- [];
+          notify_selectables t.selection_state (Some sel);
           let ev =
             Event.Mouse.make ~x ~y ~modifiers ?target:target_id
               (Event.Mouse.Down { button = Left })
@@ -262,69 +340,21 @@ let handle_selection t ~x ~y ~(modifiers : Input.Modifier.t) ~target_node
           true
       | _ -> false)
   | Event.Mouse.Drag { button = Left; _ } -> (
-      match t.selection with
+      match t.selection_state.current with
       | Some sel when Selection.is_dragging sel ->
-          Selection.set_focus sel { x; y };
-          Selection.set_is_start sel false;
-          (* Dynamic container expansion/contraction *)
-          (match t.selection_containers with
-          | [] -> ()
-          | current_container :: _ as containers -> (
-              match target_node with
-              | None ->
-                  let parent_container =
-                    match Renderable.parent current_container with
-                    | Some p -> p
-                    | None -> t.root
-                  in
-                  if not (parent_container == current_container) then
-                    t.selection_containers <- parent_container :: containers
-              | Some node ->
-                  if not (is_within_container node current_container) then (
-                    let parent_container =
-                      match Renderable.parent current_container with
-                      | Some p -> p
-                      | None -> t.root
-                    in
-                    if not (parent_container == current_container) then
-                      t.selection_containers <- parent_container :: containers)
-                  else if List.length containers > 1 then
-                    let idx = list_phys_index node t.selection_containers in
-                    let idx =
-                      if idx >= 0 then idx
-                      else
-                        let p =
-                          match Renderable.parent node with
-                          | Some p -> p
-                          | None -> t.root
-                        in
-                        list_phys_index p t.selection_containers
-                    in
-                    if idx >= 0 then
-                      t.selection_containers <-
-                        list_take (idx + 1) t.selection_containers));
-          notify_selectables t (Some sel);
-          let ev =
-            Event.Mouse.make ~x ~y ~modifiers ?target:target_id
-              (Event.Mouse.Drag { button = Left; is_dragging = true })
-          in
-          (match target_node with
-          | Some node -> Renderable.Private.emit_mouse node ev
-          | None -> ());
+          ignore
+            (update_selection_state t.selection_state ~x ~y ~target_node : bool);
+          emit_selection_mouse t ~x ~y ~modifiers ~target_node ~target_id
+            (Event.Mouse.Drag { button = Left; is_dragging = true });
           true
       | _ -> false)
   | Event.Mouse.Up { button = Left; _ } -> (
-      match t.selection with
+      match t.selection_state.current with
       | Some sel when Selection.is_dragging sel ->
-          let ev =
-            Event.Mouse.make ~x ~y ~modifiers ?target:target_id
-              (Event.Mouse.Up { button = Left; is_dragging = true })
-          in
-          (match target_node with
-          | Some node -> Renderable.Private.emit_mouse node ev
-          | None -> ());
+          emit_selection_mouse t ~x ~y ~modifiers ~target_node ~target_id
+            (Event.Mouse.Up { button = Left; is_dragging = true });
           Selection.set_is_dragging sel false;
-          notify_selectables t (Some sel);
+          notify_selectables t.selection_state (Some sel);
           true
       | _ -> false)
   | _ -> false
@@ -377,8 +407,8 @@ let map_button = function
    2. Hit test → 3. Selection → 4. Hover → 5. Drag capture → 6. Normal dispatch
    → 7. Selection clear *)
 let dispatch_mouse_internal t ~x ~y ~modifiers kind =
-  t.pointer <- Some (x, y);
-  t.pointer_modifiers <- modifiers;
+  t.pointer.position <- Some (x, y);
+  t.pointer.modifiers <- modifiers;
   let hit_num = Screen.query_hit t.screen ~x ~y in
   let target_node = if hit_num > 0 then find_node t hit_num else None in
   let target_num =
@@ -418,7 +448,8 @@ let dispatch_mouse_internal t ~x ~y ~modifiers kind =
       | _ -> ());
       (* Clear selection on left click if not prevented *)
       match kind with
-      | Event.Mouse.Down { button = Left } when Option.is_some t.selection ->
+      | Event.Mouse.Down { button = Left }
+        when Option.is_some t.selection_state.current ->
           if not (Event.Mouse.default_prevented ev) then
             clear_active_selection t
       | _ -> ()
@@ -435,6 +466,15 @@ let create ?width_method ?style () =
   let next_num = ref 0 in
   let dirty = ref true in
   let focused = ref None in
+  let pointer = { position = None; modifiers = Input.Modifier.none } in
+  let selection_state =
+    {
+      current = None;
+      anchor_node = None;
+      containers = [];
+      touched_selectables = [];
+    }
+  in
   let ctx : Renderable.Private.context =
     {
       tree;
@@ -458,6 +498,10 @@ let create ?width_method ?style () =
               Renderable.Private.blur_direct node;
               focused := None
           | _ -> ());
+      get_selection = (fun () -> selection_state.current);
+      request_selection_update =
+        (fun () ->
+          request_selection_update ~selection_state ~pointer ~screen ~node_map);
       register_lifecycle =
         (fun node ->
           Hashtbl.replace lifecycle_set (Renderable.Private.num node) node);
@@ -514,12 +558,9 @@ let create ?width_method ?style () =
     hit_scissors = [];
     hover_node = None;
     hover_num = 0;
-    pointer = None;
-    pointer_modifiers = Input.Modifier.none;
+    pointer;
     captured = None;
-    selection = None;
-    selection_containers = [];
-    touched_selectables = [];
+    selection_state;
     frame_callbacks = [];
   }
 
@@ -530,7 +571,7 @@ let screen t = t.screen
 let focused t = !(t.focused)
 let blur t = blur_current t
 let focus t node = focus_node t node
-let selection t = t.selection
+let selection t = t.selection_state.current
 let captured t = t.captured
 let hover t = t.hover_node
 

@@ -801,6 +801,96 @@ let clear_selection_resets () =
   Renderer.clear_selection t;
   is_none ~msg:"cleared" (Renderer.selection t)
 
+let selection_drag_auto_scrolls_scroll_box () =
+  let t = make_renderer () in
+  let style =
+    Toffee.Style.default
+    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 20.)
+    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 8.)
+  in
+  let sb = Scroll_box.create ~parent:(Renderer.root t) ~style () in
+  let content_style =
+    Toffee.Style.default
+    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 18.)
+    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 30.)
+  in
+  let content =
+    Renderable.create ~parent:(Scroll_box.node sb) ~style:content_style ()
+  in
+  let changes = ref 0 in
+  Renderable.set_selection content
+    ~should_start:(fun ~x:_ ~y:_ -> true)
+    ~on_change:(fun _ ->
+      incr changes;
+      true)
+    ~clear:(fun () -> ())
+    ~get_text:(fun () -> "");
+  do_frame ~width:20 ~height:8 t;
+  Renderer.dispatch_mouse t (mouse_press ~x:1 ~y:1 ());
+  Renderer.dispatch_mouse t (mouse_motion ~left:true ~x:1 ~y:7 ());
+  do_frame ~width:20 ~height:8 ~delta:1. t;
+  is_true ~msg:"scroll box moved down" (Scroll_box.scroll_top sb > 0);
+  is_true ~msg:"selection was refreshed" (!changes > 2)
+
+let selection_drag_auto_scrolls_scroll_box_when_pointer_leaves_it () =
+  let t = make_renderer () in
+  let style =
+    Toffee.Style.default
+    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 20.)
+    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 8.)
+  in
+  let sb = Scroll_box.create ~parent:(Renderer.root t) ~style () in
+  let content_style =
+    Toffee.Style.default
+    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 18.)
+    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 30.)
+  in
+  let content =
+    Renderable.create ~parent:(Scroll_box.node sb) ~style:content_style ()
+  in
+  Renderable.set_selection content
+    ~should_start:(fun ~x:_ ~y:_ -> true)
+    ~on_change:(fun _ -> true)
+    ~clear:(fun () -> ())
+    ~get_text:(fun () -> "");
+  do_frame ~width:20 ~height:12 t;
+  Renderer.dispatch_mouse t (mouse_press ~x:1 ~y:1 ());
+  Renderer.dispatch_mouse t (mouse_motion ~left:true ~x:1 ~y:10 ());
+  do_frame ~width:20 ~height:12 ~delta:1. t;
+  is_true ~msg:"scroll box moved down" (Scroll_box.scroll_top sb > 0)
+
+let selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors () =
+  let t = make_renderer () in
+  let style =
+    Toffee.Style.default
+    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 20.)
+    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 8.)
+  in
+  let sb = Scroll_box.create ~parent:(Renderer.root t) ~style () in
+  let content_style =
+    Toffee.Style.default
+    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 18.)
+    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 30.)
+  in
+  let content =
+    Renderable.create ~parent:(Scroll_box.node sb) ~style:content_style ()
+  in
+  let released = ref false in
+  Renderable.on_mouse (Scroll_box.node sb) (fun event ->
+      match Event.Mouse.kind event with
+      | Up { button = Left; is_dragging = true } -> released := true
+      | _ -> ());
+  Renderable.set_selection content
+    ~should_start:(fun ~x:_ ~y:_ -> true)
+    ~on_change:(fun _ -> true)
+    ~clear:(fun () -> ())
+    ~get_text:(fun () -> "");
+  do_frame ~width:20 ~height:12 t;
+  Renderer.dispatch_mouse t (mouse_press ~x:1 ~y:1 ());
+  Renderer.dispatch_mouse t (mouse_motion ~left:true ~x:1 ~y:10 ());
+  Renderer.dispatch_mouse t (mouse_release ~x:1 ~y:10 ());
+  is_true ~msg:"release bubbled through scroll box" !released
+
 let selectable_child_receives_changed () =
   let t = make_renderer () in
   let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
@@ -953,6 +1043,14 @@ let () =
           test "drag updates selection focus" drag_updates_selection_focus;
           test "release finishes selection" release_finishes_selection;
           test "clear selection resets" clear_selection_resets;
+          test "selection drag auto-scrolls scroll box"
+            selection_drag_auto_scrolls_scroll_box;
+          test "selection drag auto-scrolls scroll box after leaving it"
+            selection_drag_auto_scrolls_scroll_box_when_pointer_leaves_it;
+          test
+            "selection release after leaving scroll box goes to anchor \
+             ancestors"
+            selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors;
           test "selectable child receives changed"
             selectable_child_receives_changed;
           test "clear notifies selectables" clear_notifies_selectables;

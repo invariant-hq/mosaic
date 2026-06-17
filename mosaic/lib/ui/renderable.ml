@@ -55,6 +55,8 @@ type context = {
   schedule : unit -> unit;
   focus : node -> bool;
   blur : node -> unit;
+  get_selection : unit -> Selection.t option;
+  request_selection_update : unit -> unit;
   register_lifecycle : node -> unit;
   unregister_lifecycle : node -> unit;
   alloc_num : unit -> int;
@@ -1065,6 +1067,8 @@ module Private = struct
     schedule : unit -> unit;
     focus : t -> bool;
     blur : t -> unit;
+    get_selection : unit -> Selection.t option;
+    request_selection_update : unit -> unit;
     register_lifecycle : t -> unit;
     unregister_lifecycle : t -> unit;
     alloc_num : unit -> int;
@@ -1118,6 +1122,8 @@ module Private = struct
   let clear_selection = clear_selection
   let should_start_selection = should_start_selection
   let get_selected_text = get_selected_text
+  let get_selection t = t.ctx.get_selection ()
+  let request_selection_update t = t.ctx.request_selection_update ()
 
   let child_clip t =
     match t.child_clip with

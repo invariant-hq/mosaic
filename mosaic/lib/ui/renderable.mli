@@ -392,6 +392,8 @@ module Private : sig
     schedule : unit -> unit;
     focus : t -> bool;
     blur : t -> unit;
+    get_selection : unit -> Selection.t option;
+    request_selection_update : unit -> unit;
     register_lifecycle : t -> unit;
     unregister_lifecycle : t -> unit;
     alloc_num : unit -> int;
@@ -542,6 +544,13 @@ module Private : sig
   val get_selected_text : t -> string
   (** [get_selected_text t] calls [t]'s [get_text] callback and returns the
       result, or [""] if no callback is registered. *)
+
+  val get_selection : t -> Selection.t option
+  (** [get_selection t] is the renderer's active text selection, if any. *)
+
+  val request_selection_update : t -> unit
+  (** [request_selection_update t] asks the renderer to re-evaluate the active
+      selection against the current pointer position. *)
 
   (** {2:clipping Child clipping} *)
 

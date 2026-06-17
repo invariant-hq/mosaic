@@ -153,6 +153,12 @@ type t = {
   mutable sticky_right : bool;
   mutable wheel_acc_x : float;
   mutable wheel_acc_y : float;
+  mutable auto_scroll_mouse_x : int;
+  mutable auto_scroll_mouse_y : int;
+  mutable cached_auto_scroll_speed : float;
+  mutable auto_scroll_acc_x : float;
+  mutable auto_scroll_acc_y : float;
+  mutable auto_scrolling : bool;
   mutable is_applying_sticky : bool;
   mutable pending_reveal : reveal option;
   mutable applied_reveal_key : string option;
@@ -170,6 +176,11 @@ let scroll_height t = t.content_h
 let viewport_width t = Renderable.width t.viewport
 let viewport_height t = Renderable.height t.viewport
 let clamp v ~lo ~hi = max lo (min hi v)
+let auto_scroll_threshold_vertical = 3
+let auto_scroll_threshold_horizontal = 3
+let auto_scroll_speed_slow = 6.
+let auto_scroll_speed_medium = 36.
+let auto_scroll_speed_fast = 72.
 
 let reveal_axis ~align ~margin ~viewport ~current coordinate =
   let margin = max 0 margin in
@@ -317,6 +328,100 @@ let apply_pending_reveal t =
       if not (Option.equal String.equal t.applied_reveal_key (Some reveal.key))
       then apply_reveal t reveal
 
+(* ───── Selection Auto-scroll ───── *)
+
+let auto_scroll_direction_x t mouse_x =
+  let relative_x = mouse_x - Renderable.x t.node in
+  let dist_to_left = relative_x in
+  let dist_to_right = Renderable.width t.node - relative_x in
+  if dist_to_left <= auto_scroll_threshold_horizontal then
+    if t.scroll_x > 0 then -1 else 0
+  else if dist_to_right <= auto_scroll_threshold_horizontal then
+    if t.scroll_x < t.max_scroll_x then 1 else 0
+  else 0
+
+let auto_scroll_direction_y t mouse_y =
+  let relative_y = mouse_y - Renderable.y t.node in
+  let dist_to_top = relative_y in
+  let dist_to_bottom = Renderable.height t.node - relative_y in
+  if dist_to_top <= auto_scroll_threshold_vertical then
+    if t.scroll_y > 0 then -1 else 0
+  else if dist_to_bottom <= auto_scroll_threshold_vertical then
+    if t.scroll_y < t.max_scroll_y then 1 else 0
+  else 0
+
+let auto_scroll_speed t mouse_x mouse_y =
+  let relative_x = mouse_x - Renderable.x t.node in
+  let relative_y = mouse_y - Renderable.y t.node in
+  let dist_to_left = relative_x in
+  let dist_to_right = Renderable.width t.node - relative_x in
+  let dist_to_top = relative_y in
+  let dist_to_bottom = Renderable.height t.node - relative_y in
+  let min_distance =
+    min (min dist_to_left dist_to_right) (min dist_to_top dist_to_bottom)
+  in
+  if min_distance <= 1 then auto_scroll_speed_fast
+  else if min_distance <= 2 then auto_scroll_speed_medium
+  else auto_scroll_speed_slow
+
+let stop_auto_scroll t =
+  let was_auto_scrolling = t.auto_scrolling in
+  t.auto_scrolling <- false;
+  t.auto_scroll_acc_x <- 0.;
+  t.auto_scroll_acc_y <- 0.;
+  if was_auto_scrolling then Renderable.set_live t.node false
+
+let start_auto_scroll t mouse_x mouse_y =
+  stop_auto_scroll t;
+  t.auto_scroll_mouse_x <- mouse_x;
+  t.auto_scroll_mouse_y <- mouse_y;
+  t.cached_auto_scroll_speed <- auto_scroll_speed t mouse_x mouse_y;
+  t.auto_scrolling <- true;
+  Renderable.set_live t.node true
+
+let update_auto_scroll t mouse_x mouse_y =
+  t.auto_scroll_mouse_x <- mouse_x;
+  t.auto_scroll_mouse_y <- mouse_y;
+  t.cached_auto_scroll_speed <- auto_scroll_speed t mouse_x mouse_y;
+  let scroll_x = auto_scroll_direction_x t mouse_x in
+  let scroll_y = auto_scroll_direction_y t mouse_y in
+  if scroll_x = 0 && scroll_y = 0 then stop_auto_scroll t
+  else if not t.auto_scrolling then start_auto_scroll t mouse_x mouse_y
+
+let apply_auto_scroll_axis ~acc ~direction ~amount ~scroll =
+  if direction = 0 then (acc, false)
+  else
+    let acc = acc +. (float_of_int direction *. amount) in
+    let cells = int_of_float acc in
+    if cells = 0 then (acc, false)
+    else (
+      scroll cells;
+      (acc -. float_of_int cells, true))
+
+let handle_auto_scroll t delta =
+  if t.auto_scrolling then
+    match Renderable.Private.get_selection t.node with
+    | Some sel when Selection.is_dragging sel ->
+        let scroll_x = auto_scroll_direction_x t t.auto_scroll_mouse_x in
+        let scroll_y = auto_scroll_direction_y t t.auto_scroll_mouse_y in
+        let scroll_amount = t.cached_auto_scroll_speed *. Float.max 0. delta in
+        let acc_x, scrolled_x =
+          apply_auto_scroll_axis ~acc:t.auto_scroll_acc_x ~direction:scroll_x
+            ~amount:scroll_amount ~scroll:(fun cells ->
+              scroll_to_internal t ~x:(t.scroll_x + cells) ())
+        in
+        let acc_y, scrolled_y =
+          apply_auto_scroll_axis ~acc:t.auto_scroll_acc_y ~direction:scroll_y
+            ~amount:scroll_amount ~scroll:(fun cells ->
+              scroll_to_internal t ~y:(t.scroll_y + cells) ())
+        in
+        t.auto_scroll_acc_x <- acc_x;
+        t.auto_scroll_acc_y <- acc_y;
+        if scrolled_x || scrolled_y then
+          Renderable.Private.request_selection_update t.node;
+        if scroll_x = 0 && scroll_y = 0 then stop_auto_scroll t
+    | _ -> stop_auto_scroll t
+
 (* ───── Metrics Recalculation ───── *)
 
 let recalc_metrics t =
@@ -415,6 +520,9 @@ let on_mouse t (event : Event.mouse) =
       if stepy <> 0 then t.wheel_acc_y <- t.wheel_acc_y -. float_of_int stepy;
       if stepx <> 0 || stepy <> 0 then
         scroll_to_internal t ~x:(t.scroll_x + stepx) ~y:(t.scroll_y + stepy) ()
+  | Drag { button = Left; is_dragging = true } ->
+      update_auto_scroll t (Event.Mouse.x event) (Event.Mouse.y event)
+  | Up { button = Left; _ } -> stop_auto_scroll t
   | _ -> ()
 
 (* ───── Keyboard ───── *)
@@ -611,6 +719,12 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       sticky_right = false;
       wheel_acc_x = 0.;
       wheel_acc_y = 0.;
+      auto_scroll_mouse_x = 0;
+      auto_scroll_mouse_y = 0;
+      cached_auto_scroll_speed = auto_scroll_speed_slow;
+      auto_scroll_acc_x = 0.;
+      auto_scroll_acc_y = 0.;
+      auto_scrolling = false;
       is_applying_sticky = false;
       pending_reveal = reveal;
       applied_reveal_key = None;
@@ -633,6 +747,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   Renderable.set_focusable node true;
   (* Wire render callback *)
   Renderable.set_render node (render_scroll_box t);
+  Renderable.set_on_frame node
+    (Some (fun _ ~delta -> handle_auto_scroll t delta));
   (* Wire resize notifications *)
   Renderable.set_on_resize viewport_node
     (Some (fun _ -> Renderable.request_render node));
