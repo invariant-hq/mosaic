@@ -202,7 +202,13 @@ let flush_pinned_static t queue =
     Set_scroll_region { top = 1; bottom = max_offset }
     :: List.rev_append ops_rev [ Reset_scroll_region ]
   in
-  (next, { empty_plan with terminal_ops })
+  ( next,
+    {
+      empty_plan with
+      terminal_ops;
+      invalidate_presented = true;
+      force_full_redraw = true;
+    } )
 
 let full_height_static_ops step text =
   let ops =

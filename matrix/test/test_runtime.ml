@@ -604,6 +604,25 @@ let test_pinned_static_write_resets_scroll_region_before_live_render () =
   is_true ~msg:"scroll region resets before live render"
     (is_before ~first:"\027[r" ~second:"live" output)
 
+let test_pinned_static_write_repaints_unchanged_live_view () =
+  let app, state =
+    make_app ~mode:`Primary ~render_offset:23 ~min_tui_height:1 ~target_fps:None
+      ~input_timeout:(Some 0.) ()
+  in
+  Matrix.prepare app;
+  Matrix.Grid.draw_text (Matrix.grid app) ~x:0 ~y:0 ~text:"prompt";
+  Matrix.submit app;
+  Buffer.clear state.output;
+  Matrix.static_write app ~rows:1 "static\n";
+  Matrix.prepare app;
+  Matrix.Grid.draw_text (Matrix.grid app) ~x:0 ~y:0 ~text:"prompt";
+  Matrix.submit app;
+  let output = output state in
+  is_true ~msg:"static payload appears before live repaint"
+    (is_before ~first:"static" ~second:"prompt" output);
+  is_true ~msg:"scroll region resets before unchanged live repaint"
+    (is_before ~first:"\027[r" ~second:"prompt" output)
+
 let test_multiline_static_write_uses_scroll_region_when_it_reaches_pin () =
   let app, state =
     make_app ~mode:`Primary ~render_offset:22 ~min_tui_height:1 ~target_fps:None
@@ -1006,6 +1025,8 @@ let () =
             test_pinned_static_write_uses_bounded_scroll_region;
           test "pinned static write resets scroll region before live render"
             test_pinned_static_write_resets_scroll_region_before_live_render;
+          test "pinned static write repaints unchanged live view"
+            test_pinned_static_write_repaints_unchanged_live_view;
           test "multiline static write uses scroll region when it reaches pin"
             test_multiline_static_write_uses_scroll_region_when_it_reaches_pin;
           test "unpinned static write settles without scroll region"
