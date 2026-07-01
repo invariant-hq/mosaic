@@ -368,6 +368,21 @@ let key_left_right_moves_cursor () =
   send_key ta Input.Key.Right;
   equal ~msg:"cursor moved right" int 2 (Edit_buffer.cursor buf)
 
+let key_up_moves_to_previous_line () =
+  let t, ta = make_textarea ~value:"one\ntwo" () in
+  focus_textarea t ta;
+  ignore (render_textarea ta ~width:20 ~height:2 : Grid.t);
+  send_key ta Input.Key.Up;
+  equal ~msg:"cursor" int 3 (Textarea.cursor ta)
+
+let key_down_moves_to_next_line () =
+  let t, ta = make_textarea ~value:"one\ntwo" () in
+  focus_textarea t ta;
+  ignore (render_textarea ta ~width:20 ~height:2 : Grid.t);
+  Edit_buffer.set_cursor (Textarea.buffer ta) 0;
+  send_key ta Input.Key.Down;
+  equal ~msg:"cursor" int 4 (Textarea.cursor ta)
+
 let key_backspace_deletes_backward () =
   let t, ta = make_textarea ~value:"abc" () in
   focus_textarea t ta;
@@ -968,6 +983,8 @@ let () =
           test "Enter inserts newline" key_enter_inserts_newline;
           test "keypad Enter inserts newline" key_kp_enter_inserts_newline;
           test "Left/Right moves cursor" key_left_right_moves_cursor;
+          test "Up moves to previous line" key_up_moves_to_previous_line;
+          test "Down moves to next line" key_down_moves_to_next_line;
           test "Backspace deletes backward" key_backspace_deletes_backward;
           test "Backspace at line start joins" key_backspace_at_line_start_joins;
           test "Delete key deletes forward" key_delete_deletes_forward;
