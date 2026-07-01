@@ -468,6 +468,13 @@ let ctrl_u_deletes_to_line_start () =
   send_char_with_mod ta ~modifier:ctrl_mod 'u';
   equal ~msg:"deleted to line start" string "abc\nf" (Textarea.value ta)
 
+let ctrl_w_deletes_word_backward_after_newline () =
+  let t, ta = make_textarea ~value:"hello\nworld" () in
+  focus_textarea t ta;
+  send_char_with_mod ta ~modifier:ctrl_mod 'w';
+  equal ~msg:"deleted word" string "hello\n" (Textarea.value ta);
+  equal ~msg:"cursor" int 6 (Textarea.cursor ta)
+
 let ctrl_shift_d_deletes_line () =
   let t, ta = make_textarea ~value:"abc\ndef\nghi" () in
   focus_textarea t ta;
@@ -978,6 +985,8 @@ let () =
           test "Ctrl+D deletes forward" ctrl_d_deletes_forward;
           test "Ctrl+K deletes to line end" ctrl_k_deletes_to_line_end;
           test "Ctrl+U deletes to line start" ctrl_u_deletes_to_line_start;
+          test "Ctrl+W deletes word backward after newline"
+            ctrl_w_deletes_word_backward_after_newline;
           test "Ctrl+Shift+D deletes line" ctrl_shift_d_deletes_line;
         ];
       group "Alt keybindings"

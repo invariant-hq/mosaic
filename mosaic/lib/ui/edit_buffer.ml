@@ -413,56 +413,64 @@ let delete_forward t =
 
 (* ───── Word boundaries ───── *)
 
-let next_word_boundary t =
+let grapheme_contains_line_break t c i =
+  let start = byte_offset_of_grapheme_in_content t c i in
+  let stop = byte_offset_of_grapheme_in_content t c (i + 1) in
+  let rec loop byte_offset =
+    byte_offset < stop
+    &&
+    match String.unsafe_get t.content byte_offset with
+    | '\n' | '\r' -> true
+    | _ -> loop (byte_offset + 1)
+  in
+  loop start
+
+let word_break_set t =
   let c = ensure_cache t in
-  let result = ref c.count in
-  let found = ref false in
-  Matrix.Text.iter_wrap_breaks
-    (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
-      let after = grapheme_offset + 1 in
-      if (not !found) && after > t.cursor_pos then begin
-        result := after;
-        found := true
-      end)
-    t.content;
-  !result
-
-let prev_word_boundary t =
-  let result = ref 0 in
-  Matrix.Text.iter_wrap_breaks
-    (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
-      let after = grapheme_offset + 1 in
-      if after < t.cursor_pos then result := after)
-    t.content;
-  !result
-
-(* ───── Word deletion ───── *)
-
-(* Collect the set of grapheme offsets that are wrap-break characters. *)
-let break_set t =
   let s = Hashtbl.create 16 in
   Matrix.Text.iter_wrap_breaks
-    (fun ~break_byte_offset:_ ~next_byte_offset:_ ~grapheme_offset ->
+    (fun ~break_byte_offset ~next_byte_offset ~grapheme_offset ->
+      ignore break_byte_offset;
+      ignore next_byte_offset;
       Hashtbl.replace s grapheme_offset ())
     t.content;
+  for i = 0 to c.count - 1 do
+    if grapheme_contains_line_break t c i then Hashtbl.replace s i ()
+  done;
   s
+
+let next_word_boundary t =
+  let c = ensure_cache t in
+  let breaks = word_break_set t in
+  let pos = ref t.cursor_pos in
+  while !pos < c.count && not (Hashtbl.mem breaks !pos) do
+    incr pos
+  done;
+  while !pos < c.count && Hashtbl.mem breaks !pos do
+    incr pos
+  done;
+  !pos
+
+let prev_word_boundary t =
+  let breaks = word_break_set t in
+  let pos = ref t.cursor_pos in
+  while !pos > 0 && Hashtbl.mem breaks (!pos - 1) do
+    decr pos
+  done;
+  while !pos > 0 && not (Hashtbl.mem breaks (!pos - 1)) do
+    decr pos
+  done;
+  !pos
+
+(* ───── Word deletion ───── *)
 
 let delete_word_backward t =
   if has_selection t then delete_selection t
   else if t.cursor_pos = 0 then false
   else begin
-    let breaks = break_set t in
-    let pos = ref t.cursor_pos in
-    (* Phase 1: skip backward over consecutive break characters *)
-    while !pos > 0 && Hashtbl.mem breaks (!pos - 1) do
-      decr pos
-    done;
-    (* Phase 2: skip backward over non-break characters (the word) *)
-    while !pos > 0 && not (Hashtbl.mem breaks (!pos - 1)) do
-      decr pos
-    done;
+    let pos = prev_word_boundary t in
     save_undo t;
-    delete_grapheme_range t !pos t.cursor_pos;
+    delete_grapheme_range t pos t.cursor_pos;
     true
   end
 
@@ -472,18 +480,9 @@ let delete_word_forward t =
     let c = ensure_cache t in
     if t.cursor_pos >= c.count then false
     else begin
-      let breaks = break_set t in
-      let pos = ref t.cursor_pos in
-      (* Phase 1: skip forward over non-break characters (the word) *)
-      while !pos < c.count && not (Hashtbl.mem breaks !pos) do
-        incr pos
-      done;
-      (* Phase 2: skip forward over consecutive break characters *)
-      while !pos < c.count && Hashtbl.mem breaks !pos do
-        incr pos
-      done;
+      let pos = next_word_boundary t in
       save_undo t;
-      delete_grapheme_range t t.cursor_pos !pos;
+      delete_grapheme_range t t.cursor_pos pos;
       true
     end
 

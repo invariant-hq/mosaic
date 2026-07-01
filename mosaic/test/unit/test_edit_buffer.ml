@@ -329,6 +329,21 @@ let delete_word_backward_multiple_spaces () =
   is_true ~msg:"changed2" changed;
   equal ~msg:"after second" string "" (Edit_buffer.text buf)
 
+let delete_word_backward_stops_at_newline () =
+  let buf = Edit_buffer.create "hello\nworld" in
+  let changed = Edit_buffer.delete_word_backward buf in
+  is_true ~msg:"changed" changed;
+  equal ~msg:"text" string "hello\n" (Edit_buffer.text buf);
+  equal ~msg:"cursor" int 6 (Edit_buffer.cursor buf)
+
+let delete_word_backward_after_newline_deletes_previous_word () =
+  let buf = Edit_buffer.create "hello\nworld" in
+  Edit_buffer.set_cursor buf 6;
+  let changed = Edit_buffer.delete_word_backward buf in
+  is_true ~msg:"changed" changed;
+  equal ~msg:"text" string "world" (Edit_buffer.text buf);
+  equal ~msg:"cursor" int 0 (Edit_buffer.cursor buf)
+
 let delete_word_backward_at_start () =
   let buf = Edit_buffer.create "hello" in
   Edit_buffer.set_cursor buf 0;
@@ -341,6 +356,14 @@ let delete_word_forward_basic () =
   let changed = Edit_buffer.delete_word_forward buf in
   is_true ~msg:"changed" changed;
   equal ~msg:"text" string "world" (Edit_buffer.text buf)
+
+let delete_word_forward_stops_at_newline () =
+  let buf = Edit_buffer.create "hello\nworld" in
+  Edit_buffer.set_cursor buf 0;
+  let changed = Edit_buffer.delete_word_forward buf in
+  is_true ~msg:"changed" changed;
+  equal ~msg:"text" string "world" (Edit_buffer.text buf);
+  equal ~msg:"cursor" int 0 (Edit_buffer.cursor buf)
 
 let delete_word_forward_at_end () =
   let buf = Edit_buffer.create "hello" in
@@ -430,11 +453,24 @@ let move_word_forward_basic () =
   is_true ~msg:"moved" moved;
   is_true ~msg:"cursor advanced" (Edit_buffer.cursor buf > 0)
 
+let move_word_forward_crosses_newline () =
+  let buf = Edit_buffer.create "hello\nworld" in
+  Edit_buffer.set_cursor buf 0;
+  let moved = Edit_buffer.move_word_forward buf in
+  is_true ~msg:"moved" moved;
+  equal ~msg:"cursor" int 6 (Edit_buffer.cursor buf)
+
 let move_word_backward_basic () =
   let buf = Edit_buffer.create "hello world" in
   let moved = Edit_buffer.move_word_backward buf in
   is_true ~msg:"moved" moved;
   is_true ~msg:"cursor moved back" (Edit_buffer.cursor buf < 11)
+
+let move_word_backward_crosses_newline () =
+  let buf = Edit_buffer.create "hello\nworld" in
+  let moved = Edit_buffer.move_word_backward buf in
+  is_true ~msg:"moved" moved;
+  equal ~msg:"cursor" int 6 (Edit_buffer.cursor buf)
 
 let move_home_moves_to_zero () =
   let buf = Edit_buffer.create "hello" in
@@ -1003,8 +1039,14 @@ let () =
           test "delete_word_backward repeated" delete_word_backward_repeated;
           test "delete_word_backward multiple spaces"
             delete_word_backward_multiple_spaces;
+          test "delete_word_backward stops at newline"
+            delete_word_backward_stops_at_newline;
+          test "delete_word_backward after newline deletes previous word"
+            delete_word_backward_after_newline_deletes_previous_word;
           test "delete_word_backward at start" delete_word_backward_at_start;
           test "delete_word_forward basic" delete_word_forward_basic;
+          test "delete_word_forward stops at newline"
+            delete_word_forward_stops_at_newline;
           test "delete_word_forward at end" delete_word_forward_at_end;
           test "delete_to_start basic" delete_to_start_basic;
           test "delete_to_end basic" delete_to_end_basic;
@@ -1020,7 +1062,11 @@ let () =
           test "move_right at end" move_right_at_end;
           test "move_right with selection" move_right_with_selection;
           test "move_word_forward basic" move_word_forward_basic;
+          test "move_word_forward crosses newline"
+            move_word_forward_crosses_newline;
           test "move_word_backward basic" move_word_backward_basic;
+          test "move_word_backward crosses newline"
+            move_word_backward_crosses_newline;
           test "move_home moves to 0" move_home_moves_to_zero;
           test "move_home at 0" move_home_at_zero;
           test "move_end moves to length" move_end_moves_to_length;
