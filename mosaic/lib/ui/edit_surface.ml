@@ -454,7 +454,12 @@ let offset_at_col t target_line target_col =
 
 (* Scroll *)
 
+let clamp_scroll_offsets t =
+  Text_surface.set_scroll_y t.surface (Text_surface.scroll_y t.surface);
+  Text_surface.set_scroll_x t.surface (Text_surface.scroll_x t.surface)
+
 let ensure_cursor_visible t =
+  clamp_scroll_offsets t;
   let h = Renderable.height t.node in
   if h > 0 then begin
     let dl = find_cursor_display_line t in
@@ -491,6 +496,8 @@ let handle_scroll t direction delta =
         (Text_surface.scroll_x t.surface + delta)
   | Scroll_left | Scroll_right -> ()
 
+let handle_resize t _node = ensure_cursor_visible t
+
 let measure_single_line t ~known_dimensions ~available_space:_ ~style:_ =
   let content_width = Edit_buffer.display_width t.buf in
   let placeholder_width =
@@ -512,6 +519,7 @@ let measure_single_line t ~known_dimensions ~available_space:_ ~style:_ =
 (* Rendering *)
 
 let render_before t _self grid ~delta:_ =
+  clamp_scroll_offsets t;
   let w = Renderable.width t.node in
   let h = Renderable.height t.node in
   if w <= 0 || h <= 0 then ()
@@ -952,6 +960,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?cursor
   Renderable.set_render_before node (Some (render_before t));
   Renderable.set_render_after node (Some (render_after t));
   Renderable.set_cursor_provider node (cursor_provider t);
+  Renderable.set_on_resize node (Some (handle_resize t));
   Renderable.set_on_focus node (Some (fun _ -> handle_focus t));
   Renderable.set_on_blur node (Some (fun _ -> handle_blur t));
   Renderable.set_default_key_handler node (Some (handle_key t));

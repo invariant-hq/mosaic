@@ -735,6 +735,21 @@ let mouse_wheel_scrolls_surface () =
   is_true ~msg:"scroll default prevented" (Event.Mouse.default_prevented ev);
   equal ~msg:"scroll_y" int 2 (Text_surface.scroll_y (Textarea.surface ta))
 
+let resize_after_newline_clamps_scroll_y () =
+  let t, ta = make_textarea () in
+  focus_textarea t ta;
+  ignore (render_textarea ta ~width:20 ~height:1 : Grid.t);
+  send_char ta 't';
+  send_char ta 'e';
+  send_char ta 's';
+  send_char ta 't';
+  send_key ta Input.Key.Enter;
+  equal ~msg:"scroll_y before growth" int 1
+    (Text_surface.scroll_y (Textarea.surface ta));
+  ignore (render_textarea ta ~width:20 ~height:2 : Grid.t);
+  equal ~msg:"scroll_y after growth" int 0
+    (Text_surface.scroll_y (Textarea.surface ta))
+
 (* ── Cursor Provider ── *)
 
 let cursor_returns_none_when_unfocused () =
@@ -1028,6 +1043,8 @@ let () =
           test "selection disabled when not selectable"
             mouse_selection_disabled_when_not_selectable;
           test "wheel scrolls surface" mouse_wheel_scrolls_surface;
+          test "resize after newline clamps scroll_y"
+            resize_after_newline_clamps_scroll_y;
         ];
       group "Cursor provider"
         [
