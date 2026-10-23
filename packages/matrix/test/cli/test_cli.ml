@@ -181,6 +181,105 @@ let place_tests =
           text);
   ]
 
+(* ───── Tables of text ───── *)
+
+let text_cols =
+  Table.
+    [|
+      { align = `Left; overflow = `Truncate };
+      { align = `Right; overflow = `Truncate };
+      { align = `Center; overflow = `Wrap };
+    |]
+
+let bold = Ansi.Style.make ~bold:true ()
+
+let text_rows =
+  Table.
+    [
+      Cells
+        [|
+          cell ~style:bold "pkg"; cell ~style:bold "version"; cell "synopsis";
+        |];
+      Separator `Heavy;
+      Cells [| cell "cmdliner"; cell "2.1.1"; cell "Declarative definition" |];
+      Cells [| cell "uutf"; cell "1.0.4"; cell "Streaming codec\nsecond line" |];
+    ]
+
+let lines_of_text s = String.concat "\n" s
+
+let text_tests =
+  [
+    test "a table that fits is as wide as its content" (fun () ->
+        equal ~msg:"table" string
+          (lines_of_text
+             [
+               "┌──────────┬─────────┬────────────────────────┐";
+               "│ pkg      │ version │        synopsis        │";
+               "┝━━━━━━━━━━┿━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━┥";
+               "│ cmdliner │   2.1.1 │ Declarative definition │";
+               "│ uutf     │   1.0.4 │    Streaming codec     │";
+               "│          │         │      second line       │";
+               "└──────────┴─────────┴────────────────────────┘";
+             ])
+          (Grid.to_text (Table.grid light ~room:80 text_cols text_rows)));
+    test "a narrow room breaks the words of wrapped columns first" (fun () ->
+        equal ~msg:"table" string
+          (lines_of_text
+             [
+               "┌──────────┬─────────┬───────┐";
+               "│ pkg      │ version │ synop │";
+               "│          │         │  sis  │";
+               "┝━━━━━━━━━━┿━━━━━━━━━┿━━━━━━━┥";
+               "│ cmdliner │   2.1.1 │ Decla │";
+               "│          │         │ rativ │";
+               "│          │         │   e   │";
+               "│          │         │ defin │";
+               "│          │         │ ition │";
+               "│ uutf     │   1.0.4 │ Strea │";
+               "│          │         │ ming  │";
+               "│          │         │ codec │";
+               "│          │         │ secon │";
+               "│          │         │   d   │";
+               "│          │         │ line  │";
+               "└──────────┴─────────┴───────┘";
+             ])
+          (Grid.to_text (Table.grid light ~room:30 text_cols text_rows)));
+    test "truncated columns narrow once wrapped ones are at their floors"
+      (fun () ->
+        let header room =
+          List.nth
+            (String.split_on_char '\n'
+               (Grid.to_text (Table.grid light ~room text_cols text_rows)))
+            1
+        in
+        equal ~msg:"wrapped column at its floor, truncated ones whole" string
+          "│ pkg      │ version │ s │" (header 26);
+        equal ~msg:"then the truncated ones narrow" string
+          "│ pkg    │ vers… │ s │" (header 22));
+    test "below the floors the grid is wider than the room" (fun () ->
+        let g = Table.grid light ~room:6 text_cols text_rows in
+        equal ~msg:"width" int 13 (Grid.width g));
+    test "cells keep their style, and the grid its width method" (fun () ->
+        let g =
+          Table.grid ~width_method:`Wcwidth light ~room:80 text_cols text_rows
+        in
+        let attrs x =
+          Ansi.Attr.unpack (Grid.get_attrs g (Grid.idx g ~x ~y:1))
+        in
+        is_true ~msg:"bold header" (Ansi.Attr.mem Ansi.Attr.Bold (attrs 2));
+        is_true ~msg:"plain header"
+          (not (Ansi.Attr.mem Ansi.Attr.Bold (attrs 30)));
+        is_true ~msg:"method" (Grid.width_method g = `Wcwidth));
+    test "an empty table is one cell" (fun () ->
+        let g = Table.grid { light with edge = None } ~room:10 [||] [] in
+        equal ~msg:"size" (pair int int) (1, 1) (Grid.width g, Grid.height g));
+    test "grid rejects a row without a cell for each column" (fun () ->
+        raises_match (Exn.invalid_arg ~substring:"Table.grid") (fun () ->
+            ignore
+              (Table.grid light ~room:10 text_cols
+                 [ Table.Cells [| Table.cell "a" |] ])));
+  ]
+
 (* ───── Trees ───── *)
 
 module N = struct
@@ -627,6 +726,7 @@ let () =
     [
       group "widths" width_tests;
       group "placing" place_tests;
+      group "tables of text" text_tests;
       group "trees" tree_tests;
       group "ocaml-console" console_tests;
     ]

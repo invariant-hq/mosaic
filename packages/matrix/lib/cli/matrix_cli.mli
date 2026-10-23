@@ -43,7 +43,8 @@
     cells span columns. {!Table.place} says where each row and cell goes, and
     {!Table.draw} draws the frame's lines, where every crossing takes the glyph
     of the lines that meet there ({!Matrix_grid.Lines}). The program draws each
-    cell's content in the region {!Table.place} gives it.
+    cell's content in the region {!Table.place} gives it. A table whose cells
+    hold text is laid out and drawn whole by {!Table.grid}.
 
     This prints a table as wide as its content, with a light frame, whose rows
     [None] are rules:
@@ -111,7 +112,7 @@ module Table : sig
         (** The weight of the edge, [None] for none. *)
     line : Matrix_grid.Lines.weight option;
         (** The weight of the lines between columns, [None] for none. *)
-    pad : int;  (** The blank cells between a cell and a line or another cell. *)
+    pad : int;  (** The blank cells between a cell and a line or a cell. *)
   }
   (** The type for frames. An edge or a line is one cell wide, the cell its
       lines pass through, so the glyphs it is drawn with
@@ -169,6 +170,70 @@ module Table : sig
       row's spans leave out the lines inside them. It writes no other cell.
 
       Raises as {!place}. *)
+
+  (** {1:text Tables of text}
+
+      A {e table of text} is a table whose cells hold text, which {!grid} lays
+      out and draws whole. Each column has an alignment and an {e overflow}. A
+      column that wraps breaks its cells' lines at words, as
+      {!Matrix_text.Layout} does with [`Word], so its min-content width is its
+      widest word. A column that truncates shows a line that does not fit up to
+      the last cell, which shows an ellipsis (…), so its min-content width is
+      its widest line, as CSS's [white-space: nowrap] makes it. Every column's
+      floor is one cell, it does not grow, and its max-content width is its
+      widest line, so the table is as wide as its content when the room holds
+      it. Below the min-content widths, the wrapped columns narrow to their
+      floors first and the truncated columns keep their widths, and only then do
+      the truncated columns narrow ({!widths} shares each step). A wrapped
+      column that breaks words keeps all its text, and a truncated one loses
+      some, so the column that loses text yields last. A row is as tall as its
+      tallest cell. TABs are two cells wide. *)
+
+  type align = [ `Left | `Center | `Right ]
+  (** The type for the alignment of each line of a cell in its column, by its
+      cells up to the last that is not a blank. A centered line has the one cell
+      left over, if any, on its right. *)
+
+  type overflow = [ `Wrap | `Truncate ]
+  (** The type for overflows. *)
+
+  type text_column = { align : align; overflow : overflow }
+  (** The type for the columns of a table of text. *)
+
+  type cell = { text : string; style : Ansi.Style.t }
+  (** The type for the cells of a table of text: a text, whose line ends start
+      new lines, and its style. *)
+
+  val cell : ?style:Ansi.Style.t -> string -> cell
+  (** [cell ~style text] is the cell of [text] in [style], {!Ansi.Style.default}
+      by default. *)
+
+  (** The type for the rows of a table of text. *)
+  type text_row =
+    | Cells of cell array  (** A row of one cell for each column. *)
+    | Separator of Matrix_grid.Lines.weight
+        (** A rule of that weight across the table. *)
+
+  val grid :
+    ?glyphs:Matrix_grid.Lines.glyphs ->
+    ?style:Ansi.Style.t ->
+    ?width_method:Matrix_text.width_method ->
+    frame ->
+    room:int ->
+    text_column array ->
+    text_row list ->
+    Matrix_grid.t
+  (** [grid ~glyphs ~style ~width_method f ~room cols rows] is a grid with the
+      table of text of frame [f], columns [cols] and rows [rows] drawn in it,
+      its lines in [glyphs] and [style] as {!draw} draws them. The table's
+      columns share [room] cells less the frame's ({!widths}), measured with
+      [width_method] ([`Unicode] by default), which the grid keeps. The grid is
+      as wide and as tall as the table, and at least one cell each way. It is
+      wider than [room] when even the floors do not fit, and the program then
+      cuts its lines.
+
+      Raises [Invalid_argument] if a row of [rows] does not have one cell for
+      each column. *)
 end
 
 (** Trees, the guides that draw them one node per line.

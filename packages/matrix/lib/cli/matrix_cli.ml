@@ -167,6 +167,176 @@ module Table = struct
     go ~above:(Option.is_some f.edge)
       (List.combine rows (place ~x ~y f ws rows));
     Matrix_grid.draw_lines ?glyphs g l
+
+  (* ───── Tables of text ───── *)
+
+  type align = [ `Left | `Center | `Right ]
+  type overflow = [ `Wrap | `Truncate ]
+  type text_column = { align : align; overflow : overflow }
+  type cell = { text : string; style : Ansi.Style.t }
+
+  let cell ?(style = Ansi.Style.default) text = { text; style }
+
+  type text_row = Cells of cell array | Separator of Lines.weight
+
+  let tab_width = 2
+
+  (* The widest of the pieces of [s]'s lines between their wrap breaks,
+     without the blanks that end them, which hang where a row wraps. *)
+  let widest_word ~width_method s =
+    let widest = ref 0 in
+    let line l =
+      let start = ref 0 in
+      let piece stop =
+        let e = ref stop in
+        while !e > !start && (l.[!e - 1] = ' ' || l.[!e - 1] = '\t') do
+          decr e
+        done;
+        widest :=
+          max !widest
+            (Matrix_text.measure_sub ~width_method ~tab_width l ~pos:!start
+               ~len:(!e - !start));
+        start := stop
+      in
+      Matrix_text.iter_wrap_breaks
+        (fun ~break_byte_offset:_ ~next_byte_offset ~grapheme_offset:_ ->
+          piece next_byte_offset)
+        l;
+      piece (String.length l)
+    in
+    List.iter line (String.split_on_char '\n' s);
+    !widest
+
+  let max_content ~width_method s =
+    Matrix_text.Layout.max_width
+      (Matrix_text.Layout.create ~width_method ~tab_width
+         (Matrix_text.Layout.Source.of_string s)
+         ~width:0 ~wrap:`None)
+
+  let layout ~width_method c width text =
+    let src = Matrix_text.Layout.Source.of_string text in
+    match c.overflow with
+    | `Wrap ->
+        Matrix_text.Layout.create ~width_method ~tab_width src ~width
+          ~wrap:`Word
+    | `Truncate ->
+        Matrix_text.Layout.create ~width_method ~tab_width ~truncate:true src
+          ~width ~wrap:`None
+
+  let grid ?glyphs ?style ?(width_method = `Unicode) f ~room cols rows =
+    let n = Array.length cols in
+    let cells =
+      List.filter_map
+        (function
+          | Cells cs ->
+              if Array.length cs <> n then
+                invalid_arg
+                  (Printf.sprintf
+                     "Matrix_cli.Table.grid: a row of %d cells in %d columns"
+                     (Array.length cs) n);
+              Some cs
+          | Separator _ -> None)
+        rows
+    in
+    let need i c =
+      let fold f = List.fold_left (fun a cs -> max a (f cs.(i).text)) 0 cells in
+      let max_ = fold (max_content ~width_method) in
+      let min_ =
+        match c.overflow with
+        | `Truncate -> max_
+        | `Wrap -> min max_ (fold (widest_word ~width_method))
+      in
+      { floor = min 1 min_; min = min_; max = max_; grow = 0 }
+    in
+    let needs = Array.mapi need cols and room = room - chrome f n in
+    (* Below the min-content widths, the wrapped columns narrow first, the
+       truncated ones held at theirs, and the truncated ones only once the
+       wrapped ones are at their floors. *)
+    let truncated i = cols.(i).overflow = `Truncate in
+    let held =
+      Array.mapi
+        (fun i c -> if truncated i then { c with floor = c.min } else c)
+        needs
+    in
+    let ws =
+      if room >= Array.fold_left (fun a c -> a + c.floor) 0 held then
+        widths held ~room
+      else
+        widths ~room
+          (Array.mapi
+             (fun i c ->
+               if truncated i then c
+               else { c with min = c.floor; max = c.floor })
+             needs)
+    in
+    let rows_of cs =
+      let h = ref 1 in
+      Array.iteri
+        (fun i c ->
+          h :=
+            max !h
+              (Matrix_text.Layout.row_count
+                 (layout ~width_method cols.(i) ws.(i) c.text)))
+        cs;
+      !h
+    in
+    let shape =
+      List.map
+        (function Cells cs -> Row (rows_of cs) | Separator w -> Rule w)
+        rows
+    in
+    let g =
+      Matrix_grid.create ~width_method
+        ~width:(max 1 (width f ws))
+        ~height:(max 1 (height f shape))
+        ()
+    in
+    draw ?glyphs ?style g ~x:0 ~y:0 f ws shape;
+    List.iter2
+      (fun r (p : placed) ->
+        match r with
+        | Separator _ -> ()
+        | Cells cs ->
+            Array.iteri
+              (fun i (reg : Matrix_grid.region) ->
+                let c = cs.(i) and col = cols.(i) in
+                let l = layout ~width_method col reg.width c.text in
+                let src = Matrix_text.Layout.source l in
+                for row = 0 to Matrix_text.Layout.row_count l - 1 do
+                  (* A line is aligned by its cells up to its last one that is
+                     not a blank. *)
+                  let ink = ref 0 in
+                  Matrix_text.Layout.iter_cells l ~row ~first_column:0
+                    ~last_column:reg.width
+                    (fun ~first ~last ~column ~width ~ellipsis ->
+                      let t =
+                        Matrix_text.Layout.Source.slice src ~first ~last
+                      in
+                      if ellipsis || (t <> " " && t <> "\t") then
+                        ink := column + width);
+                  let free = reg.width - !ink in
+                  let x =
+                    reg.x
+                    +
+                    match col.align with
+                    | `Left -> 0
+                    | `Center -> max 0 free / 2
+                    | `Right -> max 0 free
+                  in
+                  Matrix_text.Layout.iter_cells l ~row ~first_column:0
+                    ~last_column:reg.width
+                    (fun ~first ~last ~column ~width:_ ~ellipsis ->
+                      let text =
+                        if ellipsis then "…"
+                        else Matrix_text.Layout.Source.slice src ~first ~last
+                      in
+                      Matrix_grid.draw_text ~style:c.style g ~x:(x + column)
+                        ~y:(reg.y + row) ~text)
+                done)
+              p.cells)
+      rows
+      (place ~x:0 ~y:0 f ws shape);
+    g
 end
 
 module Tree = struct
