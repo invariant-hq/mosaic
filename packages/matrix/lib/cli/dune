@@ -1,0 +1,8 @@
+(library
+ (instrumentation
+  (backend ppx_windtrap.coverage))
+ (instrumentation
+  (backend ppx_windtrap.mutate))
+ (name matrix_cli)
+ (public_name matrix.cli)
+ (libraries matrix.ansi matrix.text matrix.grid))
