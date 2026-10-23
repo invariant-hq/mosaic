@@ -266,7 +266,10 @@ let tree_tests =
    ellipsis when even the narrowest columns do not fit, no column left out;
    borders of any glyphs, ASCII among them; frames that move while the
    content stands still; trees whose labels wrap under their guides; and any
-   widget inside another. Each is composed here over [Table] and [Tree]. *)
+   widget inside another. Each is composed here over [Table] and [Tree], with
+   one exception: a frame line is one cell wide, the cell its lines pass
+   through, so a border glyph is one cell wide, where ocaml-console's take
+   any number of cells. *)
 
 type column = {
   head : string;

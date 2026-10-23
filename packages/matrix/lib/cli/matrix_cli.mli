@@ -113,7 +113,10 @@ module Table : sig
         (** The weight of the lines between columns, [None] for none. *)
     pad : int;  (** The blank cells between a cell and a line or another cell. *)
   }
-  (** The type for frames. An edge or a line takes one cell. *)
+  (** The type for frames. An edge or a line is one cell wide, the cell its
+      lines pass through, so the glyphs it is drawn with
+      ({!Matrix_grid.Lines.glyphs}) must be one cell wide. A wider glyph covers
+      the padding or the content beside it. *)
 
   (** The type for rows. A height below [0] counts as [0]. *)
   type row =
