@@ -122,6 +122,7 @@ Matrix is organized into focused libraries that can be used together or independ
 | `matrix.charts`   | `Matrix_charts`   | Declarative terminal charts rendered into grids    |
 | `matrix.pty`      | `Pty`             | POSIX pseudo-terminal spawning                     |
 | `matrix.vte`      | `Vte`             | Virtual terminal emulator for embedding output     |
+| `matrix.cli`      | `Matrix_cli`      | Tables and trees for command-line output           |
 | `matrix.test`     | `Matrix_test`     | Programs run on an emulated terminal in tests      |
 
 `Matrix` gives the modules of the libraries it uses short names, such as
