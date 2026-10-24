@@ -45,7 +45,9 @@ let get_tag t =
   let bits = Int64.bits_of_float t in
   Int64.to_int (Int64.logand bits (Int64.of_int tag_mask))
 
-let get_value t =
+(* Inlined: a float returned from a call is boxed, and [is_zero], which
+   layout calls for every side of every rect it resolves, only compares it. *)
+let[@inline] get_value t =
   if Sys.word_size = 64 then
     let bits = Int64.bits_of_float t in
     (* Extract upper 32 bits and convert back to float *)
