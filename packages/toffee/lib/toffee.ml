@@ -217,10 +217,10 @@ let node_index tree node =
   let idx = Node_id.index node in
   if is_valid tree node then Ok idx else Error (Invalid_input_node node)
 
+(* Layout looks nodes up with it many times per node: no result to build. *)
 let node_index_exn tree node =
-  match node_index tree node with
-  | Ok idx -> idx
-  | Error _ -> invalid_arg "Invalid node id"
+  if is_valid tree node then Node_id.index node
+  else invalid_arg "Invalid node id"
 
 let parent_index tree parent =
   let idx = Node_id.index parent in
