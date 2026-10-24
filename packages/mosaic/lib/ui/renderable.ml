@@ -60,6 +60,7 @@ type context = {
   register : node -> unit;
   unregister : node -> unit;
   width_method : unit -> Matrix.Text.width_method;
+  cell_size : unit -> (int * int) option;
   report_scroll : node -> region:Grid.region -> dx:int -> dy:int -> unit;
   admit_size_report : node -> bool;
 }
@@ -1205,6 +1206,7 @@ module Private = struct
     register : t -> unit;
     unregister : t -> unit;
     width_method : unit -> Matrix.Text.width_method;
+    cell_size : unit -> (int * int) option;
     report_scroll : t -> region:Grid.region -> dx:int -> dy:int -> unit;
     admit_size_report : t -> bool;
   }
@@ -1229,6 +1231,7 @@ module Private = struct
     if i < 0 || i >= t.child_count then None else t.children.(i)
 
   let width_method t = t.ctx.width_method ()
+  let cell_size t = t.ctx.cell_size ()
 
   let set_is_root t v =
     if t.is_root <> v then (

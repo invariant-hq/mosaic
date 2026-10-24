@@ -452,6 +452,9 @@ module Private : sig
             read without side effects. Widgets read it (see {!val-width_method})
             at every measurement so measurement matches how cells are laid down.
         *)
+    cell_size : unit -> (int * int) option;
+        (** The size in pixels of the terminal's cells, as the screen the tree
+            renders into was given it, read without side effects. *)
     report_scroll : t -> region:Matrix_grid.region -> dx:int -> dy:int -> unit;
         (** Reports that a scroll container shifted its content by [(dx, dy)]
             cells. [region]'s rows are the viewport rows that visually shift;
@@ -501,6 +504,11 @@ module Private : sig
       intrinsic widths, and cursor columns then agree with how the screen lays
       down cells. When it changes, the renderer marks every measured node dirty
       before the next layout. *)
+
+  val cell_size : t -> (int * int) option
+  (** [cell_size t] is the size in pixels of the cells of the terminal [t]'s
+      tree renders into, [None] while it is not known. When it changes, the
+      renderer marks every measured node dirty before the next layout. *)
 
   val set_is_root : t -> bool -> unit
   (** [set_is_root t v] marks or unmarks [t] as a root node. *)

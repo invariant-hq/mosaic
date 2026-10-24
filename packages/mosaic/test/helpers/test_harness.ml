@@ -78,6 +78,7 @@ let make_ctx ?(width_method = `Unicode) () =
       unregister =
         (fun n -> unregister_log := Renderable.id n :: !unregister_log);
       width_method = (fun () -> width_method);
+      cell_size = (fun () -> None);
       report_scroll = (fun _ ~region:_ ~dx:_ ~dy:_ -> ());
       admit_size_report = (fun _ -> true);
     }

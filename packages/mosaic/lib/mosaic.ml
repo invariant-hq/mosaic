@@ -506,6 +506,12 @@ let render_static_view runtime (view : _ t) =
         (Matrix.Screen.width_method (Matrix.screen runtime.matrix_app))
       ()
   in
+  (* Pictures take their natural size from the terminal's cells. The rest of
+     the screen's capabilities stay its defaults: it only lays the rows out. *)
+  Matrix.Screen.apply_capabilities (Renderer.screen renderer)
+    ~explicit_width:true ~explicit_cursor_positioning:false ~hyperlinks:true
+    ~color_depth:`Truecolor ~graphics:`Blocks
+    ~cell_size:(Matrix.cell_size runtime.matrix_app);
   let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
   let vnode = compile ~dispatch:(fun _ -> ()) view in
   Reconciler.render reconciler ~viewport_width:width vnode;
@@ -1646,6 +1652,28 @@ let canvas ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   Vnode.canvas ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
     ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
     ~on_draw:draw ()
+
+let picture ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
+    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
+    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
+    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
+    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
+    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
+    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
+    ?on_click ?on_focus_request ?on_size ?focused p =
+  let style =
+    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
+      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
+      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
+      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
+      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+      ?grid_row ?grid_column ()
+  in
+  Vnode.picture ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused p
 
 let spinner ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

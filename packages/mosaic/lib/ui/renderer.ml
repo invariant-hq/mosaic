@@ -66,6 +66,7 @@ type t = {
   mutable last_layout : (int * int) option;
   (* The screen's width method when the layout was last computed. *)
   mutable layout_width_method : Matrix.Text.width_method;
+  mutable layout_cell_size : (int * int) option;
   (* The frame laid out by [layout_frame] and not yet painted. *)
   mutable frame : frame option;
   (* Render command buffer — reused across frames. *)
@@ -550,6 +551,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
           in
           Hashtbl.remove toffee_map toffee_idx);
       width_method = (fun () -> Screen.width_method screen);
+      cell_size = (fun () -> Screen.cell_size screen);
       report_scroll;
       admit_size_report;
     }
@@ -580,6 +582,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
     dirty;
     last_layout = None;
     layout_width_method = Screen.width_method screen;
+    layout_cell_size = Screen.cell_size screen;
     frame = None;
     focused;
     lifecycle_set;
@@ -746,13 +749,17 @@ let execute_commands (t : t) ~(grid : Grid.t) ~(hits : Screen.Hit_grid.t)
 let layout_dirty t =
   toffee_exn (Toffee.dirty t.tree (Renderable.Private.toffee_node t.root))
 
-(* Text is measured by the screen's width method, which the screen can change
-   while the tree lives. Every measurement then counted cells by the old
-   method, so every measured node is measured again. *)
+(* Text is measured by the screen's width method, and pictures by its cell
+   size, which the screen can change while the tree lives. Every measurement
+   then counted cells by the old ones, so every measured node is measured
+   again. *)
 let follow_width_method t =
   let width_method = Screen.width_method t.screen in
-  if width_method <> t.layout_width_method then begin
+  let cell_size = Screen.cell_size t.screen in
+  if width_method <> t.layout_width_method || cell_size <> t.layout_cell_size
+  then begin
     t.layout_width_method <- width_method;
+    t.layout_cell_size <- cell_size;
     Hashtbl.iter
       (fun _ node ->
         if Option.is_some (Renderable.Private.measure node) then

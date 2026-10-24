@@ -29,6 +29,7 @@ type kind =
   | Select of Select.Props.t
   | Tab_select of Tab_select.Props.t
   | Canvas
+  | Picture of Matrix_grid.picture
   | Spinner of Spinner.Props.t
   | Progress_bar of Progress_bar.Props.t
   | Scroll_bar of Scroll_bar.Props.t
@@ -496,6 +497,42 @@ let canvas ?key ?(style = Toffee.Style.default) ?(visible = true) ?(z_index = 0)
   in
   let callbacks = Canvas_callbacks { on_draw } in
   Element { kind; key; attrs; handlers; callbacks; children = [] }
+
+let picture ?key ?(style = Toffee.Style.default) ?(visible = true)
+    ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(focused = false)
+    ?(buffered = false) ?(live = false) ?on_mouse ?on_key ?on_paste ?on_click
+    ?on_focus_request ?on_size picture =
+  let attrs =
+    {
+      style;
+      visible;
+      z_index;
+      opacity;
+      focusable = focusable || Option.is_some on_focus_request;
+      focused;
+      buffered;
+      live;
+    }
+  in
+  let handlers =
+    {
+      on_mouse;
+      on_key;
+      on_paste;
+      on_click;
+      on_size;
+      on_focus_request = Option.map (fun message () -> message) on_focus_request;
+    }
+  in
+  Element
+    {
+      kind = Picture picture;
+      key;
+      attrs;
+      handlers;
+      callbacks = No_callbacks;
+      children = [];
+    }
 
 let spinner ?key ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(focused = false)

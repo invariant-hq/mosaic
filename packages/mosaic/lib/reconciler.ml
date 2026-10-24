@@ -2,6 +2,13 @@ open Mosaic_ui
 
 (* ───── Instance Operations ───── *)
 
+(* A picture's node, its picture, and the style its element declares. *)
+type picture = {
+  node : Renderable.t;
+  mutable picture : Matrix_grid.picture;
+  mutable style : Toffee.Style.t;
+}
+
 type instance =
   | Box_instance of Box.t
   | Text_instance of Text.t
@@ -10,6 +17,7 @@ type instance =
   | Select_instance of Select.t
   | Tab_select_instance of Tab_select.t
   | Canvas_instance of Canvas.t
+  | Picture_instance of picture
   | Spinner_instance of Spinner.t
   | Progress_bar_instance of Progress_bar.t
   | Scroll_bar_instance of Scroll_bar.t
@@ -30,6 +38,7 @@ let node_of = function
   | Select_instance s -> Select.node s
   | Tab_select_instance ts -> Tab_select.node ts
   | Canvas_instance c -> Canvas.node c
+  | Picture_instance p -> p.node
   | Spinner_instance s -> Spinner.node s
   | Progress_bar_instance pb -> Progress_bar.node pb
   | Scroll_bar_instance sb -> Scroll_bar.node sb
@@ -48,6 +57,65 @@ let node_of = function
 let set_spinner_live spinner (attrs : Vnode.attrs) =
   Renderable.set_live (Spinner.node spinner)
     (attrs.live && Spinner.animates spinner)
+
+(* A picture's ratio of columns to rows, at the terminal's cell size. *)
+let picture_ratio p =
+  let pw, ph = Matrix_grid.picture_size p.picture in
+  let cw, ch =
+    Option.value (Renderable.Private.cell_size p.node) ~default:(10, 20)
+  in
+  float pw /. float cw /. (float ph /. float ch)
+
+(* A picture keeps its ratio through layout, as a replaced element does: the
+   style it declares, with that ratio when it sets none. *)
+let picture_style p =
+  match Toffee.Style.aspect_ratio p.style with
+  | Some _ -> p.style
+  | None -> Toffee.Style.set_aspect_ratio (Some (picture_ratio p)) p.style
+
+let apply_picture_style p = Renderable.set_style p.node (picture_style p)
+
+(* Where the layout leaves its size to the content: the picture's size in
+   cells, cut to the space available, its ratio kept. *)
+let picture_measure p ~known_dimensions ~available_space ~style:_ =
+  let pw, _ = Matrix_grid.picture_size p.picture in
+  let cw =
+    Option.value (Renderable.Private.cell_size p.node) ~default:(10, 20) |> fst
+  in
+  let ratio = picture_ratio p in
+  let open Toffee.Geometry.Size in
+  let avail d = Toffee.Available_space.to_option d in
+  match (known_dimensions.width, known_dimensions.height) with
+  | Some width, Some height -> { width; height }
+  | Some width, None -> { width; height = Float.ceil (width /. ratio) }
+  | None, Some height -> { width = Float.ceil (height *. ratio); height }
+  | None, None -> (
+      let cols = Float.ceil (float pw /. float cw) in
+      (* Its content can shrink to a cell, as an image's in a column. *)
+      let width =
+        match available_space.width with
+        | Toffee.Available_space.Definite w when w > 0. -> Float.min cols w
+        | Min_content -> 1.
+        | _ -> cols
+      in
+      let height = Float.ceil (width /. ratio) in
+      match avail available_space.height with
+      | Some h when h > 0. && height > h ->
+          { width = Float.min width (Float.ceil (h *. ratio)); height = h }
+      | _ -> { width; height })
+
+(* A cell size learnt or changed since the style was set changes the ratio,
+   which the next layout takes. *)
+let picture_render p self grid ~dt:_ =
+  let style = picture_style p in
+  if
+    Toffee.Style.aspect_ratio style
+    <> Toffee.Style.aspect_ratio (Renderable.style p.node)
+  then (
+    Renderable.set_style p.node style;
+    Renderable.request_render p.node);
+  Matrix_grid.draw_picture grid ~x:(Renderable.x self) ~y:(Renderable.y self)
+    ~width:(Renderable.width self) ~height:(Renderable.height self) p.picture
 
 let create_instance ~(parent : Renderable.t) (kind : Vnode.kind)
     (attrs : Vnode.attrs) : instance =
@@ -88,6 +156,16 @@ let create_instance ~(parent : Renderable.t) (kind : Vnode.kind)
             ~z_index:attrs.z_index ~opacity:attrs.opacity ()
         in
         Canvas_instance canvas
+    | Vnode.Picture p ->
+        let node =
+          Renderable.create ~parent ~style:attrs.style ~visible:attrs.visible
+            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
+        in
+        let p = { node; picture = p; style = attrs.style } in
+        apply_picture_style p;
+        Renderable.set_measure node (Some (picture_measure p));
+        Renderable.set_render node (picture_render p);
+        Picture_instance p
     | Vnode.Select spec ->
         let select =
           Select.create ~parent ~style:attrs.style ~visible:attrs.visible
@@ -224,6 +302,9 @@ let set_instance_style (inst : instance) (style : Toffee.Style.t) : unit =
   | Box_instance box -> Box.set_style box style
   | Scroll_box_instance scroll_box -> Scroll_box.set_style scroll_box style
   | Markdown_instance md -> Markdown.set_layout_style md style
+  | Picture_instance p ->
+      p.style <- style;
+      apply_picture_style p
   | _ -> Renderable.set_style (node_of inst) style
 
 (* Accepted state only changes through declarations, so physical sharing is
@@ -293,6 +374,13 @@ let update_instance (inst : instance) ~(old_attrs : Vnode.attrs)
                 Tab_select.apply_props tab_select new_spec;
                 true)
           | Canvas_instance _, Vnode.Canvas, Vnode.Canvas -> false
+          | Picture_instance p, Vnode.Picture _, Vnode.Picture picture ->
+              if p.picture == picture then false
+              else (
+                p.picture <- picture;
+                apply_picture_style p;
+                Renderable.mark_dirty p.node;
+                true)
           | ( Spinner_instance spinner,
               Vnode.Spinner old_spec,
               Vnode.Spinner new_spec ) ->
@@ -424,6 +512,7 @@ let kind_matches (a : Vnode.kind) (b : Vnode.kind) : bool =
   | Vnode.Select _, Vnode.Select _
   | Vnode.Tab_select _, Vnode.Tab_select _
   | Vnode.Canvas, Vnode.Canvas
+  | Vnode.Picture _, Vnode.Picture _
   | Vnode.Spinner _, Vnode.Spinner _
   | Vnode.Progress_bar _, Vnode.Progress_bar _
   | Vnode.Scroll_bar _, Vnode.Scroll_bar _
@@ -611,7 +700,7 @@ let create_callback_refs (instance : instance)
                 (Option.map (Fun.const dispatch) c.on_line_click)
           | _ -> Diff.set_on_line_click widget None)
     | Box_instance _ | Text_instance _ | Spinner_instance _
-    | Progress_bar_instance _ | Line_number_instance _ ->
+    | Progress_bar_instance _ | Line_number_instance _ | Picture_instance _ ->
         Fun.const ()
   in
   update_presence initial;

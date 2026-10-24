@@ -36,6 +36,7 @@ type kind =
   | Select of Select.Props.t
   | Tab_select of Tab_select.Props.t
   | Canvas
+  | Picture of Matrix_grid.picture
   | Spinner of Spinner.Props.t
   | Progress_bar of Progress_bar.Props.t
   | Scroll_bar of Scroll_bar.Props.t
@@ -632,6 +633,35 @@ val canvas :
     - [on_draw] is the render-time drawing callback. The [~dt] argument is
       elapsed time in seconds since the last frame. Combine with [~live:true]
       for per-frame animation. *)
+
+val picture :
+  ?key:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?focusable:bool ->
+  ?focused:bool ->
+  ?buffered:bool ->
+  ?live:bool ->
+  ?on_mouse:(Event.mouse -> 'msg option) ->
+  ?on_key:(Event.key -> 'msg option) ->
+  ?on_paste:(Event.paste -> 'msg option) ->
+  ?on_click:(Event.mouse -> 'msg option) ->
+  ?on_focus_request:'msg ->
+  ?on_size:(w:int -> h:int -> 'msg option) ->
+  Matrix_grid.picture ->
+  'msg t
+(** [picture p] is a leaf element whose box shows [p], fit in it with its aspect
+    ratio kept and centered ({!Matrix_grid.draw_picture}). It keeps [p]'s ratio
+    of columns to rows at the terminal's cell size
+    ({!Renderable.Private.cell_size}, 10 by 20 pixels while unknown) through
+    layout, as a replaced element keeps its aspect ratio, unless its style sets
+    one: a size given on one axis, by the style or the layout, sets the other.
+    Where nothing gives a size, it is [p]'s size in cells,
+    [ceil (width / cell width)] by [ceil (height / cell height)], shrunk to the
+    space available, and it shrinks down to one cell wide. A box of another
+    shape, with both sizes given, shows the picture letterboxed. *)
 
 val spinner :
   ?key:string ->

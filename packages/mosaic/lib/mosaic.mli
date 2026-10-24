@@ -2194,6 +2194,63 @@ val canvas :
     follow {!Mosaic_ui.Canvas}; layout and paint use the labelled arguments
     above. *)
 
+val picture :
+  ?key:string ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?buffered:bool ->
+  ?live:bool ->
+  ?on_mouse:(Event.mouse -> 'msg option) ->
+  ?on_key:(Event.key -> 'msg option) ->
+  ?on_paste:(Event.paste -> 'msg option) ->
+  ?on_click:(Event.mouse -> 'msg option) ->
+  ?on_focus_request:'msg ->
+  ?on_size:(w:int -> h:int -> 'msg option) ->
+  ?focused:bool ->
+  Matrix.Grid.picture ->
+  'msg t
+(** [picture p] shows the picture [p] ({!Matrix.Grid.section-pictures}) fit in
+    its box, which is [p]'s size in cells where the size is left to the content
+    ({!Mosaic_ui.Vnode.picture}); layout and paint use the labelled arguments
+    above. *)
+
 val spinner :
   ?key:string ->
   ?display:Display.t ->
