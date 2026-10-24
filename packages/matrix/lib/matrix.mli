@@ -701,6 +701,12 @@ val pixel_resolution : 'msg app -> (int * int) option
     terminal's text area, as the terminal last reported it, or [None] before any
     report. *)
 
+val cell_size : 'msg app -> (int * int) option
+(** [cell_size app] is the size in pixels [(width, height)] of one of the
+    terminal's cells, as it answered [CSI 16 t], or else its text area's size
+    ({!pixel_resolution}) or its window's size as the system reports it, divided
+    by its columns and rows. It is [None] when none is known. *)
+
 val terminal : 'msg app -> Terminal.t
 (** [terminal app] is the terminal handle the run writes through. *)
 
@@ -727,8 +733,10 @@ val static_write :
     change them. Each row replaces the whole terminal row and ends with CRLF. A
     row never wraps. In a terminal that narrowed before the row is written, its
     cells past the right margin overwrite the last column, as a terminal's right
-    margin makes them. A row queued from the function given to {!draw} goes out
-    with the frame after that one. [rows = 0] queues nothing.
+    margin makes them. Picture cells are written in the terminal's form of
+    pictures ({!Screen.section-pictures}), under sixel with a sixel over the
+    rows still on the screen. A row queued from the function given to {!draw}
+    goes out with the frame after that one. [rows = 0] queues nothing.
 
     With [preserve_live_region] [true], the live region keeps its height, and
     the transcript, these rows included, scrolls up into the scrollback to make
@@ -870,8 +878,9 @@ val dump_frame :
    once [now ()] reaches [until], and says whether the input is readable; a
    wait until a time already past only looks. [read_input] returns [0] at the
    end of the input and [-1] when nothing is there. [terminal_size] is [None]
-   for an output with no window. [fds] are the descriptors whose readability
-   ends a wait. *)
+   for an output with no window, and [window_pixels], the window's size in
+   pixels, [None] when the system reports none. [fds] are the descriptors
+   whose readability ends a wait. *)
 
 module Backend : sig
   type signal = Winch | Cont | Tstp | Terminate of int
@@ -885,6 +894,7 @@ module Backend : sig
     read_input : bytes -> int -> int -> int;
     write_output : bytes -> int -> int -> unit;
     terminal_size : unit -> (int * int) option;
+    window_pixels : unit -> (int * int) option;
     set_raw_mode : bool -> unit;
     flush_input : unit -> unit;
     input_is_tty : bool;
@@ -928,8 +938,8 @@ val run_on :
    whether [next] returned a step since its last call, which returns once
    input is queued or the clock has moved, and says whether input is
    queued. As the run begins, [presented] is given a function that is the
-   frame the run last presented ({!current_grid}) and the terminal row its
-   first row is shown on. *)
+   frame the run last presented ({!current_grid}), the terminal row its
+   first row is shown on, and the form its picture cells were written in. *)
 
 type device = {
   read_clock : unit -> int;
@@ -944,7 +954,7 @@ type device = {
   env : Terminal.Caps.env;
   frame : unit -> unit;
   idle : until:int option -> stepped:bool -> bool;
-  presented : (unit -> Grid.t * int) -> unit;
+  presented : (unit -> Grid.t * int * [ `Kitty | `Sixel | `Blocks ]) -> unit;
 }
 
 val on_device : device -> config -> config

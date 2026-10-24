@@ -2,11 +2,17 @@ type terminal_op =
   | Move_cursor of { row : int; col : int }
   | Reset_sgr
   | Write of string
+  | Draw of (unit -> string)
   | Clear_and_home
   | Clear_scrollback
 
 type region = { row_offset : int; height : int }
-type static_write = { text : string; rows : int; preserve_live_region : bool }
+
+type static_write = {
+  draw : top:int -> string;
+  rows : int;
+  preserve_live_region : bool;
+}
 
 type t = {
   terminal_height : int;
@@ -58,24 +64,27 @@ let resize t ~terminal_height =
     { t with terminal_height = max 1 terminal_height }
     ~offset:t.render_offset ~rows:0
 
-let enqueue_static t ({ text; rows; _ } as write) =
+let enqueue_static t ({ rows; _ } as write) =
   if rows < 0 then invalid_arg "Primary.enqueue_static: rows must be >= 0";
-  if text = "" then t else { t with queue = write :: t.queue }
+  if rows = 0 then t else { t with queue = write :: t.queue }
 
-let replace_static t ({ text; rows; _ } as write) =
+let replace_static t ({ rows; _ } as write) =
   if rows < 0 then invalid_arg "Primary.replace_static: rows must be >= 0";
-  { t with queue = (if text = "" then [] else [ write ]); replace = true }
+  { t with queue = (if rows = 0 then [] else [ write ]); replace = true }
 
 (* The rows go at the top of the live region. Each ends with a line feed,
    which scrolls the screen once the bottom row is reached, so the live
-   region starts on the row the cursor ends on. *)
-let write_static t { text; rows; preserve_live_region } =
+   region starts on the row the cursor ends on, and the rows end on the rows
+   above it. *)
+let write_static t { draw; rows; preserve_live_region } =
+  let below = min (t.render_offset + rows) (t.terminal_height - 1) in
   let write =
     [
-      Move_cursor { row = t.render_offset + 1; col = 1 }; Reset_sgr; Write text;
+      Move_cursor { row = t.render_offset + 1; col = 1 };
+      Reset_sgr;
+      Draw (fun () -> draw ~top:(below - rows));
     ]
   in
-  let below = min (t.render_offset + rows) (t.terminal_height - 1) in
   let rows = if preserve_live_region then live_height t else 0 in
   let t, scroll = settle t ~offset:below ~rows in
   (t, write @ scroll)

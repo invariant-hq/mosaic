@@ -34,6 +34,8 @@ type terminal_op =
       (** Move the cursor to one-based coordinates. *)
   | Reset_sgr  (** Reset SGR attributes. *)
   | Write of string  (** Write the bytes. *)
+  | Draw of (unit -> string)
+      (** Write the bytes the function gives when the operation is done. *)
   | Clear_and_home  (** Erase the screen and move the cursor home. *)
   | Clear_scrollback  (** Erase the terminal's scrollback. *)
 
@@ -41,12 +43,18 @@ type region = { row_offset : int; height : int }
 (** The type for live regions: [height] rows from the zero-based row
     [row_offset]. *)
 
-type static_write = { text : string; rows : int; preserve_live_region : bool }
-(** The type for static writes. [text] is [rows] rows, each ending in CRLF and
-    each replacing the whole terminal row it lands on. When
-    [preserve_live_region] is [true], the live region keeps its height: the rows
-    above it, the new rows included, scroll up to make room. Otherwise the live
-    region gives up rows to the new ones, down to its minimum height. *)
+type static_write = {
+  draw : top:int -> string;
+  rows : int;
+  preserve_live_region : bool;
+}
+(** The type for static writes. [draw ~top] is [rows] rows, each ending in CRLF
+    and each replacing the whole terminal row it lands on, for rows that end on
+    the terminal's rows from [top], from [0], negative when some scroll off the
+    screen. When [preserve_live_region] is [true], the live region keeps its
+    height: the rows above it, the new rows included, scroll up to make room.
+    Otherwise the live region gives up rows to the new ones, down to its minimum
+    height. *)
 
 val create : terminal_height:int -> min_live_height:int -> t
 (** [create ~terminal_height ~min_live_height] is the layout of a terminal of
@@ -69,8 +77,8 @@ val resize : t -> terminal_height:int -> t * terminal_op list
     {!anchor} instead. *)
 
 val enqueue_static : t -> static_write -> t
-(** [enqueue_static t w] queues [w] for the next {!flush_static}. A write with
-    no text is ignored.
+(** [enqueue_static t w] queues [w] for the next {!flush_static}. A write of no
+    rows is ignored.
 
     Raises [Invalid_argument] if [w.rows < 0]. *)
 

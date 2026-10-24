@@ -123,6 +123,7 @@ let backend f : Matrix.Backend.t =
         match f.answer s with "" -> () | r -> f.input <- f.input @ [ r ]);
     fds = (fun ~reading:_ -> []);
     terminal_size = (fun () -> Some f.size);
+    window_pixels = (fun () -> None);
     set_raw_mode = (fun raw -> f.raw <- raw :: f.raw);
     flush_input = (fun () -> f.flushes <- f.flushes + 1);
     input_is_tty = f.tty;
@@ -2263,6 +2264,7 @@ let clocked ?(limit = 10.) ?(rtt = 0.) ?(answer = fun _ -> []) typed =
           List.iter (arrive (c.now + s rtt)) (answer bytes));
       fds = (fun ~reading:_ -> []);
       terminal_size = (fun () -> Some (80, 24));
+      window_pixels = (fun () -> None);
       set_raw_mode = ignore;
       flush_input = ignore;
       input_is_tty = true;

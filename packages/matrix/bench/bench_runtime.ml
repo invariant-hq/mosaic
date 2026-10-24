@@ -20,6 +20,7 @@ let backend () : Matrix.Backend.t =
     write_output = (fun _bytes _off len -> written := !written + len);
     fds = (fun ~reading:_ -> []);
     terminal_size = (fun () -> Some (160, 48));
+    window_pixels = (fun () -> None);
     set_raw_mode = (fun _ -> ());
     flush_input = (fun () -> ());
     input_is_tty = false;

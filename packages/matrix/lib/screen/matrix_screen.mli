@@ -1,11 +1,11 @@
 (** Screens, which turn each frame a program draws into the bytes that bring a
     terminal from the previous frame to it.
 
-    A {e frame} is the picture a program shows at one moment, drawn as the cells
-    of a {!Matrix_grid.t} together with a {!Hit_grid.t} that says which element
-    lies under each cell. A screen keeps two such pairs. The {e next buffer} is
-    the frame being drawn. The {e current buffer} is the frame last rendered,
-    which the screen takes as what the terminal shows, and so it is the
+    A {e frame} is what a program shows at one moment, drawn as the cells of a
+    {!Matrix_grid.t} together with a {!Hit_grid.t} that says which element lies
+    under each cell. A screen keeps two such pairs. The {e next buffer} is the
+    frame being drawn. The {e current buffer} is the frame last rendered, which
+    the screen takes as what the terminal shows, and so it is the
     {e diff baseline}. To {e render} is to compare the next buffer with the
     baseline cell by cell, write the bytes that change the cells that differ,
     and then {e swap} the buffers. The frame just drawn becomes the current
@@ -242,10 +242,12 @@ val apply_capabilities :
   explicit_cursor_positioning:bool ->
   hyperlinks:bool ->
   color_depth:Ansi.Sgr_state.color_depth ->
+  graphics:[ `Kitty | `Sixel | `Blocks ] ->
+  cell_size:(int * int) option ->
   unit
 (** [apply_capabilities t ~explicit_width ~explicit_cursor_positioning
-     ~hyperlinks ~color_depth] makes [t] write for a terminal with these
-    capabilities.
+     ~hyperlinks ~color_depth ~graphics ~cell_size] makes [t] write for a
+    terminal with these capabilities.
     - [explicit_width] says the terminal takes OSC 66, which states the width of
       a grapheme. A grapheme two or more columns wide is then written in OSC 66
       when {!set_explicit_width} also asks for it.
@@ -254,7 +256,44 @@ val apply_capabilities :
       for a terminal that may measure the grapheme differently.
     - [hyperlinks] says the terminal takes OSC 8. Without it, cells are written
       without their hyperlinks.
-    - [color_depth] is the color depth colors are reduced to. *)
+    - [color_depth] is the color depth colors are reduced to.
+    - [graphics] is the form of picture cells ({!section-pictures}).
+    - [cell_size] is the size of the terminal's cells in pixels,
+      [(width, height)], or [None] when it is not known.
+
+    A change of [graphics] or [cell_size] while the frame last rendered shows
+    pictures makes the next render full. *)
+
+(** {1:pictures Pictures}
+
+    A picture cell ({!Matrix_grid.section-pictures}) is written in one of three
+    forms, the [graphics] of {!apply_capabilities}. A screen without a cell
+    size, or with the [`Kitty] form and fewer than 256 colors, writes [`Blocks].
+    The picture is fit in its box at the terminal's cell size, 10 by 20 pixels
+    when it is not known.
+    - [`Blocks] writes U+2580 with the tile's upper half as the foreground and
+      its lower half as the background, each composited over the cell's
+      background. It writes U+2584 when only the lower half shows, and a space
+      when neither does.
+    - [`Kitty] writes the cell as a kitty Unicode placeholder, U+10EEEE with the
+      marks of its row and column, the image's id in the foreground, at 24 bits
+      in direct color and otherwise as 8 bits and a third mark. A box wider or
+      taller than the 297 marks is written as [`Blocks] beyond them. A render
+      first sends the terminal the pixels of each box it shows that the terminal
+      does not hold, an image with a virtual placement, and deletes the images
+      of boxes the frame before it stopped showing.
+    - [`Sixel] writes the cell as [`Blocks] does, then, after the frame's cells,
+      draws sixel images of the box's pixels over the picture cells it wrote,
+      composited over their backgrounds, in rectangles. It never draws on the
+      frame's last row, which is the terminal's last row, where a sixel would
+      scroll the screen. A terminal that loses an image shows the half blocks
+      under it.
+
+    A frame whose cells equal the baseline writes no byte in every form. *)
+
+val cell_size : t -> (int * int) option
+(** [cell_size t] is the [cell_size] {!apply_capabilities} last gave [t], [None]
+    before. *)
 
 val set_explicit_width : t -> bool -> unit
 (** [set_explicit_width t b] sets whether [t] writes wide graphemes in OSC 66,
@@ -288,9 +327,11 @@ val reset : t -> unit
 
 val invalidate_presented : t -> unit
 (** [invalidate_presented t] makes the baseline blank, so that the next render
-    writes every cell of its frame that is not blank. A caller that has erased
-    the terminal's rows must call it, or the next render leaves out the cells it
-    takes as already shown. It writes no bytes. *)
+    writes every cell of its frame that is not blank, and takes the terminal to
+    hold none of the images [t] sent, which the next render deletes and sends
+    again as it needs them. A caller that has erased the terminal's rows must
+    call it, or the next render leaves out the cells it takes as already shown.
+    It writes no bytes. *)
 
 (** {1:statistics Statistics} *)
 
@@ -332,3 +373,35 @@ val active_height : t -> int
 (** [active_height t] is {!Matrix_grid.active_height} of the next grid, the rows
     from the top down to the last one that shows anything, such as the height an
     inline frame needs. *)
+
+(**/**)
+
+(* For matrix's runtime, which writes the frame inside a synchronized update
+   and writes static rows into the transcript. *)
+
+val send_pictures : t -> Ansi.Writer.t -> unit
+(* [send_pictures t w] appends to [w] what the next render would write
+   first under [`Kitty], the deletion of the images [t] no longer needs and
+   the pixels of the boxes the next buffer shows that the terminal does not
+   hold. The render then writes none of it. These bytes show nothing, so a
+   caller that writes a frame inside a synchronized update writes them
+   before it. *)
+
+val delete_transcript : t -> Ansi.Writer.t -> unit
+(* [delete_transcript t w] appends to [w] the deletion of the images of the
+   static rows [t] wrote, for a terminal whose scrollback was erased. *)
+
+val static_rows : t -> Matrix_grid.t -> rows:int -> top:int -> string
+(* [static_rows t g ~rows ~top] is the first [rows] rows of [g] as
+   [Matrix_grid.to_ansi ~complete_rows:true] writes them, for rows that
+   scroll into the transcript and end on the terminal's rows from [top],
+   from [0], which is negative when some scroll off. A grid without picture
+   cells gives exactly those bytes. Picture cells are written in the
+   screen's form. Under [`Kitty] the rows are preceded by the pixels of
+   their boxes, as images [t] deletes only by [delete_transcript]. Under
+   [`Sixel] they are followed by sixels over the picture cells of the rows
+   from [top] that are on the screen, and by a cursor motion to the start of
+   the row after them. Raises [Invalid_argument] if [rows] is negative or
+   greater than the height of [g]. *)
+
+(**/**)

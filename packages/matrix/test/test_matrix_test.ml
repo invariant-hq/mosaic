@@ -451,6 +451,125 @@ let test_child_timeout () =
   T.Child.send c "q";
   ignore (T.Child.exit c ~within:10. : Unix.process_status)
 
+(* Pictures ---------------------------------------------------------------- *)
+
+(* A tile-coded picture: [n] tiles of 10 by 20 pixels side by side, red,
+   green, blue and white, so that a cell's colors say which tile shows. *)
+let tiles = [| (255, 0, 0); (0, 255, 0); (0, 0, 255); (255, 255, 255) |]
+
+let tiled n =
+  let w = 10 * n and h = 20 in
+  Matrix.Grid.picture ~width:w ~height:h
+    (String.init
+       (4 * w * h)
+       (fun i ->
+         let r, g, b = tiles.(i / 4 mod w / 10) in
+         Char.chr (match i mod 4 with 0 -> r | 1 -> g | 2 -> b | _ -> 255)))
+
+let kitty =
+  {
+    T.Profile.vte with
+    identity = { Vte.vt100 with version = Some "kitty(0.49.2)" };
+    cell_size = Some (10, 20);
+  }
+
+let sixel =
+  {
+    T.Profile.vte with
+    identity = { Vte.vt100 with attributes = [ 63; 4 ] };
+    cell_size = Some (10, 20);
+  }
+
+let view_picture pic _ grid =
+  Matrix.Grid.draw_picture grid ~x:1 ~y:0 ~width:4 ~height:1 pic
+
+(* A frame that draws what the frame before it drew writes nothing. *)
+let unchanged s term app =
+  let before = String.length (T.Terminal.output term) and frames = T.frames s in
+  Matrix.request_redraw app;
+  T.settle s;
+  is_true ~msg:"a frame was drawn" (T.frames s > frames);
+  equal ~msg:"an unchanged frame writes nothing" int before
+    (String.length (T.Terminal.output term))
+
+let half_blocks term =
+  for i = 0 to 3 do
+    let text, style =
+      T.Screen.cell (T.Terminal.screen term) ~row:0 ~col:(1 + i)
+    in
+    equal ~msg:"a half block" string "\u{2580}" text;
+    let rgb c =
+      let r, g, b, _ = Matrix.Ansi.Color.to_rgba c in
+      (r, g, b)
+    in
+    equal ~msg:"its tile's color" (triple int int int) tiles.(i)
+      (rgb (Option.get style.fg))
+  done
+
+let test_picture_kitty () =
+  let pic = tiled 4 in
+  ignore
+  @@ session ~profile:kitty ~view:(view_picture pic) ~rows:3
+  @@ fun s term app ->
+  equal ~msg:"placeholders of a held image" string
+    " \u{FFFC}\u{FFFC}\u{FFFC}\u{FFFC}" (row term 0);
+  equal ~msg:"the cell size"
+    (option (pair int int))
+    (Some (10, 20))
+    (Matrix.cell_size app);
+  T.check_presented s;
+  unchanged s term app
+
+let contains s sub =
+  let n = String.length sub in
+  let rec at i =
+    i + n <= String.length s && (String.sub s i n = sub || at (i + 1))
+  in
+  at 0
+
+let test_picture_sixel () =
+  let pic = tiled 4 in
+  ignore
+  @@ session ~profile:sixel ~view:(view_picture pic) ~rows:3
+  @@ fun s term app ->
+  is_true ~msg:"a sixel" (contains (T.Terminal.output term) "\027P0;1;0q");
+  half_blocks term;
+  T.check_presented s;
+  unchanged s term app
+
+let test_picture_blocks () =
+  let pic = tiled 4 in
+  ignore
+  @@ session ~view:(view_picture pic) ~rows:3
+  @@ fun s term app ->
+  half_blocks term;
+  T.check_presented s;
+  unchanged s term app
+
+(* A picture written to the transcript keeps its image. *)
+let test_picture_static () =
+  let pic = tiled 2 in
+  ignore
+  @@ session ~profile:kitty ~rows:4
+       ~config:(Matrix.config ~mode:`Primary ())
+       ~view:(draw (fun () -> "live"))
+  @@ fun s term app ->
+  let g = Matrix.Grid.create ~width:4 ~height:1 () in
+  Matrix.Grid.draw_picture g ~x:0 ~y:0 ~width:2 ~height:1 pic;
+  Matrix.static_write app g;
+  T.settle s;
+  is_true ~msg:"the transcript row shows the held image"
+    (List.mem (0, 0)
+       (T.Screen.find (T.Terminal.screen term) "\u{FFFC}\u{FFFC}"));
+  let before = String.length (T.Terminal.output term) in
+  Matrix.static_replace app (Matrix.Grid.create ~width:4 ~height:1 ());
+  T.settle s;
+  let output = T.Terminal.output term in
+  is_true ~msg:"erasing the scrollback deletes its images"
+    (contains
+       (String.sub output before (String.length output - before))
+       "\027_Ga=d,d=I,")
+
 let () =
   run "matrix.test"
     [
@@ -484,6 +603,13 @@ let () =
         [ test "text, styles, find" test_goldens; test "diff" test_diff ];
       group "Oracle"
         [ test "the terminal shows the presented frame" test_presented ];
+      group "Pictures"
+        [
+          test "kitty placeholders" test_picture_kitty;
+          test "sixel over half blocks" test_picture_sixel;
+          test "half blocks" test_picture_blocks;
+          test "in the transcript" test_picture_static;
+        ];
       group "Child"
         [
           test "a child, resized, and its goodbye" test_child;

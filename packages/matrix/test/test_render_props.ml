@@ -925,6 +925,7 @@ let run_case case =
       on_fatal = ignore;
       fds = (fun ~reading:_ -> []);
       terminal_size = (fun () -> Some r.size);
+      window_pixels = (fun () -> None);
       set_raw_mode = ignore;
       flush_input = ignore;
       cleanup = ignore;

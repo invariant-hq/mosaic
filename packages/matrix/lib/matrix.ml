@@ -63,6 +63,7 @@ module Backend = struct
     read_input : bytes -> int -> int -> int;
     write_output : bytes -> int -> int -> unit;
     terminal_size : unit -> (int * int) option;
+    window_pixels : unit -> (int * int) option;
     set_raw_mode : bool -> unit;
     flush_input : unit -> unit;
     input_is_tty : bool;
@@ -186,6 +187,7 @@ module Backend = struct
       read_input = read_input input;
       write_output = Signal.write holder output;
       terminal_size = (fun () -> Tty.window output);
+      window_pixels = (fun () -> Tty.window_pixels output);
       set_raw_mode;
       flush_input = (fun () -> if input_is_tty then Tty.flush_input input);
       input_is_tty;
@@ -220,7 +222,7 @@ type device = {
   env : Terminal.Caps.env;
   frame : unit -> unit;
   idle : until:int option -> stepped:bool -> bool;
-  presented : (unit -> Grid.t * int) -> unit;
+  presented : (unit -> Grid.t * int * [ `Kitty | `Sixel | `Blocks ]) -> unit;
 }
 
 let backend_of_device d : Backend.t =
@@ -233,6 +235,7 @@ let backend_of_device d : Backend.t =
     read_input = d.read;
     write_output = d.write;
     terminal_size = d.window;
+    window_pixels = (fun () -> None);
     set_raw_mode = d.set_raw;
     flush_input = d.flush;
     input_is_tty = d.tty;
@@ -489,6 +492,12 @@ type 'msg app = {
   mutable size_report : size_report;
   (* The usable size last returned as [Resize]. *)
   mutable usable : int * int;
+  (* The cell's size in pixels as the terminal answered CSI 16 t, the
+     window's as the system reports it, and the cell size these and the text
+     area's size give ([cell_size]). *)
+  mutable cell_answer : (int * int) option;
+  mutable window_pixels : (int * int) option;
+  mutable cell_size : (int * int) option;
   (* A [Resize] was returned for the frame that follows it. *)
   mutable frame_follows : bool;
   mutable frame_modes_armed : bool;
@@ -624,6 +633,36 @@ let pixel_resolution t =
   check t;
   Terminal.pixel_resolution t.terminal
 
+let cell_size t =
+  check t;
+  t.cell_size
+
+(* The cell's size: the terminal's answer, else its text area's size, else
+   its window's, divided by its columns and rows and floored, which drops any
+   padding under a pixel a cell. A frame follows a change while pictures
+   show, which are fit at the cell size. *)
+let update_cell_size t =
+  let w, h =
+    match (t.cell_answer, Terminal.pixel_resolution t.terminal) with
+    | Some (w, h), _ when w > 0 && h > 0 -> (w, h)
+    | _, Some (pw, ph) when pw >= t.width && ph >= t.height ->
+        (pw / t.width, ph / t.height)
+    | _ -> (
+        match t.window_pixels with
+        | Some (pw, ph) when pw >= t.width && ph >= t.height ->
+            (pw / t.width, ph / t.height)
+        | _ -> (0, 0))
+  in
+  (* A size that did not change allocates nothing. *)
+  match t.cell_size with
+  | Some (cw, ch) when cw = w && ch = h -> ()
+  | None when w = 0 || h = 0 -> ()
+  | _ ->
+      t.cell_size <- (if w = 0 || h = 0 then None else Some (w, h));
+      if Grid.Unsafe.has_pictures (Screen.current_grid t.screen) then (
+        t.dirty <- true;
+        t.asked_outside <- true)
+
 let terminal t =
   check t;
   t.terminal
@@ -703,7 +742,8 @@ let refresh_capabilities t =
   let color_depth = if caps.rgb then `Truecolor else `Ansi256 in
   Screen.apply_capabilities t.screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
-    ~hyperlinks:caps.hyperlinks ~color_depth;
+    ~hyperlinks:caps.hyperlinks ~color_depth ~graphics:caps.graphics
+    ~cell_size:t.cell_size;
   set_width_method t (width_method t)
 
 (* A batch's queries are sent, and what they are owed is added to the
@@ -741,6 +781,16 @@ let ask_own t q =
   if can_query t then
     ask_batch t Own
       ( Ansi.(to_string (query q)) ^ da1,
+        { Input.Decoder.cursor_reports = 0; string_replies = 0 } )
+
+(* The text area's size and the cell's, which change with the window and the
+   font. *)
+let cell_pixels_da1 = "\027[16t" ^ da1
+
+let ask_pixels t =
+  if can_query t then
+    ask_batch t Own
+      ( Ansi.(to_string (query Pixel_size)) ^ cell_pixels_da1,
         { Input.Decoder.cursor_reports = 0; string_replies = 0 } )
 
 (* Input modes follow the configuration and the capabilities, and are set
@@ -943,13 +993,18 @@ let reply t (r : Input.Reply.t) =
   | Color_scheme scheme -> push t (Color_scheme scheme)
   | Resize { rows; cols; height; width } ->
       Terminal.set_pixel_resolution t.terminal (Some (width, height));
+      update_cell_size t;
       if (cols, rows) <> (t.width, t.height) then (
         t.size_report <- Reported (cols, rows);
         owe_frame t)
   | r -> (
       (match r with
       | Text_area_pixels { height; width } ->
-          Terminal.set_pixel_resolution t.terminal (Some (width, height))
+          Terminal.set_pixel_resolution t.terminal (Some (width, height));
+          update_cell_size t
+      | Cell_pixels { height; width } ->
+          t.cell_answer <- Some (width, height);
+          update_cell_size t
       | r -> t.evidence <- Terminal.Caps.add t.evidence r);
       match replying t with
       | Some { question = Application; _ } -> push t (Reply r)
@@ -1071,13 +1126,57 @@ let reset_scroll_region_seq = Ansi.(to_string reset_scrolling_region)
 let buf_cursor_position buf ~row ~col =
   Ansi.cursor_position ~row:(max 1 row) ~col:(max 1 col) buf
 
+(* Inside tmux, the kitty graphics commands among [s] are wrapped for its
+   passthrough, as kitty's icat wraps them; the placeholders are text, which
+   tmux draws. *)
+let wrap_graphics t s =
+  if (Terminal.capabilities t.terminal).multiplexer <> Some `Tmux then s
+  else
+    let b = Buffer.create (String.length s + 64) in
+    let rec go i =
+      match String.index_from_opt s i '\027' with
+      | Some j
+        when j + 2 < String.length s && s.[j + 1] = '_' && s.[j + 2] = 'G' ->
+          Buffer.add_substring b s i (j - i);
+          let rec stop k =
+            match String.index_from_opt s k '\027' with
+            | Some k when k + 1 < String.length s && s.[k + 1] = '\\' -> k + 2
+            | Some k -> stop (k + 1)
+            | None -> String.length s
+          in
+          let e = stop (j + 1) in
+          Buffer.add_string b
+            Ansi.(
+              to_string (tmux_passthrough (literal (String.sub s j (e - j)))));
+          go e
+      | Some j ->
+          Buffer.add_substring b s i (j + 1 - i);
+          go (j + 1)
+      | None -> Buffer.add_substring b s i (String.length s - i)
+    in
+    go 0;
+    Buffer.contents b
+
 let apply_primary_op buf = function
   | Primary.Move_cursor { row; col } -> buf_cursor_position buf ~row ~col
   | Primary.Reset_sgr -> Ansi.Writer.write_string buf sgr_reset
   | Primary.Write s -> Ansi.Writer.write_string buf s
+  | Primary.Draw f -> Ansi.Writer.write_string buf (f ())
   | Primary.Clear_and_home -> Ansi.Writer.write_string buf clear_and_home_seq
   | Primary.Clear_scrollback ->
       Ansi.Writer.write_string buf clear_scrollback_seq
+
+(* kitty keeps the images of the rows an erase of the scrollback takes away
+   (their placeholders are virtual placements, which no erase deletes), so
+   the run deletes them with it. *)
+let apply_primary_ops t buf ops =
+  if List.exists (function Primary.Clear_scrollback -> true | _ -> false) ops
+  then (
+    let w = Ansi.Writer.create 0 in
+    Screen.delete_transcript t.screen w;
+    if Ansi.Writer.len w > 0 then
+      Ansi.Writer.write_string buf (wrap_graphics t (Ansi.Writer.contents w)));
+  List.iter (apply_primary_op buf) ops
 
 let effective_size t =
   check t;
@@ -1086,29 +1185,41 @@ let effective_size t =
   | `Primary -> (t.width, (Primary.effective_region t.primary).height)
 
 (* Static rows never wrap: a row wider than a terminal narrowed since the
-   snapshot overwrites its last column. *)
+   snapshot overwrites its last column. Rows with pictures are copied and
+   written when they are flushed, by the screen, which then knows the rows
+   they end on; others are written now. *)
 let static_snapshot t ?rows grid =
   if Grid.width grid > t.width then
     invalid_arg "Matrix.static_write: grid is wider than the terminal";
   let rows = Option.value rows ~default:(Grid.height grid) in
-  let text = Grid.to_ansi ~complete_rows:true ~rows grid in
-  (rows, "\027[?7l" ^ text ^ "\027[?7h")
+  let rows_of text = "\027[?7l" ^ text ^ "\027[?7h" in
+  if Grid.Unsafe.has_pictures grid then (
+    if rows < 0 || rows > Grid.height grid then
+      invalid_arg "Matrix_grid.to_ansi: rows must be within grid height";
+    let grid = Grid.copy grid in
+    ( rows,
+      fun ~top ->
+        rows_of (wrap_graphics t (Screen.static_rows t.screen grid ~rows ~top))
+    ))
+  else
+    let text = rows_of (Grid.to_ansi ~complete_rows:true ~rows grid) in
+    (rows, fun ~top:_ -> text)
 
 let static_write ?(preserve_live_region = false) ?rows t grid =
   check t;
   if t.config.mode <> `Alt then
-    let rows, text = static_snapshot t ?rows grid in
+    let rows, draw = static_snapshot t ?rows grid in
     if rows > 0 then (
       t.primary <-
-        Primary.enqueue_static t.primary { text; rows; preserve_live_region };
+        Primary.enqueue_static t.primary { draw; rows; preserve_live_region };
       ask_frame t)
 
 let static_replace ?(preserve_live_region = false) ?rows t grid =
   check t;
   if t.config.mode <> `Alt then (
-    let rows, text = static_snapshot t ?rows grid in
+    let rows, draw = static_snapshot t ?rows grid in
     t.primary <-
-      Primary.replace_static t.primary { text; rows; preserve_live_region };
+      Primary.replace_static t.primary { draw; rows; preserve_live_region };
     ask_frame t)
 
 (* Immediate action, not part of the frame pipeline: the plan's terminal ops
@@ -1125,7 +1236,7 @@ let static_clear t =
     t.layout_ops <- [];
     t.anchor <- None;
     let buf = Ansi.Writer.create 16 in
-    List.iter (apply_primary_op buf) ops;
+    apply_primary_ops t buf ops;
     Terminal.send t.terminal (Ansi.Writer.contents buf);
     t.last_cursor_position <- Some (1, 1);
     t.cursor_live_row <- Some 0;
@@ -1238,6 +1349,16 @@ let submit t =
   let use_sync = Terminal.tty t.terminal && caps.sync in
   let buf = t.submit_buf in
   Ansi.Writer.reset_pos buf;
+  (* The pixels of the pictures the frame shows go before the synchronized
+     update: they show nothing yet, and a large image would hold the update
+     past the terminal's timeout. *)
+  Screen.send_pictures t.screen buf;
+  let pictures = Ansi.Writer.len buf in
+  if pictures > 0 && caps.multiplexer = Some `Tmux then (
+    let sent = wrap_graphics t (Ansi.Writer.contents buf) in
+    Ansi.Writer.reset_pos buf;
+    Ansi.Writer.write_string buf sent);
+  let pictures = Ansi.Writer.len buf in
 
   (* Preamble: BSU + cursor hide. *)
   if use_sync then Ansi.Writer.write_string buf sync_output_on;
@@ -1248,7 +1369,7 @@ let submit t =
      cursor_position for every run it touches, so anything written between
      the preamble capture and the skip check would defeat the
      unchanged-frame write skip. *)
-  List.iter (apply_primary_op buf) t.layout_ops;
+  apply_primary_ops t buf t.layout_ops;
   t.layout_ops <- [];
   let forced_full =
     let ff = t.force_full_next_frame in
@@ -1291,7 +1412,11 @@ let submit t =
     | `Alt -> t.height
   in
   let position = cursor_output_position t ~cursor ~cursor_max_row in
-  if Ansi.Writer.len buf > preamble_len || cursor_dirty t ~cursor ~position then begin
+  if
+    Ansi.Writer.len buf > preamble_len
+    || pictures > 0
+    || cursor_dirty t ~cursor ~position
+  then begin
     if t.config.mode = `Alt then Ansi.cursor_position ~row:t.height ~col:1 buf;
     apply_cursor_state t ~buf ~cursor ~position;
     (match (t.config.mode, position) with
@@ -1410,7 +1535,9 @@ let apply_size t =
   if cols > 0 && rows > 0 && (cols, rows) <> (t.width, t.height) then (
     t.width <- cols;
     t.height <- rows;
-    ask_own t Pixel_size;
+    t.window_pixels <- t.backend.window_pixels ();
+    update_cell_size t;
+    ask_pixels t;
     force_full_redraw t;
     refresh_render_region t;
     if t.config.mode = `Primary && can_query t then
@@ -1509,12 +1636,21 @@ let restore_frame_modes t =
    program's output goes on from the transcript. In [`Alt] mode it is the
    primary screen as the shell left it. The cursor is shown. *)
 let give_screen t =
+  (* The live frame's images are deleted, which the terminal would keep; the
+     next frame is drawn whole. *)
+  if Grid.Unsafe.has_pictures (Screen.current_grid t.screen) then (
+    Grid.clear (Screen.next_grid t.screen);
+    Screen.invalidate_presented t.screen;
+    let w = Ansi.Writer.create 0 in
+    Screen.send_pictures t.screen w;
+    if Ansi.Writer.len w > 0 then
+      Terminal.send t.terminal (wrap_graphics t (Ansi.Writer.contents w)));
   match t.config.mode with
   | `Alt -> Terminal.leave_alternate_screen t.terminal
   | `Primary ->
       relayout t (Primary.flush_static t.primary);
       let w = Ansi.Writer.create 64 in
-      List.iter (apply_primary_op w) t.layout_ops;
+      apply_primary_ops t w t.layout_ops;
       t.layout_ops <- [];
       buf_cursor_position w ~row:(Primary.render_offset t.primary + 1) ~col:1;
       Ansi.Writer.write_string w sgr_reset;
@@ -2050,6 +2186,9 @@ let make backend ?stop config =
     force_full_next_frame = true;
     size_report = Applied;
     usable = (width, height);
+    cell_answer = None;
+    window_pixels = backend.window_pixels ();
+    cell_size = None;
     frame_follows = false;
     frame_modes_armed = false;
     restore_modes_on_next_focus = false;
@@ -2101,7 +2240,7 @@ let measure_widths t =
           Primary.render_offset t.primary + 1
     in
     let w = Ansi.Writer.create 64 in
-    List.iter (apply_primary_op w) t.layout_ops;
+    apply_primary_ops t w t.layout_ops;
     t.layout_ops <- [];
     buf_cursor_position w ~row ~col:1;
     Terminal.send t.terminal (Ansi.Writer.contents w);
@@ -2136,7 +2275,8 @@ let setup t =
   take_screen t;
   if answered then measure_widths t;
   take_modes t;
-  ask_own t Pixel_size;
+  update_cell_size t;
+  ask_pixels t;
   t.usable <- size t
 
 (* Registers [t], unless its terminal is the controlling one and another
@@ -2186,9 +2326,13 @@ let run_on backend ?stop ?(config = config ()) f =
     (fun d ->
       d.presented (fun () ->
           ( current_grid t,
-            match t.config.mode with
+            (match t.config.mode with
             | `Alt -> 0
-            | `Primary -> Primary.render_offset t.primary )))
+            | `Primary -> Primary.render_offset t.primary),
+            (* The screen writes half blocks without a cell size. *)
+            match Screen.cell_size t.screen with
+            | None -> `Blocks
+            | Some _ -> (Terminal.capabilities t.terminal).graphics )))
     config.device;
   let finish () =
     Atomic.set t.accepting false;

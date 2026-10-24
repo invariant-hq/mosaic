@@ -58,6 +58,27 @@ CAMLprim value matrix_tty_window(value fd) {
   CAMLreturn(result);
 }
 
+/* The window's size in pixels, [Some (width, height)], or [None] where the
+   descriptor reports none or a zero size. Windows reports none. */
+CAMLprim value matrix_tty_window_pixels(value fd) {
+  CAMLparam1(fd);
+  CAMLlocal2(size, result);
+  int width = 0, height = 0;
+#ifndef _WIN32
+  struct winsize ws;
+  if (ioctl(Int_val(fd), TIOCGWINSZ, &ws) == 0) {
+    width = ws.ws_xpixel;
+    height = ws.ws_ypixel;
+  }
+#endif
+  if (width <= 0 || height <= 0) CAMLreturn(Val_none);
+  size = caml_alloc_tuple(2);
+  Store_field(size, 0, Val_int(width));
+  Store_field(size, 1, Val_int(height));
+  result = caml_alloc_some(size);
+  CAMLreturn(result);
+}
+
 /* The console's mode and output code page before the change,
    [Some (mode, code_page)], or [None] where nothing changed: on other
    systems, or when [fd] is no console. */

@@ -174,7 +174,8 @@ let test_styled_frame_resets_sgr () =
 let test_color_depth_reaches_sgr_emission () =
   let r = Screen.create () in
   Screen.apply_capabilities r ~explicit_width:false
-    ~explicit_cursor_positioning:false ~hyperlinks:true ~color_depth:`Ansi256;
+    ~explicit_cursor_positioning:false ~hyperlinks:true ~color_depth:`Ansi256
+    ~graphics:`Blocks ~cell_size:None;
   let style = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 255 0 0) () in
   let frame =
     build_screen r ~width:1 ~height:1 (fun grid _hits ->
@@ -959,7 +960,8 @@ let test_explicit_width_sequences () =
 let test_explicit_width_off_repositions () =
   let r = Screen.create ~explicit_width:true () in
   Screen.apply_capabilities r ~explicit_width:true
-    ~explicit_cursor_positioning:true ~hyperlinks:true ~color_depth:`Truecolor;
+    ~explicit_cursor_positioning:true ~hyperlinks:true ~color_depth:`Truecolor
+    ~graphics:`Blocks ~cell_size:None;
   Screen.set_explicit_width r false;
   Screen.build r ~width:10 ~height:1 (fun grid _hits ->
       Grid.draw_text grid ~x:0 ~y:0 ~text:"\u{4E2D}");
@@ -987,7 +989,8 @@ let test_hyperlink_capability_gating () =
   (* Now test with capability disabled *)
   let r2 = Screen.create () in
   Screen.apply_capabilities r2 ~explicit_width:false
-    ~explicit_cursor_positioning:false ~hyperlinks:false ~color_depth:`Truecolor;
+    ~explicit_cursor_positioning:false ~hyperlinks:false ~color_depth:`Truecolor
+    ~graphics:`Blocks ~cell_size:None;
   let f2 =
     build_screen r2 ~width:10 ~height:1 (fun grid _hits ->
         let style =
@@ -1273,6 +1276,238 @@ let bytes_per_change () =
       equal int ~msg:"one line restyled" 204 one_line
   | _ -> assert false
 
+(* Pictures. Each tile of a tile-coded picture is one solid color, on the
+   levels of the sixel cube, so that a cell's colors, or a sixel's pixels,
+   say which tile the terminal shows there. *)
+
+let tile_colors =
+  [|
+    (255, 0, 0);
+    (0, 255, 0);
+    (0, 0, 255);
+    (255, 255, 0);
+    (0, 255, 255);
+    (255, 0, 255);
+    (255, 255, 255);
+    (0, 0, 0);
+  |]
+
+(* [cols] by [rows] tiles of 10 by 20 pixels, row-major in [tile_colors]. *)
+let tiled ~cols ~rows =
+  let w = 10 * cols and h = 20 * rows in
+  Grid.picture ~width:w ~height:h
+    (String.init
+       (4 * w * h)
+       (fun i ->
+         let x = i / 4 mod w and y = i / 4 / w in
+         let r, g, b = tile_colors.((y / 20 * cols) + (x / 10)) in
+         Char.chr (match i mod 4 with 0 -> r | 1 -> g | 2 -> b | _ -> 255)))
+
+let picture_screen form =
+  let r = Screen.create () in
+  Screen.apply_capabilities r ~explicit_width:false
+    ~explicit_cursor_positioning:false ~hyperlinks:true ~color_depth:`Truecolor
+    ~graphics:form
+    ~cell_size:(Some (10, 20));
+  r
+
+let rgb c =
+  let r, g, b, _ = Ansi.Color.to_rgba c in
+  (r, g, b)
+
+let triple = Testable.(triple int int int)
+
+(* The sixels of [s], as the cell they start at, from 1, and their pixels,
+   each a register's color, [None] where none is drawn. *)
+let sixels s =
+  let re = Str.regexp "\027\\[\\([0-9]+\\);\\([0-9]+\\)H\027P0;1;0q" in
+  let rec all pos acc =
+    match Str.search_forward re s pos with
+    | exception Not_found -> List.rev acc
+    | _ ->
+        let row = int_of_string (Str.matched_group 1 s)
+        and col = int_of_string (Str.matched_group 2 s) in
+        let start = Str.match_end () in
+        let stop = Str.search_forward (Str.regexp_string "\027\\") s start in
+        all stop
+          (((row, col), decode (String.sub s start (stop - start))) :: acc)
+  and decode body =
+    (* Raster attributes, then registers, then bands. *)
+    let w, h = Scanf.sscanf body "\"1;1;%d;%d" (fun w h -> (w, h)) in
+    let px = Array.make_matrix h w None in
+    let regs = Hashtbl.create 16 in
+    let pct v = v * 255 / 100 in
+    let i = ref (String.index body '#')
+    and band = ref 0
+    and x = ref 0
+    and reg = ref 0 in
+    let number () =
+      let j = ref !i in
+      while !j < String.length body && body.[!j] >= '0' && body.[!j] <= '9' do
+        incr j
+      done;
+      let n = int_of_string (String.sub body !i (!j - !i)) in
+      i := !j;
+      n
+    in
+    let paint count c =
+      let bits = Char.code c - 63 in
+      for _ = 1 to count do
+        for k = 0 to 5 do
+          let y = (!band * 6) + k in
+          if bits land (1 lsl k) <> 0 && y < h && !x < w then
+            px.(y).(!x) <- Some (Hashtbl.find regs !reg)
+        done;
+        incr x
+      done
+    in
+    while !i < String.length body do
+      match body.[!i] with
+      | '#' ->
+          incr i;
+          let n = number () in
+          if !i < String.length body && body.[!i] = ';' then (
+            incr i;
+            let _ = number () in
+            incr i;
+            let r = number () in
+            incr i;
+            let g = number () in
+            incr i;
+            let b = number () in
+            Hashtbl.replace regs n (pct r, pct g, pct b));
+          reg := n
+      | '$' ->
+          x := 0;
+          incr i
+      | '-' ->
+          x := 0;
+          incr band;
+          incr i
+      | '!' ->
+          incr i;
+          let n = number () in
+          paint n body.[!i];
+          incr i
+      | c ->
+          paint 1 c;
+          incr i
+    done;
+    px
+  in
+  all 0 []
+
+let test_picture_blocks () =
+  let r = picture_screen `Blocks and pic = tiled ~cols:4 ~rows:2 in
+  let frame () =
+    Screen.build r ~width:8 ~height:4 (fun g _ ->
+        Grid.draw_picture g ~x:1 ~y:1 ~width:4 ~height:2 pic)
+  in
+  frame ();
+  let vte = Vte.create ~rows:4 ~cols:8 () in
+  ignore (Vte.feed_string vte (Screen.render r) : _ list);
+  let g = Vte.grid vte in
+  for i = 0 to 7 do
+    let idx = ((1 + (i / 4)) * 8) + 1 + (i mod 4) in
+    equal ~msg:"a half block" string "\u{2580}" (Grid.get_text g idx);
+    equal ~msg:"upper half" triple tile_colors.(i) (rgb (Grid.get_fg g idx));
+    equal ~msg:"lower half" triple tile_colors.(i) (rgb (Grid.get_bg g idx))
+  done;
+  frame ();
+  equal ~msg:"an unchanged frame writes nothing" string "" (Screen.render r)
+
+let test_picture_kitty () =
+  let r = picture_screen `Kitty in
+  let pic = tiled ~cols:2 ~rows:1 in
+  let frame show =
+    Screen.build r ~width:6 ~height:2 (fun g _ ->
+        if show then Grid.draw_picture g ~x:1 ~y:0 ~width:2 ~height:1 pic)
+  in
+  let vte = Vte.create ~rows:2 ~cols:6 () in
+  let show output = ignore (Vte.feed_string vte output : _ list) in
+  frame true;
+  let first = Screen.render r in
+  show first;
+  is_true ~msg:"the box's pixels, sent once"
+    (Str.string_match (Str.regexp "\027_Ga=T,U=1,f=32,s=20,v=20,") first 0);
+  equal ~msg:"placeholders of a held image" string " \u{FFFC}\u{FFFC}"
+    (Vte.text vte 0);
+  frame true;
+  equal ~msg:"an unchanged frame writes nothing" string "" (Screen.render r);
+  frame false;
+  show (Screen.render r);
+  frame false;
+  let next = Screen.render r in
+  is_true ~msg:"the image is deleted before the next frame"
+    (Str.string_match (Str.regexp "\027_Ga=d,d=I,i=[0-9]+,q=2\027\\\\$") next 0);
+  frame true;
+  show (Screen.render r);
+  equal ~msg:"sent again" string " \u{FFFC}\u{FFFC}" (Vte.text vte 0);
+  Screen.invalidate_presented r;
+  frame true;
+  let again = Screen.render r in
+  is_true ~msg:"after an invalidation, deleted and sent again"
+    (Str.string_match
+       (Str.regexp "\027_Ga=d,d=I,i=[0-9]+,q=2\027\\\\\027_Ga=T")
+       again 0)
+
+(* A sixel covers only the picture cells the frame wrote, in rectangles, and
+   never the last row, which keeps its half blocks. *)
+let test_picture_sixel () =
+  let r = picture_screen `Sixel in
+  let pic = tiled ~cols:4 ~rows:2 in
+  let frame ?(over = false) () =
+    Screen.build r ~width:8 ~height:3 (fun g _ ->
+        Grid.draw_picture g ~x:1 ~y:1 ~width:4 ~height:2 pic;
+        if over then Grid.draw_text g ~x:2 ~y:1 ~text:"x")
+  in
+  frame ();
+  let first = Screen.render r in
+  (match sixels first with
+  | [ ((2, 2), px) ] ->
+      equal ~msg:"one cell high, above the last row" int 20 (Array.length px);
+      equal ~msg:"four cells wide" int 40 (Array.length px.(0));
+      for u = 0 to 39 do
+        for v = 0 to 19 do
+          equal ~msg:"each pixel is its tile's color" (option triple)
+            (Some tile_colors.(u / 10))
+            px.(v).(u)
+        done
+      done
+  | l -> failf "%d sixels" (List.length l));
+  let vte = Vte.create ~rows:3 ~cols:8 () in
+  ignore (Vte.feed_string vte first : _ list);
+  equal ~msg:"the last row in half blocks" triple tile_colors.(4)
+    (rgb (Grid.get_fg (Vte.grid vte) ((2 * 8) + 1)));
+  frame ();
+  equal ~msg:"an unchanged frame writes nothing" string "" (Screen.render r);
+  frame ~over:true ();
+  equal ~msg:"text over a picture draws no sixel" int 0
+    (List.length (sixels (Screen.render r)));
+  frame ();
+  match sixels (Screen.render r) with
+  | [ ((2, 3), px) ] ->
+      equal ~msg:"only the cell uncovered" int 10 (Array.length px.(0));
+      equal ~msg:"its tile" (option triple) (Some tile_colors.(1)) px.(0).(0)
+  | l -> failf "%d sixels" (List.length l)
+
+(* Static rows with pictures are written as rows, then a sixel over the rows
+   still on the screen, then the cursor back below them. *)
+let test_picture_static_rows () =
+  let r = picture_screen `Sixel in
+  let g = Grid.create ~width:4 ~height:2 () in
+  equal ~msg:"rows without pictures are to_ansi's" string
+    (Grid.to_ansi ~complete_rows:true ~rows:2 g)
+    (Screen.static_rows r g ~rows:2 ~top:0);
+  Grid.draw_picture g ~x:0 ~y:0 ~width:2 ~height:2 (tiled ~cols:2 ~rows:2);
+  let s = Screen.static_rows r g ~rows:2 ~top:(-1) in
+  (match sixels s with
+  | [ ((1, 1), px) ] ->
+      equal ~msg:"the row on the screen" int 20 (Array.length px)
+  | l -> failf "%d sixels" (List.length l));
+  is_true ~msg:"the cursor below the rows"
+    (String.ends_with ~suffix:"\027\\\027[2;1H" s)
+
 let () =
   run "matrix.screen"
     [
@@ -1369,6 +1604,13 @@ let () =
           test "Scroll hint by the whole region is ignored"
             test_scroll_hint_by_whole_region_is_ignored;
           test "Cursor style and color" test_cursor_style_and_color;
+        ];
+      group "Pictures"
+        [
+          test "Half blocks" test_picture_blocks;
+          test "Kitty placeholders" test_picture_kitty;
+          test "Sixel over half blocks" test_picture_sixel;
+          test "Static rows" test_picture_static_rows;
         ];
       group "Performance Characteristics"
         [

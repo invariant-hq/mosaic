@@ -404,7 +404,7 @@ type t = {
   mutable frames : int;
   mutable steps : int;
   mutable device : Matrix.device option;
-  mutable presented : unit -> Matrix.Grid.t * int;
+  mutable presented : unit -> Matrix.Grid.t * int * [ `Kitty | `Sixel | `Blocks ];
 }
 
 type _ Effect.t += Wait : t -> bool Effect.t
@@ -618,11 +618,11 @@ let advance s ns =
 
 (* The oracle: the rows of the frame the run believes it presented, against
    what the terminal shows on them, by their text. *)
-(* A picture cell shows as the terminal's placeholder of a held image,
-   U+FFFC, or as a half block, which the presented frame takes from the
-   screen. *)
-let as_shown grid ~top shown =
-  if not (Grid.Unsafe.has_pictures grid) then grid
+(* A picture cell is written in the run's form: a placeholder of a held
+   image, which reads U+FFFC, under kitty, and a half block otherwise, the
+   one the terminal shows when it shows one. *)
+let as_shown grid ~top ~form shown =
+  if form = `Kitty || not (Grid.Unsafe.has_pictures grid) then grid
   else
     let grid = Grid.copy grid and w = Grid.width grid in
     for idx = 0 to (w * Grid.height grid) - 1 do
@@ -632,20 +632,21 @@ let as_shown grid ~top shown =
         && row < Screen.rows shown
         && col < Screen.cols shown
       then
-        match fst (Screen.cell shown ~row ~col) with
-        | ("\u{2580}" | "\u{2584}" | " ") as text ->
-            Grid.set_grapheme grid ~x:col ~y:(idx / w) ~width:1
-              ~fg:Matrix.Ansi.Color.default_fg ~bg:Matrix.Ansi.Color.default_bg
-              ~attrs:Matrix.Ansi.Attr.empty text ~pos:0
-              ~len:(String.length text)
-        | _ -> ()
+        let text =
+          match fst (Screen.cell shown ~row ~col) with
+          | ("\u{2580}" | "\u{2584}" | " ") as text -> text
+          | _ -> "\u{2580}"
+        in
+        Grid.set_grapheme grid ~x:col ~y:(idx / w) ~width:1
+          ~fg:Matrix.Ansi.Color.default_fg ~bg:Matrix.Ansi.Color.default_bg
+          ~attrs:Matrix.Ansi.Attr.empty text ~pos:0 ~len:(String.length text)
     done;
     grid
 
 let check_presented s =
-  let grid, top = s.presented () in
+  let grid, top, form = s.presented () in
   let shown = Terminal.screen s.term in
-  let frame = { Screen.grid = as_shown grid ~top shown; cursor = None } in
+  let frame = { Screen.grid = as_shown grid ~top ~form shown; cursor = None } in
   let differs = Buffer.create 64 in
   for y = 0 to Screen.rows frame - 1 do
     let row = top + y in

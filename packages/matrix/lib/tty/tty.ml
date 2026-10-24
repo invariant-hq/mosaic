@@ -4,6 +4,10 @@ let is_tty fd = try Unix.isatty fd with Unix.Unix_error _ -> false
 
 external is_controlling : Unix.file_descr -> bool = "matrix_tty_is_controlling"
 external window : Unix.file_descr -> (int * int) option = "matrix_tty_window"
+
+external window_pixels : Unix.file_descr -> (int * int) option
+  = "matrix_tty_window_pixels"
+
 external now : unit -> int = "matrix_tty_now" [@@noalloc]
 external readable : Unix.file_descr -> bool = "matrix_tty_readable" [@@noalloc]
 

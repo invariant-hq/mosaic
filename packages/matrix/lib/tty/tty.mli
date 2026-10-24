@@ -55,6 +55,13 @@ val window : Unix.file_descr -> (int * int) option
     Windows). It is [None] when [fd] is not a terminal or the system reports a
     zero size, as it does for a pseudo-terminal whose size was never set. *)
 
+val window_pixels : Unix.file_descr -> (int * int) option
+(** [window_pixels fd] is the size of [fd]'s window in pixels,
+    [Some (width, height)], as the system reports it ([TIOCGWINSZ]). It is
+    [None] when [fd] is not a terminal, when the system reports a zero size, as
+    many terminals and every pseudo-terminal whose pixel size was never set do,
+    and on Windows. *)
+
 val readable : Unix.file_descr -> bool
 (** [readable fd] is [true] iff a read from [fd] would return without waiting:
     [fd] has input, has reached its end, or has an error to report. It never
