@@ -72,6 +72,7 @@ type extension =
   | Color_scheme_reports
   | In_band_resize
   | Focus_reports
+  | Kitty_graphics
 
 type request =
   | Bell
@@ -138,6 +139,19 @@ type palette = {
    to be kept, and [Osc_skip] otherwise. *)
 type osc = Osc_skip | Osc_number of int | Osc_text of int
 
+(* A kitty graphics command, an APC that starts with [G]: its keys while
+   they are read, then its payload, of which only the length is kept. *)
+type apc = Apc_skip | Apc_keys of Buffer.t | Apc_payload of string * int
+
+(* A kitty image in transmission: its id, the bytes its keys promise, the
+   payload's length so far, and its virtual placement, if any. *)
+type transmission = {
+  image : int;
+  expected : int;
+  mutable payload : int;
+  virtual_placement : bool;
+}
+
 (* The rows changed, a byte a row. *)
 type dirty = {
   mutable any : bool;
@@ -184,6 +198,13 @@ type t = {
   mutable color_scheme : [ `Dark | `Light ];
   (* The requests to the host, the latest first. *)
   mutable requests : request list;
+  (* The cell's size in pixels, which CSI 16 t and 14 t report. *)
+  cell_size : (int * int) option;
+  (* Kitty graphics: the command being read, the transmission in progress,
+     and the images held, each with whether it has a virtual placement. *)
+  mutable apc : apc;
+  mutable transmission : transmission option;
+  mutable images : (int * bool) list;
 }
 
 let top_left = { row = 0; col = 0; last_column = false }
@@ -224,6 +245,7 @@ let extensions =
     Color_scheme_reports;
     In_band_resize;
     Focus_reports;
+    Kitty_graphics;
   ]
 
 let has t e = List.mem e t.extensions
@@ -590,12 +612,45 @@ let gl_is_ascii t =
 
 (* {1:print Printing} *)
 
+(* The number a kitty placeholder's foreground names: its RGB, or its palette
+   entry. The high byte of an id, in a third mark, is not read: an image is
+   named by its id's other bytes, as a placeholder in 256 colors names it. *)
+let named_image c =
+  let p = Ansi.Color.Packed.encode c in
+  match Ansi.Color.Packed.intent p with
+  | Indexed n -> Some n
+  | Rgb ->
+      Some
+        ((Ansi.Color.Packed.red p lsl 16)
+        lor (Ansi.Color.Packed.green p lsl 8)
+        lor Ansi.Color.Packed.blue p)
+  | Default -> None
+
+let holds t c =
+  match named_image c with
+  | Some n -> List.exists (fun (id, v) -> v && id land 0xFFFFFF = n) t.images
+  | None -> false
+
+(* A kitty Unicode placeholder (U+10EEEE and its marks) reads as U+FFFC
+   while the terminal holds the image its foreground names with a virtual
+   placement, and as U+FFFD otherwise. *)
+let placeholder = "\xF4\x8E\xBB\xAE"
+
 let write_cluster t ~row ~col ~width =
   let cl = t.cluster in
+  let text, len =
+    if
+      has t Kitty_graphics && cl.len >= 4
+      && Bytes.get cl.text 0 = placeholder.[0]
+      && Bytes.get cl.text 1 = placeholder.[1]
+      && Bytes.get cl.text 2 = placeholder.[2]
+      && Bytes.get cl.text 3 = placeholder.[3]
+    then ((if holds t (fg t) then "\u{FFFC}" else "\u{FFFD}"), 3)
+    else (Bytes.unsafe_to_string cl.text, cl.len)
+  in
   Grid.set_grapheme (grid t) ~x:col ~y:row ~width ~fg:(fg t) ~bg:(bg t)
-    ~attrs:t.pen.style.attrs ?link:t.pen.link ?protected:(protection t)
-    (Bytes.unsafe_to_string cl.text)
-    ~pos:0 ~len:cl.len;
+    ~attrs:t.pen.style.attrs ?link:t.pen.link ?protected:(protection t) text
+    ~pos:0 ~len;
   touch_row t row
 
 (* Place the cluster from its position, by the four rules of vte.mli. With
@@ -1185,7 +1240,8 @@ let check_palette p =
 
 (* The structure, which RIS gives its power-up state. *)
 let create ?(identity = vt100) ?(extensions = extensions) ?(scrollback = 10000)
-    ?(width_method = `Unicode) ?(palette = default_palette) ~rows ~cols () =
+    ?(width_method = `Unicode) ?(palette = default_palette) ?cell_size ~rows
+    ~cols () =
   check_cols "create" cols;
   let initial = check_palette palette in
   let rows = max 1 rows and cols = max 1 cols in
@@ -1242,6 +1298,10 @@ let create ?(identity = vt100) ?(extensions = extensions) ?(scrollback = 10000)
       mouse_format = `X10;
       color_scheme = `Dark;
       requests = [];
+      cell_size;
+      apc = Apc_skip;
+      transmission = None;
+      images = [];
     }
   in
   ris t;
@@ -1509,6 +1569,15 @@ let csi t (s : Ansi.Parser.sequence) =
   | Some '?', "", 'K' -> decsel t (ps 0)
   | Some '?', "", 'n' when ps 0 = 6 -> decxcpr t
   | Some '>', "", 'c' when ps 0 = 0 -> da2 t
+  | None, "", 't' when ps 0 = 16 ->
+      Option.iter
+        (fun (w, h) -> reply t (Cell_pixels { height = h; width = w }))
+        t.cell_size
+  | None, "", 't' when ps 0 = 14 ->
+      Option.iter
+        (fun (w, h) ->
+          reply t (Text_area_pixels { height = h * t.rows; width = w * t.cols }))
+        t.cell_size
   | Some '>', "", 'q' when ps 0 = 0 -> xtversion t
   | Some '?', "", 'n' when ps 0 = 996 && has t Color_scheme_reports ->
       reply t (Color_scheme t.color_scheme)
@@ -1682,13 +1751,106 @@ let osc_colours t n terminator text =
   | n -> dynamic n (String.split_on_char ';' text)
 
 let open_string t (o : Ansi.Parser.opening) =
-  match o with Osc -> t.osc <- Osc_number (-1) | _ -> t.osc <- Osc_skip
+  t.osc <- (match o with Osc -> Osc_number (-1) | _ -> Osc_skip);
+  t.apc <-
+    (match o with
+    | Apc when has t Kitty_graphics -> Apc_keys (Buffer.create 64)
+    | _ -> Apc_skip)
 
 let string_data t s =
-  match t.osc with
+  (match t.osc with
   | Osc_skip -> ()
   | Osc_number n -> osc_number t s 0 n
-  | Osc_text _ -> osc_keep t s 0
+  | Osc_text _ -> osc_keep t s 0);
+  match t.apc with
+  | Apc_skip -> ()
+  | Apc_keys b -> (
+      match String.index_opt s ';' with
+      | None -> Buffer.add_string b s
+      | Some i ->
+          Buffer.add_substring b s 0 i;
+          t.apc <- Apc_payload (Buffer.contents b, String.length s - i - 1))
+  | Apc_payload (keys, n) -> t.apc <- Apc_payload (keys, n + String.length s)
+
+(* {2 Kitty graphics}
+
+   A command's keys are [k=v] pairs; this terminal reads the query, the
+   transmission of raw pixels in chunks with an optional virtual placement,
+   a virtual placement of a held image, and deletion by id or of all. It
+   keeps no pixel: a transmission whose payload is not the length its keys
+   promise holds no image. *)
+
+let graphics_key keys k =
+  List.find_map
+    (fun kv ->
+      match String.index_opt kv '=' with
+      | Some i when String.sub kv 0 i = k ->
+          Some (String.sub kv (i + 1) (String.length kv - i - 1))
+      | _ -> None)
+    keys
+
+let int_key keys k =
+  Option.bind (graphics_key keys k) int_of_string_opt |> Option.value ~default:0
+
+(* The bytes [n] base64 characters decode to. *)
+let decoded n = n / 4 * 3
+
+let forget_image t id =
+  t.images <- List.filter (fun (i, _) -> i <> id) t.images;
+  (* Placeholders that named it read as such no more. *)
+  let g = grid t in
+  for idx = 0 to (Grid.width g * Grid.height g) - 1 do
+    if Grid.get_text g idx = "\u{FFFC}" then
+      match named_image (Grid.get_fg g idx) with
+      | Some n when n = id land 0xFFFFFF ->
+          let link = Grid.get_link g idx in
+          Grid.set_grapheme g ~x:(idx mod t.cols) ~y:(idx / t.cols) ~width:1
+            ~fg:(Grid.get_fg g idx) ~bg:(Grid.get_bg g idx)
+            ~attrs:(Ansi.Attr.unpack (Grid.get_attrs g idx))
+            ?link:(if link = "" then None else Some link)
+            "\u{FFFD}" ~pos:0 ~len:3;
+          touch_row t (idx / t.cols)
+      | _ -> ()
+  done
+
+let end_transmission t (tr : transmission) =
+  t.transmission <- None;
+  if decoded tr.payload >= tr.expected && decoded tr.payload - tr.expected < 3
+  then
+    t.images <-
+      (tr.image, tr.virtual_placement) :: List.remove_assoc tr.image t.images
+
+let graphics_command t keys payload =
+  let keys = String.split_on_char ',' keys in
+  let more = int_key keys "m" = 1 in
+  match (t.transmission, graphics_key keys "a") with
+  | Some tr, None ->
+      tr.payload <- tr.payload + payload;
+      if not more then end_transmission t tr
+  | _, Some "q" ->
+      reply t (Graphics { id = Some (int_key keys "i"); message = "OK" })
+  | _, Some (("t" | "T") as a) ->
+      let bytes = if int_key keys "f" = 24 then 3 else 4 in
+      let tr =
+        {
+          image = int_key keys "i";
+          expected = bytes * int_key keys "s" * int_key keys "v";
+          payload;
+          virtual_placement = a = "T" && int_key keys "U" = 1;
+        }
+      in
+      if more then t.transmission <- Some tr else end_transmission t tr
+  | _, Some "p" when int_key keys "U" = 1 ->
+      let id = int_key keys "i" in
+      if List.mem_assoc id t.images then
+        t.images <- (id, true) :: List.remove_assoc id t.images
+  | _, Some "d" -> (
+      match graphics_key keys "d" with
+      | Some ("i" | "I") -> forget_image t (int_key keys "i")
+      | Some ("a" | "A") | None ->
+          List.iter (fun (id, _) -> forget_image t id) t.images
+      | Some _ -> ())
+  | _ -> ()
 
 (* A request to the host: OSC 9 (iTerm2) is a notification's body, OSC 777
    (urxvt) [notify ; title ; body], and OSC 52 [selection ; data] a clipboard
@@ -1722,7 +1884,14 @@ let close_string t ending =
   | Osc_number ((104 | 110 | 111 | 112) as n), ((`St | `Bel) as ending) ->
       osc_colours t n ending ""
   | _ -> ());
-  osc_drop t
+  osc_drop t;
+  (match (t.apc, ending) with
+  | Apc_payload (keys, n), `St when String.length keys > 0 && keys.[0] = 'G' ->
+      graphics_command t (String.sub keys 1 (String.length keys - 1)) n
+  | Apc_keys b, `St when Buffer.length b > 0 && Buffer.nth b 0 = 'G' ->
+      graphics_command t (Buffer.sub b 1 (Buffer.length b - 1)) 0
+  | _ -> ());
+  t.apc <- Apc_skip
 
 (* ECMA-48 §5.4.2 lets a parameter be a string of sub-parameters, separated by
    colons, whose meaning the function defines. Only SGR defines any here (T.416

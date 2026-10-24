@@ -2754,5 +2754,38 @@ let user_tests =
     test "requests to the host" requests;
   ]
 
+(* Kitty graphics: the query, images held without their pixels, Unicode
+   placeholders that read U+FFFC while their image is held, and the cell's
+   size. *)
+let kitty_graphics () =
+  let t = Vte.create ~cell_size:(9, 18) ~rows:2 ~cols:6 () in
+  equal ~msg:"the query" string "\x1b_Gi=31337;OK\x1b\\"
+    (answers t "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\");
+  equal ~msg:"the cell's size, and the text area's" string
+    "\x1b[6;18;9t\x1b[4;36;54t"
+    (answers t "\x1b[16t\x1b[14t");
+  let placeholder = "\x1b[38;2;0;0;7m\u{10EEEE}\u{0305}\u{0305}\x1b[39m" in
+  feed t placeholder;
+  equal ~msg:"an image not held" string "\u{FFFD}" (Vte.text t 0);
+  (* Two chunks of a 1x1 RGBA image, four bytes in base64. *)
+  feed t "\x1b_Ga=T,U=1,f=32,s=1,v=1,i=7,c=1,r=1,q=2,m=1;AAAA\x1b\\";
+  feed t "\x1b_Gm=0;AAAA\x1b\\";
+  feed t ("\r" ^ placeholder);
+  equal ~msg:"an image held" string "\u{FFFC}" (Vte.text t 0);
+  feed t "\x1b_Ga=d,d=I,i=7,q=2\x1b\\";
+  equal ~msg:"deleted" string "\u{FFFD}" (Vte.text t 0);
+  feed t "\x1b_Ga=T,U=1,f=32,s=2,v=1,i=7,c=1,r=1,q=2;AAAA\x1b\\";
+  feed t ("\r" ^ placeholder);
+  equal ~msg:"a payload too short holds nothing" string "\u{FFFD}"
+    (Vte.text t 0);
+  let bare = Vte.create ~extensions:[] ~rows:2 ~cols:6 () in
+  equal ~msg:"no extension, no answer" string "\x1b[?1;2c"
+    (answers bare "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c\x1b[16t")
+
 let () =
-  run "matrix.vte" [ group "vte" tests; group "user and host" user_tests ]
+  run "matrix.vte"
+    [
+      group "vte" tests;
+      group "user and host" user_tests;
+      group "graphics" [ test "kitty graphics" kitty_graphics ];
+    ]

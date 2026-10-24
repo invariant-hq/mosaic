@@ -14,6 +14,7 @@ module Profile = struct
     width_method : Matrix.Text.width_method;
     palette : Vte.palette;
     color_scheme : [ `Dark | `Light ];
+    cell_size : (int * int) option;
   }
 
   let vte =
@@ -26,6 +27,7 @@ module Profile = struct
       width_method = `Unicode;
       palette = Vte.default_palette;
       color_scheme = `Dark;
+      cell_size = None;
     }
 
   (* A program whose output is piped guesses its terminal from its
@@ -285,8 +287,8 @@ module Terminal = struct
   let create ?(profile = Profile.vte) ~cols ~rows () =
     let vte =
       Vte.create ~identity:profile.identity ~extensions:profile.extensions
-        ~width_method:profile.width_method ~palette:profile.palette ~rows ~cols
-        ()
+        ~width_method:profile.width_method ~palette:profile.palette
+        ?cell_size:profile.cell_size ~rows ~cols ()
     in
     ignore (Vte.set_color_scheme vte profile.color_scheme : Reply.t list);
     { profile; vte; output = Buffer.create 4096; raw = false }
@@ -616,10 +618,34 @@ let advance s ns =
 
 (* The oracle: the rows of the frame the run believes it presented, against
    what the terminal shows on them, by their text. *)
+(* A picture cell shows as the terminal's placeholder of a held image,
+   U+FFFC, or as a half block, which the presented frame takes from the
+   screen. *)
+let as_shown grid ~top shown =
+  if not (Grid.Unsafe.has_pictures grid) then grid
+  else
+    let grid = Grid.copy grid and w = Grid.width grid in
+    for idx = 0 to (w * Grid.height grid) - 1 do
+      let row = top + (idx / w) and col = idx mod w in
+      if
+        Grid.Unsafe.is_picture grid idx
+        && row < Screen.rows shown
+        && col < Screen.cols shown
+      then
+        match fst (Screen.cell shown ~row ~col) with
+        | ("\u{2580}" | "\u{2584}" | " ") as text ->
+            Grid.set_grapheme grid ~x:col ~y:(idx / w) ~width:1
+              ~fg:Matrix.Ansi.Color.default_fg ~bg:Matrix.Ansi.Color.default_bg
+              ~attrs:Matrix.Ansi.Attr.empty text ~pos:0
+              ~len:(String.length text)
+        | _ -> ()
+    done;
+    grid
+
 let check_presented s =
   let grid, top = s.presented () in
-  let frame = { Screen.grid; cursor = None } in
   let shown = Terminal.screen s.term in
+  let frame = { Screen.grid = as_shown grid ~top shown; cursor = None } in
   let differs = Buffer.create 64 in
   for y = 0 to Screen.rows frame - 1 do
     let row = top + y in

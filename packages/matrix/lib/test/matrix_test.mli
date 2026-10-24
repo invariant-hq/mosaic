@@ -109,6 +109,9 @@ module Profile : sig
     width_method : Matrix.Text.width_method;  (** How it measures text. *)
     palette : Vte.palette;  (** The colors its user configured. *)
     color_scheme : [ `Dark | `Light ];  (** The scheme its user chose. *)
+    cell_size : (int * int) option;
+        (** The size of its cells in pixels, [(width, height)], which it reports
+            to [CSI 16 t] and [CSI 14 t] ({!Vte.create}). *)
   }
   (** The type for profiles. A named terminal enters as a value whose facts cite
       that terminal's documentation. *)
@@ -116,8 +119,8 @@ module Profile : sig
   val vte : t
   (** [vte] is matrix's emulator as it is: a terminal that answers, with its own
       identity ({!Vte.vt100}), every extension, Unicode widths, the default
-      palette, a dark scheme, [TERM=xterm-256color] and [COLORTERM=truecolor].
-  *)
+      palette, a dark scheme, no cell size, [TERM=xterm-256color] and
+      [COLORTERM=truecolor]. *)
 
   val pipe : t
   (** [pipe] is {!vte} as an output that is not a terminal, which answers no

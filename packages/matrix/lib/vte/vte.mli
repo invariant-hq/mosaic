@@ -103,6 +103,9 @@ type extension =
   | Color_scheme_reports  (** Mode 2031 and its query, [CSI ? 996 n]. *)
   | In_band_resize  (** Mode 2048. *)
   | Focus_reports  (** Mode 1004. *)
+  | Kitty_graphics
+      (** The kitty graphics protocol's images, as Unicode placeholders show
+          them ({!section-graphics}). *)
 
 val extensions : extension list
 (** [extensions] is every extension, in the order of {!type-extension}. *)
@@ -113,6 +116,7 @@ val create :
   ?scrollback:int ->
   ?width_method:Matrix_text.width_method ->
   ?palette:palette ->
+  ?cell_size:int * int ->
   rows:int ->
   cols:int ->
   unit ->
@@ -128,6 +132,9 @@ val create :
     - [width_method], how wide characters are ({!section-printing}). Defaults to
       [`Unicode].
     - [palette], the palette. Defaults to {!default_palette}. [t] keeps a copy.
+    - [cell_size], the size of a cell in pixels, [(width, height)], which it
+      reports to [CSI 16 t], and times its size to [CSI 14 t]. Without it, it
+      answers neither.
 
     [rows] and [cols] below [1] are taken as [1].
 
@@ -491,6 +498,21 @@ val mouse : t -> Matrix_input.Mouse_report.encoding option
 
 val identity : t -> identity
 (** [identity t] is the identity [t] answers with. *)
+
+(** {1:graphics Kitty graphics}
+
+    With [Kitty_graphics], the terminal reads the kitty graphics protocol's
+    commands (APC [G]) as far as Unicode placeholders need them. It answers the
+    query ([a=q]) with OK. It holds the images transmitted in raw pixels ([a=t]
+    or [a=T], [f=24] or [f=32], in chunks with [m=1]) whose payload has the
+    length their width and height make, without keeping their pixels, each with
+    a virtual placement when [a=T] has [U=1] or [a=p] with [U=1] follows. It
+    deletes an image with [a=d] and [d=i] or [d=I], and every image with [d=a],
+    [d=A] or no [d]. A placeholder, U+10EEEE and its marks, is stored as U+FFFC
+    when it is printed while the terminal holds, with a virtual placement, an
+    image whose id's three low bytes are the RGB or palette entry of its
+    foreground, and as U+FFFD otherwise. A placeholder of an image the terminal
+    deletes then reads U+FFFD. *)
 
 (** {1:requests Requests to the host}
 
