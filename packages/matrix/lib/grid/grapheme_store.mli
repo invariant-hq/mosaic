@@ -13,6 +13,11 @@
     A caller that stores a handle in cells counts it with {!incref} and
     {!decref}, which must balance. A slot whose count falls to [0] is freed.
 
+    A slot may hold a {e tile} of a picture in place of text. Its payload is the
+    tile's key, which no UTF-8 text equals, and its text, as {!length}, {!blit}
+    and {!to_string} read it, is U+FFFC. A freed slot drops its tile, and so its
+    picture.
+
     A store is mutable and must not be used by two domains in parallel, except
     {!defer_release}, which a finaliser may call from any thread.
 
@@ -23,6 +28,14 @@
 
 type t
 (** The type for grapheme stores. *)
+
+type picture = { id : int; width : int; height : int; rgba : string }
+(** The type for pictures, [Matrix_grid.picture]. [id] is unique to the picture.
+*)
+
+type tile = { picture : picture; cols : int; rows : int; col : int; row : int }
+(** The type for tiles, the cell at column [col] and row [row] of a box of
+    [cols] by [rows] cells that shows [picture]. *)
 
 val index_bits : int
 (** [index_bits] is [36], the number of bits of a slot number. *)
@@ -46,6 +59,20 @@ val intern : t -> string -> off:int -> len:int -> int
     [off] and [len] must designate a substring of [s], which is not checked.
 
     Raises [Failure] if it allocates a slot when all are taken. *)
+
+val intern_tile :
+  t -> picture -> cols:int -> rows:int -> col:int -> row:int -> int
+(** [intern_tile t p ~cols ~rows ~col ~row] is the slot of that tile, as
+    {!intern} is the slot of a payload.
+
+    Raises [Failure] if it allocates a slot when all are taken. *)
+
+val tile : t -> idx:int -> gen:int -> tile
+(** [tile t ~idx ~gen] is the tile of [(idx, gen)], and a tile whose picture's
+    [id] is [0] if the handle is stale or holds text. *)
+
+val live_tiles : t -> int
+(** [live_tiles t] is the number of live slots that hold a tile. *)
 
 val live_count : t -> int
 (** [live_count t] is the number of live slots, those {!intern} shares. *)

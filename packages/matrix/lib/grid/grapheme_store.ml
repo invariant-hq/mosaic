@@ -1,5 +1,24 @@
 open StdLabels
 
+type picture = { id : int; width : int; height : int; rgba : string }
+type tile = { picture : picture; cols : int; rows : int; col : int; row : int }
+
+(* The tile of a slot that holds text. *)
+let no_tile =
+  {
+    picture = { id = 0; width = 0; height = 0; rgba = "" };
+    cols = 0;
+    rows = 0;
+    col = 0;
+    row = 0;
+  }
+
+(* A tile's payload is its key: 0xFF, which no UTF-8 text holds, then the
+   picture's id and the tile's box and place, eight bytes each. Its text is
+   U+FFFC. *)
+let key_length = 41
+let replacement = "\xEF\xBF\xBC"
+
 type t = {
   pending_releases : (unit -> unit) list Atomic.t;
   mutable storage : bytes;
@@ -18,8 +37,16 @@ type t = {
   mutable live_count : int;
   mutable live_next : int array;
   mutable live_hashes : int array;
+  mutable tiles : tiles;
+      (* [no_tiles] until the store holds its first tile, so a store of text
+         allocates nothing for tiles. *)
 }
 
+(* The tile of each slot, the number of live slots that hold one, and the
+   buffer a tile's key is built in. *)
+and tiles = { mutable arr : tile array; mutable live : int; key : bytes }
+
+let no_tiles = { arr = [||]; live = 0; key = Bytes.empty }
 let generation_bits = 7
 let index_bits = 36
 let mask_generation = (1 lsl generation_bits) - 1
@@ -47,6 +74,7 @@ let create () =
     live_count = 0;
     live_next = Array.make initial_ids (-1);
     live_hashes = Array.make initial_ids 0;
+    tiles = no_tiles;
   }
 
 (* Finalizers only enqueue work: releasing references during an allocation in
@@ -86,7 +114,8 @@ let ensure_id_capacity t =
     t.generations <- resize t.generations 0;
     t.free_stack <- resize t.free_stack 0;
     t.live_next <- resize t.live_next (-1);
-    t.live_hashes <- resize t.live_hashes 0)
+    t.live_hashes <- resize t.live_hashes 0;
+    if t.tiles != no_tiles then t.tiles.arr <- resize t.tiles.arr no_tile)
 
 let ensure_storage_capacity t needed =
   let cap = Bytes.length t.storage in
@@ -257,7 +286,20 @@ let alloc t str off len =
   Array.unsafe_set t.refcounts id 0;
   Array.unsafe_set t.live_next id (-1);
   Array.unsafe_set t.live_hashes id 0;
+  if t.tiles != no_tiles then Array.unsafe_set t.tiles.arr id no_tile;
   id
+
+let[@inline] is_tile t idx =
+  idx < Array.length t.tiles.arr && Array.unsafe_get t.tiles.arr idx != no_tile
+
+let ensure_tiles t =
+  if t.tiles == no_tiles then
+    t.tiles <-
+      {
+        arr = Array.make (Array.length t.offsets) no_tile;
+        live = 0;
+        key = Bytes.make key_length '\xFF';
+      }
 
 let intern t str ~off ~len =
   release_pending t;
@@ -269,9 +311,32 @@ let intern t str ~off ~len =
     Array.unsafe_set t.live_hashes idx hash;
     idx
 
+let intern_tile t picture ~cols ~rows ~col ~row =
+  release_pending t;
+  ensure_tiles t;
+  let key = t.tiles.key in
+  Bytes.set_int64_le key 1 (Int64.of_int picture.id);
+  Bytes.set_int64_le key 9 (Int64.of_int cols);
+  Bytes.set_int64_le key 17 (Int64.of_int rows);
+  Bytes.set_int64_le key 25 (Int64.of_int col);
+  Bytes.set_int64_le key 33 (Int64.of_int row);
+  let key = Bytes.unsafe_to_string key in
+  let hash = hash_slice key 0 key_length in
+  let idx = live_lookup t key 0 key_length hash in
+  if idx <> 0 then idx
+  else
+    let idx = alloc t key 0 key_length in
+    Array.unsafe_set t.live_hashes idx hash;
+    Array.unsafe_set t.tiles.arr idx { picture; cols; rows; col; row };
+    idx
+
 let live_count t =
   release_pending t;
   t.live_count
+
+let live_tiles t =
+  release_pending t;
+  t.tiles.live
 
 let slot_count t =
   release_pending t;
@@ -288,7 +353,9 @@ let incref t ~idx ~gen =
   if valid t ~idx ~gen then (
     let rc = Array.unsafe_get t.refcounts idx in
     Array.unsafe_set t.refcounts idx (rc + 1);
-    if rc = 0 then live_add t idx (live_hash t idx))
+    if rc = 0 then (
+      live_add t idx (live_hash t idx);
+      if is_tile t idx then t.tiles.live <- t.tiles.live + 1))
 
 let decref t ~idx ~gen =
   if valid t ~idx ~gen then
@@ -298,16 +365,28 @@ let decref t ~idx ~gen =
       if next > 0 then Array.unsafe_set t.refcounts idx next
       else (
         live_remove t idx;
+        (* A freed tile lets its picture go. *)
+        if is_tile t idx then (
+          t.tiles.live <- t.tiles.live - 1;
+          Array.unsafe_set t.tiles.arr idx no_tile);
         Array.unsafe_set t.refcounts idx (-1);
         push_free t idx)
 
 let length t ~idx ~gen =
-  if valid t ~idx ~gen then Array.unsafe_get t.lengths idx else 0
+  if not (valid t ~idx ~gen) then 0
+  else if is_tile t idx then String.length replacement
+  else Array.unsafe_get t.lengths idx
 
 let blit t ~idx ~gen buf ~pos =
   if pos < 0 || pos > Bytes.length buf then
     invalid_arg "Matrix_grid.Packed_cell.blit: position out of bounds";
   if not (valid t ~idx ~gen) then 0
+  else if is_tile t idx then
+    if String.length replacement > Bytes.length buf - pos then 0
+    else (
+      Bytes.blit_string ~src:replacement ~src_pos:0 ~dst:buf ~dst_pos:pos
+        ~len:(String.length replacement);
+      String.length replacement)
   else
     let len = Array.unsafe_get t.lengths idx in
     if len > Bytes.length buf - pos then 0
@@ -319,6 +398,7 @@ let blit t ~idx ~gen buf ~pos =
 
 let to_string t ~idx ~gen =
   if not (valid t ~idx ~gen) then ""
+  else if is_tile t idx then replacement
   else
     Bytes.sub_string t.storage
       ~pos:(Array.unsafe_get t.offsets idx)
@@ -333,7 +413,14 @@ let copy ~src ~idx ~gen ~dst =
     if off + len > Bytes.length src.storage then None
     else
       let dst_idx = alloc dst (Bytes.unsafe_to_string src.storage) off len in
+      if is_tile src idx then (
+        ensure_tiles dst;
+        Array.unsafe_set dst.tiles.arr dst_idx
+          (Array.unsafe_get src.tiles.arr idx));
       Some dst_idx
+
+let tile t ~idx ~gen =
+  if valid t ~idx ~gen && is_tile t idx then t.tiles.arr.(idx) else no_tile
 
 let equal t1 ~idx1 ~gen1 t2 ~idx2 ~gen2 =
   if not (valid t1 ~idx:idx1 ~gen:gen1 && valid t2 ~idx:idx2 ~gen:gen2) then

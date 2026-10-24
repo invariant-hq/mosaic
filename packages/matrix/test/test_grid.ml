@@ -2644,4 +2644,72 @@ let tests =
           (Grid.active_height grid));
   ]
 
-let () = run "matrix.grid" [ group "grid" tests; group "lines" lines_tests ]
+(* A picture whose pixels are all [r, g, b], opaque. *)
+let solid ~width ~height (r, g, b) =
+  Grid.picture ~width ~height
+    (String.init
+       (4 * width * height)
+       (fun i ->
+         Char.chr (match i mod 4 with 0 -> r | 1 -> g | 2 -> b | _ -> 255)))
+
+let picture_tests =
+  [
+    test "picture checks its pixels" (fun () ->
+        raises_match (Exn.invalid_arg ~substring:"Matrix_grid.picture")
+          (fun () -> ignore (Grid.picture ~width:2 ~height:1 "1234"));
+        raises_match (Exn.invalid_arg ~substring:"Matrix_grid.picture")
+          (fun () -> ignore (Grid.picture ~width:0 ~height:1 ""));
+        equal ~msg:"size" (pair int int) (3, 2)
+          (Grid.picture_size (solid ~width:3 ~height:2 (0, 0, 0))));
+    test "a picture cell reads as U+FFFC and keeps its background" (fun () ->
+        let g = Grid.create ~width:4 ~height:2 () in
+        Grid.fill_rect g ~x:0 ~y:0 ~width:4 ~height:2 ~color:Ansi.Color.blue;
+        Grid.push_clip g { x = 0; y = 0; width = 3; height = 2 };
+        Grid.draw_picture g ~x:1 ~y:0 ~width:3 ~height:1
+          (solid ~width:1 ~height:1 (255, 0, 0));
+        equal ~msg:"text" string " \u{FFFC}\u{FFFC}\n" (Grid.to_text g);
+        equal ~msg:"cut by the scissor" string " " (Grid.get_text g 3);
+        is_true ~msg:"background kept"
+          (Ansi.Color.equal Ansi.Color.blue (Grid.get_bg g 1));
+        equal ~msg:"one cell wide" int 1 (Grid.cell_width g 1));
+    test "a picture cell is text to the other operations" (fun () ->
+        let p = solid ~width:2 ~height:2 (0, 255, 0) in
+        let a = Grid.create ~width:3 ~height:1 () in
+        Grid.draw_text a ~x:0 ~y:0 ~text:"\u{4E00}x";
+        Grid.draw_picture a ~x:1 ~y:0 ~width:2 ~height:1 p;
+        equal ~msg:"a cut wide character becomes a blank" string
+          " \u{FFFC}\u{FFFC}" (Grid.to_text a);
+        let b = Grid.create ~width:3 ~height:1 () in
+        Grid.blit ~src:a ~dst:b;
+        is_true ~msg:"a copy to another storage is equal"
+          (Grid.cells_equal a 1 b 1);
+        is_false ~msg:"tiles differ by place" (Grid.cells_equal a 1 b 2);
+        Grid.fill_rect a ~x:0 ~y:0 ~width:3 ~height:1
+          ~color:(Ansi.Color.of_rgba 255 0 0 128);
+        equal ~msg:"a translucent fill keeps the tile" string
+          " \u{FFFC}\u{FFFC}" (Grid.to_text a);
+        Grid.draw_text a ~x:1 ~y:0 ~text:"y";
+        equal ~msg:"text replaces a tile" string " y\u{FFFC}" (Grid.to_text a);
+        is_false ~msg:"another picture differs"
+          (let c = Grid.copy b in
+           Grid.draw_picture c ~x:1 ~y:0 ~width:2 ~height:1
+             (solid ~width:2 ~height:2 (0, 255, 0));
+           Grid.cells_equal b 1 c 1));
+    test "a picture is let go with its last cell" (fun () ->
+        let g = Grid.create ~width:2 ~height:1 () in
+        let collected = ref false in
+        (let p = solid ~width:64 ~height:64 (1, 2, 3) in
+         Gc.finalise_last (fun () -> collected := true) p;
+         Grid.draw_picture g ~x:0 ~y:0 ~width:2 ~height:1 p);
+        Grid.clear g;
+        Gc.full_major ();
+        is_true ~msg:"collected" !collected);
+  ]
+
+let () =
+  run "matrix.grid"
+    [
+      group "grid" tests;
+      group "lines" lines_tests;
+      group "pictures" picture_tests;
+    ]

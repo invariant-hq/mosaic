@@ -389,6 +389,45 @@ val draw_line :
     and a cell's dots are added to those of a braille character already in it,
     so that lines can share cells. *)
 
+(** {1:pictures Pictures}
+
+    A {e picture} is a rectangle of pixels the program decoded. Drawing a
+    picture in a rectangle of cells, its {e box}, makes each cell of the box a
+    {e picture cell}, which holds one {e tile} of the picture, the part that
+    falls in that cell once the picture is fit in the box, its aspect ratio kept
+    and centered. A picture cell has a background, which shows through
+    transparent pixels and around the picture, and has the default foreground,
+    no attributes and no hyperlink. Every operation treats it as a cell of text
+    one cell wide whose text is U+FFFC, as {!get_text} and {!to_text} read it.
+    Copying moves it, a write over it replaces it, an erase makes it a blank,
+    and a translucent color drawn over it tints its background and keeps its
+    tile. Pixels are never blended, so the opacity does not apply to them.
+    [Matrix_screen] decides how a terminal is sent the pixels. *)
+
+type picture
+(** The type for pictures. A screen sends a terminal the pixels of a picture it
+    shows once, while the picture stays shown, so a program makes a picture once
+    and keeps it. *)
+
+val picture : width:int -> height:int -> string -> picture
+(** [picture ~width ~height rgba] is the picture of [width] by [height] pixels
+    whose rows, top to bottom, are in [rgba], four bytes a pixel, red, green,
+    blue and alpha, in sRGB with alpha not premultiplied. It does not copy
+    [rgba].
+
+    Raises [Invalid_argument] if [width] or [height] is [0] or less, or if
+    [String.length rgba <> 4 * width * height]. *)
+
+val picture_size : picture -> int * int
+(** [picture_size p] is the width and height of [p] in pixels. *)
+
+val draw_picture :
+  t -> x:int -> y:int -> width:int -> height:int -> picture -> unit
+(** [draw_picture g ~x ~y ~width ~height p] makes the cells of the [width] by
+    [height] box from column [x] of row [y] that the scissor contains picture
+    cells of [p], each keeping its background. A grapheme it cuts becomes blanks
+    on that grapheme's background. *)
+
 (** {1:set_uchar Writing cells} *)
 
 val set_uchar :
@@ -560,6 +599,27 @@ val to_ansi : ?complete_rows:bool -> ?rows:int -> t -> string
    range. *)
 
 module Unsafe : sig
+  (* The tile of a picture cell, [picture] fit in a box of [cols] by [rows]
+     cells, at column [col] and row [row] of the box. *)
+  type tile = {
+    picture : picture;
+    cols : int;
+    rows : int;
+    col : int;
+    row : int;
+  }
+
+  val has_pictures : t -> bool
+  (* [true] iff a grid that shares [t]'s storage holds a picture cell. *)
+
+  val is_picture : t -> int -> bool
+  val tile : t -> int -> tile
+  (* The tile of a picture cell; meaningless for any other cell. *)
+
+  val picture_id : picture -> int
+  (* A number of its own for each picture, from 1. *)
+
+  val picture_rgba : picture -> string
   val get_codepoint : t -> int -> int
   val get_attrs : t -> int -> int
   val get_link : t -> int -> string

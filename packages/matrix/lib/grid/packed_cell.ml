@@ -245,3 +245,13 @@ let equal store1 c1 store2 c2 =
     else
       Grapheme_store.equal store1 ~idx1:(unpack_idx c1) ~gen1:(unpack_gen c1)
         store2 ~idx2:(unpack_idx c2) ~gen2:(unpack_gen c2)
+
+(* A tile is a start cell one cell wide whose slot holds it. *)
+let intern_tile store picture ~cols ~rows ~col ~row =
+  let idx = Grapheme_store.intern_tile store picture ~cols ~rows ~col ~row in
+  pack_interned store idx 1
+
+let tile store cell =
+  if names_slot cell then
+    Grapheme_store.tile store ~idx:(unpack_idx cell) ~gen:(unpack_gen cell)
+  else Grapheme_store.tile store ~idx:0 ~gen:0

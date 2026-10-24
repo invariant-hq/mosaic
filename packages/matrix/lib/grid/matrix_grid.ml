@@ -1559,6 +1559,48 @@ let draw_line t ~x1 ~y1 ~x2 ~y2 ?(style = Ansi.Style.default)
           draw_text t ~x:cx ~y:cy ~text:braille_lut.(existing lor bits) ~style)
         buffer
 
+(* {1 Pictures} *)
+
+type picture = Grapheme_store.picture
+
+(* Each picture gets an id of its own, the identity the screens compare and
+   keep pixels by. *)
+let picture_ids = Atomic.make 1
+
+let picture ~width ~height rgba =
+  if width <= 0 || height <= 0 then
+    invalid_arg "Matrix_grid.picture: width and height must be > 0";
+  if String.length rgba <> 4 * width * height then
+    invalid_arg "Matrix_grid.picture: rgba is not 4 * width * height bytes";
+  {
+    Grapheme_store.id = Atomic.fetch_and_add picture_ids 1;
+    width;
+    height;
+    rgba;
+  }
+
+let picture_size (p : picture) = (p.width, p.height)
+
+(* A tile is written as a copy is, on the cell's own background, with the
+   default foreground, no attributes and no link. *)
+let draw_picture t ~x ~y ~width ~height p =
+  match clip_rect_to_grid t Rect.{ x; y; width; height } with
+  | None -> ()
+  | Some r ->
+      for row = r.y to r.y + r.height - 1 do
+        for col = r.x to r.x + r.width - 1 do
+          let idx = (row * t.width) + col in
+          let code =
+            Packed_cell.intern_tile t.grapheme_store p ~cols:width ~rows:height
+              ~col:(col - x) ~row:(row - y)
+          in
+          write_cell t idx code (Buf.get t.bg_color idx);
+          Buf.set_short t.attrs idx 0;
+          set_link t idx no_link;
+          Buf.set t.fg_color idx default_fg_packed
+        done
+      done
+
 (* {1 Inspection & utilities} *)
 
 (* A cell a terminal erase reproduces: a space or nothing, with no attribute
@@ -1692,6 +1734,24 @@ let to_ansi ?(complete_rows = false) ?rows t =
    matrix's own libraries. *)
 
 module Unsafe = struct
+  type tile = Grapheme_store.tile = {
+    picture : picture;
+    cols : int;
+    rows : int;
+    col : int;
+    row : int;
+  }
+
+  let has_pictures t = Grapheme_store.live_tiles t.grapheme_store > 0
+
+  let[@inline] is_picture t idx =
+    let c = Buf.get_cell t.chars idx in
+    Packed_cell.names_slot c
+    && (Packed_cell.tile t.grapheme_store c).picture.id <> 0
+
+  let tile t idx = Packed_cell.tile t.grapheme_store (Buf.get_cell t.chars idx)
+  let picture_id (p : picture) = p.id
+  let picture_rgba (p : picture) = p.rgba
   let get_codepoint = get_codepoint
   let get_attrs = get_attrs
   let get_link = get_link
