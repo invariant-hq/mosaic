@@ -777,7 +777,6 @@ type usage = {
   mutable zero : bool;
   mutable no_nice : bool;
   mutable u_hidden : bool;
-  mutable u_padding : float option;
   mutable u_cats : string list;
   seen : (string, unit) Hashtbl.t;
   mutable hull_lo : float;
@@ -856,7 +855,6 @@ let resolve ?(view = View0.empty) ~(theme : Theme.t) fig =
             zero = false;
             no_nice = false;
             u_hidden = false;
-            u_padding = None;
             u_cats = [];
             seen = Hashtbl.create 8;
             hull_lo = infinity;
@@ -901,10 +899,7 @@ let resolve ?(view = View0.empty) ~(theme : Theme.t) fig =
       let u n = usage n in
       match e.kind with
       | K_bar { horizontal; _ } ->
-          let q = u (if horizontal then e.sx else e.sy)
-          and b = u (if horizontal then e.sy else e.sx) in
-          q.zero <- true;
-          b.u_padding <- Some 0.2
+          (u (if horizontal then e.sx else e.sy)).zero <- true
       | K_area _ when e.ey2 = E_none -> (u e.sy).zero <- true
       | K_hist -> (u e.sy).zero <- true
       | K_spark _ ->
@@ -1086,8 +1081,7 @@ let resolve ?(view = View0.empty) ~(theme : Theme.t) fig =
           hi;
           cats;
           reverse = get (fun s -> s.s_reverse) (kind = Band && dir = Y);
-          padding =
-            get (fun s -> s.s_padding) (Option.value u.u_padding ~default:0.1);
+          padding = get (fun s -> s.s_padding) 0.2;
           step = (match spec with Some s -> s.s_step | None -> None);
           ticks = (match spec with Some s -> s.s_ticks | None -> None);
           colors = (match spec with Some s -> s.s_colors | None -> None);
