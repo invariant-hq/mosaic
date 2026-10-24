@@ -96,5 +96,20 @@ let maybe_resolve t context calc_resolver =
       "Length_percentage_auto.maybe_resolve: unsupported tag (expected \
        length/percent/auto/calc)"
 
+(* [maybe_resolve], with 0 for [None], and without its option: layout
+   resolves every margin side of every node with it. *)
 let resolve_or_zero t context calc_resolver =
-  match maybe_resolve t context calc_resolver with Some v -> v | None -> 0.0
+  if is_auto t then 0.0
+  else if is_length t then value t
+  else if is_percent t then
+    match context with
+    | None -> 0.0
+    | Some dim -> Int32.float_of_bits (Int32.bits_of_float (dim *. value t))
+  else if is_calc t then
+    match context with
+    | None -> 0.0
+    | Some dim -> calc_resolver (Compact_length.get_calc_index t) dim
+  else
+    failwith
+      "Length_percentage_auto.resolve_or_zero: unsupported tag (expected \
+       length/percent/auto/calc)"
