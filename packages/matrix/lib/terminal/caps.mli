@@ -33,11 +33,13 @@
     Each fact is taken from the first source that has it:
     + {b User policy}, which the person running the program decides.
       [MATRIX_FORCE_UNICODE] and [MATRIX_FORCE_WCWIDTH] set the width method,
-      and [VHS_RECORD] (a recording) asks for the plain widths and no kitty
+      [MATRIX_GRAPHICS] how pictures are sent ({!field-graphics}), and
+      [VHS_RECORD] (a recording) asks for the plain widths and no kitty
       protocols.
     + {b Corrections} keyed on the terminal's identity, for a terminal that
       answers but is known to do otherwise, each with its reason. Ghostty from
-      1.3 widens graphemes past what mode 2027 describes.
+      1.3 widens graphemes past what mode 2027 describes, and Konsole draws
+      sixel in a way pictures cannot use ({!field-graphics}).
     + {b The answer} of the terminal that does the work.
     + {b Identity}, what a terminal of that name and version is known to do.
     + {b Guesses} from the environment, [TERM], [COLORTERM], the platform and
@@ -139,6 +141,17 @@ type t = {
   scaled_text : bool;  (** OSC 66 scaled text ([s=2]), as {!Widths} measures. *)
   sixel : bool;
       (** SIXEL graphics, attribute 4 in the DA1 reply to {!Probe}. *)
+  graphics : [ `Kitty | `Sixel | `Blocks ];
+      (** How the terminal is sent pictures ([Matrix_screen]). [MATRIX_GRAPHICS]
+          set to [kitty], [sixel] or [blocks] decides it. Otherwise it is
+          [`Kitty] when the terminal that does the work, or the terminal outside
+          tmux through its passthrough, has {!kitty_graphics} and is kitty from
+          0.28 or Ghostty, the terminals known to draw the protocol's Unicode
+          placeholders. It is [`Sixel] when the terminal has {!sixel}, answers
+          at least 252 color registers to {!Probe} or does not answer their
+          query, and is not Konsole, which erases the text under an image and
+          deletes the image when text lands on its top row. It is [`Blocks]
+          otherwise. *)
   sync : bool;
       (** Synchronized output (mode 2026), from the mode's report, tmux from
           3.7, the identity of Ghostty, kitty, WezTerm, Alacritty or iTerm, a
@@ -222,8 +235,9 @@ type batch =
           S7C1T, so that no reply comes with 8-bit controls. It asks for the
           reports of modes 1016, 2027, 2031, 1004, 2004, 2026 and 1036,
           XTVERSION, the kitty keyboard flags, and, unless a multiplexer is in
-          the way, kitty graphics, and ends with DA1. It writes nothing on the
-          screen. *)
+          the way, kitty graphics, then the cell's size in pixels ([CSI 16 t])
+          and the number of sixel color registers (XTSMGRAPHICS), and ends with
+          DA1. It writes nothing on the screen. *)
   | Widths
       (** The measure of text sizing (OSC 66), to the terminal that does the
           work. It writes two spaces with OSC 66 from the first column of the
@@ -238,7 +252,7 @@ type batch =
           it on. *)
   | Outer
       (** Questions about the terminal outside tmux, wrapped for tmux, the kitty
-          graphics query, then DA1. *)
+          graphics query and XTVERSION, then DA1. *)
 
 val ask : evidence -> batch -> string * Matrix_input.Decoder.owed
 (** [ask ev b] is the bytes of [b] and the replies it owes the decoder

@@ -15,6 +15,7 @@ type t = {
   explicit_cursor_positioning : bool;
   scaled_text : bool;
   sixel : bool;
+  graphics : [ `Kitty | `Sixel | `Blocks ];
   sync : bool;
   hyperlinks : bool;
   notification : [ `Osc9 | `Osc777 ];
@@ -38,6 +39,7 @@ let defaults =
     explicit_cursor_positioning = false;
     scaled_text = false;
     sixel = false;
+    graphics = `Blocks;
     sync = false;
     hyperlinks = false;
     notification = `Osc9;
@@ -68,6 +70,7 @@ type env = {
   vhs : bool;
   force_wcwidth : bool;
   force_unicode : bool;
+  graphics : [ `Kitty | `Sixel | `Blocks ] option;  (** [MATRIX_GRAPHICS]. *)
   win32 : bool;
   described : described;
 }
@@ -137,6 +140,12 @@ let env ?terminfo getenv ~win32 =
     vhs = set "VHS_RECORD";
     force_wcwidth = set "MATRIX_FORCE_WCWIDTH";
     force_unicode = set "MATRIX_FORCE_UNICODE";
+    graphics =
+      (match lower "MATRIX_GRAPHICS" with
+      | "kitty" -> Some `Kitty
+      | "sixel" -> Some `Sixel
+      | "blocks" -> Some `Blocks
+      | _ -> None);
     win32;
     described = describe terminfo;
   }
@@ -151,6 +160,9 @@ type evidence = {
   modes : (int * Reply.setting) list;  (** DECRPM of DEC modes, latest first. *)
   keyboard : int option;
   version : string option;
+  outer_version : string option;
+      (** The XTVERSION of the terminal outside tmux, through passthrough. *)
+  registers : int option;  (** The sixel color registers (XTSMGRAPHICS). *)
   attributes : int list option;  (** The probe's DA1. *)
   explicit : bool option;
   scaled : bool option;
@@ -165,6 +177,8 @@ let make env assumed =
     modes = [];
     keyboard = None;
     version = None;
+    outer_version = None;
+    registers = None;
     attributes = None;
     explicit = None;
     scaled = None;
@@ -180,7 +194,14 @@ let add ev (r : Reply.t) =
   | Mode { dec = true; mode; setting } ->
       { ev with modes = (mode, setting) :: List.remove_assoc mode ev.modes }
   | Keyboard_flags flags -> { ev with keyboard = Some flags }
+  (* Once passthrough is on, the one batch that asks XTVERSION is the outer
+     terminal's. *)
+  | Version text when ev.passthrough -> { ev with outer_version = Some text }
   | Version text -> { ev with version = Some text }
+  | Csi { marker = Some '?'; final = 'S'; intermediates = ""; params }
+    when Ansi.Parser.Params.(value params 0 = Some 1 && value params 1 = Some 0)
+    ->
+      { ev with registers = Ansi.Parser.Params.value params 2 }
   | Graphics { id = Some 31337; _ } -> { ev with graphics = Some true }
   | _ -> ev
 
@@ -310,6 +331,14 @@ let supported : Reply.setting -> bool = function
 
 let modern_names = [ "ghostty"; "kitty"; "wezterm"; "alacritty"; "iterm" ]
 
+(* The terminals known to draw kitty's Unicode placeholders, which no query
+   tells: kitty from 0.28.0, where they came ("versionadded 0.28.0" in its
+   graphics protocol), and Ghostty. WezTerm answers the graphics query and
+   draws a virtual placement as an image at the cursor (measured on
+   20240203). *)
+let placeholders name version =
+  (contains name "kitty" && at_least version (0, 28)) || contains name "ghostty"
+
 (* Identity rows and guesses apply to what was reported, never to what the
    caller assumed: an assumed fact is already the answer for that fact. *)
 
@@ -339,6 +368,12 @@ let derive ev =
   in
   let mux = reported_multiplexer ev in
   let mode m = Option.map supported (List.assoc_opt m ev.modes) in
+  let sixel = first [ Option.map (List.mem 4) ev.attributes ] d.sixel in
+  let kitty_graphics =
+    first
+      [ when_ env.vhs false; ev.graphics; when_ (is "kitty") true ]
+      d.kitty_graphics
+  in
   {
     rgb =
       first
@@ -351,10 +386,7 @@ let derive ev =
     kitty_keyboard =
       (if env.vhs then None
        else match ev.keyboard with Some _ as k -> k | None -> d.kitty_keyboard);
-    kitty_graphics =
-      first
-        [ when_ env.vhs false; ev.graphics; when_ (is "kitty") true ]
-        d.kitty_graphics;
+    kitty_graphics;
     bracketed_paste =
       first
         [
@@ -408,7 +440,34 @@ let derive ev =
         [ when_ (tmux || is "alacritty") true; when_ (Option.is_some mux) true ]
         d.explicit_cursor_positioning;
     scaled_text = first [ ev.scaled ] d.scaled_text;
-    sixel = first [ Option.map (List.mem 4) ev.attributes ] d.sixel;
+    sixel;
+    graphics =
+      first
+        [
+          env.graphics;
+          when_
+            (kitty_graphics
+            && (placeholders name version
+               || tmux
+                  &&
+                  match ev.outer_version with
+                  | Some text ->
+                      let name, version = parse_version text in
+                      placeholders (String.lowercase_ascii name) version
+                  | None -> false))
+            `Kitty;
+          (* A cube of 252 colors needs 252 registers; xterm as a VT340 has
+             16 unless told more (xterm(1), numColorRegisters). Konsole
+             erases the text under a sixel and deletes the whole image when
+             text lands on its top row (Screen.cpp), so the half blocks
+             under a sixel cannot stand in for a lost one there. *)
+          when_
+            (sixel
+            && (match ev.registers with Some n -> n >= 252 | None -> true)
+            && not (is "konsole"))
+            `Sixel;
+        ]
+        d.graphics;
     sync =
       first
         [
@@ -465,6 +524,8 @@ let probe ~graphics =
       Ansi.(to_string (query Terminal_identity));
       Ansi.(to_string (query Csi_u_support));
       (if graphics then graphics_query else "");
+      "\027[16t";
+      "\027[?1;1;0S";
       da1;
     ]
 
@@ -501,8 +562,10 @@ let ask ev = function
   | Widths -> (widths, { cursor_reports = 2; string_replies = 0 })
   | Passthrough -> (wrap da1, { cursor_reports = 0; string_replies = 0 })
   | Outer ->
-      ( wrap graphics_query ^ wrap da1,
-        { cursor_reports = 0; string_replies = 1 } )
+      ( wrap graphics_query
+        ^ wrap Ansi.(to_string (query Terminal_identity))
+        ^ wrap da1,
+        { cursor_reports = 0; string_replies = 2 } )
 
 (* [Widths] writes a space of width 1, then one of scale 2, from the first
    column of the row the cursor is on, and asks where the cursor went: a

@@ -592,6 +592,7 @@ let capabilities case : Matrix.Terminal.capabilities =
     explicit_cursor_positioning = case.reposition;
     scaled_text = false;
     sixel = false;
+    graphics = `Blocks;
     sync = case.sync;
     hyperlinks = true;
     notification = `Osc9;

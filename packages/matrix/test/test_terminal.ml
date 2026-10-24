@@ -992,6 +992,8 @@ let test_probe_payload () =
       "\027[>0q";
       "\027[?u";
       "\027_Gi=31337";
+      "\027[16t";
+      "\027[?1;1;0S";
     ];
   not_contains ~msg:"no cursor report" ~sub:"\027[6n" bytes;
   not_contains ~msg:"nothing written on the screen" ~sub:"\027]66" bytes;
@@ -1068,11 +1070,11 @@ let test_outer_groups () =
   equal ~msg:"outer once it answers" (Testable.option batch) (Some Outer)
     (Caps.next ev Passthrough);
   let bytes, o = Caps.ask ev Outer in
-  equal ~msg:"graphics then DA1, each wrapped" string
-    "\027Ptmux;\027\027_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\027\027\\\027\\\027Ptmux;\027\027[c\027\\"
+  equal ~msg:"graphics, XTVERSION then DA1, each wrapped" string
+    "\027Ptmux;\027\027_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\027\027\\\027\\\027Ptmux;\027\027[>0q\027\\\027Ptmux;\027\027[c\027\\"
     bytes;
-  equal ~msg:"owes the graphics reply" owed
-    { cursor_reports = 0; string_replies = 1 }
+  equal ~msg:"owes the graphics and XTVERSION replies" owed
+    { cursor_reports = 0; string_replies = 2 }
     o;
   is_false ~msg:"the outer DA1 says nothing of sixel"
     (Caps.derive (Caps.answered ev Outer ~attributes:[ 4 ])).sixel;
@@ -1111,6 +1113,59 @@ let test_silence_before_da1 () =
     Caps.add tmux (Reply.Graphics { id = Some 31337; message = "OK" })
   in
   is_true ~msg:"a late answer" (Caps.derive tmux).kitty_graphics
+
+(* The form of pictures: placeholders for kitty and Ghostty that answer the
+   graphics query, sixel with enough registers and not on Konsole, half
+   blocks otherwise, and the user's choice first. *)
+let graphics_form =
+  Testable.make ~equal:( = ) ~pp:(fun ppf g ->
+      Format.pp_print_string ppf
+        (match g with
+        | `Kitty -> "Kitty"
+        | `Sixel -> "Sixel"
+        | `Blocks -> "Blocks"))
+
+let ok = Reply.Graphics { id = Some 31337; message = "OK" }
+
+let registers n =
+  match Ansi.Parser.parse (Printf.sprintf "\027[?1;0;%dS" n) with
+  | [ Ansi.Parser.Csi s ] -> Reply.Csi s
+  | _ -> assert false
+
+let graphics_cases =
+  [
+    ("kitty", [], [ Reply.Version "kitty(0.49.2)"; ok ], [ 62 ], `Kitty);
+    ("kitty before 0.28", [], [ Reply.Version "kitty(0.27.1)"; ok ], [], `Blocks);
+    ("ghostty", [], [ Reply.Version "ghostty 1.2.3"; ok ], [], `Kitty);
+    ("wezterm", [], [ Reply.Version "WezTerm 2024"; ok ], [ 65; 4 ], `Sixel);
+    ("xterm with 16 registers", [], [ registers 16 ], [ 63; 4 ], `Blocks);
+    ("xterm with 256 registers", [], [ registers 256 ], [ 63; 4 ], `Sixel);
+    ("konsole", [], [ Reply.Version "Konsole 24.08" ], [ 62; 1; 4 ], `Blocks);
+    ("nothing", [], [], [ 61 ], `Blocks);
+    ( "the user's choice",
+      [ ("MATRIX_GRAPHICS", "sixel") ],
+      [ Reply.Version "kitty(0.49.2)"; ok ],
+      [],
+      `Sixel );
+  ]
+
+let test_graphics (_, vars, replies, attributes, expected) =
+  let ev = List.fold_left Caps.add (Caps.evidence (env vars)) replies in
+  let ev = Caps.answered ev Probe ~attributes in
+  equal graphics_form expected (Caps.derive ev).graphics
+
+(* Inside tmux, the terminal outside answers through passthrough. *)
+let test_graphics_tmux () =
+  let ev = Caps.evidence (env [ ("TMUX", "s") ]) in
+  let ev = Caps.add ev (Reply.Version "tmux 3.5a") in
+  let ev = Caps.answered ev Probe ~attributes:[ 1; 2 ] in
+  let ev = Caps.answered ev Passthrough ~attributes:[ 62 ] in
+  let ev = List.fold_left Caps.add ev [ ok; Reply.Version "kitty(0.49.2)" ] in
+  let caps = Caps.derive (Caps.answered ev Outer ~attributes:[ 62 ]) in
+  equal ~msg:"placeholders" graphics_form `Kitty caps.graphics;
+  equal ~msg:"tmux is still the multiplexer"
+    (Testable.option (Testable.make ~equal:( = ) ~pp:(fun _ _ -> ())))
+    (Some `Tmux) caps.multiplexer
 
 (* The probe writes a space of width 1 and one of scale 2 at the start of the
    second row; the column the cursor went to says whether the terminal sized
@@ -1194,6 +1249,9 @@ let () =
             test_derivation;
           test "assumed capabilities derive to themselves" test_assume;
           test "derivation is not monotone" test_not_monotone;
+          cases "graphics" graphics_cases
+            ~name:(fun (name, _, _, _, _) -> name)
+            test_graphics;
         ];
       group "batches"
         [
@@ -1204,6 +1262,7 @@ let () =
             ~name:(fun (name, _, _, _) -> name)
             test_next;
           test "passthrough and outer groups" test_outer_groups;
+          test "graphics through tmux" test_graphics_tmux;
           test "silence before DA1" test_silence_before_da1;
           cases "probe cursor reports" probe_cursor_cases
             ~name:(fun (name, _, _) -> name)

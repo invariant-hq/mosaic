@@ -20,6 +20,7 @@ let caps : Matrix.Terminal.capabilities =
     explicit_cursor_positioning = false;
     scaled_text = false;
     sixel = false;
+    graphics = `Blocks;
     sync = false;
     hyperlinks = false;
     notification = `Osc9;
