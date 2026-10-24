@@ -1,0 +1,12 @@
+# thumper baseline v1
+# suite: charts
+
+# machine: exact
+# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# ocaml: 5.5.1 · 64-bit · release
+
+frame/frame-loss-78x20	alloc_words	exact	103313
+frame/frame-scatter-10k-120x40	alloc_words	exact	224952
+frame/frame-spark-30x4	alloc_words	exact	2759
+pointer/pointer-hit-loss-78x20	alloc_words	exact	81939
+pointer/pointer-layout-loss-78x20	alloc_words	exact	39206

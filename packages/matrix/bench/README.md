@@ -8,7 +8,7 @@ dune build --profile release @packages/matrix/bench
 ```
 
 Allocation counts follow the profile (dev compiles with `-opaque`), so the
-alias refuses to measure outside release. The gate runs the seven suites
+alias refuses to measure outside release. The gate runs the eight suites
 sequentially so their samples never compete. Each suite checks against
 `<suite>.thumper` (for example `ansi.thumper` or `grid.thumper`), which holds
 one section per machine, and exposes improvements or a new machine section

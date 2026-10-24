@@ -127,3 +127,20 @@
   (progn
    (run %{exe:bench_vte.exe} --wait-quiet 60)
    (diff? vte.thumper vte.thumper.corrected))))
+
+(executable
+ (name bench_charts)
+ (modules bench_charts)
+ (libraries thumper matrix.charts matrix.grid matrix.ansi))
+
+(rule
+ (alias bench)
+ (enabled_if
+  (= %{profile} release))
+ (deps
+  (env_var THUMPER_MACHINE))
+ (locks /bench)
+ (action
+  (progn
+   (run %{exe:bench_charts.exe} --wait-quiet 60)
+   (diff? charts.thumper charts.thumper.corrected))))
