@@ -564,9 +564,15 @@ type 'context measure_function =
 
 (* View - a view over the tree for layout computation *)
 module View = struct
+  (* The algorithms take the view as first-class modules. They are packed
+     once per layout, in [compute_layout_with_measure], rather than at every
+     node a layout visits. *)
   type 'context t = {
     taffy : 'context tree;
     measure_function : 'context measure_function;
+    cache_tree : (module CACHE_TREE with type t = 'context t);
+    hidden_tree : (module CACHE_LAYOUT_PARTIAL_TREE with type t = 'context t);
+    layout_tree : (module LAYOUT_PARTIAL_TREE with type t = 'context t);
   }
 
   (* Traverse_partial_tree implementation *)
@@ -620,124 +626,34 @@ module View = struct
     let node_data = tree.taffy.nodes.(idx) in
     ignore (Cache.clear node_data.cache)
 
-  let rec compute_child_layout : type ctx.
-      ctx t -> Node_id.t -> Layout_input.t -> Layout_output.t =
-   fun tree node inputs ->
-    (* Check if we should use hidden layout *)
+  let rec compute_child_layout tree node inputs =
     if Layout_input.run_mode inputs = Run_mode.Perform_hidden_layout then
-      let module M = struct
-        type nonrec t = ctx t
+      compute_hidden_layout tree.hidden_tree tree node
+    else compute_cached_layout tree.cache_tree tree node inputs compute_uncached
 
-        let child_ids = child_ids
-        let child_count = child_count
-        let get_child_id = get_child_id
-        let get_core_container_style = get_core_container_style
-        let set_unrounded_layout = set_unrounded_layout
-        let compute_child_layout = compute_child_layout
-        let resolve_calc_value = resolve_calc_value
-        let cache_get = cache_get
-        let cache_store = cache_store
-        let cache_clear = cache_clear
-      end in
-      compute_hidden_layout
-        (module M : CACHE_LAYOUT_PARTIAL_TREE with type t = ctx t)
-        tree node
-    else
-      (* Use cached layout computation *)
-      let module CacheM = struct
-        type nonrec t = ctx t
-
-        let cache_get = cache_get
-        let cache_store = cache_store
-        let cache_clear = cache_clear
-      end in
-      compute_cached_layout
-        (module CacheM : CACHE_TREE with type t = ctx t)
-        tree node inputs
-        (fun tree node _ ->
-          let node_idx = node_index_exn tree.taffy node in
-          let node_data = tree.taffy.nodes.(node_idx) in
-          let display_mode = Style.display node_data.style in
-          let has_children = child_count tree node > 0 in
-
-          match (display_mode, has_children) with
-          | None, _ ->
-              compute_hidden_layout
-                (module struct
-                  type nonrec t = ctx t
-
-                  let child_ids = child_ids
-                  let child_count = child_count
-                  let get_child_id = get_child_id
-                  let get_core_container_style = get_core_container_style
-                  let set_unrounded_layout = set_unrounded_layout
-                  let compute_child_layout = compute_child_layout
-                  let resolve_calc_value = resolve_calc_value
-                  let cache_get = cache_get
-                  let cache_store = cache_store
-                  let cache_clear = cache_clear
-                end : CACHE_LAYOUT_PARTIAL_TREE
-                  with type t = ctx t)
-                tree node
-          | Block, true ->
-              compute_block_layout
-                (module struct
-                  type nonrec t = ctx t
-
-                  let child_ids = child_ids
-                  let child_count = child_count
-                  let get_child_id = get_child_id
-                  let get_core_container_style = get_core_container_style
-                  let set_unrounded_layout = set_unrounded_layout
-                  let compute_child_layout = compute_child_layout
-                  let resolve_calc_value = resolve_calc_value
-                end : LAYOUT_PARTIAL_TREE
-                  with type t = ctx t)
-                tree node inputs
-          | Flex, true ->
-              compute_flexbox_layout
-                (module struct
-                  type nonrec t = ctx t
-
-                  let child_ids = child_ids
-                  let child_count = child_count
-                  let get_child_id = get_child_id
-                  let get_core_container_style = get_core_container_style
-                  let set_unrounded_layout = set_unrounded_layout
-                  let compute_child_layout = compute_child_layout
-                  let resolve_calc_value = resolve_calc_value
-                end : LAYOUT_PARTIAL_TREE
-                  with type t = ctx t)
-                tree node inputs
-          | Grid, true ->
-              compute_grid_layout
-                (module struct
-                  type nonrec t = ctx t
-
-                  let child_ids = child_ids
-                  let child_count = child_count
-                  let get_child_id = get_child_id
-                  let get_core_container_style = get_core_container_style
-                  let set_unrounded_layout = set_unrounded_layout
-                  let compute_child_layout = compute_child_layout
-                  let resolve_calc_value = resolve_calc_value
-                end : LAYOUT_PARTIAL_TREE
-                  with type t = ctx t)
-                ~tree ~node ~inputs
-          | _, false ->
-              (* Leaf node *)
-              let style = node_data.style in
-              let node_context =
-                if node_data.has_context then
-                  tree.taffy.node_context_data.(node_idx)
-                else None
-              in
-              let measure_function known_dimensions available_space =
-                tree.measure_function known_dimensions available_space node
-                  node_context style
-              in
-              compute_leaf_layout ~inputs ~style
-                ~resolve_calc_value:(resolve_calc_value tree) ~measure_function)
+  and compute_uncached tree node inputs =
+    let node_idx = node_index_exn tree.taffy node in
+    let node_data = tree.taffy.nodes.(node_idx) in
+    let display_mode = Style.display node_data.style in
+    let has_children = child_count tree node > 0 in
+    match (display_mode, has_children) with
+    | None, _ -> compute_hidden_layout tree.hidden_tree tree node
+    | Block, true -> compute_block_layout tree.layout_tree tree node inputs
+    | Flex, true -> compute_flexbox_layout tree.layout_tree tree node inputs
+    | Grid, true -> compute_grid_layout tree.layout_tree ~tree ~node ~inputs
+    | _, false ->
+        (* Leaf node *)
+        let style = node_data.style in
+        let node_context =
+          if node_data.has_context then tree.taffy.node_context_data.(node_idx)
+          else None
+        in
+        let measure_function known_dimensions available_space =
+          tree.measure_function known_dimensions available_space node
+            node_context style
+        in
+        compute_leaf_layout ~inputs ~style
+          ~resolve_calc_value:(resolve_calc_value tree) ~measure_function
 
   (* RoundTree implementation *)
   let get_unrounded_layout tree node =
@@ -760,7 +676,47 @@ end
 (* Main layout computation *)
 let compute_layout_with_measure (type ctx) (tree : ctx tree) node_id
     available_space measure_function =
-  let view = { View.taffy = tree; measure_function } in
+  let view =
+    {
+      View.taffy = tree;
+      measure_function;
+      cache_tree =
+        (module struct
+          type t = ctx View.t
+
+          let cache_get = View.cache_get
+          let cache_store = View.cache_store
+          let cache_clear = View.cache_clear
+        end);
+      hidden_tree =
+        (module struct
+          type t = ctx View.t
+
+          let child_ids = View.child_ids
+          let child_count = View.child_count
+          let get_child_id = View.get_child_id
+          let get_core_container_style = View.get_core_container_style
+          let set_unrounded_layout = View.set_unrounded_layout
+          let compute_child_layout = View.compute_child_layout
+          let resolve_calc_value = View.resolve_calc_value
+          let cache_get = View.cache_get
+          let cache_store = View.cache_store
+          let cache_clear = View.cache_clear
+        end);
+      layout_tree =
+        (module struct
+          type t = ctx View.t
+
+          let child_ids = View.child_ids
+          let child_count = View.child_count
+          let get_child_id = View.get_child_id
+          let get_core_container_style = View.get_core_container_style
+          let set_unrounded_layout = View.set_unrounded_layout
+          let compute_child_layout = View.compute_child_layout
+          let resolve_calc_value = View.resolve_calc_value
+        end);
+    }
+  in
 
   compute_root_layout
     (module struct

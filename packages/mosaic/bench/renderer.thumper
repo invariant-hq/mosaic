@@ -5,8 +5,8 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-editor/typing-wrapped-150-lines	alloc_words	exact	53793
+editor/typing-wrapped-150-lines	alloc_words	exact	53761
 idle/frame-full-200x50	alloc_words	exact	10935
-primary/typing-inline-transcript-1000	alloc_words	exact	10614
+primary/typing-inline-transcript-1000	alloc_words	exact	10572
 viewport/frame-scroll-one-row-and-back	alloc_words	exact	14677
 viewport/frame-scrolled-transcript-1000	alloc_words	exact	7116
