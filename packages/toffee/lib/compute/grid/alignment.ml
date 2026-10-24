@@ -186,15 +186,13 @@ let align_and_position_item (type t)
   in
   let padding =
     Style.padding style
-    |> Rect.map (fun p ->
-        Length_percentage.resolve_or_zero p (Some grid_area_size.width)
-          (Tree.resolve_calc_value tree))
+    |> Length_percentage.resolve_rect_or_zero (Some grid_area_size.width)
+         (Tree.resolve_calc_value tree)
   in
   let border =
     Style.border style
-    |> Rect.map (fun p ->
-        Length_percentage.resolve_or_zero p (Some grid_area_size.width)
-          (Tree.resolve_calc_value tree))
+    |> Length_percentage.resolve_rect_or_zero (Some grid_area_size.width)
+         (Tree.resolve_calc_value tree)
   in
   let padding_border_size = Rect.sum_axes (Rect.add padding border) in
 

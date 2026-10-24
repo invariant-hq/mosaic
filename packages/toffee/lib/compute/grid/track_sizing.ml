@@ -244,15 +244,11 @@ module Intrinsic_size_measurer = struct
     | None ->
         (* Resolve padding and border *)
         let padding =
-          Rect.map
-            (fun lp ->
-              Length_percentage.resolve_or_zero lp inner_node_size.width calc)
+          Length_percentage.resolve_rect_or_zero inner_node_size.width calc
             item.padding
         in
         let border =
-          Rect.map
-            (fun lp ->
-              Length_percentage.resolve_or_zero lp inner_node_size.width calc)
+          Length_percentage.resolve_rect_or_zero inner_node_size.width calc
             item.border
         in
         let padding_border_size = Rect.sum_axes (Rect.add padding border) in

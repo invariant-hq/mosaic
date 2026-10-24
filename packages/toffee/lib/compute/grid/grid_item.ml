@@ -227,14 +227,10 @@ let known_dimensions (type tree)
 
   (* Resolve padding and border *)
   let padding =
-    Rect.map
-      (fun lp -> Length_percentage.resolve_or_zero lp grid_area_size.width calc)
-      t.padding
+    Length_percentage.resolve_rect_or_zero grid_area_size.width calc t.padding
   in
   let border =
-    Rect.map
-      (fun lp -> Length_percentage.resolve_or_zero lp grid_area_size.width calc)
-      t.border
+    Length_percentage.resolve_rect_or_zero grid_area_size.width calc t.border
   in
   let padding_border_size = Rect.sum_axes (Rect.add padding border) in
 

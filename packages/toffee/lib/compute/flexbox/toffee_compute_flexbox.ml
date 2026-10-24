@@ -170,13 +170,11 @@ let compute_constants (type t)
   let calc = Tree.resolve_calc_value tree in
   let padding =
     Style.padding style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
   let border =
     Style.border style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
 
   let padding_border_sum = Rect.sum_axes (Rect.add padding border) in
@@ -311,15 +309,13 @@ let generate_anonymous_flex_items (type t)
       let aspect_ratio = Style.aspect_ratio child_style in
       let padding =
         Style.padding child_style
-        |> Rect.map (fun lp ->
-            Length_percentage.resolve_or_zero lp constants.node_inner_size.width
-              calc)
+        |> Length_percentage.resolve_rect_or_zero
+             constants.node_inner_size.width calc
       in
       let border =
         Style.border child_style
-        |> Rect.map (fun lp ->
-            Length_percentage.resolve_or_zero lp constants.node_inner_size.width
-              calc)
+        |> Length_percentage.resolve_rect_or_zero
+             constants.node_inner_size.width calc
       in
       let pb_sum = Rect.sum_axes (Rect.add padding border) in
       let box_sizing_adjustment =
@@ -380,9 +376,8 @@ let generate_anonymous_flex_items (type t)
 
       let margin =
         Style.margin child_style
-        |> Rect.map (fun lpa ->
-            Length_percentage_auto.resolve_or_zero lpa
-              constants.node_inner_size.width calc)
+        |> Length_percentage_auto.resolve_rect_or_zero
+             constants.node_inner_size.width calc
       in
 
       let margin_is_auto =
@@ -2032,15 +2027,13 @@ let determine_used_cross_size (type t)
 
               let padding =
                 Style.padding child_style
-                |> Rect.map (fun lp ->
-                    Length_percentage.resolve_or_zero lp
-                      constants.node_inner_size.width calc)
+                |> Length_percentage.resolve_rect_or_zero
+                     constants.node_inner_size.width calc
               in
               let border =
                 Style.border child_style
-                |> Rect.map (fun lp ->
-                    Length_percentage.resolve_or_zero lp
-                      constants.node_inner_size.width calc)
+                |> Length_percentage.resolve_rect_or_zero
+                     constants.node_inner_size.width calc
               in
               let pb_sum = Rect.sum_axes (Rect.add padding border) in
               let box_sizing_adjustment =
@@ -2687,17 +2680,15 @@ let perform_absolute_layout_on_absolute_children (type t)
       (* Resolve padding *)
       let padding =
         Style.padding child_style
-        |> Rect.map (fun p ->
-            Length_percentage.resolve_or_zero p (Some inset_relative_size.width)
-              calc)
+        |> Length_percentage.resolve_rect_or_zero
+             (Some inset_relative_size.width) calc
       in
 
       (* Resolve border *)
       let border =
         Style.border child_style
-        |> Rect.map (fun b ->
-            Length_percentage.resolve_or_zero b (Some inset_relative_size.width)
-              calc)
+        |> Length_percentage.resolve_rect_or_zero
+             (Some inset_relative_size.width) calc
       in
 
       let padding_border_sum = Rect.add padding border |> Rect.sum_axes in
@@ -3485,13 +3476,11 @@ let compute_flexbox_layout (type t)
   let aspect_ratio = Style.aspect_ratio style in
   let padding =
     Style.padding style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
   let border =
     Style.border style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
   let padding_border_sum = Rect.sum_axes (Rect.add padding border) in
   let box_sizing_adjustment =

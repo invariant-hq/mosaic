@@ -108,3 +108,15 @@ let resolve_or_zero t context calc_resolver =
     failwith
       "Length_percentage.resolve_or_zero: unsupported tag (expected \
        length/percent/calc)"
+
+(* Every padding, border and margin of every node a layout visits is
+   resolved, and nearly all are zero: those resolve to the one zero rect. *)
+let resolve_rect_or_zero context calc_resolver (rect : t Toffee_geometry.Rect.t)
+    =
+  let zero = Compact_length.is_zero in
+  if zero rect.left && zero rect.right && zero rect.top && zero rect.bottom then
+    Toffee_geometry.Rect.zero
+  else
+    Toffee_geometry.Rect.map
+      (fun t -> resolve_or_zero t context calc_resolver)
+      rect

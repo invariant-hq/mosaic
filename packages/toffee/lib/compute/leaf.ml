@@ -25,21 +25,18 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
 
   let margin =
     Style.margin style
-    |> Rect.map (fun lpa ->
-        Style.Length_percentage_auto.resolve_or_zero lpa parent_inline_size
-          resolve_calc_value)
+    |> Style.Length_percentage_auto.resolve_rect_or_zero parent_inline_size
+         resolve_calc_value
   in
   let padding =
     Style.padding style
-    |> Rect.map (fun lp ->
-        Style.Length_percentage.resolve_or_zero lp parent_inline_size
-          resolve_calc_value)
+    |> Style.Length_percentage.resolve_rect_or_zero parent_inline_size
+         resolve_calc_value
   in
   let border =
     Style.border style
-    |> Rect.map (fun lp ->
-        Style.Length_percentage.resolve_or_zero lp parent_inline_size
-          resolve_calc_value)
+    |> Style.Length_percentage.resolve_rect_or_zero parent_inline_size
+         resolve_calc_value
   in
   let padding_border = Rect.add padding border in
   let pb_sum = Rect.sum_axes padding_border in

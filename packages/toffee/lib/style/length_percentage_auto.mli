@@ -174,3 +174,14 @@ val compare : t -> t -> int
 
 val pp : Format.formatter -> t -> unit
 (** [pp fmt t] prints [t] to the formatter [fmt]. *)
+
+(**/**)
+
+val resolve_rect_or_zero :
+  float option ->
+  (int -> float -> float) ->
+  t Toffee_geometry.Rect.t ->
+  float Toffee_geometry.Rect.t
+(** [resolve_rect_or_zero context calc_resolver rect] is [rect] with
+    {!resolve_or_zero} applied to each side. A rect of zero lengths resolves to
+    {!Toffee_geometry.Rect.zero} without allocating. *)

@@ -67,13 +67,11 @@ let generate_item_list (type t)
       let aspect_ratio = Style.aspect_ratio child_style in
       let padding =
         Style.padding child_style
-        |> Rect.map (fun lp ->
-            Length_percentage.resolve_or_zero lp node_inner_size.width calc)
+        |> Length_percentage.resolve_rect_or_zero node_inner_size.width calc
       in
       let border =
         Style.border child_style
-        |> Rect.map (fun lp ->
-            Length_percentage.resolve_or_zero lp node_inner_size.width calc)
+        |> Length_percentage.resolve_rect_or_zero node_inner_size.width calc
       in
       let pb_sum = Rect.sum_axes (Rect.add padding border) in
       let box_sizing_adjustment =
@@ -546,13 +544,11 @@ let perform_absolute_layout_on_absolute_children (type t)
           in
           let padding =
             Style.padding child_style
-            |> Rect.map (fun p ->
-                Length_percentage.resolve_or_zero p (Some area_width) calc)
+            |> Length_percentage.resolve_rect_or_zero (Some area_width) calc
           in
           let border =
             Style.border child_style
-            |> Rect.map (fun b ->
-                Length_percentage.resolve_or_zero b (Some area_width) calc)
+            |> Length_percentage.resolve_rect_or_zero (Some area_width) calc
           in
           let padding_border_sum = Rect.sum_axes (Rect.add padding border) in
           let box_sizing_adjustment =
@@ -934,13 +930,11 @@ let compute_inner (type t)
   let calc = Tree.resolve_calc_value tree in
   let padding =
     raw_padding
-    |> Rect.map (fun lp ->
-        Style.Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Style.Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
   let border =
     raw_border
-    |> Rect.map (fun lp ->
-        Style.Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Style.Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
 
   (* Scrollbar gutters are reserved when the `overflow` property is set to
@@ -1073,15 +1067,13 @@ let compute_inner (type t)
       (* 3. Perform final item layout and return content height *)
       let resolved_padding =
         raw_padding
-        |> Rect.map (fun lp ->
-            Style.Length_percentage.resolve_or_zero lp
-              (Some container_outer_width) calc)
+        |> Style.Length_percentage.resolve_rect_or_zero
+             (Some container_outer_width) calc
       in
       let resolved_border =
         raw_border
-        |> Rect.map (fun lp ->
-            Style.Length_percentage.resolve_or_zero lp
-              (Some container_outer_width) calc)
+        |> Style.Length_percentage.resolve_rect_or_zero
+             (Some container_outer_width) calc
       in
       let resolved_content_box_inset =
         Rect.add (Rect.add resolved_padding resolved_border) scrollbar_gutter
@@ -1215,13 +1207,11 @@ let compute_block_layout (type t)
   let aspect_ratio = Style.aspect_ratio style in
   let padding =
     Style.padding style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
   let border =
     Style.border style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
   let padding_border_size = Rect.sum_axes (Rect.add padding border) in
   let box_sizing_adjustment =

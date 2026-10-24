@@ -5,20 +5,20 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-loop/burst-1000-keys	alloc_words	exact	3167863
+loop/burst-1000-keys	alloc_words	exact	2909863
 loop/idle-turns-10000	alloc_words	exact	11
 loop/posts-1000	alloc_words	exact	138030
-primary-transcript-5000/type-and-erase	alloc_words	exact	50191
+primary-transcript-5000/type-and-erase	alloc_words	exact	49135
 primary-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	104844
 select-10000/down-up	alloc_words	exact	86598
 select-100000/down-up	alloc_words	exact	806598
-startup/transcript-5000-first-frame	alloc_words	exact	189013188
+startup/transcript-5000-first-frame	alloc_words	exact	169110920
 table-100000/down-up	alloc_words	exact	3808074
-transcript-20000/resize-roundtrip-249x69	alloc_words	exact	981753177
-transcript-20000/type-and-erase	alloc_words	exact	69769
+transcript-20000/resize-roundtrip-249x69	alloc_words	exact	873349230
+transcript-20000/type-and-erase	alloc_words	exact	68873
 transcript-20000/wheel-roundtrip-2x8	alloc_words	exact	156411
-transcript-5000/resize-roundtrip-249x69	alloc_words	exact	245523177
-transcript-5000/type-and-erase	alloc_words	exact	69769
+transcript-5000/resize-roundtrip-249x69	alloc_words	exact	218419230
+transcript-5000/type-and-erase	alloc_words	exact	68873
 transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	156411
 
 # machine: fudge

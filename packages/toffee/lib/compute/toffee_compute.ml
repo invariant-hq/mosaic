@@ -25,18 +25,15 @@ let compute_root_layout (type t)
      let calc = Tree.resolve_calc_value tree in
      let margin =
        Style.margin style
-       |> Rect.map (fun lpa ->
-           Length_percentage_auto.resolve_or_zero lpa parent_size.width calc)
+       |> Length_percentage_auto.resolve_rect_or_zero parent_size.width calc
      in
      let padding =
        Style.padding style
-       |> Rect.map (fun lp ->
-           Length_percentage.resolve_or_zero lp parent_size.width calc)
+       |> Length_percentage.resolve_rect_or_zero parent_size.width calc
      in
      let border =
        Style.border style
-       |> Rect.map (fun lp ->
-           Length_percentage.resolve_or_zero lp parent_size.width calc)
+       |> Length_percentage.resolve_rect_or_zero parent_size.width calc
      in
      let padding_border_size = Rect.sum_axes (Rect.add padding border) in
      let box_sizing_adjustment =
@@ -125,24 +122,21 @@ let compute_root_layout (type t)
   let calc = Tree.resolve_calc_value tree in
   let padding =
     Style.padding style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp
-          (Available_space.to_option available_space.width)
-          calc)
+    |> Length_percentage.resolve_rect_or_zero
+         (Available_space.to_option available_space.width)
+         calc
   in
   let border =
     Style.border style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp
-          (Available_space.to_option available_space.width)
-          calc)
+    |> Length_percentage.resolve_rect_or_zero
+         (Available_space.to_option available_space.width)
+         calc
   in
   let margin =
     Style.margin style
-    |> Rect.map (fun lpa ->
-        Length_percentage_auto.resolve_or_zero lpa
-          (Available_space.to_option available_space.width)
-          calc)
+    |> Length_percentage_auto.resolve_rect_or_zero
+         (Available_space.to_option available_space.width)
+         calc
   in
   let scrollbar_size =
     Size.

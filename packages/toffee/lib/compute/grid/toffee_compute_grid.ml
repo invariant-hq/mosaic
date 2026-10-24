@@ -32,13 +32,11 @@ let compute_grid_layout (type t)
   let calc = Tree.resolve_calc_value tree in
   let padding =
     Style.padding style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
   let border =
     Style.border style
-    |> Rect.map (fun lp ->
-        Length_percentage.resolve_or_zero lp parent_size.width calc)
+    |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
   let padding_border = Rect.add padding border in
   let padding_border_size = Rect.sum_axes padding_border in
