@@ -166,14 +166,31 @@ module Mouse = struct
     modifiers : modifier;
     target : int option;
     ctl : Dispatch_control.t;
+    node_x : int;
+    node_y : int;
+    node_w : int;
+    node_h : int;
   }
 
   let make ~x ~y ~modifiers ?target kind =
-    { kind; x; y; modifiers; target; ctl = Dispatch_control.create () }
+    {
+      kind;
+      x;
+      y;
+      modifiers;
+      target;
+      ctl = Dispatch_control.create ();
+      node_x = 0;
+      node_y = 0;
+      node_w = 0;
+      node_h = 0;
+    }
 
   let kind t = t.kind
   let x t = t.x
   let y t = t.y
+  let local t = (t.x - t.node_x, t.y - t.node_y)
+  let size t = (t.node_w, t.node_h)
   let modifiers t = t.modifiers
   let target t = t.target
   let stop_propagation t = Dispatch_control.stop_propagation t.ctl
@@ -187,6 +204,11 @@ module Mouse = struct
     && Option.equal Int.equal a.target b.target
 
   let pp ppf t = Format.fprintf ppf "%a(%d, %d)" pp_kind t.kind t.x t.y
+
+  module Private = struct
+    let at_node t ~x ~y ~width ~height =
+      { t with node_x = x; node_y = y; node_w = width; node_h = height }
+  end
 end
 
 (* {1 Type aliases} *)

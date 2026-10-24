@@ -1311,6 +1311,42 @@ let click_on_selectable_node () =
 
 (* ── Mouse ── *)
 
+(* Each handler on a path reads the event in its own node's cells, so a
+   canvas compares the pointer with what it drew at its own origin. *)
+let mouse_events_carry_node_cells () =
+  let t = make_renderer () in
+  let parent = make_child ~parent:(Renderer.root t) ~x:5 ~y:3 ~w:20 ~h:10 () in
+  let child = make_child ~parent ~x:2 ~y:1 ~w:6 ~h:4 () in
+  let seen = ref [] in
+  let record name ev =
+    seen := (name, Event.Mouse.local ev, Event.Mouse.size ev) :: !seen
+  in
+  Renderable.on_mouse child (fun ev ->
+      match Event.Mouse.kind ev with
+      | Event.Mouse.Down _ -> record "child" ev
+      | _ -> ());
+  Renderable.on_mouse parent (fun ev ->
+      match Event.Mouse.kind ev with
+      | Event.Mouse.Down _ ->
+          record "parent" ev;
+          equal ~msg:"screen x" int 8 (Event.Mouse.x ev);
+          equal ~msg:"screen y" int 6 (Event.Mouse.y ev)
+      | _ -> ());
+  Renderable.Private.set_click_handler child
+    (Some (fun ev -> record "click" ev));
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:8 ~y:6 ());
+  dispatch_mouse t (mouse_release ~x:8 ~y:6 ());
+  let cell = pair int int in
+  equal ~msg:"node cells"
+    (list (triple string cell cell))
+    [
+      ("child", (1, 2), (6, 4));
+      ("parent", (3, 3), (20, 10));
+      ("click", (1, 2), (6, 4));
+    ]
+    (List.rev !seen)
+
 let click_dispatches_to_positioned_child () =
   let t = make_renderer () in
   let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
@@ -2363,6 +2399,7 @@ let () =
         ];
       group "Mouse"
         [
+          test "mouse events carry node cells" mouse_events_carry_node_cells;
           test "click dispatches to positioned child"
             click_dispatches_to_positioned_child;
           test "click on empty area does not crash"

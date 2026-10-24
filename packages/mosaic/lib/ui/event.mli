@@ -105,7 +105,9 @@ module Mouse : sig
 
       Carries cursor coordinates, modifier keys, propagation control, and
       hit-testing metadata. Variant-specific data (button, source, scroll
-      direction) is accessed by pattern-matching on {!kind}.
+      direction) is accessed by pattern-matching on {!kind}. The cursor is given
+      on the screen ({!x}, {!y}) and in the cells of the node whose handler sees
+      the event ({!local}, {!size}).
 
       Only {!stop_propagation} and {!prevent_default} mutate the event; all
       other fields are immutable after construction. *)
@@ -220,6 +222,19 @@ module Mouse : sig
   val y : t -> int
   (** [y t] is [t]'s vertical cursor position (0-based row). *)
 
+  val local : t -> int * int
+  (** [local t] is the cell under the cursor counted from the top-left cell of
+      the node whose handler sees [t]. It is [(0, 0)] on that node's own
+      top-left cell, so a canvas reads it in the coordinates of its grid. Each
+      node on the event's path sees its own value. Before any node sees [t], as
+      for an event made by {!make}, it is [(x t, y t)]. *)
+
+  val size : t -> int * int
+  (** [size t] is the width and height in cells of the node whose handler sees
+      [t], and [(0, 0)] before any node sees it. A handler lays out what its
+      node draws at this size to find what lies under {!local}, so the program
+      keeps no size of its own. *)
+
   val modifiers : t -> modifier
   (** [modifiers t] is [t]'s modifier key state at the time of the event. *)
 
@@ -245,10 +260,19 @@ module Mouse : sig
 
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] have the same kind, coordinates,
-      modifiers, and target. The flags are ignored. *)
+      modifiers, and target. The flags, {!local} and {!size} are ignored. *)
 
   val pp : Format.formatter -> t -> unit
   (** [pp] formats a mouse event for debugging. *)
+
+  (**/**)
+
+  module Private : sig
+    val at_node : t -> x:int -> y:int -> width:int -> height:int -> t
+    (* [at_node t ~x ~y ~width ~height] is [t] as the node whose top-left cell
+       is [(x, y)] and whose size is [width] by [height] sees it. It shares
+       [t]'s flags. *)
+  end
 end
 
 (** {1:aliases Type aliases} *)

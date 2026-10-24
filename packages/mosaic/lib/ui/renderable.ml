@@ -881,7 +881,17 @@ let run_handlers t handlers event =
   in
   run handlers
 
-let emit_mouse t event = run_handlers t t.mouse_handlers event
+(* A handler reads the event in its node's cells (Event.Mouse.local). *)
+let at_node t event =
+  Event.Mouse.Private.at_node event ~x:(x t) ~y:(y t) ~width:(width t)
+    ~height:(height t)
+
+(* Only a node with handlers pays for its copy of the event. *)
+let emit_mouse t event =
+  match t.mouse_handlers with
+  | [] -> ()
+  | handlers -> run_handlers t handlers (at_node t event)
+
 let emit_key t event = run_handlers t t.key_handlers event
 let emit_paste t event = run_handlers t t.paste_handlers event
 let run_key_behavior t event = Option.iter (fun f -> f event) t.key_behavior
@@ -1266,7 +1276,7 @@ module Private = struct
   let set_click_handler t handler = t.click_handler <- handler
 
   let emit_click t event =
-    Option.iter (fun handler -> handler event) t.click_handler
+    Option.iter (fun handler -> handler (at_node t event)) t.click_handler
 
   let emit_mouse = emit_mouse
   let emit_key = emit_key
