@@ -2,4 +2,4 @@
  (name matrix_charts)
  (public_name matrix.charts)
  (libraries matrix.ansi matrix.grid matrix.text)
- (private_modules render))
+ (private_modules ticks ink))

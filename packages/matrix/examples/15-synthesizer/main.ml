@@ -288,14 +288,13 @@ let draw_waveform_chart grid ~x ~y ~width ~height state =
         let t = float_of_int idx /. float_of_int sample_rate *. 1000.0 in
         (t, state.samples.(idx)))
   in
-  let chart =
-    Charts.empty ()
-    |> Charts.with_axes ~x:Charts.Axis.hidden ~y:Charts.Axis.hidden
-    |> Charts.line ~resolution:`Braille2x4
-         ~style:(Ansi.Style.make ~fg:Ansi.Color.bright_cyan ())
-         ~x:fst ~y:snd data
+  let wave =
+    Charts.(line ~color:(const Ansi.Color.bright_cyan) ~x:fst ~y:snd data)
   in
-  ignore (Charts.draw chart grid ~x ~y ~width ~height)
+  let bare =
+    Charts.(layer [ wave; axis ~show:false "x"; axis ~show:false "y" ])
+  in
+  Charts.draw (Charts.layout ~width ~height bare) grid ~x ~y
 
 let draw_sparkline grid ~x ~y ~width ~height state =
   (* Show amplitude envelope using sparkline bars *)
@@ -315,9 +314,8 @@ let draw_sparkline grid ~x ~y ~width ~height state =
         done;
         !max_amp)
   in
-  let sp = Charts.Sparkline.create ~capacity:width () in
-  Array.iter (Charts.Sparkline.push sp) amplitudes;
-  Charts.Sparkline.draw sp ~kind:`Bars ~x ~y grid ~width ~height
+  let sp = Charts.spark (List.rev (Array.to_list amplitudes)) in
+  Charts.draw (Charts.layout ~width ~height sp) grid ~x ~y
 
 let draw_spectrum grid ~x ~y ~width ~height state =
   (* Draw harmonic spectrum as vertical bars *)

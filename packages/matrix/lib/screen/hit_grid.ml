@@ -1,9 +1,9 @@
 module Grid = Matrix_grid
 
-(* Rectangles are Matrix_grid.region. Matrix_charts.Layout.rect and
-   Mosaic_ui.Selection.bounds are structurally identical {x; y; width; height}
-   records in cell coordinates; unifying them should move them to
-   Matrix_grid.region rather than introduce another copy. *)
+(* Rectangles are Matrix_grid.region. Mosaic_ui.Selection.bounds is a
+   structurally identical {x; y; width; height} record in cell coordinates;
+   unifying them should move it to Matrix_grid.region rather than introduce
+   another copy. *)
 
 type id = int
 type ints = (int, Bigarray.int_elt, Bigarray.c_layout) Bigarray.Array1.t

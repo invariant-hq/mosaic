@@ -12,7 +12,9 @@ let () =
   ignore (Vte.feed_string (Vte.create ~rows:1 ~cols:8 ()) "pure" : _ list);
   ignore (Matrix_input.Decoder.create () : Matrix_input.Decoder.t);
   ignore (Matrix_text.grapheme_count "pure" : int);
-  ignore (Matrix_charts.empty () : Matrix_charts.t);
+  ignore
+    (Matrix_charts.layout ~width:8 ~height:1 (Matrix_charts.spark [ 1. ])
+      : Matrix_charts.Layout.t);
   ignore (Ansi.strip "pure" : string);
   let terminal =
     Matrix_terminal.make ~output:ignore ~tty:false
