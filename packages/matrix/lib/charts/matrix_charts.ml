@@ -2191,29 +2191,32 @@ let right = [| ""; "▕"; "🮇"; "🮈"; "▐"; "🮉"; "🮊"; "🮋"; "█" |
    glyph of the segment below shows in it. *)
 let bar c ~horizontal ~eighths ~c0 ~c1 ~e0 ~e1 ~first ~fg ~attrs ~owner =
   let len = if horizontal then c.pw else c.ph in
-  let e0, e1 =
-    if eighths then (e0, e1) else (8 * ((e0 + 4) / 8), 8 * ((e1 + 4) / 8))
-  in
+  let round e = if eighths then e else 8 * ((e + 4) / 8) in
+  let e0 = round e0 and e1 = round e1 in
   let lo = max 0 (min e0 e1) and hi = min (8 * len) (max e0 e1) in
   let positive = e1 >= e0 in
-  let at k across f =
-    (* cell [k] along the axis, [across] across it *)
-    if horizontal then f k across else f across (len - 1 - k)
-  in
-  let fill k a = at k a (fun x y -> Ink.fill c.ink ~x ~y ~bg:fg ~owner) in
-  let glyph k a s =
-    at k a (fun x y -> Ink.glyph c.ink ~x ~y s ~fg ~attrs ~owner)
-  in
   let shades = c.lay.theme.glyphs.shades in
   let full = shades.(Array.length shades - 1) in
-  (* The cell of a diverging bar's zero holds the other side's glyph. *)
-  let free k a =
-    at k a (fun x y ->
-        let o = Ink.glyph_owner c.ink ~x ~y in
-        o < 0 || Ink.owner_mark o <> Ink.owner_mark owner)
-  in
   let grow = if horizontal then left else lower in
   let shrink = if horizontal then right else upper in
+  (* Cell [k] along the axis and [a] across it, written without closures:
+     sparks draw a bar per column each frame. *)
+  let fill k a =
+    if horizontal then Ink.fill c.ink ~x:k ~y:a ~bg:fg ~owner
+    else Ink.fill c.ink ~x:a ~y:(len - 1 - k) ~bg:fg ~owner
+  in
+  let glyph k a s =
+    if horizontal then Ink.glyph c.ink ~x:k ~y:a s ~fg ~attrs ~owner
+    else Ink.glyph c.ink ~x:a ~y:(len - 1 - k) s ~fg ~attrs ~owner
+  in
+  (* The cell of a diverging bar's zero holds the other side's glyph. *)
+  let free k a =
+    let o =
+      if horizontal then Ink.glyph_owner c.ink ~x:k ~y:a
+      else Ink.glyph_owner c.ink ~x:a ~y:(len - 1 - k)
+    in
+    o < 0 || Ink.owner_mark o <> Ink.owner_mark owner
+  in
   if hi > lo then
     for k = lo / 8 to (hi - 1) / 8 do
       let a = max lo (8 * k) and b = min hi ((8 * k) + 8) in
@@ -2872,240 +2875,248 @@ let axis_style (l : layout) a = Option.value a.a_style ~default:l.theme.axis
    axis line or the frame is left out, so that the line is not drawn
    twice. *)
 let draw_grid (l : layout) grid ~ox ~oy =
-  let th = l.theme and p = l.plot in
-  let w = p.width and h = p.height in
-  (* per cell: 1 a horizontal line, 2 a vertical one, 4 a major one *)
-  let cells = Array.make (w * h) 0 in
-  let line_on side =
-    (l.r.fig_frame && l.lines)
-    || List.exists (fun pa -> pa.side = side && pa.a.a_show) l.placed
-  in
-  let mark major horiz o =
-    let skip =
-      if horiz then (o = h - 1 && line_on `Bottom) || (o = 0 && line_on `Top)
-      else (o = 0 && line_on `Left) || (o = w - 1 && line_on `Right)
+  if List.exists (fun pa -> pa.a.a_grid <> `None) l.placed then (
+    let th = l.theme and p = l.plot in
+    let w = p.width and h = p.height in
+    (* per cell: 1 a horizontal line, 2 a vertical one, 4 a major one *)
+    let cells = Array.make (w * h) 0 in
+    let line_on side =
+      (l.r.fig_frame && l.lines)
+      || List.exists (fun pa -> pa.side = side && pa.a.a_show) l.placed
     in
-    if not skip then
-      let bit = (if horiz then 1 else 2) lor if major then 4 else 0 in
-      if horiz then
-        for x = 0 to w - 1 do
-          cells.((o * w) + x) <- cells.((o * w) + x) lor bit
-        done
-      else
-        for y = 0 to h - 1 do
-          cells.((y * w) + o) <- cells.((y * w) + o) lor bit
-        done
-  in
-  List.iter
-    (fun pa ->
-      let vertical = pa.side = `Bottom || pa.side = `Top in
-      let len = if vertical then w else h in
-      (* [o] counts from the axis's start: the left for x, the bottom for y *)
-      let at major o =
-        if o >= 0 && o < len then
-          mark major (not vertical) (if vertical then o else len - 1 - o)
+    let mark major horiz o =
+      let skip =
+        if horiz then (o = h - 1 && line_on `Bottom) || (o = 0 && line_on `Top)
+        else (o = 0 && line_on `Left) || (o = w - 1 && line_on `Right)
       in
-      match pa.a.a_grid with
-      | `None -> ()
-      | `Every n ->
-          let k = ref 0 in
-          while !k * n < len do
-            mark true (not vertical) (!k * n);
-            incr k
+      if not skip then
+        let bit = (if horiz then 1 else 2) lor if major then 4 else 0 in
+        if horiz then
+          for x = 0 to w - 1 do
+            cells.((o * w) + x) <- cells.((o * w) + x) lor bit
           done
-      | (`Ticks | `Minor _) as g -> (
-          match pa.s.kind with
-          | Band ->
-              let n = Array.length pa.s.cats in
-              let e = band_extent pa.s len in
-              for i = 1 to n - 1 do
-                at true (i * e / n)
-              done
-          | _ ->
-              (match (g, pa.ticks.major) with
-              | `Minor k, a :: b :: _ ->
-                  let a = tf pa.s a.value and b = tf pa.s b.value in
-                  let lo, hi = span pa.s in
-                  let lo, hi = (Float.min lo hi, Float.max lo hi) in
-                  let step = (b -. a) /. Float.of_int k in
-                  let v =
-                    ref (a -. (Float.floor ((a -. lo) /. step) *. step))
-                  in
-                  while !v <= hi +. (Float.abs step *. 1e-9) do
-                    let q = norm pa.s (untf pa.s !v) in
-                    if inside q then at false (bin len q);
-                    v := !v +. step
-                  done
-              | _ -> ());
-              List.iter
-                (fun (t : Ticks.tick) -> at true (bin len (norm pa.s t.value)))
-                pa.ticks.major))
-    l.placed;
-  let b = th.glyphs.box in
-  let hs, vs =
-    match th.grid_dash with
-    | `Solid -> (utf8 b.horizontal, utf8 b.vertical)
-    | `Dashed -> th.glyphs.dashed
-    | `Dotted -> th.glyphs.dotted
-  in
-  let cross = utf8 b.cross in
-  Array.iteri
-    (fun i c ->
-      if c <> 0 then
-        let style = if c land 4 <> 0 then th.grid else th.minor_grid in
-        let g = match c land 3 with 3 -> cross | 1 -> hs | _ -> vs in
-        Grid.draw_text grid ~style
-          ~x:(ox + p.x + (i mod w))
-          ~y:(oy + p.y + (i / w))
-          ~text:g)
-    cells
+        else
+          for y = 0 to h - 1 do
+            cells.((y * w) + o) <- cells.((y * w) + o) lor bit
+          done
+    in
+    List.iter
+      (fun pa ->
+        let vertical = pa.side = `Bottom || pa.side = `Top in
+        let len = if vertical then w else h in
+        (* [o] counts from the axis's start: the left for x, the bottom for y *)
+        let at major o =
+          if o >= 0 && o < len then
+            mark major (not vertical) (if vertical then o else len - 1 - o)
+        in
+        match pa.a.a_grid with
+        | `None -> ()
+        | `Every n ->
+            let k = ref 0 in
+            while !k * n < len do
+              mark true (not vertical) (!k * n);
+              incr k
+            done
+        | (`Ticks | `Minor _) as g -> (
+            match pa.s.kind with
+            | Band ->
+                let n = Array.length pa.s.cats in
+                let e = band_extent pa.s len in
+                for i = 1 to n - 1 do
+                  at true (i * e / n)
+                done
+            | _ ->
+                (match (g, pa.ticks.major) with
+                | `Minor k, a :: b :: _ ->
+                    let a = tf pa.s a.value and b = tf pa.s b.value in
+                    let lo, hi = span pa.s in
+                    let lo, hi = (Float.min lo hi, Float.max lo hi) in
+                    let step = (b -. a) /. Float.of_int k in
+                    let v =
+                      ref (a -. (Float.floor ((a -. lo) /. step) *. step))
+                    in
+                    while !v <= hi +. (Float.abs step *. 1e-9) do
+                      let q = norm pa.s (untf pa.s !v) in
+                      if inside q then at false (bin len q);
+                      v := !v +. step
+                    done
+                | _ -> ());
+                List.iter
+                  (fun (t : Ticks.tick) ->
+                    at true (bin len (norm pa.s t.value)))
+                  pa.ticks.major))
+      l.placed;
+    let b = th.glyphs.box in
+    let hs, vs =
+      match th.grid_dash with
+      | `Solid -> (utf8 b.horizontal, utf8 b.vertical)
+      | `Dashed -> th.glyphs.dashed
+      | `Dotted -> th.glyphs.dotted
+    in
+    let cross = utf8 b.cross in
+    Array.iteri
+      (fun i c ->
+        if c <> 0 then
+          let style = if c land 4 <> 0 then th.grid else th.minor_grid in
+          let g = match c land 3 with 3 -> cross | 1 -> hs | _ -> vs in
+          Grid.draw_text grid ~style
+            ~x:(ox + p.x + (i mod w))
+            ~y:(oy + p.y + (i / w))
+            ~text:g)
+      cells)
 
 let draw_axes (l : layout) grid ~ox ~oy =
-  let th = l.theme and p = l.plot in
-  let lc, rc, tr, br = edges l in
-  let shown side =
-    List.exists (fun pa -> pa.side = side && pa.a.a_show) l.placed
-  in
-  let frame = l.r.fig_frame && l.lines in
-  let line_on side = shown side || frame in
-  let style_of side =
-    match List.find_opt (fun pa -> pa.side = side && pa.a.a_show) l.placed with
-    | Some pa -> axis_style l pa.a
-    | None -> th.axis
-  in
-  let lines = Grid.Lines.create ~x:ox ~y:oy ~width:l.width ~height:l.height in
-  let top = if line_on `Top then tr else p.y
-  and bottom = if line_on `Bottom then br else p.y + p.height - 1 in
-  let left = if line_on `Left then lc else p.x
-  and right = if line_on `Right then rc else p.x + p.width - 1 in
-  if p.width > 0 && p.height > 0 then begin
-    if line_on `Left then
-      Grid.Lines.vline ~style:(style_of `Left) lines ~x:(ox + lc) ~y:(oy + top)
-        ~length:(bottom - top + 1);
-    if line_on `Right then
-      Grid.Lines.vline ~style:(style_of `Right) lines ~x:(ox + rc) ~y:(oy + top)
-        ~length:(bottom - top + 1);
-    if line_on `Bottom then
-      Grid.Lines.hline ~style:(style_of `Bottom) lines ~x:(ox + left)
-        ~y:(oy + br)
-        ~length:(right - left + 1);
-    if line_on `Top then
-      Grid.Lines.hline ~style:(style_of `Top) lines ~x:(ox + left) ~y:(oy + tr)
-        ~length:(right - left + 1);
-    (* A free end keeps the axis's direction, so that a tick there joins as
-       a tee. *)
-    let free_v side x =
-      if line_on side then begin
-        if not (line_on `Top) then
-          Grid.Lines.arm ~style:(style_of side) lines ~x:(ox + x) ~y:(oy + top)
-            `Up;
-        if not (line_on `Bottom) then
-          Grid.Lines.arm ~style:(style_of side) lines ~x:(ox + x)
-            ~y:(oy + bottom) `Down
-      end
-    and free_h side y =
-      if line_on side then begin
-        if not (line_on `Left) then
-          Grid.Lines.arm ~style:(style_of side) lines ~x:(ox + left) ~y:(oy + y)
-            `Left;
-        if not (line_on `Right) then
-          Grid.Lines.arm ~style:(style_of side) lines ~x:(ox + right)
-            ~y:(oy + y) `Right
-      end
+  (* A figure without guides, such as a spark, draws none of this. *)
+  if List.exists (fun pa -> pa.a.a_show) l.placed || (l.r.fig_frame && l.lines)
+  then (
+    let th = l.theme and p = l.plot in
+    let lc, rc, tr, br = edges l in
+    let shown side =
+      List.exists (fun pa -> pa.side = side && pa.a.a_show) l.placed
     in
-    free_v `Left lc;
-    free_v `Right rc;
-    free_h `Bottom br;
-    free_h `Top tr
-  end;
-  let tl = th.tick_length and pad = th.label_padding in
-  List.iter
-    (fun pa ->
-      if pa.a.a_show then begin
-        let tstyle =
-          Option.value pa.a.a_tick_style ~default:(axis_style l pa.a)
-        in
-        let lstyle = Option.value pa.a.a_label_style ~default:th.label in
-        let label = text_at grid ~wm:l.wm ~style:lstyle in
-        List.iter2
-          (fun (k : Ticks.tick) cell ->
-            let w = measure l.wm k.label in
-            match pa.side with
-            | `Left ->
-                if tl = 0 then
-                  Grid.Lines.arm ~style:tstyle lines ~x:(ox + lc) ~y:(oy + cell)
-                    `Left
-                else
-                  Grid.Lines.hline ~style:tstyle lines
-                    ~x:(ox + lc - tl)
-                    ~y:(oy + cell) ~length:(tl + 1);
-                let s =
-                  match k.context with
-                  | Some c -> k.label ^ " " ^ c
-                  | None -> k.label
-                in
-                let w = measure l.wm s in
-                label ~x:(ox + lc - tl - pad - w) ~y:(oy + cell) s
-            | `Right ->
-                if tl = 0 then
-                  Grid.Lines.arm ~style:tstyle lines ~x:(ox + rc) ~y:(oy + cell)
-                    `Right
-                else
-                  Grid.Lines.hline ~style:tstyle lines ~x:(ox + rc)
-                    ~y:(oy + cell) ~length:(tl + 1);
-                let s =
-                  match k.context with
-                  | Some c -> k.label ^ " " ^ c
-                  | None -> k.label
-                in
-                label ~x:(ox + rc + tl + pad + 1) ~y:(oy + cell) s
-            | `Bottom ->
-                if tl = 0 then
-                  Grid.Lines.arm ~style:tstyle lines ~x:(ox + cell) ~y:(oy + br)
-                    `Down
-                else
-                  Grid.Lines.vline ~style:tstyle lines ~x:(ox + cell)
-                    ~y:(oy + br) ~length:(tl + 1);
-                let row = br + tl + 1 in
-                label ~x:(ox + cell - ((w - 1) / 2)) ~y:(oy + row) k.label;
-                Option.iter
-                  (fun c ->
-                    let cw = measure l.wm c in
-                    label ~x:(ox + cell - ((cw - 1) / 2)) ~y:(oy + row + 1) c)
-                  k.context
-            | `Top ->
-                if tl = 0 then
-                  Grid.Lines.arm ~style:tstyle lines ~x:(ox + cell) ~y:(oy + tr)
-                    `Up
-                else
-                  Grid.Lines.vline ~style:tstyle lines ~x:(ox + cell)
-                    ~y:(oy + tr - tl)
-                    ~length:(tl + 1);
-                let row = tr - tl - 1 in
-                label ~x:(ox + cell - ((w - 1) / 2)) ~y:(oy + row) k.label;
-                Option.iter
-                  (fun c ->
-                    let cw = measure l.wm c in
-                    label ~x:(ox + cell - ((cw - 1) / 2)) ~y:(oy + row - 1) c)
-                  k.context)
-          pa.ticks.major pa.cells;
-        match pa.heading with
-        | None -> ()
-        | Some h ->
-            let hstyle = Option.value pa.a.a_title_style ~default:th.label in
-            let hw = measure l.wm h in
-            let rows = if pa.ticks.major = [] then 0 else pa.label_rows in
-            let x, y =
+    let frame = l.r.fig_frame && l.lines in
+    let line_on side = shown side || frame in
+    let style_of side =
+      match
+        List.find_opt (fun pa -> pa.side = side && pa.a.a_show) l.placed
+      with
+      | Some pa -> axis_style l pa.a
+      | None -> th.axis
+    in
+    let lines = Grid.Lines.create ~x:ox ~y:oy ~width:l.width ~height:l.height in
+    let top = if line_on `Top then tr else p.y
+    and bottom = if line_on `Bottom then br else p.y + p.height - 1 in
+    let left = if line_on `Left then lc else p.x
+    and right = if line_on `Right then rc else p.x + p.width - 1 in
+    if p.width > 0 && p.height > 0 then begin
+      if line_on `Left then
+        Grid.Lines.vline ~style:(style_of `Left) lines ~x:(ox + lc) ~y:(oy + top)
+          ~length:(bottom - top + 1);
+      if line_on `Right then
+        Grid.Lines.vline ~style:(style_of `Right) lines ~x:(ox + rc)
+          ~y:(oy + top)
+          ~length:(bottom - top + 1);
+      if line_on `Bottom then
+        Grid.Lines.hline ~style:(style_of `Bottom) lines ~x:(ox + left)
+          ~y:(oy + br)
+          ~length:(right - left + 1);
+      if line_on `Top then
+        Grid.Lines.hline ~style:(style_of `Top) lines ~x:(ox + left) ~y:(oy + tr)
+          ~length:(right - left + 1);
+      (* A free end keeps the axis's direction, so that a tick there joins as
+       a tee. *)
+      let free_v side x =
+        if line_on side then begin
+          if not (line_on `Top) then
+            Grid.Lines.arm ~style:(style_of side) lines ~x:(ox + x)
+              ~y:(oy + top) `Up;
+          if not (line_on `Bottom) then
+            Grid.Lines.arm ~style:(style_of side) lines ~x:(ox + x)
+              ~y:(oy + bottom) `Down
+        end
+      and free_h side y =
+        if line_on side then begin
+          if not (line_on `Left) then
+            Grid.Lines.arm ~style:(style_of side) lines ~x:(ox + left)
+              ~y:(oy + y) `Left;
+          if not (line_on `Right) then
+            Grid.Lines.arm ~style:(style_of side) lines ~x:(ox + right)
+              ~y:(oy + y) `Right
+        end
+      in
+      free_v `Left lc;
+      free_v `Right rc;
+      free_h `Bottom br;
+      free_h `Top tr
+    end;
+    let tl = th.tick_length and pad = th.label_padding in
+    List.iter
+      (fun pa ->
+        if pa.a.a_show then begin
+          let tstyle =
+            Option.value pa.a.a_tick_style ~default:(axis_style l pa.a)
+          in
+          let lstyle = Option.value pa.a.a_label_style ~default:th.label in
+          let label = text_at grid ~wm:l.wm ~style:lstyle in
+          List.iter2
+            (fun (k : Ticks.tick) cell ->
+              let w = measure l.wm k.label in
               match pa.side with
-              | `Bottom -> (p.x + ((p.width - hw) / 2), br + tl + rows + 1)
-              | `Top -> (p.x + ((p.width - hw) / 2), tr - tl - rows - 1)
-              | `Left -> (max 0 (lc - tl - pad - pa.label_w), l.heading_row)
-              | `Right -> (rc + tl + pad + pa.label_w - hw + 1, l.heading_row)
-            in
-            text_at grid ~wm:l.wm ~style:hstyle ~x:(ox + x) ~y:(oy + y) h
-      end)
-    l.placed;
-  Grid.draw_lines ~glyphs:(Grid.Lines.of_border th.glyphs.box) grid lines
+              | `Left ->
+                  if tl = 0 then
+                    Grid.Lines.arm ~style:tstyle lines ~x:(ox + lc)
+                      ~y:(oy + cell) `Left
+                  else
+                    Grid.Lines.hline ~style:tstyle lines
+                      ~x:(ox + lc - tl)
+                      ~y:(oy + cell) ~length:(tl + 1);
+                  let s =
+                    match k.context with
+                    | Some c -> k.label ^ " " ^ c
+                    | None -> k.label
+                  in
+                  let w = measure l.wm s in
+                  label ~x:(ox + lc - tl - pad - w) ~y:(oy + cell) s
+              | `Right ->
+                  if tl = 0 then
+                    Grid.Lines.arm ~style:tstyle lines ~x:(ox + rc)
+                      ~y:(oy + cell) `Right
+                  else
+                    Grid.Lines.hline ~style:tstyle lines ~x:(ox + rc)
+                      ~y:(oy + cell) ~length:(tl + 1);
+                  let s =
+                    match k.context with
+                    | Some c -> k.label ^ " " ^ c
+                    | None -> k.label
+                  in
+                  label ~x:(ox + rc + tl + pad + 1) ~y:(oy + cell) s
+              | `Bottom ->
+                  if tl = 0 then
+                    Grid.Lines.arm ~style:tstyle lines ~x:(ox + cell)
+                      ~y:(oy + br) `Down
+                  else
+                    Grid.Lines.vline ~style:tstyle lines ~x:(ox + cell)
+                      ~y:(oy + br) ~length:(tl + 1);
+                  let row = br + tl + 1 in
+                  label ~x:(ox + cell - ((w - 1) / 2)) ~y:(oy + row) k.label;
+                  Option.iter
+                    (fun c ->
+                      let cw = measure l.wm c in
+                      label ~x:(ox + cell - ((cw - 1) / 2)) ~y:(oy + row + 1) c)
+                    k.context
+              | `Top ->
+                  if tl = 0 then
+                    Grid.Lines.arm ~style:tstyle lines ~x:(ox + cell)
+                      ~y:(oy + tr) `Up
+                  else
+                    Grid.Lines.vline ~style:tstyle lines ~x:(ox + cell)
+                      ~y:(oy + tr - tl)
+                      ~length:(tl + 1);
+                  let row = tr - tl - 1 in
+                  label ~x:(ox + cell - ((w - 1) / 2)) ~y:(oy + row) k.label;
+                  Option.iter
+                    (fun c ->
+                      let cw = measure l.wm c in
+                      label ~x:(ox + cell - ((cw - 1) / 2)) ~y:(oy + row - 1) c)
+                    k.context)
+            pa.ticks.major pa.cells;
+          match pa.heading with
+          | None -> ()
+          | Some h ->
+              let hstyle = Option.value pa.a.a_title_style ~default:th.label in
+              let hw = measure l.wm h in
+              let rows = if pa.ticks.major = [] then 0 else pa.label_rows in
+              let x, y =
+                match pa.side with
+                | `Bottom -> (p.x + ((p.width - hw) / 2), br + tl + rows + 1)
+                | `Top -> (p.x + ((p.width - hw) / 2), tr - tl - rows - 1)
+                | `Left -> (max 0 (lc - tl - pad - pa.label_w), l.heading_row)
+                | `Right -> (rc + tl + pad + pa.label_w - hw + 1, l.heading_row)
+              in
+              text_at grid ~wm:l.wm ~style:hstyle ~x:(ox + x) ~y:(oy + y) h
+        end)
+      l.placed;
+    Grid.draw_lines ~glyphs:(Grid.Lines.of_border th.glyphs.box) grid lines)
 
 (* A legend paints every cell of its block, so the marks under it do not
    show between its entries. *)

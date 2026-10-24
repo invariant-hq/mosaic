@@ -28,14 +28,18 @@ let k_dots = 1
 let k_text = 2
 let k_cont = 3
 
+(* A glyph of one scalar one cell wide, its code point in [bits]. *)
+let k_scalar = 4
+
 type t = {
   width : int;
   height : int;
   kind : Bytes.t;
   res : Bytes.t;
   bits : int array;
-  text : string array;
-  span : int array;
+  mutable text : string array;
+      (* allocated with the first text, which most inks never write *)
+  mutable span : int array;
   fg : int array;
   attrs : int array;
   gowner : int array;
@@ -53,8 +57,8 @@ let create ~width ~height =
     kind = Bytes.make n '\000';
     res = Bytes.make n '\000';
     bits = Array.make n 0;
-    text = Array.make n "";
-    span = Array.make n 1;
+    text = [||];
+    span = [||];
     fg = Array.make n 0;
     attrs = Array.make n 0;
     gowner = Array.make n (-1);
@@ -124,6 +128,10 @@ let dot t r ~x ~y ~fg ~attrs ~owner =
     end
 
 let set_text t i s w ~fg ~attrs ~owner =
+  if Array.length t.text = 0 then begin
+    t.text <- Array.make (t.width * t.height) "";
+    t.span <- Array.make (t.width * t.height) 1
+  end;
   clear_span t i;
   Bytes.unsafe_set t.kind i (Char.unsafe_chr k_text);
   t.text.(i) <- s;
@@ -152,11 +160,32 @@ let text t ~width_method ~x ~y s ~fg ~attrs ~owner =
       s
   end
 
+(* [scalar s] is the code point of [s] if [s] is one scalar one cell wide,
+   which a grid writes without a style, else [-1]. *)
+let scalar s =
+  let n = String.length s in
+  if n = 0 then -1
+  else
+    let d = String.get_utf_8_uchar s 0 in
+    if Uchar.utf_decode_is_valid d && Uchar.utf_decode_length d = n then
+      let u = Uchar.utf_decode_uchar d in
+      if Matrix_text.uchar_width ~tab_width:1 u = 1 then Uchar.to_int u else -1
+    else -1
+
 let glyph t ~x ~y s ~fg ~attrs ~owner =
   if inside t x y then
-    set_text t
-      ((y * t.width) + x)
-      s 1 ~fg:(color_int fg) ~attrs:(attrs_int attrs) ~owner
+    let i = (y * t.width) + x in
+    let c = scalar s in
+    if c < 0 then
+      set_text t i s 1 ~fg:(color_int fg) ~attrs:(attrs_int attrs) ~owner
+    else begin
+      clear_span t i;
+      Bytes.unsafe_set t.kind i (Char.unsafe_chr k_scalar);
+      t.bits.(i) <- c;
+      t.fg.(i) <- color_int fg;
+      t.attrs.(i) <- attrs_int attrs;
+      t.gowner.(i) <- owner
+    end
 
 let fill t ~x ~y ~bg ~owner =
   if inside t x y then begin
@@ -503,11 +532,12 @@ let commit t grid ~x ~y =
         if has_bg then Ansi.Color.Packed.decode t.bg.(i)
         else Ansi.Color.transparent
       in
-      if k = k_dots then
+      if k = k_dots || k = k_scalar then
         Matrix_grid.set_uchar grid ~x:(x + cx) ~y:(y + cy)
           ~uchar:
             (Uchar.of_int
-               (codepoint (Char.code (Bytes.unsafe_get t.res i)) t.bits.(i)))
+               (if k = k_scalar then t.bits.(i)
+                else codepoint (Char.code (Bytes.unsafe_get t.res i)) t.bits.(i)))
           ~fg:(Ansi.Color.Packed.decode t.fg.(i))
           ~bg
           ~attrs:(Ansi.Attr.unpack t.attrs.(i))
