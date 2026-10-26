@@ -1361,6 +1361,28 @@ let to_ansi_preserves_indexed_foreground () =
   contains ~msg:"indexed foreground serialized as palette SGR"
     ~sub:"\027[0;38;5;42m" ansi
 
+(* The styling a row is written at: a depth reduces each color, [`Mono]
+   keeps the attributes alone, and [`Plain] writes the text alone. *)
+let to_ansi_at_a_styling () =
+  let grid = Grid.create ~width:3 ~height:2 () in
+  let style =
+    Ansi.Style.make
+      ~fg:(Ansi.Color.of_rgb 255 0 0)
+      ~bold:true ~link:"https://a.example" ()
+  in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"ab" ~style;
+  Grid.draw_text grid ~x:0 ~y:1 ~text:"c";
+  let at styling = Grid.to_ansi ~styling grid in
+  equal ~msg:"plain is the text" string "ab \nc  " (at `Plain);
+  equal ~msg:"plain, complete rows" string "\027[2Kab \r\n"
+    (Grid.to_ansi ~styling:`Plain ~complete_rows:true ~rows:1 grid);
+  contains ~msg:"mono keeps bold" ~sub:"\027[0;1m" (at `Mono);
+  not_contains ~msg:"mono drops the color" ~sub:"38;" (at `Mono);
+  contains ~msg:"mono keeps the link" ~sub:"https://a.example" (at `Mono);
+  contains ~msg:"16 colors" ~sub:"\027[0;91;1m" (at `Ansi16);
+  contains ~msg:"256 colors" ~sub:"38;5;196" (at `Ansi256);
+  equal ~msg:"24-bit by default" string (Grid.to_ansi grid) (at `Truecolor)
+
 let blit_preserves_indexed_background_intent () =
   let src = Grid.create ~width:1 ~height:1 () in
   Grid.set_uchar src ~x:0 ~y:0 ~uchar:(Uchar.of_char 'X') ~fg:Ansi.Color.white
@@ -2377,6 +2399,7 @@ let tests =
     test "to_ansi selects complete rows" to_ansi_selects_complete_rows;
     test "to_ansi handles empty glyph" to_ansi_handles_empty_glyph;
     test "copied partial span becomes space" copied_partial_span_becomes_space;
+    test "to_ansi at a styling" to_ansi_at_a_styling;
     test "to_ansi preserves indexed foreground"
       to_ansi_preserves_indexed_foreground;
     test "blit preserves indexed background intent"

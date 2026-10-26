@@ -578,14 +578,24 @@ val to_text : ?trim:bool -> t -> string
     cell gives nothing. With [~trim:true], the default, the spaces at the end of
     each line are dropped. Styles are left out, which {!to_ansi} writes. *)
 
-val to_ansi : ?complete_rows:bool -> ?rows:int -> t -> string
-(** [to_ansi ~complete_rows ~rows g] is the first [rows] rows of [g] with their
-    styles and hyperlinks, [height g] rows by default. A row starts with its
-    whole style and ends by closing its hyperlink and with [CSI 0 m]. Rows are
-    separated by LF, without one after the last. With [~complete_rows:true]
-    ([false] by default), each row starts by erasing the terminal's line (EL 2)
-    and ends with CR LF, the last one included. An empty cell is written as a
-    space. It is [""] if [rows] is [0].
+val to_ansi :
+  ?styling:[ `Plain | Ansi.Color.depth ] ->
+  ?complete_rows:bool ->
+  ?rows:int ->
+  t ->
+  string
+(** [to_ansi ~styling ~complete_rows ~rows g] is the first [rows] rows of [g]
+    with their styles and hyperlinks, [height g] rows by default. A row starts
+    with its whole style and ends by closing its hyperlink and with [CSI 0 m].
+    Rows are separated by LF, without one after the last. With
+    [~complete_rows:true] ([false] by default), each row starts by erasing the
+    terminal's line (EL 2) and ends with CR LF, the last one included. An empty
+    cell is written as a space. It is [""] if [rows] is [0].
+
+    [styling] says how the styles are written, at [`Truecolor] by default. At a
+    color depth, each color is reduced to it ({!Ansi.Color.to_depth}), so
+    [`Mono] keeps the attributes, such as bold, and drops the colors. [`Plain]
+    writes no style and no hyperlink, so each row is its text.
 
     Raises [Invalid_argument] if [rows] is negative or greater than [height g].
 *)

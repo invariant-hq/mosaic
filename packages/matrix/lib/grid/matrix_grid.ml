@@ -1675,7 +1675,7 @@ let to_text ?(trim = true) t =
     Buffer.contents buf
   end
 
-let to_ansi ?(complete_rows = false) ?rows t =
+let to_ansi ?(styling = `Truecolor) ?(complete_rows = false) ?rows t =
   let height = Option.value rows ~default:t.height in
   if height < 0 || height > t.height then
     invalid_arg "Matrix_grid.to_ansi: rows must be within grid height";
@@ -1687,6 +1687,13 @@ let to_ansi ?(complete_rows = false) ?rows t =
 
     Ansi.to_string (fun w ->
         let style = Ansi.Sgr_state.create () in
+        let styled =
+          match styling with
+          | `Plain -> false
+          | #Ansi.Color.depth as depth ->
+              Ansi.Sgr_state.set_color_depth style depth;
+              true
+        in
 
         for y = 0 to height - 1 do
           if y > 0 && not complete_rows then Ansi.emit (Ansi.char '\n') w;
@@ -1699,8 +1706,10 @@ let to_ansi ?(complete_rows = false) ?rows t =
             let cw = Packed_cell.cell_width code in
             let step = if cw <= 0 then 1 else cw in
 
-            Ansi.Sgr_state.update style w ~fg:(get_fg t idx) ~bg:(get_bg t idx)
-              ~attrs:(get_attrs t idx) ~link:(get_link t idx);
+            if styled then
+              Ansi.Sgr_state.update style w ~fg:(get_fg t idx)
+                ~bg:(get_bg t idx) ~attrs:(get_attrs t idx)
+                ~link:(get_link t idx);
 
             begin if
               cw <= 0
@@ -1721,9 +1730,10 @@ let to_ansi ?(complete_rows = false) ?rows t =
             x := !x + step
           done;
 
-          Ansi.Sgr_state.close_link style w;
-          Ansi.emit Ansi.reset w;
-          Ansi.Sgr_state.reset style;
+          if styled then (
+            Ansi.Sgr_state.close_link style w;
+            Ansi.emit Ansi.reset w;
+            Ansi.Sgr_state.reset style);
           if complete_rows then Ansi.emit (Ansi.literal "\r\n") w
         done)
 
