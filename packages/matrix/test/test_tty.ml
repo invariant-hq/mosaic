@@ -163,10 +163,26 @@ let test_keys () =
 
 (* getpass's settings: no echo, lines and signals kept, and what was typed
    before discarded. *)
+(* Reads what the terminal shows, as an emulator does: [Tty.no_echo] waits
+   for the output written so far to drain, and on macOS a pseudoterminal's
+   output drains only as the other side reads it. *)
+let drain master =
+  let buf = Bytes.create 256 in
+  Pty.set_nonblock master;
+  let rec go () =
+    match Pty.read master buf 0 256 with
+    | 0 -> ()
+    | _ -> go ()
+    | exception Unix.Unix_error ((EAGAIN | EWOULDBLOCK), _, _) -> ()
+  in
+  go ();
+  Pty.clear_nonblock master
+
 let test_no_echo () =
   with_pty (fun master fd ->
       ignore (Pty.write_string master "typed before\r" 0 13 : int);
       Unix.sleepf 0.05;
+      drain master;
       let saved = Tty.no_echo fd in
       let t = Unix.tcgetattr fd in
       is_false ~msg:"no echo" t.c_echo;
