@@ -236,11 +236,17 @@ let perform_final_layout_on_in_flow_children (type t)
   let parent_size =
     Size.{ width = Some container_outer_width; height = None }
   in
+  (* Vertical available space in block flow is indefinite, not a min-content
+     constraint: Max_content is how toffee says indefinite. Under Min_content
+     every descendant grid believed it was sized under a min-content
+     constraint, in which maximizing the tracks has no free space, so auto rows
+     holding only scroll containers (whose automatic minimum size is 0)
+     collapsed to zero height. Browsers size such rows to their content. *)
   let available_space =
     Size.
       {
         width = Available_space.of_float container_inner_width;
-        height = Available_space.min_content;
+        height = Available_space.max_content;
       }
   in
 

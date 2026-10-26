@@ -314,6 +314,46 @@ let () =
             [| 0.; 0.; 50.; 50. |];
             [| 0.; 50.; 50.; 20. |];
           ];
+      case "grid_in_block_scroll_container_auto_row"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 200.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing ())
+                [
+                  node
+                    (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden }
+                       ())
+                    [
+                      node
+                        (Style.make ~box_sizing
+                           ~size:
+                             {
+                               width = Dimension.auto;
+                               height = Dimension.length 50.;
+                             }
+                           ())
+                        [];
+                    ];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 200.; 50. |];
+            [| 0.; 0.; 200.; 50. |];
+            [| 0.; 0.; 200.; 50.; 0.; 0. |];
+            [| 0.; 0.; 0.; 50. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 200.; 50. |];
+            [| 0.; 0.; 200.; 50. |];
+            [| 0.; 0.; 200.; 50.; 0.; 0. |];
+            [| 0.; 0.; 0.; 50. |];
+          ];
       case "margin_y_collapse_through_blocked_by_grid"
         (fun box_sizing ->
           node
