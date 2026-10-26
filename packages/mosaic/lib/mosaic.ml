@@ -889,6 +889,8 @@ let synchronize runtime =
             in
             Reconciler.render runtime.reconciler ~viewport_width:(max 1 width)
               vnode;
+            Renderer.set_modal runtime.renderer
+              (Reconciler.modal runtime.reconciler);
             (match Reconciler.focused runtime.reconciler with
             | Some node ->
                 runtime.had_focus <- true;
@@ -1009,13 +1011,15 @@ let dispatch_paste runtime text =
     (Renderer.dispatch_paste runtime.renderer path)
     (Event.Paste.of_text text)
 
-(* Tab and Shift+Tab, with no other modifier, move focus. *)
-let focus_move (key : Matrix.Input.Keystroke.t) =
+(* Tab and Shift+Tab, with no other modifier, move focus; Escape alone
+   closes the modal. *)
+let key_default (key : Matrix.Input.Keystroke.t) =
   let mods = key.mods in
+  let chord = mods.ctrl || mods.alt || mods.super || mods.hyper || mods.meta in
   match key.key with
-  | Tab when not (mods.ctrl || mods.alt || mods.super || mods.hyper || mods.meta)
-    ->
-      if mods.shift then Some `Prev else Some `Next
+  | Tab when not chord ->
+      if mods.shift then Some (`Focus `Prev) else Some (`Focus `Next)
+  | Escape when not (chord || mods.shift) -> Some `Close
   | _ -> None
 
 (* A paste arrives in pieces and reaches widgets whole, once it completes; a
@@ -1038,12 +1042,15 @@ let handle_input runtime (input : Matrix.event) =
         event;
       (* A key's default action comes after every listener, unless one
          prevented it. Ctrl+C quits: in raw mode it is a key, and its default
-         is the program's. Tab and Shift+Tab move focus. *)
+         is the program's. Tab and Shift+Tab move focus, and Escape is a
+         request to close the modal, as in HTML's dialog. *)
       if not (Event.Key.default_prevented event) then
         if Matrix.Input.Keystroke.is_interrupt key then end_program runtime
         else
-          match focus_move key with
-          | Some direction -> Queue.push direction runtime.focus_moves
+          match key_default key with
+          | Some (`Focus direction) -> Queue.push direction runtime.focus_moves
+          | Some `Close ->
+              ignore (Reconciler.request_close runtime.reconciler : bool)
           | None -> ())
   | Key_release release ->
       List.iter
@@ -1457,10 +1464,10 @@ let box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?border ?border_style
-    ?border_sides ?border_color ?focused_border_color ?background ?fill ?title
-    ?title_alignment children =
+    ?visible ?z_index ?opacity ?buffered ?live ?inert ?on_mouse ?on_key
+    ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?border
+    ?border_style ?border_sides ?border_color ?focused_border_color ?background
+    ?fill ?title ?title_alignment children =
   (* The box owns its border widths, so [border_width] goes to the box. *)
   let style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
@@ -1472,10 +1479,12 @@ let box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?grid_template_column_names ?grid_template_row_names ?grid_row
       ?grid_column ()
   in
-  Vnode.box ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?border
-    ?border_style ?border_sides ?border_width ?border_color
+  Vnode.box ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?inert
+    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
+    ?border ?border_style ?border_sides ?border_width ?border_color
     ?focused_border_color ?background ?fill ?title ?title_alignment children
+
+let modal = Vnode.modal
 
 let text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

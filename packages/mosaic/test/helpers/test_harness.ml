@@ -82,6 +82,7 @@ let make_ctx ?(width_method = `Unicode) () =
       report_scroll = (fun _ ~region:_ ~dx:_ ~dy:_ -> ());
       admit_size_report = (fun _ -> true);
       regroups = [];
+      top_layer = None;
     }
   in
   { ctx; schedule_count; focus_log; blur_log; unregister_log }

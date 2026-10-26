@@ -90,6 +90,7 @@ Components compose via `map : ('a -> 'b) -> 'a t -> 'b t`.
 | Widget         | Constructor    | Description                                    |
 | -------------- | -------------- | ---------------------------------------------- |
 | Box            | `box`          | Container with border, background, layout      |
+| Modal          | `modal`        | Dialog that makes the rest inert, Escape closes |
 | Button         | `button`       | Primary click or Enter/Space activation        |
 | Text           | `text`         | Styled text with fragments, wrapping           |
 | Text input     | `input`        | Single-line input with cursor, placeholder     |

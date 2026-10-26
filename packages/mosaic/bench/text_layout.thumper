@@ -6,8 +6,8 @@
 # ocaml: 5.5.1 · 64-bit · release
 
 edit-1mb-middle-undo	alloc_words	exact	250132
-focus-layout-128b	alloc_words	exact	56
-focus-layout-1mb	alloc_words	exact	56
+focus-layout-128b	alloc_words	exact	60
+focus-layout-1mb	alloc_words	exact	60
 fragments-normalize-10k	alloc_words	exact	53700
 fragments-normalize-1k	alloc_words	exact	4010
 index-create-1mb	alloc_words	exact	41

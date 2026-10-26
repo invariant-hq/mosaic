@@ -37,6 +37,7 @@ val create :
   ?fill:bool ->
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
+  ?inert:bool ->
   unit ->
   t
 (** [create ~parent ()] is a box node attached to [parent] with:
@@ -52,6 +53,8 @@ val create :
     - [fill] defaults to [true].
     - [title] defaults to [None].
     - [title_alignment] defaults to [`Left].
+    - [inert] makes the box and its descendants inert ({!Renderable.set_inert}).
+      Defaults to [false].
 
     Raises [Invalid_argument] if a border width is not a length of a whole
     number of cells, [0] or more. *)
@@ -76,6 +79,7 @@ module Props : sig
     ?fill:bool ->
     ?title:string ->
     ?title_alignment:[ `Left | `Center | `Right ] ->
+    ?inert:bool ->
     unit ->
     t
   (** [make ()] is a property set with the same defaults as {!val-create}.
@@ -86,9 +90,11 @@ module Props : sig
   val default : t
   (** [default] is [make ()]. *)
 
+  val inert : t -> bool
+  (** [inert p] is [p]'s [inert]. *)
+
   val equal : t -> t -> bool
-  (** [equal a b] is [true] iff [a] and [b] describe identical visual
-      properties. *)
+  (** [equal a b] is [true] iff [a] and [b] describe identical properties. *)
 end
 
 val apply_props : t -> Props.t -> unit

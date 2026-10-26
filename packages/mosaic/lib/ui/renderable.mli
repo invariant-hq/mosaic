@@ -273,6 +273,18 @@ val focus : t -> bool
 val blur : t -> unit
 (** [blur t] removes focus from [t]. No-op if [t] is not focused. *)
 
+val set_inert : t -> bool -> unit
+(** [set_inert t v] makes [t] and its descendants inert or not, as HTML's
+    [inert] attribute does. An {e inert} node takes neither focus nor the
+    pointer: the renderer does not focus it, a point over it hits what is drawn
+    below it, and a focus move ([Renderer.request_focus]) passes it by. Events
+    still go along a path through an inert ancestor. Making [t] inert blurs the
+    focused node of its subtree. *)
+
+val inert : t -> bool
+(** [inert t] is [true] iff [t] itself was made inert with {!set_inert}; a node
+    is also inert under an inert ancestor. *)
+
 val set_cursor_provider : t -> (t -> cursor option) -> unit
 (** [set_cursor_provider t f] registers a hardware cursor provider consulted
     when [t] is focused. [f] is called with [t] and returns the desired cursor
@@ -433,6 +445,17 @@ module Private : sig
   val has_focus_request : t -> bool
   (** [has_focus_request t] is [true] iff [t] has a request callback. *)
 
+  val top_layer : t -> t option
+  (** [top_layer t] is the node in the top layer of [t]'s tree, if any. *)
+
+  val set_top_layer : t -> t option -> unit
+  (** [set_top_layer t top] puts [top] in the top layer of [t]'s tree, or no
+      node. The node in the top layer stays a child of its parent, and is placed
+      against the root: the positions it and its descendants report ({!x}, {!y},
+      {!refresh_positions}) count none of its ancestors' translations, and its
+      parent's paint region leaves it out. The renderer lays it out and paints
+      it apart ([Renderer.set_modal]). *)
+
   (** {2:context Context} *)
 
   type context = {
@@ -471,6 +494,9 @@ module Private : sig
     mutable regroups : t list;
         (** The culling nodes whose children in the layout tree are to be set
             again ({!flush_regroups}). A new context holds none. *)
+    mutable top_layer : t option;
+        (** The node in the top layer ({!set_top_layer}). A new context holds
+            none. *)
   }
   (** The type for renderer callbacks inherited by all nodes in a tree. *)
 

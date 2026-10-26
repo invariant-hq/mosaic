@@ -946,6 +946,70 @@ let selection_reads_rows_out_of_view () =
     (Some "new-0new-1new-2new-3new-4")
     (Renderer.selection_text t)
 
+let selection_reads_the_top_layer () =
+  (* A node in the top layer, which holds a text, is declared in a
+     scroll box three cells from the left, a row from the top, and scrolled by
+     two rows. Laid out against the root, it is painted at the root's origin,
+     out of the scroll box's clip. A drag from the text's first cell to a
+     cell of the next row, where no node takes the pointer, selects that text
+     alone: the selection grows to the node in the top layer, and reads its
+     place and its text's from where they are painted. *)
+  let t = make_renderer () in
+  let lpa = Toffee.Style.Length_percentage_auto.length in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root t)
+      ~style:
+        (Toffee.Style.default
+        |> Toffee.Style.set_width (dim 12)
+        |> Toffee.Style.set_height (dim 3)
+        |> Toffee.Style.set_margin
+             { left = lpa 3.; right = lpa 0.; top = lpa 1.; bottom = lpa 0. })
+      ~show_scrollbars:false ()
+  in
+  Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
+  for i = 0 to 9 do
+    ignore
+      (Text.create ~parent:(Scroll_box.node sb)
+         ~content:(Printf.sprintf "row-%d" i)
+         ~selectable:true ()
+        : Text.t)
+  done;
+  let top =
+    Renderable.create ~parent:(Scroll_box.node sb)
+      ~style:
+        (Toffee.Style.default
+        |> Toffee.Style.set_position Toffee.Style.Position.Absolute)
+      ()
+  in
+  ignore
+    (Text.create ~parent:top ~content:"copy me" ~selectable:true () : Text.t);
+  Renderer.set_modal t (Some top);
+  do_frame ~width:20 ~height:9 t;
+  Scroll_box.scroll_to sb ~y:2 ();
+  do_frame ~width:20 ~height:9 t;
+  equal ~msg:"scrolled" int (-2)
+    (snd (Renderable.translate (Scroll_box.content sb)));
+  let frame = frame_rows t ~width:20 ~height:9 in
+  let rows = String.split_on_char '\n' frame in
+  let y, x =
+    let rec find y = function
+      | [] -> failf "the text is not painted:\n%s" frame
+      | row :: rest -> (
+          match String.index_opt row 'c' with
+          | Some x
+            when x + 7 <= String.length row && String.sub row x 7 = "copy me" ->
+              (y, x)
+          | _ -> find (y + 1) rest)
+    in
+    find 0 rows
+  in
+  equal ~msg:"painted at the root's origin" (pair int int) (0, 0) (x, y);
+  do_frame ~width:20 ~height:9 t;
+  dispatch_mouse t (mouse_press ~x ~y ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:(x + 6) ~y:(y + 1) ());
+  equal ~msg:"the text under the drag" (option string) (Some "copy me")
+    (Renderer.selection_text t)
+
 (* ── Scroll hints ── *)
 
 (* A full-width scroll box of [rows] one-cell text rows in a [vw]x[vh]
@@ -2541,6 +2605,8 @@ let () =
             child_far_before_the_viewport_is_kept;
           test "a selection reads rows out of view where they are"
             selection_reads_rows_out_of_view;
+          test "a selection reads the top layer's positions"
+            selection_reads_the_top_layer;
           culling_matches_a_scan;
           chunks_keep_every_box;
         ];

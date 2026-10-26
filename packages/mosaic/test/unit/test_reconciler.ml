@@ -924,6 +924,44 @@ let hidden_subtrees_do_not_contribute_focus () =
     | Some focused -> focused == active
     | None -> false)
 
+(* Inert subtrees, and everything outside a shown modal, declare no focus;
+   of two modals the later is the one. *)
+let inert_elements_do_not_contribute_focus () =
+  let _renderer, reconciler = make () in
+  let focused_text name = Vnode.text ~key:name ~focused:true name in
+  let focused_count view =
+    render_view reconciler view;
+    Option.is_some (Reconciler.focused reconciler)
+  in
+  is_true ~msg:"an inert box hides its declaration"
+    (focused_count
+       (Vnode.box
+          [
+            focused_text "outside"; Vnode.box ~inert:true [ focused_text "in" ];
+          ]));
+  render_view reconciler
+    (Vnode.box
+       [
+         focused_text "outside";
+         Vnode.modal (Vnode.box [ Vnode.text ~key:"inside" "inside" ]);
+       ]);
+  is_true ~msg:"a modal leaves the focus outside it undeclared"
+    (Option.is_none (Reconciler.focused reconciler));
+  is_true ~msg:"and is the modal" (Option.is_some (Reconciler.modal reconciler));
+  render_view reconciler
+    (Vnode.box
+       [
+         focused_text "outside";
+         Vnode.modal (Vnode.box [ focused_text "first" ]);
+         Vnode.modal (Vnode.box [ Vnode.text "second" ]);
+       ]);
+  is_true ~msg:"the later modal is the one"
+    (Option.is_none (Reconciler.focused reconciler));
+  render_view reconciler
+    (Vnode.box [ Vnode.box ~inert:true [ Vnode.modal (focused_text "in") ] ]);
+  is_true ~msg:"a modal in an inert box is none"
+    (Option.is_none (Reconciler.modal reconciler))
+
 let memo_reuses_equal_value_keys () =
   let renderer, reconciler = make () in
   let builds = ref 0 in
@@ -1191,6 +1229,8 @@ let () =
             duplicate_visible_focus_is_rejected;
           test "hidden subtrees do not contribute focus"
             hidden_subtrees_do_not_contribute_focus;
+          test "inert elements do not contribute focus"
+            inert_elements_do_not_contribute_focus;
         ];
       group "Memo"
         [

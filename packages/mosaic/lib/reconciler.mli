@@ -57,9 +57,20 @@ val unmount : t -> unit
     may be reused after unmounting. *)
 
 val focused : t -> Renderable.t option
-(** [focused t] is the visible element declared focused, or [None] if none is.
-    Reconciliation does not apply focus: callers synchronize this result with
+(** [focused t] is the element declared focused that is visible and not inert,
+    or [None] if none is. An element is inert in an inert subtree and, while a
+    modal ({!Mosaic_ui.Vnode.val-modal}) is shown, outside it. Reconciliation
+    does not apply focus: callers synchronize this result with
     {!Mosaic_ui.Renderer.val-focus} or {!Mosaic_ui.Renderer.val-blur} after
     {!render}.
 
-    Raises [Invalid_argument] if several visible elements declare focus. *)
+    Raises [Invalid_argument] if several such elements declare focus. *)
+
+val modal : t -> Renderable.t option
+(** [modal t] is the node of the shown modal, the last in tree order, that no
+    inert subtree holds, if any. Callers give it to
+    {!Mosaic_ui.Renderer.set_modal} after {!render}. *)
+
+val request_close : t -> bool
+(** [request_close t] invokes the [on_close] of the modal {!modal} is, and is
+    [true] iff it has one. *)

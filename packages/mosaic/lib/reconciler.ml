@@ -462,7 +462,19 @@ type callback_refs = {
   update_presence : unit Vnode.widget_callbacks -> unit;
 }
 
-type declared_focus = Focus_none | Focus_one of Renderable.t | Focus_many
+(* The focus a subtree declares. A shown modal in it makes every element
+   outside the modal inert, so its focus is the modal's alone. *)
+type declared_focus =
+  | Focus_none
+  | Focus_one of Renderable.t
+  | Focus_many
+  | Modal of modal
+
+and modal = {
+  modal_node : Renderable.t;
+  modal_callbacks : unit Vnode.widget_callbacks ref;
+  inside : declared_focus;  (** Never [Modal]. *)
+}
 
 (* A parent's children: elements, embedded nodes, and memo spans. A span owns
    the children its memo's view produced, so an unchanged memo keeps them
@@ -961,10 +973,23 @@ type t = { container : Renderable.t; mutable root_children : child list }
 let create ~container = { container; root_children = [] }
 let container t = t.container
 
+(* Of two modals the later in tree order is the one, as the dialog opened
+   last is on top. *)
 let combine_focus left right =
   match (left, right) with
+  | _, (Modal _ as modal) | (Modal _ as modal), _ -> modal
   | Focus_none, focus | focus, Focus_none -> focus
   | _ -> Focus_many
+
+(* Only a box holds children, so only a box is inert. *)
+let inert_kind = function
+  | Vnode.Box props -> Box.Props.inert props
+  | _ -> false
+
+let is_modal fiber =
+  match !(fiber.callback_refs.callbacks) with
+  | Vnode.Modal_callbacks _ -> true
+  | _ -> false
 
 let children_focus children =
   List.fold_left
@@ -976,12 +1001,25 @@ let children_focus children =
 
 let update_declared_focus fiber =
   fiber.declared_focus <-
-    (if not fiber.attrs.visible then Focus_none
+    (if (not fiber.attrs.visible) || inert_kind fiber.kind then Focus_none
      else
-       combine_focus
-         (if fiber.attrs.focused then Focus_one (fiber_node fiber)
-          else Focus_none)
-         (children_focus fiber.children))
+       let focus =
+         combine_focus
+           (if fiber.attrs.focused then Focus_one (fiber_node fiber)
+            else Focus_none)
+           (children_focus fiber.children)
+       in
+       match focus with
+       | Modal _ -> focus
+       | (Focus_none | Focus_one _ | Focus_many) as inside ->
+           if is_modal fiber then
+             Modal
+               {
+                 modal_node = fiber_node fiber;
+                 modal_callbacks = fiber.callback_refs.callbacks;
+                 inside;
+               }
+           else focus)
 
 let rec node_count children =
   List.fold_left
@@ -1003,9 +1041,11 @@ let rec reconcile_element ~(parent_node : Renderable.t) (maps : fiber_maps)
     (pos : int) ~viewport_width (elem : unit Vnode.element) : fiber =
   match find_match maps pos elem with
   | Some f ->
+      let was_modal = is_modal f in
       let focus_changed =
         f.attrs.focused <> elem.attrs.focused
         || f.attrs.visible <> elem.attrs.visible
+        || inert_kind f.kind <> inert_kind elem.kind
       in
       let children_changed =
         f.declared_children != elem.children
@@ -1017,7 +1057,8 @@ let rec reconcile_element ~(parent_node : Renderable.t) (maps : fiber_maps)
         f.declared_children <- elem.children;
         f.viewport_width <- viewport_width
       end;
-      if focus_changed || children_changed then update_declared_focus f;
+      if focus_changed || children_changed || was_modal <> is_modal f then
+        update_declared_focus f;
       f
   | None ->
       let f = create_fiber ~parent:parent_node elem in
@@ -1158,7 +1199,27 @@ let unmount (t : t) : unit =
   Renderable.request_render t.container
 
 let focused t =
-  match children_focus t.root_children with
-  | Focus_none -> None
+  let focus =
+    match children_focus t.root_children with
+    | Modal { inside; _ } -> inside
+    | focus -> focus
+  in
+  match focus with
+  | Focus_none | Modal _ -> None
   | Focus_one node -> Some node
   | Focus_many -> invalid_arg "Mosaic: more than one focused element"
+
+let modal t =
+  match children_focus t.root_children with
+  | Modal { modal_node; _ } -> Some modal_node
+  | Focus_none | Focus_one _ | Focus_many -> None
+
+let request_close t =
+  match children_focus t.root_children with
+  | Modal { modal_callbacks; _ } -> (
+      match !modal_callbacks with
+      | Vnode.Modal_callbacks { on_close = Some close } ->
+          close ();
+          true
+      | _ -> false)
+  | Focus_none | Focus_one _ | Focus_many -> false

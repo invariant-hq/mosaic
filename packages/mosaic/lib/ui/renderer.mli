@@ -278,7 +278,8 @@ val focused : t -> Renderable.t option
     another node. *)
 
 val focus : t -> Renderable.t -> bool
-(** [focus t node] focuses [node] and is [true] iff [node] is focusable. *)
+(** [focus t node] focuses [node] and is [true] iff [node] is focusable and not
+    inert. *)
 
 val blur : t -> unit
 (** [blur t] removes focus from the currently focused renderable. *)
@@ -288,10 +289,27 @@ val request_focus : t -> [ `Next | `Prev ] -> bool
     ([`Next]) or before ([`Prev]) the focused node, and is [true] iff it invoked
     one. A {e stop} is a node with a focus request
     ({!Renderable.Private.set_focus_request}) that is shown, as its ancestors
-    are. Stops come in tree order, a node before its children, and the first
-    stop follows the last. With nothing focused, the stop is the first one, or
-    the last for [`Prev]. The focused node is never its own next stop. As for a
-    press ({!mouse_path}), the request's owner grants focus or not. *)
+    are, and not inert. Stops come in tree order, a node before its children,
+    and the first stop follows the last. With nothing focused, the stop is the
+    first one, or the last for [`Prev]. The focused node is never its own next
+    stop. As for a press ({!mouse_path}), the request's owner grants focus or
+    not. *)
+
+val set_modal : t -> Renderable.t option -> unit
+(** [set_modal t m] makes [m] the {e modal} node, or sets none. The modal node
+    is in the {e top layer}, as HTML's modal dialog is: it stays where it is in
+    the tree, for events and its children, and is laid out against the root, as
+    the root of its own layout, painted after every other node and clipped by
+    none of its ancestors, so the pointer finds it first. Every position read
+    from it and its descendants, by hit-testing, a text selection, a mouse
+    event's local cell or a scroll hint, is where it is painted
+    ({!Renderable.Private.set_top_layer}). Every node but it and its descendants
+    is inert ({!Renderable.set_inert}), so a focus move ({!request_focus}) stays
+    in it. A focused node that becomes inert is blurred. Once [m] is no longer
+    modal it is laid out and painted in its parent again. *)
+
+val modal : t -> Renderable.t option
+(** [modal t] is the modal node, if any. *)
 
 (** {1:selection Selection} *)
 

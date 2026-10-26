@@ -1500,8 +1500,14 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
 
     [key] is an optional reconciliation hint. [focused] declares keyboard focus.
     With no focused element, keys reach subscriptions only. Declaring more than
-    one visible focused element raises [Invalid_argument]. Hidden subtrees do
-    not participate in focus.
+    one visible focused element that is not inert raises [Invalid_argument].
+    Hidden subtrees do not participate in focus.
+
+    An {e inert} element takes neither focus nor the pointer, as with HTML's
+    [inert] attribute: a [focused] declaration on it does not count, Tab passes
+    it by, and a pointer over it finds what is drawn below it. Events still go
+    along a path through an inert ancestor. Every element in a [box ~inert:true]
+    is inert, and while a {!modal} is shown every element outside it is.
 
     Focus is the model's, so nothing moves it but a declaration. Removing or
     hiding the focused element leaves nothing focused: keys reach subscriptions
@@ -1654,6 +1660,7 @@ val box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?inert:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -1675,10 +1682,30 @@ val box :
 (** [box children] is a container for [children]. Widget-specific visual options
     follow {!Mosaic_ui.Box}; layout and paint use the labelled arguments above,
     except [border_width], which sets the box's border widths as
-    {!Mosaic_ui.Box} lays them out.
+    {!Mosaic_ui.Box} lays them out. [inert], default [false], makes the box and
+    its descendants inert ({{!elements}UI elements}).
 
     Raises [Invalid_argument] if a border width is not a length of a whole
     number of cells, [0] or more. *)
+
+val modal : ?key:string -> ?on_close:'msg -> 'msg t -> 'msg t
+(** [modal child] shows [child] as a modal dialog, as HTML's [showModal] does:
+    every element outside the modal is inert ({{!elements}UI elements}), so
+    focus, the pointer and Tab stay within it. Wherever the view declares it,
+    the modal is in the {e top layer}: it is laid out against the root of the
+    view, which it fills, centring [child], and drawn above every other element,
+    clipped by none of its ancestors, so the pointer finds it first. Of several
+    modals shown, the last in view order is the one, and the others are inert.
+    Once the view drops the modal, the rest is laid out and drawn as before.
+
+    Escape's default action, after the [Bubble] listeners and unless something
+    prevented it ({!Sub.section-phases}), is to dispatch [on_close], whatever is
+    focused. [Capture] listeners still see every key first. Closing the modal is
+    the application's: [on_close] asks, and the view without the modal closes
+    it. A focus declared outside the modal is lost while it is shown
+    ({!Sub.on_focus_lost}). The application answers with a focus inside, such as
+    {!Cmd.focus_next}, and declares the element that opened the modal focused
+    again when it closes it, as APG's dialog pattern asks. *)
 
 val button :
   ?key:string ->

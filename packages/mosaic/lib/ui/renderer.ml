@@ -9,6 +9,7 @@ module Screen = Matrix_screen
 
 type render_command =
   | Render of Renderable.t
+  | Render_inert of Renderable.t  (** Drawn, and not found under the pointer. *)
   | Push_scissor of Grid.region
   | Pop_scissor
   | Push_opacity of float
@@ -54,6 +55,8 @@ type t = {
   (* Focus — shared ref between record and context closures (single source of
      truth). *)
   focused : Renderable.t option ref;
+  (* Whether the node [build_commands] is at is inert. *)
+  mutable walk_inert : bool;
   (* Lifecycle *)
   lifecycle_set : (int, Renderable.t) Hashtbl.t;
   (* Worker notifications only mutate this scheduling flag. *)
@@ -156,6 +159,23 @@ let rec find_focusable node =
     | Some p -> find_focusable p
     | None -> None
 
+let top_layer t = Renderable.Private.top_layer t.root
+
+(* A node is inert under an inert node, itself included, and outside the
+   modal node while there is one. *)
+let inert_under modal node =
+  let rec up node =
+    Renderable.inert node
+    ||
+    match modal with
+    | Some m when m == node -> false
+    | Some _ | None -> (
+        match Renderable.parent node with
+        | Some parent -> up parent
+        | None -> Option.is_some modal)
+  in
+  up node
+
 (* ───── Focus ───── *)
 
 let blur_current t =
@@ -166,7 +186,8 @@ let blur_current t =
       t.focused := None
 
 let focus_node t node =
-  if not (Renderable.focusable node) then false
+  if (not (Renderable.focusable node)) || inert_under (top_layer t) node then
+    false
   else (
     if match !(t.focused) with Some f -> not (f == node) | None -> true then (
       blur_current t;
@@ -204,8 +225,16 @@ let list_take n lst =
   in
   go [] n lst
 
+(* A selection's container grows to the parent, up to the node in the top
+   layer, which is placed apart from its parent. *)
 let parent_or_self node =
-  match Renderable.parent node with Some p -> p | None -> node
+  match Renderable.parent node with
+  | Some p
+    when match Renderable.Private.top_layer node with
+         | Some top -> not (top == node)
+         | None -> true ->
+      p
+  | Some _ | None -> node
 
 let notify_selectables state sel =
   match state.containers with
@@ -398,6 +427,7 @@ let query_input_hit t ~x ~y =
         let hit = ref 0 and depth = ref 0 and outside = ref 0 in
         for i = 0 to t.cmd_len - 1 do
           match t.commands.(i) with
+          | Render_inert _ -> ()
           | Render node ->
               if
                 !outside = 0
@@ -508,7 +538,10 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
       off_loop = executor;
       focus =
         (fun node ->
-          if not (Renderable.focusable node) then false
+          if
+            (not (Renderable.focusable node))
+            || inert_under (Renderable.Private.top_layer node) node
+          then false
           else (
             (match !focused with
             | Some f when not (f == node) ->
@@ -558,6 +591,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
       report_scroll;
       admit_size_report;
       regroups = [];
+      top_layer = None;
     }
   in
   let root_style =
@@ -589,6 +623,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
     layout_cell_size = Screen.cell_size screen;
     frame = None;
     focused;
+    walk_inert = false;
     lifecycle_set;
     commands = Array.make 64 Pop_scissor;
     cmd_len = 0;
@@ -610,6 +645,32 @@ let screen t = t.screen
 let focused t = !(t.focused)
 let blur t = blur_current t
 let focus t node = focus_node t node
+let modal t = top_layer t
+
+let set_modal t m =
+  let same =
+    match (top_layer t, m) with
+    | None, None -> true
+    | Some a, Some b -> a == b
+    | Some _, None | None, Some _ -> false
+  in
+  if not same then begin
+    (* The node that leaves the top layer, and the one that enters it, are
+       laid out again where they now belong. *)
+    let relayout = function
+      | Some node when not (Renderable.destroyed node) ->
+          Renderable.mark_dirty node
+      | Some _ | None -> ()
+    in
+    relayout (top_layer t);
+    relayout m;
+    Renderable.Private.set_top_layer t.root m;
+    t.last_layout <- None;
+    (match !(t.focused) with
+    | Some node when inert_under m node -> blur_current t
+    | Some _ | None -> ());
+    Renderable.request_render t.root
+  end
 
 (* Stops come in the tree's pre-order, as HTML's sequential focus navigation
    order follows the document's. One walk finds the stops on either side of
@@ -623,7 +684,7 @@ let request_focus t direction =
   let first = ref None and last = ref None in
   let before = ref None and after = ref None and passed = ref false in
   let rec walk node =
-    if Renderable.visible node then begin
+    if Renderable.visible node && not (Renderable.inert node) then begin
       (match focused with
       | Some f when f == node -> passed := true
       | Some _ | None ->
@@ -636,7 +697,7 @@ let request_focus t direction =
       List.iter walk (Renderable.children node)
     end
   in
-  walk t.root;
+  walk (Option.value (top_layer t) ~default:t.root);
   let stop =
     match direction with
     | `Next -> if Option.is_some !after then !after else !first
@@ -720,12 +781,17 @@ let rec build_commands (t : t) (node : Renderable.t) ~parent_x ~parent_y
     Renderable.Private.update_layout node ~x:abs_x ~y:abs_y ~width:abs_w
       ~height:abs_h;
     Renderable.Private.pre_render_update ~frame node ~dt;
-    (* Opacity *)
+    (* Inertness holds for the subtree of an inert node, and for the whole
+       tree while a modal node is set; the modal node's subtree is walked on
+       its own, in the top layer. *)
+    let outer_inert = t.walk_inert in
+    let inert = outer_inert || Renderable.inert node in
+    t.walk_inert <- inert;
     let opacity = Renderable.opacity node in
     let has_opacity = opacity < 1.0 in
     if has_opacity then emit_cmd t (Push_opacity opacity);
     (* Emit render command for this node *)
-    emit_cmd t (Render node);
+    emit_cmd t (if inert then Render_inert node else Render node);
     (* Child clipping — only applied when overflow is not Visible, following
        CSS-style overflow semantics where "visible" means no clipping. *)
     let overflow = Toffee.Style.overflow (Renderable.style node) in
@@ -745,8 +811,11 @@ let rec build_commands (t : t) (node : Renderable.t) ~parent_x ~parent_y
          clip, so offscreen children skip layout extraction, frame hooks,
          rendering, and hit registration entirely. *)
       let recurse child =
-        build_commands t child ~parent_x:abs_x ~parent_y:abs_y ~clip:child_clip
-          ~frame ~dt
+        match top_layer t with
+        | Some m when m == child -> ()
+        | Some _ | None ->
+            build_commands t child ~parent_x:abs_x ~parent_y:abs_y
+              ~clip:child_clip ~frame ~dt
       in
       if Renderable.Private.viewport_cull node then
         Renderable.Private.iter_children_in_viewport ~parent:node
@@ -762,6 +831,7 @@ let rec build_commands (t : t) (node : Renderable.t) ~parent_x ~parent_y
           render_children child_clip;
           emit_cmd t Pop_scissor
         end);
+    t.walk_inert <- outer_inert;
     if has_opacity then emit_cmd t Pop_opacity
 
 (* ───── Pass 3: Execute Commands ───── *)
@@ -784,6 +854,7 @@ let execute_commands (t : t) ~(grid : Grid.t) ~(hits : Screen.Hit_grid.t)
         Screen.Hit_grid.pop_clip hits
     | Push_opacity opacity -> Grid.push_opacity grid opacity
     | Pop_opacity -> Grid.pop_opacity grid
+    | Render_inert node -> Renderable.Private.render_full node ~grid ~dt
   done
 
 (* ───── Render Frame ───── *)
@@ -834,7 +905,23 @@ let compute_layout t ~width ~height =
     toffee_exn
       (Toffee.compute_layout_with_measure t.tree root_toffee available_space
          (measure_fn t));
-    t.last_layout <- Some (width, height)
+    t.last_layout <- Some (width, height);
+    (* The modal node is laid out again against the root, as the root of
+       its own layout, which replaces the one its parent gave it: it is out
+       of its parent's flow, so nothing else depends on it. *)
+    match top_layer t with
+    | Some m when not (Renderable.destroyed m) ->
+        let root = toffee_exn (Toffee.layout t.tree root_toffee) in
+        toffee_exn
+          (Toffee.compute_layout_with_measure t.tree
+             (Renderable.Private.toffee_node m)
+             Toffee.Geometry.Size.
+               {
+                 width = Toffee.Available_space.Definite root.size.width;
+                 height = Toffee.Available_space.Definite root.size.height;
+               }
+             (measure_fn t))
+    | Some _ | None -> ()
   end
 
 (* A layout callback may resize a sibling (for example, reveal a scrollbar).
@@ -845,7 +932,15 @@ let prepare_commands t ~width ~height ~frame ~dt =
   let rec settle remaining frame dt =
     compute_layout t ~width ~height;
     t.cmd_len <- 0;
+    t.walk_inert <- Option.is_some (top_layer t);
     build_commands t t.root ~parent_x:0. ~parent_y:0. ~clip ~frame ~dt;
+    (* The top layer comes last, so it paints over the tree and the pointer
+       finds it first, under no scissor of its ancestors. *)
+    (match top_layer t with
+    | Some m when not (Renderable.destroyed m) ->
+        t.walk_inert <- false;
+        build_commands t m ~parent_x:0. ~parent_y:0. ~clip ~frame ~dt
+    | Some _ | None -> ());
     if layout_dirty t then begin
       if remaining = 0 then
         invalid_arg "Mosaic.Renderer: layout callbacks did not converge";
@@ -1129,6 +1224,7 @@ let mouse_path t (mouse : Input.Mouse_report.t) =
       | Event.Mouse.Down { button = Left }, Some node when not modifiers.shift
         -> (
           match find_focusable node with
+          | Some focus when inert_under (top_layer t) focus -> None
           | Some focus when not (Renderable.focused focus) ->
               if Renderable.Private.request_focus focus then Some focus
               else None

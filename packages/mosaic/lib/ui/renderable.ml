@@ -64,6 +64,7 @@ type context = {
   report_scroll : node -> region:Grid.region -> dx:int -> dy:int -> unit;
   admit_size_report : node -> bool;
   mutable regroups : node list;
+  mutable top_layer : node option;
 }
 
 (* The region a subtree may paint, in cells relative to its node's layout
@@ -183,6 +184,7 @@ and node = {
   (* Focus *)
   mutable focusable : bool;
   mutable focused : bool;
+  mutable inert : bool;
   mutable cursor_provider : (node -> cursor option) option;
   mutable focus_request : (unit -> unit) option;
   mutable focus_handler : (node -> unit) option;
@@ -410,6 +412,7 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     live_count = self_live;
     focusable = false;
     focused = false;
+    inert = false;
     cursor_provider = None;
     focus_request = None;
     focus_handler = None;
@@ -521,6 +524,7 @@ let blur_direct t =
 
 let focus t = if not t.focusable then false else t.ctx.focus t
 let blur t = if t.focused then t.ctx.blur t
+let inert t = t.inert
 
 let set_cursor_provider t provider =
   t.cursor_provider <- Some provider;
@@ -862,10 +866,17 @@ let set_measure t m =
   t.layout_dirty <- true;
   toffee_exn (Toffee.mark_dirty t.ctx.tree t.toffee_node)
 
+(* The node in the top layer is placed against the root: its ancestors'
+   translations do not move it. *)
+let in_top_layer t =
+  match t.ctx.top_layer with Some top -> top == t | None -> false
+
 let translate_acc t =
   let rec loop node ax ay =
     let ax = ax + node.translate_x and ay = ay + node.translate_y in
-    match node.parent with None -> (ax, ay) | Some p -> loop p ax ay
+    match node.parent with
+    | Some p when not (in_top_layer node) -> loop p ax ay
+    | Some _ | None -> (ax, ay)
   in
   loop t 0 0
 
@@ -933,6 +944,14 @@ let rec blur_focused_subtree t =
     | Some child -> blur_focused_subtree child
     | None -> ()
   done
+
+(* What the pointer hits changes with inertness, so the frame's hit regions
+   are built again. *)
+let set_inert t v =
+  if t.inert <> v then (
+    t.inert <- v;
+    if v then blur_focused_subtree t;
+    t.ctx.schedule ())
 
 let detach_impl child =
   match child.parent with
@@ -1342,16 +1361,20 @@ let[@inline] update_layout t ~x ~y ~width ~height =
 (* Refresh direct children's cached layout from the layout tree, mirroring
    OpenTUI's updateFromLayout pass before [_getVisibleChildren].
    [t.abs] is current because the renderer updates a node's layout
-   before descending into its children. *)
+   before descending into its children. The node in the top layer is laid
+   out as a root, at the root's origin. *)
 let update_children_layout t =
   for i = 0 to t.child_count - 1 do
     match t.children.(i) with
     | Some child when child.visible -> (
         match Toffee.layout t.ctx.tree child.toffee_node with
         | Ok (l : Toffee.Layout.t) ->
+            let ox, oy =
+              if in_top_layer child then (0., 0.) else (t.abs.abs_x, t.abs.abs_y)
+            in
             update_layout child
-              ~x:(t.abs.abs_x +. location_x child l)
-              ~y:(t.abs.abs_y +. location_y child l)
+              ~x:(ox +. location_x child l)
+              ~y:(oy +. location_y child l)
               ~width:l.size.width ~height:l.size.height
         | Error _ -> ())
     | Some _ | None -> ()
@@ -1397,7 +1420,7 @@ let rec paint_region t =
       if not (clips t) then
         for i = 0 to t.child_count - 1 do
           match t.children.(i) with
-          | Some child when child.visible ->
+          | Some child when child.visible && not (in_top_layer child) ->
               let r = !region and c = child_region child in
               region :=
                 {
@@ -1699,6 +1722,8 @@ module Private = struct
     | None | Some _ -> false
 
   let has_focus_request t = Option.is_some t.focus_request
+  let top_layer t = t.ctx.top_layer
+  let set_top_layer t top = t.ctx.top_layer <- top
 
   type nonrec context = context = {
     tree : unit Toffee.tree;
@@ -1718,6 +1743,7 @@ module Private = struct
     report_scroll : t -> region:Grid.region -> dx:int -> dy:int -> unit;
     admit_size_report : t -> bool;
     mutable regroups : t list;
+    mutable top_layer : t option;
   }
 
   let create_root ctx ?id ?style () =

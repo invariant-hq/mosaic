@@ -82,6 +82,7 @@ type 'msg widget_callbacks =
       on_change : (Tree.State.t -> 'msg) option;
       on_activate : (Tree.item -> 'msg) option;
     }
+  | Modal_callbacks of { on_close : (unit -> 'msg) option }
 
 (* ───── Attributes ───── *)
 
@@ -209,12 +210,13 @@ let viewport_switch ~at_least_width ~wide ~narrow =
 
 let box ?key ?(style = Toffee.Style.default) ?(visible = true) ?(z_index = 0)
     ?(opacity = 1.0) ?(focusable = false) ?(focused = false) ?(buffered = false)
-    ?(live = false) ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
-    ?on_size ?border ?border_style ?border_sides ?border_width ?border_color
-    ?focused_border_color ?background ?fill ?title ?title_alignment children =
+    ?(live = false) ?inert ?on_mouse ?on_key ?on_paste ?on_click
+    ?on_focus_request ?on_size ?border ?border_style ?border_sides ?border_width
+    ?border_color ?focused_border_color ?background ?fill ?title
+    ?title_alignment children =
   let kind =
     Box
-      (Box.Props.make ?border ?border_style ?border_sides ?border_width
+      (Box.Props.make ?inert ?border ?border_style ?border_sides ?border_width
          ?border_color ?focused_border_color ?background ?fill ?title
          ?title_alignment ())
   in
@@ -241,6 +243,29 @@ let box ?key ?(style = Toffee.Style.default) ?(visible = true) ?(z_index = 0)
     }
   in
   Element { kind; key; attrs; handlers; callbacks = No_callbacks; children }
+
+(* In the top layer a modal is laid out against the root, which its size
+   fills, and centres its child, as HTML centres a modal dialog in the
+   viewport. In its parent's layout it is out of flow. *)
+let modal_style =
+  let full = Toffee.Style.Dimension.percent 1. in
+  Toffee.Style.default
+  |> Toffee.Style.set_position Toffee.Style.Position.Absolute
+  |> Toffee.Style.set_size { width = full; height = full }
+  |> Toffee.Style.set_align_items (Some Toffee.Style.Align_items.Center)
+  |> Toffee.Style.set_justify_content (Some Toffee.Style.Align_content.Center)
+
+let modal ?key ?on_close child =
+  match box ?key ~style:modal_style [ child ] with
+  | Element e ->
+      Element
+        {
+          e with
+          callbacks =
+            Modal_callbacks
+              { on_close = Option.map (fun message () -> message) on_close };
+        }
+  | _ -> assert false
 
 let text ?key ?(style = Toffee.Style.default) ?(visible = true) ?(z_index = 0)
     ?(opacity = 1.0) ?(focusable = false) ?(focused = false) ?(buffered = false)
@@ -1032,6 +1057,8 @@ let map_callbacks (f : 'a -> 'b) : 'a widget_callbacks -> 'b widget_callbacks =
           on_change = Option.map (fun g value -> f (g value)) on_change;
           on_activate = Option.map (fun g value -> f (g value)) on_activate;
         }
+  | Modal_callbacks { on_close } ->
+      Modal_callbacks { on_close = Option.map (fun g () -> f (g ())) on_close }
 
 let rec map (f : 'a -> 'b) (vnode : 'a t) : 'b t =
   match vnode with

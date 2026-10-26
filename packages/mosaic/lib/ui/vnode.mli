@@ -54,6 +54,10 @@ type kind =
 
 (** {1:callbacks Widget callbacks} *)
 
+(** The type for per-widget semantic callbacks, parameterised by the message
+    type. Separated from {!type-handlers} so that adding new widget callbacks
+    does not pollute the generic handler record. Separated from {!type-kind} so
+    that visual props remain monomorphic. *)
 type 'msg widget_callbacks =
   | No_callbacks
   | Slider_callbacks of { on_value_change : (float -> 'msg) option }
@@ -92,11 +96,8 @@ type 'msg widget_callbacks =
       on_change : (Tree.State.t -> 'msg) option;
       on_activate : (Tree.item -> 'msg) option;
     }
-      (** The type for per-widget semantic callbacks, parameterised by the
-          message type. Separated from {!type-handlers} so that adding new
-          widget callbacks does not pollute the generic handler record.
-          Separated from {!type-kind} so that visual props remain monomorphic.
-      *)
+  | Modal_callbacks of { on_close : (unit -> 'msg) option }
+      (** A box with these callbacks is a modal ({!val-modal}). *)
 
 (** {1:attrs Attributes} *)
 
@@ -114,8 +115,9 @@ type attrs = {
     across {!val-map} and physical-equality fast paths in the reconciler.
 
     [focused] declares application-owned focus and implies [focusable]. At most
-    one visible element may declare focus. The application runtime synchronizes
-    this declaration with the renderer after reconciliation. *)
+    one visible element that is not inert may declare focus. The application
+    runtime synchronizes this declaration with the renderer after
+    reconciliation. *)
 
 (** {1:vnodes Virtual nodes} *)
 
@@ -229,6 +231,7 @@ val box :
   ?focused:bool ->
   ?buffered:bool ->
   ?live:bool ->
+  ?inert:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -264,6 +267,8 @@ val box :
       frame rather than only on request. Defaults to [false].
 
     Box-specific attributes:
+    - [inert] makes the box and its descendants inert ({!Renderable.set_inert}).
+      Defaults to [false].
     - [border] enables border rendering. Defaults to [false]; also enabled
       automatically when any border option is set.
     - [border_style] is the border character set. Defaults to
@@ -281,6 +286,15 @@ val box :
     - [title] is the text rendered in the top border.
     - [title_alignment] is the alignment of the title text. Defaults to [`Left].
 *)
+
+val modal : ?key:string -> ?on_close:'msg -> 'msg t -> 'msg t
+(** [modal child] is a box that centres [child] and that, while it is shown and
+    set as the renderer's modal node ({!Renderer.set_modal}), is in the top
+    layer: laid out against the root, painted above everything and unclipped,
+    with every other element inert. Of several modals shown, the last in tree
+    order is the one. [on_close] is the message for a request to close it, the
+    Escape key. The application runtime sets the modal node and delivers
+    [on_close]. *)
 
 val text :
   ?key:string ->

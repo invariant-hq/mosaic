@@ -23,6 +23,7 @@ module Props = struct
     fill : bool;
     title : string option;
     title_alignment : [ `Left | `Center | `Right ];
+    inert : bool;
   }
 
   let default_focused_border_color = Ansi.Color.bright_cyan
@@ -30,7 +31,7 @@ module Props = struct
   let make ?(border = false) ?(border_style = Matrix_grid.Border.single)
       ?(border_sides = Matrix_grid.Border.all) ?border_width
       ?(border_color = Ansi.Color.white) ?focused_border_color ?background
-      ?(fill = true) ?title ?(title_alignment = `Left) () =
+      ?(fill = true) ?title ?(title_alignment = `Left) ?(inert = false) () =
     let border_width =
       Option.map (Toffee.Geometry.Rect.map cells_of_border_width) border_width
     in
@@ -56,9 +57,11 @@ module Props = struct
       fill;
       title;
       title_alignment;
+      inert;
     }
 
   let default = make ()
+  let inert p = p.inert
 
   let equal a b =
     a.border = b.border
@@ -71,6 +74,7 @@ module Props = struct
     && Option.equal Ansi.Color.equal a.background b.background
     && a.fill = b.fill && a.title = b.title
     && a.title_alignment = b.title_alignment
+    && a.inert = b.inert
 end
 
 (* Types *)
@@ -158,15 +162,16 @@ let render t _self grid ~dt:_ =
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?border
     ?border_style ?border_sides ?border_width ?border_color
-    ?focused_border_color ?background ?fill ?title ?title_alignment () =
+    ?focused_border_color ?background ?fill ?title ?title_alignment ?inert () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
     Props.make ?border ?border_style ?border_sides ?border_width ?border_color
-      ?focused_border_color ?background ?fill ?title ?title_alignment ()
+      ?focused_border_color ?background ?fill ?title ?title_alignment ?inert ()
   in
   let t = { node; props } in
+  Renderable.set_inert node props.inert;
   Renderable.set_render node (render t);
   Renderable.set_child_clip node (Some (child_clip t));
   apply_border_style t;
@@ -239,6 +244,7 @@ let set_style t style =
 
 let apply_props t props =
   t.props <- props;
+  Renderable.set_inert t.node props.inert;
   apply_border_style t;
   request_render t
 

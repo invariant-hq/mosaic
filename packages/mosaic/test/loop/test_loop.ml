@@ -2227,6 +2227,207 @@ let%expect_test "a lost focus is reported once, and only after a focus" =
   equal ~msg:"no focus before, no report" (list string) [] (reports applied);
   [%expect {| |}]
 
+(* Inert and modal. Input a, in a box that is inert while [inert], and
+   input b; while [shown], a modal over them holds a line of text and the
+   inputs m1 and m2. The log is the messages applied. *)
+
+type layered = {
+  lfocus : string option;
+  inert : bool;
+  shown : bool;
+  log : string list;
+}
+
+let layered ?(subs = fun _ -> Mosaic.Sub.none) ~inert ~shown ~focus keys =
+  let final = ref None in
+  let application =
+    {
+      Mosaic.init =
+        (fun () ->
+          ({ lfocus = focus; inert; shown; log = [] }, Mosaic.Cmd.none));
+      update =
+        (fun msg model ->
+          let entry, model =
+            match msg with
+            | `Focus name -> ("focus " ^ name, { model with lfocus = Some name })
+            | `Edit name -> ("edit " ^ name, model)
+            | `Close -> ("close", { model with shown = false })
+            | `Heard what -> (what, model)
+          in
+          let model = { model with log = model.log @ [ entry ] } in
+          final := Some model;
+          (model, Mosaic.Cmd.none));
+      view =
+        (fun model ->
+          let field name =
+            Mosaic.input ~key:name
+              ~size:(Mosaic.size ~width:6 ~height:1)
+              ~state:Mosaic.Editor.empty ~focused:(model.lfocus = Some name)
+              ~on_focus_request:(`Focus name)
+              ~on_change:(fun _ -> `Edit name)
+              ()
+          in
+          Mosaic.box ~flex_direction:Column
+            ~size:(Mosaic.size ~width:20 ~height:6)
+            ([ Mosaic.box ~inert:model.inert [ field "a" ]; field "b" ]
+            @
+            if model.shown then
+              [
+                Mosaic.modal ~on_close:`Close
+                  (Mosaic.box ~flex_direction:Column
+                     [ Mosaic.text "dialog"; field "m1"; field "m2" ]);
+              ]
+            else []));
+      subscriptions = subs;
+    }
+  in
+  let screen_text = ref "" in
+  drive ~width:20 ~height:6 application
+    (List.map (fun bytes -> `Feed bytes) keys
+    @ [ `Run (fun t -> screen_text := screen t) ]);
+  let log = match !final with Some m -> m.log | None -> [] in
+  (log, !screen_text)
+
+(* A left press and release at column 1, row 1, over a. *)
+let click_a = "\027[<0;1;1M\027[<0;1;1m"
+
+let%expect_test "an inert box takes no focus, no pointer and no Tab stop" =
+  let log, _ = layered ~inert:true ~shown:false ~focus:(Some "a") [ "x" ] in
+  equal ~msg:"a, declared focused, is inert: x reaches no input" (list string)
+    [] log;
+  let log, _ = layered ~inert:true ~shown:false ~focus:None [ click_a ] in
+  equal ~msg:"a press over a asks nothing" (list string) [] log;
+  let log, _ = layered ~inert:true ~shown:false ~focus:None [ "\t\t" ] in
+  equal ~msg:"Tab passes a by" (list string) [ "focus b" ] log;
+  let log, _ =
+    layered ~inert:false ~shown:false ~focus:None [ click_a ^ "x" ]
+  in
+  equal ~msg:"not inert, a takes the press and the key" (list string)
+    [ "focus a"; "edit a" ] log;
+  [%expect {| |}]
+
+let%expect_test "a modal holds focus, the pointer and Tab, and Escape closes it"
+    =
+  let log, screen =
+    layered ~inert:false ~shown:true ~focus:(Some "a") [ "x" ^ click_a ]
+  in
+  equal ~msg:"a is inert under the modal" (list string) [] log;
+  is_true ~msg:"the modal draws its child"
+    (List.exists
+       (fun row -> String.trim row = "dialog")
+       (String.split_on_char '\n' screen));
+  let log, _ =
+    layered ~inert:false ~shown:true ~focus:None [ "\t\t\t\027[Z" ]
+  in
+  equal ~msg:"Tab cycles within the modal" (list string)
+    [ "focus m1"; "focus m2"; "focus m1"; "focus m2" ]
+    log;
+  let log, _ =
+    layered ~inert:false ~shown:true ~focus:(Some "m1") [ "\027"; "y" ]
+  in
+  equal ~msg:"Escape closes it; m1 goes with it and y reaches no input"
+    (list string) [ "close" ] log;
+  let log, _ = layered ~inert:false ~shown:true ~focus:None [ "\027"; "y" ] in
+  equal ~msg:"with nothing focused too" (list string) [ "close" ] log;
+  let subs _ =
+    Mosaic.Sub.on_key ~phase:Capture (fun key ->
+        if Mosaic.Shortcut.matches Mosaic.Shortcut.escape key then (
+          Mosaic.Event.Key.prevent_default key;
+          Some (`Heard "escape"))
+        else None)
+  in
+  let log, _ =
+    layered ~subs ~inert:false ~shown:true ~focus:(Some "m1") [ "\027"; "y" ]
+  in
+  equal ~msg:"a Capture listener sees Escape first and can keep it"
+    (list string) [ "escape"; "edit m1" ] log;
+  [%expect {| |}]
+
+(* The top layer. A modal declared inside a scroll box two rows high, which
+   clips its content, between two lines of text. The modal holds a bordered
+   box with the input m. Returns the screen and the messages applied. *)
+let top_layer ~shown keys =
+  let log = ref [] in
+  let application =
+    {
+      Mosaic.init = (fun () -> (shown, Mosaic.Cmd.none));
+      update =
+        (fun msg shown ->
+          match msg with
+          | `Close ->
+              log := "close" :: !log;
+              (false, Mosaic.Cmd.none)
+          | `Focus name ->
+              log := ("focus " ^ name) :: !log;
+              (shown, Mosaic.Cmd.none)
+          | `Edit -> (shown, Mosaic.Cmd.none));
+      view =
+        (fun shown ->
+          Mosaic.box ~flex_direction:Column
+            ~size:(Mosaic.size ~width:24 ~height:8)
+            [
+              Mosaic.text "above";
+              Mosaic.scroll_box ~scroll:(Mosaic.Scroll.at 0)
+                ~on_scroll:(fun _ -> `Edit)
+                ~show_scrollbars:false
+                ~size:(Mosaic.size ~width:24 ~height:2)
+                ([
+                   Mosaic.text "row 1"; Mosaic.text "row 2"; Mosaic.text "row 3";
+                 ]
+                @
+                if shown then
+                  [
+                    Mosaic.modal ~on_close:`Close
+                      (Mosaic.box ~border:true ~flex_direction:Column
+                         [
+                           Mosaic.text "a dialog";
+                           Mosaic.input ~key:"m"
+                             ~size:(Mosaic.size ~width:8 ~height:1)
+                             ~state:Mosaic.Editor.empty ~focused:false
+                             ~on_focus_request:(`Focus "m")
+                             ~on_change:(fun _ -> `Edit)
+                             ();
+                         ]);
+                  ]
+                else []);
+              Mosaic.text "below";
+            ]);
+      subscriptions = (fun _ -> Mosaic.Sub.none);
+    }
+  in
+  let text = ref "" in
+  drive ~width:24 ~height:8 application
+    (List.map (fun bytes -> `Feed bytes) keys
+    @ [ `Run (fun t -> text := rstrip_rows (screen t)) ]);
+  (!text, List.rev !log)
+
+let%expect_test "a modal in a clipped scroll box is drawn whole, over the root"
+    =
+  print_endline (fst (top_layer ~shown:true []));
+  [%expect
+    {|
+    above
+    row 1
+    row 2  ┌────────┐
+    below  │a dialog│
+           │        │
+           └────────┘
+    |}]
+
+let%expect_test "the top layer is hit first, and leaves the tree as it was" =
+  (* The dialog's input is on the fifth row, from the ninth column, as the
+     drawing above shows: under the scroll box, out of its clip. *)
+  let click = "\027[<0;10;5M\027[<0;10;5m" in
+  equal ~msg:"a press on the input, outside the scroll box's clip" (list string)
+    [ "focus m" ]
+    (snd (top_layer ~shown:true [ click ]));
+  let closed, log = top_layer ~shown:true [ "\027" ] in
+  equal ~msg:"Escape closes it" (list string) [ "close" ] log;
+  equal ~msg:"the tree is drawn as if it never had the modal" string
+    (fst (top_layer ~shown:false []))
+    closed;
+  [%expect {| |}]
+
 let%expect_test "removing the focused element leaves nothing focused" =
   (* The update that removes the focused input does not move focus: keys
      then reach the application only, until the model declares another. *)
