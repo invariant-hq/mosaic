@@ -68,6 +68,25 @@ let tree_selection_roundtrip (renderer, tree, first, last) =
   Tree.apply_props tree first;
   last_index + Tree.selected_index tree
 
+(* A key on 100,000 items: Down then Up from the middle, with the cursor's
+   hint at its item, as after an earlier key. *)
+let cursor_items =
+  Thumper.black_box
+    (Items.of_array (Array.init 100_000 (Printf.sprintf "item-%d")))
+
+let cursor_step c a =
+  Cursor.step ~equal:String.equal ~name:Fun.id ~page:20 cursor_items c a
+
+let cursor_middle =
+  match cursor_step (Cursor.at "item-0") (By 50_000) with
+  | Moved c -> c
+  | _ -> assert false
+
+let cursor_down_up () =
+  match cursor_step cursor_middle Next with
+  | Moved c -> cursor_step c Prev
+  | outcome -> outcome
+
 (* THUMPER_MACHINE=exact selects the section CI checks: allocation alone,
    whose counts are the same on any x86_64 Linux under the locked compiler in
    release, while time compares only on one machine. *)
@@ -110,6 +129,7 @@ let () =
       Thumper.bench "table/value-5000" (fun () ->
           Mosaic.table ~columns ~rows:value_rows ~equal:String.equal ~selected
             ~on_change:Fun.id ~on_activate:Fun.id ());
+      Thumper.bench "cursor/step-100000" cursor_down_up;
       Thumper.bench_with_setup
         ~setup:(fun () -> make_tree_selection 1_000)
         "tree/selection-roundtrip-1000" tree_selection_roundtrip;

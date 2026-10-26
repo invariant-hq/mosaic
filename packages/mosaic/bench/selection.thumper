@@ -5,6 +5,7 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
+cursor-step-100000	alloc_words	exact	46
 select-positional-5000	alloc_words	exact	56
 select-value-5000	alloc_words	exact	151
 table-positional-5000	alloc_words	exact	68

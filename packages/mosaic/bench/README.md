@@ -43,6 +43,11 @@ Editing covers caret moves and inserts in 128 bytes and 1 MB of text, and a
 key typed at line 5,000 of the 500 KB document of the cross-framework
 editor benchmark (B4), laid out at its width unwrapped and word-wrapped.
 
+Selection covers declaring a select, tab select and table of 5,000 items
+with the last selected, by position and by value, a tree's selection
+moved and back over 1,000 and 10,000 nodes, and a cursor's Down and Up in
+the middle of 100,000 items.
+
 Highlighting covers 100 KB and 1 MB sources with 1,000 captures: alternating
 themes over a retained capture batch, and installing fresh capture batches over
 already indexed text. Both cases resolve paint styles inside the measured
@@ -66,7 +71,10 @@ hold a fixed cap:
   retained, 48 MiB peak). It caps a source and its layout at six words per
   logical line with forty rows shown, on lines of 2 and 50 bytes and of Greek
   and CJK, where they hold five, and with every row shown at nine words a line
-  and two a cluster, which one more array per grapheme exceeds.
+  and two a cluster, which one more array per grapheme exceeds. It counts the
+  words and item comparisons of a cursor's Down and Up over 100 and 100,000
+  items, from the middle and from next to the last item, and fails if they
+  differ.
 - `test/loop/test_transcript.ml` runs the runtime suite's transcript on an
   emulated terminal and fails if typing or a wheel burst allocates more over
   20,000 messages than over 5,000.

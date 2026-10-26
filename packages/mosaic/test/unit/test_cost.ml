@@ -175,6 +175,48 @@ let hidden_transcript_rows () =
   same "a steady frame grows with the rows the viewport hides"
     ~small:(frame 1_000) ~large:(frame 10_000)
 
+(* ───── A key on a collection ─────
+
+   A cursor finds its item at the position where it last saw it, so a key
+   reads the items it moves over whatever their number and the cursor's
+   position. The check counts both the words and the item comparisons of
+   Down then Up, from the middle and from next to the last item. *)
+
+let cursor_keys () =
+  let compared = ref 0 in
+  let equal a b =
+    incr compared;
+    String.equal a b
+  in
+  let step items c a = Cursor.step ~equal ~name:Fun.id ~page:20 items c a in
+  let cost n position =
+    let items =
+      Items.of_array (Array.init n (fun i -> Printf.sprintf "item-%d" i))
+    in
+    let c =
+      match step items (Cursor.at "item-0") (By position) with
+      | Moved c -> c
+      | _ -> fail "a move"
+    in
+    let key () =
+      match step items c Next with
+      | Moved c -> ignore (Sys.opaque_identity (step items c Prev))
+      | _ -> fail "a move"
+    in
+    let words = words key in
+    compared := 0;
+    key ();
+    (words, !compared)
+  in
+  let words, compared = cost 100 50 in
+  List.iter
+    (fun (n, position) ->
+      let words', compared' = cost n position in
+      let what = Printf.sprintf "item %d of %d" position n in
+      same (what ^ ", words") ~small:words ~large:words';
+      same (what ^ ", comparisons") ~small:compared ~large:compared')
+    [ (100, 98); (100_000, 50_000); (100_000, 99_998) ]
+
 (* ───── Memory ───── *)
 
 let mib = 1024 * 1024
@@ -322,4 +364,6 @@ let () =
         ];
       group "Frames follow the visible area"
         [ test "a scrolled transcript" hidden_transcript_rows ];
+      group "Keys follow the items moved over"
+        [ test "a cursor's Down and Up" cursor_keys ];
     ]
