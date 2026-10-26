@@ -82,7 +82,10 @@ val now : unit -> int
     A terminal's line discipline echoes what is typed, collects a line until
     Enter, and turns the interrupt, quit and suspend characters into signals. A
     program that reads every key as it is typed turns all of that off with
-    {!raw}, and puts it back with {!restore} as it found it. *)
+    {!raw}. One that reads keys and leaves the signals to the terminal, as a
+    prompt does, turns off the echo and the lines with {!keys}, and one that
+    reads a password turns off the echo alone with {!no_echo}. Each returns the
+    settings it replaced, and {!restore} puts them back. *)
 
 type settings
 (** The type for a terminal's settings, what tcgetattr(3) gives, with the
@@ -97,6 +100,29 @@ val raw : Unix.file_descr -> settings
     turning CR into LF ([ICRNL]). A read returns as soon as one byte is there.
     Output processing ([OPOST]) and the file status flags, such as [O_NONBLOCK],
     stay as they were.
+
+    Raises [Unix.Unix_error] if [fd] is not a terminal. *)
+
+val keys : Unix.file_descr -> settings
+(** [keys fd] puts [fd] in the {e key interval} immediately and returns the
+    settings it had. The terminal echoes nothing and edits no line, so a read
+    returns each key as soon as one byte of it is there, and a carriage return
+    stays one ([ICRNL] is off), as it is in raw mode. The interrupt, quit and
+    suspend characters still send their signals to the job ([ISIG]), the
+    implementation-defined characters stay ([IEXTEN]), and output is processed
+    as before. So Ctrl+C ends the job and Ctrl+Z stops it as at a shell's
+    prompt, while Ctrl+D, the erase and the kill characters reach the program as
+    bytes. Input not yet read stays.
+
+    Raises [Unix.Unix_error] if [fd] is not a terminal. *)
+
+val no_echo : Unix.file_descr -> settings
+(** [no_echo fd] turns [fd]'s echo off and returns the settings it had, as
+    getpass(3) does to read a password. Lines are still edited, the signal
+    characters still send their signals, and nothing typed is shown, line end
+    included ([ECHO], [ECHOE], [ECHOK] and [ECHONL] are off). It first discards
+    the input not yet read ([TCSAFLUSH]), so what was typed before the question
+    is not taken as its answer.
 
     Raises [Unix.Unix_error] if [fd] is not a terminal. *)
 

@@ -105,6 +105,47 @@ let test_raw_and_restore () =
       is_true ~msg:"line editing again" t.c_icanon;
       is_true ~msg:"IEXTEN again" (get_iexten fd))
 
+(* The key interval keeps the signal characters, and returns each key as
+   typed, a carriage return as one. *)
+let test_keys () =
+  with_pty (fun master fd ->
+      let saved = Tty.keys fd in
+      let t = Unix.tcgetattr fd in
+      is_false ~msg:"no echo" t.c_echo;
+      is_false ~msg:"no line editing" t.c_icanon;
+      is_true ~msg:"signal characters" t.c_isig;
+      is_true ~msg:"IEXTEN kept" (get_iexten fd);
+      is_true ~msg:"output processed" t.c_opost;
+      ignore (Pty.write_string master "a\r" 0 2 : int);
+      let buf = Bytes.create 8 in
+      let n = Unix.read fd buf 0 8 in
+      equal ~msg:"each byte as typed" string "a\r" (Bytes.sub_string buf 0 n);
+      Tty.restore fd saved;
+      let t = Unix.tcgetattr fd in
+      is_true ~msg:"echo again" t.c_echo;
+      is_true ~msg:"line editing again" t.c_icanon;
+      is_true ~msg:"CR to LF again" t.c_icrnl)
+
+(* getpass's settings: no echo, lines and signals kept, and what was typed
+   before discarded. *)
+let test_no_echo () =
+  with_pty (fun master fd ->
+      ignore (Pty.write_string master "typed before\r" 0 13 : int);
+      Unix.sleepf 0.05;
+      let saved = Tty.no_echo fd in
+      let t = Unix.tcgetattr fd in
+      is_false ~msg:"no echo" t.c_echo;
+      is_false ~msg:"no echo of a line end" t.c_echonl;
+      is_true ~msg:"lines" t.c_icanon;
+      is_true ~msg:"signal characters" t.c_isig;
+      is_false ~msg:"typeahead discarded" (Tty.readable fd);
+      ignore (Pty.write_string master "secret\r" 0 7 : int);
+      let buf = Bytes.create 32 in
+      let n = Unix.read fd buf 0 32 in
+      equal ~msg:"a line" string "secret\n" (Bytes.sub_string buf 0 n);
+      Tty.restore fd saved;
+      is_true ~msg:"echo again" (Unix.tcgetattr fd).c_echo)
+
 let test_raw_not_a_terminal () =
   with_pipe (fun r _ ->
       match Tty.raw r with
@@ -543,6 +584,8 @@ let () =
         [
           test "raw and restore" test_raw_and_restore;
           test "raw on a pipe" test_raw_not_a_terminal;
+          test "the key interval" test_keys;
+          test "no echo" test_no_echo;
           test "enable_vt elsewhere than on Windows" test_enable_vt_elsewhere;
         ];
       group "descriptions"

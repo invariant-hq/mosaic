@@ -44,6 +44,35 @@ let raw fd =
   set_iexten fd false;
   { termios; iexten }
 
+let keys fd =
+  let termios = tcgetattr fd in
+  let iexten = get_iexten fd in
+  tcsetattr fd Unix.TCSANOW
+    {
+      termios with
+      c_echo = false;
+      c_icanon = false;
+      c_vmin = 1;
+      c_vtime = 0;
+      c_icrnl = false;
+      c_inlcr = false;
+      c_igncr = false;
+    };
+  { termios; iexten }
+
+let no_echo fd =
+  let termios = tcgetattr fd in
+  let iexten = get_iexten fd in
+  tcsetattr fd Unix.TCSAFLUSH
+    {
+      termios with
+      c_echo = false;
+      c_echoe = false;
+      c_echok = false;
+      c_echonl = false;
+    };
+  { termios; iexten }
+
 let restore fd s =
   tcsetattr fd Unix.TCSADRAIN s.termios;
   set_iexten fd s.iexten
