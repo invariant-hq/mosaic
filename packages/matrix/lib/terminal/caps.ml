@@ -5,6 +5,7 @@ type t = {
   colors : [ `Ansi16 | `Ansi256 | `Truecolor ];
   dumb : bool;
   eager_wrap : bool;
+  lifts_resting_cursor : bool;
   kitty_keyboard : int option;
   kitty_graphics : bool;
   bracketed_paste : bool;
@@ -31,6 +32,7 @@ let defaults =
     colors = `Ansi16;
     dumb = false;
     eager_wrap = false;
+    lifts_resting_cursor = false;
     kitty_keyboard = None;
     kitty_graphics = false;
     bracketed_paste = false;
@@ -52,11 +54,16 @@ let defaults =
     identity = None;
   }
 
-let contains s sub =
-  let n = String.length s and m = String.length sub in
-  let rec at i j = j = m || (s.[i + j] = sub.[j] && at i (j + 1)) in
-  let rec from i = i + m <= n && (at i 0 || from (i + 1)) in
-  from 0
+(* Whether [sub] occurs in [s]. Its loops take every value as an argument,
+   so a search allocates nothing, though derivation searches TERM and the
+   identity on every answer. *)
+let rec matches_at s sub i j m =
+  j = m || (s.[i + j] = sub.[j] && matches_at s sub i (j + 1) m)
+
+let rec occurs_from s sub i n m =
+  i + m <= n && (matches_at s sub i 0 m || occurs_from s sub (i + 1) n m)
+
+let contains s sub = occurs_from s sub 0 (String.length s) (String.length sub)
 
 (* Environment *)
 
@@ -401,6 +408,8 @@ let derive ev =
        else d.colors);
     dumb = env.dumb || d.dumb;
     eager_wrap = (not env.win32) && (described.eager || d.eager_wrap);
+    lifts_resting_cursor =
+      is "wezterm" || contains env.term "wezterm" || d.lifts_resting_cursor;
     kitty_keyboard =
       (if env.vhs then None
        else match ev.keyboard with Some _ as k -> k | None -> d.kitty_keyboard);

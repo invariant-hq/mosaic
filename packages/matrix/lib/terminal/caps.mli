@@ -109,6 +109,14 @@ type t = {
           (terminfo(5), "Glitches and Brain Damage"). A Windows console waits,
           since [Tty.enable_vt] has it wait. A program that must keep the cursor
           on its row writes nothing in the last column of such a terminal. *)
+  lifts_resting_cursor : bool;
+      (** When its width changes, the terminal moves a cursor that rests in the
+          first column of a row other than its first up to the row above, so the
+          next line printed lands on the line before it. WezTerm does (its issue
+          7994, "Width resize corrupts cursor position when it is at column 0 on
+          a non-first line"), so its identity, or a [TERM] that names it, gives
+          this. A program that keeps the cursor on a row of its own rests it in
+          the second column of such a terminal. *)
   kitty_keyboard : int option;
       (** [Some flags] when the terminal has answered the kitty keyboard
           protocol's query, with the enhancement flags it last reported. It is

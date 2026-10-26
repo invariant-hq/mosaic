@@ -113,6 +113,7 @@ it.
 - `Tty.keys` reads keys as they are typed with the interrupt, quit and suspend characters still the terminal's, and `Tty.no_echo` turns the echo off and discards typeahead as getpass(3) does
 - `Tty.background fd` says the process's job is in the background of its controlling terminal `fd`, whose writes land among the shell's
 - `Caps.t.dumb` says the terminal performs no control function (`TERM` unset, `dumb` or `unknown`, outside a Windows console), and `Caps.t.eager_wrap` that it moves to the next line as soon as it prints in the last column (`am` without `xenl` in its description), where a program that keeps the cursor on its row writes nothing
+- `Caps.t.lifts_resting_cursor` says the terminal moves a cursor resting in the first column up a row when its width changes, as WezTerm does (its issue 7994), from WezTerm's identity or a `TERM` that names it
 
 #### Changed
 
@@ -229,7 +230,7 @@ compiling are listed under Changed above.
 
 #### `matrix.terminal`, `matrix.terminfo` and `matrix.tty`
 
-- `Terminal.capabilities` is `Terminal.Caps.t`: `term` goes (read `TERM`), `kitty_keyboard` is the flags last reported, `unicode_width` is a `Matrix_text.width_method`, `rgb` is `colors` (`` `Ansi16 ``, `` `Ansi256 `` or `` `Truecolor ``, so a 16-color terminal is told from a 256-color one by `TERM` and its description), and a record literal gives the new fields `dumb`, `eager_wrap`, `grapheme_mode`, `notification`, `meta_sends_escape`, `multiplexer` and `identity`. `Terminal.make ~output ?tty ?initial_caps ()` → `Terminal.make ~output ?tty caps`
+- `Terminal.capabilities` is `Terminal.Caps.t`: `term` goes (read `TERM`), `kitty_keyboard` is the flags last reported, `unicode_width` is a `Matrix_text.width_method`, `rgb` is `colors` (`` `Ansi16 ``, `` `Ansi256 `` or `` `Truecolor ``, so a 16-color terminal is told from a 256-color one by `TERM` and its description), and a record literal gives the new fields `dumb`, `eager_wrap`, `lifts_resting_cursor`, `grapheme_mode`, `notification`, `meta_sends_escape`, `multiplexer` and `identity`. `Terminal.make ~output ?tty ?initial_caps ()` → `Terminal.make ~output ?tty caps`
 - `Terminal.terminal_info` (the type and the function) and `set_terminal_info` → the `identity` field of the capabilities. `Terminal.apply_capability_event` → `Caps.add`, then `Caps.derive` and `Terminal.set_capabilities`. `Terminal.probe` → `Caps.ask`, `add`, `cursor`, `answered` and `next`, which `Matrix.run` drives
 - `Terminal.set_unicode_width` → `Terminal.enable_grapheme_mode`; the type `Terminal.unicode_width` → `Matrix_text.width_method`; the type `Terminal.cursor_style` → `Ansi.cursor_style`
 - `Terminal.set_raw` → `Tty.raw`, `restore` → `Tty.restore`, `size` → `Tty.window` (an option), `is_tty` → `Tty.is_tty`, `flush_input` → `Tty.flush_input`, and `enable_vt` → `Tty.enable_vt`, whose `Tty.console` must be given to `Tty.restore_console` before the program ends

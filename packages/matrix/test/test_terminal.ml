@@ -596,6 +596,7 @@ type fact =
   | Identity of (string * string) option
   | Colors of [ `Ansi16 | `Ansi256 | `Truecolor ]
   | Dumb of bool
+  | Lifts of bool
   | Hyperlinks of bool
   | Meta of bool option
   | Grapheme of bool option
@@ -629,6 +630,7 @@ let check_fact (c : Caps.t) fact =
            ~pp:(opt (fun ppf (n, v) -> Format.fprintf ppf "%s %s" n v)))
         i c.identity
   | Dumb b -> equal ~msg:"dumb" bool b c.dumb
+  | Lifts b -> equal ~msg:"lifts a resting cursor" bool b c.lifts_resting_cursor
   | Colors n ->
       equal ~msg:"colors"
         (Testable.make ~equal:( = ) ~pp:(fun ppf -> function
@@ -799,6 +801,23 @@ let precedence_cases =
     ("TERM unknown", [ ("TERM", "unknown") ], [], [ Dumb true ]);
     ("TERM empty is unset", [ ("TERM", "") ], [], [ Dumb true ]);
     ("a terminal type is not dumb", [ ("TERM", "vt100") ], [], [ Dumb false ]);
+    ( "WezTerm by its environment lifts a resting cursor",
+      [ ("TERM_PROGRAM", "WezTerm"); ("TERM_PROGRAM_VERSION", "20240203") ],
+      [],
+      [ Lifts true ] );
+    ( "WezTerm by its answer",
+      [ ("SSH_TTY", "/dev/pts/1") ],
+      [ Reply.Version "WezTerm 20240203-110809-5046fc22" ],
+      [ Lifts true ] );
+    ( "WezTerm's environment through ssh tells nothing",
+      [ ("TERM_PROGRAM", "WezTerm"); ("SSH_TTY", "/dev/pts/1") ],
+      [],
+      [ Lifts false ] );
+    ("a TERM that names WezTerm", [ ("TERM", "wezterm") ], [], [ Lifts true ]);
+    ( "xterm keeps a resting cursor",
+      [ ("TERM", "xterm-256color") ],
+      [],
+      [ Lifts false ] );
     ( "256 colors from TERM",
       [ ("TERM", "xterm-256color") ],
       [],
