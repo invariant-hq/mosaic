@@ -1698,6 +1698,8 @@ module Private = struct
         true
     | None | Some _ -> false
 
+  let has_focus_request t = Option.is_some t.focus_request
+
   type nonrec context = context = {
     tree : unit Toffee.tree;
     schedule : unit -> unit;

@@ -283,7 +283,8 @@ let cmd_copy_to_clipboard_maps_without_changing_payload () =
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Clear_selection | Cmd.Static_commit _
   | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Query_color_scheme | Cmd.Bell
-  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ ->
+  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ | Cmd.Focus_next
+  | Cmd.Focus_prev ->
       fail "expected Copy_to_clipboard"
 
 let cmd_clear_selection_maps_to_itself () =
@@ -292,7 +293,8 @@ let cmd_clear_selection_maps_to_itself () =
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Static_commit _
   | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Query_color_scheme | Cmd.Bell
-  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ ->
+  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ | Cmd.Focus_next
+  | Cmd.Focus_prev ->
       fail "expected Clear_selection"
 
 let cmd_copy_selection_maps_to_itself () =
@@ -301,7 +303,8 @@ let cmd_copy_selection_maps_to_itself () =
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Clear_selection
   | Cmd.Static_commit _ | Cmd.Static_clear | Cmd.Query_color_scheme | Cmd.Bell
-  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ ->
+  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ | Cmd.Focus_next
+  | Cmd.Focus_prev ->
       fail "expected Copy_selection"
 
 let cmd_query_color_scheme_maps_to_itself () =
@@ -310,7 +313,8 @@ let cmd_query_color_scheme_maps_to_itself () =
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Clear_selection
   | Cmd.Static_commit _ | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Bell
-  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ ->
+  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ | Cmd.Focus_next
+  | Cmd.Focus_prev ->
       fail "expected Query_color_scheme"
 
 let sub_on_color_scheme_delivers_reports () =

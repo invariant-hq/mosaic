@@ -21,8 +21,6 @@ type msg =
   | Focus of field
   | Set_name of Editor.t
   | Set_email of Editor.t
-  | Focus_next
-  | Focus_prev
 
 let role_label = function
   | Developer -> "Developer"
@@ -47,8 +45,6 @@ let init () =
       focus = Name;
     },
     Cmd.none )
-
-let fields = [ Name; Email; Role; Submit_button; Reset_button ]
 
 let update msg model =
   match msg with
@@ -77,18 +73,6 @@ let update msg model =
       in
       ({ model with email; submitted }, Cmd.none)
   | Quit -> (model, Cmd.quit)
-  | Focus_next ->
-      let focus =
-        Focus.next ~equal:( = ) fields (Some model.focus)
-        |> Option.value ~default:Name
-      in
-      ({ model with focus }, Cmd.none)
-  | Focus_prev ->
-      let focus =
-        Focus.prev ~equal:( = ) fields (Some model.focus)
-        |> Option.value ~default:Name
-      in
-      ({ model with focus }, Cmd.none)
 
 (* Palette *)
 let header_bg = Ansi.Color.of_rgb 30 80 100
@@ -194,15 +178,11 @@ let view model =
         ];
     ]
 
+(* Tab and Shift+Tab move focus through the fields in view order, each
+   asking with its [on_focus_request]. Quitting works whatever is focused, so
+   its keys are taken before the focused field sees them. *)
 let subscriptions _model =
-  (* Focus moves and quitting work whatever is focused, so these keys are
-     taken before the focused field sees them. *)
   Sub.on_keys ~phase:Capture
-    [
-      (Shortcut.tab, Focus_next);
-      (Shortcut.key ~shift:true Tab, Focus_prev);
-      (Shortcut.ctrl 'q', Quit);
-      (Shortcut.escape, Quit);
-    ]
+    [ (Shortcut.ctrl 'q', Quit); (Shortcut.escape, Quit) ]
 
 let () = run { init; update; view; subscriptions }

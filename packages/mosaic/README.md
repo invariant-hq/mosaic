@@ -169,8 +169,10 @@ movement shares the existing text and source index.
 `~on_focus_request` sends its message before caret and selection defaults run.
 Those defaults proceed only if the application accepts focus on that live node.
 Rejecting the request or removing the node leaves its editor unchanged.
-`~on_click` remains a release gesture callback. `Focus.next` and `Focus.prev`
-provide model-owned keyboard traversal.
+`~on_click` remains a release gesture callback. An element with
+`~on_focus_request` is also a stop for Tab and Shift+Tab, which deliver the next
+or previous stop's request in view order unless a handler prevents the key;
+`Cmd.focus_next` and `Cmd.focus_prev` do the same from `update`.
 
 Buttons share that focus contract:
 

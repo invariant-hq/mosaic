@@ -610,6 +610,42 @@ let screen t = t.screen
 let focused t = !(t.focused)
 let blur t = blur_current t
 let focus t node = focus_node t node
+
+(* Stops come in the tree's pre-order, as HTML's sequential focus navigation
+   order follows the document's. One walk finds the stops on either side of
+   the focused node and the first and last, so the order wraps. *)
+let request_focus t direction =
+  let focused =
+    match !(t.focused) with
+    | Some node when Renderable.focused node -> Some node
+    | Some _ | None -> None
+  in
+  let first = ref None and last = ref None in
+  let before = ref None and after = ref None and passed = ref false in
+  let rec walk node =
+    if Renderable.visible node then begin
+      (match focused with
+      | Some f when f == node -> passed := true
+      | Some _ | None ->
+          if Renderable.Private.has_focus_request node then begin
+            if Option.is_none !first then first := Some node;
+            last := Some node;
+            if not !passed then before := Some node
+            else if Option.is_none !after then after := Some node
+          end);
+      List.iter walk (Renderable.children node)
+    end
+  in
+  walk t.root;
+  let stop =
+    match direction with
+    | `Next -> if Option.is_some !after then !after else !first
+    | `Prev -> if Option.is_some !before then !before else !last
+  in
+  match stop with
+  | Some node -> Renderable.Private.request_focus node
+  | None -> false
+
 let selection t = t.selection_state.current
 
 let selection_text t =

@@ -892,6 +892,8 @@ module Cmd : sig
     | Static_clear  (** {!val-static_clear}. *)
     | Abort_paste  (** {!val-abort_paste}. *)
     | Keep_frame of bool  (** {!val-keep_frame}. *)
+    | Focus_next  (** {!val-focus_next}. *)
+    | Focus_prev  (** {!val-focus_prev}. *)
 
   val none : 'msg t
   (** [none] is the command that does nothing. *)
@@ -1011,6 +1013,17 @@ module Cmd : sig
       program gives up on it. The program gives up after 5 s of silence, unless
       the application decides when ({!Sub.val-on_paste_stalled}). *)
 
+  val focus_next : 'msg t
+  (** [focus_next] dispatches the [on_focus_request] of the next stop after the
+      focused element, as Tab does ({{!elements}UI elements}), or of the first
+      stop when none is focused. It acts on the next view, so an update that
+      adds an element and asks for [focus_next] can reach it. Nothing is
+      dispatched when the view has no other stop. *)
+
+  val focus_prev : 'msg t
+  (** [focus_prev] is {!focus_next} backwards, as Shift+Tab: the stop before the
+      focused element, or the last stop when none is focused. *)
+
   val map : ('a -> 'b) -> 'a t -> 'b t
   (** [map f cmd] is [cmd] with every dispatched message transformed by [f]. Use
       this to embed child-component commands in a parent command. *)
@@ -1053,7 +1066,7 @@ module Sub : sig
       something used it. A behavior that acts also stops the event, so a
       [Bubble] listener never sees a key typed into a focused input, and a
       shortcut on [q] declared there does not fire while [q] is typed into one.
-      A key the application takes whatever is focused, such as Tab moving focus,
+      A key the application takes whatever is focused, such as F1 opening help,
       belongs in [Capture], with {!Event.Key.prevent_default} so the focused
       element does not act on it too. One [Capture] listener cannot hide an
       event from another; while a dialog owns the keyboard, stop declaring the
@@ -1479,8 +1492,7 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     [key] is an optional reconciliation hint. [focused] declares keyboard focus.
     With no focused element, keys reach subscriptions only. Declaring more than
     one visible focused element raises [Invalid_argument]. Hidden subtrees do
-    not participate in focus. Traversal is application-owned; {!Focus} provides
-    pure next/previous selection over application identifiers.
+    not participate in focus.
 
     Focus is the model's, so nothing moves it but a declaration. Removing or
     hiding the focused element leaves nothing focused, and no event says so:
@@ -1490,11 +1502,23 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     focus forward by themselves when the focused component goes; here that would
     give the model's focus a second owner.
 
-    [on_focus_request] supplies the message for an ordinary left-button press on
-    an unfocused element. The request runs before caret and selection handling.
-    The application accepts it by declaring the element [focused]. Rejecting the
-    request, hiding or removing the element cancels that press's default
-    interaction. Shift-click does not request focus.
+    An element with [on_focus_request] asks for focus with that message, and the
+    application grants it by declaring the element [focused]. Such an element is
+    a {e stop}: it asks on an ordinary left-button press while unfocused, and
+    when Tab reaches it. A press's request runs before caret and selection
+    handling. Rejecting the request, hiding or removing the element cancels that
+    press's default interaction. Shift-click does not request focus.
+
+    Tab's default action, after the [Bubble] listeners and unless something
+    prevented it ({!Sub.section-phases}), is {!Cmd.focus_next}: the next shown
+    stop in view order, an element before its children, asks for focus, the
+    first stop following the last, and with nothing focused the first stop asks.
+    Shift+Tab's is {!Cmd.focus_prev}. Ctrl+I is Tab in the legacy encoding,
+    which sends the same byte for both. An element's [on_key] or a listener that
+    gives Tab a meaning of its own prevents the default with
+    {!Event.Key.prevent_default}; a binding of {!Sub.on_keys} does so itself.
+    {!Focus} steps through the application's own focus identifiers, for an order
+    the view does not state.
 
     Generic event callbacks return a message or [None]. [on_click] runs after a
     primary-button press and release on the element, without dragging.

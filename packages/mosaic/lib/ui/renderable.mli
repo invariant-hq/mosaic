@@ -430,6 +430,9 @@ module Private : sig
   (** [request_focus t] invokes its request callback, if alive, and reports
       whether one was invoked. The callback may reconcile or destroy [t]. *)
 
+  val has_focus_request : t -> bool
+  (** [has_focus_request t] is [true] iff [t] has a request callback. *)
+
   (** {2:context Context} *)
 
   type context = {

@@ -211,6 +211,8 @@ module Cmd = struct
     | Static_clear
     | Abort_paste
     | Keep_frame of bool
+    | Focus_next
+    | Focus_prev
 
   let none = None
   let batch cmds = Batch cmds
@@ -229,6 +231,8 @@ module Cmd = struct
   let static_clear = Static_clear
   let abort_paste = Abort_paste
   let keep_frame keep = Keep_frame keep
+  let focus_next = Focus_next
+  let focus_prev = Focus_prev
 
   let rec map (f : 'a -> 'b) (cmd : 'a t) : 'b t =
     match cmd with
@@ -249,6 +253,8 @@ module Cmd = struct
     | Static_clear -> Static_clear
     | Abort_paste -> Abort_paste
     | Keep_frame keep -> Keep_frame keep
+    | Focus_next -> Focus_next
+    | Focus_prev -> Focus_prev
 end
 
 module Sub = struct
@@ -483,6 +489,9 @@ type ('model, 'msg) runtime = {
      silence was last checked against [paste_stalled_subs]. *)
   mutable paste_heard : int;
   mutable paste_checked : int;
+  (* The focus moves asked for and not yet made, oldest first. Each is made
+     on the view of the model as it stands when its turn comes. *)
+  focus_moves : [ `Next | `Prev ] Queue.t;
 }
 
 (* Push [msg] for the loop's thread to apply. *)
@@ -631,6 +640,8 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
   | Cmd.Keep_frame keep ->
       runtime.keep <- keep;
       Matrix.keep_frame runtime.matrix_app keep
+  | Cmd.Focus_next -> Queue.push `Next runtime.focus_moves
+  | Cmd.Focus_prev -> Queue.push `Prev runtime.focus_moves
 
 let rec collect_subs runtime (sub : _ Sub.t) =
   match sub with
@@ -815,8 +826,8 @@ let dispatch runtime msg =
     update_subscriptions runtime)
 
 (* Applies the pending messages. A frame is asked for when one changed the
-   model, unless a frame is being drawn, which will show it: a message that
-   changes nothing draws nothing. *)
+   model or asked to move focus, unless a frame is being drawn, which will
+   show it: a message that changes nothing draws nothing. *)
 let process_pending_msgs runtime =
   let rec drain () =
     match Atomic.exchange runtime.pending_msgs [] with
@@ -826,8 +837,10 @@ let process_pending_msgs runtime =
         drain ()
   in
   drain ();
-  if runtime.view_dirty && not runtime.framing then
-    Matrix.request_redraw runtime.matrix_app
+  if
+    (runtime.view_dirty || not (Queue.is_empty runtime.focus_moves))
+    && not runtime.framing
+  then Matrix.request_redraw runtime.matrix_app
 
 (* The space the tree is laid out in, for input and for frames alike. In
    [`Primary] mode it is the most rows the live region can take, every row
@@ -842,7 +855,10 @@ let layout_size runtime =
 
 (* Only the loop thread runs the application and reconciler. Widget callbacks
    complete their updates before default processing continues. During a view or
-   geometry refresh, callbacks enqueue instead of re-entering reconciliation. *)
+   geometry refresh, callbacks enqueue instead of re-entering reconciliation.
+   A focus move waits for the view of the messages applied before it, so it
+   counts from the focus that view declares and can reach an element the same
+   update added, as Elm's [Browser.Dom.focus] waits for the next render. *)
 let synchronize runtime =
   if not runtime.synchronizing then begin
     runtime.synchronizing <- true;
@@ -863,6 +879,11 @@ let synchronize runtime =
             | Some node -> ignore (Renderer.focus runtime.renderer node : bool)
             | None -> Renderer.blur runtime.renderer);
             Renderer.prepare_layout runtime.renderer ~width ~height;
+            settle ()
+          end
+          else if not (Queue.is_empty runtime.focus_moves) then begin
+            let direction = Queue.pop runtime.focus_moves in
+            ignore (Renderer.request_focus runtime.renderer direction : bool);
             settle ()
           end
         in
@@ -967,6 +988,15 @@ let dispatch_paste runtime text =
     (Renderer.dispatch_paste runtime.renderer path)
     (Event.Paste.of_text text)
 
+(* Tab and Shift+Tab, with no other modifier, move focus. *)
+let focus_move (key : Matrix.Input.Keystroke.t) =
+  let mods = key.mods in
+  match key.key with
+  | Tab when not (mods.ctrl || mods.alt || mods.super || mods.hyper || mods.meta)
+    ->
+      if mods.shift then Some `Prev else Some `Next
+  | _ -> None
+
 (* A paste arrives in pieces and reaches widgets whole, once it completes; a
    cut paste is dropped. Text a terminal reports without a key, such as an
    input method's, is inserted as a paste is. *)
@@ -979,18 +1009,21 @@ let handle_input runtime (input : Matrix.event) =
       List.iter
         (fun f -> Option.iter (deliver runtime) (f scheme))
         runtime.color_scheme_sub
-  | Key key ->
+  | Key key -> (
       let path = Renderer.focus_path runtime.renderer in
       let event = Event.Key.of_input key in
       listen runtime ~stopped:Event.Key.propagation_stopped runtime.key_subs
         (Renderer.dispatch_key runtime.renderer path)
         event;
-      (* Ctrl+C quits, unless a handler prevented it: in raw mode it is a
-         key, and its default is the program's. *)
-      if
-        Matrix.Input.Keystroke.is_interrupt key
-        && not (Event.Key.default_prevented event)
-      then end_program runtime
+      (* A key's default action comes after every listener, unless one
+         prevented it. Ctrl+C quits: in raw mode it is a key, and its default
+         is the program's. Tab and Shift+Tab move focus. *)
+      if not (Event.Key.default_prevented event) then
+        if Matrix.Input.Keystroke.is_interrupt key then end_program runtime
+        else
+          match focus_move key with
+          | Some direction -> Queue.push direction runtime.focus_moves
+          | None -> ())
   | Key_release release ->
       List.iter
         (fun f -> Option.iter (deliver runtime) (f release))
@@ -1102,6 +1135,7 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       blur_sub = [];
       color_scheme_sub = [];
       wakeup = None;
+      focus_moves = Queue.create ();
     }
   in
   runtime.map_message <- deliver runtime;

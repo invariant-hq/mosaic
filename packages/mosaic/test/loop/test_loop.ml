@@ -2186,6 +2186,149 @@ let%expect_test "removing the focused element leaves nothing focused" =
     !inputs;
   [%expect {| |}]
 
+(* Tab. A view of stops: inputs a and c, b in a hidden box, d an input
+   without [on_focus_request], so no stop, and the button e. The model is
+   the name focused, and the keys and messages its listeners gave. *)
+
+type stops = { focus : string option; extra : bool; heard : string list }
+
+let stops_app ?(focus = Some "a") ?(subs = fun _ -> Mosaic.Sub.none)
+    ?(on_key = fun _ -> None) ?(command = fun _ -> Mosaic.Cmd.none) observed =
+  {
+    Mosaic.init =
+      (fun () -> ({ focus; extra = false; heard = [] }, Mosaic.Cmd.none));
+    update =
+      (fun msg model ->
+        let model =
+          match msg with
+          | `Focus name -> { model with focus = Some name }
+          | `Heard what -> { model with heard = model.heard @ [ what ] }
+          | `Extra -> { model with extra = true }
+          | `Edit -> model
+        in
+        observed := model;
+        (model, command msg));
+    view =
+      (fun model ->
+        let field ?(stop = true) name =
+          Mosaic.input ~key:name
+            ~size:(Mosaic.size ~width:10 ~height:1)
+            ~state:Mosaic.Editor.empty ~focused:(model.focus = Some name)
+            ?on_focus_request:(if stop then Some (`Focus name) else None)
+            ~on_key
+            ~on_change:(fun _ -> `Edit)
+            ()
+        in
+        Mosaic.box ~flex_direction:Column
+          ([ field "a" ]
+          @ (if model.extra then [ field "x" ] else [])
+          @ [
+              Mosaic.box ~visible:false [ field "b" ];
+              field "c";
+              field ~stop:false "d";
+              Mosaic.button ~focused:(model.focus = Some "e")
+                ~on_focus_request:(`Focus "e") ~on_activate:`Edit "e";
+            ]));
+    subscriptions = subs;
+  }
+
+(* The focus after each of [inputs], fed one by one. *)
+let focus_after ?focus ?subs ?on_key ?command inputs =
+  let observed = ref { focus = None; extra = false; heard = [] } in
+  let application = stops_app ?focus ?subs ?on_key ?command observed in
+  let focuses = ref [] in
+  drive ~width:20 ~height:8 application
+    (List.map
+       (fun bytes ->
+         `Run
+           (fun t ->
+             feed t bytes;
+             focuses := Option.value ~default:"-" !observed.focus :: !focuses))
+       inputs);
+  (List.rev !focuses, !observed.heard)
+
+let shift_tab = "\027[Z"
+
+let%expect_test "Tab moves focus to the next shown stop in view order" =
+  equal ~msg:"Tab skips the hidden b and the d that asks nothing, and wraps"
+    (list string) [ "c"; "e"; "a"; "c" ]
+    (fst (focus_after [ "\t"; "\t"; "\t"; "\t" ]));
+  equal ~msg:"Shift+Tab goes back, and wraps" (list string) [ "e"; "c"; "a" ]
+    (fst (focus_after [ shift_tab; shift_tab; shift_tab ]));
+  [%expect {| |}]
+
+let%expect_test "with nothing focused, Tab goes to the first stop" =
+  equal ~msg:"Tab" (list string) [ "a" ]
+    (fst (focus_after ~focus:None [ "\t" ]));
+  equal ~msg:"Shift+Tab, to the last" (list string) [ "e" ]
+    (fst (focus_after ~focus:None [ shift_tab ]));
+  [%expect {| |}]
+
+let%expect_test "Shift+Tab is read in every encoding" =
+  (* CSI Z, the kitty protocol's CSI 9;2u, and xterm's modifyOtherKeys. *)
+  equal (list string) [ "e"; "c"; "a" ]
+    (fst (focus_after [ shift_tab; "\027[9;2u"; "\027[27;2;9~" ]));
+  [%expect {| |}]
+
+let%expect_test "a binding of Tab keeps Tab and moves nothing" =
+  List.iter
+    (fun phase ->
+      let subs _ =
+        Mosaic.Sub.on_keys ~phase [ (Mosaic.Shortcut.tab, `Heard "tab") ]
+      in
+      equal ~msg:"the binding's message, and focus stays on a"
+        (Windtrap.pair (list string) (list string))
+        ([ "a" ], [ "tab" ])
+        (focus_after ~subs [ "\t" ]))
+    [ Mosaic.Sub.Capture; Mosaic.Sub.Bubble ];
+  [%expect {| |}]
+
+let%expect_test "a handler that uses Tab without preventing it moves focus too"
+    =
+  let subs _ =
+    Mosaic.Sub.on_key (fun key ->
+        if Mosaic.Shortcut.matches Mosaic.Shortcut.tab key then
+          Some (`Heard "tab")
+        else None)
+  in
+  equal ~msg:"a listener's message, and focus on c"
+    (Windtrap.pair (list string) (list string))
+    ([ "c" ], [ "tab" ])
+    (focus_after ~subs [ "\t" ]);
+  let on_key key =
+    if Mosaic.Shortcut.matches Mosaic.Shortcut.tab key then (
+      Mosaic.Event.Key.prevent_default key;
+      Some (`Heard "kept"))
+    else None
+  in
+  equal ~msg:"an element that prevents it keeps focus"
+    (Windtrap.pair (list string) (list string))
+    ([ "a" ], [ "kept" ])
+    (focus_after ~on_key [ "\t" ]);
+  [%expect {| |}]
+
+let%expect_test "Cmd.focus_next acts on the view of the update that asked" =
+  (* n adds x after a and asks for the next stop: x, which the view before
+     the update did not have. p asks for the previous one. Both are taken
+     before the focused input types them. *)
+  let subs _ =
+    Mosaic.Sub.on_keys ~phase:Capture
+      [
+        (Mosaic.Shortcut.char 'n', `Extra);
+        (Mosaic.Shortcut.char 'p', `Heard "p");
+      ]
+  in
+  let command = function
+    | `Extra -> Mosaic.Cmd.focus_next
+    | `Heard "p" -> Mosaic.Cmd.focus_prev
+    | _ -> Mosaic.Cmd.none
+  in
+  equal (list string) [ "x"; "a"; "e" ]
+    (fst (focus_after ~subs ~command [ "n"; "p"; "p" ]));
+  equal ~msg:"from nothing focused" (list string) [ "e" ]
+    (fst (focus_after ~focus:None ~subs ~command [ "p" ]));
+  [%expect {| |}]
+
 let%expect_test "a bubble listener sees a prevented key; a shortcut does not" =
   (* The input's own handler prevents z without stopping it: the input does
      not type it, a bubble listener sees it and can read the flag, and a

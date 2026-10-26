@@ -283,6 +283,16 @@ val focus : t -> Renderable.t -> bool
 val blur : t -> unit
 (** [blur t] removes focus from the currently focused renderable. *)
 
+val request_focus : t -> [ `Next | `Prev ] -> bool
+(** [request_focus t direction] invokes the focus request of the stop after
+    ([`Next]) or before ([`Prev]) the focused node, and is [true] iff it invoked
+    one. A {e stop} is a node with a focus request
+    ({!Renderable.Private.set_focus_request}) that is shown, as its ancestors
+    are. Stops come in tree order, a node before its children, and the first
+    stop follows the last. With nothing focused, the stop is the first one, or
+    the last for [`Prev]. The focused node is never its own next stop. As for a
+    press ({!mouse_path}), the request's owner grants focus or not. *)
+
 (** {1:selection Selection} *)
 
 val selection : t -> Selection.t option
