@@ -51,6 +51,9 @@
 module Hit_grid = Hit_grid
 (** Hit grids. *)
 
+module Region = Region
+(** Regions, rows redrawn at the bottom of a terminal's scrollback. *)
+
 (** {1:types Types} *)
 
 type t

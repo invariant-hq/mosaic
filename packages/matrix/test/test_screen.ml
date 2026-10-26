@@ -1071,6 +1071,248 @@ let test_scroll_hint_by_whole_region_is_ignored () =
   not_contains ~msg:"no scroll" ~sub:"\027[2S" output;
   in_order ~msg:"the region's rows are repainted" ~subs:[ "E"; "F" ] output
 
+(* Regions, on matrix's emulator. A test writes what the shell and other
+   processes write with [feed], and the region's writes as the program
+   would; [lines] is the scrollback and the screen, oldest first, without the
+   blank rows at the end. *)
+
+module Region = Screen.Region
+
+let region_term ~cols ~rows = Vte.create ~rows ~cols ()
+let feed t s = ignore (Vte.feed_string t s : _ list)
+
+let lines t =
+  let n = Vte.scrollback_size t in
+  let all =
+    List.init n (fun i -> Vte.text t (i - n))
+    @ List.init (Vte.rows t) (Vte.text t)
+  in
+  let rec drop = function "" :: rest -> drop rest | l -> l in
+  List.rev (drop (List.rev all))
+
+let frame = function
+  | [] -> None
+  | rows ->
+      let width = List.fold_left (fun w r -> max w (String.length r)) 1 rows in
+      let g = Grid.create ~width ~height:(List.length rows) () in
+      List.iteri (fun y text -> Grid.draw_text g ~x:0 ~y ~text) rows;
+      Some g
+
+let draw ?above r t f =
+  feed t (Region.draw r ~cols:(Vte.cols t) ~rows:(Vte.rows t) ?above f)
+
+let region_lines = Testable.(list string)
+let cursor = Testable.(pair int int)
+
+let test_region_below () =
+  let t = region_term ~cols:20 ~rows:6 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  draw r t (frame [ "50%" ]);
+  equal ~msg:"a blank origin, then the rows" region_lines
+    [ "$ prog"; ""; "50%" ] (lines t);
+  equal ~msg:"the cursor rests at the start of the origin" cursor (1, 0)
+    (Vte.cursor_pos t);
+  draw ~above:"a\nb\n" r t (frame [ "60%" ]);
+  draw ~above:"c" r t (frame [ "70%" ]);
+  equal ~msg:"lines above, in order" region_lines
+    [ "$ prog"; "a"; "b"; "c"; ""; "70%" ]
+    (lines t);
+  equal ~msg:"nothing changed, nothing written" Testable.string ""
+    (Region.draw r ~cols:20 ~rows:6 (frame [ "70%" ]))
+
+let test_region_foreign () =
+  let t = region_term ~cols:20 ~rows:8 in
+  let r = Region.create () in
+  draw r t (frame [ "a"; "b" ]);
+  feed t "F\r\n";
+  draw r t (frame [ "c"; "d" ]);
+  equal ~msg:"a line written over the region stays above it" region_lines
+    [ "F"; ""; "c"; "d" ] (lines t);
+  feed t "partial";
+  draw r t (frame [ "e" ]);
+  equal ~msg:"an unended line on the origin is erased" region_lines
+    [ "F"; ""; "e" ] (lines t);
+  feed t "partial";
+  Region.moved r;
+  draw r t (frame [ "f" ]);
+  equal ~msg:"after moved, it stays" region_lines
+    [ "F"; "partial"; ""; "f" ]
+    (lines t)
+
+(* After [moved], a write moves to a row of its own only when someone wrote
+   past where the region left the cursor: nothing written leaves no blank
+   row, and one character is a line that stays. *)
+let test_region_moved () =
+  let t = region_term ~cols:20 ~rows:8 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  draw r t (frame [ "a" ]);
+  Region.moved r;
+  draw r t (frame [ "b" ]);
+  equal ~msg:"nothing written, no blank row" region_lines [ "$ prog"; ""; "b" ]
+    (lines t);
+  feed t "x";
+  Region.moved r;
+  draw r t (frame [ "c" ]);
+  equal ~msg:"one character stays" region_lines [ "$ prog"; "x"; ""; "c" ]
+    (lines t);
+  (* Resting in the second column, the same. *)
+  let t = region_term ~cols:20 ~rows:8 in
+  let r = Region.create ~lifts_resting_cursor:true () in
+  draw r t (frame [ "a" ]);
+  equal ~msg:"in the second column" cursor (0, 1) (Vte.cursor_pos t);
+  Region.moved r;
+  draw r t (frame [ "b" ]);
+  equal ~msg:"nothing written, no blank row" region_lines [ ""; "b" ] (lines t);
+  feed t "x";
+  Region.moved r;
+  draw r t (frame [ "c" ]);
+  equal ~msg:"one character stays, one column in" region_lines [ " x"; ""; "c" ]
+    (lines t)
+
+let test_region_tall () =
+  let t = region_term ~cols:10 ~rows:4 in
+  feed t "s1\r\ns2\r\n";
+  let r = Region.create () in
+  draw r t (frame (List.init 10 (Printf.sprintf "r%d")));
+  equal ~msg:"the last rows - 1 rows" region_lines
+    [ "s1"; "s2"; ""; "r7"; "r8"; "r9" ]
+    (lines t);
+  equal ~msg:"the origin on the screen" cursor (0, 0) (Vte.cursor_pos t)
+
+let test_region_width () =
+  let t = region_term ~cols:6 ~rows:4 in
+  let r = Region.create () in
+  draw r t (frame [ "abcdefghij" ]);
+  equal ~msg:"cut at the width" region_lines [ ""; "abcdef" ] (lines t);
+  let t = region_term ~cols:6 ~rows:4 in
+  let r = Region.create ~eager_wrap:true () in
+  equal ~msg:"one column less" Testable.int 5 (Region.width r ~cols:6);
+  draw r t (frame [ "abcdefghij" ]);
+  equal ~msg:"the last column left empty" region_lines [ ""; "abcde" ] (lines t);
+  let bytes = Region.draw r ~cols:6 ~rows:4 (frame [ "x" ]) in
+  not_contains ~msg:"no row of spaces as wide as the terminal"
+    ~sub:(String.make 6 ' ') bytes
+
+let test_region_close () =
+  let t = region_term ~cols:10 ~rows:6 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  draw r t (frame [ "1/2" ]);
+  feed t
+    (Region.close r ~cols:10 ~rows:6 ~above:"last\n" (frame [ "2/2"; "ok" ]));
+  feed t "$ ";
+  equal ~msg:"the frame stays from the origin, the prompt below" region_lines
+    [ "$ prog"; "last"; "2/2"; "ok"; "$" ]
+    (lines t);
+  let t = region_term ~cols:10 ~rows:6 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  draw r t (frame [ "1/2"; "x" ]);
+  feed t (Region.close r ~cols:10 ~rows:6 None);
+  feed t "$ ";
+  equal ~msg:"no frame, no trace" region_lines [ "$ prog"; "$" ] (lines t)
+
+let test_region_suspend () =
+  let t = region_term ~cols:10 ~rows:6 in
+  let r = Region.create () in
+  draw r t (frame [ "a"; "b" ]);
+  feed t (Region.suspend r ~cols:10);
+  equal ~msg:"erased" region_lines [] (lines t);
+  equal ~msg:"the start of the origin" cursor (0, 0) (Vte.cursor_pos t);
+  feed t "child\r\nno end";
+  draw r t (frame [ "c" ]);
+  equal ~msg:"the child's lines stay, unended one included" region_lines
+    [ "child"; "no end"; ""; "c" ]
+    (lines t)
+
+let test_region_teardown () =
+  let t = region_term ~cols:10 ~rows:8 in
+  let r = Region.create () in
+  draw r t (frame [ "a"; "b" ]);
+  feed t "\027[?2026h\027[?7l\027[1";
+  feed t (Region.teardown r);
+  feed t "$ ";
+  equal ~msg:"the prompt below the rows" region_lines [ ""; "a"; "b"; "$" ]
+    (lines t);
+  let m = Vte.modes t in
+  is_true ~msg:"autowrap back" m.auto_wrap;
+  is_true ~msg:"the cursor shown" m.cursor_visible;
+  is_false ~msg:"the update ended" m.synchronized_output
+
+let test_region_background () =
+  let t = region_term ~cols:10 ~rows:4 in
+  let r = Region.create () in
+  feed t "\027[41m";
+  draw r t (frame [ "a" ]);
+  let g = Vte.grid t in
+  is_true ~msg:"the origin erased on the default background"
+    (Ansi.Color.equal (Grid.get_bg g 5) Ansi.Color.default_bg)
+
+let test_region_plain () =
+  let r = Region.create ~styling:`Plain () in
+  let g = Grid.create ~width:2 ~height:1 () in
+  Grid.draw_text g ~x:0 ~y:0 ~text:"ab"
+    ~style:(Ansi.Style.make ~fg:Ansi.Color.red ());
+  let bytes = Region.draw r ~cols:10 ~rows:4 (Some g) in
+  not_contains ~msg:"no color in the rows" ~sub:"31m" bytes;
+  contains ~msg:"the text" ~sub:"ab" bytes
+
+(* Resizes, lines above, foreign lines and frames of any height, in any
+   order: every line printed above and every complete foreign line shows once,
+   in order, and none is erased. A foreign line written over a region row
+   keeps what the row had past its end, so a line is found by its start. The
+   emulator does not rewrap, so this checks the motion and the erasing, not
+   a rewrap. *)
+let test_region_random () =
+  let st = Random.State.make [| 7 |] in
+  for _ = 1 to 300 do
+    let t = region_term ~cols:30 ~rows:10 in
+    let r = Region.create () in
+    let expected = ref [] and n = ref 0 in
+    let token () =
+      incr n;
+      let s = Printf.sprintf "T%03d" !n in
+      expected := s :: !expected;
+      s
+    in
+    for _ = 1 to 30 do
+      match Random.State.int st 5 with
+      | 0 ->
+          let above = token () ^ "\n" in
+          draw ~above r t
+            (frame
+               (List.init (Random.State.int st 14) (Printf.sprintf "row%d")))
+      | 1 ->
+          draw r t
+            (frame (List.init (Random.State.int st 14) (Printf.sprintf "r%d")))
+      | 2 ->
+          feed t (token () ^ "\r\n");
+          Region.moved r
+      | 3 ->
+          ignore
+            (Vte.resize t
+               ~rows:(4 + Random.State.int st 10)
+               ~cols:(10 + Random.State.int st 30)
+              : _ list)
+      | _ ->
+          feed t (Region.suspend r ~cols:(Vte.cols t));
+          feed t (token () ^ "\r\n")
+    done;
+    feed t (Region.close r ~cols:(Vte.cols t) ~rows:(Vte.rows t) None);
+    let shown =
+      List.filter_map
+        (fun l ->
+          let l = String.trim l in
+          if String.length l >= 4 && l.[0] = 'T' then Some (String.sub l 0 4)
+          else None)
+        (lines t)
+    in
+    equal ~msg:"every line once, in order" region_lines (List.rev !expected)
+      shown
+  done
+
 let test_cursor_style_and_color () =
   (* Test cursor style and color state *)
   let r = create_renderer () in
@@ -1604,6 +1846,20 @@ let () =
           test "Scroll hint by the whole region is ignored"
             test_scroll_hint_by_whole_region_is_ignored;
           test "Cursor style and color" test_cursor_style_and_color;
+        ];
+      group "Region"
+        [
+          test "Below the lines before it" test_region_below;
+          test "Foreign lines" test_region_foreign;
+          test "Moved" test_region_moved;
+          test "A frame taller than the screen" test_region_tall;
+          test "Rows cut to the width" test_region_width;
+          test "Close" test_region_close;
+          test "Suspend" test_region_suspend;
+          test "Teardown" test_region_teardown;
+          test "A background left set" test_region_background;
+          test "Plain rows" test_region_plain;
+          test "Any order of writes loses no line" test_region_random;
         ];
       group "Pictures"
         [

@@ -9,6 +9,11 @@ let () =
   Matrix_screen.build screen ~width:8 ~height:1 (fun g _ ->
       Matrix_grid.blit ~src:grid ~dst:g);
   ignore (Matrix_screen.render screen : string);
+  ignore
+    (Matrix_screen.Region.draw
+       (Matrix_screen.Region.create ())
+       ~cols:8 ~rows:2 (Some grid)
+      : string);
   ignore (Vte.feed_string (Vte.create ~rows:1 ~cols:8 ()) "pure" : _ list);
   ignore (Matrix_input.Decoder.create () : Matrix_input.Decoder.t);
   ignore (Matrix_text.grapheme_count "pure" : int);

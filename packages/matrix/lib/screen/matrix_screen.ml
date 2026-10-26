@@ -5,6 +5,7 @@
 module Grid = Matrix_grid
 open StdLabels
 module Hit_grid = Hit_grid
+module Region = Region
 
 (* --- Types & Metrics --- *)
 
