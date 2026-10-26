@@ -23,9 +23,18 @@
     Unless a value's doc says otherwise, an operation on a handle raises
     [Unix.Unix_error] with the error of the system call that failed, and
     [Unix.Unix_error (EBADF, _, _)] once the handle is closed. A handle starts
-    in blocking mode ({!section-nonblock}). A handle is mutable, and two threads
-    must not use one handle without a lock. {!read}, {!write} and {!spawn}
-    release the runtime lock while they block, so other threads run.
+    in blocking mode ({!section-nonblock}).
+
+    Two threads may use one handle concurrently when one of them only calls
+    {!read} and the other calls neither {!read}, {!close}, {!set_nonblock} nor
+    {!clear_nonblock}. Reading shares no state with the handle's other
+    operations but the descriptor, and the system serves the two directions of a
+    terminal independently. A terminal emulator can thus read in one thread and
+    write, resize the terminal and signal the child in another. A {!close} would
+    free the descriptor's number while the read may still use it, and a mode
+    change applies to the read too. Every other concurrent use of a handle needs
+    a lock. {!read}, {!write} and {!spawn} release the runtime lock while they
+    block, so other threads run.
 
     The module works on Linux, macOS, FreeBSD, DragonFly, NetBSD and OpenBSD. On
     any other platform, Windows included, {!open_pty} and {!spawn} raise

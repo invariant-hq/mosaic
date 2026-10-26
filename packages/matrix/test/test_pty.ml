@@ -346,6 +346,68 @@ let test_spawn_while_a_domain_runs () =
   in
   equal ~msg:"the child ran" string "hello\r\n" output
 
+(* A terminal emulator reads in one domain while another writes, resizes and
+   signals the child. Here [cat] runs on a raw terminal, which passes bytes
+   through unchanged, and the main domain must read back exactly the 8 MB
+   the writer sends in 4,000 writes of varying sizes, then the end of output
+   once the writer has terminated the child. *)
+let test_read_while_another_domain_writes () =
+  let pty =
+    Pty.spawn ~prog:"sh"
+      ~args:[ "-c"; "stty raw -echo && echo ready && exec cat" ]
+      ()
+  in
+  let buf = Bytes.create 4096 in
+  let rec await_ready seen =
+    if not (readable ~timeout:5. (Pty.in_fd pty)) then
+      failf "no ready line within 5s, after %S" seen;
+    let n = Pty.read pty buf 0 (Bytes.length buf) in
+    let seen = seen ^ Bytes.sub_string buf 0 n in
+    if not (String.ends_with ~suffix:"ready\n" seen) then await_ready seen
+  in
+  await_ready "";
+  let chunks =
+    List.init 4000 (fun i ->
+        String.init
+          (1 + (i * 37 mod 4096))
+          (fun j -> Char.chr (Char.code 'a' + ((i + j) mod 26))))
+  in
+  let expected = String.concat "" chunks in
+  let read_all = Atomic.make false in
+  (* The writer ends the child even when it fails, so that the reader
+     reaches the end of output and the failure is raised by the join. *)
+  let writer =
+    Domain.spawn (fun () ->
+        Fun.protect
+          ~finally:(fun () -> Pty.terminate pty)
+          (fun () ->
+            List.iteri
+              (fun i chunk ->
+                let n = Pty.write_string pty chunk 0 (String.length chunk) in
+                assert (n = String.length chunk);
+                if i mod 50 = 0 then
+                  Pty.resize pty ~rows:(20 + (i mod 7)) ~cols:80)
+              chunks;
+            while not (Atomic.get read_all) do
+              Domain.cpu_relax ()
+            done))
+  in
+  let out = Buffer.create (String.length expected) in
+  let rec read_until_eof () =
+    if Buffer.length out >= String.length expected then Atomic.set read_all true;
+    match Pty.read pty buf 0 (Bytes.length buf) with
+    | 0 | (exception Unix.Unix_error (Unix.EIO, _, _)) -> ()
+    | n ->
+        Buffer.add_subbytes out buf 0 n;
+        read_until_eof ()
+  in
+  read_until_eof ();
+  Domain.join writer;
+  Pty.close pty;
+  equal ~msg:"read back what was written" int (String.length expected)
+    (Buffer.length out);
+  is_true ~msg:"in order" (String.equal expected (Buffer.contents out))
+
 (* As with execvp, a file that the kernel cannot execute, here a script
    without #!, runs under /bin/sh. *)
 let test_spawn_script_without_shebang () =
@@ -732,6 +794,8 @@ let tests =
       test "slave not inherited" test_slave_not_inherited;
       test "slave on a std fd" test_slave_on_std_fd;
       test "spawn while a domain runs" test_spawn_while_a_domain_runs;
+      test ~timeout:30. "read while another domain writes"
+        test_read_while_another_domain_writes;
       test "spawn script without shebang" test_spawn_script_without_shebang;
       test "spawn resets ignored signals" test_spawn_resets_ignored_signals;
       test "spawn unblocks signals" test_spawn_unblocks_signals;
