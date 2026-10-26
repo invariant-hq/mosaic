@@ -597,6 +597,98 @@ let list_benches =
         ])
     [ (Select, 10_000); (Select, 100_000); (Table, 100_000) ]
 
+(* A log of [n] lines, one text each, in a scroll box that follows its
+   bottom, over a 120x40 terminal: the idiomatic code of a program that
+   appends output as it comes. A sample appends a line, then drops it, each
+   presented, so the log returns to where it was. *)
+
+let log_fill =
+  [|
+    "amber harbor orbit velvet cedar juniper.";
+    "delta kestrel raven yarrow fable meadow.";
+    "grove nectar umber basil indigo pepper..";
+    "juniper quartz xenon ember lumen saffro.";
+    "meadow tundra amber harbor orbit velvet.";
+  |]
+
+let log_line i =
+  Printf.sprintf "L%06d %s %s" i log_fill.(i mod 5) (String.make (i mod 41) '#')
+
+let log_application n =
+  (* Newest first, as a program conses what comes. *)
+  let lines = List.init (n + 1) (fun i -> log_line (n - i)) in
+  let view lines =
+    Mosaic.box ~flex_direction:Mosaic.Flex_direction.Column
+      ~size:(Mosaic.size_wh (Mosaic.pct 100) (Mosaic.pct 100))
+      [
+        Mosaic.scroll_box ~flex_grow:1. ~scroll_x:false
+          ~min_size:(Mosaic.size ~width:0 ~height:0)
+          ~scroll:(Mosaic.Scroll.follow `Bottom (Mosaic.Scroll.at 0))
+          ~on_scroll:(fun _ -> `Nothing)
+          (List.rev_map (fun line -> Mosaic.text line) lines);
+        Mosaic.text (Printf.sprintf "%d lines" (List.length lines));
+      ]
+  in
+  {
+    Mosaic.init = (fun () -> (List.tl lines, none));
+    update =
+      (fun msg shown ->
+        match msg with
+        | `Append -> (List.hd lines :: shown, none)
+        | `Drop -> (List.tl shown, none)
+        | `Nothing -> (shown, none));
+    view;
+    subscriptions =
+      (fun _ ->
+        Mosaic.Sub.on_keys
+          [
+            (Mosaic.Shortcut.char 'a', `Append);
+            (Mosaic.Shortcut.char 'd', `Drop);
+          ]);
+  }
+
+let log_setup n () =
+  let t = Term.create ~width:120 ~height:40 () in
+  let suspended = start_suspended t (log_application n) in
+  let loop = { t; suspended; dispatch = ref ignore; views = ref 0 } in
+  (* Validate both keys before measuring. *)
+  let screen () = Term.screen t ~width:120 ~height:40 in
+  let before = screen () in
+  Term.feed t "a";
+  loop_resume loop;
+  let appended = screen () in
+  Term.feed t "d";
+  loop_resume loop;
+  let contains s sub =
+    let n = String.length sub in
+    let rec go i =
+      i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
+    in
+    go 0
+  in
+  require (contains appended (log_line n)) "the appended line is not shown";
+  require
+    (String.equal before (screen ()))
+    "dropping it did not restore the log";
+  loop
+
+let append_and_drop loop =
+  Term.feed loop.t "a";
+  loop_resume loop;
+  Term.feed loop.t "d";
+  loop_resume loop
+
+let log_benches =
+  List.map
+    (fun n ->
+      Thumper.group
+        (Printf.sprintf "log-%d" n)
+        [
+          Thumper.bench_with_setup ~setup:(log_setup n) ~teardown:loop_close
+            "append-a-line-and-drop-it" append_and_drop;
+        ])
+    [ 20_000; 50_000 ]
+
 (* Startup: a run of the 5,000-message transcript from its start to its
    first presented frame, then its end. *)
 let startup output =
@@ -658,7 +750,7 @@ let () =
     (* Per-input cost must not grow with mounted content: the 20,000-block
        transcript repeats the input workloads. The primary-mode group runs them
        in an inline region shorter than the terminal. *)
-    ((loop_benches :: startup_benches :: list_benches)
+    ((loop_benches :: startup_benches :: (list_benches @ log_benches))
     @ List.map
         (fun (mode, blocks, workloads) ->
           Thumper.group

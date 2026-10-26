@@ -5,6 +5,8 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
+log-20000/append-a-line-and-drop-it	alloc_words	exact	333756365
+log-50000/append-a-line-and-drop-it	alloc_words	exact	834191877
 loop/burst-1000-keys	alloc_words	exact	2320845
 loop/idle-turns-10000	alloc_words	exact	11
 loop/posts-1000	alloc_words	exact	133030

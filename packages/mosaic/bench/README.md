@@ -20,6 +20,12 @@ quits, render the list empty, or retype every row of an unkeyed list from a
 text to a box before rendering it empty; their time shows a teardown that is
 not linear in the nodes it destroys.
 
+The runtime suite's log workload holds 20,000 and 50,000 lines, one text
+each, in a scroll box that follows its bottom, as a program writes a log or a
+transcript: a sample appends a line and drops it, each presented. A frame
+whose cost follows the lines mounted, rather than the line that changed,
+shows here.
+
 The same alias checks time and allocation for editing, selection, text
 layout, highlighting, and the application loop. Promotions and minor
 collections, which the frame suites also record, depend on where the minor
