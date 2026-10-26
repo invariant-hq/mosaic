@@ -98,6 +98,16 @@ and cull_index = {
   column : bool;
 }
 
+(* A node's absolute box, in floats only so that updating it allocates
+   nothing. A node shares [unplaced] until its first layout, as many are
+   never shown. *)
+and abs = {
+  mutable abs_x : float;
+  mutable abs_y : float;
+  mutable abs_w : float;
+  mutable abs_h : float;
+}
+
 and node = {
   ctx : context;
   toffee_node : Toffee.Node_id.t;
@@ -109,10 +119,7 @@ and node = {
   mutable style : Toffee.Style.t;
   mutable original_display : Toffee.Style.display;
   mutable layout_dirty : bool;
-  mutable abs_x : float;
-  mutable abs_y : float;
-  mutable abs_w : float;
-  mutable abs_h : float;
+  mutable abs : abs;
   mutable layout_valid : bool;
   mutable measure : measure option;
   mutable translate_x : int;
@@ -327,6 +334,9 @@ let remove_child_ref parent child =
 
 (* ───── Node Creation ───── *)
 
+(* Never written: [update_layout] gives a node a box of its own first. *)
+let unplaced = { abs_x = 0.; abs_y = 0.; abs_w = 0.; abs_h = 0. }
+
 let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     ?(visible = true) ?(z_index = 0) ?(opacity = 1.0) ?(live = false)
     ?(render = render_noop) () =
@@ -341,10 +351,7 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     style;
     original_display = Toffee.Style.display style;
     layout_dirty = true;
-    abs_x = 0.;
-    abs_y = 0.;
-    abs_w = 0.;
-    abs_h = 0.;
+    abs = unplaced;
     layout_valid = false;
     measure = None;
     translate_x = 0;
@@ -569,26 +576,28 @@ let translate_acc t =
   in
   loop t 0 0
 
-let terminal_edge value = int_of_float (Float.round value)
+let[@inline] terminal_edge value = int_of_float (Float.round value)
 
 (* Quantize both ends of a Toffee interval. Rounding its length independently
    can overlap an adjacent interval whose shared edge rounds down. *)
-let terminal_span start length =
+let[@inline] terminal_span start length =
   max 0 (terminal_edge (start +. length) - terminal_edge start)
 
 let x t =
   let ox, _ = translate_acc t in
-  if t.layout_valid then terminal_edge t.abs_x + ox else ox
+  if t.layout_valid then terminal_edge t.abs.abs_x + ox else ox
 
 let y t =
   let _, oy = translate_acc t in
-  if t.layout_valid then terminal_edge t.abs_y + oy else oy
+  if t.layout_valid then terminal_edge t.abs.abs_y + oy else oy
 
 let width t =
-  if t.layout_valid && t.visible then terminal_span t.abs_x t.abs_w else 0
+  if t.layout_valid && t.visible then terminal_span t.abs.abs_x t.abs.abs_w
+  else 0
 
 let height t =
-  if t.layout_valid && t.visible then terminal_span t.abs_y t.abs_h else 0
+  if t.layout_valid && t.visible then terminal_span t.abs.abs_y t.abs.abs_h
+  else 0
 
 let bounds t : Grid.region =
   { x = x t; y = y t; width = width t; height = height t }
@@ -999,16 +1008,19 @@ let run_lifecycle_pass t = Option.iter (fun f -> f t) t.on_lifecycle_pass
 
 (* ───── Render Pipeline ───── *)
 
-let update_layout t ~x ~y ~width ~height =
-  t.abs_x <- x;
-  t.abs_y <- y;
-  t.abs_w <- width;
-  t.abs_h <- height;
+let[@inline] update_layout t ~x ~y ~width ~height =
+  if t.abs == unplaced then
+    t.abs <- { abs_x = x; abs_y = y; abs_w = width; abs_h = height }
+  else (
+    t.abs.abs_x <- x;
+    t.abs.abs_y <- y;
+    t.abs.abs_w <- width;
+    t.abs.abs_h <- height);
   t.layout_valid <- true
 
 (* Refresh direct children's cached layout from the layout tree, mirroring
    OpenTUI's updateFromLayout pass before [_getVisibleChildren].
-   [t.abs_x]/[t.abs_y] are current because the renderer updates a node's layout
+   [t.abs] is current because the renderer updates a node's layout
    before descending into its children. *)
 let update_children_layout t =
   for i = 0 to t.child_count - 1 do
@@ -1016,9 +1028,10 @@ let update_children_layout t =
     | Some child when child.visible -> (
         match Toffee.layout t.ctx.tree child.toffee_node with
         | Ok (l : Toffee.Layout.t) ->
-            update_layout child ~x:(t.abs_x +. l.location.x)
-              ~y:(t.abs_y +. l.location.y) ~width:l.size.width
-              ~height:l.size.height
+            update_layout child
+              ~x:(t.abs.abs_x +. l.location.x)
+              ~y:(t.abs.abs_y +. l.location.y)
+              ~width:l.size.width ~height:l.size.height
         | Error _ -> ())
     | Some _ | None -> ()
   done

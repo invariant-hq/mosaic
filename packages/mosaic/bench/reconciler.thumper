@@ -5,8 +5,8 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-mount-and-empty/keyed-list-20000	alloc_words	exact	9093089
-mount-and-unmount/keyed-list-20000	alloc_words	exact	8686247
+mount-and-empty/keyed-list-20000	alloc_words	exact	9033089
+mount-and-unmount/keyed-list-20000	alloc_words	exact	8626244
 reconcile/reorder-keyed-list-500	alloc_words	exact	50658
 reconcile/reorder-keyed-list-5000	alloc_words	exact	508338
 reconcile/steady-keyed-list-500	alloc_words	exact	35189

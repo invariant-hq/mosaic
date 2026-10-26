@@ -5,5 +5,5 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-transcript/update-streaming-append-and-back-16blocks	alloc_words	exact	302259
-transcript/update-streaming-append-and-back-256blocks	alloc_words	exact	4570903
+transcript/update-streaming-append-and-back-16blocks	alloc_words	exact	300449
+transcript/update-streaming-append-and-back-256blocks	alloc_words	exact	4542213
