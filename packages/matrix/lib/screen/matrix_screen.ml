@@ -1595,9 +1595,7 @@ let static_rows t g ~rows =
     invalid_arg "Matrix_screen.static_rows: rows must be within grid height";
   if rows = 0 then ""
   else if not (Grid.Unsafe.has_pictures g) then
-    Grid.to_ansi
-      ~styling:(t.color_depth :> [ `Plain | Ansi.Color.depth ])
-      ~trim:true ~rows g
+    Grid.to_ansi ~styling:(t.color_depth :> Ansi.Styling.t) ~trim:true ~rows g
     ^ "\n"
   else begin
     own t.diff;

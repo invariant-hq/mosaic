@@ -8,7 +8,7 @@ type cursor = Rest | Hidden | At of { x : int; y : int }
 type t = {
   eager_wrap : bool;
   rest_column : int;  (** Where a write leaves a resting cursor: 0, or 1. *)
-  styling : [ `Plain | Ansi.Color.depth ];
+  styling : Ansi.Styling.t;
   mutable height : int;  (** Rows drawn under the origin. *)
   mutable width : int;  (** The width of the last write, [-1] before one. *)
   mutable rows : string list option;

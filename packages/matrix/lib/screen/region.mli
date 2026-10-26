@@ -100,7 +100,7 @@ type cursor =
 val create :
   ?eager_wrap:bool ->
   ?lifts_resting_cursor:bool ->
-  ?styling:[ `Plain | Ansi.Color.depth ] ->
+  ?styling:Ansi.Styling.t ->
   unit ->
   t
 (** [create ~eager_wrap ~lifts_resting_cursor ~styling ()] is a region not yet

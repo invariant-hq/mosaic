@@ -579,7 +579,7 @@ val to_text : ?trim:bool -> t -> string
     each line are dropped. Styles are left out, which {!to_ansi} writes. *)
 
 val to_ansi :
-  ?styling:[ `Plain | Ansi.Color.depth ] ->
+  ?styling:Ansi.Styling.t ->
   ?trim:bool ->
   ?complete_rows:bool ->
   ?rows:int ->
@@ -593,10 +593,11 @@ val to_ansi :
     terminal's line (EL 2) and ends with CR LF, the last one included. An empty
     cell is written as a space. It is [""] if [rows] is [0].
 
-    [styling] says how the styles are written, at [`Truecolor] by default. At a
-    color depth, each color is reduced to it ({!Ansi.Color.to_depth}), so
-    [`Mono] keeps the attributes, such as bold, and drops the colors. [`Plain]
-    writes no style and no hyperlink, so each row is its text.
+    [styling] says how the styles are written ({!Ansi.Styling.t}), at
+    [`Truecolor] by default. At a color depth, each color is reduced to it
+    ({!Ansi.Color.to_depth}), so [`Mono] keeps the attributes, such as bold, and
+    drops the colors. [`Plain] writes no style and no hyperlink, so each row is
+    its text.
 
     With [~trim:true] ([false] by default), each row ends at its last cell that
     shows something, and the cells after it that show nothing, empty or a space

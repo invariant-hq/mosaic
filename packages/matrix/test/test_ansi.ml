@@ -1755,6 +1755,131 @@ let roundtrip_strip_removes_all () =
     ^ s (disable Mouse_button_tracking))
     "text"
 
+(* --- 8. Styling --- *)
+
+let styling_t =
+  Testable.make
+    ~equal:(fun a b -> a = b)
+    ~pp:(fun ppf s ->
+      Format.pp_print_string ppf
+        (match (s : Styling.t) with
+        | `Plain -> "plain"
+        | `Mono -> "mono"
+        | `Ansi8 -> "8"
+        | `Ansi16 -> "16"
+        | `Ansi256 -> "256"
+        | `Truecolor -> "24-bit"))
+
+(* The terminals of the rows: whether it is dumb, and the colors it shows. *)
+let t256 = (false, `Ansi256)
+let t16 = (false, `Ansi16)
+let t24 = (false, `Truecolor)
+let dumb = (true, `Ansi16)
+
+(* Each row: the program's choice, a terminal or not, the terminal, the
+   environment, and the styling. *)
+let styling_rows =
+  [
+    ("a 256-color terminal", None, true, t256, [], `Ansi256);
+    ("a 16-color terminal", None, true, t16, [], `Ansi16);
+    ("24-bit", None, true, t24, [], `Truecolor);
+    ("a pipe", None, false, t256, [], `Plain);
+    ( "NO_COLOR keeps the attributes",
+      None,
+      true,
+      t256,
+      [ ("NO_COLOR", "1") ],
+      `Mono );
+    ("NO_COLOR on a pipe", None, false, t256, [ ("NO_COLOR", "1") ], `Plain);
+    ( "an empty NO_COLOR is unset",
+      None,
+      true,
+      t256,
+      [ ("NO_COLOR", "") ],
+      `Ansi256 );
+    ( "FORCE_COLOR into a pipe",
+      None,
+      false,
+      t256,
+      [ ("FORCE_COLOR", "1") ],
+      `Ansi256 );
+    ( "FORCE_COLOR of any other value",
+      None,
+      false,
+      t256,
+      [ ("FORCE_COLOR", "3") ],
+      `Ansi256 );
+    ( "FORCE_COLOR=0 forces nothing",
+      None,
+      false,
+      t256,
+      [ ("FORCE_COLOR", "0") ],
+      `Plain );
+    ( "FORCE_COLOR=false forces nothing",
+      None,
+      false,
+      t256,
+      [ ("FORCE_COLOR", "false") ],
+      `Plain );
+    ( "CLICOLOR_FORCE into a pipe",
+      None,
+      false,
+      t256,
+      [ ("CLICOLOR_FORCE", "1") ],
+      `Ansi256 );
+    ( "NO_COLOR above a force",
+      None,
+      false,
+      t256,
+      [ ("NO_COLOR", "1"); ("FORCE_COLOR", "1") ],
+      `Mono );
+    ("CLICOLOR=0", None, true, t256, [ ("CLICOLOR", "0") ], `Mono);
+    ("CLICOLOR=1 adds nothing", None, false, t256, [ ("CLICOLOR", "1") ], `Plain);
+    ( "a force above CLICOLOR=0",
+      None,
+      true,
+      t256,
+      [ ("CLICOLOR", "0"); ("FORCE_COLOR", "1") ],
+      `Ansi256 );
+    ("a dumb terminal", None, true, dumb, [], `Plain);
+    ( "forced on a dumb terminal",
+      None,
+      true,
+      dumb,
+      [ ("FORCE_COLOR", "1") ],
+      `Ansi16 );
+    ("CI keeps the colors", None, true, t256, [ ("CI", "true") ], `Ansi256);
+    ("--color=never", Some `Never, true, t256, [], `Plain);
+    ("--color=always into a pipe", Some `Always, false, t256, [], `Ansi256);
+    ( "--color=always above NO_COLOR",
+      Some `Always,
+      true,
+      t256,
+      [ ("NO_COLOR", "1") ],
+      `Ansi256 );
+    ( "--color=never above a force",
+      Some `Never,
+      true,
+      t256,
+      [ ("FORCE_COLOR", "1") ],
+      `Plain );
+  ]
+
+let styling_tests =
+  List.map
+    (fun (name, color, tty, (dumb, colors), vars, expected) ->
+      test name (fun () ->
+          let getenv v = List.assoc_opt v vars in
+          equal ~msg:"styling" styling_t expected
+            (Styling.decide ?color getenv ~tty ~dumb colors)))
+    styling_rows
+  @ [
+      test "choices" (fun () ->
+          equal ~msg:"names" (list string)
+            [ "auto"; "always"; "never" ]
+            (List.map fst Styling.choices));
+    ]
+
 let tests =
   [
     group "Color Logic"
@@ -1885,6 +2010,7 @@ let tests =
         test "hyperlink sequences" roundtrip_hyperlink_sequences;
         test "strip removes all" roundtrip_strip_removes_all;
       ];
+    group "Styling" styling_tests;
   ]
 
 let () = run "matrix.ansi" tests
