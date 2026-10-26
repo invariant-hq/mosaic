@@ -138,6 +138,33 @@ let low_indexed_colors_use_extended_palette_sgr () =
   equal ~msg:"background slot 4 keeps indexed SGR" (list int) [ 48; 5; 4 ]
     (Color.to_sgr_codes ~bg:true Color.blue)
 
+(* WCAG 2 contrast ratios, against the measured terminal palettes: xterm's
+   red (#cd0000), blue (#0000ee), yellow (#cdcd00) and bright black
+   (#7f7f7f) on its white background, VTE's red (#c00000) on black, and
+   Solarized light's red and foreground on its background. *)
+let color_contrast () =
+  let c = Color.of_hex_exn in
+  let ratio = float 0.005 in
+  let white = c "#ffffff" and black = c "#000000" in
+  equal ~msg:"black on white" ratio 21.0 (Color.contrast black white);
+  equal ~msg:"white on black" ratio 21.0 (Color.contrast white black);
+  equal ~msg:"a color on itself" ratio 1.0 (Color.contrast white white);
+  equal ~msg:"xterm red" ratio 5.84 (Color.contrast (c "#cd0000") white);
+  equal ~msg:"xterm blue" ratio 9.40 (Color.contrast (c "#0000ee") white);
+  equal ~msg:"xterm yellow" ratio 1.70 (Color.contrast (c "#cdcd00") white);
+  equal ~msg:"xterm bright black" ratio 4.00
+    (Color.contrast (c "#7f7f7f") white);
+  equal ~msg:"VTE red on black" ratio 3.24 (Color.contrast (c "#c00000") black);
+  equal ~msg:"Solarized light red" ratio 4.29
+    (Color.contrast (c "#dc322f") (c "#fdf6e3"));
+  equal ~msg:"Solarized light pair" ratio 4.13
+    (Color.contrast (c "#657b83") (c "#fdf6e3"));
+  equal ~msg:"alpha is ignored" ratio 21.0
+    (Color.contrast (Color.of_rgba 0 0 0 0) white);
+  equal ~msg:"a palette entry by its snapshot" ratio
+    (Color.contrast (c "#ff0000") black)
+    (Color.contrast Color.bright_red black)
+
 (* --- 2. Attributes & Style --- *)
 
 let attr_bitmask_integrity () =
@@ -1887,6 +1914,7 @@ let tests =
         test "hex parsing" color_parsing_hex;
         test "hsl roundtrip" color_hsl_roundtrip;
         test "blending" color_blending;
+        test "contrast" color_contrast;
         test "intent identity" color_intent_is_part_of_identity;
         test "ansi16 fallback palette"
           color_ansi16_palette_matches_standard_fallback;

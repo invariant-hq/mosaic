@@ -173,6 +173,16 @@ val invert : t -> t
 (** [invert c] is the opaque RGB color whose components are [255 - v] for each
     component [v] of the RGB of [c]'s snapshot. *)
 
+val contrast : t -> t -> float
+(** [contrast a b] is the contrast ratio of the RGB of [a]'s and [b]'s
+    snapshots, from [1.0] for two equal colors to [21.0] for black and white. It
+    is WCAG 2's ratio, [(l1 + 0.05) / (l2 + 0.05)], where [l1] is the higher
+    relative luminance of the two and [l2] the lower, and it is symmetric. WCAG
+    asks at least [4.5] of text against its background and [3.0] of a graphical
+    object. Alpha and intent are ignored, so a palette entry or a default color
+    is judged by the RGB this module assumes for it ({!section-depth}), and a
+    program that knows the terminal's colors judges {!of_rgb} colors of them. *)
+
 (** {1:depth Color depth}
 
     A terminal shows colors at one of a few depths. With direct color it shows

@@ -372,6 +372,23 @@ let invert color =
   let r, g, b = to_rgb color in
   of_rgb (255 - r) (255 - g) (255 - b)
 
+(* WCAG 2's relative luminance of the snapshot: each channel linearised by
+   the sRGB transfer function, then weighted. WCAG 2.0 put the linear
+   segment's end at 0.03928 and WCAG 2.2 at 0.04045, as sRGB does; no 8-bit
+   channel lies between them, so both give the same ratio. *)
+let luminance c =
+  let linear v =
+    let v = float_of_byte v in
+    if v <= 0.04045 then v /. 12.92 else Float.pow ((v +. 0.055) /. 1.055) 2.4
+  in
+  (0.2126 *. linear (Packed.red c))
+  +. (0.7152 *. linear (Packed.green c))
+  +. (0.0722 *. linear (Packed.blue c))
+
+let contrast a b =
+  let la = luminance a and lb = luminance b in
+  (Float.max la lb +. 0.05) /. (Float.min la lb +. 0.05)
+
 let string_of_color color =
   match intent color with
   | Default -> "Default"
