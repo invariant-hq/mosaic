@@ -20,12 +20,14 @@ and items_equal xs ys =
 module State = struct
   module Ids = Set.Make (String)
 
-  type t = { selected : string option; expanded : Ids.t }
+  (* [prefix] is the typed prefix, folded to lower case. Only [step] sets
+     it; the widget's own keys leave it empty. *)
+  type t = { selected : string option; expanded : Ids.t; prefix : string }
 
-  let empty = { selected = None; expanded = Ids.empty }
+  let empty = { selected = None; expanded = Ids.empty; prefix = "" }
 
   let make ?selected ?(expanded = []) () =
-    { selected; expanded = Ids.of_list expanded }
+    { selected; expanded = Ids.of_list expanded; prefix = "" }
 
   let selected t = t.selected
   let expanded t = Ids.elements t.expanded
@@ -46,6 +48,199 @@ module State = struct
     a == b
     || Option.equal String.equal a.selected b.selected
        && (a.expanded == b.expanded || Ids.equal a.expanded b.expanded)
+       && String.equal a.prefix b.prefix
+
+  (* ───── Steps ───── *)
+
+  type action =
+    | Next
+    | Prev
+    | Next_wrap
+    | Prev_wrap
+    | First
+    | Last
+    | By of int
+    | Expand
+    | Collapse
+    | Expand_siblings
+    | Toggle
+    | Activate
+    | Typeahead of Uchar.t
+
+  type outcome = Changed of t | Activated of item | Nothing
+
+  (* A shown node: its item, and the position of its parent among the shown
+     nodes, or -1 for a root. *)
+  type shown = { node : item; parent : int }
+
+  (* The nodes [t] shows, in order: every root, and the children of every
+     shown node that is expanded. *)
+  let shown items t =
+    let acc = ref [] in
+    let count = ref 0 in
+    let rec walk parent items =
+      List.iter
+        (fun node ->
+          let here = !count in
+          acc := { node; parent } :: !acc;
+          incr count;
+          if node.children <> [] && Ids.mem node.id t.expanded then
+            walk here node.children)
+        items
+    in
+    walk (-1) items;
+    Array.of_list (List.rev !acc)
+
+  (* The nodes from a root down to the node [id], if the tree holds it. *)
+  let rec path_to id = function
+    | [] -> None
+    | node :: rest -> (
+        if String.equal node.id id then Some [ node ]
+        else
+          match path_to id node.children with
+          | Some path -> Some (node :: path)
+          | None -> path_to id rest)
+
+  (* The node the keys act on: the selected node, or its nearest shown
+     ancestor when it is inside a collapsed node. *)
+  let acting items t =
+    match t.selected with
+    | None -> None
+    | Some id -> (
+        match path_to id items with
+        | None -> None
+        | Some path ->
+            let rec first_shown = function
+              | [] -> None
+              | [ node ] -> Some node.id
+              | node :: rest ->
+                  if Ids.mem node.id t.expanded then first_shown rest
+                  else Some node.id
+            in
+            first_shown path)
+
+  let position shown id =
+    let rec go i =
+      if i = Array.length shown then -1
+      else if String.equal shown.(i).node.id id then i
+      else go (i + 1)
+    in
+    go 0
+
+  let on t (node : item) = { t with selected = Some node.id; prefix = "" }
+
+  let put shown t i =
+    let next = on t shown.(i).node in
+    if Option.equal String.equal next.selected t.selected && t.prefix = "" then
+      Nothing
+    else Changed next
+
+  (* Whether [s] starts with [p], ASCII letters of [s] folded to lower case;
+     [p] is folded already. *)
+  let rec prefix_from p s lp i =
+    i = lp
+    || Char.equal
+         (Char.lowercase_ascii (String.unsafe_get s i))
+         (String.unsafe_get p i)
+       && prefix_from p s lp (i + 1)
+
+  let starts_with p s =
+    let lp = String.length p in
+    String.length s >= lp && prefix_from p s lp 0
+
+  let rec match_from shown p n start k =
+    if k = n then -1
+    else
+      let i = (start + k) mod n in
+      if starts_with p shown.(i).node.label then i
+      else match_from shown p n start (k + 1)
+
+  let typeahead shown t ~current u =
+    let n = Array.length shown in
+    let typed =
+      let b = Buffer.create 4 in
+      Buffer.add_utf_8_uchar b u;
+      String.lowercase_ascii (Buffer.contents b)
+    in
+    let prefix = t.prefix ^ typed in
+    let after = if current < 0 then 0 else (current + 1) mod n in
+    let start = if t.prefix = "" || current < 0 then after else current in
+    let i, prefix =
+      match match_from shown prefix n start 0 with
+      | -1 when t.prefix <> "" -> (match_from shown typed n after 0, typed)
+      | i -> (i, prefix)
+    in
+    if i < 0 then Nothing
+    else
+      let next = { (on t shown.(i).node) with prefix } in
+      if
+        Option.equal String.equal next.selected t.selected
+        && String.equal prefix t.prefix
+      then Nothing
+      else Changed next
+
+  let step items t action =
+    let shown = shown items t in
+    let n = Array.length shown in
+    if n = 0 then Nothing
+    else
+      let current =
+        match acting items t with None -> -1 | Some id -> position shown id
+      in
+      let by k =
+        if k = 0 then Nothing
+        else if current < 0 then put shown t (if k > 0 then 0 else n - 1)
+        else put shown t (max 0 (min (n - 1) (current + k)))
+      in
+      let expandable i = shown.(i).node.children <> [] in
+      let expanded i = expandable i && Ids.mem shown.(i).node.id t.expanded in
+      let set_expanded i v =
+        let node = shown.(i).node in
+        let t = on t node in
+        let expanded =
+          if v then Ids.add node.id t.expanded
+          else Ids.remove node.id t.expanded
+        in
+        Changed { t with expanded }
+      in
+      match action with
+      | Next -> if current = n - 1 then Nothing else by 1
+      | Prev -> if current = 0 then Nothing else by (-1)
+      | Next_wrap ->
+          put shown t (if current < 0 then 0 else (current + 1) mod n)
+      | Prev_wrap -> put shown t (if current <= 0 then n - 1 else current - 1)
+      | First -> put shown t 0
+      | Last -> put shown t (n - 1)
+      | By k -> by k
+      | Typeahead u -> typeahead shown t ~current u
+      | _ when current < 0 -> Nothing
+      | Expand ->
+          if expanded current then put shown t (current + 1)
+          else if expandable current then set_expanded current true
+          else Nothing
+      | Collapse ->
+          if expanded current then set_expanded current false
+          else if shown.(current).parent >= 0 then
+            put shown t shown.(current).parent
+          else Nothing
+      | Toggle ->
+          if expandable current then
+            set_expanded current (not (expanded current))
+          else Nothing
+      | Activate -> Activated shown.(current).node
+      | Expand_siblings ->
+          let parent = shown.(current).parent in
+          let siblings =
+            if parent < 0 then items else shown.(parent).node.children
+          in
+          let expanded =
+            List.fold_left
+              (fun set (node : item) ->
+                if node.children = [] then set else Ids.add node.id set)
+              t.expanded siblings
+          in
+          if Ids.equal expanded t.expanded then Nothing
+          else Changed { (on t shown.(current).node) with expanded }
 end
 
 (* ───── Props ───── *)

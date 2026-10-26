@@ -710,9 +710,167 @@ let rejected_expansion_keeps_accepted_state () =
 
 (* ── Runner ── *)
 
+(* ── State.step ── *)
+
+(* a (a1, a2 (a2x)), b (b1), c *)
+let step_items =
+  Tree.
+    [
+      item ~id:"a"
+        ~children:
+          [
+            item ~id:"a1" "Alpha one";
+            item ~id:"a2" ~children:[ item ~id:"a2x" "Deep" ] "Alpha two";
+          ]
+        "Alpha";
+      item ~id:"b" ~children:[ item ~id:"b1" "Beta one" ] "Beta";
+      item ~id:"c" "Gamma";
+    ]
+
+let state ?selected ?(expanded = []) () = Tree.State.make ?selected ~expanded ()
+
+let pp_step_outcome ppf = function
+  | Tree.State.Changed s ->
+      Format.fprintf ppf "Changed (%s, [%s])"
+        (Option.value ~default:"none" (Tree.State.selected s))
+        (String.concat ";" (Tree.State.expanded s))
+  | Activated item -> Format.fprintf ppf "Activated %s" item.Tree.id
+  | Nothing -> Format.fprintf ppf "Nothing"
+
+let step_outcome =
+  Testable.make ~pp:pp_step_outcome ~equal:(fun a b ->
+      match (a, b) with
+      | Tree.State.Changed a, Tree.State.Changed b -> Tree.State.equal a b
+      | Activated a, Activated b -> String.equal a.id b.id
+      | Nothing, Nothing -> true
+      | _ -> false)
+
+let changed ?selected ?expanded () =
+  Tree.State.Changed (state ?selected ?expanded ())
+
+let tree_step s a = Tree.State.step step_items s a
+
+let step_moves () =
+  let open Tree.State in
+  let equal = Windtrap.equal in
+  let s = state ~selected:"a" ~expanded:[ "a" ] () in
+  equal step_outcome
+    (changed ~selected:"a1" ~expanded:[ "a" ] ())
+    (tree_step s Next);
+  equal ~msg:"shown nodes only" step_outcome
+    (changed ~selected:"b" ~expanded:[ "a" ] ())
+    (tree_step (state ~selected:"a2" ~expanded:[ "a" ] ()) Next);
+  equal ~msg:"no wrap" step_outcome Nothing
+    (tree_step (state ~selected:"c" ()) Next);
+  equal step_outcome (changed ~selected:"a" ())
+    (tree_step (state ~selected:"c" ()) Next_wrap);
+  equal ~msg:"from none, Down" step_outcome (changed ~selected:"a" ())
+    (tree_step (state ()) Next);
+  equal ~msg:"from none, Up" step_outcome (changed ~selected:"c" ())
+    (tree_step (state ()) Prev);
+  equal ~msg:"Home" step_outcome (changed ~selected:"a" ())
+    (tree_step (state ~selected:"c" ()) First);
+  equal ~msg:"End" step_outcome
+    (changed ~selected:"c" ~expanded:[ "b" ] ())
+    (tree_step (state ~selected:"a" ~expanded:[ "b" ] ()) Last);
+  equal ~msg:"Up from the last root into an expanded node" step_outcome
+    (changed ~selected:"b1" ~expanded:[ "b" ] ())
+    (tree_step (state ~selected:"c" ~expanded:[ "b" ] ()) Prev);
+  equal step_outcome (changed ~selected:"c" ())
+    (tree_step (state ~selected:"a" ()) (By 5))
+
+let step_right_left () =
+  let open Tree.State in
+  let equal = Windtrap.equal in
+  equal ~msg:"Right opens a closed node" step_outcome
+    (changed ~selected:"a" ~expanded:[ "a" ] ())
+    (tree_step (state ~selected:"a" ()) Expand);
+  equal ~msg:"Right on an open node moves to its first child" step_outcome
+    (changed ~selected:"a1" ~expanded:[ "a" ] ())
+    (tree_step (state ~selected:"a" ~expanded:[ "a" ] ()) Expand);
+  equal ~msg:"Right on an end node" step_outcome Nothing
+    (tree_step (state ~selected:"c" ()) Expand);
+  equal ~msg:"Left closes an open node" step_outcome (changed ~selected:"a" ())
+    (tree_step (state ~selected:"a" ~expanded:[ "a" ] ()) Collapse);
+  equal ~msg:"Left on a child moves to its parent" step_outcome
+    (changed ~selected:"a" ~expanded:[ "a" ] ())
+    (tree_step (state ~selected:"a2" ~expanded:[ "a" ] ()) Collapse);
+  equal ~msg:"Left on a closed root" step_outcome Nothing
+    (tree_step (state ~selected:"b" ()) Collapse);
+  equal ~msg:"Toggle" step_outcome
+    (changed ~selected:"b" ~expanded:[ "b" ] ())
+    (tree_step (state ~selected:"b" ()) Toggle);
+  equal ~msg:"Toggle on an end node" step_outcome Nothing
+    (tree_step (state ~selected:"c" ()) Toggle);
+  equal ~msg:"Enter" step_outcome
+    (Activated (Tree.item ~id:"c" "Gamma"))
+    (tree_step (state ~selected:"c" ()) Activate)
+
+let step_siblings () =
+  let open Tree.State in
+  let equal = Windtrap.equal in
+  equal ~msg:"* opens every sibling" step_outcome
+    (changed ~selected:"c" ~expanded:[ "a"; "b" ] ())
+    (tree_step (state ~selected:"c" ()) Expand_siblings);
+  equal ~msg:"siblings of a child" step_outcome
+    (changed ~selected:"a1" ~expanded:[ "a"; "a2" ] ())
+    (tree_step (state ~selected:"a1" ~expanded:[ "a" ] ()) Expand_siblings);
+  equal ~msg:"all open already" step_outcome Nothing
+    (tree_step (state ~selected:"c" ~expanded:[ "a"; "b" ] ()) Expand_siblings)
+
+let typed s text =
+  let rec go s i =
+    if i = String.length text then s
+    else
+      match tree_step s (Typeahead (Uchar.of_char text.[i])) with
+      | Tree.State.Changed s -> go s (i + 1)
+      | o -> failf "%S at %d: %a" text i pp_step_outcome o
+  in
+  go s 0
+
+let step_typeahead () =
+  let selected s = Tree.State.selected s in
+  equal ~msg:"shown nodes only" (option string) (Some "b")
+    (selected (typed (state ~selected:"a" ()) "b"));
+  equal ~msg:"a child once shown" (option string) (Some "b1")
+    (selected (typed (state ~selected:"b" ~expanded:[ "b" ] ()) "beta "));
+  equal ~msg:"restarts" (option string) (Some "c")
+    (selected (typed (state ~selected:"a" ()) "ag"));
+  equal ~msg:"no match" step_outcome Nothing
+    (tree_step (state ~selected:"a" ()) (Typeahead (Uchar.of_char 'z')));
+  is_false ~msg:"the prefix is part of the state"
+    (Tree.State.equal (typed (state ()) "b") (state ~selected:"b" ()))
+
+let step_hidden_cursor () =
+  let open Tree.State in
+  let equal = Windtrap.equal in
+  let hidden = state ~selected:"a2x" () in
+  equal ~msg:"Down from the shown ancestor" step_outcome
+    (changed ~selected:"b" ()) (tree_step hidden Next);
+  equal ~msg:"Enter activates the ancestor" step_outcome
+    (Activated (List.hd step_items))
+    (tree_step hidden Activate);
+  equal ~msg:"Right opens the ancestor" step_outcome
+    (changed ~selected:"a" ~expanded:[ "a" ] ())
+    (tree_step hidden Expand);
+  equal ~msg:"an inner collapsed node" step_outcome
+    (changed ~selected:"a2" ~expanded:[ "a"; "a2" ] ())
+    (tree_step (state ~selected:"a2x" ~expanded:[ "a" ] ()) Expand);
+  equal ~msg:"an unknown id acts as none" step_outcome
+    (changed ~selected:"a" ())
+    (tree_step (state ~selected:"zz" ()) Next)
+
 let () =
   run "mosaic.tree"
     [
+      group "State.step"
+        [
+          test "moves over shown nodes" step_moves;
+          test "Right and Left" step_right_left;
+          test "* expands siblings" step_siblings;
+          test "typeahead over shown nodes" step_typeahead;
+          test "a cursor inside a collapsed node" step_hidden_cursor;
+        ];
       test "accepted state and stable IDs" rejected_state_and_reorder;
       test "setters work without callbacks" setters_work_without_callbacks;
       test "rejected expansion preserves state"

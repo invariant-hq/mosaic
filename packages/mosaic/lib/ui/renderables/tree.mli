@@ -65,7 +65,67 @@ module State : sig
   val select : string option -> t -> t
   val set_expanded : string -> bool -> t -> t
   val is_expanded : string -> t -> bool
+
   val equal : t -> t -> bool
+  (** [equal a b] is [true] iff [a] and [b] select the same node, expand the
+      same nodes and have the same typed prefix ({!section-steps}). *)
+
+  (** {2:steps Steps}
+
+      {!step} computes what a key's action does to a state, as the keys of APG's
+      tree view do. The {e shown} nodes are the roots and the children of every
+      shown node that is expanded, in order. The keys act on the selected node,
+      or on its nearest shown ancestor when it is inside a collapsed node. An
+      action that moves or expands selects the node it lands on or expands. The
+      {e typed prefix} is what typeahead has matched so far; every other action
+      that changes the state clears it. Nothing changes until the application
+      stores the next state. *)
+
+  (** The type for what a key does to a tree. *)
+  type action =
+    | Next  (** The next shown node; nothing at the last. *)
+    | Prev  (** The previous shown node; nothing at the first. *)
+    | Next_wrap  (** The next shown node; the first after the last. *)
+    | Prev_wrap  (** The previous shown node; the last before the first. *)
+    | First  (** The first node. *)
+    | Last  (** The last shown node. *)
+    | By of int
+        (** [n] shown nodes on, or back when [n] is negative, clamped. *)
+    | Expand
+        (** Expand a collapsed node; on an expanded one, its first child. *)
+    | Collapse
+        (** Collapse an expanded node; on another, its parent, if any. *)
+    | Expand_siblings
+        (** Expand the node and every sibling that has children. *)
+    | Toggle  (** Expand a collapsed node or collapse an expanded one. *)
+    | Activate  (** Activate the node. *)
+    | Typeahead of Uchar.t  (** Type a character of a node's label. *)
+
+  (** The type for what an action does. *)
+  type outcome =
+    | Changed of t  (** The next state. *)
+    | Activated of item  (** The node to activate. *)
+    | Nothing  (** The action changes nothing. *)
+
+  val step : item list -> t -> action -> outcome
+  (** [step items s a] is what [a] does to [s] over [items]. From no selected
+      node, or one [items] lacks, [Next], [Next_wrap], [First] and [By n] with
+      [n > 0] land on the first node, [Prev], [Prev_wrap], [Last] and [By n]
+      with [n < 0] on the last shown one, and the other actions give [Nothing].
+      An action on a node that lacks what it needs, such as [Expand] on a node
+      without children, gives [Nothing], as does a move to the node already
+      selected.
+
+      [Typeahead u] adds [u] to the typed prefix and selects the first shown
+      node, from the selected one on, whose label starts with it, wrapping after
+      the last. While the prefix is empty the search starts after the selected
+      node. When no label starts with the extended prefix, the prefix restarts
+      at [u], searched from after the selected node, and when none starts with
+      [u] it gives [Nothing]. Labels are compared byte by byte with ASCII
+      letters folded to lower case.
+
+      It costs a pass over the shown nodes and one over the nodes before the
+      selected one. *)
 end
 
 type action =
