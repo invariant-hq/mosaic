@@ -25,20 +25,26 @@
     or not, never change what it shows. The VTE's replies are ignored.
 
     {b Primary screen.} The terminal starts with shell output above its cursor,
-    perhaps a prompt on the cursor's row. The runtime anchors the live region at
-    the cursor, and after a resize finds it again, from cursor position reports:
-    the VTE's replies are the runtime's input. The contract, from [Primary] and
-    {!Matrix.static_write}:
-    - the live region is the bottom [snd (Matrix.size app)] rows, at least
-      [min_tui_height] of them and at least the rows the frame requires
-      ([primary_required_rows]), as far as the terminal has them; the frame is
-      drawn at its height, and it shows the frame;
-    - the transcript is everything above it, the scrollback and then the rows
-      above the live region: the shell's output, then each static row, in order,
-      each exactly once, as {!Matrix.static_replace} and {!Matrix.static_clear}
-      leave it, and the rows of programs run while it is released. Nothing else
-      is there but rows the terminal itself pushed into its scrollback as it
-      shrank.
+    perhaps a prompt on the cursor's row. The runtime draws the live region
+    below a blank row of its own, its origin, from where the cursor rests,
+    without asking where that is; the VTE's replies are the runtime's input all
+    the same. The contract, from [`Primary] and {!Matrix.static_write}:
+    - the live region is the [snd (Matrix.size app)] rows below the origin, at
+      least [min_tui_height] of them and at least the rows the frame requires
+      ([primary_required_rows]), as far as the rows below the screen's first
+      have them; the frame is drawn at its height, and it shows the frame;
+    - the cursor rests on the origin when it is hidden, and on the frame's cell
+      when it shows, so the origin is found from the cursor;
+    - the transcript is everything above the origin, the scrollback and then the
+      rows above it: the shell's output, then each static row, in order, each
+      exactly once, as {!Matrix.static_replace} and {!Matrix.static_clear} leave
+      it, and the rows of programs run while it is released. Nothing else is
+      there but rows the terminal itself pushed into its scrollback as it
+      shrank;
+    - when the run ends, the live region is erased, the cursor at the start of
+      the origin, or, kept ({!Matrix.keep_frame}), the rows of the last frame
+      that show anything stay right below the transcript, the cursor at the
+      start of the row after them.
 
     The VTE departs from xterm in places (vte.ml, [place] and [join]). Two
     concern printing, and neither applies here: it erases the cells a wide unit
@@ -111,11 +117,14 @@ type case = {
   shell : int;  (** Rows of shell output above the cursor, primary only. *)
   prompt : bool;  (** The cursor ends a prompt rather than starting a row. *)
   min_live : int;
+      (** [min_tui_height], or [0] when the case states no height, where the
+          live region takes the rows down to the last. *)
   sync : bool;  (** The terminal has synchronized output. *)
   report : int option;
       (** Before this frame the terminal reports its width method (DECRPM 2027),
           which the runtime's capabilities had wrong until then. *)
   reposition : bool;  (** The terminal has [explicit_cursor_positioning]. *)
+  keep : bool;  (** The run keeps its last frame, primary only. *)
   frames : frame list;
 }
 
@@ -380,8 +389,9 @@ let case_gen =
   let* sync = bool in
   let* reposition = bool in
   let* min_live =
-    match mode with `Alt -> pure 1 | `Primary -> int_range 1 rows
+    match mode with `Alt -> pure 1 | `Primary -> int_range 0 rows
   in
+  let* keep = bool in
   let* n = int_range 1 6 in
   (* A frame laid out by another method than the terminal's can scroll the
      screen, which in primary mode moves the transcript for good. DECRPM
@@ -406,6 +416,7 @@ let case_gen =
     sync;
     report;
     reposition;
+    keep;
     frames;
   }
 
@@ -475,9 +486,10 @@ let pp_case fmt c =
   Option.iter (Format.fprintf fmt " report before frame %d") c.report;
   if c.reposition then Format.fprintf fmt " reposition";
   if c.mode = `Primary then
-    Format.fprintf fmt " shell %d%s min_live %d" c.shell
+    Format.fprintf fmt " shell %d%s min_live %d%s" c.shell
       (if c.prompt then " prompt" else "")
-      c.min_live;
+      c.min_live
+      (if c.keep then " keep" else "");
   List.iter (fun f -> Format.fprintf fmt "@,%a" pp_frame f) c.frames;
   Format.fprintf fmt "@]"
 
@@ -617,6 +629,8 @@ type run = {
   mutable pending : frame list;
   mutable current : frame option;
   mutable drawn : (Grid.t * cursor) option;
+  mutable last : (Grid.t * int) option;
+      (** The last frame checked, and the rows the live region showed. *)
   mutable index : int;
   mutable transcript : string list;  (** Expected, newest first. *)
   mutable pushed : int;  (** Rows the terminal pushed while resizing. *)
@@ -651,27 +665,49 @@ let scan_shapes r bytes off len =
        | _ -> ())
       : int)
 
-(* The rows of the live region and of what is above it. *)
-let live_region r app =
+(* The terminal row of the live region's first row and the rows it shows.
+   In [`Alt] mode it is the screen. In [`Primary] mode it is below the
+   origin, which the cursor rests on when it is hidden, and which is as many
+   rows above the cursor as the cell it shows on is below it otherwise. *)
+let live_region r app (cursor : cursor) =
   let _, rows = r.size in
   let _, live = Matrix.size app in
-  (rows - live, live)
+  match r.case.mode with
+  | `Alt -> (0, live)
+  | `Primary ->
+      let shown = min live (rows - 1) in
+      let below =
+        if not cursor.visible then 0
+        else
+          match cursor.pos with
+          | Some (_, y) -> min (max 0 y) (shown - 1) + 1
+          | None -> shown
+      in
+      (fst (Vte.cursor_pos r.vte) - below + 1, shown)
 
 let check_live r app (expected, cursor) =
-  let cols, _ = r.size in
-  let offset, live = live_region r app in
+  let cols, rows = r.size in
+  let offset, live = live_region r app cursor in
   let v = Vte.grid r.vte in
   let ew = Grid.width expected and eh = Grid.height expected in
   if ew <> cols then fail_frame r "frame is %d columns on %d" ew cols;
   if r.case.mode = `Primary then begin
     (* The frame is drawn at the live region's height, which has the rows
        the frame requires, as far as the terminal has them. *)
-    if eh <> live then
-      fail_frame r "frame of %d rows in a live region of %d" eh live;
-    match Option.bind r.current (fun f -> f.required) with
-    | Some n when live < min n (snd r.size) ->
+    if eh <> snd (Matrix.size app) then
+      fail_frame r "frame of %d rows in a live region of %d" eh
+        (snd (Matrix.size app));
+    (match Option.bind r.current (fun f -> f.required) with
+    | Some n when live < min n (rows - 1) ->
         fail_frame r "live region of %d rows, the frame requires %d" live n
-    | _ -> ()
+    | _ -> ());
+    if offset < 1 then fail_frame r "no origin above the live region";
+    let v = Vte.grid r.vte in
+    for x = 0 to cols - 1 do
+      let vi = ((offset - 1) * cols) + x in
+      if not (same_cell blank 0 v vi) then
+        fail_frame r "origin col %d shows %s" x (cell_desc v vi)
+    done
   end;
   for y = 0 to live - 1 do
     for x = 0 to cols - 1 do
@@ -712,15 +748,16 @@ let is_tag s =
        (fun c -> c >= '0' && c <= '9')
        (String.sub s 1 (String.length s - 1))
 
-let check_transcript r app =
-  let offset, live = live_region r app in
+let check_transcript r app cursor =
+  let offset, live = live_region r app cursor in
   let _, rows = r.size in
-  if live < min r.case.min_live rows then
+  if live < min r.case.min_live (rows - 1) then
     fail_frame r "live region of %d rows, below the minimum %d" live
       r.case.min_live;
   let v = Vte.grid r.vte in
   let history =
-    scrollback_lines r.vte @ List.init offset (fun y -> rtrim (row_text v y))
+    scrollback_lines r.vte
+    @ List.init (offset - 1) (fun y -> rtrim (row_text v y))
   in
   let expected = List.rev r.transcript in
   let tags = List.filter is_tag history in
@@ -741,21 +778,23 @@ let check r app =
   | Some drawn ->
       if r.reported then begin
         check_live r app drawn;
-        if r.case.mode = `Primary then check_transcript r app
+        if r.case.mode = `Primary then check_transcript r app (snd drawn)
       end;
+      r.last <- Some (fst drawn, snd (live_region r app (snd drawn)));
       r.drawn <- None;
       Buffer.clear r.frame_bytes
 
 (* What a program run while the terminal is released finds: in primary mode
-   the transcript, and below it the live region erased, the cursor at its
-   start; in alt mode the primary screen. The cursor shows. *)
-let check_released r app =
+   the transcript, and below it the live region erased, the cursor at the
+   start of its origin, which the transcript ends above; in alt mode the
+   primary screen. The cursor shows. *)
+let check_released r =
   let cols, rows = r.size in
   let modes = Vte.modes r.vte in
   if not modes.cursor_visible then fail_frame r "released with a hidden cursor";
   match r.case.mode with
   | `Primary ->
-      let top = fst (live_region r app) in
+      let top = fst (Vte.cursor_pos r.vte) in
       let v = Vte.grid r.vte in
       for y = top to rows - 1 do
         for x = 0 to cols - 1 do
@@ -773,6 +812,54 @@ let check_released r app =
       if modes.alternate_screen then
         fail_frame r "released on the alternate screen"
 
+(* After the run: what it leaves of the live region, below the transcript. *)
+and check_end r =
+  let cols, rows = r.size in
+  let v = Vte.grid r.vte in
+  let modes = Vte.modes r.vte in
+  if not modes.cursor_visible then fail_frame r "ended with a hidden cursor";
+  let crow, ccol = Vte.cursor_pos r.vte in
+  if ccol <> 0 then fail_frame r "ended in column %d" ccol;
+  let kept =
+    match (r.case.keep, r.last) with
+    | true, Some (frame, shown) when r.reported ->
+        min shown (Grid.active_height frame)
+    | _ -> 0
+  in
+  (match (r.case.keep, r.last) with
+  | true, Some (frame, _) when r.reported ->
+      let fw = Grid.width frame in
+      for y = 0 to kept - 1 do
+        for x = 0 to min fw cols - 1 do
+          let vi = ((crow - kept + y) * cols) + x in
+          if not (same_cell frame ((y * fw) + x) v vi) then
+            fail_frame r "kept row %d col %d: expected %s, shows %s" y x
+              (cell_desc frame ((y * fw) + x))
+              (cell_desc v vi)
+        done
+      done
+  | _ -> ());
+  for y = crow to rows - 1 do
+    for x = 0 to cols - 1 do
+      let vi = (y * cols) + x in
+      if not (same_cell blank 0 v vi) then
+        fail_frame r "ended: row %d col %d shows %s" y x (cell_desc v vi)
+    done
+  done;
+  let history =
+    scrollback_lines r.vte
+    @ List.init (crow - kept) (fun y -> rtrim (row_text v y))
+  in
+  let tags = List.filter is_tag history in
+  let others = List.length history - List.length tags in
+  if tags <> List.rev r.transcript then
+    fail_frame r "ended: transcript [%s], expected [%s]"
+      (String.concat "; " history)
+      (String.concat "; " (List.rev r.transcript));
+  if others > r.pushed then
+    fail_frame r "ended: %d other rows in the transcript [%s]" others
+      (String.concat "; " history)
+
 let start_frame r app (frame : frame) =
   (match frame.size with
   | Some (cols, rows) when (cols, rows) <> r.size ->
@@ -785,7 +872,7 @@ let start_frame r app (frame : frame) =
   Option.iter
     (fun { child } ->
       Matrix.release app (fun () ->
-          check_released r app;
+          check_released r;
           for _ = 1 to child do
             let line = Printf.sprintf "C%d" r.tag in
             r.tag <- r.tag + 1;
@@ -868,6 +955,7 @@ let run_case case =
       pending = case.frames;
       current = None;
       drawn = None;
+      last = None;
       index = -1;
       transcript = [];
       pushed = 0;
@@ -939,7 +1027,8 @@ let run_case case =
   in
   let config =
     Matrix.config ~mode:case.mode ~mouse:`Off ~bracketed_paste:false
-      ~kitty_keyboard:`Off ~min_tui_height:case.min_live
+      ~kitty_keyboard:`Off
+      ?min_tui_height:(if case.min_live = 0 then None else Some case.min_live)
       ~caps:(capabilities case) ()
   in
   Matrix.run_on backend ~config (fun app ->
@@ -964,7 +1053,9 @@ let run_case case =
         | Stopped -> ()
         | Event _ | Timer _ | Posted _ -> loop ()
       in
-      if next_frame () then loop ())
+      Matrix.keep_frame app r.case.keep;
+      if next_frame () then loop ());
+  if primary then check_end r
 
 let () =
   run "matrix.render.props"

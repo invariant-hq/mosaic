@@ -1,7 +1,7 @@
 (library
  (name matrix)
  (public_name matrix)
- (private_modules primary frame_dump)
+ (private_modules frame_dump)
  (libraries
   matrix.ansi
   matrix.grid

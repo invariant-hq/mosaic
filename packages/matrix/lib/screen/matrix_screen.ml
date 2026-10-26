@@ -137,6 +137,8 @@ type t = {
   mutable hit_next : Hit_grid.t;
   (* State *)
   sgr_state : Ansi.Sgr_state.t;
+  mutable color_depth : Ansi.Color.depth;
+      (* [sgr_state]'s, which static rows are written at. *)
   mutable row_offset : int;
   diff : diff_ctx;
   (* Retained ANSI output capacity; grows only past its high-water mark.
@@ -1380,6 +1382,7 @@ let create ?width_method ?(cursor_visible = true) ?(explicit_width = false) () =
     hit_current = Hit_grid.create ~width:1 ~height:1;
     hit_next = Hit_grid.create ~width:1 ~height:1;
     sgr_state;
+    color_depth = `Truecolor;
     row_offset = 0;
     prefer_explicit_width = explicit_width;
     explicit_width_capable = true;
@@ -1530,6 +1533,7 @@ let apply_capabilities r ~explicit_width ~explicit_cursor_positioning
   r.explicit_cursor_positioning_capable <- explicit_cursor_positioning;
   r.hyperlinks_capable <- hyperlinks;
   Ansi.Sgr_state.set_color_depth r.sgr_state color_depth;
+  r.color_depth <- color_depth;
   let p = r.diff.pictures in
   let direct = color_depth = `Truecolor in
   (* A kitty id needs at least 256 colors to be written. *)
@@ -1580,15 +1584,21 @@ let send_pictures t w =
   ensure_next_fresh t;
   send_into t w
 
-(* Static rows are written as [Grid.to_ansi ~complete_rows:true] writes
-   them, with a tracker of their own, and their picture cells in the form.
-   Their kitty images are the transcript's, which the screen deletes only
-   when the transcript is erased ([delete_transcript]). *)
-let static_rows t g ~rows ~top =
+(* Static rows are lines above a region's rows, written as [Grid.to_ansi
+   ~trim:true] writes them at the screen's color depth, each ended by LF,
+   with their picture cells in the form. Their kitty images are the
+   transcript's, which the screen deletes only when the transcript is erased
+   ([delete_transcript]). A sixel over them is written once they are on the
+   terminal ([static_sixels]); the text under it is half blocks. *)
+let static_rows t g ~rows =
   if rows < 0 || rows > Grid.height g then
     invalid_arg "Matrix_screen.static_rows: rows must be within grid height";
-  if not (Grid.Unsafe.has_pictures g) then
-    Grid.to_ansi ~complete_rows:true ~rows g
+  if rows = 0 then ""
+  else if not (Grid.Unsafe.has_pictures g) then
+    Grid.to_ansi
+      ~styling:(t.color_depth :> [ `Plain | Ansi.Color.depth ])
+      ~trim:true ~rows g
+    ^ "\n"
   else begin
     own t.diff;
     let p = t.diff.pictures in
@@ -1598,12 +1608,10 @@ let static_rows t g ~rows ~top =
         t.diff with
         curr = g;
         out = w;
-        sgr = Ansi.Sgr_state.create ();
+        sgr = t.sgr_state;
         width = Grid.width g;
-        (* Every row may take a sixel: the rows end above the cursor. *)
         height = rows + 1;
-        row_offset = top;
-        relative = false;
+        relative = true;
       }
     in
     let width = Grid.width g in
@@ -1626,8 +1634,8 @@ let static_rows t g ~rows ~top =
       if Grid.Unsafe.is_picture g idx then
         ignore (tile_entry (Grid.Unsafe.tile g idx) : entry)
     done;
+    Ansi.Sgr_state.reset c.sgr;
     for y = 0 to rows - 1 do
-      Ansi.emit (Ansi.erase_line ~mode:`All) w;
       let x = ref 0 in
       while !x < width do
         let idx = (y * width) + !x in
@@ -1654,18 +1662,49 @@ let static_rows t g ~rows ~top =
       Ansi.Sgr_state.close_link c.sgr w;
       Ansi.emit Ansi.reset w;
       Ansi.Sgr_state.reset c.sgr;
-      Ansi.Writer.write_string w "\r\n"
+      Ansi.Writer.write_char w '\n'
     done;
-    (* The sixels of the rows still on the screen, then the cursor back where
-       the rows left it. *)
+    (* The sixels go once the rows are on the terminal. *)
+    Dynarray.clear p.sixels;
+    Ansi.Writer.contents w
+  end
+
+(* The rows end [below] rows above the cursor's, and only those at most
+   [reach] rows above it are on the screen. A sixel is written by relative
+   motion from the cursor's row, which it comes back to: the rows are
+   above it, so no sixel reaches the screen's last row. *)
+let static_sixels t g ~rows ~below ~reach =
+  if rows < 0 || rows > Grid.height g then
+    invalid_arg "Matrix_screen.static_sixels: rows must be within grid height";
+  let p = t.diff.pictures in
+  if p.form <> `Sixel || not (Grid.Unsafe.has_pictures g) then ""
+  else begin
+    own t.diff;
+    let p = t.diff.pictures in
+    let w = Ansi.Writer.create 1024 in
+    let width = Grid.width g in
+    (* The cursor is on the row [rows - 1 + below] of the rows. *)
+    let cursor = rows - 1 + below in
+    let c =
+      {
+        t.diff with
+        curr = g;
+        out = w;
+        sgr = t.sgr_state;
+        width;
+        height = rows + 1;
+        relative = true;
+        cursor_row = cursor;
+      }
+    in
+    Dynarray.clear p.sixels;
+    for idx = 0 to (rows * width) - 1 do
+      if Grid.Unsafe.is_picture g idx && cursor - (idx / width) <= reach then
+        Dynarray.add_last p.sixels idx
+    done;
     if Dynarray.length p.sixels > 0 then begin
-      let shown =
-        Dynarray.filter (fun idx -> top + (idx / width) >= 0) p.sixels
-      in
-      Dynarray.clear p.sixels;
-      Dynarray.append p.sixels shown;
       write_sixels c;
-      Ansi.cursor_position ~row:(top + rows + 1) ~col:1 w
+      Ansi.cursor_down ~n:(cursor - c.cursor_row) w
     end;
     Ansi.Writer.contents w
   end

@@ -413,17 +413,26 @@ val delete_transcript : t -> Ansi.Writer.t -> unit
 (* [delete_transcript t w] appends to [w] the deletion of the images of the
    static rows [t] wrote, for a terminal whose scrollback was erased. *)
 
-val static_rows : t -> Matrix_grid.t -> rows:int -> top:int -> string
-(* [static_rows t g ~rows ~top] is the first [rows] rows of [g] as
-   [Matrix_grid.to_ansi ~complete_rows:true] writes them, for rows that
-   scroll into the transcript and end on the terminal's rows from [top],
-   from [0], which is negative when some scroll off. A grid without picture
-   cells gives exactly those bytes. Picture cells are written in the
-   screen's form. Under [`Kitty] the rows are preceded by the pixels of
-   their boxes, as images [t] deletes only by [delete_transcript]. Under
-   [`Sixel] they are followed by sixels over the picture cells of the rows
-   from [top] that are on the screen, and by a cursor motion to the start of
-   the row after them. Raises [Invalid_argument] if [rows] is negative or
-   greater than the height of [g]. *)
+val static_rows : t -> Matrix_grid.t -> rows:int -> string
+(* [static_rows t g ~rows] is the first [rows] rows of [g] as lines for a
+   region to write above its rows ([Region.start]'s [above]), each ended by
+   LF, at the color depth of [t]. A grid without picture cells gives
+   [Matrix_grid.to_ansi ~trim:true ~rows g] and an LF. Picture cells are
+   written in the screen's form. Under [`Kitty] the rows are preceded by the
+   pixels of their boxes, as images [t] deletes only by [delete_transcript].
+   Under [`Sixel] they are half blocks, which [static_sixels] covers once
+   they are on the terminal. Raises [Invalid_argument] if [rows] is negative
+   or greater than the height of [g]. *)
+
+val static_sixels :
+  t -> Matrix_grid.t -> rows:int -> below:int -> reach:int -> string
+(* [static_sixels t g ~rows ~below ~reach] is, under [`Sixel], the sixels
+   over the picture cells of the first [rows] rows of [g] written as
+   [static_rows] wrote them, whose last row is [below] rows above the
+   cursor's, at least 1. Only the cells at most [reach] rows above the
+   cursor's row, those still on the screen, are covered. The sixels are
+   reached by relative motions, and the cursor ends on the row it was on. It
+   is [""] in another form, or with no picture cell. Raises
+   [Invalid_argument] as [static_rows] does. *)
 
 (**/**)

@@ -132,7 +132,9 @@ let initial_height = 70
 
 (* In [`Primary] mode the application is an inline region under 20 rows of
    earlier output, so its live region is shorter than the terminal: its scroll
-   box takes 40 of the terminal's 70 rows. *)
+   box takes 40 of the terminal's 70 rows. The run first erases the screen,
+   which tells it where its rows are: the terminal, a file, answers no cursor
+   report, and mouse rows count from the live region. *)
 let primary_viewport_height = 40
 
 let earlier_output =
@@ -280,7 +282,12 @@ let setup ~mode ~blocks workload () =
           ( !accepted,
             match mode with
             | `Alt -> none
-            | `Primary -> Mosaic.Cmd.static_commit earlier_output ));
+            | `Primary ->
+                Mosaic.Cmd.batch
+                  [
+                    Mosaic.Cmd.static_clear;
+                    Mosaic.Cmd.static_commit earlier_output;
+                  ] ));
       update =
         (fun message model ->
           let model =
@@ -309,9 +316,9 @@ let setup ~mode ~blocks workload () =
                   continuation := Some k)
           | _ -> None);
     };
-  (* The live region ends at the terminal's last row, below the earlier
-     output in [`Primary] mode. *)
-  let top = match mode with `Alt -> 0 | `Primary -> 20 in
+  (* The live region is below the earlier output and the blank row it is
+     drawn from in [`Primary] mode. *)
+  let top = match mode with `Alt -> 0 | `Primary -> 21 in
   let viewport_height =
     match mode with
     | `Alt -> initial_height - 1

@@ -1627,11 +1627,12 @@ let test_frame_reuses_render_capacity () =
 let test_cursor_only_frame_emits_output () =
   let f = fake () in
   run ~config:(quiet ~mode:`Primary ()) f (fun app ->
+      Matrix.set_cursor app ~visible:true;
       present app [ "stable" ];
       Buffer.clear f.output;
       Matrix.set_cursor_position app ~row:1 ~col:3;
       present app [ "stable" ];
-      contains ~msg:"the cursor moves" ~sub:"\027[1;3H" (output f))
+      contains ~msg:"the cursor moves" ~sub:"\027[3G" (output f))
 
 (* The terminal's cursor style at startup is unknown: the first frame emits
    it even when it matches the default. *)
@@ -1687,12 +1688,18 @@ let test_frame_above_default_capacity () =
     done
   in
   run ~config:(quiet ~mode:`Primary ~caps ()) f (fun app ->
-      ignore (frame ~draw app [] : _ list);
+      ignore (frame ~required:height ~draw app [] : _ list);
       is_true ~msg:"a frame above 2 MiB"
         (String.length (output f) > 2 * 1024 * 1024);
       Buffer.clear f.output;
       Matrix.request_redraw app;
-      (match Matrix.next app with Frame -> () | _ -> fail "expected a frame");
+      let rec frame () =
+        match Matrix.next app with
+        | Frame -> ()
+        | Event (Resize _) -> frame ()
+        | _ -> fail "expected a frame"
+      in
+      frame ();
       (* The frame's drawing allocates; its presentation is measured. *)
       let words = ref 0. in
       Matrix.draw app (fun grid ->
@@ -1757,7 +1764,11 @@ let test_partial_frame_restores_transient_modes () =
                  if release then Matrix.release app ignore)
            with Failure _ -> ());
           in_order ~msg:"every transient mode is reset"
-            ~subs:[ cut; "\027[?2026l"; "\027[r"; "\027[?7h" ]
+            ~subs:[ cut; "\027[?2026l"; "\027[?7h" ]
+            (Buffer.contents bytes);
+          (* Resetting a scrolling region would move the cursor to the
+             first row, away from the region's origin. *)
+          not_contains ~msg:"no scrolling region to reset" ~sub:"\027[r"
             (Buffer.contents bytes);
           equal ~msg:"the failing reset is exercised" bool fail_restore
             !restore_failed;
@@ -1848,6 +1859,50 @@ let test_resize_clamps_primary_render_offset () =
 
 (* Primary sizing *)
 
+(* Through a terminal: a VTE fed everything the runtime writes, whose
+   replies, cursor reports among them, are the runtime's input. [shell] is
+   the output before the application starts. *)
+type term = { vte : Vte.t; f : fake }
+
+let vte_term ?(shell = "") ~cols ~rows () =
+  let vte = Vte.create ~scrollback:100 ~rows ~cols () in
+  ignore (Vte.feed_string vte shell : _ list);
+  let f = fake ~tty:true ~size:(cols, rows) () in
+  f.answer <- (fun s -> Matrix_input.Reply.encode (Vte.feed_string vte s));
+  { vte; f }
+
+let run_term ?(mode = `Primary) ?(min_tui_height = 1) ?caps ?(mouse = `Off) term
+    body =
+  let config =
+    Matrix.config ~mode ~mouse ~bracketed_paste:false ~kitty_keyboard:`Off ?caps
+      ~min_tui_height ()
+  in
+  run ~config term.f body
+
+let resize term ~cols ~rows =
+  ignore (Vte.resize term.vte ~rows ~cols : Matrix_input.Reply.t list);
+  term.f.size <- (cols, rows);
+  term.f.signals <- term.f.signals @ [ Matrix.Backend.Winch ]
+
+let screen_rows term =
+  List.map rtrim (String.split_on_char '\n' (Vte.to_string term.vte))
+
+(* In [`Primary] mode the live region is drawn below its origin, a blank
+   row of its own, on which the cursor rests while it is hidden, as it is
+   by default. The transcript is everything above the origin, the
+   scrollback first. *)
+let origin term = fst (Vte.cursor_pos term.vte)
+
+let transcript term =
+  scrollback_lines term.vte
+  @ List.filteri (fun y _ -> y < origin term) (screen_rows term)
+
+let origin_row term = List.nth (screen_rows term) (origin term)
+
+let live_rows app term =
+  let o = origin term and _, live = Matrix.size app in
+  List.filteri (fun y _ -> y > o && y <= o + live) (screen_rows term)
+
 let primary_at row =
   let f = fake ~tty:true () in
   f.answer <-
@@ -1869,16 +1924,16 @@ let test_primary_required_rows_ignored_in_alt_mode () =
       present ~required:3 app [];
       equal ~msg:"the whole terminal" int 24 (snd (Matrix.size app)))
 
-let test_primary_effective_size_tracks_pending_static () =
+(* Static rows go above the live region, which keeps its rows. *)
+let test_static_rows_take_no_live_rows () =
   let f = fake () in
-  run ~config:(quiet ~mode:`Primary ()) f (fun app ->
-      equal ~msg:"initial" int 24 (snd (Matrix.size app));
+  run ~config:(quiet ~mode:`Primary ~min_tui_height:3 ()) f (fun app ->
+      equal ~msg:"the rows asked for" (pair int int) (80, 3) (Matrix.size app);
       Matrix.static_write app (static_grid "alpha\nbeta\n");
-      let effective = Matrix.effective_size app in
-      equal ~msg:"pending rows take theirs" (pair int int) (80, 22) effective;
+      equal ~msg:"pending rows take none of them" (pair int int) (80, 3)
+        (Matrix.effective_size app);
       present app [];
-      equal ~msg:"the frame applies it" (pair int int) effective
-        (Matrix.size app))
+      equal ~msg:"nor written ones" (pair int int) (80, 3) (Matrix.size app))
 
 let test_prepare_uses_pending_static_effective_region () =
   let f = fake () in
@@ -1910,6 +1965,8 @@ let test_static_write_snapshots_selected_rows () =
   in_order ~subs:[ "first"; "\r\n"; "second"; "\r\n" ] (output f);
   not_contains ~sub:"ignored" (output f)
 
+(* The erase is written at once, and the next frame draws the live region
+   afresh from the screen's first row. *)
 let test_static_clear_is_immediate_and_forces_full_repaint () =
   let f = fake () in
   let backend = { (backend f) with output_is_tty = true } in
@@ -1917,7 +1974,7 @@ let test_static_clear_is_immediate_and_forces_full_repaint () =
       present app [ "live" ];
       Buffer.clear f.output;
       Matrix.static_clear app;
-      equal ~msg:"at once" string "\027[H\027[2J" (output f);
+      equal ~msg:"at once" string "\027[0m\027[H\027[2J" (output f);
       Buffer.clear f.output;
       present app [ "live" ];
       contains ~msg:"repainted" ~sub:"live" (output f);
@@ -1929,8 +1986,11 @@ let test_static_write_and_live_repaint_share_sync_frame () =
       set_sync_capable app;
       present app [];
       Buffer.clear f.output;
+      let writes = ref 0 in
+      f.fail_write <- (fun _ -> incr writes);
       Matrix.static_write app (static_grid "pinned\n");
-      present app [ "live" ]);
+      present app [ "live" ];
+      equal ~msg:"one write" int 1 !writes);
   let out = output f in
   in_order ~subs:[ "\027[?2026h"; "pinned"; "live"; "\027[?2026l" ] out
 
@@ -1954,8 +2014,7 @@ let test_primary_required_rows_apply_after_static_flush () =
         (List.init 20 (fun i -> if i = 19 then "live" else ""));
       equal ~msg:"the rows it requires" (pair int int) (80, 20)
         (Matrix.size app));
-  in_order ~msg:"static output, then growth, then the frame"
-    ~subs:[ "prompt"; "\027[24;1H\r\n"; "live" ]
+  in_order ~msg:"static output, then the frame" ~subs:[ "prompt"; "live" ]
     (output f)
 
 let test_static_snapshots_scroll_exactly_once_per_row () =
@@ -1974,33 +2033,33 @@ let test_static_snapshots_scroll_exactly_once_per_row () =
         (scrollback_lines terminal))
     [ 1; 3; 4; 8 ]
 
+(* Static rows replace the rows the live region had, whole, blank rows
+   included. *)
 let test_static_snapshot_clears_suffixes_and_keeps_blank_rows () =
-  let f = fake ~size:(3, 3) () in
-  run ~config:(quiet ~mode:`Primary ~min_tui_height:3 ()) f (fun app ->
+  let f = fake ~size:(6, 3) () in
+  run ~config:(quiet ~mode:`Primary ~min_tui_height:2 ()) f (fun app ->
+      present app [ "LIVE!!"; "LIVE!!" ];
       Matrix.static_write app (static_grid "A\n\nB");
       present app []);
   let terminal = Vte.create ~rows:3 ~cols:6 ~scrollback:16 () in
-  ignore (Vte.feed_string terminal "STALE!\r\nSTALE!\r\nSTALE!" : _ list);
   ignore (Vte.feed_string terminal (output f) : _ list);
   equal (list string) [ "A"; ""; "B" ] (scrollback_lines terminal)
 
-let test_queued_static_snapshot_keeps_row_count_after_resize () =
-  let f = fake ~size:(6, 3) () in
-  run ~config:(quiet ~mode:`Primary ~min_tui_height:3 ()) f (fun app ->
+(* A static row is a line the terminal wraps as any output: one wider than a
+   terminal narrowed since it was queued takes more rows, and loses
+   nothing. *)
+let test_queued_static_snapshot_wraps_after_resize () =
+  let term = vte_term ~cols:6 ~rows:3 () in
+  run_term ~min_tui_height:2 term (fun app ->
       present app [];
-      Buffer.clear f.output;
       Matrix.static_write app (static_grid "ABCDEF\nGHIJKL");
-      f.size <- (3, 3);
-      f.signals <- [ Winch ];
+      resize term ~cols:3 ~rows:3;
       ignore (frame app [] : _ list);
       equal ~msg:"the resize applies before the frame" (pair int int) (3, 3)
         (Matrix.full_size app));
-  let terminal = Vte.create ~rows:3 ~cols:3 ~scrollback:16 () in
-  ignore (Vte.feed_string terminal "old\r\nold\r\nold" : _ list);
-  ignore (Vte.feed_string terminal (output f) : _ list);
-  let history = scrollback_lines terminal in
-  equal ~msg:"no extra transcript rows" int 2 (List.length history);
-  List.iter (fun row -> not_contains ~sub:"old" row) history
+  equal ~msg:"each line wrapped, none lost" (list string)
+    [ "ABC"; "DEF"; "GHI"; "JKL" ]
+    (List.filter (fun l -> l <> "") (scrollback_lines term.vte))
 
 let test_static_write_ignored_in_alt_mode () =
   let f = fake () in
@@ -2010,24 +2069,6 @@ let test_static_write_ignored_in_alt_mode () =
       present app []);
   not_contains ~sub:"ignored" (output f)
 
-let test_static_clear_resets_primary_layout () =
-  let f = primary_at 11 in
-  run ~config:(quiet ~mode:`Primary ()) f (fun app ->
-      equal ~msg:"below the transcript" (pair int int) (80, 14)
-        (Matrix.size app);
-      Matrix.static_write app (static_grid "pending\n");
-      equal ~msg:"pending" (pair int int) (80, 13) (Matrix.effective_size app);
-      Buffer.clear f.output;
-      Matrix.static_clear app;
-      contains ~sub:"\027[H\027[2J" (output f);
-      equal ~msg:"full height" (pair int int) (80, 24) (Matrix.size app);
-      equal ~msg:"effective too" (pair int int) (80, 24)
-        (Matrix.effective_size app);
-      Buffer.clear f.output;
-      present app [ "after-clear" ];
-      contains ~sub:"after-clear" (output f);
-      not_contains ~msg:"pending output dropped" ~sub:"pending" (output f))
-
 let test_static_replace_replays_inside_next_frame () =
   let f = primary_at 11 in
   run ~config:(quiet ~mode:`Primary ()) f (fun app ->
@@ -2036,13 +2077,17 @@ let test_static_replace_replays_inside_next_frame () =
       Buffer.clear f.output;
       Matrix.static_replace app (static_grid "replacement-a\nreplacement-b\n");
       equal ~msg:"deferred" string "" (output f);
-      present app [ "live-after" ]);
+      let writes = ref 0 in
+      f.fail_write <- (fun _ -> incr writes);
+      present app [ "live-after" ];
+      equal ~msg:"one write" int 1 !writes);
   let out = output f in
   contains ~sub:"\027[3J" out;
   in_order
     ~subs:
       [
         "\027[?2026h";
+        "\027[2J";
         "replacement-a";
         "replacement-b";
         "live-after";
@@ -2050,67 +2095,59 @@ let test_static_replace_replays_inside_next_frame () =
       ]
     out
 
-let test_primary_full_redraw_does_not_erase_past_bottom () =
-  let f = primary_at 11 in
+(* [static_clear] erases the screen and drops the static rows queued; the
+   live region keeps its rows and is drawn afresh from the screen's first
+   row. *)
+let test_static_clear_resets_primary_layout () =
+  let term = vte_term ~shell:"$0\r\n$1\r\n" ~cols:8 ~rows:6 () in
+  run_term ~min_tui_height:2 term (fun app ->
+      present app [ "live" ];
+      Matrix.static_write app (static_grid "pending\n");
+      Matrix.static_clear app;
+      equal ~msg:"the screen erased" (list string)
+        (List.init 6 (fun _ -> ""))
+        (screen_rows term);
+      equal ~msg:"the live region keeps its rows" (pair int int) (8, 2)
+        (Matrix.size app);
+      present app [ "after" ];
+      equal ~msg:"afresh below the first row" (list string)
+        [ ""; "after"; ""; ""; ""; "" ]
+        (screen_rows term))
+
+(* A frame drawn afresh writes the rows down to the last that shows
+   anything: the region erased the rest. *)
+let test_primary_whole_frame_writes_rows_that_show () =
+  let f = fake () in
   run ~config:(quiet ~mode:`Primary ()) f (fun app ->
-      equal ~msg:"14 live rows" int 14 (snd (Matrix.size app));
-      present app
-        (List.init 14 (fun i -> if i = 13 then "Elapsed: 5.5s" else "")));
-  contains ~sub:"Elapsed: 5.5s" (output f);
-  not_contains ~sub:"\027[25;1H\027[J" (output f)
+      present ~required:10 app [ "top" ];
+      Buffer.clear f.output;
+      Matrix.static_write app (static_grid "x\n");
+      present app [ "top" ]);
+  contains ~sub:"top" (output f);
+  not_contains ~msg:"the blank rows are not written" ~sub:(String.make 80 ' ')
+    (output f)
 
-let test_primary_full_redraw_erases_stale_rows_below_content () =
-  let f = primary_at 11 in
-  run ~config:(quiet ~mode:`Primary ()) f (fun app ->
-      ignore
-        (frame app [] ~draw:(fun grid ->
-             Matrix.Grid.resize grid ~width:(Matrix.Grid.width grid) ~height:13;
-             Matrix.Grid.draw_text grid ~x:0 ~y:12 ~text:"Press Q to quit")
-          : _ list));
-  contains ~sub:"Press Q to quit" (output f);
-  contains ~sub:"\027[24;1H\027[J" (output f)
-
-let test_primary_required_rows_to_terminal_height () =
-  let f = primary_at 11 in
-  run ~config:(quiet ~mode:`Primary ()) f (fun app ->
-      present ~required:24 app
-        (List.init 24 (fun i -> if i = 23 then "bottom" else ""));
-      equal ~msg:"the whole terminal" (pair int int) (80, 24) (Matrix.size app));
-  contains ~sub:"bottom" (output f);
-  not_contains ~sub:"\027[25;1H\027[J" (output f)
-
-(* Primary input: mouse rows count from the live region. *)
-let test_primary_mouse_rows () =
-  List.iter
-    (fun (bytes, expected) ->
-      let f = primary_at 11 in
-      run ~config:(quiet ~mode:`Primary ()) f (fun app ->
-          f.input <- [ bytes ];
-          match next_event app with
-          | Event (Mouse { y; _ }) ->
-              equal ~msg:(String.escaped bytes) int expected y
-          | _ -> fail "expected a mouse event"))
-    [
-      ("\027[<0;5;13M", 2);
-      ("\027[<0;5;13m", 2);
-      ("\027[<32;5;13M", 2);
-      ("\027[<65;5;13M", 2);
-      ("\027[<0;5;6M", -1);
-      (* The first row of the live region is its row 0. *)
-      ("\027[<0;5;11M", 0);
-    ]
-
-(* Through a terminal: a VTE fed everything the runtime writes, whose
-   replies, cursor reports among them, are the runtime's input. [shell] is
-   the output before the application starts. *)
-type term = { vte : Vte.t; f : fake }
-
-let vte_term ?(shell = "") ~cols ~rows () =
-  let vte = Vte.create ~scrollback:100 ~rows ~cols () in
-  ignore (Vte.feed_string vte shell : _ list);
-  let f = fake ~tty:true ~size:(cols, rows) () in
-  f.answer <- (fun s -> Matrix_input.Reply.encode (Vte.feed_string vte s));
-  { vte; f }
+(* The live region never asks where the cursor is: no frame waits for a
+   report, and none is sent while the mouse is off, but for the two the
+   measure of text sizing reads at the start. *)
+let test_primary_asks_no_cursor_report () =
+  let term = vte_term ~shell:"$0\r\n" ~cols:10 ~rows:6 () in
+  run_term term (fun app ->
+      present app [ "live" ];
+      resize term ~cols:8 ~rows:5;
+      present app [ "live" ];
+      Matrix.release app ignore;
+      present app [ "live" ]);
+  let rec count i n =
+    match String.index_from_opt (output term.f) i '\027' with
+    | Some j
+      when j + 3 < String.length (output term.f)
+           && String.sub (output term.f) j 4 = "\027[6n" ->
+        count (j + 1) (n + 1)
+    | Some j -> count (j + 1) n
+    | None -> n
+  in
+  equal ~msg:"the measure's reports alone" int 2 (count 0 0)
 
 (* The kitty protocol keeps a stack of flags for each screen ("The main and
    alternate screens in the terminal emulator must maintain their own,
@@ -2129,28 +2166,6 @@ let test_kitty_flags_on_the_run's_screen () =
   is_false ~msg:"the primary screen" (Vte.modes term.vte).alternate_screen;
   equal ~msg:"the shell's flags" int 0 (flags ())
 
-let run_term ?(mode = `Primary) ?(min_tui_height = 1) term body =
-  run ~config:(quiet ~mode ~min_tui_height ()) term.f body
-
-let resize term ~cols ~rows =
-  ignore (Vte.resize term.vte ~rows ~cols : Matrix_input.Reply.t list);
-  term.f.size <- (cols, rows);
-  term.f.signals <- term.f.signals @ [ Matrix.Backend.Winch ]
-
-let screen_rows term =
-  List.map rtrim (String.split_on_char '\n' (Vte.to_string term.vte))
-
-(* The rows above the live region, after those in the scrollback: what the
-   transcript has become. *)
-let transcript app term =
-  let _, rows = Matrix.full_size app and _, live = Matrix.size app in
-  scrollback_lines term.vte
-  @ List.filteri (fun y _ -> y < rows - live) (screen_rows term)
-
-let live_rows app term =
-  let _, rows = Matrix.full_size app and _, live = Matrix.size app in
-  List.filteri (fun y _ -> y >= rows - live) (screen_rows term)
-
 (* A screen full of shell output, the prompt on the bottom row. *)
 let full_shell = "$0\r\n$1\r\n$2\r\n$ app"
 
@@ -2162,7 +2177,7 @@ let test_pinned_static_write_scrolls_transcript () =
       present app [ "live" ];
       equal ~msg:"the transcript" (list string)
         [ "$0"; "$1"; "$2"; "$ app"; "pinned" ]
-        (transcript app term);
+        (transcript term);
       equal ~msg:"the live row" (list string) [ "live" ] (live_rows app term))
 
 let test_multiline_static_write_at_the_pin () =
@@ -2173,7 +2188,7 @@ let test_multiline_static_write_at_the_pin () =
       present app [ "live" ];
       equal (list string)
         [ "$0"; "$1"; "$2"; "$ app"; "line-a"; "line-b" ]
-        (transcript app term);
+        (transcript term);
       equal (pair int int) (8, 1) (Matrix.size app);
       equal (list string) [ "live" ] (live_rows app term))
 
@@ -2183,51 +2198,61 @@ let test_static_write_moves_live_region_down () =
       present app [ "live" ];
       Matrix.static_write app (static_grid "settle\n");
       present app [ "live" ];
-      equal (list string) [ "$ cmd"; "settle" ] (transcript app term);
-      equal (pair int int) (8, 4) (Matrix.size app);
-      equal (list string) [ "live"; ""; ""; "" ] (live_rows app term))
+      equal (list string) [ "$ cmd"; "settle" ] (transcript term);
+      equal ~msg:"a blank origin" string "" (origin_row term);
+      equal (pair int int) (8, 1) (Matrix.size app);
+      equal (list string) [ "live" ] (live_rows app term))
 
 let test_full_height_static_write_scrolls_into_scrollback () =
   let term = vte_term ~cols:12 ~rows:4 () in
   run_term ~min_tui_height:4 term (fun app ->
       present app [ "live" ];
       Matrix.static_write app (static_grid "INSERTED00\nINSERTED01\n");
-      equal (pair int int) (12, 4) (Matrix.effective_size app);
+      equal ~msg:"the rows below the origin" (pair int int) (12, 3)
+        (Matrix.effective_size app);
       present app [ "live" ];
       equal (list string)
         [ "INSERTED00"; "INSERTED01" ]
         (scrollback_lines term.vte);
-      equal (list string) [ "live"; ""; ""; "" ] (live_rows app term))
+      equal (list string) [ "live"; ""; "" ] (live_rows app term))
 
 let test_required_rows_show_in_their_frame () =
   let term = vte_term ~shell:"$ ls\r\n$ \r\n$ \r\n$ \r\n" ~cols:12 ~rows:6 () in
   run_term term (fun app ->
       present app [ "one" ];
-      equal (pair int int) (12, 2) (Matrix.size app);
+      equal (pair int int) (12, 1) (Matrix.size app);
       present ~required:4 app [ "one"; "two"; "three"; "four" ];
       equal (list string) [ "one"; "two"; "three"; "four" ] (live_rows app term);
-      equal (list string) [ "$ ls"; "$"; "$"; "$" ] (transcript app term))
+      equal (list string) [ "$ ls"; "$"; "$"; "$" ] (transcript term))
 
-let test_primary_column_one_anchor_starts_at_cursor_row () =
-  let term = vte_term ~shell:"$ cmd\r\n" ~cols:10 ~rows:4 () in
+(* The live region begins on a row of its own: the cursor's, at the start
+   of a row, or the row below the prompt the cursor ends. *)
+let test_primary_starts_below_the_cursor () =
+  let term = vte_term ~shell:"$ cmd\r\n" ~cols:10 ~rows:6 () in
   run_term term (fun app ->
       Matrix.static_write app (static_grid "HEADER\n");
       present app [ "live" ];
-      equal (list string) [ "$ cmd"; "HEADER" ] (transcript app term);
-      equal (list string) [ "live"; "" ] (live_rows app term))
+      equal (list string) [ "$ cmd"; "HEADER" ] (transcript term);
+      equal ~msg:"a blank origin" string "" (origin_row term);
+      equal (list string) [ "live" ] (live_rows app term));
+  let term = vte_term ~shell:"$ cmd\r\n$ " ~cols:10 ~rows:6 () in
+  run_term term (fun app ->
+      present app [ "live" ];
+      equal ~msg:"below the prompt" (list string) [ "$ cmd"; "$" ]
+        (transcript term);
+      equal (list string) [ "live" ] (live_rows app term))
 
 let test_preserved_static_write_keeps_live_region () =
   let term = vte_term ~cols:12 ~rows:4 () in
-  run_term term (fun app ->
+  run_term ~min_tui_height:2 term (fun app ->
       present app [ "live" ];
       Matrix.static_write ~preserve_live_region:true app
         (static_grid "PRESERVED00\nPRESERVED01\n");
-      equal (pair int int) (12, 4) (Matrix.effective_size app);
+      equal (pair int int) (12, 2) (Matrix.effective_size app);
       present app [ "live" ];
-      equal (list string)
-        [ "PRESERVED00"; "PRESERVED01" ]
-        (scrollback_lines term.vte);
-      equal (pair int int) (12, 4) (Matrix.size app))
+      equal (list string) [ "PRESERVED00"; "PRESERVED01" ] (transcript term);
+      equal (pair int int) (12, 2) (Matrix.size app);
+      equal (list string) [ "live"; "" ] (live_rows app term))
 
 let test_preserved_static_write_after_transcript_rows () =
   let term = vte_term ~shell:"$0\r\n$1\r\n$2\r\n" ~cols:8 ~rows:6 () in
@@ -2235,12 +2260,9 @@ let test_preserved_static_write_after_transcript_rows () =
       present app [ "live" ];
       Matrix.static_write ~preserve_live_region:true app
         (static_grid "AAAA\nBBBB\n");
-      equal (pair int int) (8, 3) (Matrix.effective_size app);
       present app [ "live" ];
-      equal (list string)
-        [ "$0"; "$1"; "$2"; "AAAA"; "BBBB" ]
-        (transcript app term);
-      equal (pair int int) (8, 3) (Matrix.size app))
+      equal (list string) [ "$0"; "$1"; "$2"; "AAAA"; "BBBB" ] (transcript term);
+      equal (pair int int) (8, 2) (Matrix.size app))
 
 let test_mixed_static_writes () =
   let term = vte_term ~cols:8 ~rows:6 () in
@@ -2249,7 +2271,7 @@ let test_mixed_static_writes () =
       Matrix.static_write ~preserve_live_region:true app (static_grid "KEEP\n");
       Matrix.static_write app (static_grid "GROW\n");
       present app [ "live" ];
-      equal (list string) [ "KEEP"; "GROW" ] (transcript app term);
+      equal (list string) [ "KEEP"; "GROW" ] (transcript term);
       equal (pair int int) (8, 5) (Matrix.size app))
 
 let test_full_height_consecutive_static_writes () =
@@ -2260,6 +2282,26 @@ let test_full_height_consecutive_static_writes () =
       Matrix.static_write app (static_grid "second\n");
       present app [ "live" ];
       equal (list string) [ "first"; "second" ] (scrollback_lines term.vte))
+
+let test_primary_required_rows_to_terminal_height () =
+  let term = vte_term ~shell:"$0\r\n" ~cols:8 ~rows:6 () in
+  run_term term (fun app ->
+      present ~required:6 app
+        (List.init 6 (fun i -> if i = 4 then "bottom" else ""));
+      equal ~msg:"every row but the origin" (pair int int) (8, 5)
+        (Matrix.size app);
+      equal (list string) [ ""; ""; ""; ""; "bottom" ] (live_rows app term);
+      equal ~msg:"the shell's row in the scrollback" (list string) [ "$0" ]
+        (transcript term))
+
+let test_primary_one_row_static_area () =
+  let term = vte_term ~cols:4 ~rows:2 () in
+  run_term term (fun app ->
+      present app [ "live" ];
+      Matrix.static_write app (static_grid "S0\n");
+      present app [ "live" ];
+      equal (list string) [ "S0" ] (transcript term);
+      equal (list string) [ "live" ] (live_rows app term))
 
 let test_alt_default_cursor_is_shown () =
   let term = vte_term ~cols:6 ~rows:3 () in
@@ -2272,6 +2314,41 @@ let test_alt_default_cursor_is_shown () =
       equal ~msg:"on the bottom row" (pair int int) (2, 0)
         (Vte.cursor_pos term.vte))
 
+(* Hidden, as by default in [`Primary] mode, the cursor rests on the origin
+   and never shows; shown, it is on the cell the application puts it, and
+   moving it alone is a frame. *)
+let test_primary_cursor () =
+  let term = vte_term ~cols:6 ~rows:6 () in
+  run_term term (fun app ->
+      let shows = ref false in
+      let has sub s =
+        let n = String.length sub in
+        let rec go i =
+          i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
+        in
+        go 0
+      in
+      term.f.fail_write <-
+        (fun bytes -> if has "\027[?25h" bytes then shows := true);
+      present ~required:3 app [ "x" ];
+      is_false ~msg:"never shown while hidden" !shows;
+      is_false ~msg:"hidden" (Vte.modes term.vte).cursor_visible;
+      equal ~msg:"resting on the origin" (pair int int) (0, 0)
+        (Vte.cursor_pos term.vte);
+      Matrix.set_cursor app ~visible:true;
+      Matrix.set_cursor_position app ~row:3 ~col:3;
+      present app [ "x" ];
+      is_true ~msg:"shown" (Vte.modes term.vte).cursor_visible;
+      equal ~msg:"on its cell" (pair int int) (3, 2) (Vte.cursor_pos term.vte);
+      Buffer.clear term.f.output;
+      Matrix.set_cursor_position app ~row:1 ~col:5;
+      present app [ "x" ];
+      equal ~msg:"moved" (pair int int) (1, 4) (Vte.cursor_pos term.vte);
+      not_contains ~msg:"the frame unchanged, only the cursor" ~sub:"x"
+        (output term.f);
+      equal ~msg:"the frame stays" (list string) [ "x"; ""; "" ]
+        (List.filteri (fun y _ -> y >= 1 && y <= 3) (screen_rows term)))
+
 let test_primary_full_redraw_keeps_cursor_row () =
   let term = vte_term ~cols:6 ~rows:4 () in
   run_term term (fun app ->
@@ -2282,38 +2359,50 @@ let test_primary_full_redraw_keeps_cursor_row () =
           position = Some (2, 3);
           visible = true;
         };
+      present ~required:3 app [ "x" ];
+      equal ~msg:"clamped to the last row" (pair int int) (3, 2)
+        (Vte.cursor_pos term.vte);
+      resize term ~cols:7 ~rows:4;
       present app [ "x" ];
-      equal (pair int int) (3, 2) (Vte.cursor_pos term.vte))
+      equal ~msg:"after a redraw afresh" (pair int int) (3, 2)
+        (Vte.cursor_pos term.vte);
+      equal ~msg:"below the same origin" (list string) [ "x"; ""; "" ]
+        (List.filteri (fun y _ -> y >= 1) (screen_rows term)))
 
 let test_primary_full_redraw_paints_background_rows () =
   let term = vte_term ~cols:6 ~rows:4 () in
   run_term term (fun app ->
       ignore
-        (frame app [ "x" ] ~draw:(fun grid ->
+        (frame ~required:2 app [ "x" ] ~draw:(fun grid ->
              Matrix.Grid.fill_rect grid ~x:0 ~y:1 ~width:6 ~height:1
                ~color:Matrix.Ansi.Color.blue)
           : _ list);
       let g = Vte.grid term.vte in
       is_true ~msg:"a background-only row is painted"
         (Matrix.Ansi.Color.equal
-           (Matrix.Grid.get_bg g (Matrix.Grid.idx g ~x:5 ~y:1))
+           (Matrix.Grid.get_bg g (Matrix.Grid.idx g ~x:5 ~y:2))
            Matrix.Ansi.Color.blue))
+
+(* Rows the frame no longer shows are erased: by the diff, and by a frame
+   drawn afresh. *)
+let test_primary_erases_stale_rows () =
+  let term = vte_term ~cols:8 ~rows:8 () in
+  run_term term (fun app ->
+      present ~required:3 app [ "a"; "b"; "c" ];
+      present app [ "x" ];
+      equal ~msg:"by the diff" (list string) [ "x"; ""; "" ]
+        (live_rows app term);
+      present app [ "a"; "b"; "c" ];
+      resize term ~cols:9 ~rows:8;
+      present app [ "y" ];
+      equal ~msg:"afresh" (list string) [ "y"; ""; "" ] (live_rows app term))
 
 let test_primary_anchor_scrolls_shell_rows () =
   let term = vte_term ~shell:"$0\r\n$1" ~cols:4 ~rows:4 () in
   run_term ~min_tui_height:3 term (fun app ->
       present app [ "live" ];
-      equal (list string) [ "$0"; "$1" ] (transcript app term);
+      equal (list string) [ "$0"; "$1" ] (transcript term);
       equal (pair int int) (4, 3) (Matrix.size app))
-
-let test_primary_one_row_static_area () =
-  let term = vte_term ~cols:4 ~rows:2 () in
-  run_term term (fun app ->
-      present app [ "live" ];
-      Matrix.static_write app (static_grid "S0\n");
-      present app [ "live" ];
-      equal (list string) [ "S0" ] (transcript app term);
-      equal (list string) [ "live" ] (live_rows app term))
 
 let test_primary_minimum_height_survives_shrink () =
   let term = vte_term ~cols:8 ~rows:8 () in
@@ -2330,8 +2419,7 @@ let test_primary_minimum_height_survives_shrink () =
 
 (* A terminal that grows pulls history back from its scrollback, and one
    that shrinks drops the rows below its cursor, then moves the top ones
-   into its scrollback: the live region moves with the rows, found from a
-   cursor report frames wait for. *)
+   into its scrollback: the live region moves with its origin's row. *)
 let test_primary_resize_keeps_live_region_below_transcript () =
   let history = List.init 12 (Printf.sprintf "history %d") in
   let shell =
@@ -2343,7 +2431,7 @@ let test_primary_resize_keeps_live_region_below_transcript () =
       let expect what =
         equal
           ~msg:(what ^ ": the transcript")
-          (list string) (history @ [ "$ app" ]) (transcript app term);
+          (list string) (history @ [ "$ app" ]) (transcript term);
         equal
           ~msg:(what ^ ": the live region")
           (list string) ui (live_rows app term)
@@ -2357,49 +2445,304 @@ let test_primary_resize_keeps_live_region_below_transcript () =
       present ~required:3 app ui;
       expect "shrunk")
 
-(* A terminal that resizes after the live region is placed and before the
-   first frame: no frame has left the cursor anywhere, so the cursor is
-   where the region was placed, and a cursor report places it again. *)
+(* A frame after a resize waits for no answer from the terminal. *)
+let test_frame_after_a_resize_waits_for_nothing () =
+  let shell = "$0\r\n$1\r\n$2\r\n$3\r\n$4" in
+  let term = vte_term ~shell ~cols:5 ~rows:7 () in
+  run_term ~min_tui_height:2 term (fun app ->
+      present app [];
+      (* Nothing the terminal answers reaches the run. *)
+      term.f.answer <-
+        (fun bytes ->
+          ignore (Vte.feed_string term.vte bytes : _ list);
+          "");
+      resize term ~cols:5 ~rows:4;
+      let before = term.f.now in
+      present app [ "live" ];
+      is_true ~msg:"on the frame grid, not after an answer's wait"
+        (term.f.now - before <= ms 17);
+      equal ~msg:"below the transcript" (list string) [ "live"; "" ]
+        (live_rows app term))
+
 let test_resize_before_the_first_frame () =
   let term = vte_term ~shell:"$0\r\n" ~cols:4 ~rows:2 () in
   run_term ~min_tui_height:2 term (fun app ->
       resize term ~cols:4 ~rows:3;
       present app [ "live" ];
       equal ~msg:"the shell's row stays" (list string) [ "$0" ]
-        (transcript app term);
+        (transcript term);
       equal ~msg:"the live region is below it" (list string) [ "live"; "" ]
         (live_rows app term))
 
-(* A resize that leaves the usable size as it was still moves the live
-   region: the frame waits for the cursor report that says where. *)
-let test_frame_waits_for_the_live_region_after_resize () =
-  let shell = "$0\r\n$1\r\n$2\r\n$3\r\n$4" in
-  let term = vte_term ~shell ~cols:5 ~rows:7 () in
+(* An input that is not a terminal leaves the region where the cursor is:
+   no line of the shell's is erased. *)
+let test_primary_input_not_a_terminal () =
+  let term = vte_term ~shell:"$0\r\n$1\r\n$2\r\n" ~cols:8 ~rows:6 () in
+  let backend = { (backend term.f) with input_is_tty = false } in
+  Matrix.run_on backend ~config:(quiet ~mode:`Primary ()) (fun app ->
+      present app [ "live" ];
+      equal ~msg:"the shell's lines" (list string) [ "$0"; "$1"; "$2" ]
+        (transcript term);
+      equal (list string) [ "live" ] (live_rows app term))
+
+(* A SIGCONT the run did not cause, as after a stop from elsewhere: the
+   shell may have written where the cursor rested, and the next frame draws
+   below what it wrote. *)
+let test_primary_continued_below_the_shell () =
+  let term = vte_term ~shell:"$ app\r\n" ~cols:12 ~rows:8 () in
+  run_term term (fun app ->
+      present app [ "live" ];
+      ignore (Vte.feed_string term.vte "[1]+ Stopped\r\n$ fg" : _ list);
+      term.f.signals <- [ Cont ];
+      present app [ "live" ];
+      equal ~msg:"the shell's lines stay" (list string)
+        [ "$ app"; "[1]+ Stopped"; "$ fg" ]
+        (transcript term);
+      equal (list string) [ "live" ] (live_rows app term))
+
+(* A line another program writes where the cursor rests stays, above the
+   live region the next frame draws: frames that write only the cells that
+   changed, then one that writes static rows. Raw mode leaves the line feed
+   without its carriage return. With the live region on the screen's last
+   rows, the line moves the region's rows below the screen, and the next
+   frame goes down to them by line feeds, which scroll, where a cursor
+   motion would stop on the last row and the way back up would end above
+   the origin. *)
+let test_primary_foreign_line_stays () =
+  let term = vte_term ~shell:"$ app\r\n" ~cols:12 ~rows:5 () in
+  run_term term (fun app ->
+      present ~required:3 app [ "a"; "b"; "c" ];
+      ignore (Vte.feed_string term.vte "F1\n" : _ list);
+      present app [ "a"; "b"; "d" ];
+      present app [ "a"; "e"; "d" ];
+      Matrix.static_write app (static_grid "T1\n");
+      present ~required:3 app [ "a"; "e"; "f" ];
+      equal ~msg:"the line stays, above the static row" (list string)
+        [ "$ app"; "F1"; "T1" ]
+        (List.map String.trim (transcript term));
+      equal (list string) [ "a"; "e"; "f" ] (live_rows app term))
+
+(* The run ends: by default the rows of its last frame that show anything
+   stay right below the transcript, the cursor below them, and static rows
+   queued go above them first; erased ([keep_frame false]), the cursor is
+   where the region began. *)
+let test_primary_end_erases_or_keeps () =
+  let term = vte_term ~shell:"$ app\r\n" ~cols:10 ~rows:8 () in
+  run_term term (fun app -> present ~required:3 app [ "a"; "b" ]);
+  ignore (Vte.feed_string term.vte "$ " : _ list);
+  equal ~msg:"kept, the prompt below" (list string) [ "$ app"; "a"; "b"; "$" ]
+    (List.filter (( <> ) "") (screen_rows term));
+  equal ~msg:"no blank row left" (list string) [ "$ app"; "a"; "b"; "$" ]
+    (List.filteri (fun y _ -> y < 4) (screen_rows term));
+  let term = vte_term ~shell:"$ app\r\n" ~cols:10 ~rows:8 () in
+  run_term term (fun app ->
+      present ~required:3 app [ "a"; "b" ];
+      Matrix.keep_frame app false);
+  equal ~msg:"erased" (list string) [ "$ app" ]
+    (List.filter (( <> ) "") (screen_rows term));
+  equal ~msg:"the cursor where the region began" (pair int int) (1, 0)
+    (Vte.cursor_pos term.vte);
+  is_true ~msg:"shown" (Vte.modes term.vte).cursor_visible;
+  let term = vte_term ~shell:"$ app\r\n" ~cols:10 ~rows:8 () in
+  run_term term (fun app ->
+      present ~required:2 app [ "a"; "b" ];
+      Matrix.static_write app (static_grid "done\n"));
+  equal ~msg:"static rows queued go above" (list string)
+    [ "$ app"; "done"; "a"; "b"; "" ]
+    (List.filteri (fun y _ -> y < 5) (screen_rows term));
+  equal ~msg:"the cursor below the frame" (pair int int) (4, 0)
+    (Vte.cursor_pos term.vte)
+
+(* A run whose application states no height, neither [min_tui_height] nor
+   [primary_required_rows]. *)
+let run_unstated ?(input_is_tty = true) term body =
+  let config =
+    Matrix.config ~mode:`Primary ~mouse:`Off ~bracketed_paste:false
+      ~kitty_keyboard:`Off ()
+  in
+  Matrix.run_on { (backend term.f) with input_is_tty } ~config body
+
+let reports term =
+  let out = output term.f and n = ref 0 in
+  String.iteri
+    (fun i c ->
+      if
+        c = '\027'
+        && i + 3 < String.length out
+        && String.sub out i 4 = "\027[6n"
+      then incr n)
+    out;
+  !n
+
+(* With no height stated, the live region takes the rows from the cursor's
+   row at the start down to the terminal's last row, as many as the live
+   region had when it was drawn from the cursor's row: the first frame asks
+   where its origin is, has one row until the answer comes, and grows then,
+   scrolling one row above it into the scrollback for its origin. *)
+let test_primary_unstated_height_fills () =
+  let term = vte_term ~shell:"$0\r\n$1\r\n" ~cols:10 ~rows:8 () in
+  run_unstated term (fun app ->
+      equal ~msg:"one row before the answer" (pair int int) (10, 1)
+        (Matrix.size app);
+      present app [ "live" ];
+      equal ~msg:"none waits for it" (pair int int) (10, 1) (Matrix.size app);
+      let events = frame app [ "live" ] in
+      equal ~msg:"the rows from the cursor's row down" (list input_event)
+        [ Resize (10, 6) ]
+        events;
+      present app [ "live" ];
+      equal ~msg:"the shell's rows above" (list string) [ "$0"; "$1" ]
+        (transcript term);
+      equal ~msg:"the rows the live region had from the cursor's row"
+        (list string)
+        [ "$1"; ""; "live"; ""; ""; ""; ""; "" ]
+        (screen_rows term));
+  (* The cursor past the first column: below its row. *)
+  let term = vte_term ~shell:"$0\r\n$ " ~cols:10 ~rows:8 () in
+  run_unstated term (fun app ->
+      present app [ "live" ];
+      ignore (frame app [ "live" ] : _ list);
+      equal ~msg:"below the prompt's row" (pair int int) (10, 6)
+        (Matrix.size app))
+
+(* An application that states a height asks nothing: [min_tui_height], or
+   [primary_required_rows] from its first frame on. *)
+let test_primary_stated_height_asks_nothing () =
+  let term = vte_term ~cols:10 ~rows:8 () in
   run_term ~min_tui_height:2 term (fun app ->
-      present app [];
-      let held = Buffer.create 16 and delivered = ref false in
+      present app [ "live" ];
+      present app [ "live" ];
+      equal (pair int int) (10, 2) (Matrix.size app));
+  equal ~msg:"the measure's reports alone" int 2 (reports term);
+  let term = vte_term ~cols:10 ~rows:8 () in
+  run_unstated term (fun app ->
+      present ~required:3 app [ "live" ];
+      present app [ "live" ];
+      equal (pair int int) (10, 3) (Matrix.size app));
+  equal ~msg:"the measure's reports alone" int 2 (reports term)
+
+(* An input that cannot answer, not a terminal or in cooked mode, leaves the
+   live region its stated minimum, one row. *)
+let test_primary_unstated_without_answers () =
+  let term = vte_term ~shell:"$0\r\n" ~cols:10 ~rows:8 () in
+  run_unstated ~input_is_tty:false term (fun app ->
+      present app [ "live" ];
+      present app [ "live" ];
+      equal (pair int int) (10, 1) (Matrix.size app));
+  equal ~msg:"no report asked" int 0 (reports term)
+
+(* After a resize the live region takes the rows below its origin to the
+   terminal's last row again, from the report the next frame asks for; a
+   report asked before the resize, which comes after it, gives it no
+   rows. *)
+let test_primary_unstated_after_resize () =
+  let term = vte_term ~shell:"$0\r\n" ~cols:10 ~rows:8 () in
+  run_unstated term (fun app ->
+      present app [ "live" ];
+      ignore (frame app [ "live" ] : _ list);
+      equal ~msg:"filled" (pair int int) (10, 7) (Matrix.size app);
+      resize term ~cols:10 ~rows:12;
+      present app [ "live" ];
+      ignore (frame app [ "live" ] : _ list);
+      equal ~msg:"to the new last row" int 11
+        (origin term + snd (Matrix.size app));
+      (* A report held past a resize. *)
+      let held = Buffer.create 16 in
       term.f.answer <-
         (fun bytes ->
           Buffer.add_string held
             (Matrix_input.Reply.encode (Vte.feed_string term.vte bytes));
           "");
-      term.f.on_wait <-
-        (fun f ~until:_ ->
-          if Buffer.length held > 0 then (
-            f.input <- f.input @ [ Buffer.contents held ];
-            Buffer.clear held;
-            delivered := true));
-      resize term ~cols:5 ~rows:4;
-      Matrix.request_redraw app;
-      let rec frame () =
-        match Matrix.next app with
-        | Frame ->
-            is_true ~msg:"the frame came after the report" !delivered;
-            Matrix.draw app ignore
-        | Event (Resize _) -> fail "the usable size did not change"
-        | _ -> frame ()
+      resize term ~cols:10 ~rows:10;
+      present app [ "live" ];
+      resize term ~cols:10 ~rows:6;
+      present app [ "live" ];
+      term.f.answer <-
+        (fun s -> Matrix_input.Reply.encode (Vte.feed_string term.vte s));
+      term.f.input <- term.f.input @ [ Buffer.contents held ];
+      present app [ "live" ];
+      is_true ~msg:"the stale report gives no row the terminal lacks"
+        (snd (Matrix.size app) <= 5);
+      ignore (frame app [ "live" ] : _ list);
+      equal ~msg:"the fresh one fills" int 5
+        (origin term + snd (Matrix.size app)))
+
+(* Static rows take theirs from the live region, down to its minimum, and
+   [preserve_live_region] keeps its height. *)
+let test_primary_static_rows_take_live_rows () =
+  let term = vte_term ~cols:10 ~rows:10 () in
+  run_term ~min_tui_height:2 term (fun app ->
+      present ~required:5 app [ "live" ];
+      Matrix.static_write app (static_grid "a\nb\n");
+      equal ~msg:"pending rows take theirs" (pair int int) (10, 3)
+        (Matrix.effective_size app);
+      present app [ "live" ];
+      equal ~msg:"written" (pair int int) (10, 3) (Matrix.size app);
+      Matrix.static_write app (static_grid "c\nd\ne\n");
+      present app [ "live" ];
+      equal ~msg:"down to the minimum" (pair int int) (10, 2) (Matrix.size app);
+      present ~required:5 app [ "live" ];
+      Matrix.static_write ~preserve_live_region:true app (static_grid "f\ng\n");
+      equal ~msg:"preserved" (pair int int) (10, 5) (Matrix.effective_size app);
+      present app [ "live" ];
+      equal (pair int int) (10, 5) (Matrix.size app);
+      equal ~msg:"every row in order" (list string)
+        [ "a"; "b"; "c"; "d"; "e"; "f"; "g" ]
+        (transcript term))
+
+(* The bytes an abort writes end the region's write and leave the cursor
+   below its rows, as the last write left them; they never reset a
+   scrolling region, which would move the cursor to the first row. *)
+let test_primary_reset_bytes () =
+  let f = fake ~tty:true () in
+  let reset = ref "" in
+  let backend = { (backend f) with on_fatal = (fun b -> reset := b) } in
+  Matrix.run_on backend ~config:(quiet ~mode:`Primary ()) (fun app ->
+      present ~required:3 app [ "a" ];
+      contains ~msg:"below the three rows" ~sub:"\027[3B\r\n" !reset;
+      not_contains ~msg:"no scrolling region" ~sub:"\027[r" !reset;
+      Matrix.set_cursor app ~visible:true;
+      Matrix.set_cursor_position app ~row:2 ~col:1;
+      present app [ "a" ];
+      contains ~msg:"from the cursor's row" ~sub:"\027[1B\r\n" !reset)
+
+(* On a terminal that moves a cursor resting in the first column up a row
+   when its width changes, the cursor rests in the second column. *)
+let test_primary_rest_in_the_second_column () =
+  let term = vte_term ~cols:10 ~rows:6 () in
+  let caps =
+    {
+      (Matrix.Terminal.Caps.derive (Matrix.Terminal.Caps.evidence no_env)) with
+      lifts_resting_cursor = true;
+    }
+  in
+  run_term ~caps term (fun app ->
+      present app [ "live" ];
+      equal ~msg:"the second column" (pair int int) (0, 1)
+        (Vte.cursor_pos term.vte))
+
+(* With the mouse on, a write that may move the region's origin is followed
+   by a cursor report, from which mouse rows count: the live region's first
+   row is row 0, and the rows above it are -1, as they are before any
+   report. *)
+let test_primary_mouse_rows () =
+  let term = vte_term ~shell:"$0\r\n$1\r\n" ~cols:20 ~rows:10 () in
+  run_term ~mouse:`Sgr_any term (fun app ->
+      let mouse row =
+        term.f.input <- term.f.input @ [ Printf.sprintf "\027[<0;5;%dM" row ];
+        match next_event app with
+        | Event (Mouse { y; _ }) -> y
+        | _ -> fail "expected a mouse event"
       in
-      frame ())
+      equal ~msg:"before any report" int (-1) (mouse 4);
+      present ~required:2 app [ "a"; "b" ];
+      equal ~msg:"the live region's first row" int 0 (mouse 4);
+      equal ~msg:"its second" int 1 (mouse 5);
+      equal ~msg:"its origin" int (-1) (mouse 3);
+      equal ~msg:"the shell's row" int (-1) (mouse 1);
+      Matrix.static_write app (static_grid "x\ny\n");
+      present app [ "a"; "b" ];
+      equal ~msg:"once the origin moved down" int 0 (mouse 6))
 
 (* Input on a virtual clock. Bytes arrive at their times: [typed] as the user
    types them, and the terminal's replies, which [answer] gives for each write
@@ -2627,10 +2970,8 @@ let test_late_replies_never_typed () =
           equal ~msg string letters (String.of_seq (List.to_seq keys));
           if mode = `Primary then
             equal
-              ~msg:(msg ^ ": anchored at row 10, or not at all")
-              (pair int int)
-              (if latency <= 1. then (80, 15) else (80, 24))
-              (Matrix.size app))
+              ~msg:(msg ^ ": down to the last row from row 10")
+              (pair int int) (80, 15) (Matrix.size app))
         [ 0.01; 0.3; 0.55; 0.8; 1.; 2.; 3.; 4.; 4.9 ])
     [ `Alt; `Primary ]
 
@@ -2867,10 +3208,8 @@ let test_resize_while_a_query_is_owed () =
   | None -> fail "the key was not delivered");
   is_true ~msg:"replies are replies"
     (List.mem (Matrix.Reply (Version "XTerm(398)")) (events c));
-  is_false ~msg:"no frame while the live region's place is unknown"
-    (List.exists (fun at -> at > s 3.0 && at < s 3.7) c.frames);
-  is_true ~msg:"the frame once it is known"
-    (List.exists (fun at -> at >= s 3.7) c.frames)
+  is_true ~msg:"the frame at once, waiting for no answer"
+    (List.exists (fun at -> at >= s 3.0 && at < s 3.1) c.frames)
 
 (* Giving the terminal away *)
 
@@ -2982,50 +3321,49 @@ let test_release_discards_partial_input () =
 let test_release_hands_over_below_the_transcript () =
   let term = vte_term ~shell:"$ ls\r\n" ~cols:12 ~rows:6 () in
   run_term term (fun app ->
-      present app [ "ui one"; "ui two" ];
+      present ~required:2 app [ "ui one"; "ui two" ];
       Matrix.static_write app (static_grid "done\n");
       Matrix.release app (fun () ->
           equal ~msg:"the transcript, then nothing" (list string)
             [ "$ ls"; "done"; ""; ""; ""; "" ]
             (screen_rows term);
-          equal ~msg:"the cursor waits below it" (pair int int) (2, 0)
-            (Vte.cursor_pos term.vte);
+          equal ~msg:"the cursor waits where the live region began"
+            (pair int int) (2, 0) (Vte.cursor_pos term.vte);
           is_true ~msg:"and shows" (Vte.modes term.vte).cursor_visible;
           ignore (Vte.feed_string term.vte "$ make\r\nok\r\n" : _ list));
-      present app [ "ui one"; "ui two" ];
+      present ~required:2 app [ "ui one"; "ui two" ];
       equal ~msg:"the program's output joins the transcript" (list string)
         [ "$ ls"; "done"; "$ make"; "ok" ]
-        (transcript app term);
+        (transcript term);
       equal ~msg:"the live region is below it" (list string)
         [ "ui one"; "ui two" ] (live_rows app term))
 
-let test_release_reanchors_from_the_cursor () =
-  let f = primary_at 1 in
-  run ~config:(quiet ~mode:`Primary ()) f (fun app ->
-      present app [];
-      f.answer <- (fun bytes -> if bytes = "\027[6n" then "\027[24;3R" else "");
-      Matrix.release app ignore;
-      Buffer.clear f.output;
-      present app [];
-      equal ~msg:"a prompt on the bottom row leaves one live row" (pair int int)
-        (80, 1) (Matrix.size app);
-      contains ~msg:"the frame scrolls the prompt up first"
-        ~sub:"\027[24;1H\r\n" (output f))
+(* After a release the live region is drawn from a row of its own, below a
+   line the program left without its end. *)
+let test_release_draws_below_the_program () =
+  let term = vte_term ~shell:"$0\r\n" ~cols:12 ~rows:6 () in
+  run_term term (fun app ->
+      present app [ "live" ];
+      Matrix.release app (fun () ->
+          ignore (Vte.feed_string term.vte "no end" : _ list));
+      present app [ "live" ];
+      equal (list string) [ "$0"; "no end" ] (transcript term);
+      equal (list string) [ "live" ] (live_rows app term))
 
 (* The size is read when the terminal is taken back: a resize meanwhile is
-   returned before the next frame, which waits at most an answer's wait for
-   the live region's place. *)
+   returned before the next frame, which waits for no answer. *)
 let test_release_reads_the_size () =
   let f = primary_at 1 in
   run ~config:(quiet ~mode:`Primary ()) f (fun app ->
       present app [];
       f.answer <- (fun _ -> "");
       Matrix.release app (fun () -> f.size <- (100, 30));
+      let before = f.now in
       match frame app [] with
       | [ Resize (100, _) ] ->
           equal ~msg:"the terminal" (pair int int) (100, 30)
             (Matrix.full_size app);
-          is_true ~msg:"after the answer's wait" (f.now >= ms 500)
+          equal ~msg:"at once" int before f.now
       | _ -> fail "expected the resize")
 
 (* Linux's view of what the process catches, from /proc/self/status. *)
@@ -3639,20 +3977,20 @@ let () =
             test_primary_required_rows_expand_the_region;
           test "required rows ignored in alt mode"
             test_primary_required_rows_ignored_in_alt_mode;
-          test "effective_size tracks pending static writes"
-            test_primary_effective_size_tracks_pending_static;
+          test "static rows take no live rows"
+            test_static_rows_take_no_live_rows;
           test "prepare uses pending static effective region"
             test_prepare_uses_pending_static_effective_region;
-          test "static_clear resets primary layout"
+          test "static_clear erases and draws afresh"
             test_static_clear_resets_primary_layout;
           test "static_replace replays inside next frame"
             test_static_replace_replays_inside_next_frame;
-          test "full redraw does not erase past terminal bottom"
-            test_primary_full_redraw_does_not_erase_past_bottom;
-          test "full redraw erases stale rows below content"
-            test_primary_full_redraw_erases_stale_rows_below_content;
-          test "required rows to terminal height"
+          test "a whole frame writes the rows that show"
+            test_primary_whole_frame_writes_rows_that_show;
+          test "stale rows are erased" test_primary_erases_stale_rows;
+          test "required rows to the terminal's height"
             test_primary_required_rows_to_terminal_height;
+          test "no cursor report" test_primary_asks_no_cursor_report;
         ];
       group "Primary static output"
         [
@@ -3660,8 +3998,8 @@ let () =
             test_static_writes_are_flushed_fifo;
           test "static write snapshots selected rows"
             test_static_write_snapshots_selected_rows;
-          test "column-one anchor starts at the cursor row"
-            test_primary_column_one_anchor_starts_at_cursor_row;
+          test "the live region starts below the cursor"
+            test_primary_starts_below_the_cursor;
           test "static_clear is immediate and forces a full repaint"
             test_static_clear_is_immediate_and_forces_full_repaint;
           test "pinned static write scrolls the transcript"
@@ -3671,7 +4009,7 @@ let () =
           test "static write moves the live region down"
             test_static_write_moves_live_region_down;
           test "one-row static area" test_primary_one_row_static_area;
-          test "static write and live repaint share sync frame"
+          test "static write and live repaint share one write"
             test_static_write_and_live_repaint_share_sync_frame;
           test "pinned static write keeps live size"
             test_pinned_static_write_keeps_live_size;
@@ -3681,8 +4019,8 @@ let () =
             test_required_rows_show_in_their_frame;
           test "full-height static write scrolls into scrollback"
             test_full_height_static_write_scrolls_into_scrollback;
-          test "queued snapshot keeps row count after resize"
-            test_queued_static_snapshot_keeps_row_count_after_resize;
+          test "a static row wider than the terminal wraps"
+            test_queued_static_snapshot_wraps_after_resize;
           test "static snapshots scroll exactly once per row"
             test_static_snapshots_scroll_exactly_once_per_row;
           test "static snapshots clear suffixes and keep blank rows"
@@ -3700,6 +4038,7 @@ let () =
       group "Through a terminal"
         [
           test "alt default cursor is shown" test_alt_default_cursor_is_shown;
+          test "the cursor hidden, or where it is put" test_primary_cursor;
           test "full redraw keeps the cursor row"
             test_primary_full_redraw_keeps_cursor_row;
           test "full redraw paints background rows"
@@ -3710,10 +4049,31 @@ let () =
             test_primary_minimum_height_survives_shrink;
           test "resize keeps the live region below the transcript"
             test_primary_resize_keeps_live_region_below_transcript;
-          test "the frame waits for the live region after a resize"
-            test_frame_waits_for_the_live_region_after_resize;
+          test "a frame after a resize waits for nothing"
+            test_frame_after_a_resize_waits_for_nothing;
           test "resize before the first frame"
             test_resize_before_the_first_frame;
+          test "an input that is not a terminal"
+            test_primary_input_not_a_terminal;
+          test "continued below what the shell wrote"
+            test_primary_continued_below_the_shell;
+          test "a line another program writes stays"
+            test_primary_foreign_line_stays;
+          test "the end keeps the live region, or erases it"
+            test_primary_end_erases_or_keeps;
+          test "an unstated height takes the rows to the bottom"
+            test_primary_unstated_height_fills;
+          test "a stated height asks nothing"
+            test_primary_stated_height_asks_nothing;
+          test "an unstated height without answers"
+            test_primary_unstated_without_answers;
+          test "an unstated height after a resize"
+            test_primary_unstated_after_resize;
+          test "static rows take theirs from the live region"
+            test_primary_static_rows_take_live_rows;
+          test "the reset bytes" test_primary_reset_bytes;
+          test "resting in the second column"
+            test_primary_rest_in_the_second_column;
         ];
       group "Input"
         [
@@ -3745,8 +4105,8 @@ let () =
             test_release_discards_partial_input;
           test "release hands over below the transcript"
             test_release_hands_over_below_the_transcript;
-          test "release reanchors from the cursor"
-            test_release_reanchors_from_the_cursor;
+          test "release draws below the program"
+            test_release_draws_below_the_program;
           test "release reads the size" test_release_reads_the_size;
         ];
       group "Signals"

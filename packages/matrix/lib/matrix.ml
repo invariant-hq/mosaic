@@ -222,7 +222,10 @@ type device = {
   env : Terminal.Caps.env;
   frame : unit -> unit;
   idle : until:int option -> stepped:bool -> bool;
-  presented : (unit -> Grid.t * int * [ `Kitty | `Sixel | `Blocks ]) -> unit;
+  presented :
+    (unit ->
+    Grid.t * [ `Row of int | `Cursor of int ] * [ `Kitty | `Sixel | `Blocks ]) ->
+    unit;
 }
 
 let backend_of_device d : Backend.t =
@@ -316,7 +319,7 @@ type config = {
   key_releases : bool;
   fps : float;
   explicit_width : bool;
-  min_tui_height : int;
+  min_tui_height : int option;  (** [None] when the application states none. *)
   caps : Terminal.capabilities option;
   device : device option;
   (* [MATRIX_DEBUG], which [run] reads for a run on descriptors. *)
@@ -325,7 +328,7 @@ type config = {
 
 let config ?(mode = `Alt) ?(raw_mode = true) ?(mouse = `Sgr_any)
     ?(bracketed_paste = true) ?(kitty_keyboard = `Auto) ?(key_releases = false)
-    ?(fps = 60.) ?(explicit_width = false) ?(min_tui_height = 1) ?caps () =
+    ?(fps = 60.) ?(explicit_width = false) ?min_tui_height ?caps () =
   if (not (Float.is_finite fps)) || fps <= 0. then
     invalid_arg "Matrix.config: fps must be positive and finite";
   {
@@ -349,17 +352,14 @@ let default_config = config
 (* Queries sent together, which the terminal answers in order. A batch of
    capability queries, of the runtime's other queries or of the
    application's ends with DA1; a cursor batch is one position report, its
-   own answer, which says where the live region is. *)
+   own answer, which says on which row of the screen the live region's
+   origin is, in [`Primary] mode, from the cursor left [below] rows below
+   it on a terminal [rows] high. *)
 type question =
   | Capabilities of Terminal.Caps.batch
-  | Cursor of anchor
+  | Cursor of { below : int; rows : int }
   | Own  (** Queries whose replies the runtime takes as they come. *)
   | Application
-
-(* What a cursor report places: the live region at the cursor, when the run
-   begins or takes the terminal back; or, after a resize, the live region
-   whose row [live_row] the cursor was left on. *)
-and anchor = At_cursor | Moved of int
 
 type batch = {
   question : question;
@@ -392,6 +392,12 @@ type 'msg step =
 (* The size the terminal reported and the runtime has yet to apply. *)
 type size_report = Applied | Read | Reported of int * int
 
+(* Static rows queued for the transcript: their lines, or a copy of rows
+   with pictures, whose lines are written when they go out. *)
+type static =
+  | Lines of { text : string; rows : int }
+  | Pictures of { grid : Grid.t; rows : int }
+
 type 'msg app = {
   serial : int;
   terminal : Terminal.t;
@@ -422,17 +428,37 @@ type 'msg app = {
   submit_buf : Ansi.Writer.t;
   mutable width : int;
   mutable height : int;
-  (* Primary mode layout *)
-  mutable primary : Primary.t;
-  (* Layout operations [primary] already counts, sent with the next frame. *)
-  mutable layout_ops : Primary.terminal_op list;
-  (* The live row the last frame left the cursor on, in [`Primary] mode:
-     after a resize, where the cursor went shows where the live region went.
-     [None] when unknown. *)
-  mutable cursor_live_row : int option;
-  (* The cursor report that says where the live region is, which frames wait
-     for. *)
-  mutable anchor : batch option;
+  (* [`Primary] mode: the region the live region is drawn as, the rows it
+     was asked for, which it keeps ([live_height]), and the static rows
+     queued for the next frame, latest first, with whether they replace the
+     transcript. *)
+  mutable region : Screen.Region.t;
+  mutable live_rows : int;
+  mutable static : static list;
+  mutable replace : bool;
+  (* The fewest rows the live region has, and the rows the static rows
+     queued take from it ([lent]). *)
+  min_live : int;
+  mutable lent : int;
+  (* With no height stated, the live region takes the rows down to the
+     terminal's last row ([fill]); the next frame drawn afresh then asks
+     where its origin is, and the answer gives it those rows and [extra]
+     more ([ask]). *)
+  mutable fill : bool;
+  mutable ask : int option;
+  (* The screen row of the region's origin, from 0, which mouse rows count
+     from: as the latest cursor report says, moved down by the lines each
+     write prints above the region since. [None] while unknown. *)
+  mutable origin : int option;
+  (* Whether the run leaves its last frame when it ends ([keep_frame]), and
+     that frame, once it ends. *)
+  mutable keep : bool;
+  mutable final : Grid.t option;
+  (* The region's rows, and the rows from its origin down to where the
+     cursor rests, as the last write left them, which the reset bytes
+     describe. *)
+  mutable shown : int;
+  mutable below : int;
   mutable scroll_hint : Screen.scroll_hint option;
   (* Cursor state tracking — visual caches are valid only while the cursor is
      visible. [None] means the terminal state is unknown (startup, hidden, or
@@ -618,11 +644,9 @@ let ms n = n * 1_000_000
 
 (* Layout *)
 
-let sync_primary_layout t ~resize =
-  let region = Primary.live_region t.primary in
-  Screen.set_row_offset t.screen region.row_offset;
-  if resize then Screen.resize t.screen ~width:t.width ~height:region.height
-
+(* The live region's rows: those asked for, as many as fit under its origin,
+   and at least one, which a terminal of one row cannot show. *)
+let live_height t = max 1 (min t.live_rows (t.height - 1))
 let force_full_redraw t = t.force_full_next_frame <- true
 
 (* The terminal's size as its device has it. An output with no window, a
@@ -637,7 +661,7 @@ let size t =
   check t;
   match t.config.mode with
   | `Alt -> (t.width, t.height)
-  | `Primary -> (t.width, (Primary.live_region t.primary).height)
+  | `Primary -> (t.width, live_height t)
 
 let full_size t =
   check t;
@@ -954,33 +978,14 @@ let give_up t b =
 let ask t batch =
   ask_batch t (Capabilities batch) (Terminal.Caps.ask t.evidence batch)
 
-let ask_cursor t anchor =
-  send_batch t (Cursor anchor)
-    ( Ansi.(to_string (query Cursor_position)),
-      { Input.Decoder.cursor_reports = 1; string_replies = 0 } )
+let cursor_query = Ansi.(to_string (query Cursor_position))
 
-(* Adopts a primary layout transition: its operations go out with the next
-   frame, and a frame after operations or a move of the live region redraws
-   it whole. *)
-let relayout t (primary, ops) =
-  if ops <> [] || Primary.live_region primary <> Primary.live_region t.primary
-  then force_full_redraw t;
-  t.primary <- primary;
-  t.layout_ops <- t.layout_ops @ ops
-
-(* The live region starts where the cursor report says. When the run begins
-   or takes the terminal back, it starts at the cursor; after a resize, the
-   cursor was left on a known live row. What the terminal did meanwhile voids
-   the operations planned before. *)
-let anchored t anchor ~row ~col =
-  match anchor with
-  | At_cursor ->
-      t.layout_ops <- [];
-      relayout t (Primary.anchor t.primary ~row:(row + 1) ~col:(col + 1))
-  | Moved live_row ->
-      t.layout_ops <- [];
-      relayout t (Primary.anchor t.primary ~row:(row + 1 - live_row) ~col:1);
-      sync_primary_layout t ~resize:true
+let ask_cursor t below =
+  ignore
+    (send_batch t
+       (Cursor { below; rows = t.height })
+       (cursor_query, { Input.Decoder.cursor_reports = 1; string_replies = 0 })
+      : batch)
 
 (* A cursor report answers the oldest query still owed one, a given-up one
    first. *)
@@ -1005,15 +1010,22 @@ let cursor_report t ~row ~col ~page =
             then (
               b.answered <- true;
               close t b)
-        | Cursor anchor -> (
+        | Cursor { below; rows } -> (
             b.answered <- true;
             close t b;
-            (* An answer later than the wait for it places nothing: the
-               live region stays where it was planned. *)
-            match t.anchor with
-            | Some a when a == b && t.now < b.sent + answer_wait t ->
-                t.anchor <- None;
-                if not t.released then anchored t anchor ~row ~col;
+            (* The reports come in the order of the writes they follow, so
+               the latest says where the origin is. *)
+            let origin = row - below in
+            t.origin <- Some origin;
+            (* The live region takes the rows down to the last row, from a
+               report on a terminal of the height it has: one asked before
+               a resize says nothing of the rows after it. *)
+            match t.ask with
+            | Some extra when rows = t.height ->
+                t.ask <- None;
+                t.live_rows <-
+                  max t.min_live
+                    (min (t.height - 1) (t.height - 1 - origin + extra));
                 owe_frame t
             | _ -> ())
         | Application -> push t (Reply (Cursor { row; col; page }))
@@ -1167,9 +1179,7 @@ let refresh_render_region t =
   | `Alt ->
       Screen.set_row_offset t.screen 0;
       Screen.resize t.screen ~width:t.width ~height:t.height
-  | `Primary ->
-      relayout t (Primary.resize t.primary ~terminal_height:(max 1 t.height));
-      sync_primary_layout t ~resize:true
+  | `Primary -> Screen.resize t.screen ~width:t.width ~height:(live_height t)
 
 (* Static output (primary mode only) *)
 
@@ -1178,8 +1188,6 @@ let sync_output_on = Ansi.(to_string (enable Sync_output))
 let sync_output_off = Ansi.(to_string (disable Sync_output))
 let cursor_hide_seq = Ansi.(to_string (disable Cursor_visible))
 let cursor_show_seq = Ansi.(to_string (enable Cursor_visible))
-let erase_below_seq = Ansi.(to_string erase_below_cursor)
-let clear_and_home_seq = Ansi.(to_string clear_and_home)
 let clear_scrollback_seq = Ansi.(to_string (erase_display ~mode:`Scrollback))
 let reset_scroll_region_seq = Ansi.(to_string reset_scrolling_region)
 
@@ -1220,102 +1228,84 @@ let wrap_graphics t s =
     go 0;
     Buffer.contents b
 
-let apply_primary_op buf = function
-  | Primary.Move_cursor { row; col } -> buf_cursor_position buf ~row ~col
-  | Primary.Reset_sgr -> Ansi.Writer.write_string buf sgr_reset
-  | Primary.Write s -> Ansi.Writer.write_string buf s
-  | Primary.Draw f -> Ansi.Writer.write_string buf (f ())
-  | Primary.Clear_and_home -> Ansi.Writer.write_string buf clear_and_home_seq
-  | Primary.Clear_scrollback ->
-      Ansi.Writer.write_string buf clear_scrollback_seq
-
-(* kitty keeps the images of the rows an erase of the scrollback takes away
-   (their placeholders are virtual placements, which no erase deletes), so
-   the run deletes them with it. *)
-let apply_primary_ops t buf ops =
-  if List.exists (function Primary.Clear_scrollback -> true | _ -> false) ops
-  then (
-    let w = Ansi.Writer.create 0 in
-    Screen.delete_transcript t.screen w;
-    if Ansi.Writer.len w > 0 then
-      Ansi.Writer.write_string buf (wrap_graphics t (Ansi.Writer.contents w)));
-  List.iter (apply_primary_op buf) ops
+(* The rows the live region has once the static rows queued have taken
+   theirs. *)
+let lend t =
+  if t.lent > 0 then (
+    t.live_rows <- max t.min_live (t.live_rows - t.lent);
+    t.lent <- 0)
 
 let effective_size t =
   check t;
   match t.config.mode with
   | `Alt -> (t.width, t.height)
-  | `Primary -> (t.width, (Primary.effective_region t.primary).height)
+  | `Primary ->
+      ( t.width,
+        max 1 (min (max t.min_live (t.live_rows - t.lent)) (t.height - 1)) )
 
-(* Static rows never wrap: a row wider than a terminal narrowed since the
-   snapshot overwrites its last column. Rows with pictures are copied and
-   written when they are flushed, by the screen, which then knows the rows
-   they end on; others are written now. *)
+let static_rows = function Lines { rows; _ } | Pictures { rows; _ } -> rows
+
+(* Static rows are lines that go above the live region with the next frame,
+   wrapped by the terminal as any output. Rows with pictures are copied and
+   written when they go out, by the screen, which writes their pictures in
+   the form it writes them then; others are written now. *)
 let static_snapshot t ?rows grid =
   if Grid.width grid > t.width then
     invalid_arg "Matrix.static_write: grid is wider than the terminal";
   let rows = Option.value rows ~default:(Grid.height grid) in
-  let rows_of text = "\027[?7l" ^ text ^ "\027[?7h" in
-  if Grid.Unsafe.has_pictures grid then (
-    if rows < 0 || rows > Grid.height grid then
-      invalid_arg "Matrix_grid.to_ansi: rows must be within grid height";
-    let grid = Grid.copy grid in
-    ( rows,
-      fun ~top ->
-        let text =
-          rows_of
-            (wrap_graphics t (Screen.static_rows t.screen grid ~rows ~top))
-        in
-        (* The copy is drawn once and dropped: give back its graphemes now
-           rather than when the GC finalises it. A write the screen drops
-           undrawn leaves them to the finaliser. *)
-        Grid.clear grid;
-        text ))
-  else
-    let text = rows_of (Grid.to_ansi ~complete_rows:true ~rows grid) in
-    (rows, fun ~top:_ -> text)
+  if rows < 0 || rows > Grid.height grid then
+    invalid_arg "Matrix.static_write: rows must be within the grid's height";
+  if rows = 0 then None
+  else if Grid.Unsafe.has_pictures grid then
+    Some (Pictures { grid = Grid.copy grid; rows })
+  else Some (Lines { text = Screen.static_rows t.screen grid ~rows; rows })
 
+(* The live region keeps its rows whatever [preserve_live_region] says: the
+   static rows go above it, and the rows above them scroll into the
+   scrollback once it is at the bottom of the screen. *)
 let static_write ?(preserve_live_region = false) ?rows t grid =
   check t;
   if t.config.mode <> `Alt then
-    let rows, draw = static_snapshot t ?rows grid in
-    if rows > 0 then (
-      t.primary <-
-        Primary.enqueue_static t.primary { draw; rows; preserve_live_region };
-      ask_frame t)
+    match static_snapshot t ?rows grid with
+    | None -> ()
+    | Some static ->
+        t.static <- static :: t.static;
+        if not preserve_live_region then t.lent <- t.lent + static_rows static;
+        ask_frame t
 
+(* A replaced transcript leaves the live region the screen, where it takes
+   the rows down to the last, before the rows that replace it take
+   theirs. *)
 let static_replace ?(preserve_live_region = false) ?rows t grid =
   check t;
   if t.config.mode <> `Alt then (
-    let rows, draw = static_snapshot t ?rows grid in
-    t.primary <-
-      Primary.replace_static t.primary { draw; rows; preserve_live_region };
+    let static = static_snapshot t ?rows grid in
+    t.static <- Option.to_list static;
+    t.replace <- true;
+    if t.fill then t.live_rows <- t.height - 1;
+    t.lent <-
+      (match static with
+      | Some s when not preserve_live_region -> static_rows s
+      | _ -> 0);
     ask_frame t)
 
-(* Immediate action, not part of the frame pipeline: the plan's terminal ops
-   are encoded and sent directly, not queued into the frame buffer, so the
-   primary screen clears before the next frame renders. *)
+(* Immediate, outside the frames: the screen is erased now, and the next
+   frame draws the live region afresh from its first row. *)
 let static_clear t =
   check t;
-  if t.config.mode = `Alt then ()
-  else
-    let primary, ops = Primary.clear_static t.primary in
-    t.primary <- primary;
-    (* The erase supersedes the layout operations not yet sent, and the
-       place a cursor report owed would give the live region. *)
-    t.layout_ops <- [];
-    t.anchor <- None;
-    let buf = Ansi.Writer.create 16 in
-    apply_primary_ops t buf ops;
-    Terminal.send t.terminal (Ansi.Writer.contents buf);
-    t.last_cursor_position <- Some (1, 1);
-    t.cursor_live_row <- Some 0;
+  if t.config.mode = `Primary then (
+    Terminal.send t.terminal (Screen.Region.clear t.region);
+    t.static <- [];
+    t.replace <- false;
+    t.lent <- 0;
+    t.origin <- Some 0;
+    if t.fill then t.live_rows <- t.height - 1;
     force_full_redraw t;
     let cols, rows = device_size t in
     t.width <- max 1 cols;
     t.height <- max 1 rows;
     refresh_render_region t;
-    ask_frame t
+    ask_frame t)
 
 let set_scroll_hint t hint =
   check t;
@@ -1330,12 +1320,16 @@ let set_scroll_hint t hint =
    per frame instead of clearing here and again downstream. *)
 let prepare ?primary_required_rows t =
   refresh_capabilities t;
-  if t.config.mode = `Primary then begin
-    relayout t (Primary.flush_static t.primary);
+  if t.config.mode = `Primary then (
+    lend t;
+    (* A height stated is the application's: the live region no longer
+       takes the rows down to the last. *)
     Option.iter
-      (fun rows -> relayout t (Primary.require_rows t.primary ~rows))
-      primary_required_rows
-  end;
+      (fun rows ->
+        t.fill <- false;
+        t.ask <- None;
+        t.live_rows <- max t.live_rows rows)
+      primary_required_rows);
   refresh_render_region t
 
 let current_grid t =
@@ -1355,20 +1349,25 @@ let screen t =
 let cursor_shape (cursor : Screen.cursor) : Ansi.cursor_shape =
   Ansi.cursor_shape_of_style ~style:cursor.style ~blinking:cursor.blinking
 
-(* In [`Primary] mode the cursor always ends a frame at a known place, so
-   that after a resize, where the terminal took it shows where the live
-   region went. Hidden, it waits at the top of the live region: a terminal
-   that shrinks drops the rows below its cursor first, which there are only
-   live rows. *)
-let cursor_output_position t ~(cursor : Screen.cursor) ~cursor_max_row =
-  match (cursor.position, t.config.mode) with
-  | Some (x, y), `Primary ->
-      Some (Primary.terminal_cursor_row t.primary ~live_row:y, max 1 (x + 1))
-  | Some (x, y), `Alt -> Some (clamp 0 (cursor_max_row - 1) y + 1, max 1 (x + 1))
-  | None, `Primary ->
-      let live_row = if cursor.visible then cursor_max_row - 1 else 0 in
-      Some (Primary.terminal_cursor_row t.primary ~live_row, 1)
-  | None, `Alt -> if cursor.visible then Some (cursor_max_row, 1) else None
+(* In [`Alt] mode a visible cursor with no position waits on the bottom
+   row. *)
+let cursor_output_position t ~(cursor : Screen.cursor) =
+  match cursor.position with
+  | Some (x, y) -> Some (clamp 0 (t.height - 1) y + 1, max 1 (x + 1))
+  | None -> if cursor.visible then Some (t.height, 1) else None
+
+(* In [`Primary] mode the region places the cursor: shown on the cell
+   asked for, clamped to the [shown] rows, or with none at the start of the
+   last row; hidden, it rests on the region's origin. *)
+let region_cursor (cursor : Screen.cursor) ~shown : Screen.Region.cursor =
+  if not cursor.visible then Hidden
+  else
+    let x, y =
+      match cursor.position with
+      | Some (x, y) -> (max 0 x, clamp 0 (shown - 1) y)
+      | None -> (0, shown - 1)
+    in
+    At { x; y = max 0 y }
 
 (* Allocation-free "changed since last frame" checks: comparing through the
    stored options directly avoids wrapping the current value in [Some]. *)
@@ -1387,12 +1386,9 @@ let cursor_dirty t ~(cursor : Screen.cursor) ~position =
   || cursor.visible
      && (shape_dirty t (cursor_shape cursor) || color_dirty t cursor.color)
 
-let apply_cursor_state t ~buf ~(cursor : Screen.cursor) ~position =
-  (match position with
-  | Some (row, col) ->
-      buf_cursor_position buf ~row ~col;
-      if cursor.visible then Ansi.Writer.write_string buf cursor_show_seq
-  | None -> ());
+(* The cursor's shape and color, which move nothing, and the state the next
+   frame compares with. *)
+let apply_cursor_appearance t ~buf ~(cursor : Screen.cursor) ~position =
   if cursor.visible then begin
     let shape = cursor_shape cursor in
     if shape_dirty t shape then begin
@@ -1411,23 +1407,36 @@ let apply_cursor_state t ~buf ~(cursor : Screen.cursor) ~position =
   t.last_cursor_position <- position;
   t.last_cursor_visible <- Some cursor.visible
 
+let apply_cursor_state t ~buf ~(cursor : Screen.cursor) ~position =
+  (match position with
+  | Some (row, col) ->
+      buf_cursor_position buf ~row ~col;
+      if cursor.visible then Ansi.Writer.write_string buf cursor_show_seq
+  | None -> ());
+  apply_cursor_appearance t ~buf ~cursor ~position
+
+(* The pixels of the pictures the frame shows go before the synchronized
+   update: they show nothing yet, and a large image would hold the update
+   past the terminal's timeout. *)
+let write_pictures t buf =
+  Screen.send_pictures t.screen buf;
+  if
+    Ansi.Writer.len buf > 0
+    && (Terminal.capabilities t.terminal).multiplexer = Some `Tmux
+  then (
+    let sent = wrap_graphics t (Ansi.Writer.contents buf) in
+    Ansi.Writer.reset_pos buf;
+    Ansi.Writer.write_string buf sent)
+
 (* All frame output is accumulated into a single buffer and flushed as one
    write. Skips the write entirely when nothing changed. *)
-let submit t =
+let submit_alt t =
   let cursor = Screen.cursor t.screen in
   let caps = Terminal.capabilities t.terminal in
   let use_sync = Terminal.tty t.terminal && caps.sync in
   let buf = t.submit_buf in
   Ansi.Writer.reset_pos buf;
-  (* The pixels of the pictures the frame shows go before the synchronized
-     update: they show nothing yet, and a large image would hold the update
-     past the terminal's timeout. *)
-  Screen.send_pictures t.screen buf;
-  let pictures = Ansi.Writer.len buf in
-  if pictures > 0 && caps.multiplexer = Some `Tmux then (
-    let sent = wrap_graphics t (Ansi.Writer.contents buf) in
-    Ansi.Writer.reset_pos buf;
-    Ansi.Writer.write_string buf sent);
+  write_pictures t buf;
   let pictures = Ansi.Writer.len buf in
 
   (* Preamble: BSU + cursor hide. *)
@@ -1439,65 +1448,186 @@ let submit t =
      cursor_position for every run it touches, so anything written between
      the preamble capture and the skip check would defeat the
      unchanged-frame write skip. *)
-  apply_primary_ops t buf t.layout_ops;
-  t.layout_ops <- [];
   let forced_full =
     let ff = t.force_full_next_frame in
     if ff then t.force_full_next_frame <- false;
     ff
   in
-  let scroll_hint =
-    let h = t.scroll_hint in
-    t.scroll_hint <- None;
-    match t.config.mode with `Alt -> h | `Primary -> None
-  in
-  (* In [`Primary] mode the frame paints the live region. A full redraw
-     paints it down to its last row that shows anything, and erases the
-     rest. *)
-  let viewport, erase_from =
-    match t.config.mode with
-    | `Alt -> (None, None)
-    | `Primary ->
-        let y = Primary.render_offset t.primary in
-        let live = (Primary.live_region t.primary).height in
-        if forced_full then
-          let height = min live (max 1 (Screen.active_height t.screen)) in
-          ( Some { Screen.y; height },
-            if height < live then Some (y + height + 1) else None )
-        else (Some { Screen.y; height = live }, None)
-  in
-  Screen.render_into ~full:forced_full ?scroll_hint ?viewport t.screen buf;
-  Option.iter
-    (fun row ->
-      buf_cursor_position buf ~row ~col:1;
-      Ansi.Writer.write_string buf erase_below_seq)
-    erase_from;
+  let scroll_hint = t.scroll_hint in
+  t.scroll_hint <- None;
+  Screen.render_into ~full:forced_full ?scroll_hint t.screen buf;
 
   (* Skip the write when nothing beyond the preamble was produced and cursor
-     state is unchanged. The cursor lives in the live region, whichever of
-     its rows this frame painted. *)
-  let cursor_max_row =
-    match t.config.mode with
-    | `Primary -> (Primary.live_region t.primary).height
-    | `Alt -> t.height
-  in
-  let position = cursor_output_position t ~cursor ~cursor_max_row in
+     state is unchanged. *)
+  let position = cursor_output_position t ~cursor in
   if
     Ansi.Writer.len buf > preamble_len
     || pictures > 0
     || cursor_dirty t ~cursor ~position
   then begin
-    if t.config.mode = `Alt then Ansi.cursor_position ~row:t.height ~col:1 buf;
+    Ansi.cursor_position ~row:t.height ~col:1 buf;
     apply_cursor_state t ~buf ~cursor ~position;
-    (match (t.config.mode, position) with
-    | `Primary, Some (row, _) ->
-        t.cursor_live_row <- Some (row - 1 - Primary.render_offset t.primary)
-    | _ -> ());
     if use_sync then Ansi.Writer.write_string buf sync_output_off;
-
     t.frame_modes_armed <- true;
     t.backend.write_output (Ansi.Writer.buffer buf) 0 (Ansi.Writer.len buf)
   end
+
+(* The static rows queued, oldest first, taken for the next write. *)
+let take_static t =
+  match t.static with
+  | [] -> []
+  | static ->
+      t.static <- [];
+      List.rev static
+
+let static_text t = function
+  | Lines { text; _ } -> text
+  | Pictures { grid; rows } ->
+      wrap_graphics t (Screen.static_rows t.screen grid ~rows)
+
+(* The sixels over the static rows with pictures, once they are on the
+   terminal, from the region's origin, which the write has left the cursor
+   on. A row [k] rows above the origin is on the screen if the origin is at
+   least [k] rows down: the lines the write printed moved it at least as far,
+   unless the region's [shown] rows took it back up from the screen's last
+   row. *)
+let write_static_sixels t buf static ~shown =
+  let lines = List.fold_left (fun n s -> n + static_rows s) 0 static in
+  let reach = max 0 (min lines (t.height - 1 - shown)) in
+  ignore
+    (List.fold_left
+       (fun after s ->
+         (match s with
+         | Pictures { grid; rows } ->
+             Ansi.Writer.write_string buf
+               (Screen.static_sixels t.screen grid ~rows ~below:(after + 1)
+                  ~reach);
+             (* The copy is drawn and dropped: give back its graphemes now
+                rather than when the GC finalises it. *)
+             Grid.clear grid
+         | Lines _ -> ());
+         after + static_rows s)
+       0 (List.rev static)
+      : int)
+
+(* The bytes that reset what a run may set, which the SIGABRT handler writes
+   itself. In [`Primary] mode they end the region's write a signal cut and
+   leave the cursor below its rows; no scrolling region is set there, and
+   resetting one (DECSTBM) would move the cursor to the screen's first
+   row. *)
+let abort_bytes t =
+  String.concat ""
+    [
+      (match t.config.mode with
+      | `Alt -> ""
+      | `Primary -> Screen.Region.teardown t.region);
+      sync_output_off;
+      (match t.config.mode with
+      | `Alt -> reset_scroll_region_seq
+      | `Primary -> "");
+      "\027[?7h";
+      "\027[?1000l\027[?1002l\027[?1003l\027[?1006l";
+      "\027[?2004l\027[?1004l\027[?2031l\027[?2048l\027[?1036r";
+      "\027[<u\027[>4;0m";
+      sgr_reset;
+      cursor_show_seq;
+      (match t.config.mode with `Alt -> "\027[?1049l" | `Primary -> "");
+    ]
+
+(* The reset bytes describe the region's rows and where the cursor rests,
+   and are set again once a write that changed them has returned. *)
+let publish_reset t ~shown ~below =
+  if shown <> t.shown || below <> t.below then (
+    t.shown <- shown;
+    t.below <- below;
+    t.backend.on_fatal (abort_bytes t))
+
+(* In [`Primary] mode the frame is the region's rows, drawn by the screen
+   relative to the region's origin, and the static rows queued go above
+   them in the same write. A write afresh draws the rows down to the last
+   that shows anything, the region having erased the rest; another writes
+   the cells that changed. A write that may have moved the origin is
+   followed by a cursor report, which says where mouse rows count from. *)
+let submit_primary ?(report = true) t =
+  let cursor = Screen.cursor t.screen in
+  let buf = t.submit_buf in
+  Ansi.Writer.reset_pos buf;
+  write_pictures t buf;
+  let pictures = Ansi.Writer.len buf in
+  let replace = t.replace in
+  if replace then begin
+    t.replace <- false;
+    (* The erase and the rows that replace the transcript are one update. *)
+    Ansi.Writer.write_string buf sync_output_on;
+    Ansi.Writer.write_string buf (Screen.Region.clear t.region);
+    Ansi.Writer.write_string buf clear_scrollback_seq;
+    (* kitty keeps the images of the rows an erase of the scrollback takes
+       away (their placeholders are virtual placements, which no erase
+       deletes), so the run deletes them with it. *)
+    let w = Ansi.Writer.create 0 in
+    Screen.delete_transcript t.screen w;
+    if Ansi.Writer.len w > 0 then
+      Ansi.Writer.write_string buf (wrap_graphics t (Ansi.Writer.contents w))
+  end;
+  let static = take_static t in
+  let above =
+    match static with
+    | [] -> ""
+    | [ s ] -> static_text t s
+    | static -> String.concat "" (List.map (static_text t) static)
+  in
+  let forced_full =
+    let ff = t.force_full_next_frame in
+    if ff then t.force_full_next_frame <- false;
+    ff
+  in
+  t.scroll_hint <- None;
+  let shown = min (live_height t) (t.height - 1) in
+  let whole =
+    Screen.Region.start t.region buf ~cols:t.width ~rows:t.height ~above
+      ~whole:forced_full ~height:shown
+  in
+  if static <> [] then write_static_sixels t buf static ~shown;
+  (* The lines printed above move the origin down, until the region's rows
+     reach the screen's last row. A line wider than the terminal, which it
+     wraps, moves it further, as the next report says. *)
+  if whole then begin
+    let origin = if replace then Some 0 else t.origin in
+    let lines = List.fold_left (fun n s -> n + static_rows s) 0 static in
+    t.origin <-
+      Option.map
+        (fun o -> max 0 (min (o + lines) (t.height - 1 - shown)))
+        origin
+  end;
+  let before = Ansi.Writer.len buf in
+  let height =
+    if whole then min shown (Screen.active_height t.screen) else shown
+  in
+  Screen.render_into ~full:whole ~relative:true
+    ~viewport:{ Screen.y = 1; height } t.screen buf;
+  let rendered = Ansi.Writer.len buf > before in
+  let placed = region_cursor cursor ~shown in
+  let position, below =
+    match placed with
+    | At { x; y } when shown > 0 -> (Some (y + 1, x + 1), y + 1)
+    | _ -> (None, 0)
+  in
+  let dirty = cursor_dirty t ~cursor ~position in
+  apply_cursor_appearance t ~buf ~cursor ~position;
+  Screen.Region.finish t.region ~cursor:placed buf;
+  if whole || replace || rendered || pictures > 0 || dirty then begin
+    t.frame_modes_armed <- true;
+    t.backend.write_output (Ansi.Writer.buffer buf) 0 (Ansi.Writer.len buf);
+    publish_reset t ~shown ~below;
+    if
+      report && whole
+      && (t.config.mouse <> `Off || t.ask <> None)
+      && can_query t
+    then ask_cursor t below
+  end
+
+let submit t =
+  match t.config.mode with `Alt -> submit_alt t | `Primary -> submit_primary t
 
 (* A frame drawn across a release is not presented: what the screen holds
    is unknown, and the next frame is drawn whole. *)
@@ -1564,8 +1694,7 @@ let set_cursor_style t ~style ~blinking =
 let set_cursor_position t ~row ~col =
   check t;
   let max_row =
-    if t.config.mode = `Primary then (Primary.live_region t.primary).height
-    else max 1 t.height
+    if t.config.mode = `Primary then live_height t else max 1 t.height
   in
   let row = clamp 1 max_row row in
   let col = max 1 col in
@@ -1587,13 +1716,8 @@ let set_cursor_color t ~r ~g ~b =
 (* Resize *)
 
 (* The terminal's size, applied when a frame is next drawn: a storm of
-   reports costs one layout. A terminal moves its rows as it resizes, by
-   rules of its own, and the cursor moves with its row, so in [`Primary]
-   mode frames wait for a cursor report that says where the live region
-   went: from the live row the last frame left the cursor on, or, before any
-   frame since the region was placed, from the cursor, which is still where
-   the region starts. The layout operations planned for the old size were
-   not sent, and the report voids them. *)
+   reports costs one layout. In [`Primary] mode the frame then draws the
+   region afresh from its origin, wherever the terminal moved it. *)
 let apply_size t =
   let cols, rows =
     match t.size_report with
@@ -1609,21 +1733,26 @@ let apply_size t =
     update_cell_size t;
     ask_pixels t;
     force_full_redraw t;
-    refresh_render_region t;
-    if t.config.mode = `Primary && can_query t then
-      let anchor =
-        match t.cursor_live_row with
-        | Some live_row -> Moved live_row
-        | None -> At_cursor
-      in
-      t.anchor <- Some (ask_cursor t anchor))
+    (* A terminal moves its rows as it resizes, by rules of its own: the
+       next frame asks where the origin went, for the rows below it. *)
+    t.origin <- None;
+    if t.fill then t.ask <- Some 0;
+    refresh_render_region t)
 
 (* Event delivery *)
 
+(* In [`Primary] mode a mouse row counts from the live region's first row,
+   the row below its origin; above it, or before any cursor report has said
+   where the origin is, it is [-1]. *)
 let adjust_event_for_offset t event =
   match (t.config.mode, event) with
   | `Primary, Mouse mouse ->
-      Mouse { mouse with y = Primary.map_mouse_y t.primary mouse.y }
+      let y =
+        match t.origin with
+        | Some origin when mouse.y > origin -> mouse.y - origin - 1
+        | _ -> -1
+      in
+      Mouse { mouse with y }
   | _ -> event
 
 (* The events a person makes one at a time, each of which they expect to
@@ -1704,23 +1833,33 @@ let take_raw_mode t =
         if exiting then t.backend.flush_input ()))
 
 (* Frame writes bypass the terminal handle and may stop between mode changes.
-   Attempt every reset independently, before handing the terminal back. *)
+   Attempt every reset independently, before handing the terminal back. A
+   frame sets a scrolling region only in [`Alt] mode, and resetting one
+   (DECSTBM) moves the cursor to the screen's first row, where in [`Primary]
+   mode the region's origin is not. *)
 let restore_frame_modes t =
   if t.frame_modes_armed then (
     t.frame_modes_armed <- false;
     (try Terminal.send t.terminal sync_output_off with _ -> ());
-    (try Terminal.send t.terminal reset_scroll_region_seq with _ -> ());
+    (if t.config.mode = `Alt then
+       try Terminal.send t.terminal reset_scroll_region_seq with _ -> ());
     try Terminal.send t.terminal "\027[?7h" with _ -> ())
 
 (* The screen a program run in the application's place finds. In [`Primary]
    mode that is the transcript, the static rows queued for it included, and
-   below it the live region, erased, with the cursor at its start: the
-   program's output goes on from the transcript. In [`Alt] mode it is the
-   primary screen as the shell left it. The cursor is shown. *)
-let give_screen t =
+   the live region erased, with the cursor at the start of its origin, the
+   row where it began: the program's output goes on from there. A run that
+   ends leaves its last frame instead when it was asked to ([keep_frame]),
+   the rows of the frame [give_back] kept that show anything, with the
+   cursor below them, as they are on the screen, pictures included. The
+   static rows queued, and a frame kept that the screen may no longer show,
+   go out first, in a write of their own. In [`Alt] mode it is the primary
+   screen as the shell left it. The cursor is shown. *)
+let give_screen t ~exiting =
+  let kept = if exiting then t.final else None in
   (* The live frame's images are deleted, which the terminal would keep; the
-     next frame is drawn whole. *)
-  if Grid.Unsafe.has_pictures (Screen.current_grid t.screen) then (
+     next frame is drawn whole. A frame kept keeps its images. *)
+  if kept = None && Grid.Unsafe.has_pictures (Screen.current_grid t.screen) then (
     Grid.clear (Screen.next_grid t.screen);
     Screen.invalidate_presented t.screen;
     let w = Ansi.Writer.create 0 in
@@ -1730,22 +1869,33 @@ let give_screen t =
   match t.config.mode with
   | `Alt -> Terminal.leave_alternate_screen t.terminal
   | `Primary ->
-      relayout t (Primary.flush_static t.primary);
-      let w = Ansi.Writer.create 64 in
-      apply_primary_ops t w t.layout_ops;
-      t.layout_ops <- [];
-      buf_cursor_position w ~row:(Primary.render_offset t.primary + 1) ~col:1;
-      Ansi.Writer.write_string w sgr_reset;
-      Ansi.Writer.write_string w erase_below_seq;
-      Ansi.Writer.write_string w cursor_show_seq;
-      Terminal.send t.terminal (Ansi.Writer.contents w)
+      t.origin <- None;
+      let redraw =
+        t.static <> [] || t.replace || (kept <> None && t.force_full_next_frame)
+      in
+      if redraw then (
+        Option.iter
+          (fun frame -> Grid.blit ~src:frame ~dst:(Screen.next_grid t.screen))
+          kept;
+        force_full_redraw t;
+        submit_primary ~report:false t);
+      (match kept with
+      | Some frame ->
+          let shown = min (live_height t) (t.height - 1) in
+          Terminal.send t.terminal
+            (Screen.Region.keep t.region (min shown (Grid.active_height frame)))
+      | None ->
+          Terminal.send t.terminal
+            (Screen.Region.close t.region ~cols:t.width ~rows:t.height None));
+      (* The region shows no row now, as the reset bytes taken again say. *)
+      t.shown <- 0;
+      t.below <- 0
 
 (* What the screen held is unknown once another program had it: the next
    frame is drawn whole and sets the cursor again. *)
 let forget_screen t =
   force_full_redraw t;
   t.last_cursor_position <- None;
-  t.cursor_live_row <- None;
   t.last_cursor_visible <- None;
   t.last_cursor_shape <- None;
   t.last_cursor_color <- None;
@@ -1755,7 +1905,7 @@ let forget_screen t =
 (* A step that writes may fail halfway: its undo is pushed first, and undoes
    whatever part of it was done. *)
 let take_screen t =
-  push_undo t (fun ~exiting:_ -> give_screen t);
+  push_undo t (fun ~exiting -> give_screen t ~exiting);
   match t.config.mode with
   | `Alt ->
       Terminal.enter_alternate_screen t.terminal;
@@ -1790,27 +1940,11 @@ let take_modes t =
   refresh_render_region t;
   force_full_redraw t
 
-(* The bytes that reset what a run may set, which the SIGABRT handler writes
-   itself. *)
-let abort_bytes mode =
-  String.concat ""
-    [
-      sync_output_off;
-      reset_scroll_region_seq;
-      "\027[?7h";
-      "\027[?1000l\027[?1002l\027[?1003l\027[?1006l";
-      "\027[?2004l\027[?1004l\027[?2031l\027[?2048l\027[?1036r";
-      "\027[<u\027[>4;0m";
-      sgr_reset;
-      cursor_show_seq;
-      (match mode with `Alt -> "\027[?1049l" | `Primary -> "\r\n");
-    ]
-
 (* What restores the terminal if the process ends where no OCaml code runs:
    the backend writes these bytes itself, and they go once the terminal is
    given back. *)
 let take_fatal_reset t =
-  t.backend.on_fatal (abort_bytes t.config.mode);
+  t.backend.on_fatal (abort_bytes t);
   push_undo t (fun ~exiting:_ -> t.backend.on_fatal "")
 
 (* Waits, when a reply is owed, for the terminal to answer what was sent:
@@ -1834,16 +1968,16 @@ let settle t =
   List.iter (fun b -> Input.Decoder.settle t.decoder b.owed) t.batches;
   t.batches <- [];
   t.lost_reports <- 0;
-  t.anchor <- None;
   (* A paste the application began to receive ends. *)
   Input.Decoder.cut_paste t.decoder (decoded t);
   Input.Decoder.reset t.decoder
 
 (* The screen is given back where the terminal has it: its size is read,
-   which the loop may not have seen change, and in [`Primary] mode the cursor
-   report that says where the live region went is waited for with the
-   replies owed. *)
+   which the loop may not have seen change, after the frame a run that ends
+   leaves is kept, since a new size clears it. *)
 let give_back t ~exiting =
+  if exiting && t.keep && t.config.mode = `Primary then
+    t.final <- Some (Grid.copy (Screen.current_grid t.screen));
   (try
      t.size_report <- Read;
      apply_size t;
@@ -1861,8 +1995,8 @@ let send_waiting t =
 
 (* Takes the terminal again after another program had it: its settings are
    the shell's now, input it left is discarded, the size is read, and in
-   [`Primary] mode frames wait for a cursor report that says where the
-   program's output ended. *)
+   [`Primary] mode the next frame draws the region from a row of its own,
+   below what the program wrote. *)
 let take_again t =
   take_fatal_reset t;
   take_raw_mode t;
@@ -1874,8 +2008,9 @@ let take_again t =
   forget_screen t;
   take_screen t;
   take_modes t;
-  if t.config.mode = `Primary && can_query t then
-    t.anchor <- Some (ask_cursor t At_cursor);
+  (* The live region begins below what the program wrote, on the rows
+     down to the last, as at the start. *)
+  if t.fill then t.ask <- Some 1;
   send_waiting t;
   owe_frame t
 
@@ -1914,6 +2049,10 @@ let release t f =
       (try take_back () with _ -> ());
       Printexc.raise_with_backtrace exn bt
 
+let keep_frame t keep =
+  check t;
+  t.keep <- keep
+
 let stop_job t =
   check t;
   if t.backend.controlling && not t.tstp_ignored then
@@ -1928,16 +2067,6 @@ let take_timer t =
   heap_remove t.heap e;
   Timer e.id
 
-(* Frames wait for the cursor report that says where the live region is,
-   at most as long as for any answer; then the layout stays as planned. *)
-let render_blocked t =
-  match t.anchor with
-  | Some b when (not b.answered) && t.now < b.sent + answer_wait t -> true
-  | Some _ ->
-      t.anchor <- None;
-      false
-  | None -> false
-
 (* A frame is due once its interval has passed by the latest step's time:
    work that took the turn's budget may have taken the interval with it. One
    asked for by discrete input is due once an interval has passed since the
@@ -1947,7 +2076,6 @@ let frame_due t =
   && (t.latest >= t.last_frame + t.interval
      || (t.in_process && t.asked_outside)
      || (t.asked_discrete && t.latest >= t.last_early + t.interval))
-  && not (render_blocked t)
 
 (* The time the run next needs a step if nothing it waits for comes first:
    now when work is left, otherwise the earliest deadline, if any. *)
@@ -1967,10 +2095,7 @@ let wait_deadline t =
           if t.asked_discrete then min frame (t.last_early + t.interval)
           else frame
         in
-        match t.anchor with
-        | Some b when not b.answered ->
-            min deadline (max frame (b.sent + answer_wait t))
-        | _ -> min deadline frame
+        min deadline frame
       else deadline
     in
     if deadline = max_int then None else Some deadline
@@ -2011,6 +2136,10 @@ and continued t =
       t.backend.set_raw_mode false;
       t.backend.set_raw_mode true);
     Terminal.restore_modes t.terminal;
+    (* The shell may have written where the cursor rested. *)
+    Screen.Region.moved t.region;
+    t.origin <- None;
+    if t.fill then t.ask <- Some 0;
     forget_screen t;
     t.size_report <- Read;
     owe_frame t)
@@ -2114,16 +2243,14 @@ let rec work t =
   else raise_notrace Idle
 
 (* The latest size is applied before a frame; a change of the usable size is
-   returned first. The frame follows unless it must wait for the cursor
-   report that says where the live region went. *)
+   returned first, and the frame follows it. *)
 and begin_frame t =
   if t.size_report <> Applied then apply_size t;
   let usable = size t in
   if usable <> t.usable then (
     t.usable <- usable;
-    t.frame_follows <- not (render_blocked t);
+    t.frame_follows <- true;
     Event (Resize (fst usable, snd usable)))
-  else if render_blocked t then raise_notrace Idle
   else start_frame t
 
 (* A turn begins after every time the run had nothing to do, and when the
@@ -2246,12 +2373,21 @@ let make backend ?stop config =
     submit_buf = Ansi.Writer.create 4096;
     width;
     height;
-    primary =
-      Primary.create ~terminal_height:height
-        ~min_live_height:config.min_tui_height;
-    layout_ops = [];
-    cursor_live_row = None;
-    anchor = None;
+    region = Screen.Region.create ();
+    live_rows = max 1 (Option.value config.min_tui_height ~default:1);
+    min_live = max 1 (Option.value config.min_tui_height ~default:1);
+    lent = 0;
+    fill = config.mode = `Primary && config.min_tui_height = None;
+    ask =
+      (if config.mode = `Primary && config.min_tui_height = None then Some 1
+       else None);
+    static = [];
+    replace = false;
+    origin = None;
+    keep = true;
+    final = None;
+    shown = 0;
+    below = 0;
     scroll_hint = None;
     last_cursor_position = None;
     last_cursor_visible = None;
@@ -2320,41 +2456,39 @@ let probe t =
     let cols, rows = device_size t in
     t.width <- max 1 cols;
     t.height <- max 1 rows;
-    t.primary <-
-      Primary.create ~terminal_height:t.height
-        ~min_live_height:t.config.min_tui_height;
-    if t.config.mode = `Primary && not t.input_ended then (
-      let b = ask_cursor t At_cursor in
-      t.anchor <- Some b;
-      await t ~from:b.sent [ b ];
-      t.anchor <- None);
     b.answered
 
 (* The measure of text sizing writes on the screen, from the row the cursor
    is on to the end, so it is written once the screen is taken, on rows the
-   run owns, and only to a terminal that answered the probe. In [`Alt] mode
-   that is the alternate screen's second row, so that a late report,
-   [CSI 2 ; col R], is never the modified F3 [CSI 1 ; m R]. In [`Primary]
-   mode it is the live region's first row, the region given the two rows a
-   scaled space takes. *)
+   run owns, and only to a terminal that answered the probe, never on the
+   screen's first row, so that a late report, [CSI 1 ; col R], is never the
+   modified F3 [CSI 1 ; m R]. In [`Alt] mode that is the alternate screen's
+   second row. In [`Primary] mode it is the first row of a region of two,
+   the rows a scaled space takes, drawn below the origin, which a terminal
+   of fewer than three rows has no room for. *)
 let measure_widths t =
-  if can_query t then (
-    let row =
-      match t.config.mode with
-      | `Alt -> 2
-      | `Primary ->
-          relayout t (Primary.require_rows t.primary ~rows:2);
-          Primary.render_offset t.primary + 1
-    in
-    let w = Ansi.Writer.create 64 in
-    apply_primary_ops t w t.layout_ops;
-    t.layout_ops <- [];
-    buf_cursor_position w ~row ~col:1;
-    Terminal.send t.terminal (Ansi.Writer.contents w);
-    let b =
-      send_batch t (Capabilities Widths) (Terminal.Caps.ask t.evidence Widths)
-    in
-    await t ~from:b.sent [ b ])
+  let at =
+    match t.config.mode with
+    | `Alt -> Some (Ansi.(to_string (cursor_position ~row:2 ~col:1)), "")
+    | `Primary when t.height >= 3 ->
+        let rows = Grid.create ~width:1 ~height:2 () in
+        let region =
+          Screen.Region.draw t.region ~cols:t.width ~rows:t.height
+            ~cursor:Hidden (Some rows)
+        in
+        (* Down to the region's first row, and back to its origin after. *)
+        Some (region ^ "\027[B", "\027[A")
+    | `Primary -> None
+  in
+  match at with
+  | Some (before, after) when can_query t ->
+      Terminal.send t.terminal before;
+      let b =
+        send_batch t (Capabilities Widths) (Terminal.Caps.ask t.evidence Widths)
+      in
+      Terminal.send t.terminal after;
+      await t ~from:b.sent [ b ]
+  | _ -> ()
 
 (* An output that is not a terminal has no window to read a size from. The
    size its terminal has already reported in band, as the transport of a
@@ -2367,10 +2501,7 @@ let take_reported_size t =
     | Reported (cols, rows) ->
         t.width <- max 1 cols;
         t.height <- max 1 rows;
-        t.size_report <- Applied;
-        t.primary <-
-          Primary.create ~terminal_height:t.height
-            ~min_live_height:t.config.min_tui_height
+        t.size_report <- Applied
     | Applied | Read -> ())
 
 let setup t =
@@ -2379,6 +2510,13 @@ let setup t =
   take_raw_mode t;
   take_reported_size t;
   let answered = probe t in
+  (* In [`Primary] mode the region is made for what the terminal does as
+     the probe has told it, before its first write. *)
+  (if t.config.mode = `Primary then
+     let caps = Terminal.capabilities t.terminal in
+     t.region <-
+       Screen.Region.create ~eager_wrap:caps.eager_wrap
+         ~lifts_resting_cursor:caps.lifts_resting_cursor ());
   take_screen t;
   if answered then measure_widths t;
   take_modes t;
@@ -2434,8 +2572,11 @@ let run_on backend ?stop ?(config = config ()) f =
       d.presented (fun () ->
           ( current_grid t,
             (match t.config.mode with
-            | `Alt -> 0
-            | `Primary -> Primary.render_offset t.primary),
+            | `Alt -> `Row 0
+            | `Primary ->
+                (* The region's first row is the one below its origin, from
+                   where the cursor rests. *)
+                `Cursor (1 - t.below)),
             (* The screen writes half blocks without a cell size. *)
             match Screen.cell_size t.screen with
             | None -> `Blocks

@@ -5,6 +5,6 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-render/frame-full-160x48-and-back	alloc_words	exact	2284
-render/frame-no-changes	alloc_words	exact	27
-render/frame-single-cell	alloc_words	exact	45
+render/frame-full-160x48-and-back	alloc_words	exact	2266
+render/frame-no-changes	alloc_words	exact	18
+render/frame-single-cell	alloc_words	exact	36

@@ -1953,22 +1953,33 @@ let test_relative_sixel () =
   ignore (Vte.feed_string t ("\027[6;1H" ^ out) : _ list);
   equal ~msg:"back on the cursor's row" int 5 (fst (Vte.cursor_pos t))
 
-(* Static rows with pictures are written as rows, then a sixel over the rows
-   still on the screen, then the cursor back below them. *)
+(* Static rows are lines, each ended by LF, with their pictures in half
+   blocks under sixel; the sixels go over the rows once they are on the
+   terminal, reached from the cursor's row below them, and only over the rows
+   still on the screen. *)
 let test_picture_static_rows () =
   let r = picture_screen `Sixel in
   let g = Grid.create ~width:4 ~height:2 () in
-  equal ~msg:"rows without pictures are to_ansi's" string
-    (Grid.to_ansi ~complete_rows:true ~rows:2 g)
-    (Screen.static_rows r g ~rows:2 ~top:0);
+  equal ~msg:"rows without pictures are to_ansi's, each ended" string
+    (Grid.to_ansi ~trim:true ~rows:2 g ^ "\n")
+    (Screen.static_rows r g ~rows:2);
   Grid.draw_picture g ~x:0 ~y:0 ~width:2 ~height:2 (tiled ~cols:2 ~rows:2);
-  let s = Screen.static_rows r g ~rows:2 ~top:(-1) in
-  (match sixels s with
-  | [ ((1, 1), px) ] ->
-      equal ~msg:"the row on the screen" int 20 (Array.length px)
-  | l -> failf "%d sixels" (List.length l));
-  is_true ~msg:"the cursor below the rows"
-    (String.ends_with ~suffix:"\027\\\027[2;1H" s)
+  let lines = Screen.static_rows r g ~rows:2 in
+  not_contains ~msg:"no sixel among the lines" ~sub:"\027P" lines;
+  equal ~msg:"two lines" int 2
+    (List.length (String.split_on_char '\n' lines) - 1);
+  let s = Screen.static_sixels r g ~rows:2 ~below:1 ~reach:1 in
+  is_true ~msg:"up to the row on the screen, the cursor saved"
+    (String.starts_with ~prefix:"\027[1A\027[1G\0277\027P0;1;0q\"1;1;20;20" s);
+  is_true ~msg:"restored, then back down to the cursor's row"
+    (String.ends_with ~suffix:"\027\\\0278\027[1B" s);
+  let s = Screen.static_sixels r g ~rows:2 ~below:1 ~reach:2 in
+  is_true ~msg:"both rows on the screen"
+    (String.starts_with ~prefix:"\027[2A\027[1G\0277\027P0;1;0q\"1;1;20;40" s);
+  equal ~msg:"none on the screen, none written" string ""
+    (Screen.static_sixels r g ~rows:2 ~below:3 ~reach:2);
+  equal ~msg:"no sixel in another form" string ""
+    (Screen.static_sixels (picture_screen `Kitty) g ~rows:2 ~below:1 ~reach:2)
 
 let () =
   run "matrix.screen"

@@ -413,7 +413,11 @@ type t = {
   mutable frames : int;
   mutable steps : int;
   mutable device : Matrix.device option;
-  mutable presented : unit -> Matrix.Grid.t * int * [ `Kitty | `Sixel | `Blocks ];
+  mutable presented :
+    unit ->
+    Matrix.Grid.t
+    * [ `Row of int | `Cursor of int ]
+    * [ `Kitty | `Sixel | `Blocks ];
 }
 
 type _ Effect.t += Wait : t -> bool Effect.t
@@ -652,8 +656,15 @@ let as_shown grid ~top ~form shown =
     done;
     grid
 
+(* The frame's first row is a row of the screen, or, in [`Primary] mode, a
+   number of rows below the cursor's. *)
 let check_presented s =
-  let grid, top, form = s.presented () in
+  let grid, place, form = s.presented () in
+  let top =
+    match place with
+    | `Row row -> row
+    | `Cursor below -> fst (Vte.cursor_pos (Terminal.vte s.term)) + below
+  in
   let shown = Terminal.screen s.term in
   let frame = { Screen.grid = as_shown grid ~top ~form shown; cursor = None } in
   let differs = Buffer.create 64 in

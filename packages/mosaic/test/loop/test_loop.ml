@@ -932,7 +932,8 @@ let%expect_test "a late width method re-measures existing text" =
 
 let%expect_test "static output follows the terminal's width method" =
   (* Once the terminal reports wcwidth, a static commit lays its text out by
-     it too: two joined emoji take 8 cells, which wrap in 6 columns. *)
+     it too: two joined emoji take 8 cells, which wrap in 6 columns. The live
+     region is drawn below a blank row of its own. *)
   let emoji = "\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x92\xbb" in
   let base = app ~subs:on_keys () in
   let application =
@@ -962,6 +963,7 @@ let%expect_test "static output follows the terminal's width method" =
   [%expect {|
     👩‍💻
     👩‍💻
+
     live
     |}]
 

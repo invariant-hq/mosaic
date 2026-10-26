@@ -19,15 +19,18 @@
     mode on the normal screen, beside the shell ({!type-mode}). There the
     screen's rows are a {e transcript}, the shell's output and then the
     {e static} rows the application writes ({{!static}Static output}), above a
-    {e live region} that the application redraws in each frame and that ends at
-    the terminal's last row. A transcript row leaves the screen only by
-    scrolling into the terminal's scrollback.
+    {e live region} that the application redraws in each frame. The live region
+    is drawn below a blank row of its own, its {e origin}, which is a
+    {!Screen.Region}'s, so that what the shell or another program writes, and
+    the terminal's rewraps, never make a frame erase a row above the origin. A
+    transcript row leaves the screen only by scrolling into the terminal's
+    scrollback.
 
-    The runtime asks the terminal what it can do and where its cursor is, and
-    reads the answers among the input. The time the terminal took to answer the
-    first batch of queries, the {e startup probe}, is its {e round trip}. The
-    runtime waits for an answer at most max(500 ms, four round trips), the
-    {e answer wait}, and then goes on without it.
+    The runtime asks the terminal what it can do, and reads the answers among
+    the input. The time the terminal took to answer the first batch of queries,
+    the {e startup probe}, is its {e round trip}. The runtime waits for an
+    answer at most max(500 ms, four round trips), the {e answer wait}, and then
+    goes on without it.
 
     The life cycle of a run:
     + {!run} takes the terminal and calls the application's function with the
@@ -111,11 +114,25 @@ type mode = [ `Alt | `Primary ]
     - [`Alt] draws on the alternate screen, which the run owns whole. The
       shell's screen comes back when the run gives the terminal back.
     - [`Primary] draws the live region on the normal screen, below the
-      transcript. When the input is a terminal, the live region starts on the
-      cursor's row as the run begins, or on the row below it when the cursor is
-      past the first column. After a resize or a {!release}, the runtime finds
-      the live region again from a cursor position report, since a terminal
-      moves its rows as it resizes. *)
+      transcript. Its origin is the cursor's row as the run begins, or the row
+      below it when the cursor is past the first column, and each frame draws
+      the live region from the origin, wherever the terminal has moved its row,
+      without asking where that is. The live region has the rows the application
+      states ({!val-config}'s [min_tui_height], {!draw}'s
+      [primary_required_rows]), as many as fit below the origin.
+
+    An application that states neither has the rows from the cursor's row at the
+    start down to the terminal's last row. The first frame has one row, and the
+    runtime then asks for a cursor position report, which says where the origin
+    is. When the answer comes the live region takes those rows, scrolling one
+    row above it into the scrollback for its origin. No frame waits for the
+    answer. The runtime asks again after a resize or a SIGCONT, and the answer
+    gives the live region the rows below its origin down to the last row, and
+    after a {!release}, the rows from the row below what the program wrote, as
+    at the start. A report asked before a resize and answered after it gives no
+    row, and a late one is never typed ({{!queries}Queries}). An input that
+    cannot answer, one that is not a terminal or not in raw mode, leaves the
+    live region one row. *)
 
 (** {1:events Events} *)
 
@@ -134,7 +151,13 @@ type event =
           composed. *)
   | Mouse of Input.Mouse_report.t
       (** A mouse report. In [`Primary] mode its row counts from the live
-          region's first row, and is [-1] above the live region. *)
+          region's first row, and is [-1] above the live region, and while the
+          runtime does not know which row of the screen the live region's origin
+          is on. It learns it from the cursor position report it asks for after
+          each frame that may have moved the origin, as one does that writes
+          static rows, and from {!static_clear}, which puts the origin on the
+          first row. Until the report comes, it counts the static rows the frame
+          wrote, which a row the terminal wrapped makes wrong. *)
   | Paste_start  (** A bracketed paste begins. *)
   | Paste_data of string
       (** Content of the paste, exactly as sent, in pieces as it arrives. The
@@ -151,9 +174,9 @@ type event =
           [Resize]. The terminal reports its size by the window-size signal of
           the process's controlling terminal or by its own report (mode 2048),
           and the runtime applies the latest report when it next draws. In
-          [`Primary] mode the live region also changes as a frame writes the
-          static rows queued or requires rows ({!draw}). That change comes as a
-          [Resize] before the frame after the one that made it. *)
+          [`Primary] mode the live region also changes as a frame requires rows
+          ({!draw}). That change comes as a [Resize] before the frame after the
+          one that made it. *)
   | Color_scheme of [ `Dark | `Light ]
       (** The terminal's color scheme, in reply to a query or on a change. *)
   | Invalid of string
@@ -240,11 +263,14 @@ val config :
       cooked mode holds until a line ends, as it holds all input.
     - [explicit_width] whether to measure text with the built-in wcwidth tables
       instead of asking the terminal how it measures text. Defaults to [false].
-    - [min_tui_height] the fewest rows the live region keeps in [`Primary] mode,
-      as static rows are written and the terminal shrinks. Defaults to [1]. It
-      holds between frames: {!size}, {!effective_size} and each {!Resize} count
-      it. A frame's [primary_required_rows] ({!draw}) also gives the live region
-      rows, but only from that frame on.
+    - [min_tui_height] the fewest rows the live region has in [`Primary] mode,
+      as far as the rows below its origin have them, which static rows never
+      take ({!static_write}). It holds from the start: {!size},
+      {!effective_size} and each {!Resize} count it. A frame's
+      [primary_required_rows] ({!draw}) also gives the live region rows, but
+      only from that frame on. By default the application states no height, the
+      fewest rows are [1], and the live region takes the rows down to the
+      terminal's last row ({!type-mode}).
 
     {b Frames:}
     - [fps] the frames per second of the frame grid ({!request_redraw}).
@@ -341,9 +367,7 @@ val run :
     + returns {!Stopped} once the input has ended and every event decoded before
       its end has been returned;
     + returns a {!Frame} if one was asked for and is due by the latest step's
-      time ({!request_redraw}; the first frame waits for no interval), and the
-      runtime waits for no answer from the terminal (the place of the live
-      region after a resize or a release, for at most an answer wait). Work that
+      time ({!request_redraw}; the first frame waits for no interval). Work that
       took the turn's budget may have taken the interval with it. Before the
       frame, if the usable size changed, comes a {!Resize}.
 
@@ -351,8 +375,8 @@ val run :
     one event at a time, and an event sees what the previous one did. A turn
     orders its steps by kind first. A key read in a turn comes before a timer
     that came due in the same turn, even if the timer's deadline was earlier.
-    The input is never held for an answer from the terminal, and only frames
-    are. *)
+    Neither the input nor the frames are held for an answer from the terminal.
+*)
 
 type timer = private int
 (** The type for timers, set with {!at}. Two timers set in one run differ. *)
@@ -493,18 +517,22 @@ val early : 'msg app -> bool
 
 val draw : 'msg app -> ?primary_required_rows:int -> (Grid.t -> unit) -> unit
 (** [draw app f] draws the frame the last step returned. It lays the frame out
-    at {!effective_size}, the usable size once the static rows queued are
-    written, calls [f] with the frame's grid, cleared, and presents the frame.
-    Presenting writes the terminal operations of the layout and the cells that
-    differ from the frame presented before, in one write, and writes nothing
-    when nothing changed.
+    at {!effective_size}, calls [f] with the frame's grid, cleared, and presents
+    the frame. Presenting writes the cells that differ from the frame presented
+    before, in one write, and writes nothing when nothing changed.
 
     In [`Primary] mode the static rows queued go to the transcript first, in the
     same write, and the live region grows to [primary_required_rows] rows when
-    it has fewer, at most the terminal's height, by scrolling the rows above it
-    into the terminal's scrollback. The frame is as tall as the live region, so
-    it shows the rows it asked for. [primary_required_rows] is ignored in [`Alt]
-    mode.
+    it has fewer, as many as fit below its origin, every row of the terminal but
+    one, by scrolling the rows above it into the terminal's scrollback. It
+    shrinks with the terminal, and as static rows take its rows
+    ({!static_write}). The frame is as tall as the live region, so it shows the
+    rows it asked for. The first frame, and one that writes static rows, grows
+    the live region, or follows a resize, a {!release}, a SIGCONT or a change of
+    the terminal's capabilities, draws the live region afresh. The origin and
+    the rows below it are erased first, and the frame's rows are written down to
+    the last that shows anything. Another frame writes the cells that changed.
+    [primary_required_rows] is ignored in [`Alt] mode.
 
     A frame drawn across a {!release} is not presented, and the next one is
     drawn whole.
@@ -552,24 +580,27 @@ val post : 'msg app -> 'msg -> unit
 
     Taking the terminal is a sequence of steps, each of which pushes its undo:
     the signals ({{!signals}Signals}), raw mode, the startup probe, the screen
-    (the alternate screen, or in [`Primary] mode the live region, found from a
-    cursor report), the measure of how the terminal sizes text
-    ({!Terminal.Caps.Widths}), and the modes. The probe and the cursor report
-    each take at most an answer wait, and input that comes meanwhile is kept and
-    returned first by {!next}. Only a terminal that answered the probe is
+    (the alternate screen, or in [`Primary] mode the live region), the measure
+    of how the terminal sizes text ({!Terminal.Caps.Widths}), and the modes. The
+    probe takes at most an answer wait, and input that comes meanwhile is kept
+    and returned first by {!next}. Only a terminal that answered the probe is
     measured, on cells the run owns and then erases: the alternate screen's
-    second row, or the live region's first, which then has at least two rows,
-    the height of text drawn at scale 2 by kitty's text-sizing protocol. If a
-    step raises, the undos made so far run in reverse and the exception
-    propagates with its backtrace.
+    second row, or in [`Primary] mode the first of two rows drawn below the
+    origin, on a terminal of at least three rows. Two rows are the height of
+    text drawn at scale 2 by kitty's text-sizing protocol. If a step raises, the
+    undos made so far run in reverse and the exception propagates with its
+    backtrace.
 
     Giving the terminal back runs every undo, each even if another raises. When
     a reply is owed, it first waits at most an answer wait for the terminal to
     answer, so that no reply reaches the shell as typing. Then the modes are
     reset (mouse tracking, bracketed paste, the keyboard protocols, and focus,
-    color scheme and resize reports), the cursor shown, the screen left (in
-    [`Primary] mode the live region is erased below the transcript), cooked mode
-    restored, and the input not read discarded.
+    color scheme and resize reports), the cursor shown, the screen left, cooked
+    mode restored, and the input not read discarded. In [`Primary] mode leaving
+    the screen writes the static rows queued, then, at the run's end, leaves its
+    last frame, unless the program said otherwise ({!keep_frame}), and, for a
+    {!release}, erases the live region, with the cursor at the start of its
+    origin, below the transcript.
 
     A run gives its terminal back on every way out: when the function given to
     {!run} returns or raises, for a program run in its place ({!release}), on a
@@ -589,8 +620,9 @@ val release : 'msg app -> (unit -> 'a) -> 'a
     timers and posts wait for [f] to return.
 
     Before [f], the static rows queued are written first. Input not yet read
-    stays for [f], and in [`Primary] mode the cursor waits at the start of the
-    erased live region, below the transcript, where [f]'s output goes on.
+    stays for [f], and in [`Primary] mode the live region is erased and the
+    cursor waits at the start of its origin, below the transcript, where [f]'s
+    output goes on.
 
     The events decoded and not yet returned, and those decoded while waiting for
     the replies owed, are dropped, but for {!Reply}, and a paste in progress is
@@ -608,11 +640,23 @@ val release : 'msg app -> (unit -> 'a) -> 'a
     After [f], the terminal is taken again. Input left unread is discarded, the
     terminal's settings are kept as the ones to restore, the size is read, the
     screen and modes are set again, and the next frame is drawn whole, in
-    [`Primary] mode below what [f] wrote, once a cursor report has said where
-    that ends. A frame being drawn when [release] is called is not presented.
+    [`Primary] mode from a row of its own below what [f] wrote, a line [f] left
+    without its end included. A frame being drawn when [release] is called is
+    not presented.
 
     Raises what [f] raises, and [Invalid_argument] if called from the [f] of
     another [release] of the same run. *)
+
+val keep_frame : 'msg app -> bool -> unit
+(** [keep_frame app keep] says what a run in [`Primary] mode leaves of its live
+    region when it gives the terminal back at its end. With [keep] [true], as by
+    default, the rows of the frame it presented last that show anything stay as
+    the terminal shows them, pictures included, moved up a row onto the
+    origin's, with the cursor at the start of the row below them. With [false],
+    the live region is erased, with the cursor at the start of its origin. The
+    run reads it as it gives the terminal back, so the program says it before it
+    ends, and it holds however the run ends. It changes nothing in [`Alt] mode,
+    nor in a {!release}, which erases the live region. *)
 
 val stop_job : 'msg app -> unit
 (** [stop_job app] stops the job as the terminal's suspend character does in
@@ -651,7 +695,8 @@ val stop_job : 'msg app -> unit
       for the whole job. On continuing, the terminal is taken again.
     - A SIGCONT the run did not cause, as when the shell continued the job after
       a stop from elsewhere, sets the terminal again, since the shell has put
-      back its own settings. The size is read and the next frame drawn whole.
+      back its own settings. The size is read and the next frame drawn whole, in
+      [`Primary] mode from a row of its own below what the shell wrote.
     - SIGWINCH has the size read when the next frame is drawn.
     - SIGABRT, from [abort()], returns to no point where OCaml can run, so its
       handler restores every run's terminal itself. It writes the bytes that
@@ -714,14 +759,15 @@ val size : 'msg app -> int * int
 
 val full_size : 'msg app -> int * int
 (** [full_size app] is the terminal's size [(cols, rows)], which is {!size} in
-    [`Alt] mode. *)
+    [`Alt] mode. In [`Primary] mode the live region has at most [rows - 1] rows,
+    the other being its origin's, and on a terminal of one row it shows none. *)
 
 val effective_size : 'msg app -> int * int
 (** [effective_size app] is the usable size [(cols, rows)] that {!draw} will lay
-    the next frame out at, once it has written the static rows queued and before
-    it grows the live region to the rows the frame requires. It is {!size} in
-    [`Alt] mode, when no static row is queued, and so in the function given to
-    {!draw}. *)
+    the next frame out at, once the static rows queued have taken theirs from
+    the live region ({!static_write}), and before it grows the live region to
+    the rows the frame requires. It is {!size} in [`Alt] mode, when no static
+    row is queued, and so in the function given to {!draw}. *)
 
 val pixel_resolution : 'msg app -> (int * int) option
 (** [pixel_resolution app] is the size in pixels [(width, height)] of the
@@ -745,22 +791,25 @@ val capabilities : 'msg app -> Terminal.capabilities
 
     In [`Primary] mode the application adds rows to the transcript, above the
     live region, with these functions. The rows go out with the next frame
-    {!draw} lays out, which they ask for. They take their rows from the live
-    region, which moves down until it has its fewest rows ({!val-config}'s
-    [min_tui_height]). After that the rows above the live region scroll into the
-    terminal's scrollback, and the live region keeps its height. Only
-    {!static_replace} and {!static_clear} erase transcript rows. In [`Alt] mode
-    these functions do nothing and raise nothing. *)
+    {!draw} lays out, which they ask for, in the same write. Each is a line the
+    terminal prints as any output. It wraps where it is wider than the terminal
+    it reaches, and a terminal that rewraps its lines on a resize rewraps it.
+    The rows take theirs from the live region, which moves down until it has its
+    fewest rows ({!val-config}'s [min_tui_height]). After that the rows above
+    the live region scroll into the terminal's scrollback, and the live region
+    keeps its height. Only {!static_replace} and {!static_clear} erase
+    transcript rows. In [`Alt] mode these functions do nothing and raise
+    nothing. *)
 
 val static_write :
   ?preserve_live_region:bool -> ?rows:int -> 'msg app -> Grid.t -> unit
 (** [static_write ~preserve_live_region ~rows app grid] queues the first [rows]
     rows of [grid] for the transcript, every row by default, blank rows
     included. It copies them immediately, so later changes to [grid] do not
-    change them. Each row replaces the whole terminal row and ends with CRLF. A
-    row never wraps. In a terminal that narrowed before the row is written, its
-    cells past the right margin overwrite the last column, as a terminal's right
-    margin makes them. Picture cells are written in the terminal's form of
+    change them. Each row is written as a line, up to its last cell that shows
+    something or whole if it holds a picture cell, on a row the frame erased, in
+    the colors the terminal shows. A row wraps on a terminal that narrowed
+    before it was written. Picture cells are written in the terminal's form of
     pictures ({!Screen.section-pictures}), under sixel with a sixel over the
     rows still on the screen. A row queued from the function given to {!draw}
     goes out with the frame after that one. [rows = 0] queues nothing.
@@ -777,8 +826,11 @@ val static_replace :
   ?preserve_live_region:bool -> ?rows:int -> 'msg app -> Grid.t -> unit
 (** [static_replace ~preserve_live_region ~rows app grid] queues the replacement
     of the whole transcript with the first [rows] rows of [grid], taken as
-    {!static_write} takes them. [rows = 0] empties the transcript. The
-    replacement and the next frame go out in one write.
+    {!static_write} takes them, and drops the rows queued before. [rows = 0]
+    empties the transcript. The erase, the replacement and the next frame go out
+    in one write, which draws the live region below the replacement from the
+    screen's first row. With no height stated, the live region then has the
+    screen's rows below its origin, but those the replacement takes.
 
     {b Warning.} The replacement erases the terminal's scrollback ([CSI 3 J]),
     the shell's output from before the run included. A terminal without
@@ -787,9 +839,10 @@ val static_replace :
     Raises as {!static_write} does. *)
 
 val static_clear : 'msg app -> unit
-(** [static_clear app] erases the screen, drops the static rows queued, and
-    gives the live region the whole screen. It writes the erase immediately, and
-    asks for the next frame. The scrollback stays. *)
+(** [static_clear app] erases the screen and drops the static rows queued. It
+    writes the erase immediately, and asks for the next frame, which draws the
+    live region below an origin on the screen's first row, and, with no height
+    stated, gives it the screen's other rows. The scrollback stays. *)
 
 (** {1:scroll Scroll hints} *)
 
@@ -824,7 +877,10 @@ val set_cursor_position : 'msg app -> row:int -> col:int -> unit
 (** [set_cursor_position app ~row ~col] places the cursor at row [row] and
     column [col] of the usable area ({!size}), counted from 1, unlike a grid's
     rows and columns. [row] is clamped to the usable rows and [col] to at least
-    1. *)
+    1. In [`Primary] mode a cursor shown there rests there between frames, so a
+    line another program writes meanwhile lands on the live region's rows, which
+    the next frame drawn afresh erases. A hidden cursor rests on the live
+    region's origin. *)
 
 val set_cursor_color : 'msg app -> r:float -> g:float -> b:float -> unit
 (** [set_cursor_color app ~r ~g ~b] sets the cursor's color. Each component is
@@ -877,7 +933,11 @@ val set_cursor_color : 'msg app -> r:float -> g:float -> b:float -> unit
     ./app.exe 2>app.log
     tail -f app.log
     v}
-    In [`Primary] mode it can also write rows above the live region with
+    In [`Primary] mode those bytes land where the cursor rests, at the start of
+    the live region's origin unless the application shows the cursor elsewhere.
+    The next frame drawn afresh erases what they leave there without a line end,
+    and until then a frame writes its changed cells a row lower for each line
+    they ended. The program can also write rows above the live region with
     {!static_write}. *)
 
 module Debug_overlay = Debug_overlay
@@ -971,8 +1031,9 @@ val run_on :
    whether [next] returned a step since its last call, which returns once
    input is queued or the clock has moved, and says whether input is
    queued. As the run begins, [presented] is given a function that is the
-   frame the run last presented ({!current_grid}), the terminal row its
-   first row is shown on, and the form its picture cells were written in.
+   frame the run last presented ({!current_grid}), where its first row is
+   shown, the terminal row [`Row r] or, in [`Primary] mode, [`Cursor n] rows
+   below the cursor's, and the form its picture cells were written in.
    A post to a run on a device never waits for its steps ({!post}). *)
 
 type device = {
@@ -988,7 +1049,10 @@ type device = {
   env : Terminal.Caps.env;
   frame : unit -> unit;
   idle : until:int option -> stepped:bool -> bool;
-  presented : (unit -> Grid.t * int * [ `Kitty | `Sixel | `Blocks ]) -> unit;
+  presented :
+    (unit ->
+    Grid.t * [ `Row of int | `Cursor of int ] * [ `Kitty | `Sixel | `Blocks ]) ->
+    unit;
 }
 
 val on_device : device -> config -> config

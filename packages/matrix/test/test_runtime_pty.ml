@@ -442,7 +442,7 @@ let test_probe_leaves_the_shell_text mode () =
     { pty; pid = Option.get (Pty.pid pty); output = Buffer.create 4096 }
   in
   Fun.protect ~finally:(fun () -> finish s.pty) @@ fun () ->
-  let vte = Vte.create ~rows:24 ~cols:80 () in
+  let vte = Vte.create ~scrollback:100 ~rows:24 ~cols:80 () in
   ignore
     (Vte.feed_string vte (String.concat "\r\n" shell_text ^ "\r\n")
       : Matrix_input.Reply.t list);
@@ -471,12 +471,19 @@ let test_probe_leaves_the_shell_text mode () =
     if not (f ()) then failf "timed out waiting for %s" what
   in
   let shows sub () = find_from (Buffer.contents s.output) 0 sub <> None in
+  (* The shell's rows, in the scrollback and on the screen. In [`Primary]
+     mode the live region may scroll one into the scrollback, for its
+     origin. *)
+  let shell () =
+    let n = Vte.scrollback_size vte in
+    List.filteri
+      (fun i _ -> i < List.length shell_text)
+      (List.init (n + 24) (fun i -> String.trim (Vte.text vte (i - n))))
+  in
   until "the first frame" (shows "READY 1");
-  List.iteri
-    (fun row text ->
-      equal ~msg:"the shell's text while the program runs" string text
-        (String.trim (Vte.text vte row)))
-    (if mode = [] then [] else shell_text);
+  if mode <> [] then
+    equal ~msg:"the shell's text while the program runs" (list string)
+      shell_text (shell ());
   send s "q";
   let status = ref None in
   until "the end" (fun () ->
@@ -489,11 +496,8 @@ let test_probe_leaves_the_shell_text mode () =
   for _ = 1 to 5 do
     pump ()
   done;
-  List.iteri
-    (fun row text ->
-      equal ~msg:"the shell's text after the program" string text
-        (String.trim (Vte.text vte row)))
-    shell_text
+  equal ~msg:"the shell's text after the program" (list string) shell_text
+    (shell ())
 
 (* Keys typed faster than the frame interval each ask for a frame before the
    last one's interval has passed: the run waits until that frame's

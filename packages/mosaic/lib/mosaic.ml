@@ -809,12 +809,15 @@ let process_pending_msgs runtime =
     Matrix.request_redraw runtime.matrix_app
 
 (* The space the tree is laid out in, for input and for frames alike. In
-   [`Primary] mode it is the terminal's height, the most rows the live region
-   can take; the region is as tall as the frame's content. *)
+   [`Primary] mode it is the most rows the live region can take, every row
+   of the terminal but its origin's; the region is as tall as the frame's
+   content. *)
 let layout_size runtime =
   match Matrix.mode runtime.matrix_app with
   | `Alt -> Matrix.effective_size runtime.matrix_app
-  | `Primary -> Matrix.full_size runtime.matrix_app
+  | `Primary ->
+      let width, height = Matrix.full_size runtime.matrix_app in
+      (width, max 1 (height - 1))
 
 (* Only the loop thread runs the application and reconciler. Widget callbacks
    complete their updates before default processing continues. During a view or
