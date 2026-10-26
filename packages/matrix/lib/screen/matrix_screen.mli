@@ -263,12 +263,13 @@ val apply_capabilities :
   explicit_width:bool ->
   explicit_cursor_positioning:bool ->
   hyperlinks:bool ->
-  color_depth:Ansi.Sgr_state.color_depth ->
+  colors:Ansi.Color.depth ->
+  styling:Ansi.Styling.t ->
   graphics:[ `Kitty | `Sixel | `Blocks ] ->
   cell_size:(int * int) option ->
   unit
 (** [apply_capabilities t ~explicit_width ~explicit_cursor_positioning
-     ~hyperlinks ~color_depth ~graphics ~cell_size] makes [t] write for a
+     ~hyperlinks ~colors ~styling ~graphics ~cell_size] makes [t] write for a
     terminal with these capabilities.
     - [explicit_width] says the terminal takes OSC 66, which states the width of
       a grapheme. A grapheme two or more columns wide is then written in OSC 66
@@ -278,7 +279,11 @@ val apply_capabilities :
       for a terminal that may measure the grapheme differently.
     - [hyperlinks] says the terminal takes OSC 8. Without it, cells are written
       without their hyperlinks.
-    - [color_depth] is the color depth colors are reduced to.
+    - [colors] is the depth of the colors the terminal shows, at which a kitty
+      picture writes its image's id ({!section-pictures}).
+    - [styling] is how styles are written. At a color depth each color is
+      reduced to it, so [`Mono] writes attributes and hyperlinks without a
+      color, and [`Plain] writes no SGR and no OSC 8.
     - [graphics] is the form of picture cells ({!section-pictures}).
     - [cell_size] is the size of the terminal's cells in pixels,
       [(width, height)], or [None] when it is not known.
@@ -290,9 +295,14 @@ val apply_capabilities :
 
     A picture cell ({!Matrix_grid.section-pictures}) is written in one of three
     forms, the [graphics] of {!apply_capabilities}. A screen without a cell
-    size, or with the [`Kitty] form and fewer than 256 colors, writes [`Blocks].
-    The picture is fit in its box at the terminal's cell size, 10 by 20 pixels
-    when it is not known.
+    size, or with the [`Kitty] form and a terminal of fewer than 256 [colors],
+    writes [`Blocks]. At the stylings [`Mono] and [`Plain], whose output shows
+    no color, [`Blocks] writes each picture cell as a space. A kitty picture's
+    placeholders carry its image's id in their foreground, data of the protocol
+    that the user sees no color of, so at [`Mono] they are written with that id
+    at the terminal's [colors] as at any styling, and at [`Plain], which writes
+    no SGR, the picture is written as [`Blocks]. The picture is fit in its box
+    at the terminal's cell size, 10 by 20 pixels when it is not known.
     - [`Blocks] writes U+2580 with the tile's upper half as the foreground and
       its lower half as the background, each composited over the cell's
       background. It writes U+2584 when only the lower half shows, and a space
@@ -416,7 +426,7 @@ val delete_transcript : t -> Ansi.Writer.t -> unit
 val static_rows : t -> Matrix_grid.t -> rows:int -> string
 (* [static_rows t g ~rows] is the first [rows] rows of [g] as lines for a
    region to write above its rows ([Region.start]'s [above]), each ended by
-   LF, at the color depth of [t]. A grid without picture cells gives
+   LF, at the styling of [t]. A grid without picture cells gives
    [Matrix_grid.to_ansi ~trim:true ~rows g] and an LF. Picture cells are
    written in the screen's form. Under [`Kitty] the rows are preceded by the
    pixels of their boxes, as images [t] deletes only by [delete_transcript].

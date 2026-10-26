@@ -174,8 +174,8 @@ let test_styled_frame_resets_sgr () =
 let test_color_depth_reaches_sgr_emission () =
   let r = Screen.create () in
   Screen.apply_capabilities r ~explicit_width:false
-    ~explicit_cursor_positioning:false ~hyperlinks:true ~color_depth:`Ansi256
-    ~graphics:`Blocks ~cell_size:None;
+    ~explicit_cursor_positioning:false ~hyperlinks:true ~colors:`Ansi256
+    ~styling:`Ansi256 ~graphics:`Blocks ~cell_size:None;
   let style = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 255 0 0) () in
   let frame =
     build_screen r ~width:1 ~height:1 (fun grid _hits ->
@@ -960,8 +960,8 @@ let test_explicit_width_sequences () =
 let test_explicit_width_off_repositions () =
   let r = Screen.create ~explicit_width:true () in
   Screen.apply_capabilities r ~explicit_width:true
-    ~explicit_cursor_positioning:true ~hyperlinks:true ~color_depth:`Truecolor
-    ~graphics:`Blocks ~cell_size:None;
+    ~explicit_cursor_positioning:true ~hyperlinks:true ~colors:`Truecolor
+    ~styling:`Truecolor ~graphics:`Blocks ~cell_size:None;
   Screen.set_explicit_width r false;
   Screen.build r ~width:10 ~height:1 (fun grid _hits ->
       Grid.draw_text grid ~x:0 ~y:0 ~text:"\u{4E2D}");
@@ -989,8 +989,8 @@ let test_hyperlink_capability_gating () =
   (* Now test with capability disabled *)
   let r2 = Screen.create () in
   Screen.apply_capabilities r2 ~explicit_width:false
-    ~explicit_cursor_positioning:false ~hyperlinks:false ~color_depth:`Truecolor
-    ~graphics:`Blocks ~cell_size:None;
+    ~explicit_cursor_positioning:false ~hyperlinks:false ~colors:`Truecolor
+    ~styling:`Truecolor ~graphics:`Blocks ~cell_size:None;
   let f2 =
     build_screen r2 ~width:10 ~height:1 (fun grid _hits ->
         let style =
@@ -1706,8 +1706,8 @@ let tiled ~cols ~rows =
 let picture_screen form =
   let r = Screen.create () in
   Screen.apply_capabilities r ~explicit_width:false
-    ~explicit_cursor_positioning:false ~hyperlinks:true ~color_depth:`Truecolor
-    ~graphics:form
+    ~explicit_cursor_positioning:false ~hyperlinks:true ~colors:`Truecolor
+    ~styling:`Truecolor ~graphics:form
     ~cell_size:(Some (10, 20));
   r
 
@@ -1815,6 +1815,107 @@ let test_picture_blocks () =
   done;
   frame ();
   equal ~msg:"an unchanged frame writes nothing" string "" (Screen.render r)
+
+(* The same frame at each styling: a red, bold, linked "R" above a picture
+   in half blocks, rendered and, as static rows, written. A color depth
+   writes the colors at that depth; [`Mono] the attributes and the link,
+   without a color; [`Plain] the text alone, without an SGR or an OSC 8. At
+   [`Mono] and [`Plain] the picture, made of colors, draws spaces. *)
+let test_stylings () =
+  let style =
+    Ansi.Style.make
+      ~fg:(Ansi.Color.of_rgb 255 0 0)
+      ~bold:true ~link:"https://example.org" ()
+  in
+  let draw g =
+    Grid.draw_text g ~x:0 ~y:0 ~text:"R" ~style;
+    Grid.draw_picture g ~x:0 ~y:1 ~width:2 ~height:1 (tiled ~cols:2 ~rows:1)
+  in
+  let sgr = Str.regexp "\027\\[[0-9;:]*m" in
+  let has re s =
+    match Str.search_forward re s 0 with
+    | _ -> true
+    | exception Not_found -> false
+  in
+  let osc8 = Str.regexp_string "\027]8;" in
+  let half = Str.regexp_string "\u{2580}" in
+  List.iter
+    (fun (name, styling, fg, colored) ->
+      let r = Screen.create () in
+      Screen.apply_capabilities r ~explicit_width:false
+        ~explicit_cursor_positioning:false ~hyperlinks:true
+        ~colors:
+          (match styling with
+          | `Plain | `Mono -> `Truecolor
+          | #Ansi.Color.depth as d -> d)
+        ~styling ~graphics:`Blocks
+        ~cell_size:(Some (10, 20));
+      Screen.build r ~width:4 ~height:2 (fun g _ -> draw g);
+      let out = Screen.render r in
+      let vte = Vte.create ~rows:2 ~cols:4 () in
+      ignore (Vte.feed_string vte out : _ list);
+      let g = Vte.grid vte in
+      let styled = styling <> `Plain in
+      equal ~msg:(name ^ ": the text") string "R" (Grid.get_text g 0);
+      equal ~msg:(name ^ ": its color") string fg
+        (Format.asprintf "%a" Ansi.Color.pp (Grid.get_fg g 0));
+      equal ~msg:(name ^ ": bold") bool styled
+        (Ansi.Attr.mem Bold (Ansi.Attr.unpack (Grid.get_attrs g 0)));
+      equal ~msg:(name ^ ": the link") string
+        (if styled then "https://example.org" else "")
+        (Grid.get_link g 0);
+      equal ~msg:(name ^ ": SGR written") bool styled (has sgr out);
+      equal ~msg:(name ^ ": OSC 8 written") bool styled (has osc8 out);
+      equal ~msg:(name ^ ": the picture") string
+        (if colored then "\u{2580}" else " ")
+        (Grid.get_text g 4);
+      let lines = Grid.create ~width:4 ~height:2 () in
+      draw lines;
+      let rows = Screen.static_rows r lines ~rows:2 in
+      equal ~msg:(name ^ ": static SGR") bool styled (has sgr rows);
+      equal ~msg:(name ^ ": static picture") bool colored (has half rows))
+    [
+      ("24-bit", `Truecolor, "Rgb(255,0,0)", true);
+      ("256", `Ansi256, "Indexed(196)", true);
+      ("16", `Ansi16, "Bright_red", true);
+      ("8", `Ansi8, "Red", true);
+      ("mono", `Mono, "Default", false);
+      ("plain", `Plain, "Default", false);
+    ]
+
+(* A kitty picture on a terminal of 24-bit colors, at a styling. Its
+   placeholders carry the image's id in their foreground, which is no color
+   the user sees: under NO_COLOR ([`Mono]) they are written as at 24 bits,
+   and the terminal shows the picture; at [`Plain] the picture is half blocks
+   without their colors, spaces. *)
+let test_picture_kitty_stylings () =
+  List.iter
+    (fun (name, styling, shown) ->
+      let r = Screen.create () in
+      Screen.apply_capabilities r ~explicit_width:false
+        ~explicit_cursor_positioning:false ~hyperlinks:true ~colors:`Truecolor
+        ~styling ~graphics:`Kitty
+        ~cell_size:(Some (10, 20));
+      Screen.build r ~width:6 ~height:2 (fun g _ ->
+          Grid.draw_picture g ~x:1 ~y:0 ~width:2 ~height:1
+            (tiled ~cols:2 ~rows:1);
+          Grid.draw_text g ~x:4 ~y:0 ~text:"x"
+            ~style:(Ansi.Style.make ~fg:(Ansi.Color.of_rgb 255 0 0) ()));
+      let out = Screen.render r in
+      let vte = Vte.create ~rows:2 ~cols:6 () in
+      ignore (Vte.feed_string vte out : _ list);
+      let g = Vte.grid vte in
+      equal ~msg:(name ^ ": the picture") string shown (Vte.text vte 0);
+      equal
+        ~msg:(name ^ ": the text after it keeps no id color")
+        string
+        (if styling = `Truecolor then "Rgb(255,0,0)" else "Default")
+        (Format.asprintf "%a" Ansi.Color.pp (Grid.get_fg g 4)))
+    [
+      ("24-bit", `Truecolor, " \u{FFFC}\u{FFFC} x");
+      ("mono", `Mono, " \u{FFFC}\u{FFFC} x");
+      ("plain", `Plain, "    x");
+    ]
 
 let test_picture_kitty () =
   let r = picture_screen `Kitty in
@@ -2103,6 +2204,8 @@ let () =
       group "Pictures"
         [
           test "Half blocks" test_picture_blocks;
+          test "At each styling" test_stylings;
+          test "Kitty at each styling" test_picture_kitty_stylings;
           test "Kitty placeholders" test_picture_kitty;
           test "Sixel over half blocks" test_picture_sixel;
           test "Static rows" test_picture_static_rows;

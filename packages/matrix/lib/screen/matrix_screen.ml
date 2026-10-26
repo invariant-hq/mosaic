@@ -65,6 +65,9 @@ type pictures = {
   mutable cell : (int * int) option;
   mutable form : form;
   mutable direct : bool; (* Kitty ids at 24 bits, else 8 bits and a mark. *)
+  mutable colored : bool;
+      (* Half blocks show colors; at [`Mono] and [`Plain] none shows, and a
+         picture cell is a space. *)
   entries : (int * int * int, entry) Hashtbl.t;
       (* By picture id, box columns and box rows. *)
   mutable stale : int list; (* Kitty images to delete before the next frame. *)
@@ -101,6 +104,9 @@ type diff_ctx = {
   mutable explicit_width : bool;
   mutable explicit_cursor_positioning : bool;
   mutable hyperlinks : bool;
+  mutable styled : bool;
+      (* Whether styles are written: [false] at [`Plain], which writes no
+         SGR and no OSC 8. *)
   mutable units : Matrix_text.Segmenter.t;
       (* Display units of [curr]'s width method, to tell where the terminal
          would join two cells. *)
@@ -137,8 +143,9 @@ type t = {
   mutable hit_next : Hit_grid.t;
   (* State *)
   sgr_state : Ansi.Sgr_state.t;
-  mutable color_depth : Ansi.Color.depth;
-      (* [sgr_state]'s, which static rows are written at. *)
+  mutable styling : Ansi.Styling.t;
+      (* What frames and static rows are written at; [sgr_state] has its
+         color depth, [`Mono] for [`Plain]. *)
   mutable row_offset : int;
   diff : diff_ctx;
   (* Retained ANSI output capacity; grows only past its high-water mark.
@@ -553,6 +560,7 @@ let fresh_pictures () =
     cell = None;
     form = `Blocks;
     direct = true;
+    colored = true;
     entries = Hashtbl.create 8;
     stale = [];
     count = 0;
@@ -681,9 +689,9 @@ let write_halves (c : diff_ctx) idx =
   let bg = Grid.Unsafe.get_bg c.curr idx in
   let up = p.upper and lo = p.lower in
   let style fg bg =
-    Ansi.Sgr_state.update c.sgr c.out ~fg ~bg ~attrs:0 ~link:""
+    if c.styled then Ansi.Sgr_state.update c.sgr c.out ~fg ~bg ~attrs:0 ~link:""
   in
-  if alpha up = 0 && alpha lo = 0 then (
+  if (not p.colored) || (alpha up = 0 && alpha lo = 0) then (
     style Ansi.Color.default_fg bg;
     Ansi.Writer.write_char c.out ' ')
   else if alpha up = 0 then (
@@ -722,15 +730,29 @@ let write_placeholder (c : diff_ctx) idx e (tile : Grid.Unsafe.tile) =
     halves c.pictures e tile;
     write_halves c idx)
   else begin
+    let p = c.pictures in
+    let id = id_color p e.image in
+    (* At [`Mono] the tracker writes no color, but the id is the protocol's
+       data, which the user sees no color of: it is written at the
+       terminal's depth around the placeholder, which leaves the tracker's
+       state as it says, the default foreground. *)
     Ansi.Sgr_state.update c.sgr c.out
-      ~fg:(id_color c.pictures e.image)
+      ~fg:(if p.colored then id else Ansi.Color.default_fg)
       ~bg:(Grid.Unsafe.get_bg c.curr idx)
       ~attrs:0 ~link:"";
+    if not p.colored then
+      Ansi.sgr_direct
+        (fun push ->
+          Ansi.Color.emit_sgr_codes
+            ~depth:(if p.direct then `Truecolor else `Ansi256)
+            ~bg:false push id)
+        c.out;
     write_uchar c placeholder;
     write_uchar c (Uchar.of_int diacritics.(tile.row));
     write_uchar c (Uchar.of_int diacritics.(tile.col));
     let high = e.image lsr 24 in
-    if high <> 0 then write_uchar c (Uchar.of_int diacritics.(high))
+    if high <> 0 then write_uchar c (Uchar.of_int diacritics.(high));
+    if not p.colored then Ansi.emit Ansi.reset_foreground c.out
   end
 
 (* Writes picture cell [idx], at column [x] of row [y], which shows [tile] of
@@ -1053,11 +1075,12 @@ let rec write_run (c : diff_ctx) y x ~prev ~prev_cp ~prev_width ~last =
           && joins c ~prev ~prev_cp ~last first
         then move c ~y ~x;
         (* Emit style/color through zero-alloc accessors. *)
-        Ansi.Sgr_state.update c.sgr c.out
-          ~fg:(Grid.Unsafe.get_fg c.curr idx)
-          ~bg:(Grid.Unsafe.get_bg c.curr idx)
-          ~attrs:(Grid.Unsafe.get_attrs c.curr idx)
-          ~link:(cell_link c idx);
+        if c.styled then
+          Ansi.Sgr_state.update c.sgr c.out
+            ~fg:(Grid.Unsafe.get_fg c.curr idx)
+            ~bg:(Grid.Unsafe.get_bg c.curr idx)
+            ~attrs:(Grid.Unsafe.get_attrs c.curr idx)
+            ~link:(cell_link c idx);
         write_cell c ~y ~x ~cell_width ~cp ~n;
         write_run c y (x + cell_width) ~prev:idx ~prev_cp:cp
           ~prev_width:cell_width ~last:final
@@ -1097,7 +1120,7 @@ let run_diff (c : diff_ctx) =
   Ansi.Sgr_state.reset c.sgr;
   let total = process_rows c 0 0 in
   Ansi.Sgr_state.close_link c.sgr c.out;
-  if total > 0 then Ansi.emit Ansi.reset c.out;
+  if total > 0 && c.styled then Ansi.emit Ansi.reset c.out;
   Ansi.Sgr_state.reset c.sgr;
   total
 
@@ -1293,7 +1316,8 @@ let emit_frame (r : t) ~(mode : render_mode) ~scroll_hint ~viewport ~relative
   c.explicit_width <- r.prefer_explicit_width && r.explicit_width_capable;
   c.explicit_cursor_positioning <-
     (not c.explicit_width) && r.explicit_cursor_positioning_capable;
-  c.hyperlinks <- r.hyperlinks_capable;
+  c.styled <- r.styling <> `Plain;
+  c.hyperlinks <- r.hyperlinks_capable && c.styled;
   let width_method = Grid.width_method r.next in
   if width_method <> c.units_method then (
     c.units <- Matrix_text.Segmenter.create width_method;
@@ -1382,7 +1406,7 @@ let create ?width_method ?(cursor_visible = true) ?(explicit_width = false) () =
     hit_current = Hit_grid.create ~width:1 ~height:1;
     hit_next = Hit_grid.create ~width:1 ~height:1;
     sgr_state;
-    color_depth = `Truecolor;
+    styling = `Truecolor;
     row_offset = 0;
     prefer_explicit_width = explicit_width;
     explicit_width_capable = true;
@@ -1407,6 +1431,7 @@ let create ?width_method ?(cursor_visible = true) ?(explicit_width = false) () =
         explicit_width = false;
         explicit_cursor_positioning = false;
         hyperlinks = true;
+        styled = true;
         units = Matrix_text.Segmenter.create w_method;
         units_method = w_method;
         joint = Bytes.create 64;
@@ -1528,23 +1553,29 @@ let set_cursor t cursor =
 let cursor t = t.cursor
 
 let apply_capabilities r ~explicit_width ~explicit_cursor_positioning
-    ~hyperlinks ~color_depth ~graphics ~cell_size =
+    ~hyperlinks ~colors ~styling ~graphics ~cell_size =
   r.explicit_width_capable <- explicit_width;
   r.explicit_cursor_positioning_capable <- explicit_cursor_positioning;
   r.hyperlinks_capable <- hyperlinks;
-  Ansi.Sgr_state.set_color_depth r.sgr_state color_depth;
-  r.color_depth <- color_depth;
+  Ansi.Sgr_state.set_color_depth r.sgr_state
+    (match styling with `Plain -> `Mono | #Ansi.Color.depth as d -> d);
+  r.styling <- styling;
   let p = r.diff.pictures in
-  let direct = color_depth = `Truecolor in
-  (* A kitty id needs at least 256 colors to be written. *)
+  let direct = colors = `Truecolor in
+  let colored = not (styling = `Mono || styling = `Plain) in
+  (* A kitty id needs at least 256 colors of the terminal to be written,
+     and some SGR. *)
   let form =
-    match (graphics, cell_size, color_depth) with
-    | _, None, _ | `Kitty, _, (`Ansi16 | `Ansi8 | `Mono) -> `Blocks
-    | g, Some _, _ -> g
+    match (graphics, cell_size, colors, styling) with
+    | _, None, _, _
+    | `Kitty, _, (`Ansi16 | `Ansi8 | `Mono), _
+    | `Kitty, _, _, `Plain ->
+        `Blocks
+    | g, Some _, _, _ -> g
   in
   if
     graphics <> p.graphics || form <> p.form || cell_size <> p.cell
-    || direct <> p.direct
+    || direct <> p.direct || colored <> p.colored
   then begin
     own r.diff;
     let p = r.diff.pictures in
@@ -1552,6 +1583,7 @@ let apply_capabilities r ~explicit_width ~explicit_cursor_positioning
     p.form <- form;
     p.cell <- cell_size;
     p.direct <- direct;
+    p.colored <- colored;
     (* The pictures shown are written again in the new form. *)
     if Hashtbl.length p.entries > 0 then (
       forget_images r;
@@ -1595,8 +1627,7 @@ let static_rows t g ~rows =
     invalid_arg "Matrix_screen.static_rows: rows must be within grid height";
   if rows = 0 then ""
   else if not (Grid.Unsafe.has_pictures g) then
-    Grid.to_ansi ~styling:(t.color_depth :> Ansi.Styling.t) ~trim:true ~rows g
-    ^ "\n"
+    Grid.to_ansi ~styling:t.styling ~trim:true ~rows g ^ "\n"
   else begin
     own t.diff;
     let p = t.diff.pictures in
@@ -1610,6 +1641,7 @@ let static_rows t g ~rows =
         width = Grid.width g;
         height = rows + 1;
         relative = true;
+        styled = t.styling <> `Plain;
       }
     in
     let width = Grid.width g in
@@ -1644,10 +1676,11 @@ let static_rows t g ~rows =
         end
         else begin
           let cw = Grid.Unsafe.cell_width g idx in
-          Ansi.Sgr_state.update c.sgr w ~fg:(Grid.Unsafe.get_fg g idx)
-            ~bg:(Grid.Unsafe.get_bg g idx)
-            ~attrs:(Grid.Unsafe.get_attrs g idx)
-            ~link:(Grid.Unsafe.get_link g idx);
+          if c.styled then
+            Ansi.Sgr_state.update c.sgr w ~fg:(Grid.Unsafe.get_fg g idx)
+              ~bg:(Grid.Unsafe.get_bg g idx)
+              ~attrs:(Grid.Unsafe.get_attrs g idx)
+              ~link:(Grid.Unsafe.get_link g idx);
           let len = Grid.Unsafe.cell_text_length g idx in
           if cw <= 0 || len <= 0 then Ansi.Writer.write_char w ' '
           else (
@@ -1658,7 +1691,7 @@ let static_rows t g ~rows =
         end
       done;
       Ansi.Sgr_state.close_link c.sgr w;
-      Ansi.emit Ansi.reset w;
+      if c.styled then Ansi.emit Ansi.reset w;
       Ansi.Sgr_state.reset c.sgr;
       Ansi.Writer.write_char w '\n'
     done;

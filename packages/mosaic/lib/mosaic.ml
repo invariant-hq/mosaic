@@ -536,7 +536,7 @@ let render_static_view runtime (view : _ t) =
      the screen's capabilities stay its defaults: it only lays the rows out. *)
   Matrix.Screen.apply_capabilities (Renderer.screen renderer)
     ~explicit_width:true ~explicit_cursor_positioning:false ~hyperlinks:true
-    ~color_depth:`Truecolor ~graphics:`Blocks
+    ~colors:`Truecolor ~styling:`Truecolor ~graphics:`Blocks
     ~cell_size:(Matrix.cell_size runtime.matrix_app);
   let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
   let vnode = compile ~dispatch:(fun _ -> ()) view in

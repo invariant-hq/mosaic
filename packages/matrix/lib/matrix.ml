@@ -829,8 +829,8 @@ let refresh_capabilities t =
   in
   Screen.apply_capabilities t.screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
-    ~hyperlinks:caps.hyperlinks ~color_depth ~graphics:caps.graphics
-    ~cell_size:t.cell_size;
+    ~hyperlinks:caps.hyperlinks ~colors:color_depth ~styling:color_depth
+    ~graphics:caps.graphics ~cell_size:t.cell_size;
   set_width_method t (width_method t)
 
 (* A batch's queries are sent, and what they are owed is added to the

@@ -9,7 +9,7 @@ let show ?cell_size ~width vnode =
   let renderer = Renderer.create () in
   Matrix_screen.apply_capabilities (Renderer.screen renderer)
     ~explicit_width:true ~explicit_cursor_positioning:false ~hyperlinks:true
-    ~color_depth:`Truecolor ~graphics:`Blocks ~cell_size;
+    ~colors:`Truecolor ~styling:`Truecolor ~graphics:`Blocks ~cell_size;
   set_viewport renderer ~width ~height:4;
   let reconciler =
     Mosaic.Reconciler.create ~container:(Renderer.root renderer)
