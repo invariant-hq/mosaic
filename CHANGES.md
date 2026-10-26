@@ -111,6 +111,7 @@ it.
 - `Matrix_text` adds a streaming grapheme segmenter (`Segmenter`), a text layout with wrapping and row queries (`Layout`), `find_pos`, `find_wrap_pos`, `width_at`, `iter_units`, `iter_word_breaks`, `uchar_width`, the `` `Unicode_wide `` width method, and `grapheme_cluster_break`, the Grapheme_Cluster_Break property of a character (UAX #29)
 - `Pty.wait` reaps a child and returns its status
 - `Tty.keys` reads keys as they are typed with the interrupt, quit and suspend characters still the terminal's, and `Tty.no_echo` turns the echo off and discards typeahead as getpass(3) does
+- `Tty.background fd` says the process's job is in the background of its controlling terminal `fd`, whose writes land among the shell's
 - `Caps.t.dumb` says the terminal performs no control function (`TERM` unset, `dumb` or `unknown`, outside a Windows console), and `Caps.t.eager_wrap` that it moves to the next line as soon as it prints in the last column (`am` without `xenl` in its description), where a program that keeps the cursor on its row writes nothing
 
 #### Changed

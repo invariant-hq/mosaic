@@ -49,6 +49,15 @@ val is_controlling : Unix.file_descr -> bool
     terminal. So is a pseudo-terminal the process opened, and every descriptor
     on Windows. *)
 
+val background : Unix.file_descr -> bool
+(** [background fd] is [true] iff [fd] is the process's controlling terminal and
+    the process's group is not its {e foreground} group (tcgetpgrp(3)), the
+    group of the job the shell lets read the terminal. A shell with job control
+    runs a job in the background after [&] or [bg]. A write from the background
+    goes through, unless the terminal's [TOSTOP] setting is on and stops the
+    process (SIGTTOU), so it lands among what the shell and the job in the
+    foreground write. It is [false] on Windows. *)
+
 val window : Unix.file_descr -> (int * int) option
 (** [window fd] is the size of [fd]'s window, [Some (cols, rows)], as the system
     reports it ([TIOCGWINSZ], or the window of the console screen buffer on

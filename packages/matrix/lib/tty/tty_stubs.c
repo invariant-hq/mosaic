@@ -201,6 +201,19 @@ CAMLprim value matrix_tty_is_controlling(value fd) {
 #endif
 }
 
+/* Whether [fd] is the controlling terminal and its foreground process group
+   is not the process's, as for a job a shell runs in the background. */
+CAMLprim value matrix_tty_background(value fd) {
+#ifdef _WIN32
+  (void)fd;
+  return Val_false;
+#else
+  if (!Bool_val(matrix_tty_is_controlling(fd))) return Val_false;
+  pid_t fg = tcgetpgrp(Int_val(fd));
+  return Val_bool(fg != -1 && fg != getpgrp());
+#endif
+}
+
 /* OCaml has no monotonic clock in its distribution. */
 CAMLprim value matrix_tty_now(value unit) {
   (void)unit;

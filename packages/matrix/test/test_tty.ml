@@ -50,6 +50,41 @@ let test_is_controlling () =
       | _, WEXITED 3 -> fail "both answers are wrong"
       | _ -> fail "the child could not take the slave")
 
+external new_group : unit -> unit = "test_tty_new_group"
+
+(* A job in the foreground group of its controlling terminal is not in the
+   background; one in another group of the session is. A terminal that
+   controls no session of the process, and a pipe, are never the
+   background's. *)
+let test_background () =
+  with_pty (fun _ fd ->
+      is_false ~msg:"an opened pseudo-terminal" (Tty.background fd));
+  with_pipe (fun r _ -> is_false ~msg:"a pipe" (Tty.background r));
+  with_pty @@ fun _ slave ->
+  match Unix.fork () with
+  | 0 ->
+      let code =
+        try
+          ignore (Unix.setsid () : int);
+          set_controlling slave;
+          if Tty.background slave then 1
+          else
+            match Unix.fork () with
+            | 0 ->
+                new_group ();
+                Unix._exit (if Tty.background slave then 0 else 2)
+            | pid -> (
+                match Unix.waitpid [] pid with _, WEXITED c -> c | _ -> 4)
+        with _ -> 4
+      in
+      Unix._exit code
+  | pid -> (
+      match Unix.waitpid [] pid with
+      | _, WEXITED 0 -> ()
+      | _, WEXITED 1 -> fail "the session's leader is in the foreground"
+      | _, WEXITED 2 -> fail "a group of its own is in the background"
+      | _ -> fail "the child could not take the slave")
+
 let size = Testable.(option (pair int int))
 
 (* The window as the system has it, and no guess where it has none. *)
@@ -577,6 +612,7 @@ let () =
           test "is_tty" test_is_tty;
           test "is_controlling" test_is_controlling;
           test "window" test_window;
+          test "background" test_background;
           test "readable" test_readable;
           test "now" test_now;
         ];
