@@ -465,6 +465,9 @@ module Private : sig
         (** Decides whether a node may deliver its changed size to its size
             observer now. A refused report stays pending and is offered again at
             the node's next traversal. *)
+    mutable regroups : t list;
+        (** The culling nodes whose children in the layout tree are to be set
+            again ({!flush_regroups}). A new context holds none. *)
   }
   (** The type for renderer callbacks inherited by all nodes in a tree. *)
 
@@ -594,10 +597,12 @@ module Private : sig
     parent:t -> viewport:Matrix_grid.region -> (t -> unit) -> unit
   (** [iter_children_in_viewport ~parent ~viewport f] applies [f] to
       {!children_in_viewport}, in order. The cost is that of a binary search
-      over [parent]'s children and of the children kept, unless the layout of
-      [parent]'s subtree, its children or their translations changed since the
-      last call; then it is linear in the children, and their cached layouts are
-      refreshed from the layout tree. *)
+      over [parent]'s children in the layout tree and of the children kept,
+      unless the layout of [parent]'s subtree, its children or their
+      translations changed since the last call; then it is linear in its
+      children in the layout tree and in the members of the chunks whose layout
+      changed (see {!set_viewport_cull}). When [parent] holds no chunk, the
+      cached layouts of its children are then refreshed from the layout tree. *)
 
   val set_viewport_cull : t -> bool -> unit
   (** [set_viewport_cull t v] enables or disables viewport culling of [t]'s
@@ -605,7 +610,36 @@ module Private : sig
       subtrees may paint inside the effective ancestor clip (via
       {!iter_children_in_viewport}); offscreen children are neither updated
       ([on_frame], resize hooks) nor rendered nor hit-testable until they scroll
-      back into view. Scroll containers enable this on their content node. *)
+      back into view. Scroll containers enable this on their content node.
+
+      A culling node holds its children in the layout tree in {e chunks} when
+      its style is a flex column on one line, with no gap, no [justify_content]
+      that distributes space, and an automatic height with no maximum. Each run
+      of contained children, at most 256, sits under a layout node of its own; a
+      child is {e contained} when it is positioned relatively, does not grow,
+      has no [auto] top or bottom margin, and has no percentage in its size,
+      minimum or maximum size, flex basis, or top or bottom inset. Every other
+      child sits directly under the culling node. The chunks change no child's
+      box. Laying the node out again after a change to some children lays out
+      the members of their chunks, and answers every other child from its layout
+      cache. The renderer sets the layout tree's children of every culling node
+      changed since the last layout ({!flush_regroups}) before it lays the tree
+      out, so until then the layout tree does not hold the children added since.
+  *)
+
+  val flush_regroups : t -> unit
+  (** [flush_regroups t] sets, for each culling node of [t]'s tree whose
+      children or whose children's styles changed since, its children in the
+      layout tree. *)
+
+  val location_x : t -> Toffee.Layout.t -> float
+  (** [location_x t layout] is [t]'s horizontal position relative to its
+      parent's layout origin, where [layout] is [t]'s layout in the layout tree.
+      It is [layout]'s location unless [t] is in a chunk, where it is the
+      location the layout tree gives [t] in a column without chunks. *)
+
+  val location_y : t -> Toffee.Layout.t -> float
+  (** [location_y t layout] is [t]'s vertical position, as {!location_x}. *)
 
   val viewport_cull : t -> bool
   (** [viewport_cull t] is [true] iff viewport culling is enabled on [t]. *)

@@ -81,6 +81,7 @@ let make_ctx ?(width_method = `Unicode) () =
       cell_size = (fun () -> None);
       report_scroll = (fun _ ~region:_ ~dx:_ ~dy:_ -> ());
       admit_size_report = (fun _ -> true);
+      regroups = [];
     }
   in
   { ctx; schedule_count; focus_log; blur_log; unregister_log }

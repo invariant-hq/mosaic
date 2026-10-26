@@ -561,9 +561,12 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   in
   Renderable.set_style content_node content_style;
   (* Viewport culling (opentui ScrollBox viewportCulling, default on): only
-     the children intersecting the viewport are laid out, updated, and
-     rendered each frame, so a long transcript pays O(viewport) rather than
-     O(content) per frame. *)
+     the children whose subtrees reach the viewport are updated, rendered and
+     hit-tested each frame. Every child is laid out: the content holds the
+     children that cannot change one another's layout in chunks of at most
+     256 in the layout tree, so a frame that changes a child lays out the
+     members of its chunk again and answers the others from their layout
+     caches. *)
   Renderable.Private.set_viewport_cull content_node true;
   (* Horizontal scroll bar: inside wrapper, below viewport *)
   let horizontal_bar =

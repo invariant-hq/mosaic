@@ -557,6 +557,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
       cell_size = (fun () -> Screen.cell_size screen);
       report_scroll;
       admit_size_report;
+      regroups = [];
     }
   in
   let root_style =
@@ -676,8 +677,8 @@ let rec build_commands (t : t) (node : Renderable.t) ~parent_x ~parent_y
     let layout = toffee_exn (Toffee.layout t.tree toffee_node) in
     (* Absolute position = parent content box origin + node's relative location
        (which is relative to parent's content box). *)
-    let abs_x = parent_x +. layout.location.x in
-    let abs_y = parent_y +. layout.location.y in
+    let abs_x = parent_x +. Renderable.Private.location_x node layout in
+    let abs_y = parent_y +. Renderable.Private.location_y node layout in
     let abs_w = layout.size.width in
     let abs_h = layout.size.height in
     Renderable.Private.update_layout node ~x:abs_x ~y:abs_y ~width:abs_w
@@ -752,6 +753,7 @@ let execute_commands (t : t) ~(grid : Grid.t) ~(hits : Screen.Hit_grid.t)
 (* ───── Render Frame ───── *)
 
 let layout_dirty t =
+  Renderable.Private.flush_regroups t.root;
   toffee_exn (Toffee.dirty t.tree (Renderable.Private.toffee_node t.root))
 
 (* Text is measured by the screen's width method, and pictures by its cell
@@ -774,6 +776,7 @@ let follow_width_method t =
 
 let compute_layout t ~width ~height =
   follow_width_method t;
+  Renderable.Private.flush_regroups t.root;
   let root_toffee = Renderable.Private.toffee_node t.root in
   let needs_layout =
     (match t.last_layout with

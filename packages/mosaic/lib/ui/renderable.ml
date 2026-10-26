@@ -63,6 +63,7 @@ type context = {
   cell_size : unit -> (int * int) option;
   report_scroll : node -> region:Grid.region -> dx:int -> dy:int -> unit;
   admit_size_report : node -> bool;
+  mutable regroups : node list;
 }
 
 (* The region a subtree may paint, in cells relative to its node's layout
@@ -78,9 +79,12 @@ and paint_region = {
 (* A visible child of a culling node, with its paint region relative to the
    parent's origin: [p0, p1) on the primary axis, [c0, c1) on the cross axis.
    [rank] is its index among the parent's children, which orders equal
-   z-indices. *)
+   z-indices. In a chunked column's index an entry may stand for a chunk
+   ([stands_for]), with the region its members' join and [child] its first member
+   (see "Chunks"). *)
 and cull_entry = {
   child : node;
+  stands_for : chunk option;
   rank : int;
   p0 : int;
   p1 : int;
@@ -97,6 +101,22 @@ and cull_index = {
   reach : int array;
   column : bool;
 }
+
+(* A run of a culling column's children that the layout tree holds under a
+   node of its own, [chunk_node] (see "Chunks"). [index] is the cull index of
+   the visible [members], built from the first member's layout value with
+   [base] the first member's rank; [claimed] is the regroup that last kept the
+   chunk. *)
+and chunk = {
+  chunk_node : Toffee.Node_id.t;
+  mutable members : node array;
+  mutable claimed : int;
+  mutable base : int;
+  mutable index : cull_index option;
+}
+
+(* A child of a culling node in the layout tree. *)
+and layout_child = Direct of node | Chunk of chunk
 
 (* A node's absolute box, in floats only so that updating it allocates
    nothing. A node shares [unplaced] until its first layout, as many are
@@ -140,6 +160,13 @@ and node = {
   mutable cull_index : cull_index option;
   mutable cull_dirty : bool;
   mutable paint_region : paint_region option;
+  (* Chunks (see "Chunks"): [chunk] holds this node in the layout tree, if
+     any. A culling node's [layout_children] are its children in the layout
+     tree, and [regroup_from] is the index of its first child changed since
+     they were set, [max_int] for none. *)
+  mutable chunk : chunk option;
+  mutable layout_children : layout_child array;
+  mutable regroup_from : int;
   (* Rendering *)
   mutable render : render;
   mutable render_before : render option;
@@ -367,6 +394,9 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     cull_index = None;
     cull_dirty = false;
     paint_region = None;
+    chunk = None;
+    layout_children = [||];
+    regroup_from = max_int;
     render;
     render_before = None;
     render_after = None;
@@ -526,6 +556,263 @@ let set_child_clip t fn =
   t.child_clip <- fn;
   request_render t
 
+(* ───── Chunks ─────
+
+   A culling column holds its children in the layout tree in chunks: each run
+   of [contained] children sits under a column node of its own, at most
+   [chunk_size] to a chunk, and every other child sits directly under the
+   column. The renderable tree is unchanged. A clean chunk is measured from
+   its layout cache and laid out from its members', so laying the column out
+   again lays out the members of the chunks that changed and of no other
+   (Flutter's layout cut-off over CodeMirror's tree of line chunks). The
+   layout tree keys a final layout on the parent's size, so when the column's
+   height changes each clean chunk still runs its column pass, over its
+   members' cached layouts.
+
+   Every child keeps the box it has in a flat column. The column has one line,
+   no gap, no space distribution and an automatic height with no maximum, so
+   its free space is never negative ([chunkable]). A contained child is in
+   flow, takes no free space and resolves no percentage against the column,
+   so its size depends only on itself and the width it is given, which a
+   chunk stretched to the column's width passes on, and its position is the
+   sum of the outer heights before it. Children whose own style breaks this
+   are laid out flat. The layout tree rounds each location relative to its
+   parent, so a chunked child's position is the rounded sum of the chunk's
+   and its own unrounded locations, the value the flat column rounds
+   ([location_x], [location_y]).
+
+   [regroup] alone sets the layout tree's children of a culling node. Every
+   change to its child list, and every change of a child's style that changes
+   whether it is contained, notes the first index changed ([note_regroup]),
+   and the renderer runs the pending regroups before each layout
+   ([flush_regroups]). *)
+
+let chunk_size = 256
+let regroup_passes = Atomic.make 0
+
+let chunkable p =
+  let open Toffee.Style in
+  let s = p.style in
+  let gap = (gap s).height in
+  (match display s with
+    | Display.Flex | Display.None -> true
+    | Block | Grid -> false)
+  && flex_direction s = Flex_direction.Column
+  && flex_wrap s = Flex_wrap.No_wrap
+  && Length_percentage.is_length gap
+  && Length_percentage.value gap = 0.
+  && (match justify_content s with
+    | Some (Space_between | Space_around | Space_evenly | Stretch) -> false
+    | Some _ | None -> true)
+  && Dimension.is_auto (size s).height
+  && Dimension.is_auto (max_size s).height
+
+(* A child is contained when its box depends on nothing in the column but the
+   column's width: it stays in flow, takes no free space and resolves no
+   percentage of its size or its vertical offset against the column. *)
+let contained c =
+  let open Toffee.Style in
+  let s = c.style in
+  let no_percent (d : Dimension.t Toffee.Geometry.Size.t) =
+    not (Dimension.uses_percentage d.width || Dimension.uses_percentage d.height)
+  in
+  let margin = margin s and inset = inset s in
+  position s = Position.Relative
+  && flex_grow s = 0.
+  && (not (Length_percentage_auto.is_auto margin.top))
+  && (not (Length_percentage_auto.is_auto margin.bottom))
+  && no_percent (size s)
+  && no_percent (min_size s)
+  && no_percent (max_size s)
+  && (not (Dimension.uses_percentage (flex_basis s)))
+  && (not (Length_percentage_auto.uses_percentage inset.top))
+  && not (Length_percentage_auto.uses_percentage inset.bottom)
+
+let layout_child_length = function
+  | Direct _ -> 1
+  | Chunk k -> Array.length k.members
+
+let note_regroup p i =
+  if p.regroup_from = max_int then p.ctx.regroups <- p :: p.ctx.regroups;
+  p.regroup_from <- min p.regroup_from i
+
+let chunk_style p =
+  let open Toffee.Style in
+  default
+  |> set_flex_direction Flex_direction.Column
+  |> set_align_self (Some Align_items.Stretch)
+  |> set_align_items (align_items p.style)
+  |> set_size { width = Dimension.percent 1.; height = Dimension.auto }
+
+let same_layout_children a b =
+  Array.length a = Array.length b
+  && Array.for_all2
+       (fun a b ->
+         match (a, b) with
+         | Chunk a, Chunk b -> a == b
+         | Direct a, Direct b -> a == b
+         | Chunk _, Direct _ | Direct _, Chunk _ -> false)
+       a b
+
+(* [regroup p] sets [p]'s children in the layout tree from its children.
+   The layout children that end before the first changed child are kept; from
+   the one before it on, runs of contained children form chunks. A run breaks
+   where a chunk that is kept began, and a chunk keeps its layout node, and so
+   its cache, while its members are the same. A run of new children joins the
+   chunk that follows it when they fit. *)
+let regroup p =
+  let tree = p.ctx.tree in
+  let chunked = chunkable p in
+  let from = if chunked then p.regroup_from else 0 in
+  p.regroup_from <- max_int;
+  let pass = Atomic.fetch_and_add regroup_passes 1 + 1 in
+  let old = p.layout_children in
+  let kept = ref 0 and start = ref 0 in
+  while
+    !kept < Array.length old && !start + layout_child_length old.(!kept) < from
+  do
+    (match old.(!kept) with Chunk k -> k.claimed <- pass | Direct _ -> ());
+    start := !start + layout_child_length old.(!kept);
+    incr kept
+  done;
+  let rev_tail = ref [] and run = ref [] and length = ref 0 in
+  let owner = ref None in
+  let flush () =
+    if !length > 0 then (
+      let members = Array.of_list (List.rev !run) in
+      let k =
+        match !owner with
+        | Some k -> k
+        | None ->
+            {
+              chunk_node = toffee_exn (Toffee.new_leaf tree (chunk_style p));
+              members = [||];
+              claimed = 0;
+              base = 0;
+              index = None;
+            }
+      in
+      k.claimed <- pass;
+      if
+        not
+          (Array.length members = Array.length k.members
+          && Array.for_all2 ( == ) members k.members)
+      then (
+        k.members <- members;
+        k.index <- None;
+        toffee_exn
+          (Toffee.set_children tree k.chunk_node
+             (Array.map (fun c -> c.toffee_node) members)));
+      Array.iter (fun c -> c.chunk <- Some k) members;
+      rev_tail := Chunk k :: !rev_tail;
+      run := [];
+      length := 0;
+      owner := None)
+  in
+  for i = !start to p.child_count - 1 do
+    match p.children.(i) with
+    | Some c when chunked && contained c ->
+        let own =
+          match c.chunk with
+          | Some k when k.claimed <> pass -> Some k
+          | Some _ | None -> None
+        in
+        (match (own, !owner) with
+        | Some k, Some o when k != o -> flush ()
+        | Some k, None when !length + Array.length k.members > chunk_size ->
+            flush ()
+        | _ -> ());
+        if !length >= chunk_size then flush ();
+        (* A flush may have claimed [own]. *)
+        (if Option.is_none !owner then
+           match own with
+           | Some k when k.claimed <> pass -> owner := own
+           | Some _ | None -> ());
+        run := c :: !run;
+        incr length
+    | Some c ->
+        flush ();
+        c.chunk <- None;
+        rev_tail := Direct c :: !rev_tail
+    | None -> ()
+  done;
+  flush ();
+  for i = !kept to Array.length old - 1 do
+    match old.(i) with
+    | Chunk k when k.claimed <> pass -> ignore (Toffee.remove tree k.chunk_node)
+    | Chunk _ | Direct _ -> ()
+  done;
+  let tail = Array.of_list (List.rev !rev_tail) in
+  let old_tail = Array.sub old !kept (Array.length old - !kept) in
+  if not (same_layout_children tail old_tail) then (
+    p.layout_children <- Array.append (Array.sub old 0 !kept) tail;
+    p.cull_dirty <- true;
+    toffee_exn
+      (Toffee.set_children tree p.toffee_node
+         (Array.map
+            (function Chunk k -> k.chunk_node | Direct c -> c.toffee_node)
+            p.layout_children)))
+
+let flush_regroups t =
+  let nodes = t.ctx.regroups in
+  t.ctx.regroups <- [];
+  List.iter
+    (fun p ->
+      if p.regroup_from < max_int && p.viewport_cull && not p.destroyed then
+        regroup p)
+    nodes
+
+(* The layout tree's rounding. *)
+let[@inline] round_location f =
+  if f >= 0. then Float.floor (f +. 0.5 +. 1e-6)
+  else Float.ceil (f -. 0.5 -. 1e-6)
+
+(* [location_x c layout] is [c]'s horizontal position relative to its
+   parent's layout origin, where [layout] is [c]'s layout. *)
+let[@inline] location_x c (layout : Toffee.Layout.t) =
+  match c.chunk with
+  | None -> layout.location.x
+  | Some k ->
+      round_location
+        ((Toffee.unrounded_layout c.ctx.tree k.chunk_node).location.x
+       +. (Toffee.unrounded_layout c.ctx.tree c.toffee_node).location.x)
+
+let[@inline] location_y c (layout : Toffee.Layout.t) =
+  match c.chunk with
+  | None -> layout.location.y
+  | Some k ->
+      round_location
+        ((Toffee.unrounded_layout c.ctx.tree k.chunk_node).location.y
+       +. (Toffee.unrounded_layout c.ctx.tree c.toffee_node).location.y)
+
+(* Turning culling on chunks the children; turning it off lays them out flat
+   again. *)
+let set_viewport_cull t v =
+  if v <> t.viewport_cull then (
+    t.viewport_cull <- v;
+    if v then (
+      (* The chunks take the children from the layout tree's node of [t]
+         after it lets them go, each found there at once. *)
+      ignore (Toffee.set_children t.ctx.tree t.toffee_node [||]);
+      note_regroup t 0)
+    else (
+      ignore
+        (Toffee.set_children t.ctx.tree t.toffee_node
+           (Array.init t.child_count (fun i ->
+                match t.children.(i) with
+                | Some c ->
+                    c.chunk <- None;
+                    c.toffee_node
+                | None -> assert false)));
+      Array.iter
+        (function
+          | Chunk k -> ignore (Toffee.remove t.ctx.tree k.chunk_node)
+          | Direct _ -> ())
+        t.layout_children;
+      t.layout_children <- [||];
+      t.regroup_from <- max_int;
+      t.cull_index <- None))
+
 (* ───── Layout ───── *)
 
 let mark_dirty t =
@@ -533,6 +820,7 @@ let mark_dirty t =
   toffee_exn (Toffee.mark_dirty t.ctx.tree t.toffee_node)
 
 let apply_style t ~preserve_hidden new_style =
+  let was_contained = contained t in
   let new_style = prepare_style new_style in
   let display = Toffee.Style.display new_style in
   if not (Toffee.Style.Display.is_none display) then
@@ -555,6 +843,11 @@ let apply_style t ~preserve_hidden new_style =
     if (not now_visible) && t.focused then blur t);
   t.layout_dirty <- true;
   t.cull_dirty <- true;
+  (match t.parent with
+  | Some p when p.viewport_cull && was_contained <> contained t ->
+      note_regroup p 0
+  | Some _ | None -> ());
+  if t.viewport_cull then note_regroup t 0;
   t.ctx.schedule ()
 
 let set_style t new_style = apply_style t ~preserve_hidden:true new_style
@@ -617,6 +910,7 @@ let rec forget_paint_region t =
   | None -> ()
   | Some parent ->
       parent.cull_dirty <- true;
+      (match t.chunk with Some k -> k.index <- None | None -> ());
       if not (clips parent) then (
         parent.paint_region <- None;
         forget_paint_region parent)
@@ -644,10 +938,18 @@ let detach_impl child =
   match child.parent with
   | None -> ()
   | Some parent ->
+      if parent.viewport_cull then
+        note_regroup parent
+          (Option.value ~default:0 (find_child_index parent child));
       remove_child_ref parent child;
       child.parent <- None;
-      ignore
-        (Toffee.remove_child child.ctx.tree parent.toffee_node child.toffee_node);
+      let holder =
+        match child.chunk with
+        | Some k -> k.chunk_node
+        | None -> parent.toffee_node
+      in
+      child.chunk <- None;
+      ignore (Toffee.remove_child child.ctx.tree holder child.toffee_node);
       update_lifecycle_registration child;
       child.layout_valid <- false;
       parent.layout_dirty <- true
@@ -658,7 +960,8 @@ let attach_impl ~parent ~index child =
     else if index > parent.child_count then parent.child_count
     else index
   in
-  if idx >= parent.child_count then
+  if parent.viewport_cull then note_regroup parent idx
+  else if idx >= parent.child_count then
     toffee_exn
       (Toffee.add_child parent.ctx.tree parent.toffee_node child.toffee_node)
   else
@@ -724,24 +1027,34 @@ let detach_all = function
         nodes;
       Hashtbl.iter
         (fun _ parent ->
-          let kept = ref 0 and live = ref 0 in
+          let kept = ref 0 and live = ref 0 and first = ref max_int in
           for i = 0 to parent.child_count - 1 do
             match parent.children.(i) with
             | Some child when Option.is_some child.parent ->
                 parent.children.(!kept) <- Some child;
                 incr kept
             | Some child ->
+                first := min !first i;
+                (match child.chunk with
+                | Some k ->
+                    ignore
+                      (Toffee.remove_child parent.ctx.tree k.chunk_node
+                         child.toffee_node);
+                    child.chunk <- None
+                | None -> ());
                 live := !live + child.live_count;
                 update_lifecycle_registration child;
                 child.layout_valid <- false
             | None -> ()
           done;
-          ignore
-            (Toffee.set_children parent.ctx.tree parent.toffee_node
-               (Array.init !kept (fun i ->
-                    match parent.children.(i) with
-                    | Some child -> child.toffee_node
-                    | None -> assert false)));
+          if parent.viewport_cull then note_regroup parent !first
+          else
+            ignore
+              (Toffee.set_children parent.ctx.tree parent.toffee_node
+                 (Array.init !kept (fun i ->
+                      match parent.children.(i) with
+                      | Some child -> child.toffee_node
+                      | None -> assert false)));
           Array.fill parent.children !kept (parent.child_count - !kept) None;
           parent.child_count <- !kept;
           parent.z_dirty <- true;
@@ -757,12 +1070,20 @@ let detach_all = function
 let detach_children t =
   if t.child_count > 0 then (
     ignore (Toffee.set_children t.ctx.tree t.toffee_node [||]);
+    Array.iter
+      (function
+        | Chunk k -> ignore (Toffee.remove t.ctx.tree k.chunk_node)
+        | Direct _ -> ())
+      t.layout_children;
+    t.layout_children <- [||];
+    t.regroup_from <- max_int;
     let live = ref 0 in
     for i = 0 to t.child_count - 1 do
       match t.children.(i) with
       | Some child ->
           t.children.(i) <- None;
           child.parent <- None;
+          child.chunk <- None;
           live := !live + child.live_count;
           unregister_lifecycle_if_needed child;
           child.layout_valid <- false
@@ -1029,8 +1350,8 @@ let update_children_layout t =
         match Toffee.layout t.ctx.tree child.toffee_node with
         | Ok (l : Toffee.Layout.t) ->
             update_layout child
-              ~x:(t.abs.abs_x +. l.location.x)
-              ~y:(t.abs.abs_y +. l.location.y)
+              ~x:(t.abs.abs_x +. location_x child l)
+              ~y:(t.abs.abs_y +. location_y child l)
               ~width:l.size.width ~height:l.size.height
         | Error _ -> ())
     | Some _ | None -> ()
@@ -1094,14 +1415,101 @@ let rec paint_region t =
 (* [child]'s paint region relative to its parent's layout origin. *)
 and child_region child =
   let layout = toffee_layout child and r = paint_region child in
-  let x = terminal_edge layout.location.x + child.translate_x
-  and y = terminal_edge layout.location.y + child.translate_y in
+  let x = terminal_edge (location_x child layout) + child.translate_x
+  and y = terminal_edge (location_y child layout) + child.translate_y in
   { r with x0 = x + r.x0; y0 = y + r.y0; x1 = x + r.x1; y1 = y + r.y1 }
+
+(* [entries], built from the layout value [built_from], sorted by [p0]
+   (children are usually in that order already, and an insertion sort is
+   then linear), with the reach of each prefix. *)
+let sorted_index ~built_from ~column entries =
+  let entries = Array.of_list entries in
+  for i = 1 to Array.length entries - 1 do
+    let e = entries.(i) in
+    let j = ref (i - 1) in
+    while !j >= 0 && entries.(!j).p0 > e.p0 do
+      entries.(!j + 1) <- entries.(!j);
+      decr j
+    done;
+    entries.(!j + 1) <- e
+  done;
+  let reach = Array.make (Array.length entries) min_int in
+  Array.iteri
+    (fun i e -> reach.(i) <- (if i = 0 then e.p1 else max reach.(i - 1) e.p1))
+    entries;
+  { built_from; entries; reach; column }
+
+let column_entry ?stands_for child ~rank (r : paint_region) =
+  { child; stands_for; rank; p0 = r.y0; p1 = r.y1; c0 = r.x0; c1 = r.x1 }
+
+(* The index of [k]'s visible members, ranked from [base]. The layout tree
+   replaces the first member's layout value whenever the chunk is laid out
+   again or moves, and a translation below a member forgets the index. *)
+let chunk_index k ~base =
+  let built_from = toffee_layout k.members.(0) in
+  match k.index with
+  | Some index when index.built_from == built_from && k.base = base -> index
+  | Some _ | None ->
+      let entries = ref [] in
+      for j = Array.length k.members - 1 downto 0 do
+        let c = k.members.(j) in
+        if c.visible then
+          entries :=
+            column_entry c ~rank:(base + j) (child_region c) :: !entries
+      done;
+      let index = sorted_index ~built_from ~column:true !entries in
+      k.index <- Some index;
+      k.base <- base;
+      index
 
 let cull_index t =
   let layout = toffee_layout t in
   match t.cull_index with
   | Some index when index.built_from == layout && not t.cull_dirty -> index
+  | (Some _ | None)
+    when Array.exists
+           (function Chunk _ -> true | Direct _ -> false)
+           t.layout_children ->
+      (* An entry for each visible direct child, and one for each chunk with
+         a visible member, whose region joins its members'. *)
+      let entries = ref [] and rank = ref 0 in
+      Array.iter
+        (fun item ->
+          (match item with
+          | Direct c ->
+              if c.visible then
+                entries :=
+                  column_entry c ~rank:!rank (child_region c) :: !entries
+          | Chunk k ->
+              let index = chunk_index k ~base:!rank in
+              let n = Array.length index.entries in
+              if n > 0 then (
+                let y0 = index.entries.(0).p0 and y1 = index.reach.(n - 1) in
+                let x0 = ref max_int and x1 = ref min_int in
+                Array.iter
+                  (fun e ->
+                    x0 := min !x0 e.c0;
+                    x1 := max !x1 e.c1)
+                  index.entries;
+                entries :=
+                  {
+                    child = k.members.(0);
+                    stands_for = Some k;
+                    rank = !rank;
+                    p0 = y0;
+                    p1 = y1;
+                    c0 = !x0;
+                    c1 = !x1;
+                  }
+                  :: !entries));
+          rank := !rank + layout_child_length item)
+        t.layout_children;
+      let index =
+        sorted_index ~built_from:layout ~column:true (List.rev !entries)
+      in
+      t.cull_index <- Some index;
+      t.cull_dirty <- false;
+      index
   | Some _ | None ->
       update_children_layout t;
       let column =
@@ -1115,31 +1523,22 @@ let cull_index t =
         | Some child when child.visible ->
             let r = child_region child in
             let entry =
-              if column then
-                { child; rank; p0 = r.y0; p1 = r.y1; c0 = r.x0; c1 = r.x1 }
-              else { child; rank; p0 = r.x0; p1 = r.x1; c0 = r.y0; c1 = r.y1 }
+              if column then column_entry child ~rank r
+              else
+                {
+                  child;
+                  stands_for = None;
+                  rank;
+                  p0 = r.x0;
+                  p1 = r.x1;
+                  c0 = r.y0;
+                  c1 = r.y1;
+                }
             in
             entries := entry :: !entries
         | Some _ | None -> ()
       done;
-      (* Children are usually already in primary order: an insertion sort is
-         linear then. *)
-      let entries = Array.of_list !entries in
-      for i = 1 to Array.length entries - 1 do
-        let e = entries.(i) in
-        let j = ref (i - 1) in
-        while !j >= 0 && entries.(!j).p0 > e.p0 do
-          entries.(!j + 1) <- entries.(!j);
-          decr j
-        done;
-        entries.(!j + 1) <- e
-      done;
-      let reach = Array.make (Array.length entries) min_int in
-      Array.iteri
-        (fun i e ->
-          reach.(i) <- (if i = 0 then e.p1 else max reach.(i - 1) e.p1))
-        entries;
-      let index = { built_from = layout; entries; reach; column } in
+      let index = sorted_index ~built_from:layout ~column !entries in
       t.cull_index <- Some index;
       t.cull_dirty <- false;
       index
@@ -1150,6 +1549,37 @@ let cull_index t =
    left edge), so zero extent keeps the closed interval. *)
 let overlaps a0 a1 lo hi =
   if a0 = a1 then a0 >= lo && a0 <= hi else a1 > lo && a0 < hi
+
+(* [query_index index ~lo ~hi ~cross_lo ~cross_hi kept] is [kept] with the
+   entries of [index] whose regions overlap [lo, hi) and [cross_lo, cross_hi)
+   added. Every entry before the first whose reach meets [lo] ends above it.
+   An entry for a chunk adds the members its own index finds. *)
+let rec query_index index ~lo ~hi ~cross_lo ~cross_hi kept =
+  let kept = ref kept in
+  let n = Array.length index.entries in
+  let first = ref 0 and last = ref n in
+  while !first < !last do
+    let mid = (!first + !last) / 2 in
+    if index.reach.(mid) < lo then first := mid + 1 else last := mid
+  done;
+  let i = ref !first in
+  while !i < n && index.entries.(!i).p0 <= hi do
+    let e = index.entries.(!i) in
+    (if overlaps e.p0 e.p1 lo hi && overlaps e.c0 e.c1 cross_lo cross_hi then
+       match e.stands_for with
+       | None -> kept := e :: !kept
+       | Some k ->
+           (* The parent's index was built after the chunk's last layout, and
+              the chunk's index with it. *)
+           let index =
+             match k.index with
+             | Some index when k.base = e.rank -> index
+             | Some _ | None -> chunk_index k ~base:e.rank
+           in
+           kept := query_index index ~lo ~hi ~cross_lo ~cross_hi !kept);
+    incr i
+  done;
+  !kept
 
 let children_in_viewport ~(parent : t) ~(viewport : Grid.region) : t list =
   let index = cull_index parent in
@@ -1166,27 +1596,13 @@ let children_in_viewport ~(parent : t) ~(viewport : Grid.region) : t list =
         viewport.y - py,
         viewport.y + viewport.height - py )
   in
-  (* Every entry before the first whose reach meets [lo] ends above it. *)
-  let n = Array.length index.entries in
-  let first = ref 0 and last = ref n in
-  while !first < !last do
-    let mid = (!first + !last) / 2 in
-    if index.reach.(mid) < lo then first := mid + 1 else last := mid
-  done;
-  let kept = ref [] in
-  let i = ref !first in
-  while !i < n && index.entries.(!i).p0 <= hi do
-    let e = index.entries.(!i) in
-    if overlaps e.p0 e.p1 lo hi && overlaps e.c0 e.c1 cross_lo cross_hi then
-      kept := e :: !kept;
-    incr i
-  done;
+  let kept = query_index index ~lo ~hi ~cross_lo ~cross_hi [] in
   List.sort
     (fun a b ->
       match Int.compare a.child.z_index b.child.z_index with
       | 0 -> Int.compare a.rank b.rank
       | order -> order)
-    !kept
+    kept
   |> List.map (fun e -> e.child)
 
 let iter_children_in_viewport ~parent ~viewport f =
@@ -1299,6 +1715,7 @@ module Private = struct
     cell_size : unit -> (int * int) option;
     report_scroll : t -> region:Grid.region -> dx:int -> dy:int -> unit;
     admit_size_report : t -> bool;
+    mutable regroups : t list;
   }
 
   let create_root ctx ?id ?style () =
@@ -1346,7 +1763,10 @@ module Private = struct
   let iter_children_z = iter_children_z
   let children_in_viewport = children_in_viewport
   let iter_children_in_viewport = iter_children_in_viewport
-  let set_viewport_cull t v = t.viewport_cull <- v
+  let set_viewport_cull = set_viewport_cull
+  let flush_regroups = flush_regroups
+  let location_x = location_x
+  let location_y = location_y
   let viewport_cull t = t.viewport_cull
   let focus_direct = focus_direct
   let blur_direct = blur_direct

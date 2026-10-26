@@ -630,6 +630,175 @@ let culling_matches_a_scan =
         (List.length kept = List.length expected
         && List.for_all2 ( == ) kept expected))
 
+(* ── Viewport culling: chunks ──
+
+   A culling column holds its contained children in chunks in the layout
+   tree; every child keeps the box it has in a flat column. Two columns of
+   the same style and children, one culling and one not, are changed alike
+   and compared box for box. 300 rows span more than one chunk. *)
+
+let chunks_keep_every_box =
+  prop ~count:12 "a chunked column lays its children out as a flat one"
+    (Gen.int_range 0 1_000_000) (fun seed ->
+      let rng = Random.State.make [| seed |] in
+      let t = make_renderer () in
+      Renderable.set_style (Renderer.root t)
+        (Toffee.Style.default
+        |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Row
+        |> Toffee.Style.set_align_items
+             (Some Toffee.Style.Align_items.Flex_start));
+      (* A width of 0 sizes the column by its content. *)
+      let column_style width =
+        Toffee.Style.default
+        |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column
+        |> Toffee.Style.set_flex_shrink 0.
+        |> Toffee.Style.set_width
+             (if width = 0 then Toffee.Style.Dimension.auto else dim width)
+      in
+      let column () =
+        Renderable.create ~parent:(Renderer.root t) ~style:(column_style 30) ()
+      in
+      let chunked = column () and flat = column () in
+      Renderable.Private.set_viewport_cull chunked true;
+      let lpa = Toffee.Style.Length_percentage_auto.length in
+      let one = Toffee.Style.Length_percentage.length 1. in
+      let rect ?(left = lpa 0.) ?(top = lpa 0.) () : _ Toffee.Geometry.Rect.t =
+        { left; right = lpa 0.; top; bottom = lpa 0. }
+      in
+      (* Each row is a box holding a wrapped text. Contained kinds first: no
+         style, a border, a margin, a fractional height, a relative offset; then percentage
+         sizes, a growing box, an absolute box and an [auto] top margin. *)
+      let styled kind =
+        let s = Toffee.Style.default |> Toffee.Style.set_flex_shrink 0. in
+        match kind with
+        | 1 ->
+            Toffee.Style.set_border
+              { left = one; right = one; top = one; bottom = one }
+              s
+        | 2 -> Toffee.Style.set_margin (rect ~left:(lpa 2.) ~top:(lpa 1.) ()) s
+        | 3 ->
+            s
+            |> Toffee.Style.set_width (dim 7)
+            |> Toffee.Style.set_aspect_ratio (Some 3.)
+        | 4 ->
+            s
+            |> Toffee.Style.set_position Relative
+            |> Toffee.Style.set_inset (rect ~top:(lpa (-1.)) ())
+        | 5 ->
+            s
+            |> Toffee.Style.set_min_width (Toffee.Style.Dimension.percent 0.3)
+            |> Toffee.Style.set_max_width (Toffee.Style.Dimension.percent 0.8)
+            |> Toffee.Style.set_height (Toffee.Style.Dimension.percent 0.2)
+        | 6 -> Toffee.Style.set_flex_grow 1. s
+        | 7 ->
+            s
+            |> Toffee.Style.set_position Absolute
+            |> Toffee.Style.set_inset (rect ~left:(lpa 3.) ~top:(lpa 5.) ())
+        | _ ->
+            Toffee.Style.set_margin
+              (rect ~top:Toffee.Style.Length_percentage_auto.auto ())
+              s
+      in
+      let words () =
+        String.concat " "
+          (List.init
+             (1 + Random.State.int rng 8)
+             (fun _ -> String.make (1 + Random.State.int rng 6) 'w'))
+      in
+      let add ~index kind text =
+        List.iter
+          (fun parent ->
+            let row =
+              Renderable.create ~parent ~index ~style:(styled kind) ()
+            in
+            ignore
+              (Text.create ~parent:row ~content:text ~wrap:`Word () : Text.t))
+          [ chunked; flat ]
+      in
+      let row parent i = Option.get (Renderable.Private.child_at parent i) in
+      let count () = List.length (Renderable.children flat) in
+      let kind () =
+        if Random.State.int rng 4 > 0 then Random.State.int rng 5
+        else 5 + Random.State.int rng 4
+      in
+      for i = 0 to 299 do
+        add ~index:i (kind ()) (words ())
+      done;
+      (* A hidden node keeps the box of the last frame that showed it. *)
+      let rec boxes node =
+        if not (Renderable.visible node) then []
+        else
+          let b = Renderable.bounds node in
+          (b.x, b.y, b.width, b.height)
+          :: List.concat_map boxes (Renderable.children node)
+      in
+      let relative parent =
+        Renderable.Private.refresh_positions parent;
+        let b = Renderable.bounds parent in
+        List.map
+          (fun (x, y, w, h) -> (x - b.x, y - b.y, w, h))
+          (List.concat_map boxes (Renderable.children parent))
+      in
+      let same = ref true in
+      for _ = 1 to 12 do
+        (match Random.State.int rng 6 with
+        | 0 ->
+            for _ = 1 to 1 + Random.State.int rng 40 do
+              add ~index:(count ()) (kind ()) (words ())
+            done
+        | 1 -> add ~index:(Random.State.int rng (count ())) (kind ()) (words ())
+        | 2 ->
+            let i = Random.State.int rng (count ()) in
+            List.iter
+              (fun p -> Renderable.destroy_recursively (row p i))
+              [ chunked; flat ]
+        | 3 ->
+            let i = Random.State.int rng (count ()) and k = kind () in
+            List.iter
+              (fun p -> Renderable.set_style (row p i) (styled k))
+              [ chunked; flat ]
+        | 4 ->
+            let i = Random.State.int rng (count ()) in
+            List.iter
+              (fun p ->
+                let r = row p i in
+                Renderable.set_visible r (not (Renderable.visible r)))
+              [ chunked; flat ]
+        | _ ->
+            let w =
+              if Random.State.bool rng then 0 else 10 + Random.State.int rng 40
+            in
+            List.iter
+              (fun p -> Renderable.set_style p (column_style w))
+              [ chunked; flat ]);
+        do_frame ~width:120 ~height:20 t;
+        if relative chunked <> relative flat then same := false;
+        (* Culling keeps the rows whose boxes, their text's included, meet a
+           viewport. *)
+        let top = Renderable.y chunked + Random.State.int rng 400 in
+        let viewport : Matrix_grid.region =
+          { x = 0; y = top; width = 120; height = 20 }
+        in
+        let meets node =
+          List.exists
+            (fun (x, y, w, h) ->
+              let overlaps a0 a1 lo hi =
+                if a0 = a1 then a0 >= lo && a0 <= hi else a1 > lo && a0 < hi
+              in
+              overlaps y (y + h) top (top + 20) && overlaps x (x + w) 0 120)
+            (boxes node)
+        in
+        let expected = List.filter meets (Renderable.children chunked) in
+        let kept =
+          Renderable.Private.children_in_viewport ~parent:chunked ~viewport
+        in
+        if
+          List.sort compare (List.map Renderable.Private.num kept)
+          <> List.sort compare (List.map Renderable.Private.num expected)
+        then same := false
+      done;
+      is_true ~msg:"every box as in the flat column, culled as a scan" !same)
+
 (* ── Viewport culling: frames ── *)
 
 (* One frame's rows. The grid is read before presentation swaps the screen's
@@ -2373,6 +2542,7 @@ let () =
           test "a selection reads rows out of view where they are"
             selection_reads_rows_out_of_view;
           culling_matches_a_scan;
+          chunks_keep_every_box;
         ];
       group "Scroll hints"
         [
