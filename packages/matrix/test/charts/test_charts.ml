@@ -739,6 +739,28 @@ let%expect_test "a second y axis reads a second scale" =
          0        1         2        3
     |}]
 
+let%expect_test "a legend on the right lies beyond a second y axis" =
+  show ~width:40 ~height:6
+    C.(
+      layer
+        [
+          line ~color:(series "price") ~x:fst ~y:snd points;
+          line ~color:(series "volume") ~x:fst
+            ~y:(fun (_, y) -> 1000. *. y)
+            points
+          |> rename "y" "volume";
+          axis ~side:`Right "volume";
+        ]);
+  [%expect
+    {|
+    2.5 ┤                 ⢀⠤⠊├ 2500 ─ price
+        │     ⣀⠔⠢⢄⣀     ⡠⠒⠁  │      ─ volume
+        │  ⢀⠤⠊     ⠉⠑⠢⠔⠉     │
+    0.0 ┤⡠⠒⠁                 ├ 0
+        └┬───────────────┬───┘
+        0.0             2.5
+    |}]
+
 let%expect_test "legends: implied, on each side, in rows or columns" =
   let fig side direction =
     C.(
@@ -763,11 +785,11 @@ let%expect_test "legends: implied, on each side, in rows or columns" =
   show ~width:24 ~height:5 (fig (`Inside `Bottom_left) `Rows);
   [%expect
     {|
-    1 ┤⠉⠒⠒⠤⠤⣀⣀       ⣀─ up
-      │       ⠉⠑⠒⠢⠤⢄⣀ ─ down
-    0 ┤⣀⠤⠤⠒⠒⠉⠉       ⠉⠉⠒⠒⠤⠤⣀
-      └┬───────────────────┬
-       0                   1
+    1 ┤⠉⠒⠤⢄⡀    ⢀⡠⠤⠒⠉ ─ up
+      │    ⠈⠉⠒⠤⣀⡀     ─ down
+    0 ┤⣀⠤⠒⠊⠁    ⠈⠑⠒⠤⣀
+      └┬────────────┬
+       0            1
     ⠑⠢⢄⡀         ⢀⡠⠔⠊ key
        ⠈⠒⠤⣀   ⣀⠤⠒⠁    ─ up
            ⠑⠢⢄        ─ down

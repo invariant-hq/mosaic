@@ -408,8 +408,7 @@ let axis ?side ?(show = true) ?title ?(grid = `None) ?format ?(spacing = 0)
       a_title_style = title_style;
     }
 
-let legend ?(side = `Inside `Top_right) ?(show = true) ?title
-    ?(direction = `Rows) name =
+let legend ?(side = `Right) ?(show = true) ?title ?(direction = `Rows) name =
   Legend
     {
       l_scale = name;
@@ -1415,7 +1414,7 @@ let legends_of (r : resolved) =
             | None ->
                 {
                   l_scale = s.name;
-                  l_side = `Inside `Top_right;
+                  l_side = `Right;
                   l_show = true;
                   l_title = None;
                   l_direction = `Rows;
@@ -1731,16 +1730,24 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
                   in
                   Some (x, y)
             | `Right ->
-                Some (width - mg.right + 1 + bump `Right (lw + 1), plot.y)
+                (* the right legends take the last columns of the region,
+                   after the right axis's room *)
+                let total =
+                  List.fold_left
+                    (fun n (lg, es) ->
+                      if lg.l_side = `Right then
+                        n + fst (legend_size wm lg es) + 1
+                      else n)
+                    0 legends
+                in
+                Some (width - total + 1 + bump `Right (lw + 1), plot.y)
             | `Left -> Some (bump `Left (lw + 1), plot.y)
             | `Top ->
                 Some
                   ( plot.x,
                     (if tiers.t_title && r.fig_title <> None then 1 else 0)
                     + bump `Top lh )
-            | `Bottom ->
-                Some
-                  (plot.x, height - mg.bottom + mg.bottom - lh - bump `Bottom lh)
+            | `Bottom -> Some (plot.x, height - lh - bump `Bottom lh)
           in
           Option.map (fun (lx, ly) -> { lg; entries; lx; ly }) at)
         legends

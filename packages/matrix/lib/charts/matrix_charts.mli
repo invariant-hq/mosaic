@@ -436,8 +436,10 @@ val margins :
 
     Each position scale has an axis. An x scale's axis lies below the plot, the
     first y scale's to its left and the second's to its right. Each color scale
-    of categories has a legend inside the plot's top-right corner, drawn where
-    it fits. {!axis} and {!legend} replace these.
+    of categories has a legend right of the plot, beyond a second y axis, in the
+    room it needs. A legend [`Inside] a corner of the plot is drawn where it
+    fits, over the cells of the marks under it. {!axis} and {!legend} replace
+    these.
 
     The ticks of a continuous axis lie in its shown domain, at steps of [1],
     [5], [2] or [2.5] times a power of ten, at powers on a log scale and at
@@ -495,8 +497,8 @@ val legend :
 (** [legend n] is the legend of scale [n], under [title]. Each category has an
     entry, the glyph of the first mark that colors it, in its color, then its
     name. [`Rows], the default, puts an entry on each row of cells and
-    [`Columns] puts them on one. [side] defaults to [`Inside `Top_right], and
-    [~show:false] hides it. *)
+    [`Columns] puts them on one. [side] defaults to [`Right], and [~show:false]
+    hides it. *)
 
 val frame : t
 (** [frame] is the axis lines closed into a box around the plot. *)

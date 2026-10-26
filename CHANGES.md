@@ -264,6 +264,7 @@ compiling are listed under Changed above.
 - `Charset` and `Theme.with_charset` → `Theme.t.glyphs` and its presets; `Legend` → `legend` and `Layout.legend`; `Transform.ema`, `sma`, `gaussian` → `ema`, `sma`, `gaussian`
 - `draw chart grid ~width ~height` → `draw (layout ~width ~height fig) grid ~x ~y`; `View.window`, `zoom_around`, ... and `Layout.zoom_view_around_px`, `pan_view_by_px`, `clamp_view` → `View.zoom`, `pan`, `clamp` and `Layout.zoom`, `pan`; `data_of_px`, `px_of_data` and the category conversions → `Layout.value` and `position`; `hit_test` → `Layout.hit`, whose row indexes the program's own array; `Overlay` → the `overlays` of `draw`, in cells
 - `Sparkline` → a `float list` newest first in the program's state, `List.take n (v :: l)`, drawn with `spark`; a fixed maximum → `scale "y" (Scale.linear ~domain:(0., max) ())`
+- `Sparkline`'s rising maximum (`~auto_max:true`) kept the largest value ever pushed; `spark` scales to the largest value of the list the program keeps, so the top falls once that value leaves the list, and an explicit domain gives a ceiling that never falls
 
 #### `mosaic`
 
