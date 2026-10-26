@@ -290,6 +290,102 @@ let destroy_recursively_all () =
   equal ~msg:"detached from root" (list string) []
     (List.map Renderable.id (Renderable.children root))
 
+(* Destroying a node with many children destroys each descendant after its
+   own descendants, unregisters it once, drops its handlers and clears its
+   parent link. It blurs a focused descendant and removes the subtree from the
+   live count and the layout tree. *)
+let destroy_recursively_wide_subtree () =
+  let t = make_ctx () in
+  let root = make_root t in
+  let parent = Renderable.create ~parent:root ~id:"p" () in
+  let n = 2000 in
+  let cleaned = ref [] in
+  let cleanup node =
+    Renderable.Private.set_cleanup node (fun () ->
+        cleaned := Renderable.id node :: !cleaned)
+  in
+  let pairs =
+    List.init n (fun i ->
+        let child =
+          Renderable.create ~parent ~id:(Printf.sprintf "c%d" i)
+            ~live:(i mod 3 = 0)
+            ()
+        in
+        let grandchild =
+          Renderable.create ~parent:child ~id:(Printf.sprintf "g%d" i) ()
+        in
+        cleanup child;
+        cleanup grandchild;
+        (child, grandchild))
+  in
+  cleanup parent;
+  let child, grandchild = List.nth pairs (n / 2) in
+  let key_fired = ref false in
+  Renderable.on_key child (fun _ -> key_fired := true);
+  Renderable.set_focusable grandchild true;
+  ignore (Renderable.focus grandchild : bool);
+  equal ~msg:"live before" int
+    ((n + 2) / 3)
+    (Renderable.Private.live_count root);
+  Renderable.destroy_recursively parent;
+  let nodes = parent :: List.concat_map (fun (c, g) -> [ c; g ]) pairs in
+  is_true ~msg:"all destroyed" (List.for_all Renderable.destroyed nodes);
+  is_true ~msg:"no parent links"
+    (List.for_all (fun node -> Option.is_none (Renderable.parent node)) nodes);
+  is_true ~msg:"no children"
+    (List.for_all (fun node -> List.is_empty (Renderable.children node)) nodes);
+  equal ~msg:"each unregistered once" (list string)
+    (List.sort String.compare (List.map Renderable.id nodes))
+    (List.sort String.compare !(t.unregister_log));
+  equal ~msg:"cleaned up after descendants" (list string)
+    (List.concat_map
+       (fun i -> [ Printf.sprintf "g%d" i; Printf.sprintf "c%d" i ])
+       (List.init n Fun.id)
+    @ [ "p" ])
+    (List.rev !cleaned);
+  is_false ~msg:"blurred" (Renderable.focused grandchild);
+  equal ~msg:"blur delegated" (list string)
+    [ Renderable.id grandchild ]
+    !(t.blur_log);
+  Renderable.Private.emit_key child (Event.Key.of_input key_ev_a);
+  is_false ~msg:"handlers dropped" !key_fired;
+  equal ~msg:"live after" int 0 (Renderable.Private.live_count root);
+  equal ~msg:"root has no children" (list string) []
+    (List.map Renderable.id (Renderable.children root));
+  equal ~msg:"layout tree holds the root alone" int 1
+    (Toffee.total_node_count t.ctx.tree)
+
+(* [destroy] orphans the children of a wide node, which can then be attached
+   elsewhere, in the layout tree too. *)
+let destroy_orphans_wide_children () =
+  let t = make_ctx () in
+  let root = make_root t in
+  let parent = Renderable.create ~parent:root ~id:"p" () in
+  let n = 2000 in
+  let children =
+    List.init n (fun i ->
+        Renderable.create ~parent ~id:(Printf.sprintf "c%d" i)
+          ~live:(i mod 2 = 0)
+          ())
+  in
+  Renderable.destroy parent;
+  is_false ~msg:"children survive" (List.exists Renderable.destroyed children);
+  is_true ~msg:"orphaned"
+    (List.for_all
+       (fun child -> Option.is_none (Renderable.parent child))
+       children);
+  equal ~msg:"live after" int 0 (Renderable.Private.live_count root);
+  List.iter (fun child -> Renderable.attach ~parent:root child) children;
+  equal ~msg:"reattached" (list string)
+    (List.map Renderable.id children)
+    (List.map Renderable.id (Renderable.children root));
+  equal ~msg:"live once reattached" int (n / 2)
+    (Renderable.Private.live_count root);
+  equal ~msg:"in the layout tree" int n
+    (match Toffee.children t.ctx.tree (Renderable.Private.toffee_node root) with
+    | Ok ids -> List.length ids
+    | Error _ -> -1)
+
 (* ── Visual Properties ── *)
 
 let visible_toggle () =
@@ -1093,6 +1189,10 @@ let () =
           test "is idempotent" destroy_idempotent;
           test "create on destroyed raises" create_on_destroyed_raises;
           test "recursively destroys subtree" destroy_recursively_all;
+          test "recursively destroys a wide subtree"
+            destroy_recursively_wide_subtree;
+          test "orphans the children of a wide node"
+            destroy_orphans_wide_children;
         ];
       group "Visual properties"
         [

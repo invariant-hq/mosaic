@@ -697,26 +697,35 @@ let detach t =
   blur_focused_subtree t;
   detach_impl t
 
+(* Detaches every child of [t] in one pass. Detaching them one by one would
+   shift the children that follow each one, in [t] and in the layout tree,
+   which is quadratic in their number. *)
+let detach_children t =
+  if t.child_count > 0 then (
+    ignore (Toffee.set_children t.ctx.tree t.toffee_node [||]);
+    let live = ref 0 in
+    for i = 0 to t.child_count - 1 do
+      match t.children.(i) with
+      | Some child ->
+          t.children.(i) <- None;
+          child.parent <- None;
+          live := !live + child.live_count;
+          unregister_lifecycle_if_needed child;
+          child.layout_valid <- false
+      | None -> ()
+    done;
+    t.child_count <- 0;
+    t.z_dirty <- true;
+    t.cull_dirty <- true;
+    t.layout_dirty <- true;
+    adjust_live_count t (- !live);
+    t.ctx.schedule ())
+
 let destroy t =
   if not t.destroyed then (
     blur_focused_subtree t;
     t.destroyed <- true;
-    (* Clean up children: clear parent pointers, remove from layout tree,
-       unregister lifecycle. Live counts propagate correctly because
-       t.live_count still includes children's contributions when detach_impl
-       runs — the parent gets the full subtree decrement. *)
-    for i = 0 to t.child_count - 1 do
-      match t.children.(i) with
-      | Some child ->
-          ignore
-            (Toffee.remove_child t.ctx.tree t.toffee_node child.toffee_node);
-          child.parent <- None;
-          unregister_lifecycle_if_needed child;
-          child.layout_valid <- false;
-          t.children.(i) <- None
-      | None -> ()
-    done;
-    t.child_count <- 0;
+    detach_children t;
     t.z_sorted <- [||];
     t.z_len <- 0;
     t.z_dirty <- false;
@@ -749,6 +758,8 @@ let destroy t =
     t.cleanup <- None;
     Option.iter (fun f -> f ()) cleanup)
 
+(* The children are detached together before any is destroyed, so that each
+   one's destruction finds no parent to be removed from. *)
 let rec destroy_recursively t =
   if not t.destroyed then (
     let kids = Array.make (max 1 t.child_count) t in
@@ -760,6 +771,7 @@ let rec destroy_recursively t =
           incr n
       | None -> ()
     done;
+    detach_children t;
     for i = 0 to !n - 1 do
       destroy_recursively kids.(i)
     done;

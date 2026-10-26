@@ -60,6 +60,23 @@ let reorder_keyed_list rows =
       Mosaic.Reconciler.render state.reconciler ~viewport_width
         (view state.l ~offset:state.offset))
 
+(* Unmounting tears down every node a view mounted, as a program does when it
+   quits. A call mounts the 20,000 rows and unmounts them, since a sample
+   cannot unmount twice what it mounted once; the teardown must stay linear
+   in the rows. *)
+let mount_and_unmount rows =
+  Thumper.bench_with_setup
+    ~setup:(fun () ->
+      let renderer = Renderer.create () in
+      let reconciler =
+        Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+      in
+      (reconciler, view (keyed rows) ~offset:0))
+    (Printf.sprintf "keyed-list-%d" rows)
+    (fun (reconciler, view) ->
+      Mosaic.Reconciler.render reconciler ~viewport_width view;
+      Mosaic.Reconciler.unmount reconciler)
+
 (* THUMPER_MACHINE=exact selects the section CI checks: allocation alone,
    whose counts are the same on any x86_64 Linux under the locked compiler in
    release, while time compares only on one machine. *)
@@ -98,4 +115,5 @@ let () =
           steady_keyed_list 5000;
           reorder_keyed_list 5000;
         ];
+      Thumper.group "mount-and-unmount" [ mount_and_unmount 20_000 ];
     ]

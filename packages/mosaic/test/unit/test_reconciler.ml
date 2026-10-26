@@ -769,6 +769,47 @@ let unmount_allows_reuse () =
   do_frame renderer;
   equal ~msg:"one child after reuse" int 1 (child_count renderer)
 
+(* Unmounting a wide view destroys every row and its handlers, and detaches
+   the embedded nodes, which the application still owns, without destroying
+   them. *)
+let unmount_tears_down_wide_view () =
+  let renderer, reconciler = make () in
+  let embedded = Renderable.create ~parent:(Renderer.root renderer) () in
+  let nested = Renderable.create ~parent:(Renderer.root renderer) () in
+  Renderable.detach embedded;
+  Renderable.detach nested;
+  let key_fired = ref false in
+  let n = 2000 in
+  render_view reconciler
+    (Vnode.box
+       (List.init n (fun i ->
+            Vnode.text ~key:(string_of_int i)
+              ~on_key:(fun _ -> Some (key_fired := true))
+              (string_of_int i))
+       @ [ Vnode.embed embedded; Vnode.box [ Vnode.embed nested ] ]));
+  do_frame renderer;
+  let box = List.hd (children_of renderer) in
+  let rows = Renderable.children box in
+  equal ~msg:"mounted" int (n + 2) (List.length rows);
+  Reconciler.unmount reconciler;
+  is_true ~msg:"box destroyed" (Renderable.destroyed box);
+  let rows = List.filter (fun node -> not (node == embedded)) rows in
+  is_true ~msg:"rows destroyed" (List.for_all Renderable.destroyed rows);
+  is_true ~msg:"rows orphaned"
+    (List.for_all (fun node -> Option.is_none (Renderable.parent node)) rows);
+  List.iter
+    (fun row ->
+      Renderable.Private.emit_key row
+        (Event.Key.of_input (Test_harness.char_key 'a')))
+    rows;
+  is_false ~msg:"handlers dropped" !key_fired;
+  is_false ~msg:"embedded kept"
+    (Renderable.destroyed embedded || Renderable.destroyed nested);
+  is_true ~msg:"embedded detached"
+    (Option.is_none (Renderable.parent embedded)
+    && Option.is_none (Renderable.parent nested));
+  equal ~msg:"container empty" int 0 (child_count renderer)
+
 (* ── Runner ── *)
 
 let duplicate_visible_focus_is_rejected () =
@@ -1186,5 +1227,6 @@ let () =
           test "empties container" unmount_empties_container;
           test "destroys nodes" unmount_destroys_nodes;
           test "allows reuse" unmount_allows_reuse;
+          test "tears down a wide view" unmount_tears_down_wide_view;
         ];
     ]

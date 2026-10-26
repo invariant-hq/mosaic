@@ -773,11 +773,22 @@ let update_fiber (f : fiber) (elem : unit Vnode.element) : bool =
   if changed then commit_update f.instance;
   changed
 
-let rec destroy_fiber (f : fiber) : unit =
-  List.iter destroy_child f.children;
+(* A fiber's descendants have their nodes under its node, except embedded
+   nodes, which the application owns and which outlive the fiber. These are
+   detached, then one teardown of the fiber's node destroys the rest. A child
+   fiber that destroyed its own node would detach that node from its parent
+   alone, shifting the siblings after it, and the teardown would be quadratic
+   in their number. *)
+let rec detach_embeds = function
+  | Fiber f -> List.iter detach_embeds f.children
+  | Embedded n -> Renderable.detach n
+  | Memo_span span -> List.iter detach_embeds span.span_children
+
+let destroy_fiber (f : fiber) : unit =
+  List.iter detach_embeds f.children;
   Renderable.destroy_recursively (fiber_node f)
 
-and destroy_child = function
+let rec destroy_child = function
   | Fiber f -> destroy_fiber f
   | Embedded n -> Renderable.detach n
   | Memo_span span -> List.iter destroy_child span.span_children
