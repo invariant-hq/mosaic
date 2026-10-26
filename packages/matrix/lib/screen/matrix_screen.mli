@@ -138,7 +138,18 @@ val add_hit_region :
     given by its first row and its height. Without one, the viewport starts at
     {!row_offset} and is as high as the grid. Rows of the grid below the
     viewport are not written, and after the render they are blank in the current
-    grid and empty in the current hit grid. *)
+    grid and empty in the current hit grid.
+
+    A render reaches a run by the run's terminal row and column (CUP). A
+    {e relative} render reaches it from the row the cursor is on when its bytes
+    are written, by rows down (line feeds) or up (CUU) and then the column
+    (CHA), so that it draws right whatever row of the screen that is. Its
+    viewport's first row is then counted from the cursor's row, and it ends with
+    the cursor back on that row. A line feed on the screen's last row scrolls
+    the screen, where a cursor motion would stop, so the way back up is as many
+    rows as the render went down even on a screen shorter than the frame. A
+    program that draws below a line of its own, such as the rows of a {!Region},
+    renders relatively. *)
 
 type scroll_hint = {
   top : int;  (** The region's first row of the frame, from 0. *)
@@ -167,26 +178,34 @@ type viewport = {
     clipped to the grid. *)
 
 val render :
-  ?full:bool -> ?scroll_hint:scroll_hint -> ?viewport:viewport -> t -> string
-(** [render ~full ~scroll_hint ~viewport t] renders the next buffer and is the
-    bytes it produces. It is {!render_into} on a writer [t] keeps, copied to a
-    new string on each call.
+  ?full:bool ->
+  ?scroll_hint:scroll_hint ->
+  ?viewport:viewport ->
+  ?relative:bool ->
+  t ->
+  string
+(** [render ~full ~scroll_hint ~viewport ~relative t] renders the next buffer
+    and is the bytes it produces. It is {!render_into} on a writer [t] keeps,
+    copied to a new string on each call.
     - [full] makes the render full. Defaults to [false].
     - [scroll_hint] is the content's scroll since the last frame. Defaults to
-      none.
-    - [viewport] is the viewport. Defaults to the one at {!row_offset}. *)
+      none. A relative render ignores it, since a scroll hint sets a scrolling
+      region by terminal rows.
+    - [viewport] is the viewport. Defaults to the one at {!row_offset}.
+    - [relative] makes the render relative. Defaults to [false]. *)
 
 val render_into :
   ?full:bool ->
   ?scroll_hint:scroll_hint ->
   ?viewport:viewport ->
+  ?relative:bool ->
   t ->
   Ansi.Writer.t ->
   unit
-(** [render_into ~full ~scroll_hint ~viewport t w] is {!render} with the bytes
-    appended to [w], after what [w] already holds. It never resets [w]. The
-    frame's [bytes] ({!frame_metrics}) count only those appended. A writer kept
-    across frames keeps its capacity.
+(** [render_into ~full ~scroll_hint ~viewport ~relative t w] is {!render} with
+    the bytes appended to [w], after what [w] already holds. It never resets
+    [w]. The frame's [bytes] ({!frame_metrics}) count only those appended. A
+    writer kept across frames keeps its capacity.
 
     When a write to [w] raises, such as {!Ansi.Writer.Buffer_full} from a writer
     of {!Ansi.Writer.of_bytes}, [render_into] raises it and changes nothing in

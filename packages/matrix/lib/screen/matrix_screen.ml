@@ -89,6 +89,11 @@ type diff_ctx = {
   sgr : Ansi.Sgr_state.t;
   mutable scratch : bytes; (* Grapheme byte scratch; high-water growth. *)
   mutable row_offset : int;
+  mutable relative : bool;
+      (* Whether rows are reached by relative motions from the cursor's row,
+         [row_offset] rows above the frame's first. *)
+  mutable cursor_row : int;
+      (* The frame's row the cursor is on, while [relative]. *)
   mutable width : int;
   mutable height : int;
   mutable prev_width : int;
@@ -197,6 +202,25 @@ let last_scalar buf n =
   in
   Uchar.utf_decode_uchar (Bytes.get_utf_8_uchar buf (start (n - 1)))
 
+(* Moves the cursor to column [x] of the frame's row [y]: by its terminal
+   row, or, in a relative render, by the rows between it and the row the
+   cursor is on, then the column. A relative render goes down by line
+   feeds: on the screen's last row a line feed scrolls the screen, where a
+   cursor motion would stop, so the rows counted back up to the render's
+   first row are the rows it went down, whatever the screen's height. *)
+let move (c : diff_ctx) ~y ~x =
+  if not c.relative then
+    Ansi.cursor_position ~row:(c.row_offset + y + 1) ~col:(x + 1) c.out
+  else begin
+    let d = y - c.cursor_row in
+    for _ = 1 to d do
+      Ansi.Writer.write_char c.out '\n'
+    done;
+    if d < 0 then Ansi.cursor_up ~n:(-d) c.out;
+    c.cursor_row <- y;
+    Ansi.cursor_horizontal_absolute (x + 1) c.out
+  end
+
 (* Writes the cell's scalars: [n] bytes in [c.scratch], or [cp] when it is
    ASCII. For wide graphemes, uses explicit_width (OSC 66) when available,
    otherwise falls back to cursor repositioning to prevent column drift in
@@ -215,8 +239,7 @@ let write_cell (c : diff_ctx) ~y ~x ~cell_width ~cp ~n =
        terminals that support cursor addressing but not OSC 66. *)
     if c.explicit_cursor_positioning && cell_width >= 2 then
       let next_x = x + cell_width in
-      if next_x < c.width then
-        Ansi.cursor_position ~row:(c.row_offset + y + 1) ~col:(next_x + 1) w
+      if next_x < c.width then move c ~y ~x:next_x
   end
 
 (* kitty's row and column marks, gen/rowcolumn-diacritics.txt of its
@@ -817,7 +840,11 @@ let write_sixel (c : diff_ctx) e ~cw ~ch ~x0 ~x1 ~y0 ~y1 ~col ~row =
     done
   done;
   let out = c.out in
-  Ansi.cursor_position ~row:(c.row_offset + y0 + 1) ~col:(x0 + 1) out;
+  move c ~y:y0 ~x:x0;
+  (* Where a sixel leaves the cursor depends on the terminal's sixel modes:
+     a relative render, which goes on from where the cursor is, saves it
+     before (DECSC) and restores it after (DECRC). *)
+  if c.relative then Ansi.Writer.write_string out "\0277";
   Ansi.Writer.write_string out (Printf.sprintf "\027P0;1;0q\"1;1;%d;%d" w h);
   let percent l levels = l * 100 / (levels - 1) in
   Array.iteri
@@ -875,7 +902,8 @@ let write_sixel (c : diff_ctx) e ~cw ~ch ~x0 ~x1 ~y0 ~y1 ~col ~row =
       band_used;
     Ansi.Writer.write_char out '-'
   done;
-  Ansi.Writer.write_string out "\027\\"
+  Ansi.Writer.write_string out "\027\\";
+  if c.relative then Ansi.Writer.write_string out "\0278"
 
 (* A rectangle of picture cells of one box, columns [x0] to [x1] and rows
    [y0] to [y1] of the frame, whose first cell shows [tile]. *)
@@ -1021,7 +1049,7 @@ let rec write_run (c : diff_ctx) y x ~prev ~prev_cp ~prev_width ~last =
                  && (c.explicit_width || c.explicit_cursor_positioning)
                 || (c.explicit_width && cell_width >= 2)))
           && joins c ~prev ~prev_cp ~last first
-        then Ansi.cursor_position ~row:(c.row_offset + y + 1) ~col:(x + 1) c.out;
+        then move c ~y ~x;
         (* Emit style/color through zero-alloc accessors. *)
         Ansi.Sgr_state.update c.sgr c.out
           ~fg:(Grid.Unsafe.get_fg c.curr idx)
@@ -1044,7 +1072,7 @@ let rec process_cols (c : diff_ctx) y x row_cells =
     if cell_width <= 0 then process_cols c y (x + 1) row_cells
     else if cell_changed c y x idx cell_width then begin
       (* Move cursor to start of changed run, then write it. *)
-      Ansi.cursor_position ~row:(c.row_offset + y + 1) ~col:(x + 1) c.out;
+      move c ~y ~x;
       let start_x = x in
       let new_x =
         write_run c y x ~prev:(-1) ~prev_cp:0 ~prev_width:0 ~last:Uchar.min
@@ -1238,7 +1266,7 @@ let forget_images r =
         e.image <- 0))
     p.entries
 
-let emit_frame (r : t) ~(mode : render_mode) ~scroll_hint ~viewport
+let emit_frame (r : t) ~(mode : render_mode) ~scroll_hint ~viewport ~relative
     ~(writer : Ansi.writer) =
   let row_offset =
     match viewport with None -> max 0 r.row_offset | Some v -> max 0 v.y
@@ -1254,6 +1282,10 @@ let emit_frame (r : t) ~(mode : render_mode) ~scroll_hint ~viewport
   c.curr <- r.next;
   c.out <- writer;
   c.row_offset <- row_offset;
+  c.relative <- relative;
+  c.cursor_row <- -row_offset;
+  (* A scroll hint sets a scrolling region by terminal rows. *)
+  let scroll_hint = if relative then None else scroll_hint in
   c.width <- Grid.width r.next;
   c.height <- clamp_height r.next height;
   c.explicit_width <- r.prefer_explicit_width && r.explicit_width_capable;
@@ -1273,6 +1305,11 @@ let emit_frame (r : t) ~(mode : render_mode) ~scroll_hint ~viewport
   send_into r writer;
   let cells = run_diff c in
   finish_pictures r;
+  if relative then begin
+    (* Back to the row the render began on. *)
+    Ansi.cursor_up ~n:(c.cursor_row + row_offset) writer;
+    c.cursor_row <- -row_offset
+  end;
   r.e_cells <- cells;
   r.e_output_len <- Ansi.Writer.len writer - output_start;
   r.e_presented_height <- presented_height r height
@@ -1281,12 +1318,13 @@ let commit_frame r =
   clear_unpresented_rows r r.e_presented_height;
   finalize_frame r
 
-let render_into ?(full = false) ?scroll_hint ?viewport frame writer =
+let render_into ?(full = false) ?scroll_hint ?viewport ?(relative = false) frame
+    writer =
   (* A render with no build since the last one renders the blank frame the
      last one left, so the clear the swap deferred happens now. *)
   ensure_next_fresh frame;
   let mode = if full || not frame.current_valid then `Full else `Diff in
-  (try emit_frame frame ~mode ~scroll_hint ~viewport ~writer
+  (try emit_frame frame ~mode ~scroll_hint ~viewport ~relative ~writer
    with exn ->
      let bt = Printexc.get_raw_backtrace () in
      (* Images sent in the bytes given up may not have reached the terminal,
@@ -1302,10 +1340,10 @@ let render_into ?(full = false) ?scroll_hint ?viewport frame writer =
   frame.current_valid <- true;
   commit_frame frame
 
-let render ?full ?scroll_hint ?viewport frame =
+let render ?full ?scroll_hint ?viewport ?relative frame =
   let writer = frame.render_writer in
   Ansi.Writer.reset_pos writer;
-  render_into ?full ?scroll_hint ?viewport frame writer;
+  render_into ?full ?scroll_hint ?viewport ?relative frame writer;
   Ansi.Writer.contents writer
 
 (* Creation & Management *)
@@ -1357,6 +1395,8 @@ let create ?width_method ?(cursor_visible = true) ?(explicit_width = false) () =
         (* Large enough for any grapheme. *)
         scratch = Bytes.create 1024;
         row_offset = 0;
+        relative = false;
+        cursor_row = 0;
         width = 0;
         height = 0;
         prev_width = 0;
@@ -1563,6 +1603,7 @@ let static_rows t g ~rows ~top =
         (* Every row may take a sixel: the rows end above the cursor. *)
         height = rows + 1;
         row_offset = top;
+        relative = false;
       }
     in
     let width = Grid.width g in

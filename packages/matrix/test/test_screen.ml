@@ -1747,6 +1747,68 @@ let test_picture_sixel () =
       equal ~msg:"its tile" (option triple) (Some tile_colors.(1)) px.(0).(0)
   | l -> failf "%d sixels" (List.length l)
 
+(* A relative render reaches its rows from the cursor's row, by rows up or
+   down and then the column, and ends on that row: it draws the same
+   wherever that row is on the screen. *)
+let test_relative_render () =
+  let t = Vte.create ~rows:10 ~cols:8 () in
+  ignore (Vte.feed_string t "\027[6;3H" : _ list);
+  let r = Screen.create () in
+  let viewport = { Screen.y = 1; height = 3 } in
+  let frame last =
+    Screen.build r ~width:8 ~height:3 (fun g _ ->
+        Grid.draw_text g ~x:1 ~y:0 ~text:"ab";
+        Grid.draw_text g ~x:0 ~y:2 ~text:last)
+  in
+  let render () =
+    let out = Screen.render ~relative:true ~viewport r in
+    equal ~msg:"no terminal row" int 0 (count_cursor_moves out);
+    ignore (Vte.feed_string t out : _ list);
+    out
+  in
+  frame "cd";
+  ignore (render () : string);
+  equal ~msg:"the first row, below the cursor's" string " ab" (Vte.text t 6);
+  equal ~msg:"the third row" string "cd" (Vte.text t 8);
+  equal ~msg:"back on the cursor's row" int 5 (fst (Vte.cursor_pos t));
+  frame "ce";
+  let out = render () in
+  equal ~msg:"only the cell that changed, three rows down and back up" string
+    "\n\n\n\027[2G\027[0me\027[0m\027[3A" out;
+  equal ~msg:"the change" string "ce" (Vte.text t 8);
+  equal ~msg:"the row before stays" string " ab" (Vte.text t 6);
+  equal ~msg:"back again" int 5 (fst (Vte.cursor_pos t));
+  frame "ce";
+  equal ~msg:"an unchanged frame writes nothing" string "" (render ());
+  (* From the screen's last row the line feeds scroll it, and the way back
+     up ends on the row the render began on, now higher. *)
+  let t = Vte.create ~rows:4 ~cols:8 () in
+  ignore (Vte.feed_string t "\r\n\r\n\r\nO" : _ list);
+  frame "ce";
+  ignore
+    (Vte.feed_string t (Screen.render ~full:true ~relative:true ~viewport r)
+      : _ list);
+  equal ~msg:"back on the row it began on" string "O"
+    (Vte.text t (fst (Vte.cursor_pos t)));
+  equal ~msg:"the frame below it" string " ab"
+    (Vte.text t (fst (Vte.cursor_pos t) + 1))
+
+(* Where a sixel leaves the cursor depends on the terminal's modes, so a
+   relative render saves the cursor before one and restores it after. *)
+let test_relative_sixel () =
+  let r = picture_screen `Sixel in
+  Screen.build r ~width:8 ~height:3 (fun g _ ->
+      Grid.draw_picture g ~x:1 ~y:0 ~width:4 ~height:2 (tiled ~cols:4 ~rows:2));
+  let out =
+    Screen.render ~relative:true ~viewport:{ Screen.y = 1; height = 3 } r
+  in
+  equal ~msg:"no terminal row" int 0 (count_cursor_moves out);
+  contains ~msg:"saved before the sixel" ~sub:"\0277\027P0;1;0q" out;
+  contains ~msg:"restored after it" ~sub:"\027\\\0278" out;
+  let t = Vte.create ~rows:10 ~cols:8 () in
+  ignore (Vte.feed_string t ("\027[6;1H" ^ out) : _ list);
+  equal ~msg:"back on the cursor's row" int 5 (fst (Vte.cursor_pos t))
+
 (* Static rows with pictures are written as rows, then a sixel over the rows
    still on the screen, then the cursor back below them. *)
 let test_picture_static_rows () =
@@ -1883,6 +1945,11 @@ let () =
           test "Kitty placeholders" test_picture_kitty;
           test "Sixel over half blocks" test_picture_sixel;
           test "Static rows" test_picture_static_rows;
+        ];
+      group "Relative render"
+        [
+          test "Rows reached from the cursor's" test_relative_render;
+          test "A sixel between saved positions" test_relative_sixel;
         ];
       group "Performance Characteristics"
         [

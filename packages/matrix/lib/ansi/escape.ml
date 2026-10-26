@@ -195,10 +195,12 @@ let[@inline] csi_nn cmd a b w =
 
 (* Cursor Control *)
 
-let cursor_up ~n = csi_n_opt 'A' n
-let cursor_down ~n = csi_n_opt 'B' n
-let cursor_forward ~n = csi_n_opt 'C' n
-let cursor_back ~n = csi_n_opt 'D' n
+(* A motion applied to its writer as well as to its count builds no
+   closure, so a renderer that moves the cursor per run allocates nothing. *)
+let cursor_up ~n w = if n > 0 then csi_n 'A' n w
+let cursor_down ~n w = if n > 0 then csi_n 'B' n w
+let cursor_forward ~n w = if n > 0 then csi_n 'C' n w
+let cursor_back ~n w = if n > 0 then csi_n 'D' n w
 let cursor_next_line ~n = csi_n_opt 'E' n
 let cursor_previous_line ~n = csi_n_opt 'F' n
 
