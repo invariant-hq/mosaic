@@ -1675,7 +1675,19 @@ let to_text ?(trim = true) t =
     Buffer.contents buf
   end
 
-let to_ansi ?(styling = `Truecolor) ?(complete_rows = false) ?rows t =
+(* A cell that shows nothing at the end of a row: empty or a space, on the
+   default background, with no attribute and no link. *)
+let shows_nothing t idx =
+  let code = Buf.get_cell t.chars idx in
+  (Packed_cell.is_empty code || code = space_cell)
+  &&
+  let bg = Buf.get t.bg_color idx in
+  (bg = default_bg_packed || bg = terminal_bg_packed)
+  && Buf.get_short t.attrs idx = 0
+  && String.length (get_link t idx) = 0
+
+let to_ansi ?(styling = `Truecolor) ?(trim = false) ?(complete_rows = false)
+    ?rows t =
   let height = Option.value rows ~default:t.height in
   if height < 0 || height > t.height then
     invalid_arg "Matrix_grid.to_ansi: rows must be within grid height";
@@ -1699,8 +1711,16 @@ let to_ansi ?(styling = `Truecolor) ?(complete_rows = false) ?rows t =
           if y > 0 && not complete_rows then Ansi.emit (Ansi.char '\n') w;
           if complete_rows then Ansi.emit (Ansi.erase_line ~mode:`All) w;
 
+          let last =
+            let last = ref width in
+            if trim then
+              while !last > 0 && shows_nothing t ((y * width) + !last - 1) do
+                decr last
+              done;
+            !last
+          in
           let x = ref 0 in
-          while !x < width do
+          while !x < last do
             let idx = (y * width) + !x in
             let code = Buf.get_cell t.chars idx in
             let cw = Packed_cell.cell_width code in

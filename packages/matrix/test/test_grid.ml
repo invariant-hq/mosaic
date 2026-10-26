@@ -1383,6 +1383,25 @@ let to_ansi_at_a_styling () =
   contains ~msg:"256 colors" ~sub:"38;5;196" (at `Ansi256);
   equal ~msg:"24-bit by default" string (Grid.to_ansi grid) (at `Truecolor)
 
+(* Trimming drops the cells at the end of a row that show nothing, and
+   keeps a blank that shows a background or an underline. *)
+let to_ansi_trims () =
+  let grid = Grid.create ~width:8 ~height:3 () in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"a b";
+  Grid.draw_text grid ~x:0 ~y:1 ~text:"c"
+    ~style:(Ansi.Style.make ~bg:Ansi.Color.blue ());
+  Grid.draw_text grid ~x:1 ~y:1 ~text:"  "
+    ~style:(Ansi.Style.make ~bg:Ansi.Color.blue ());
+  Grid.draw_text grid ~x:0 ~y:2 ~text:"d "
+    ~style:(Ansi.Style.make ~underline:true ());
+  equal ~msg:"plain" string "a b\nc  \nd "
+    (Grid.to_ansi ~styling:`Plain ~trim:true grid);
+  equal ~msg:"untrimmed" string "a b     \nc       \nd       "
+    (Grid.to_ansi ~styling:`Plain grid);
+  let styled = Grid.to_ansi ~trim:true grid in
+  is_true ~msg:"a row ends where its text ends"
+    (String.starts_with ~prefix:"\027[0ma b\027[0m\n" styled)
+
 let blit_preserves_indexed_background_intent () =
   let src = Grid.create ~width:1 ~height:1 () in
   Grid.set_uchar src ~x:0 ~y:0 ~uchar:(Uchar.of_char 'X') ~fg:Ansi.Color.white
@@ -2400,6 +2419,7 @@ let tests =
     test "to_ansi handles empty glyph" to_ansi_handles_empty_glyph;
     test "copied partial span becomes space" copied_partial_span_becomes_space;
     test "to_ansi at a styling" to_ansi_at_a_styling;
+    test "to_ansi trims" to_ansi_trims;
     test "to_ansi preserves indexed foreground"
       to_ansi_preserves_indexed_foreground;
     test "blit preserves indexed background intent"

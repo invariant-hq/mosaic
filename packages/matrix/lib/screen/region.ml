@@ -50,7 +50,8 @@ let rows_of r ~width ~height = function
             ~width:w ~height:shown ~dst_x:0 ~dst_y:0;
           dst
       in
-      String.split_on_char '\n' (Matrix_grid.to_ansi ~styling:r.styling g)
+      String.split_on_char '\n'
+        (Matrix_grid.to_ansi ~styling:r.styling ~trim:true g)
 
 let bsu = "\027[?2026h"
 let esu = "\027[?2026l"
