@@ -42,7 +42,7 @@ val compute_leaf_layout :
   measure_function:
     (float option Toffee_geometry.size ->
     Toffee_tree.Available_space.t Toffee_geometry.size ->
-    float Toffee_geometry.size) ->
+    Toffee_geometry.Sizef.t) ->
   Toffee_tree.Layout_output.t
 (** [compute_leaf_layout ~inputs ~style ~resolve_calc_value ~measure_function]
     computes layout for a leaf node.

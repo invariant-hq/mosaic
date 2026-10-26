@@ -17,6 +17,15 @@ module Rect = Rect
 module Min_max = Min_max
 module In_both_abs_axis = In_both_abs_axis
 
+(** {1 Geometric types of floats}
+
+    The concrete sizes, rectangles and points that layout computes, with their
+    floats stored flat. *)
+
+module Sizef = Sizef
+module Rectf = Rectf
+module Pointf = Pointf
+
 (** {1 Type aliases} *)
 
 type absolute_axis = Absolute_axis.t

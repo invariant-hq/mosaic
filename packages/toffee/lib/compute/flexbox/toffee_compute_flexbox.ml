@@ -6,6 +6,9 @@ open Toffee_geometry
 open Style
 open Tree
 
+(* Stdlib's max on floats, compiled without boxing its arguments. *)
+let fmax (a : float) b = if a >= b then a else b
+
 (* Flex direction helpers *)
 module Flex_direction_ext = struct
   open Flex_direction
@@ -22,34 +25,41 @@ module Flex_direction_ext = struct
     | Row_reverse | Column_reverse -> true
     | Row | Column -> false
 
-  let main_size size dir =
+  let main_size (size : Sizef.t) dir =
+    if is_row dir then size.width else size.height
+
+  let main_size_opt size dir =
     if is_row dir then size.Size.width else size.Size.height
 
-  let _cross_size size dir =
-    if is_row dir then size.Size.height else size.Size.width
-
-  let _with_cross_size size dir value =
-    if is_row dir then Size.{ size with height = value }
-    else Size.{ size with width = value }
+  let _cross_size (size : Sizef.t) dir =
+    if is_row dir then size.height else size.width
 
   let main_axis_sum rect dir =
-    if is_row dir then Rect.horizontal_axis_sum rect
-    else Rect.vertical_axis_sum rect
+    if is_row dir then Rectf.horizontal_axis_sum rect
+    else Rectf.vertical_axis_sum rect
 
   let _cross_axis_sum rect dir =
-    if is_row dir then Rect.vertical_axis_sum rect
-    else Rect.horizontal_axis_sum rect
+    if is_row dir then Rectf.vertical_axis_sum rect
+    else Rectf.horizontal_axis_sum rect
 
   (* Rect accessors based on flex direction *)
-  let main_start rect dir = if is_row dir then rect.Rect.left else rect.Rect.top
+  let main_start (rect : Rectf.t) dir =
+    if is_row dir then rect.left else rect.top
 
-  let main_end rect dir =
+  let cross_start (rect : Rectf.t) dir =
+    if is_row dir then rect.top else rect.left
+
+  (* The same, for the item's optional insets *)
+  let inset_main_start rect dir =
+    if is_row dir then rect.Rect.left else rect.Rect.top
+
+  let inset_main_end rect dir =
     if is_row dir then rect.Rect.right else rect.Rect.bottom
 
-  let cross_start rect dir =
+  let inset_cross_start rect dir =
     if is_row dir then rect.Rect.top else rect.Rect.left
 
-  let cross_end rect dir =
+  let inset_cross_end rect dir =
     if is_row dir then rect.Rect.bottom else rect.Rect.right
 
   (* Point accessors based on flex direction *)
@@ -76,10 +86,10 @@ type flex_item = {
   mutable resolved_minimum_main_size : float; (* The minimum size of the item *)
   (* Positioning *)
   inset : float option rect; (* The final offset of this item *)
-  mutable margin : float rect; (* The margin of this item *)
+  mutable margin : Rectf.t; (* The margin of this item *)
   margin_is_auto : bool rect; (* Whether each margin is an auto margin or not *)
-  padding : float rect; (* The padding of this item *)
-  border : float rect; (* The border of this item *)
+  padding : Rectf.t; (* The padding of this item *)
+  border : Rectf.t; (* The border of this item *)
   (* Flex basis *)
   mutable flex_basis : float; (* The default size of this item *)
   mutable inner_flex_basis : float;
@@ -127,13 +137,13 @@ type algo_constants = {
   min_size : float option size; (* The item's min_size style *)
   max_size : float option size; (* The item's max_size style *)
   (* Box model *)
-  border : float rect; (* The border of this section *)
-  content_box_inset : float rect;
+  border : Rectf.t; (* The border of this section *)
+  content_box_inset : Rectf.t;
       (* The space between the content box and the border box *)
-  scrollbar_gutter : float point;
+  scrollbar_gutter : Pointf.t;
   (* The size reserved for scrollbar gutters in each axis *)
   (* Layout properties *)
-  mutable gap : float size; (* The gap of this section *)
+  mutable gap : Sizef.t; (* The gap of this section *)
   align_items : align_items; (* The align_items property of this node *)
   align_content : align_content; (* The align_content property of this node *)
   justify_content : justify_content option;
@@ -143,9 +153,9 @@ type algo_constants = {
       (* The border-box size of the node being laid out (if known) *)
   mutable node_inner_size : float option size;
       (* The content-box size of the node being laid out (if known) *)
-  mutable container_size : float size;
+  mutable container_size : Sizef.t;
       (* The size of the virtual container containing the flex items *)
-  mutable inner_container_size : float size;
+  mutable inner_container_size : Sizef.t;
       (* The size of the internal container *)
 }
 
@@ -177,16 +187,16 @@ let compute_constants (type t)
     |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
 
-  let padding_border_sum = Rect.sum_axes (Rect.add padding border) in
+  let padding_border_sum = Rectf.sum_axes (Rectf.add padding border) in
   let box_sizing_adjustment =
     if Style.box_sizing style = Box_sizing.Content_box then padding_border_sum
-    else Size.zero
+    else Sizef.zero
   in
 
   (* Handle overflow and scrollbar gutters *)
   let overflow = Style.overflow style in
   let scrollbar_gutter =
-    Point.
+    Pointf.
       {
         x =
           (if overflow.y = Overflow.Scroll then Style.scrollbar_width style
@@ -199,8 +209,8 @@ let compute_constants (type t)
 
   (* Content box inset = padding + border + scrollbar gutter *)
   let content_box_inset =
-    Rect.add (Rect.add padding border)
-      Rect.
+    Rectf.add (Rectf.add padding border)
+      Rectf.
         {
           top = 0.0;
           left = 0.0;
@@ -212,18 +222,18 @@ let compute_constants (type t)
   let node_outer_size = known_dimensions in
   let node_inner_size =
     Size.sub_option node_outer_size
-      (Size.map Option.some (Rect.sum_axes content_box_inset))
+      (Sizef.some (Rectf.sum_axes content_box_inset))
   in
 
   (* Resolve gap *)
   let gap_base =
     match node_inner_size with
-    | { width = Some w; height = Some h } -> Size.{ width = w; height = h }
-    | _ -> Size.zero
+    | { width = Some w; height = Some h } -> Sizef.{ width = w; height = h }
+    | _ -> Sizef.zero
   in
   let gap =
     Style.gap style |> fun gap_size ->
-    Size.
+    Sizef.
       {
         width =
           Length_percentage.resolve_or_zero (Size.get Inline gap_size)
@@ -245,7 +255,7 @@ let compute_constants (type t)
           Dimension.maybe_resolve (Size.get Block dims) parent_size.height calc;
       }
     |> Size.apply_aspect_ratio aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
 
   let max_size =
@@ -258,7 +268,7 @@ let compute_constants (type t)
           Dimension.maybe_resolve (Size.get Block dims) parent_size.height calc;
       }
     |> Size.apply_aspect_ratio aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
 
   {
@@ -279,8 +289,8 @@ let compute_constants (type t)
     justify_content = Style.justify_content style;
     node_outer_size;
     node_inner_size;
-    container_size = Size.zero;
-    inner_container_size = Size.zero;
+    container_size = Sizef.zero;
+    inner_container_size = Sizef.zero;
   }
 
 (* Generate anonymous flex items *)
@@ -317,10 +327,10 @@ let generate_anonymous_flex_items (type t)
         |> Length_percentage.resolve_rect_or_zero
              constants.node_inner_size.width calc
       in
-      let pb_sum = Rect.sum_axes (Rect.add padding border) in
+      let pb_sum = Rectf.sum_axes (Rectf.add padding border) in
       let box_sizing_adjustment =
         if Style.box_sizing child_style = Box_sizing.Content_box then pb_sum
-        else Size.zero
+        else Sizef.zero
       in
 
       let size =
@@ -335,7 +345,7 @@ let generate_anonymous_flex_items (type t)
                 constants.node_inner_size.height calc;
           }
         |> Size.apply_aspect_ratio aspect_ratio
-        |> Size.maybe_add box_sizing_adjustment
+        |> Sizef.maybe_add box_sizing_adjustment
       in
 
       let min_size =
@@ -350,7 +360,7 @@ let generate_anonymous_flex_items (type t)
                 constants.node_inner_size.height calc;
           }
         |> Size.apply_aspect_ratio aspect_ratio
-        |> Size.maybe_add box_sizing_adjustment
+        |> Sizef.maybe_add box_sizing_adjustment
       in
 
       let max_size =
@@ -365,7 +375,7 @@ let generate_anonymous_flex_items (type t)
                 constants.node_inner_size.height calc;
           }
         |> Size.apply_aspect_ratio aspect_ratio
-        |> Size.maybe_add box_sizing_adjustment
+        |> Sizef.maybe_add box_sizing_adjustment
       in
 
       let inset =
@@ -441,20 +451,20 @@ let determine_available_space (known_dimensions : float option size)
     match known_dimensions.width with
     | Some node_width ->
         Available_space.of_float
-          (node_width -. Rect.horizontal_axis_sum constants.content_box_inset)
+          (node_width -. Rectf.horizontal_axis_sum constants.content_box_inset)
     | None ->
         Available_space.sub available_space.width
-          (Rect.horizontal_axis_sum constants.content_box_inset)
+          (Rectf.horizontal_axis_sum constants.content_box_inset)
   in
 
   let height =
     match known_dimensions.height with
     | Some node_height ->
         Available_space.of_float
-          (node_height -. Rect.vertical_axis_sum constants.content_box_inset)
+          (node_height -. Rectf.vertical_axis_sum constants.content_box_inset)
     | None ->
         Available_space.sub available_space.height
-          (Rect.vertical_axis_sum constants.content_box_inset)
+          (Rectf.vertical_axis_sum constants.content_box_inset)
   in
 
   Size.{ width; height }
@@ -900,8 +910,8 @@ let determine_container_main_size (type t)
     (constants : algo_constants) : unit =
   let main_content_box_inset =
     if constants.is_row then
-      Rect.horizontal_axis_sum constants.content_box_inset
-    else Rect.vertical_axis_sum constants.content_box_inset
+      Rectf.horizontal_axis_sum constants.content_box_inset
+    else Rectf.vertical_axis_sum constants.content_box_inset
   in
 
   let outer_main_size =
@@ -1872,8 +1882,8 @@ let calculate_cross_size (flex_lines : flex_line list)
   then
     let cross_axis_padding_border =
       if constants.is_row then
-        Rect.vertical_axis_sum constants.content_box_inset
-      else Rect.horizontal_axis_sum constants.content_box_inset
+        Rectf.vertical_axis_sum constants.content_box_inset
+      else Rectf.horizontal_axis_sum constants.content_box_inset
     in
     let cross_min_size =
       if constants.is_row then constants.min_size.height
@@ -1956,8 +1966,8 @@ let calculate_cross_size (flex_lines : flex_line list)
     | line :: _ ->
         let cross_axis_padding_border =
           if constants.is_row then
-            Rect.vertical_axis_sum constants.content_box_inset
-          else Rect.horizontal_axis_sum constants.content_box_inset
+            Rectf.vertical_axis_sum constants.content_box_inset
+          else Rectf.horizontal_axis_sum constants.content_box_inset
         in
         let cross_min_size =
           if constants.is_row then constants.min_size.height
@@ -1990,8 +2000,8 @@ let handle_align_content_stretch (flex_lines : flex_line list)
   | Style.Align_content.Stretch ->
       let cross_axis_padding_border =
         if constants.is_row then
-          Rect.vertical_axis_sum constants.content_box_inset
-        else Rect.horizontal_axis_sum constants.content_box_inset
+          Rectf.vertical_axis_sum constants.content_box_inset
+        else Rectf.horizontal_axis_sum constants.content_box_inset
       in
 
       let cross_min_size =
@@ -2092,11 +2102,11 @@ let determine_used_cross_size (type t)
                 |> Length_percentage.resolve_rect_or_zero
                      constants.node_inner_size.width calc
               in
-              let pb_sum = Rect.sum_axes (Rect.add padding border) in
+              let pb_sum = Rectf.sum_axes (Rectf.add padding border) in
               let box_sizing_adjustment =
                 if Style.box_sizing child_style = Style.Box_sizing.Content_box
                 then pb_sum
-                else Size.zero
+                else Sizef.zero
               in
               let max_size_ignoring_aspect_ratio =
                 Style.max_size child_style |> fun dims ->
@@ -2109,7 +2119,7 @@ let determine_used_cross_size (type t)
                       Dimension.maybe_resolve (Size.get Block dims)
                         constants.node_inner_size.height calc;
                   }
-                |> Size.maybe_add box_sizing_adjustment
+                |> Sizef.maybe_add box_sizing_adjustment
               in
 
               let cross_margin_sum =
@@ -2407,8 +2417,8 @@ let determine_container_cross_size (flex_lines : flex_line list)
     List.fold_left (fun acc line -> acc +. line.cross_size) 0.0 flex_lines
   in
   let padding_border_sum =
-    if constants.is_row then Rect.vertical_axis_sum constants.content_box_inset
-    else Rect.horizontal_axis_sum constants.content_box_inset
+    if constants.is_row then Rectf.vertical_axis_sum constants.content_box_inset
+    else Rectf.horizontal_axis_sum constants.content_box_inset
   in
   let cross_scrollbar_gutter =
     if constants.is_row then constants.scrollbar_gutter.y
@@ -2496,7 +2506,7 @@ let align_flex_lines_per_align_content (flex_lines : flex_line list)
 (* Final layout pass *)
 let final_layout_pass (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (flex_lines : flex_line list) (constants : algo_constants) : float size =
+    (flex_lines : flex_line list) (constants : algo_constants) : Sizef.t =
   (* Helper function to calculate flex item layout *)
   let calculate_flex_item item total_offset_main total_offset_cross
       line_offset_cross content_size container_size node_inner_size direction =
@@ -2512,7 +2522,11 @@ let final_layout_pass (type t)
                  height = Some item.target_height;
                }
            ~parent_size:node_inner_size
-           ~available_space:(Size.map Available_space.of_float container_size)
+           ~available_space:
+             {
+               width = Available_space.of_float container_size.Sizef.width;
+               height = Available_space.of_float container_size.height;
+             }
            ~vertical_margins_are_collapsible:Line.both_false)
     in
 
@@ -2524,10 +2538,10 @@ let final_layout_pass (type t)
       !total_offset_main +. item.offset_main
       +. Flex_direction_ext.main_start item.margin direction
       +.
-      match Flex_direction_ext.main_start item.inset direction with
+      match Flex_direction_ext.inset_main_start item.inset direction with
       | Some pos -> pos
       | None -> (
-          match Flex_direction_ext.main_end item.inset direction with
+          match Flex_direction_ext.inset_main_end item.inset direction with
           | Some pos -> -.pos
           | None -> 0.0)
     in
@@ -2537,10 +2551,10 @@ let final_layout_pass (type t)
       total_offset_cross +. item.offset_cross +. line_offset_cross
       +. Flex_direction_ext.cross_start item.margin direction
       +.
-      match Flex_direction_ext.cross_start item.inset direction with
+      match Flex_direction_ext.inset_cross_start item.inset direction with
       | Some pos -> pos
       | None -> (
-          match Flex_direction_ext.cross_end item.inset direction with
+          match Flex_direction_ext.inset_cross_end item.inset direction with
           | Some pos -> -.pos
           | None -> 0.0)
     in
@@ -2570,13 +2584,13 @@ let final_layout_pass (type t)
     (* Calculate location *)
     let location =
       if Flex_direction_ext.is_row direction then
-        Point.{ x = offset_main; y = offset_cross }
-      else Point.{ x = offset_cross; y = offset_main }
+        Pointf.{ x = offset_main; y = offset_cross }
+      else Pointf.{ x = offset_cross; y = offset_main }
     in
 
     (* Calculate scrollbar size *)
     let scrollbar_size =
-      Size.
+      Sizef.
         {
           width =
             (if item.overflow.y = Overflow.Scroll then item.scrollbar_width
@@ -2602,30 +2616,22 @@ let final_layout_pass (type t)
     (* Update content size *)
     let contribution_width =
       match item.overflow.x with
-      | Overflow.Visible -> max size.width content_size_output.width
+      | Overflow.Visible -> fmax size.width content_size_output.width
       | _ -> size.width
     in
     let contribution_height =
       match item.overflow.y with
-      | Overflow.Visible -> max size.height content_size_output.height
+      | Overflow.Visible -> fmax size.height content_size_output.height
       | _ -> size.height
     in
     if contribution_width > 0.0 || contribution_height > 0.0 then
-      let content_contribution =
-        Size.
-          {
-            width = location.x +. contribution_width;
-            height = location.y +. contribution_height;
-          }
-      in
       let current_size = !content_size in
-      let new_width =
-        max current_size.Size.width content_contribution.Size.width
-      in
-      let new_height =
-        max current_size.Size.height content_contribution.Size.height
-      in
-      content_size := Size.{ width = new_width; height = new_height }
+      content_size :=
+        Sizef.
+          {
+            width = fmax current_size.width (location.x +. contribution_width);
+            height = fmax current_size.height (location.y +. contribution_height);
+          }
   in
 
   (* Helper function to calculate layout for a line *)
@@ -2633,8 +2639,8 @@ let final_layout_pass (type t)
       node_inner_size padding_border direction =
     let total_offset_main =
       ref
-        (if constants.is_row then padding_border.Rect.left
-         else padding_border.Rect.top)
+        (if constants.is_row then padding_border.Rectf.left
+         else padding_border.Rectf.top)
     in
     let line_offset_cross = line.offset_cross in
 
@@ -2663,7 +2669,7 @@ let final_layout_pass (type t)
       (if constants.is_row then constants.content_box_inset.top
        else constants.content_box_inset.left)
   in
-  let content_size = ref Size.zero in
+  let content_size = ref Sizef.zero in
 
   let lines =
     if constants.is_wrap_reverse then List.rev flex_lines else flex_lines
@@ -2677,7 +2683,7 @@ let final_layout_pass (type t)
     lines;
 
   (* Add final adjustments to content size *)
-  Size.
+  Sizef.
     {
       width =
         !content_size.width +. constants.content_box_inset.right
@@ -2690,21 +2696,21 @@ let final_layout_pass (type t)
 (* Perform absolute layout on absolutely positioned children *)
 let perform_absolute_layout_on_absolute_children (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (node : Node_id.t) (constants : algo_constants) : float size =
+    (node : Node_id.t) (constants : algo_constants) : Sizef.t =
   let container_width = constants.container_size.width in
   let container_height = constants.container_size.height in
   let inset_relative_size =
-    Size.sub constants.container_size
-      (Size.add
-         (Rect.sum_axes constants.border)
-         Size.
+    Sizef.sub constants.container_size
+      (Sizef.add
+         (Rectf.sum_axes constants.border)
+         Sizef.
            {
              width = constants.scrollbar_gutter.x;
              height = constants.scrollbar_gutter.y;
            })
   in
 
-  let content_size = ref Size.zero in
+  let content_size = ref Sizef.zero in
   let calc = Tree.resolve_calc_value tree in
 
   for order = 0 to Tree.child_count tree node - 1 do
@@ -2748,11 +2754,11 @@ let perform_absolute_layout_on_absolute_children (type t)
              (Some inset_relative_size.width) calc
       in
 
-      let padding_border_sum = Rect.add padding border |> Rect.sum_axes in
+      let padding_border_sum = Rectf.add padding border |> Rectf.sum_axes in
       let box_sizing_adjustment =
         if Style.box_sizing child_style = Box_sizing.Content_box then
           padding_border_sum
-        else Size.zero
+        else Sizef.zero
       in
 
       (* Resolve inset *)
@@ -2966,11 +2972,11 @@ let perform_absolute_layout_on_absolute_children (type t)
       in
 
       let measured_size = Layout_output.size measure_output in
-      let final_size = Size.unwrap_or measured_size known_dimensions in
+      let final_size = Sizef.unwrap_or measured_size known_dimensions in
       (* Clamp final size between min and max - min wins over max when they
          conflict *)
       let final_size =
-        Size.
+        Sizef.
           {
             width =
               (match (final_size.width, min_width, max_width) with
@@ -2992,19 +2998,25 @@ let perform_absolute_layout_on_absolute_children (type t)
         Tree.compute_child_layout tree child
           (Layout_input.make ~run_mode:Run_mode.Perform_layout
              ~sizing_mode:Sizing_mode.Inherent_size ~axis:Requested_axis.Both
-             ~known_dimensions:(Size.map Option.some final_size)
+             ~known_dimensions:(Sizef.some final_size)
              ~parent_size:constants.node_inner_size ~available_space
              ~vertical_margins_are_collapsible:Line.both_false)
       in
 
       (* Calculate non-auto margins *)
       let non_auto_margin =
-        Rect.map (fun m -> Option.value m ~default:0.0) margin
+        Rectf.
+          {
+            left = Option.value margin.left ~default:0.0;
+            right = Option.value margin.right ~default:0.0;
+            top = Option.value margin.top ~default:0.0;
+            bottom = Option.value margin.bottom ~default:0.0;
+          }
       in
 
       (* Calculate free space *)
       let free_space =
-        Size.
+        Sizef.
           {
             width =
               constants.container_size.width -. final_size.width
@@ -3015,7 +3027,7 @@ let perform_absolute_layout_on_absolute_children (type t)
           }
       in
       let free_space =
-        Size.
+        Sizef.
           {
             width = Float.max free_space.width 0.0;
             height = Float.max free_space.height 0.0;
@@ -3033,7 +3045,7 @@ let perform_absolute_layout_on_absolute_children (type t)
           + if Option.is_none margin.bottom then 1 else 0
         in
         let auto_margin_size =
-          Size.
+          Sizef.
             {
               width =
                 (if auto_margin_count_width > 0 then
@@ -3045,7 +3057,7 @@ let perform_absolute_layout_on_absolute_children (type t)
                  else 0.0);
             }
         in
-        Rect.
+        Rectf.
           {
             left = Option.value margin.left ~default:auto_margin_size.width;
             right = Option.value margin.right ~default:auto_margin_size.width;
@@ -3206,12 +3218,12 @@ let perform_absolute_layout_on_absolute_children (type t)
       in
 
       let location =
-        if constants.is_row then Point.{ x = offset_main; y = offset_cross }
-        else Point.{ x = offset_cross; y = offset_main }
+        if constants.is_row then Pointf.{ x = offset_main; y = offset_cross }
+        else Pointf.{ x = offset_cross; y = offset_main }
       in
 
       let scrollbar_size =
-        Size.
+        Sizef.
           {
             width =
               (if overflow.y = Overflow.Scroll then scrollbar_width else 0.0);
@@ -3229,7 +3241,7 @@ let perform_absolute_layout_on_absolute_children (type t)
       (* Update content size *)
       let content_size_output = Layout_output.content_size layout_output in
       let size_content_size_contribution =
-        Size.
+        Sizef.
           {
             width =
               (match overflow.x with
@@ -3249,7 +3261,7 @@ let perform_absolute_layout_on_absolute_children (type t)
         || size_content_size_contribution.height > 0.0
       then
         let content_size_contribution =
-          Size.
+          Sizef.
             {
               width = location.x +. size_content_size_contribution.width;
               height = location.y +. size_content_size_contribution.height;
@@ -3257,7 +3269,7 @@ let perform_absolute_layout_on_absolute_children (type t)
         in
         let current_size = !content_size in
         content_size :=
-          Size.
+          Sizef.
             {
               width =
                 Float.max current_size.width content_size_contribution.width;
@@ -3319,7 +3331,7 @@ let compute_preliminary (type t)
 
   (* If container size is undefined, determine the container's main size *)
   (match
-     Flex_direction_ext.main_size constants.node_inner_size constants.dir
+     Flex_direction_ext.main_size_opt constants.node_inner_size constants.dir
    with
   | Some inner_main_size ->
       let outer_main_size =
@@ -3510,7 +3522,7 @@ let compute_preliminary (type t)
     in
 
     (* Return final layout output *)
-    let content_size = Size.max inflow_content_size absolute_content_size in
+    let content_size = Sizef.max inflow_content_size absolute_content_size in
     Layout_output.make ~size:constants.container_size ~content_size
       ~first_baselines:Point.{ x = None; y = first_vertical_baseline }
       ~top_margin:Collapsible_margin_set.zero
@@ -3539,10 +3551,10 @@ let compute_flexbox_layout (type t)
     Style.border style
     |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
-  let padding_border_sum = Rect.sum_axes (Rect.add padding border) in
+  let padding_border_sum = Rectf.sum_axes (Rectf.add padding border) in
   let box_sizing_adjustment =
     if Style.box_sizing style = Box_sizing.Content_box then padding_border_sum
-    else Size.zero
+    else Sizef.zero
   in
 
   let min_size =
@@ -3555,7 +3567,7 @@ let compute_flexbox_layout (type t)
           Dimension.maybe_resolve (Size.get Block dims) parent_size.height calc;
       }
     |> Size.apply_aspect_ratio aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
 
   let max_size =
@@ -3568,7 +3580,7 @@ let compute_flexbox_layout (type t)
           Dimension.maybe_resolve (Size.get Block dims) parent_size.height calc;
       }
     |> Size.apply_aspect_ratio aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
 
   let clamped_style_size =
@@ -3584,7 +3596,7 @@ let compute_flexbox_layout (type t)
               calc;
         }
       |> Size.apply_aspect_ratio aspect_ratio
-      |> Size.maybe_add box_sizing_adjustment
+      |> Sizef.maybe_add box_sizing_adjustment
       |> Size.clamp_option min_size max_size
     else Size.none
   in
@@ -3605,7 +3617,7 @@ let compute_flexbox_layout (type t)
     known_dimensions
     |> Size.choose_first min_max_definite_size
     |> Size.choose_first clamped_style_size
-    |> Size.maybe_max padding_border_sum
+    |> Sizef.maybe_max padding_border_sum
   in
 
   (* Short-circuit layout if the container's size is fully determined and we're
@@ -3613,11 +3625,11 @@ let compute_flexbox_layout (type t)
   if run_mode = Run_mode.Compute_size then
     match styled_based_known_dimensions with
     | { width = Some width; height = Some height } ->
-        Layout_output.from_outer_size Size.{ width; height }
+        Layout_output.from_outer_size Sizef.{ width; height }
     (* Nor when the width is known and only the width is requested. *)
     | { width = Some width; height = None }
       when Layout_input.axis inputs = Requested_axis.Horizontal ->
-        Layout_output.from_outer_size Size.{ width; height = 0.0 }
+        Layout_output.from_outer_size Sizef.{ width; height = 0.0 }
     | _ ->
         (* Continue with compute_preliminary *)
         compute_preliminary

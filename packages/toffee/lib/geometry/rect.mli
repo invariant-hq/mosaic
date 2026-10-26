@@ -14,14 +14,14 @@ type 'a t = { left : 'a; right : 'a; top : 'a; bottom : 'a }
 (** ['a t] represents a rectangle with four edges.
 
     The type parameter ['a] allows rectangles of different value types:
-    - [float t] for concrete measurements
+    - [float option t] for optional measurements
     - [Dimension.t t] for CSS dimension values
-    - [Length_percentage.t t] for length or percentage values *)
+    - [Length_percentage.t t] for length or percentage values
+
+    Concrete rectangles of floats are {!Rectf.t}, which store their floats flat.
+*)
 
 (** {1 Constants} *)
-
-val zero : float t
-(** [zero] is a rectangle with all edges set to [0.0]. *)
 
 val all : 'a -> 'a t
 (** [all value] creates a rectangle with all edges set to [value]. *)
@@ -54,38 +54,6 @@ val horizontal_components : 'a t -> 'a Line.t
 
 val vertical_components : 'a t -> 'a Line.t
 (** [vertical_components rect] extracts the top and bottom edges as a line. *)
-
-(** {1 Arithmetic Operations} *)
-
-val add : float t -> float t -> float t
-(** [add a b] adds corresponding edges of [a] and [b]. *)
-
-val ( + ) : float t -> float t -> float t
-(** [a + b] is equivalent to [add a b]. *)
-
-(** {1 Axis Sums} *)
-
-val horizontal_axis_sum : float t -> float
-(** [horizontal_axis_sum rect] returns [rect.left +. rect.right].
-
-    This computes total horizontal spacing, not the width of the rectangle. *)
-
-val vertical_axis_sum : float t -> float
-(** [vertical_axis_sum rect] returns [rect.top +. rect.bottom].
-
-    This computes total vertical spacing, not the height of the rectangle. *)
-
-val sum_axes : float t -> float Size.t
-(** [sum_axes rect] returns both axis sums as a size.
-
-    Equivalent to
-    [{width = horizontal_axis_sum rect; height = vertical_axis_sum rect}]. *)
-
-val grid_axis_sum : Absolute_axis.t -> float t -> float
-(** [grid_axis_sum axis rect] returns the sum along [axis].
-
-    Returns [horizontal_axis_sum rect] for [Horizontal],
-    [vertical_axis_sum rect] for [Vertical]. *)
 
 (** {1 Comparison and String Functions} *)
 

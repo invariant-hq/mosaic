@@ -89,7 +89,7 @@ module Intrinsic_size_measurer = struct
   (* Compute the item's resolved margins for size contributions *)
   let margins_axis_sums_with_baseline_shims (type tree)
       (module Tree : LAYOUT_PARTIAL_TREE with type t = tree) (measurer : tree t)
-      (item : Grid_item.t) : float size =
+      (item : Grid_item.t) : Sizef.t =
     (* Horizontal percentage margins always resolve to zero if the container
        size is indefinite as otherwise this would introduce a cyclic
        dependency. *)
@@ -97,7 +97,7 @@ module Intrinsic_size_measurer = struct
     let inner_node_width = measurer.inner_node_size.width in
 
     let margin_rect =
-      Rect.
+      Rectf.
         {
           left =
             Length_percentage_auto.resolve_or_zero item.margin.left (Some 0.0)
@@ -115,7 +115,7 @@ module Intrinsic_size_measurer = struct
         }
     in
 
-    Rect.sum_axes margin_rect
+    Rectf.sum_axes margin_rect
 
   (* Retrieve the item's min content contribution from the cache or compute
      it *)
@@ -130,7 +130,7 @@ module Intrinsic_size_measurer = struct
     (* Check cache first *)
     match Size.get measurer.axis item.min_content_contribution_cache with
     | Some cached_value ->
-        cached_value +. Size.get measurer.axis margin_axis_sums
+        cached_value +. Sizef.get measurer.axis margin_axis_sums
     | None ->
         (* Compute known dimensions using the available space *)
         let known_dimensions =
@@ -169,7 +169,7 @@ module Intrinsic_size_measurer = struct
           Size.set measurer.axis (Some contribution)
             item.min_content_contribution_cache;
 
-        contribution +. Size.get measurer.axis margin_axis_sums
+        contribution +. Sizef.get measurer.axis margin_axis_sums
 
   (* Retrieve the item's max content contribution from the cache or compute
      it *)
@@ -184,7 +184,7 @@ module Intrinsic_size_measurer = struct
     (* Check cache first *)
     match Size.get measurer.axis item.max_content_contribution_cache with
     | Some cached_value ->
-        cached_value +. Size.get measurer.axis margin_axis_sums
+        cached_value +. Sizef.get measurer.axis margin_axis_sums
     | None ->
         (* Compute known dimensions using the available space *)
         let known_dimensions =
@@ -223,7 +223,7 @@ module Intrinsic_size_measurer = struct
           Size.set measurer.axis (Some contribution)
             item.max_content_contribution_cache;
 
-        contribution +. Size.get measurer.axis margin_axis_sums
+        contribution +. Sizef.get measurer.axis margin_axis_sums
 
   (* The minimum contribution of an item is the smallest outer size it can
      have *)
@@ -240,7 +240,7 @@ module Intrinsic_size_measurer = struct
     (* Check cache first *)
     match Size.get measurer.axis item.minimum_contribution_cache with
     | Some cached_value ->
-        cached_value +. Size.get measurer.axis margin_axis_sums
+        cached_value +. Sizef.get measurer.axis margin_axis_sums
     | None ->
         (* Resolve padding and border *)
         let padding =
@@ -251,11 +251,11 @@ module Intrinsic_size_measurer = struct
           Length_percentage.resolve_rect_or_zero inner_node_size.width calc
             item.border
         in
-        let padding_border_size = Rect.sum_axes (Rect.add padding border) in
+        let padding_border_size = Rectf.sum_axes (Rectf.add padding border) in
 
         let box_sizing_adjustment =
           if item.box_sizing = Box_sizing.Content_box then padding_border_size
-          else Size.zero
+          else Sizef.zero
         in
 
         (* Helper to resolve dimension with optional value *)
@@ -285,7 +285,7 @@ module Intrinsic_size_measurer = struct
                     |> fun v_opt ->
                     match v_opt with
                     | Some v ->
-                        Some (v +. Size.get measurer.axis box_sizing_adjustment)
+                        Some (v +. Sizef.get measurer.axis box_sizing_adjustment)
                     | None -> None)
                 | None -> None )
             |> fun v_opt ->
@@ -311,7 +311,7 @@ module Intrinsic_size_measurer = struct
                       match v_opt with
                       | Some v ->
                           Some
-                            (v +. Size.get measurer.axis box_sizing_adjustment)
+                            (v +. Sizef.get measurer.axis box_sizing_adjustment)
                       | None -> None)
                   | None -> None) )
           |> fun v_opt ->
@@ -418,7 +418,7 @@ module Intrinsic_size_measurer = struct
           Size.set measurer.axis (Some final_size)
             item.minimum_contribution_cache;
 
-        final_size +. Size.get measurer.axis margin_axis_sums
+        final_size +. Sizef.get measurer.axis margin_axis_sums
 end
 
 (* Helper functions *)

@@ -148,10 +148,10 @@ let align_and_position_item (type t)
     ~(container_alignment_styles : align_items option in_both_abs_axis)
     ~baseline_shim =
   let grid_area_size =
-    Size.
+    Sizef.
       {
-        width = grid_area.Rect.right -. grid_area.Rect.left;
-        height = grid_area.Rect.bottom -. grid_area.Rect.top;
+        width = grid_area.Rectf.right -. grid_area.Rectf.left;
+        height = grid_area.Rectf.bottom -. grid_area.Rectf.top;
       }
   in
 
@@ -194,11 +194,11 @@ let align_and_position_item (type t)
     |> Length_percentage.resolve_rect_or_zero (Some grid_area_size.width)
          (Tree.resolve_calc_value tree)
   in
-  let padding_border_size = Rect.sum_axes (Rect.add padding border) in
+  let padding_border_size = Rectf.sum_axes (Rectf.add padding border) in
 
   let box_sizing_adjustment =
     if Style.box_sizing style = Box_sizing.Content_box then padding_border_size
-    else Size.zero
+    else Sizef.zero
   in
 
   let inherent_size =
@@ -216,7 +216,7 @@ let align_and_position_item (type t)
         }
     in
     let with_aspect = Size.apply_aspect_ratio aspect_ratio resolved_size in
-    Size.maybe_add box_sizing_adjustment with_aspect
+    Sizef.maybe_add box_sizing_adjustment with_aspect
   in
   let min_size =
     let style_min_size = Style.min_size style in
@@ -234,13 +234,12 @@ let align_and_position_item (type t)
         }
     in
     let with_box_sizing =
-      Size.maybe_add box_sizing_adjustment resolved_min_size
+      Sizef.maybe_add box_sizing_adjustment resolved_min_size
     in
     let with_padding_border =
-      Size.choose_first with_box_sizing
-        (Size.map Option.some padding_border_size)
+      Size.choose_first with_box_sizing (Sizef.some padding_border_size)
     in
-    let max_with_pb = Size.maybe_max padding_border_size with_padding_border in
+    let max_with_pb = Sizef.maybe_max padding_border_size with_padding_border in
     Size.apply_aspect_ratio aspect_ratio max_with_pb
   in
   let max_size =
@@ -259,7 +258,7 @@ let align_and_position_item (type t)
         }
     in
     let with_aspect = Size.apply_aspect_ratio aspect_ratio resolved_max_size in
-    Size.maybe_add box_sizing_adjustment with_aspect
+    Sizef.maybe_add box_sizing_adjustment with_aspect
   in
 
   (* Resolve default alignment styles if they are set on neither the parent or
@@ -304,7 +303,7 @@ let align_and_position_item (type t)
     match opt_val with Some v -> base -. v | None -> base
   in
   let grid_area_minus_item_margins_size =
-    Size.
+    Sizef.
       {
         width =
           ( (grid_area_size.width |> fun w -> subtract_option w margin.left)
@@ -396,14 +395,20 @@ let align_and_position_item (type t)
           (Layout_input.make ~run_mode:Run_mode.Compute_size
              ~sizing_mode:Sizing_mode.Inherent_size ~axis:Requested_axis.Both
              ~known_dimensions:clamped_size
-             ~parent_size:(Size.map Option.some grid_area_size)
+             ~parent_size:(Sizef.some grid_area_size)
              ~available_space:
-               (Size.map Available_space.of_float
-                  grid_area_minus_item_margins_size)
+               {
+                 width =
+                   Available_space.of_float
+                     grid_area_minus_item_margins_size.width;
+                 height =
+                   Available_space.of_float
+                     grid_area_minus_item_margins_size.height;
+               }
              ~vertical_margins_are_collapsible:Line.both_false)
         |> Layout_output.size
       in
-      Size.map Option.some measured_size
+      Sizef.some measured_size
     else clamped_size
   in
 
@@ -413,17 +418,22 @@ let align_and_position_item (type t)
       (Layout_input.make ~run_mode:Run_mode.Perform_layout
          ~sizing_mode:Sizing_mode.Inherent_size ~axis:Requested_axis.Both
          ~known_dimensions:size
-         ~parent_size:(Size.map Option.some grid_area_size)
+         ~parent_size:(Sizef.some grid_area_size)
          ~available_space:
-           (Size.map Available_space.of_float grid_area_minus_item_margins_size)
+           {
+             width =
+               Available_space.of_float grid_area_minus_item_margins_size.width;
+             height =
+               Available_space.of_float grid_area_minus_item_margins_size.height;
+           }
          ~vertical_margins_are_collapsible:Line.both_false)
   in
 
   (* Resolve final size *)
   let final_size =
     let measured_size = Layout_output.size layout_output in
-    let chosen_size = Size.unwrap_or measured_size size in
-    Size.clamp min_size max_size chosen_size
+    let chosen_size = Sizef.unwrap_or measured_size size in
+    Sizef.clamp min_size max_size chosen_size
   in
 
   let x, x_margin =
@@ -447,7 +457,7 @@ let align_and_position_item (type t)
   in
 
   let scrollbar_size =
-    Size.
+    Sizef.
       {
         width =
           (if overflow.Point.y = Overflow.Scroll then scrollbar_width else 0.0);
@@ -457,7 +467,7 @@ let align_and_position_item (type t)
   in
 
   let resolved_margin =
-    Rect.
+    Rectf.
       {
         left = x_margin.start;
         right = x_margin.end_;
@@ -468,7 +478,7 @@ let align_and_position_item (type t)
 
   Tree.set_unrounded_layout tree node
     (Layout.make ~order
-       ~location:Point.{ x; y }
+       ~location:Pointf.{ x; y }
        ~size:final_size
        ~content_size:(Layout_output.content_size layout_output)
        ~scrollbar_size ~padding ~border ~margin:resolved_margin);
@@ -476,7 +486,7 @@ let align_and_position_item (type t)
   (* Return contribution, y position, and height for baseline alignment *)
   let contribution =
     Toffee_compute_helpers.compute_content_size_contribution
-      ~location:Point.{ x; y }
+      ~location:Pointf.{ x; y }
       ~size:final_size
       ~content_size:(Layout_output.content_size layout_output)
       ~overflow

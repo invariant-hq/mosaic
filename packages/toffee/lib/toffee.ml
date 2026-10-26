@@ -559,7 +559,7 @@ type 'context measure_function =
   Node_id.t ->
   'context option ->
   Style.t ->
-  float size
+  Sizef.t
 (* Type of measure functions *)
 
 (* View - a view over the tree for layout computation *)
@@ -748,7 +748,7 @@ let compute_layout_with_measure (type ctx) (tree : ctx tree) node_id
 
 let compute_layout tree node available_space =
   compute_layout_with_measure tree node available_space (fun _ _ _ _ _ ->
-      Size.zero)
+      Sizef.zero)
 
 (* Modules for tree traversal - expose for external use *)
 module Traverse_partial_tree = struct

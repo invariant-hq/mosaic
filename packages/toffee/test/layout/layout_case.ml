@@ -17,7 +17,7 @@ let text ?(vertical = false) style words =
   { style; text = Some { words; vertical }; children = [] }
 
 let measure_text (known : float option size)
-    (available : Available_space.t size) { words; vertical } : float size =
+    (available : Available_space.t size) { words; vertical } : Sizef.t =
   let glyph = 10. in
   let longest = List.fold_left (fun n w -> max n (String.length w)) 0 words in
   let total = List.fold_left (fun n w -> n + String.length w) 0 words in
@@ -52,8 +52,8 @@ let measure_text (known : float option size)
   if vertical then { width = block; height = inline }
   else { width = inline; height = block }
 
-let measure (known : float option size) available _ text _ : float size =
-  let measured : float size =
+let measure (known : float option size) available _ text _ : Sizef.t =
+  let measured : Sizef.t =
     match (known, text) with
     | { width = Some width; height = Some height }, _ -> { width; height }
     | _, None -> { width = 0.; height = 0. }
@@ -90,8 +90,8 @@ let check ~rounding ~available root expected () =
   List.iteri
     (fun i (id, row) ->
       let layout = layout tree id |> Result.get_ok in
-      let Point.{ x; y } = Layout.location layout in
-      let Size.{ width; height } = Layout.size layout in
+      let Pointf.{ x; y } = Layout.location layout in
+      let Sizef.{ width; height } = Layout.size layout in
       let actual =
         [|
           ("x", x);

@@ -35,11 +35,11 @@ let compute_root_layout (type t)
        Style.border style
        |> Length_percentage.resolve_rect_or_zero parent_size.width calc
      in
-     let padding_border_size = Rect.sum_axes (Rect.add padding border) in
+     let padding_border_size = Rectf.sum_axes (Rectf.add padding border) in
      let box_sizing_adjustment =
        if Style.box_sizing style = Box_sizing.Content_box then
          padding_border_size
-       else Size.zero
+       else Sizef.zero
      in
 
      let min_size =
@@ -50,7 +50,7 @@ let compute_root_layout (type t)
            height = Dimension.maybe_resolve dims.height parent_size.height calc;
          }
        |> Size.apply_aspect_ratio aspect_ratio
-       |> Size.maybe_add box_sizing_adjustment
+       |> Sizef.maybe_add box_sizing_adjustment
      in
      let max_size =
        Style.max_size style |> fun dims ->
@@ -60,7 +60,7 @@ let compute_root_layout (type t)
            height = Dimension.maybe_resolve dims.height parent_size.height calc;
          }
        |> Size.apply_aspect_ratio aspect_ratio
-       |> Size.maybe_add box_sizing_adjustment
+       |> Sizef.maybe_add box_sizing_adjustment
      in
      let clamped_style_size =
        Style.size style |> fun dims ->
@@ -70,7 +70,7 @@ let compute_root_layout (type t)
            height = Dimension.maybe_resolve dims.height parent_size.height calc;
          }
        |> Size.apply_aspect_ratio aspect_ratio
-       |> Size.maybe_add box_sizing_adjustment
+       |> Sizef.maybe_add box_sizing_adjustment
        |> Size.clamp_option min_size max_size
      in
 
@@ -93,7 +93,7 @@ let compute_root_layout (type t)
            width =
              (match available_space.width with
              | Available_space.Definite w ->
-                 Some (w -. Rect.horizontal_axis_sum margin)
+                 Some (w -. Rectf.horizontal_axis_sum margin)
              | _ -> None);
            height = None;
          }
@@ -104,7 +104,7 @@ let compute_root_layout (type t)
        Size.choose_first dims min_max_definite_size |> fun dims ->
        Size.choose_first dims clamped_style_size |> fun dims ->
        Size.choose_first dims available_space_based_size |> fun dims ->
-       Size.maybe_max padding_border_size dims
+       Sizef.maybe_max padding_border_size dims
      in
 
      mut_known_dimensions := styled_based_known_dimensions);
@@ -139,7 +139,7 @@ let compute_root_layout (type t)
          calc
   in
   let scrollbar_size =
-    Size.
+    Sizef.
       {
         width =
           (if (Style.overflow style).y = Overflow.Scroll then
@@ -153,7 +153,7 @@ let compute_root_layout (type t)
   in
 
   Tree.set_unrounded_layout tree root
-    (Layout.make ~order:0 ~location:Point.zero
+    (Layout.make ~order:0 ~location:Pointf.zero
        ~size:(Layout_output.size output)
        ~content_size:(Layout_output.content_size output)
        ~scrollbar_size ~padding
@@ -215,13 +215,13 @@ let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
         Layout.make
           ~order:(Layout.order unrounded_layout)
           ~location:
-            Point.
+            Pointf.
               {
                 x = round (Layout.location unrounded_layout).x;
                 y = round (Layout.location unrounded_layout).y;
               }
           ~size:
-            Size.
+            Sizef.
               {
                 width =
                   round (cumulative_x +. (Layout.size unrounded_layout).width)
@@ -231,7 +231,7 @@ let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
                   -. round cumulative_y;
               }
           ~content_size:
-            Size.
+            Sizef.
               {
                 width =
                   round
@@ -245,13 +245,13 @@ let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
                   -. round cumulative_y;
               }
           ~scrollbar_size:
-            Size.
+            Sizef.
               {
                 width = round (Layout.scrollbar_size unrounded_layout).width;
                 height = round (Layout.scrollbar_size unrounded_layout).height;
               }
           ~border:
-            Rect.
+            Rectf.
               {
                 left =
                   round (cumulative_x +. (Layout.border unrounded_layout).left)
@@ -271,7 +271,7 @@ let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
                       -. (Layout.border unrounded_layout).bottom);
               }
           ~padding:
-            Rect.
+            Rectf.
               {
                 left =
                   round (cumulative_x +. (Layout.padding unrounded_layout).left)

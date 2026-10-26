@@ -1,8 +1,5 @@
 type 'a t = { left : 'a; right : 'a; top : 'a; bottom : 'a }
 
-(* Constants *)
-
-let zero = { left = 0.0; right = 0.0; top = 0.0; bottom = 0.0 }
 let all value = { left = value; right = value; top = value; bottom = value }
 
 (* Creation *)
@@ -39,31 +36,6 @@ let zip_size size f rect =
 
 let horizontal_components rect = Line.{ start = rect.left; end_ = rect.right }
 let vertical_components rect = Line.{ start = rect.top; end_ = rect.bottom }
-
-(* Arithmetic operations *)
-
-let add a b =
-  {
-    left = a.left +. b.left;
-    right = a.right +. b.right;
-    top = a.top +. b.top;
-    bottom = a.bottom +. b.bottom;
-  }
-
-let ( + ) = add
-
-(* Axis sums *)
-
-let horizontal_axis_sum rect = rect.left +. rect.right
-let vertical_axis_sum rect = rect.top +. rect.bottom
-
-let sum_axes rect =
-  { Size.width = horizontal_axis_sum rect; height = vertical_axis_sum rect }
-
-let grid_axis_sum axis rect =
-  match axis with
-  | Absolute_axis.Horizontal -> rect.left +. rect.right
-  | Absolute_axis.Vertical -> rect.top +. rect.bottom
 
 (* Comparison and string functions *)
 

@@ -179,6 +179,7 @@ it.
 
 - The sublibraries' modules are prefixed: `Toffee_style`, `Toffee_tree`, `Toffee_geometry`, `Toffee_compute` and `Toffee_compute_block`, `_flexbox`, `_grid` and `_helpers`. The library names and `Toffee.Style` and `Toffee.Geometry` stay
 - Layout rounds only the subtrees whose layout or position changed: `Toffee_tree.ROUND_TREE` requires `is_rounded`, and its `set_final_layout` takes `~x` and `~y`, the parent's unrounded absolute position. A node's layout value is replaced only when it or its subtree changed
+- Concrete sizes, rectangles and points are `Geometry.Sizef.t`, `Rectf.t` and `Pointf.t`, records of floats stored flat, so building one allocates a single block and reading one allocates nothing. `Layout.t`'s fields and a measure function's result have these types; reading a layout (`layout.size.width`) is unchanged. `Size`, `Rect` and `Point` keep their polymorphic types for optional and style values, and their operations on floats moved to the float modules
 
 #### Fixed
 
@@ -302,6 +303,8 @@ compiling are listed under Changed above.
 #### `toffee`
 
 - `Size.equal_option eq` → `Size.equal_with (Option.equal eq)`. `Available_space.maybe_set` → `Available_space.set_or_self`
+- A measure function returns a `Geometry.Sizef.t`: `Size.{ width; height }` → `Sizef.{ width; height }`, `Size.make w h` → `Sizef.make w h`, `Size.zero` → `Sizef.zero`. A pattern on a layout's size or location names the float type: `let Size.{ width; height } = Layout.size l` → `let Sizef.{ width; height } = Layout.size l`
+- `Size.zero`, `add`, `sub`, `( + )`, `( - )`, `mul_scalar`, `div_scalar`, `( * )`, `( / )`, `max`, `min`, `has_non_zero_area`, `equal`, `clamp`, `min_or_self`, `max_or_self`, `add_or_zero`, `sub_or_zero`, `max_concrete`, `min_with_option`, `max_with_option`, `add_with_option`, `sub_with_option`, `maybe_add`, `maybe_sub`, `maybe_min` and `maybe_max` → the same in `Sizef` (`max_concrete`, which took `Float.max`, → `Sizef.max`, which takes `Stdlib.max` as `Size.max` did); `Rect.zero`, `add`, `( + )`, `horizontal_axis_sum`, `vertical_axis_sum`, `sum_axes` and `grid_axis_sum` → `Rectf`; `Point.zero`, `add`, `sub`, `( + )`, `( - )`, `mul_scalar`, `div_scalar`, `( * )` and `( / )` → `Pointf`. `Sizef.of_size`, `to_size` and `some`, `Rectf.of_rect` and `to_rect`, and `Pointf.of_point` and `to_point` convert
 - A `Toffee_tree.ROUND_TREE` implementation adds `is_rounded`, and its `set_final_layout` takes `~x ~y`
 
 ## [0.1.0] - 2026-02-26

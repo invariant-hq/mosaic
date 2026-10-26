@@ -1,8 +1,9 @@
 (** 2-dimensional size representation.
 
     A generic container representing width and height extents. The type is
-    polymorphic over the contained value type, enabling concrete sizes
-    ([float t]), optional sizes ([float option t]), and dimension-typed sizes.
+    polymorphic over the contained value type, enabling optional sizes
+    ([float option t]) and dimension-typed sizes. Concrete sizes of floats are
+    {!Sizef.t}, which store their floats flat.
 
     All operations preserve type safety and handle axis-specific transformations
     through abstract and absolute axis types. *)
@@ -12,9 +13,6 @@ type 'a t = { width : 'a; height : 'a }
 *)
 
 (** {1 Constants} *)
-
-val zero : float t
-(** [zero] is a size with both width and height set to [0.0]. *)
 
 val none : 'a option t
 (** [none] is a size with both width and height set to [None]. *)
@@ -26,32 +24,6 @@ val make : 'a -> 'a -> 'a t
 
 val square : 'a -> 'a t
 (** [square side] creates a size with equal width and height. *)
-
-(** {1 Arithmetic Operations} *)
-
-val add : float t -> float t -> float t
-(** [add a b] adds corresponding dimensions of [a] and [b]. *)
-
-val sub : float t -> float t -> float t
-(** [sub a b] subtracts corresponding dimensions of [b] from [a]. *)
-
-val ( + ) : float t -> float t -> float t
-(** [a + b] is [add a b]. *)
-
-val ( - ) : float t -> float t -> float t
-(** [a - b] is [sub a b]. *)
-
-val mul_scalar : float t -> float -> float t
-(** [mul_scalar size scalar] multiplies both width and height by [scalar]. *)
-
-val div_scalar : float t -> float -> float t
-(** [div_scalar size scalar] divides both width and height by [scalar]. *)
-
-val ( * ) : float t -> float -> float t
-(** [size * scalar] is [mul_scalar size scalar]. *)
-
-val ( / ) : float t -> float -> float t
-(** [size / scalar] is [div_scalar size scalar]. *)
 
 (** {1 Mapping Functions} *)
 
@@ -92,22 +64,6 @@ val get_absolute : Absolute_axis.t -> 'a t -> 'a
 
     Returns width for [Absolute_axis.Horizontal] and height for
     [Absolute_axis.Vertical]. *)
-
-(** {1 Float-Specific Operations} *)
-
-val max : float t -> float t -> float t
-(** [max a b] computes the component-wise maximum of [a] and [b]. *)
-
-val min : float t -> float t -> float t
-(** [min a b] computes the component-wise minimum of [a] and [b]. *)
-
-val has_non_zero_area : float t -> bool
-(** [has_non_zero_area size] returns [true] if both width and height are
-    strictly greater than [0.0]. *)
-
-val equal : float t -> float t -> bool
-(** [equal a b] tests structural equality of [a] and [b] using float equality.
-*)
 
 (** {1 Option-Specific Operations} *)
 
@@ -203,105 +159,3 @@ val clamp_option :
     - [Some (clamp base min_val _)] when only min is [Some]
     - The original value when both bounds are [None]
     - [None] when [size] is [None] *)
-
-(** {2 Concrete + Option → Option Operations} *)
-
-val min_with_option : float t -> float option t -> float option t
-(** [min_with_option concrete optional] computes the minimum of a concrete size
-    with an optional size.
-
-    For each dimension, returns [Some (min concrete opt)] when optional is
-    [Some opt], otherwise [Some concrete]. *)
-
-val max_with_option : float t -> float option t -> float option t
-(** [max_with_option concrete optional] computes the maximum of a concrete size
-    with an optional size.
-
-    For each dimension, returns [Some (max concrete opt)] when optional is
-    [Some opt], otherwise [Some concrete]. *)
-
-val add_with_option : float t -> float option t -> float option t
-(** [add_with_option concrete optional] adds a concrete size to an optional
-    size.
-
-    For each dimension, returns [Some (concrete + opt)] when optional is
-    [Some opt], otherwise [Some concrete]. *)
-
-val sub_with_option : float t -> float option t -> float option t
-(** [sub_with_option concrete optional] subtracts an optional size from a
-    concrete size.
-
-    For each dimension, returns [Some (concrete - opt)] when optional is
-    [Some opt], otherwise [Some concrete]. *)
-
-(** {2 Concrete Operations with Optional Parameters} *)
-
-val clamp : float option t -> float option t -> float t -> float t
-(** [clamp min max size] clamps [size] between optional bounds, returning a
-    concrete size.
-
-    For each dimension:
-    - When both bounds are [Some], returns [min max_val (max min_val size)]
-    - When only max is [Some], returns [min max_val size]
-    - When only min is [Some], returns [max min_val size]
-    - When both are [None], returns [size] unchanged *)
-
-val min_or_self : float option t -> float t -> float t
-(** [min_or_self optional size] computes the minimum with an optional size,
-    falling back to [size].
-
-    For each dimension, returns [min size val_] when optional is [Some val_],
-    otherwise [size]. *)
-
-val max_or_self : float option t -> float t -> float t
-(** [max_or_self optional size] computes the maximum with an optional size,
-    falling back to [size].
-
-    For each dimension, returns [max size val_] when optional is [Some val_],
-    otherwise [size]. *)
-
-val add_or_zero : float option t -> float t -> float t
-(** [add_or_zero optional size] adds an optional size to a concrete size,
-    treating [None] as zero.
-
-    For each dimension, returns [size + val_] when optional is [Some val_],
-    otherwise [size]. *)
-
-val sub_or_zero : float option t -> float t -> float t
-(** [sub_or_zero optional size] subtracts an optional size from a concrete size,
-    treating [None] as zero.
-
-    For each dimension, returns [size - val_] when optional is [Some val_],
-    otherwise [size]. *)
-
-val max_concrete : float t -> float t -> float t
-(** [max_concrete a b] computes the component-wise maximum using [Float.max]. *)
-
-(** {2 Option + Concrete → Option Operations} *)
-
-val maybe_add : float t -> float option t -> float option t
-(** [maybe_add concrete opt_size] adds a concrete size to an optional size.
-
-    For each dimension, maps [Some v] to [Some (v + concrete)], and [None] to
-    [None]. *)
-
-val maybe_sub : float t -> float option t -> float option t
-(** [maybe_sub concrete opt_size] subtracts a concrete size from an optional
-    size.
-
-    For each dimension, maps [Some v] to [Some (v - concrete)], and [None] to
-    [None]. *)
-
-val maybe_min : float t -> float option t -> float option t
-(** [maybe_min concrete opt_size] computes the minimum of an optional size with
-    a concrete size.
-
-    For each dimension, maps [Some v] to [Some (min v concrete)], and [None] to
-    [None]. *)
-
-val maybe_max : float t -> float option t -> float option t
-(** [maybe_max concrete opt_size] computes the maximum of an optional size with
-    a concrete size.
-
-    For each dimension, maps [Some v] to [Some (max v concrete)], and [None] to
-    [None]. *)

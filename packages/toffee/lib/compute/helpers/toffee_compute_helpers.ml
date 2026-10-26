@@ -6,27 +6,21 @@ open Toffee_style
 (* Compute how much width/height a child contributes to its parent's intrinsic
    content size. Respects overflow settings - visible overflow contributes to
    content size. *)
-let compute_content_size_contribution ~location ~size ~content_size ~overflow =
-  let size_cs =
-    Size.
-      {
-        width =
-          (match overflow.Point.x with
-          | Overflow.Visible -> Float.max size.width content_size.width
-          | _ -> size.width);
-        height =
-          (match overflow.Point.y with
-          | Overflow.Visible -> Float.max size.height content_size.height
-          | _ -> size.height);
-      }
+let compute_content_size_contribution ~(location : Pointf.t) ~(size : Sizef.t)
+    ~(content_size : Sizef.t) ~overflow =
+  let width =
+    match overflow.Point.x with
+    | Overflow.Visible -> Float.max size.width content_size.width
+    | _ -> size.width
   in
-  if size_cs.width > 0. && size_cs.height > 0. then
-    Size.
-      {
-        width = location.Point.x +. size_cs.width;
-        height = location.Point.y +. size_cs.height;
-      }
-  else Size.zero
+  let height =
+    match overflow.Point.y with
+    | Overflow.Visible -> Float.max size.height content_size.height
+    | _ -> size.height
+  in
+  if width > 0. && height > 0. then
+    Sizef.{ width = location.x +. width; height = location.y +. height }
+  else Sizef.zero
 
 (* Implement fallback alignment.
 

@@ -1,12 +1,11 @@
-(** 2-dimensional point representation. *)
+(** 2-dimensional point representation.
+
+    Concrete points of floats are {!Pointf.t}, which store their floats flat. *)
 
 type 'a t = { x : 'a; y : 'a }
 (** ['a t] represents a 2-dimensional point with [x] and [y] coordinates. *)
 
 (** {1 Constants} *)
-
-val zero : float t
-(** [zero] is a point at the origin [(0.0, 0.0)]. *)
 
 val none : 'a option t
 (** [none] is a point with both coordinates set to [None]. *)
@@ -15,33 +14,6 @@ val none : 'a option t
 
 val make : 'a -> 'a -> 'a t
 (** [make x y] creates a point. *)
-
-(** {1 Arithmetic operations} *)
-
-val add : float t -> float t -> float t
-(** [add a b] adds corresponding coordinates of [a] and [b]. *)
-
-val sub : float t -> float t -> float t
-(** [sub a b] subtracts corresponding coordinates of [b] from [a]. *)
-
-val ( + ) : float t -> float t -> float t
-(** [a + b] is [add a b]. *)
-
-val ( - ) : float t -> float t -> float t
-(** [a - b] is [sub a b]. *)
-
-val mul_scalar : float t -> float -> float t
-(** [mul_scalar point scalar] multiplies both components of [point] by [scalar].
-*)
-
-val div_scalar : float t -> float -> float t
-(** [div_scalar point scalar] divides both components of [point] by [scalar]. *)
-
-val ( * ) : float t -> float -> float t
-(** [point * scalar] is [mul_scalar point scalar]. *)
-
-val ( / ) : float t -> float -> float t
-(** [point / scalar] is [div_scalar point scalar]. *)
 
 (** {1 Mapping} *)
 

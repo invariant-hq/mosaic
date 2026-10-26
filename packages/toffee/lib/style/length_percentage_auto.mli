@@ -181,7 +181,7 @@ val resolve_rect_or_zero :
   float option ->
   (int -> float -> float) ->
   t Toffee_geometry.Rect.t ->
-  float Toffee_geometry.Rect.t
+  Toffee_geometry.Rectf.t
 (** [resolve_rect_or_zero context calc_resolver rect] is [rect] with
     {!resolve_or_zero} applied to each side. A rect of zero lengths resolves to
-    {!Toffee_geometry.Rect.zero} without allocating. *)
+    {!Toffee_geometry.Rectf.zero} without allocating. *)

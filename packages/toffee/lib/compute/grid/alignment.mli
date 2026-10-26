@@ -83,10 +83,10 @@ val align_and_position_item :
   tree:'a ->
   node:Node_id.t ->
   order:int ->
-  grid_area:float Rect.t ->
+  grid_area:Rectf.t ->
   container_alignment_styles:Align_items.t option In_both_abs_axis.t ->
   baseline_shim:float ->
-  float Size.t * float * float
+  Sizef.t * float * float
 (** [align_and_position_item (module Tree) ~tree ~node ~order ~grid_area
      ~container_alignment_styles ~baseline_shim] aligns and positions a grid
     item within its assigned grid area.

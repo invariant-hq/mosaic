@@ -120,8 +120,12 @@ let resolve_rect_or_zero context calc_resolver (rect : t Toffee_geometry.Rect.t)
     =
   let zero = Compact_length.is_zero in
   if zero rect.left && zero rect.right && zero rect.top && zero rect.bottom then
-    Toffee_geometry.Rect.zero
+    Toffee_geometry.Rectf.zero
   else
-    Toffee_geometry.Rect.map
-      (fun t -> resolve_or_zero t context calc_resolver)
-      rect
+    let side t = resolve_or_zero t context calc_resolver in
+    {
+      Toffee_geometry.Rectf.left = side rect.left;
+      right = side rect.right;
+      top = side rect.top;
+      bottom = side rect.bottom;
+    }

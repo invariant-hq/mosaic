@@ -33,21 +33,21 @@ type t = {
       (** Rendering order for layering. Nodes with higher order values render on
           top of nodes with lower values. This implements a topological sort of
           the tree. *)
-  location : float Toffee_geometry.point;
+  location : Toffee_geometry.Pointf.t;
       (** Top-left corner of the margin box relative to the parent's content
           box. *)
-  size : float Toffee_geometry.size;
+  size : Toffee_geometry.Sizef.t;
       (** Width and height of the border box (includes padding and border, but
           not margin). *)
-  content_size : float Toffee_geometry.size;
+  content_size : Toffee_geometry.Sizef.t;
       (** Width and height of the content inside the node. May exceed [size]
           when content overflows, useful for computing scroll dimensions. *)
-  scrollbar_size : float Toffee_geometry.size;
+  scrollbar_size : Toffee_geometry.Sizef.t;
       (** Size of scrollbars in each dimension. Zero when no scrollbar is
           present. *)
-  border : float Toffee_geometry.rect;  (** Border widths on each edge. *)
-  padding : float Toffee_geometry.rect;  (** Padding on each edge. *)
-  margin : float Toffee_geometry.rect;  (** Margin on each edge. *)
+  border : Toffee_geometry.Rectf.t;  (** Border widths on each edge. *)
+  padding : Toffee_geometry.Rectf.t;  (** Padding on each edge. *)
+  margin : Toffee_geometry.Rectf.t;  (** Margin on each edge. *)
 }
 (** [t] represents the complete layout state for a node after layout
     computation. *)
@@ -56,13 +56,13 @@ type t = {
 
 val make :
   order:int ->
-  location:float Toffee_geometry.point ->
-  size:float Toffee_geometry.size ->
-  content_size:float Toffee_geometry.size ->
-  scrollbar_size:float Toffee_geometry.size ->
-  border:float Toffee_geometry.rect ->
-  padding:float Toffee_geometry.rect ->
-  margin:float Toffee_geometry.rect ->
+  location:Toffee_geometry.Pointf.t ->
+  size:Toffee_geometry.Sizef.t ->
+  content_size:Toffee_geometry.Sizef.t ->
+  scrollbar_size:Toffee_geometry.Sizef.t ->
+  border:Toffee_geometry.Rectf.t ->
+  padding:Toffee_geometry.Rectf.t ->
+  margin:Toffee_geometry.Rectf.t ->
   t
 (** [make ~order ~location ~size ~content_size ~scrollbar_size ~border ~padding
      ~margin] creates a layout with all fields specified. *)
@@ -80,25 +80,25 @@ val with_order : int -> t
 val order : t -> int
 (** [order layout] returns the rendering order. *)
 
-val location : t -> float Toffee_geometry.point
+val location : t -> Toffee_geometry.Pointf.t
 (** [location layout] returns the top-left corner position. *)
 
-val size : t -> float Toffee_geometry.size
+val size : t -> Toffee_geometry.Sizef.t
 (** [size layout] returns the border box dimensions. *)
 
-val content_size : t -> float Toffee_geometry.size
+val content_size : t -> Toffee_geometry.Sizef.t
 (** [content_size layout] returns the content dimensions. *)
 
-val scrollbar_size : t -> float Toffee_geometry.size
+val scrollbar_size : t -> Toffee_geometry.Sizef.t
 (** [scrollbar_size layout] returns the scrollbar dimensions. *)
 
-val border : t -> float Toffee_geometry.rect
+val border : t -> Toffee_geometry.Rectf.t
 (** [border layout] returns the border widths. *)
 
-val padding : t -> float Toffee_geometry.rect
+val padding : t -> Toffee_geometry.Rectf.t
 (** [padding layout] returns the padding. *)
 
-val margin : t -> float Toffee_geometry.rect
+val margin : t -> Toffee_geometry.Rectf.t
 (** [margin layout] returns the margin. *)
 
 (** {1 Content Box Dimensions} *)
@@ -116,7 +116,7 @@ val content_box_height : t -> float
     [size.height - padding.top - padding.bottom - border.top - border.bottom].
 *)
 
-val content_box_size : t -> float Toffee_geometry.size
+val content_box_size : t -> Toffee_geometry.Sizef.t
 (** [content_box_size layout] computes the content box dimensions.
 
     Equivalent to

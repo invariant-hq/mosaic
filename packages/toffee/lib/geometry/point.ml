@@ -1,24 +1,10 @@
 type 'a t = { x : 'a; y : 'a }
 
-(* Constants *)
-
-let zero = { x = 0.0; y = 0.0 }
 let none = { x = None; y = None }
 
 (* Creation *)
 
 let make x y = { x; y }
-
-(* Arithmetic operations *)
-
-let add a b = { x = a.x +. b.x; y = a.y +. b.y }
-let sub a b = { x = a.x -. b.x; y = a.y -. b.y }
-let ( + ) = add
-let ( - ) = sub
-let mul_scalar point scalar = { x = point.x *. scalar; y = point.y *. scalar }
-let div_scalar point scalar = { x = point.x /. scalar; y = point.y /. scalar }
-let ( * ) = mul_scalar
-let ( / ) = div_scalar
 
 (* Mapping *)
 

@@ -206,7 +206,7 @@ let known_dimensions (type tree)
   let margins =
     let inner_node_width = inner_node_size.width in
     let margin_rect =
-      Rect.
+      Rectf.
         {
           left =
             Length_percentage_auto.resolve_or_zero t.margin.left (Some 0.0) calc;
@@ -222,7 +222,7 @@ let known_dimensions (type tree)
               inner_node_width calc;
         }
     in
-    Rect.sum_axes margin_rect
+    Rectf.sum_axes margin_rect
   in
 
   (* Resolve padding and border *)
@@ -232,11 +232,11 @@ let known_dimensions (type tree)
   let border =
     Length_percentage.resolve_rect_or_zero grid_area_size.width calc t.border
   in
-  let padding_border_size = Rect.sum_axes (Rect.add padding border) in
+  let padding_border_size = Rectf.sum_axes (Rectf.add padding border) in
 
   let box_sizing_adjustment =
     if t.box_sizing = Box_sizing.Content_box then padding_border_size
-    else Size.zero
+    else Sizef.zero
   in
 
   (* Resolve inherent size *)
@@ -245,7 +245,7 @@ let known_dimensions (type tree)
       (fun dim grid_size -> Dimension.maybe_resolve dim grid_size calc)
       t.size grid_area_size
     |> Size.apply_aspect_ratio t.aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
 
   (* Resolve min/max sizes *)
@@ -254,7 +254,7 @@ let known_dimensions (type tree)
       (fun dim grid_size -> Dimension.maybe_resolve dim grid_size calc)
       t.min_size grid_area_size
     |> Size.apply_aspect_ratio t.aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
 
   let max_size =
@@ -262,11 +262,11 @@ let known_dimensions (type tree)
       (fun dim grid_size -> Dimension.maybe_resolve dim grid_size calc)
       t.max_size grid_area_size
     |> Size.apply_aspect_ratio t.aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
 
   let grid_area_minus_item_margins_size =
-    Size.maybe_sub margins grid_area_size
+    Sizef.maybe_sub margins grid_area_size
   in
 
   (* Apply stretch alignment for width *)

@@ -38,11 +38,11 @@ let compute_grid_layout (type t)
     Style.border style
     |> Length_percentage.resolve_rect_or_zero parent_size.width calc
   in
-  let padding_border = Rect.add padding border in
-  let padding_border_size = Rect.sum_axes padding_border in
+  let padding_border = Rectf.add padding border in
+  let padding_border_size = Rectf.sum_axes padding_border in
   let box_sizing_adjustment =
     if Style.box_sizing style = Box_sizing.Content_box then padding_border_size
-    else Size.zero
+    else Sizef.zero
   in
 
   let min_size =
@@ -54,7 +54,7 @@ let compute_grid_layout (type t)
         height = Dimension.maybe_resolve dims.height parent_size.height calc;
       })
     |> Size.apply_aspect_ratio aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
   let max_size =
     Style.max_size style
@@ -65,7 +65,7 @@ let compute_grid_layout (type t)
         height = Dimension.maybe_resolve dims.height parent_size.height calc;
       })
     |> Size.apply_aspect_ratio aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
   let style_size =
     Style.size style
@@ -76,7 +76,7 @@ let compute_grid_layout (type t)
         height = Dimension.maybe_resolve dims.height parent_size.height calc;
       })
     |> Size.apply_aspect_ratio aspect_ratio
-    |> Size.maybe_add box_sizing_adjustment
+    |> Sizef.maybe_add box_sizing_adjustment
   in
   let preferred_size =
     if Layout_input.sizing_mode inputs = Sizing_mode.Inherent_size then
@@ -153,28 +153,28 @@ let compute_grid_layout (type t)
       {
         width =
           Available_space.map_definite_value constrained_available_space.width
-            (fun space -> space -. Rect.horizontal_axis_sum content_box_inset);
+            (fun space -> space -. Rectf.horizontal_axis_sum content_box_inset);
         height =
           Available_space.map_definite_value constrained_available_space.height
-            (fun space -> space -. Rect.vertical_axis_sum content_box_inset);
+            (fun space -> space -. Rectf.vertical_axis_sum content_box_inset);
       }
   in
 
   let outer_node_size =
     Size.choose_first known_dimensions preferred_size
     |> Size.clamp_option min_size max_size
-    |> Size.maybe_max padding_border_size
+    |> Sizef.maybe_max padding_border_size
   in
   let inner_node_size =
     Size.
       {
         width =
           Option.map
-            (fun space -> space -. Rect.horizontal_axis_sum content_box_inset)
+            (fun space -> space -. Rectf.horizontal_axis_sum content_box_inset)
             outer_node_size.width;
         height =
           Option.map
-            (fun space -> space -. Rect.vertical_axis_sum content_box_inset)
+            (fun space -> space -. Rectf.vertical_axis_sum content_box_inset)
             outer_node_size.height;
       }
   in
@@ -182,11 +182,11 @@ let compute_grid_layout (type t)
   (* Short-circuit if we can compute size early *)
   match (run_mode, outer_node_size.width, outer_node_size.height) with
   | Run_mode.Compute_size, Some width, Some height ->
-      Layout_output.from_outer_size Size.{ width; height }
+      Layout_output.from_outer_size Sizef.{ width; height }
   (* Nor when the width is known and only the width is requested. *)
   | Run_mode.Compute_size, Some width, None
     when Layout_input.axis inputs = Requested_axis.Horizontal ->
-      Layout_output.from_outer_size Size.{ width; height = 0.0 }
+      Layout_output.from_outer_size Sizef.{ width; height = 0.0 }
   | _ ->
       (* 2. Resolve the explicit grid *)
 
@@ -197,8 +197,8 @@ let compute_grid_layout (type t)
         Size.choose_first outer_node_size max_size |> fun s ->
         Size.choose_first s min_size
         |> Size.clamp_option min_size max_size
-        |> Size.maybe_max padding_border_size
-        |> fun s -> Size.maybe_sub (Rect.sum_axes content_box_inset) s
+        |> Sizef.maybe_max padding_border_size
+        |> fun s -> Sizef.maybe_sub (Rectf.sum_axes content_box_inset) s
       in
 
       (* Determine auto-repeat strategy based on container size constraints *)
@@ -392,14 +392,14 @@ let compute_grid_layout (type t)
         Size.choose_first known_dimensions preferred_size
       in
       let container_border_box =
-        Size.
+        Sizef.
           {
             width =
               (match Size.get Abstract_axis.Inline resolved_style_size with
                 | Some w -> w
                 | None ->
                     initial_column_sum
-                    +. Rect.horizontal_axis_sum content_box_inset)
+                    +. Rectf.horizontal_axis_sum content_box_inset)
               |> (fun w ->
               match (min_size.width, max_size.width) with
               | Some min_w, Some max_w -> Float.max min_w (Float.min max_w w)
@@ -411,7 +411,7 @@ let compute_grid_layout (type t)
               (match Size.get Abstract_axis.Block resolved_style_size with
                 | Some h -> h
                 | None ->
-                    initial_row_sum +. Rect.vertical_axis_sum content_box_inset)
+                    initial_row_sum +. Rectf.vertical_axis_sum content_box_inset)
               |> (fun h ->
               match (min_size.height, max_size.height) with
               | Some min_h, Some max_h -> Float.max min_h (Float.min max_h h)
@@ -422,16 +422,16 @@ let compute_grid_layout (type t)
           }
       in
       let container_content_box =
-        Size.
+        Sizef.
           {
             width =
               Float.max 0.0
                 (container_border_box.width
-                -. Rect.horizontal_axis_sum content_box_inset);
+                -. Rectf.horizontal_axis_sum content_box_inset);
             height =
               Float.max 0.0
                 (container_border_box.height
-                -. Rect.vertical_axis_sum content_box_inset);
+                -. Rectf.vertical_axis_sum content_box_inset);
           }
       in
 
@@ -679,7 +679,7 @@ let compute_grid_layout (type t)
         (* Align columns *)
         Alignment.align_tracks
           ~grid_container_content_box_size:
-            (Size.get Abstract_axis.Inline container_content_box)
+            (Sizef.get Abstract_axis.Inline container_content_box)
           ~padding:Line.{ start = padding.left; end_ = padding.right }
           ~border:Line.{ start = border.left; end_ = border.right }
           ~tracks:columns ~track_alignment_style:justify_content;
@@ -687,13 +687,13 @@ let compute_grid_layout (type t)
         (* Align rows *)
         Alignment.align_tracks
           ~grid_container_content_box_size:
-            (Size.get Abstract_axis.Block container_content_box)
+            (Sizef.get Abstract_axis.Block container_content_box)
           ~padding:Line.{ start = padding.top; end_ = padding.bottom }
           ~border:Line.{ start = border.top; end_ = border.bottom }
           ~tracks:rows ~track_alignment_style:align_content;
 
         (* 9. Size, Align, and Position Grid Items *)
-        let item_content_size_contribution = ref Size.zero in
+        let item_content_size_contribution = ref Sizef.zero in
 
         (* Sort items back into original order to allow them to be matched up
            with styles *)
@@ -712,7 +712,7 @@ let compute_grid_layout (type t)
           (fun index item ->
             let grid_area =
               {
-                Rect.top =
+                Rectf.top =
                   rows.(item.Grid_item.row_indexes.Line.start + 1)
                     .Grid_track.offset;
                 bottom =
@@ -735,7 +735,9 @@ let compute_grid_layout (type t)
             item.Grid_item.y_position <- y_position;
             item.Grid_item.height <- height;
             item_content_size_contribution :=
-              Size.max !item_content_size_contribution content_size_contribution)
+              Sizef.max
+                !item_content_size_contribution
+                content_size_contribution)
           items;
 
         (* Position hidden and absolutely positioned children *)
@@ -807,7 +809,7 @@ let compute_grid_layout (type t)
             in
 
             let grid_area =
-              Rect.
+              Rectf.
                 {
                   top =
                     (match maybe_row_indexes.start with
@@ -841,7 +843,9 @@ let compute_grid_layout (type t)
                 ~container_alignment_styles ~baseline_shim:0.0
             in
             item_content_size_contribution :=
-              Size.max !item_content_size_contribution content_size_contribution;
+              Sizef.max
+                !item_content_size_contribution
+                content_size_contribution;
             incr order)
         done;
 

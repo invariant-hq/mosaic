@@ -2,13 +2,13 @@ module Geometry = Toffee_geometry
 
 type t = {
   order : int;
-  location : float Geometry.point;
-  size : float Geometry.size;
-  content_size : float Geometry.size;
-  scrollbar_size : float Geometry.size;
-  border : float Geometry.rect;
-  padding : float Geometry.rect;
-  margin : float Geometry.rect;
+  location : Geometry.Pointf.t;
+  size : Geometry.Sizef.t;
+  content_size : Geometry.Sizef.t;
+  scrollbar_size : Geometry.Sizef.t;
+  border : Geometry.Rectf.t;
+  padding : Geometry.Rectf.t;
+  margin : Geometry.Rectf.t;
 }
 
 let make ~order ~location ~size ~content_size ~scrollbar_size ~border ~padding
@@ -36,13 +36,13 @@ let margin t = t.margin
 let default =
   {
     order = 0;
-    location = Geometry.Point.zero;
-    size = Geometry.Size.zero;
-    content_size = Geometry.Size.zero;
-    scrollbar_size = Geometry.Size.zero;
-    border = Geometry.Rect.zero;
-    padding = Geometry.Rect.zero;
-    margin = Geometry.Rect.zero;
+    location = Geometry.Pointf.zero;
+    size = Geometry.Sizef.zero;
+    content_size = Geometry.Sizef.zero;
+    scrollbar_size = Geometry.Sizef.zero;
+    border = Geometry.Rectf.zero;
+    padding = Geometry.Rectf.zero;
+    margin = Geometry.Rectf.zero;
   }
 
 let with_order order = { default with order }
@@ -56,7 +56,7 @@ let content_box_height layout =
   -. layout.border.top -. layout.border.bottom
 
 let content_box_size layout =
-  Geometry.Size.
+  Geometry.Sizef.
     {
       width =
         layout.size.width -. layout.border.left -. layout.border.right
@@ -89,39 +89,31 @@ let scroll_height layout =
 let to_string t =
   Printf.sprintf
     "Layout { order: %d; location: %s; size: %s; content_size: %s }" t.order
-    (Geometry.Point.to_string Float.to_string t.location)
-    (Geometry.Size.to_string Float.to_string t.size)
-    (Geometry.Size.to_string Float.to_string t.content_size)
+    (Geometry.Pointf.to_string t.location)
+    (Geometry.Sizef.to_string t.size)
+    (Geometry.Sizef.to_string t.content_size)
 
 let compare a b =
   let cmp = Int.compare a.order b.order in
   if cmp <> 0 then cmp
   else
-    let cmp = Geometry.Point.compare Float.compare a.location b.location in
+    let cmp = Geometry.Pointf.compare a.location b.location in
     if cmp <> 0 then cmp
     else
-      let cmp = Geometry.Size.compare Float.compare a.size b.size in
+      let cmp = Geometry.Sizef.compare a.size b.size in
       if cmp <> 0 then cmp
       else
-        let cmp =
-          Geometry.Size.compare Float.compare a.content_size b.content_size
-        in
+        let cmp = Geometry.Sizef.compare a.content_size b.content_size in
         if cmp <> 0 then cmp
         else
-          let cmp =
-            Geometry.Size.compare Float.compare a.scrollbar_size
-              b.scrollbar_size
-          in
+          let cmp = Geometry.Sizef.compare a.scrollbar_size b.scrollbar_size in
           if cmp <> 0 then cmp
           else
-            let cmp = Geometry.Rect.compare Float.compare a.border b.border in
+            let cmp = Geometry.Rectf.compare a.border b.border in
             if cmp <> 0 then cmp
             else
-              let cmp =
-                Geometry.Rect.compare Float.compare a.padding b.padding
-              in
-              if cmp <> 0 then cmp
-              else Geometry.Rect.compare Float.compare a.margin b.margin
+              let cmp = Geometry.Rectf.compare a.padding b.padding in
+              if cmp <> 0 then cmp else Geometry.Rectf.compare a.margin b.margin
 
 let equal a b = compare a b = 0
 let pp fmt t = Format.pp_print_string fmt (to_string t)

@@ -457,8 +457,8 @@ let test_measure_count_flexbox () =
     | None -> ());
     match known_dimensions with
     | Size.{ width = Some width; height = Some height } ->
-        Size.{ width; height }
-    | _ -> Size.{ width = 50.0; height = 50.0 }
+        Sizef.{ width; height }
+    | _ -> Sizef.{ width = 50.0; height = 50.0 }
   in
   let available =
     Size.
@@ -494,7 +494,7 @@ let measure_input ?(sizing_mode = Toffee_tree.Sizing_mode.Inherent_size)
     ~vertical_margins_are_collapsible:Line.both_false
 
 let measured width =
-  Layout_output.from_outer_size Size.{ width; height = width }
+  Layout_output.from_outer_size Sizef.{ width; height = width }
 
 let cached cache input =
   Option.map
@@ -532,8 +532,8 @@ let test_cache_margin_collapse_not_cached () =
   let cache = Cache.make () in
   let with_margins ~through ~top width =
     Layout_output.make
-      ~size:Size.{ width; height = width }
-      ~content_size:Size.{ width = 0.; height = 0. }
+      ~size:Sizef.{ width; height = width }
+      ~content_size:Sizef.{ width = 0.; height = 0. }
       ~first_baselines:Point.none ~top_margin:top
       ~bottom_margin:Toffee_tree.Collapsible_margin_set.zero
       ~margins_can_collapse_through:through
@@ -623,12 +623,12 @@ let test_cache_width_measure_does_not_answer_height () =
   in
   let measure known _available _node context _style =
     match context with
-    | None -> Size.{ width = 0.; height = 0. }
+    | None -> Sizef.{ width = 0.; height = 0. }
     | Some () ->
-        Size.
+        Sizef.
           {
-            width = Option.value known.width ~default:100.;
-            height = Option.value known.height ~default:19.;
+            width = Option.value known.Size.width ~default:100.;
+            height = Option.value known.Size.height ~default:19.;
           }
   in
   compute_layout_with_measure tree container
@@ -731,9 +731,9 @@ let test_max_width_clamps_measured_wrap () =
           | Some h -> h
           | None -> ceil (120.0 /. width)
         in
-        Size.{ width; height }
+        Sizef.{ width; height }
     | _ ->
-        Size.
+        Sizef.
           {
             width = Option.value known.Size.width ~default:0.0;
             height = Option.value known.Size.height ~default:0.0;

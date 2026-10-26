@@ -99,8 +99,8 @@
     - [context]: Custom data attached via {!new_leaf_with_context}.
     - [style]: The node's style.
 
-    It returns the measured {!Geometry.size}. The default measure function (used
-    by {!compute_layout}) returns zero size.
+    It returns the measured {!Geometry.Sizef.t}. The default measure function
+    (used by {!compute_layout}) returns zero size.
 
     Example with text measurement:
 
@@ -109,12 +109,12 @@
 
       let measure known_dims available _node_id context _style =
         match context with
-        | None -> Geometry.Size.zero
+        | None -> Geometry.Sizef.zero
         | Some { content; font_size } ->
             (* Compute text dimensions based on font_size and content *)
             let char_width = font_size *. 0.6 in
             let char_count = String.length content in
-            Geometry.Size.{
+            Geometry.Sizef.{
               width = float_of_int char_count *. char_width;
               height = font_size;
             }
@@ -516,7 +516,7 @@ type 'context measure_function =
   Node_id.t ->
   'context option ->
   Style.t ->
-  float size
+  Geometry.Sizef.t
 (** ['context measure_function] computes intrinsic size for leaf nodes.
 
     Parameters:

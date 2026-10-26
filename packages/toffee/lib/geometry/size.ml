@@ -1,30 +1,11 @@
 type 'a t = { width : 'a; height : 'a }
 
-(* Constants *)
-
-let zero = { width = 0.0; height = 0.0 }
 let none = { width = None; height = None }
 
 (* Creation *)
 
 let make width height = { width; height }
 let square side = { width = side; height = side }
-
-(* Arithmetic operations *)
-
-let add a b = { width = a.width +. b.width; height = a.height +. b.height }
-let sub a b = { width = a.width -. b.width; height = a.height -. b.height }
-let ( + ) = add
-let ( - ) = sub
-
-let mul_scalar size scalar =
-  { width = size.width *. scalar; height = size.height *. scalar }
-
-let div_scalar size scalar =
-  { width = size.width /. scalar; height = size.height /. scalar }
-
-let ( * ) = mul_scalar
-let ( / ) = div_scalar
 
 (* Mapping functions *)
 
@@ -54,13 +35,6 @@ let get_absolute axis size =
   match axis with
   | Absolute_axis.Horizontal -> size.width
   | Absolute_axis.Vertical -> size.height
-
-(* Float-specific functions *)
-
-let max a b = { width = max a.width b.width; height = max a.height b.height }
-let min a b = { width = min a.width b.width; height = min a.height b.height }
-let has_non_zero_area size = size.width > 0.0 && size.height > 0.0
-let equal a b = a.width = b.width && a.height = b.height
 
 (* Option-specific functions *)
 
@@ -192,154 +166,4 @@ let clamp_option min max size =
       | Some base, Some min, None -> Some (Float.max min base)
       | Some _, None, None -> size.height
       | None, _, _ -> None);
-  }
-
-(* Concrete + Option → Option operations *)
-
-let min_with_option concrete optional =
-  {
-    width =
-      (match optional.width with
-      | Some opt_val -> Some (Float.min concrete.width opt_val)
-      | None -> Some concrete.width);
-    height =
-      (match optional.height with
-      | Some opt_val -> Some (Float.min concrete.height opt_val)
-      | None -> Some concrete.height);
-  }
-
-let max_with_option concrete optional =
-  {
-    width =
-      (match optional.width with
-      | Some opt_val -> Some (Float.max concrete.width opt_val)
-      | None -> Some concrete.width);
-    height =
-      (match optional.height with
-      | Some opt_val -> Some (Float.max concrete.height opt_val)
-      | None -> Some concrete.height);
-  }
-
-let add_with_option concrete optional =
-  {
-    width =
-      (match optional.width with
-      | Some opt_val -> Some (concrete.width +. opt_val)
-      | None -> Some concrete.width);
-    height =
-      (match optional.height with
-      | Some opt_val -> Some (concrete.height +. opt_val)
-      | None -> Some concrete.height);
-  }
-
-let sub_with_option concrete optional =
-  {
-    width =
-      (match optional.width with
-      | Some opt_val -> Some (concrete.width -. opt_val)
-      | None -> Some concrete.width);
-    height =
-      (match optional.height with
-      | Some opt_val -> Some (concrete.height -. opt_val)
-      | None -> Some concrete.height);
-  }
-
-(* Concrete operations with optional parameters *)
-
-let clamp min max size =
-  {
-    width =
-      (match (min.width, max.width) with
-      | Some min_val, Some max_val ->
-          Float.max min_val (Float.min max_val size.width)
-      | None, Some max_val -> Float.min max_val size.width
-      | Some min_val, None -> Float.max min_val size.width
-      | None, None -> size.width);
-    height =
-      (match (min.height, max.height) with
-      | Some min_val, Some max_val ->
-          Float.max min_val (Float.min max_val size.height)
-      | None, Some max_val -> Float.min max_val size.height
-      | Some min_val, None -> Float.max min_val size.height
-      | None, None -> size.height);
-  }
-
-let min_or_self optional size =
-  {
-    width =
-      (match optional.width with
-      | Some val_ -> Float.min size.width val_
-      | None -> size.width);
-    height =
-      (match optional.height with
-      | Some val_ -> Float.min size.height val_
-      | None -> size.height);
-  }
-
-let max_or_self optional size =
-  {
-    width =
-      (match optional.width with
-      | Some val_ -> Float.max size.width val_
-      | None -> size.width);
-    height =
-      (match optional.height with
-      | Some val_ -> Float.max size.height val_
-      | None -> size.height);
-  }
-
-let add_or_zero optional size =
-  {
-    width =
-      (match optional.width with
-      | Some val_ -> size.width +. val_
-      | None -> size.width);
-    height =
-      (match optional.height with
-      | Some val_ -> size.height +. val_
-      | None -> size.height);
-  }
-
-let sub_or_zero optional size =
-  {
-    width =
-      (match optional.width with
-      | Some val_ -> size.width -. val_
-      | None -> size.width);
-    height =
-      (match optional.height with
-      | Some val_ -> size.height -. val_
-      | None -> size.height);
-  }
-
-let max_concrete a b =
-  { width = Float.max a.width b.width; height = Float.max a.height b.height }
-
-(* Option + Concrete -> Option operations *)
-(* These implement Rust's MaybeMath for Option<f32> + f32 -> Option<f32> *)
-
-let maybe_add concrete_size opt_size =
-  {
-    width = Option.map (fun v -> v +. concrete_size.width) opt_size.width;
-    height = Option.map (fun v -> v +. concrete_size.height) opt_size.height;
-  }
-
-let maybe_sub concrete_size opt_size =
-  {
-    width = Option.map (fun v -> v -. concrete_size.width) opt_size.width;
-    height = Option.map (fun v -> v -. concrete_size.height) opt_size.height;
-  }
-
-let maybe_min concrete_size opt_size =
-  {
-    width = Option.map (fun v -> Float.min v concrete_size.width) opt_size.width;
-    height =
-      Option.map (fun v -> Float.min v concrete_size.height) opt_size.height;
-  }
-
-let maybe_max concrete_size opt_size =
-  {
-    width = Option.map (fun v -> Float.max v concrete_size.width) opt_size.width;
-    height =
-      Option.map (fun v -> Float.max v concrete_size.height) opt_size.height;
   }

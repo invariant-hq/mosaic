@@ -650,13 +650,15 @@ let is_settled t =
 let measure_fn (t : t) (known_dimensions : float option Toffee.Geometry.Size.t)
     (available_space : Toffee.Available_space.t Toffee.Geometry.Size.t)
     (node_id : Toffee.Node_id.t) (_context : unit option)
-    (style : Toffee.Style.t) : float Toffee.Geometry.Size.t =
+    (style : Toffee.Style.t) : Toffee.Geometry.Sizef.t =
   match Hashtbl.find_opt t.toffee_map (Toffee.Node_id.index node_id) with
-  | None -> Toffee.Geometry.Size.{ width = 0.; height = 0. }
+  | None -> Toffee.Geometry.Sizef.zero
   | Some node -> (
       match Renderable.Private.measure node with
-      | None -> Toffee.Geometry.Size.{ width = 0.; height = 0. }
-      | Some m -> m ~known_dimensions ~available_space ~style)
+      | None -> Toffee.Geometry.Sizef.zero
+      | Some m ->
+          Toffee.Geometry.Sizef.of_size
+            (m ~known_dimensions ~available_space ~style))
 
 (* ───── Pass 2: Layout Extraction + Command Generation ───── *)
 

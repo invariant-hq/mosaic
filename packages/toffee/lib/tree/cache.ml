@@ -191,7 +191,7 @@ let get t inputs =
           set_recently_used t (recently_used t lor (1 lsl !found));
           Some
             (Layout_output.from_outer_size
-               { Geometry.Size.width = e.width; height = e.height })
+               { Geometry.Sizef.width = e.width; height = e.height })
     | Perform_hidden_layout -> None
 
 let clear t =

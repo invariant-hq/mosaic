@@ -36,9 +36,9 @@
     [margins_can_collapse_through] to [false]. *)
 
 type t = {
-  size : float Toffee_geometry.size;
+  size : Toffee_geometry.Sizef.t;
       (** The computed outer size of the node's box. *)
-  content_size : float Toffee_geometry.size;
+  content_size : Toffee_geometry.Sizef.t;
       (** The size of the content within the node.
 
           This may exceed [size] when content overflows, enabling computation of
@@ -62,8 +62,8 @@ type t = {
 }
 
 val make :
-  size:float Toffee_geometry.size ->
-  content_size:float Toffee_geometry.size ->
+  size:Toffee_geometry.Sizef.t ->
+  content_size:Toffee_geometry.Sizef.t ->
   first_baselines:float option Toffee_geometry.point ->
   top_margin:Collapsible_margin_set.t ->
   bottom_margin:Collapsible_margin_set.t ->
@@ -77,10 +77,10 @@ val make :
     relevant. For flexbox and grid layouts, prefer {!from_sizes_and_baselines}
     which sets margins to zero automatically. *)
 
-val size : t -> float Toffee_geometry.size
+val size : t -> Toffee_geometry.Sizef.t
 (** [size t] returns the outer size of [t]. *)
 
-val content_size : t -> float Toffee_geometry.size
+val content_size : t -> Toffee_geometry.Sizef.t
 (** [content_size t] returns the content size of [t]. *)
 
 val first_baselines : t -> float option Toffee_geometry.point
@@ -108,7 +108,7 @@ val default : t
 
     Identical to {!hidden}. Provided as a convenient default value. *)
 
-val from_outer_size : float Toffee_geometry.size -> t
+val from_outer_size : Toffee_geometry.Sizef.t -> t
 (** [from_outer_size size] creates a layout output from just the outer size.
 
     Sets [size] to the provided value and [content_size] to zero. Use this when
@@ -117,8 +117,8 @@ val from_outer_size : float Toffee_geometry.size -> t
     margins are zero, and margins cannot collapse through. *)
 
 val from_sizes_and_baselines :
-  float Toffee_geometry.size ->
-  float Toffee_geometry.size ->
+  Toffee_geometry.Sizef.t ->
+  Toffee_geometry.Sizef.t ->
   float option Toffee_geometry.point ->
   t
 (** [from_sizes_and_baselines size content_size first_baselines] creates a

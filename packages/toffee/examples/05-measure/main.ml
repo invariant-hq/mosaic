@@ -25,8 +25,7 @@ type text_context = { text_content : string }
 
 let text_measure_function (known_dimensions : float option Geometry.size)
     (available_space : Available_space.t Geometry.size)
-    (text_context : text_context) (metrics : font_metrics) : float Geometry.size
-    =
+    (text_context : text_context) (metrics : font_metrics) : Geometry.Sizef.t =
   let open Geometry in
   let inline_axis = Absolute_axis.Horizontal in
   let block_axis = Absolute_axis.other inline_axis in
@@ -35,7 +34,7 @@ let text_measure_function (known_dimensions : float option Geometry.size)
     text_context.text_content |> String.split_on_char ' '
     |> List.filter (fun s -> String.length s > 0)
   in
-  if words = [] then Size.zero
+  if words = [] then Sizef.zero
   else
     let min_line_length =
       List.fold_left (fun acc word -> max acc (String.length word)) 0 words
@@ -82,24 +81,24 @@ let text_measure_function (known_dimensions : float option Geometry.size)
           let line_count = count_lines 0 1 words in
           float_of_int line_count *. metrics.char_height
     in
-    Size.{ width = inline_size; height = block_size }
+    Sizef.{ width = inline_size; height = block_size }
 
 (* Image measurement helpers *)
 
 type image_context = { width : float; height : float }
 
 let image_measure_function (known_dimensions : float option Geometry.size)
-    (ctx : image_context) : float Geometry.size =
+    (ctx : image_context) : Geometry.Sizef.t =
   let open Geometry in
   match (known_dimensions.Size.width, known_dimensions.height) with
-  | Some width, Some height -> Size.{ width; height }
+  | Some width, Some height -> Sizef.{ width; height }
   | Some width, None ->
       let height = width /. ctx.width *. ctx.height in
-      Size.{ width; height }
+      Sizef.{ width; height }
   | None, Some height ->
       let width = height /. ctx.height *. ctx.width in
-      Size.{ width; height }
-  | None, None -> Size.{ width = ctx.width; height = ctx.height }
+      Sizef.{ width; height }
+  | None, None -> Sizef.{ width = ctx.width; height = ctx.height }
 
 module Node_context = struct
   type t =
@@ -109,13 +108,13 @@ end
 
 let measure_function (known_dimensions : float option Geometry.size)
     (available_space : Available_space.t Geometry.size) (_node_id : Node_id.t)
-    (context : Node_context.t option) (_style : Style.t) : float Geometry.size =
+    (context : Node_context.t option) (_style : Style.t) : Geometry.Sizef.t =
   match known_dimensions with
   | { Geometry.Size.width = Some width; height = Some height } ->
-      Geometry.Size.{ width; height }
+      Geometry.Sizef.{ width; height }
   | _ -> (
       match context with
-      | None -> Geometry.Size.zero
+      | None -> Geometry.Sizef.zero
       | Some (Node_context.Text { text }) ->
           text_measure_function known_dimensions available_space text
             { char_width = 10.; char_height = 10. }

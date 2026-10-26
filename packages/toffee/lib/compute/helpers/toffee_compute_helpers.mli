@@ -5,11 +5,11 @@
     [compute/common] module. *)
 
 val compute_content_size_contribution :
-  location:float Toffee_geometry.Point.t ->
-  size:float Toffee_geometry.Size.t ->
-  content_size:float Toffee_geometry.Size.t ->
+  location:Toffee_geometry.Pointf.t ->
+  size:Toffee_geometry.Sizef.t ->
+  content_size:Toffee_geometry.Sizef.t ->
   overflow:Toffee_style.Overflow.t Toffee_geometry.Point.t ->
-  float Toffee_geometry.Size.t
+  Toffee_geometry.Sizef.t
 (** [compute_content_size_contribution ~location ~size ~content_size ~overflow]
     computes how much a child contributes to its parent's intrinsic content
     size.
