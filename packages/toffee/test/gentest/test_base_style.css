@@ -12,6 +12,13 @@
     font-style: normal;
 }
 
+/* Force Chrome to use space-taking scrollbars, as Taffy does. gentest.js
+   measures their width and gives it to every scroll container. */
+::-webkit-scrollbar {
+  width: 15px;
+  height: 15px;
+}
+
 body {
   padding: 0;
   margin: 0;

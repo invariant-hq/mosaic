@@ -14,7 +14,7 @@ let () =
                ~size:
                  { width = Dimension.length 45.; height = Dimension.length 45. }
                ~overflow:{ x = Scroll; y = Visible }
-               ())
+               ~scrollbar_width:15. ())
             [ "HHHHHHHHHHHHHHHHHHHHH" ])
         ~border_box:[ [| 0.; 0.; 45.; 45.; 165.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 45.; 45.; 165.; 0. |] ];
@@ -25,10 +25,10 @@ let () =
                ~size:
                  { width = Dimension.length 45.; height = Dimension.length 45. }
                ~overflow:{ x = Visible; y = Scroll }
-               ())
+               ~scrollbar_width:15. ())
             [ "HHHHHHHHHHHHHHHHHHHHH" ])
-        ~border_box:[ [| 0.; 0.; 45.; 45.; 165.; 0. |] ]
-        ~content_box:[ [| 0.; 0.; 45.; 45.; 165.; 0. |] ];
+        ~border_box:[ [| 0.; 0.; 45.; 45.; 180.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 45.; 45.; 180.; 0. |] ];
       case "overflow_scrollbars_overridden_by_available_space"
         (fun box_sizing ->
           node
@@ -39,7 +39,7 @@ let () =
             [
               node
                 (Style.make ~box_sizing ~flex_grow:1.
-                   ~overflow:{ x = Scroll; y = Scroll } ())
+                   ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
                 [];
             ])
         ~border_box:[ [| 0.; 0.; 2.; 4. |]; [| 0.; 0.; 2.; 4.; 0.; 0. |] ]
@@ -50,41 +50,46 @@ let () =
             (Style.make ~box_sizing
                ~max_size:
                  { width = Dimension.length 2.; height = Dimension.length 4. }
-               ~overflow:{ x = Scroll; y = Scroll } ())
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
             [])
-        ~border_box:[ [| 0.; 0.; 0.; 0.; 0.; 0. |] ]
-        ~content_box:[ [| 0.; 0.; 0.; 0.; 0.; 0. |] ];
+        ~border_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |] ];
       case "overflow_scrollbars_overridden_by_size"
         (fun box_sizing ->
           node
             (Style.make ~box_sizing
                ~size:
                  { width = Dimension.length 2.; height = Dimension.length 4. }
-               ~overflow:{ x = Scroll; y = Scroll } ())
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
             [])
         ~border_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |] ];
       case "overflow_scrollbars_take_up_space_both_axis"
         (fun box_sizing ->
           text
-            (Style.make ~box_sizing ~overflow:{ x = Scroll; y = Scroll } ())
+            (Style.make ~box_sizing ~overflow:{ x = Scroll; y = Scroll }
+               ~scrollbar_width:15. ())
             [ "HH" ])
-        ~border_box:[ [| 0.; 0.; 20.; 10.; 0.; 0. |] ]
-        ~content_box:[ [| 0.; 0.; 20.; 10.; 0.; 0. |] ];
+        ~border_box:[ [| 0.; 0.; 35.; 25.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 35.; 25.; 0.; 0. |] ];
       case "overflow_scrollbars_take_up_space_x_axis"
         (fun box_sizing ->
           text
-            (Style.make ~box_sizing ~overflow:{ x = Scroll; y = Visible } ())
+            (Style.make ~box_sizing
+               ~overflow:{ x = Scroll; y = Visible }
+               ~scrollbar_width:15. ())
             [ "HH" ])
-        ~border_box:[ [| 0.; 0.; 20.; 10.; 0.; 0. |] ]
-        ~content_box:[ [| 0.; 0.; 20.; 10.; 0.; 0. |] ];
+        ~border_box:[ [| 0.; 0.; 20.; 25.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 20.; 25.; 0.; 0. |] ];
       case "overflow_scrollbars_take_up_space_y_axis"
         (fun box_sizing ->
           text
-            (Style.make ~box_sizing ~overflow:{ x = Visible; y = Scroll } ())
+            (Style.make ~box_sizing
+               ~overflow:{ x = Visible; y = Scroll }
+               ~scrollbar_width:15. ())
             [ "HH" ])
-        ~border_box:[ [| 0.; 0.; 20.; 10.; 0.; 0. |] ]
-        ~content_box:[ [| 0.; 0.; 20.; 10.; 0.; 0. |] ];
+        ~border_box:[ [| 0.; 0.; 35.; 10.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 35.; 10.; 0.; 0. |] ];
       case "padding_border_overrides_max_size"
         (fun box_sizing ->
           node

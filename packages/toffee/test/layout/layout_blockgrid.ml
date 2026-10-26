@@ -326,7 +326,7 @@ let () =
                 [
                   node
                     (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden }
-                       ())
+                       ~scrollbar_width:15. ())
                     [
                       node
                         (Style.make ~box_sizing

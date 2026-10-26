@@ -2166,7 +2166,7 @@ let () =
                        top = Length_percentage.length 20.;
                        bottom = Length_percentage.length 20.;
                      }
-                   ~overflow:{ x = Scroll; y = Scroll } ())
+                   ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~box_sizing ~position:Absolute
@@ -2298,10 +2298,10 @@ let () =
             [| 200.; 0.; 200.; 200.; 0.; 0. |];
             [| 35.; 35.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
-            [| 180.; 180.; 0.; 0. |];
+            [| 165.; 165.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
             [| 50.; 50.; 0.; 0. |];
-            [| 20.; 20.; 160.; 160. |];
+            [| 20.; 20.; 145.; 145. |];
             [| 400.; 0.; 200.; 200. |];
             [| 35.; 35.; 50.; 10. |];
             [| 35.; 45.; 0.; 0. |];
@@ -2319,10 +2319,10 @@ let () =
             [| 270.; 0.; 270.; 270.; 0.; 0. |];
             [| 35.; 35.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
-            [| 250.; 250.; 0.; 0. |];
+            [| 235.; 235.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
             [| 50.; 50.; 0.; 0. |];
-            [| 20.; 20.; 230.; 230. |];
+            [| 20.; 20.; 215.; 215. |];
             [| 540.; 0.; 270.; 270. |];
             [| 35.; 35.; 50.; 10. |];
             [| 35.; 45.; 0.; 0. |];
@@ -5398,7 +5398,7 @@ let () =
                        bottom = Length_percentage_auto.length 10.;
                      }
                    ~overflow:{ x = Hidden; y = Visible }
-                   ())
+                   ~scrollbar_width:15. ())
                 [];
               node
                 (Style.make ~display:Block ~box_sizing
@@ -5458,7 +5458,7 @@ let () =
                        bottom = Length_percentage_auto.length 10.;
                      }
                    ~overflow:{ x = Scroll; y = Visible }
-                   ())
+                   ~scrollbar_width:15. ())
                 [];
               node
                 (Style.make ~display:Block ~box_sizing
@@ -5476,17 +5476,17 @@ let () =
             ])
         ~border_box:
           [
-            [| 0.; 0.; 50.; 40. |];
+            [| 0.; 0.; 50.; 55. |];
             [| 0.; 0.; 50.; 10. |];
-            [| 0.; 20.; 50.; 0.; 0.; 0. |];
-            [| 0.; 30.; 50.; 10. |];
+            [| 0.; 20.; 50.; 15.; 0.; 0. |];
+            [| 0.; 45.; 50.; 10. |];
           ]
         ~content_box:
           [
-            [| 0.; 0.; 50.; 40. |];
+            [| 0.; 0.; 50.; 55. |];
             [| 0.; 0.; 50.; 10. |];
-            [| 0.; 20.; 50.; 0.; 0.; 0. |];
-            [| 0.; 30.; 50.; 10. |];
+            [| 0.; 20.; 50.; 15.; 0.; 0. |];
+            [| 0.; 45.; 50.; 10. |];
           ];
       case "margin_y_collapse_through_blocked_by_overflow_y_hidden"
         (fun box_sizing ->
@@ -5518,7 +5518,7 @@ let () =
                        bottom = Length_percentage_auto.length 10.;
                      }
                    ~overflow:{ x = Visible; y = Hidden }
-                   ())
+                   ~scrollbar_width:15. ())
                 [];
               node
                 (Style.make ~display:Block ~box_sizing
@@ -5578,7 +5578,7 @@ let () =
                        bottom = Length_percentage_auto.length 10.;
                      }
                    ~overflow:{ x = Visible; y = Scroll }
-                   ())
+                   ~scrollbar_width:15. ())
                 [];
               node
                 (Style.make ~display:Block ~box_sizing
@@ -6117,7 +6117,7 @@ let () =
                        bottom = Length_percentage_auto.length 0.;
                      }
                    ~overflow:{ x = Hidden; y = Visible }
-                   ())
+                   ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~display:Block ~box_sizing
@@ -6173,7 +6173,7 @@ let () =
                        bottom = Length_percentage_auto.length 0.;
                      }
                    ~overflow:{ x = Scroll; y = Visible }
-                   ())
+                   ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~display:Block ~box_sizing
@@ -6200,15 +6200,15 @@ let () =
             ])
         ~border_box:
           [
-            [| 0.; 0.; 50.; 30. |];
-            [| 0.; 10.; 50.; 20.; 0.; 0. |];
+            [| 0.; 0.; 50.; 45. |];
+            [| 0.; 10.; 50.; 35.; 0.; 0. |];
             [| 0.; 10.; 50.; 10. |];
             [| 0.; 0.; 50.; 10. |];
           ]
         ~content_box:
           [
-            [| 0.; 0.; 50.; 30. |];
-            [| 0.; 10.; 50.; 20.; 0.; 0. |];
+            [| 0.; 0.; 50.; 45. |];
+            [| 0.; 10.; 50.; 35.; 0.; 0. |];
             [| 0.; 10.; 50.; 10. |];
             [| 0.; 0.; 50.; 10. |];
           ];
@@ -6229,7 +6229,7 @@ let () =
                        bottom = Length_percentage_auto.length 0.;
                      }
                    ~overflow:{ x = Visible; y = Hidden }
-                   ())
+                   ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~display:Block ~box_sizing
@@ -6285,7 +6285,7 @@ let () =
                        bottom = Length_percentage_auto.length 0.;
                      }
                    ~overflow:{ x = Visible; y = Scroll }
-                   ())
+                   ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~display:Block ~box_sizing
@@ -6314,15 +6314,15 @@ let () =
           [
             [| 0.; 0.; 50.; 30. |];
             [| 0.; 10.; 50.; 20.; 0.; 0. |];
-            [| 0.; 10.; 50.; 10. |];
-            [| 0.; 0.; 50.; 10. |];
+            [| 0.; 10.; 35.; 10. |];
+            [| 0.; 0.; 35.; 10. |];
           ]
         ~content_box:
           [
             [| 0.; 0.; 50.; 30. |];
             [| 0.; 10.; 50.; 20.; 0.; 0. |];
-            [| 0.; 10.; 50.; 10. |];
-            [| 0.; 0.; 50.; 10. |];
+            [| 0.; 10.; 35.; 10. |];
+            [| 0.; 0.; 35.; 10. |];
           ];
       case "margin_y_first_child_collapse_blocked_by_padding_top"
         (fun box_sizing ->
@@ -7282,7 +7282,7 @@ let () =
                        bottom = Length_percentage_auto.length 10.;
                      }
                    ~overflow:{ x = Hidden; y = Visible }
-                   ())
+                   ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~display:Block ~box_sizing
@@ -7338,7 +7338,7 @@ let () =
                        bottom = Length_percentage_auto.length 10.;
                      }
                    ~overflow:{ x = Scroll; y = Visible }
-                   ())
+                   ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~display:Block ~box_sizing
@@ -7365,15 +7365,15 @@ let () =
             ])
         ~border_box:
           [
-            [| 0.; 0.; 50.; 30. |];
-            [| 0.; 0.; 50.; 20.; 0.; 0. |];
+            [| 0.; 0.; 50.; 45. |];
+            [| 0.; 0.; 50.; 35.; 0.; 0. |];
             [| 0.; 0.; 50.; 10. |];
             [| 0.; 0.; 50.; 10. |];
           ]
         ~content_box:
           [
-            [| 0.; 0.; 50.; 30. |];
-            [| 0.; 0.; 50.; 20.; 0.; 0. |];
+            [| 0.; 0.; 50.; 45. |];
+            [| 0.; 0.; 50.; 35.; 0.; 0. |];
             [| 0.; 0.; 50.; 10. |];
             [| 0.; 0.; 50.; 10. |];
           ];
@@ -7394,7 +7394,7 @@ let () =
                        bottom = Length_percentage_auto.length 10.;
                      }
                    ~overflow:{ x = Visible; y = Hidden }
-                   ())
+                   ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~display:Block ~box_sizing
@@ -7450,7 +7450,7 @@ let () =
                        bottom = Length_percentage_auto.length 10.;
                      }
                    ~overflow:{ x = Visible; y = Scroll }
-                   ())
+                   ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~display:Block ~box_sizing
@@ -7479,15 +7479,15 @@ let () =
           [
             [| 0.; 0.; 50.; 30. |];
             [| 0.; 0.; 50.; 20.; 0.; 0. |];
-            [| 0.; 0.; 50.; 10. |];
-            [| 0.; 0.; 50.; 10. |];
+            [| 0.; 0.; 35.; 10. |];
+            [| 0.; 0.; 35.; 10. |];
           ]
         ~content_box:
           [
             [| 0.; 0.; 50.; 30. |];
             [| 0.; 0.; 50.; 20.; 0.; 0. |];
-            [| 0.; 0.; 50.; 10. |];
-            [| 0.; 0.; 50.; 10. |];
+            [| 0.; 0.; 35.; 10. |];
+            [| 0.; 0.; 35.; 10. |];
           ];
       case "margin_y_last_child_collapse_blocked_by_padding_bottom"
         (fun box_sizing ->
@@ -9210,7 +9210,7 @@ let () =
             [
               node
                 (Style.make ~display:Block ~box_sizing
-                   ~overflow:{ x = Scroll; y = Scroll } ())
+                   ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~box_sizing ~position:Absolute
@@ -9228,14 +9228,14 @@ let () =
         ~border_box:
           [
             [| 0.; 0.; 2.; 4. |];
-            [| 0.; 0.; 2.; 0.; 0.; 0. |];
-            [| 0.; 0.; 2.; 0. |];
+            [| 0.; 0.; 2.; 15.; 0.; 0. |];
+            [| 0.; 0.; 0.; 0. |];
           ]
         ~content_box:
           [
             [| 0.; 0.; 2.; 4. |];
-            [| 0.; 0.; 2.; 0.; 0.; 0. |];
-            [| 0.; 0.; 2.; 0. |];
+            [| 0.; 0.; 2.; 15.; 0.; 0. |];
+            [| 0.; 0.; 0.; 0. |];
           ];
       case "overflow_scrollbars_overridden_by_max_size"
         (fun box_sizing ->
@@ -9243,7 +9243,7 @@ let () =
             (Style.make ~display:Block ~box_sizing
                ~max_size:
                  { width = Dimension.length 2.; height = Dimension.length 4. }
-               ~overflow:{ x = Scroll; y = Scroll } ())
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
             [
               node
                 (Style.make ~box_sizing ~position:Absolute
@@ -9257,15 +9257,15 @@ let () =
                    ())
                 [];
             ])
-        ~border_box:[ [| 0.; 0.; 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
-        ~content_box:[ [| 0.; 0.; 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
+        ~border_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "overflow_scrollbars_overridden_by_size"
         (fun box_sizing ->
           node
             (Style.make ~display:Block ~box_sizing
                ~size:
                  { width = Dimension.length 2.; height = Dimension.length 4. }
-               ~overflow:{ x = Scroll; y = Scroll } ())
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
             [
               node
                 (Style.make ~box_sizing ~position:Absolute
@@ -9279,15 +9279,15 @@ let () =
                    ())
                 [];
             ])
-        ~border_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 2.; 4. |] ]
-        ~content_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 2.; 4. |] ];
+        ~border_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "overflow_scrollbars_take_up_space_both_axis"
         (fun box_sizing ->
           node
             (Style.make ~display:Block ~box_sizing
                ~size:
                  { width = Dimension.length 50.; height = Dimension.length 50. }
-               ~overflow:{ x = Scroll; y = Scroll } ())
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
             [
               node
                 (Style.make ~box_sizing ~position:Absolute
@@ -9301,8 +9301,8 @@ let () =
                    ())
                 [];
             ])
-        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ]
-        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ];
+        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 35.; 35. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 35.; 35. |] ];
       case "overflow_scrollbars_take_up_space_cross_axis"
         (fun box_sizing ->
           node
@@ -9310,7 +9310,7 @@ let () =
                ~size:
                  { width = Dimension.length 50.; height = Dimension.length 50. }
                ~overflow:{ x = Visible; y = Scroll }
-               ())
+               ~scrollbar_width:15. ())
             [
               node
                 (Style.make ~box_sizing ~position:Absolute
@@ -9324,8 +9324,8 @@ let () =
                    ())
                 [];
             ])
-        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ]
-        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ];
+        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 35.; 50. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 35.; 50. |] ];
       case "overflow_scrollbars_take_up_space_main_axis"
         (fun box_sizing ->
           node
@@ -9333,7 +9333,7 @@ let () =
                ~size:
                  { width = Dimension.length 50.; height = Dimension.length 50. }
                ~overflow:{ x = Scroll; y = Visible }
-               ())
+               ~scrollbar_width:15. ())
             [
               node
                 (Style.make ~box_sizing ~position:Absolute
@@ -9347,8 +9347,8 @@ let () =
                    ())
                 [];
             ])
-        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ]
-        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ];
+        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 35. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 35. |] ];
       case "padding_border_fixed_size"
         (fun box_sizing ->
           node

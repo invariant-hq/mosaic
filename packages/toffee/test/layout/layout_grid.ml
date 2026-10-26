@@ -1692,7 +1692,7 @@ let () =
                        top = Length_percentage.length 20.;
                        bottom = Length_percentage.length 20.;
                      }
-                   ~overflow:{ x = Scroll; y = Scroll } ())
+                   ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
                 [
                   node
                     (Style.make ~box_sizing ~position:Absolute
@@ -1780,10 +1780,10 @@ let () =
             [| 200.; 0.; 200.; 200.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
-            [| 180.; 180.; 0.; 0. |];
+            [| 165.; 165.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
             [| 50.; 50.; 0.; 0. |];
-            [| 20.; 20.; 160.; 160. |];
+            [| 20.; 20.; 145.; 145. |];
           ]
         ~content_box:
           [
@@ -1798,10 +1798,10 @@ let () =
             [| 270.; 0.; 270.; 270.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
-            [| 250.; 250.; 0.; 0. |];
+            [| 235.; 235.; 0.; 0. |];
             [| 20.; 20.; 0.; 0. |];
             [| 50.; 50.; 0.; 0. |];
-            [| 20.; 20.; 230.; 230. |];
+            [| 20.; 20.; 215.; 215. |];
           ];
       case "absolute_row_end"
         (fun box_sizing ->
@@ -6787,7 +6787,8 @@ let () =
                ())
             [
               text
-                (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden } ())
+                (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden }
+                   ~scrollbar_width:15. ())
                 [ "HH" ];
             ])
         ~border_box:[ [| 0.; 0.; 20.; 40. |]; [| 0.; 0.; 10.; 40.; 10.; 0. |] ]
@@ -6829,7 +6830,8 @@ let () =
                ())
             [
               text
-                (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden } ())
+                (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden }
+                   ~scrollbar_width:15. ())
                 [ "HHHH"; "HH" ];
             ])
         ~border_box:[ [| 0.; 0.; 60.; 40. |]; [| 0.; 0.; 30.; 40.; 10.; 0. |] ]
@@ -6909,7 +6911,8 @@ let () =
                ())
             [
               text
-                (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden } ())
+                (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden }
+                   ~scrollbar_width:15. ())
                 [ "HHHH"; "HH" ];
             ])
         ~border_box:[ [| 0.; 0.; 30.; 40. |]; [| 0.; 0.; 30.; 40.; 10.; 0. |] ]
@@ -12272,7 +12275,8 @@ let () =
                ())
             [
               text
-                (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden } ())
+                (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden }
+                   ~scrollbar_width:15. ())
                 [ "HHHHHHHHHH" ];
             ])
         ~border_box:[ [| 0.; 0.; 50.; 50. |]; [| 0.; 0.; 50.; 50.; 50.; 0. |] ]
@@ -12286,11 +12290,12 @@ let () =
                ())
             [
               text
-                (Style.make ~box_sizing ~overflow:{ x = Scroll; y = Scroll } ())
+                (Style.make ~box_sizing ~overflow:{ x = Scroll; y = Scroll }
+                   ~scrollbar_width:15. ())
                 [ "HHHHHHHHHH" ];
             ])
-        ~border_box:[ [| 0.; 0.; 50.; 50. |]; [| 0.; 0.; 50.; 50.; 50.; 0. |] ]
-        ~content_box:[ [| 0.; 0.; 50.; 50. |]; [| 0.; 0.; 50.; 50.; 50.; 0. |] ];
+        ~border_box:[ [| 0.; 0.; 50.; 50. |]; [| 0.; 0.; 50.; 50.; 65.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 50. |]; [| 0.; 0.; 50.; 50.; 65.; 0. |] ];
       case "overflow_inline_axis_visible"
         (fun box_sizing ->
           node
@@ -12370,20 +12375,20 @@ let () =
             [
               node
                 (Style.make ~display:Grid ~box_sizing
-                   ~overflow:{ x = Scroll; y = Scroll } ())
+                   ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
                 [ node (Style.make ~box_sizing ()) [] ];
             ])
         ~border_box:
           [
             [| 0.; 0.; 2.; 4. |];
             [| 0.; 0.; 2.; 4.; 0.; 0. |];
-            [| 0.; 0.; 2.; 4. |];
+            [| 0.; 0.; 0.; 0. |];
           ]
         ~content_box:
           [
             [| 0.; 0.; 2.; 4. |];
             [| 0.; 0.; 2.; 4.; 0.; 0. |];
-            [| 0.; 0.; 2.; 4. |];
+            [| 0.; 0.; 0.; 0. |];
           ];
       case "overflow_scrollbars_overridden_by_max_size"
         (fun box_sizing ->
@@ -12391,30 +12396,30 @@ let () =
             (Style.make ~display:Grid ~box_sizing
                ~max_size:
                  { width = Dimension.length 2.; height = Dimension.length 4. }
-               ~overflow:{ x = Scroll; y = Scroll } ())
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
             [ node (Style.make ~box_sizing ()) [] ])
-        ~border_box:[ [| 0.; 0.; 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
-        ~content_box:[ [| 0.; 0.; 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
+        ~border_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "overflow_scrollbars_overridden_by_size"
         (fun box_sizing ->
           node
             (Style.make ~display:Grid ~box_sizing
                ~size:
                  { width = Dimension.length 2.; height = Dimension.length 4. }
-               ~overflow:{ x = Scroll; y = Scroll } ())
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
             [ node (Style.make ~box_sizing ()) [] ])
-        ~border_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 2.; 4. |] ]
-        ~content_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 2.; 4. |] ];
+        ~border_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 2.; 4.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "overflow_scrollbars_take_up_space_both_axis"
         (fun box_sizing ->
           node
             (Style.make ~display:Grid ~box_sizing
                ~size:
                  { width = Dimension.length 50.; height = Dimension.length 50. }
-               ~overflow:{ x = Scroll; y = Scroll } ())
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
             [ node (Style.make ~box_sizing ()) [] ])
-        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ]
-        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ];
+        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 35.; 35. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 35.; 35. |] ];
       case "overflow_scrollbars_take_up_space_x_axis"
         (fun box_sizing ->
           node
@@ -12422,10 +12427,10 @@ let () =
                ~size:
                  { width = Dimension.length 50.; height = Dimension.length 50. }
                ~overflow:{ x = Scroll; y = Visible }
-               ())
+               ~scrollbar_width:15. ())
             [ node (Style.make ~box_sizing ()) [] ])
-        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ]
-        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ];
+        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 35. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 35. |] ];
       case "overflow_scrollbars_take_up_space_y_axis"
         (fun box_sizing ->
           node
@@ -12433,10 +12438,10 @@ let () =
                ~size:
                  { width = Dimension.length 50.; height = Dimension.length 50. }
                ~overflow:{ x = Visible; y = Scroll }
-               ())
+               ~scrollbar_width:15. ())
             [ node (Style.make ~box_sizing ()) [] ])
-        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ]
-        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 50.; 50. |] ];
+        ~border_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 35.; 50. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 50.; 0.; 0. |]; [| 0.; 0.; 35.; 50. |] ];
       case "padding_border_overrides_container_max_size"
         (fun box_sizing ->
           node
@@ -13912,7 +13917,7 @@ let () =
                        start = Grid.Placement.line 1;
                        end_ = Grid.Placement.span 13;
                      }
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHHHHHHHHHHHHHH"; "HHHHHHHHHHHHHHHH" ];
               node (Style.make ~box_sizing ()) [];
               node (Style.make ~box_sizing ()) [];
@@ -14229,7 +14234,7 @@ let () =
                        start = Grid.Placement.line 1;
                        end_ = Grid.Placement.auto;
                      }
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHH"; "HHHH" ];
             ])
         ~border_box:
@@ -14381,7 +14386,7 @@ let () =
                        start = Grid.Placement.line 1;
                        end_ = Grid.Placement.auto;
                      }
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHH"; "HHHH" ];
             ])
         ~border_box:
@@ -14544,7 +14549,7 @@ let () =
                        start = Grid.Placement.line 1;
                        end_ = Grid.Placement.span 2;
                      }
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHH"; "HHHH" ];
             ])
         ~border_box:
@@ -14696,7 +14701,7 @@ let () =
                        start = Grid.Placement.line 1;
                        end_ = Grid.Placement.auto;
                      }
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHH"; "HHHH" ];
             ])
         ~border_box:
@@ -14848,7 +14853,7 @@ let () =
                        start = Grid.Placement.line 1;
                        end_ = Grid.Placement.auto;
                      }
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHH"; "HHHH" ];
             ])
         ~border_box:
@@ -15000,7 +15005,7 @@ let () =
                        start = Grid.Placement.line 1;
                        end_ = Grid.Placement.auto;
                      }
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHH"; "HHHH" ];
             ])
         ~border_box:
@@ -15270,7 +15275,7 @@ let () =
                        start = Grid.Placement.line 1;
                        end_ = Grid.Placement.span 6;
                      }
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHHHHHH"; "HHHHHHHH" ];
               node (Style.make ~box_sizing ()) [];
               node (Style.make ~box_sizing ()) [];

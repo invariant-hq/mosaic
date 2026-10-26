@@ -21,9 +21,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.join(here, '../fixtures');
 const out = path.join(here, '../layout');
 
-// Runs in the page: the inline style of every element under #test-root, and
-// its layout once with every box border-box and once with every box
-// content-box.
+// Runs in the page: the width of a scrollbar, the inline style of every
+// element under #test-root, and its layout once with every box border-box and
+// once with every box content-box.
 function describe() {
   const layout = (e) => {
     const r = e.getBoundingClientRect();
@@ -235,8 +235,9 @@ const ratio = (s) => {
 const overflowKeyword = { visible: 'Visible', hidden: 'Hidden', scroll: 'Scroll', auto: 'Auto' };
 
 // The arguments of Style.make for an element's inline style [s]. [boxSizing]
-// is the OCaml expression for its box-sizing.
-function style(s, boxSizing) {
+// is the OCaml expression for its box-sizing; a scroll container's scrollbars
+// are [scrollbarWidth] wide.
+function style(s, boxSizing, scrollbarWidth) {
   const display = s.display || 'flex';
   const overflowX = keyword(overflowKeyword, s['overflow-x']) ?? 'Visible';
   const overflowY = keyword(overflowKeyword, s['overflow-y']) ?? 'Visible';
@@ -282,6 +283,8 @@ function style(s, boxSizing) {
     ['inset', rect('Length_percentage_auto', s, '%', 'Length_percentage_auto.auto')],
     ['overflow', overflowX !== 'Visible' || overflowY !== 'Visible'
       ? `{ x = ${overflowX}; y = ${overflowY} }` : undefined],
+    ['scrollbar_width', overflowX !== 'Visible' || overflowY !== 'Visible'
+      ? float(scrollbarWidth) : undefined],
     ['text_align', keyword({
       '-webkit-left': 'Legacy_left', '-webkit-right': 'Legacy_right',
       '-webkit-center': 'Legacy_center',
@@ -299,19 +302,21 @@ const string = (s) => {
 };
 
 // The tree, as a function of the box-sizing of the case.
-function node(input, border, content) {
+function node(input, border, content, scrollbarWidth) {
   let boxSizing;
   if (border.boxSizing === 'border-box' && content.boxSizing === 'content-box')
     boxSizing = 'box_sizing';
   else if (border.boxSizing === content.boxSizing)
     boxSizing = border.boxSizing === 'border-box' ? 'Border_box' : 'Content_box';
   else fail(`unsupported box-sizing ${border.boxSizing}`);
-  const s = `(Style.make ${style(input.style, boxSizing)} ())`;
+  const s = `(Style.make ${style(input.style, boxSizing, scrollbarWidth)} ())`;
   if (input.text !== undefined) {
     const vertical = /^vertical-/.test(input.style['writing-mode']) ? ' ~vertical:true' : '';
     return `text${vertical} ${s} [${input.text.split('\u200b').map(string).join('; ')}]`;
   }
-  const children = input.children.map((c, i) => node(c, border.children[i], content.children[i]));
+  const children = input.children.map(
+    (c, i) => node(c, border.children[i], content.children[i], scrollbarWidth),
+  );
   return `node ${s} [${children.join('; ')}]`;
 }
 
@@ -338,10 +343,12 @@ const viewport = (label, s) => {
 };
 
 function testCase(name, d) {
-  if (d.scrollbarWidth !== 0) fail(`scrollbars take ${d.scrollbarWidth}px; hide them`);
+  // As in Taffy, scrollbars must take space, or the fixtures that test them
+  // agree with a layout that ignores them.
+  if (!(d.scrollbarWidth > 0)) fail(`scrollbars take ${d.scrollbarWidth}px; they must take space`);
   const args = (d.rounding ? '' : ' ~rounding:false')
     + viewport('width', d.width) + viewport('height', d.height);
-  const tree = node(d.root, d.borderBox, d.contentBox);
+  const tree = node(d.root, d.borderBox, d.contentBox, d.scrollbarWidth);
   const param = /~box_sizing(?!:)/.test(tree) ? 'box_sizing' : '_';
   return `case${args} ${string(name)}
     (fun ${param} -> ${tree})
@@ -350,7 +357,9 @@ function testCase(name, d) {
 }
 
 const browser = await chromium.launch({
-  args: ['--force-device-scale-factor=1', '--hide-scrollbars'],
+  args: ['--force-device-scale-factor=1'],
+  // Headless Playwright hides scrollbars by default.
+  ignoreDefaultArgs: ['--hide-scrollbars'],
 });
 try {
   const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });

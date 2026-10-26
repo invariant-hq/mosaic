@@ -329,7 +329,7 @@ let () =
             [
               text
                 (Style.make ~display:Block ~box_sizing ~flex_grow:1.
-                   ~overflow:{ x = Hidden; y = Hidden } ())
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
                 [ "HHHH"; "HH" ];
               text
                 (Style.make ~display:Block ~box_sizing ~flex_grow:1. ())
