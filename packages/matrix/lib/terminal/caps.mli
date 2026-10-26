@@ -45,14 +45,14 @@
     + {b Guesses} from the environment, [TERM], [COLORTERM], the platform and
       the description the terminfo database has for [TERM] ({!val-env}). A
       description only ever adds a fact, direct color ([RGB], [Tc], or [setrgbf]
-      with [setrgbb]), bracketed paste ([BE]), focus reporting ([fe]) or
-      synchronized output ([Sync] as mode 2026). Descriptions leave out direct
-      color and synchronized output for most terminals that have them, and a
-      terminal other than the one [TERM] names (over ssh, or in a multiplexer)
-      may have no description here, so a description's silence takes nothing
-      away.
-    + The default, [false], [None] or [`Wcwidth], or the facts the caller
-      assumes in place of the environment ({!assume}).
+      with [setrgbb]), 256 colors ([colors]), bracketed paste ([BE]), focus
+      reporting ([fe]) or synchronized output ([Sync] as mode 2026).
+      Descriptions leave out direct color and synchronized output for most
+      terminals that have them, and a terminal other than the one [TERM] names
+      (over ssh, or in a multiplexer) may have no description here, so a
+      description's silence takes nothing away.
+    + The default, [false], [None], [`Ansi16] or [`Wcwidth], or the facts the
+      caller assumes in place of the environment ({!assume}).
 
     Inside tmux, questions about drawing and keys go to tmux itself, which
     answers or stays silent. tmux answers no mode query before 3.6, and none for
@@ -89,10 +89,14 @@
 (** {1:caps Capabilities} *)
 
 type t = {
-  rgb : bool;
-      (** The terminal shows 24-bit color. No query tells it. It comes from
-          kitty's identity, a [COLORTERM] of [truecolor] or [24bit], a Windows
-          console, or the description's direct color. *)
+  colors : [ `Ansi16 | `Ansi256 | `Truecolor ];
+      (** The colors the terminal shows, the 16 of its palette's first entries,
+          the 256 of its whole palette, or any 24-bit color. No query tells it.
+          24-bit color comes from kitty's identity, a [COLORTERM] of [truecolor]
+          or [24bit], a [TERM] that ends in [-direct], a Windows console, or the
+          description's direct color. 256 colors come from a [TERM] that
+          contains [256color], or a description with 256 colors or more
+          ([colors]). Any other terminal gets 16. *)
   kitty_keyboard : int option;
       (** [Some flags] when the terminal has answered the kitty keyboard
           protocol's query, with the enhancement flags it last reported. It is

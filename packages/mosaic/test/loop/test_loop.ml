@@ -63,7 +63,7 @@ let app ?(subs = fun _ -> Mosaic.Sub.none) ?(init_cmd = Mosaic.Cmd.none) () =
    is an output that is not a terminal, which the run asks nothing. *)
 let caps : Matrix.Terminal.capabilities =
   {
-    rgb = true;
+    colors = `Truecolor;
     kitty_keyboard = None;
     kitty_graphics = false;
     bracketed_paste = true;

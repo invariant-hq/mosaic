@@ -779,7 +779,13 @@ let set_width_method t m =
 
 let refresh_capabilities t =
   let caps = Terminal.capabilities t.terminal in
-  let color_depth = if caps.rgb then `Truecolor else `Ansi256 in
+  (* Colors are reduced to 256 where the terminal shows fewer than 24 bits,
+     16 included, as before the capabilities told 16 from 256. *)
+  let color_depth =
+    match caps.colors with
+    | `Truecolor -> `Truecolor
+    | `Ansi256 | `Ansi16 -> `Ansi256
+  in
   Screen.apply_capabilities t.screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
     ~hyperlinks:caps.hyperlinks ~color_depth ~graphics:caps.graphics

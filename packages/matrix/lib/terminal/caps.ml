@@ -2,7 +2,7 @@ module Reply = Matrix_input.Reply
 module Decoder = Matrix_input.Decoder
 
 type t = {
-  rgb : bool;
+  colors : [ `Ansi16 | `Ansi256 | `Truecolor ];
   kitty_keyboard : int option;
   kitty_graphics : bool;
   bracketed_paste : bool;
@@ -26,7 +26,7 @@ type t = {
 
 let defaults =
   {
-    rgb = false;
+    colors = `Ansi16;
     kitty_keyboard = None;
     kitty_graphics = false;
     bracketed_paste = false;
@@ -79,6 +79,7 @@ type env = {
    leaves out what many terminals do, so its silence says nothing. *)
 and described = {
   direct_color : bool;  (** [RGB], [Tc], or [setrgbf] and [setrgbb]. *)
+  palette : bool;  (** [colors] of 256 or more. *)
   paste : bool;  (** [BE]. *)
   focus : bool;  (** [fe]. *)
   synchronized : bool;  (** [Sync], as mode 2026. *)
@@ -88,6 +89,7 @@ let describe = function
   | None ->
       {
         direct_color = false;
+        palette = false;
         paste = false;
         focus = false;
         synchronized = false;
@@ -101,6 +103,8 @@ let describe = function
           || T.number t "RGB" <> None
           || has "RGB" || T.flag t "Tc"
           || (has "setrgbf" && has "setrgbb");
+        palette =
+          (match T.number t "colors" with Some n -> n >= 256 | None -> false);
         paste = has "BE";
         focus = has "fe";
         synchronized =
@@ -366,6 +370,7 @@ let derive ev =
   let truecolor =
     env.colorterm = "truecolor" || env.colorterm = "24bit" || env.win32
   in
+  let direct_term = String.ends_with ~suffix:"-direct" env.term in
   let mux = reported_multiplexer ev in
   let mode m = Option.map supported (List.assoc_opt m ev.modes) in
   let sixel = first [ Option.map (List.mem 4) ev.attributes ] d.sixel in
@@ -375,14 +380,13 @@ let derive ev =
       d.kitty_graphics
   in
   {
-    rgb =
-      first
-        [
-          when_ (is "kitty") true;
-          when_ truecolor true;
-          when_ described.direct_color true;
-        ]
-        d.rgb;
+    colors =
+      (* A guess only ever raises the depth, so the deepest that any source
+         gives is taken, and the list of [first] is not needed. *)
+      (if is "kitty" || truecolor || direct_term || described.direct_color then
+         `Truecolor
+       else if contains env.term "256color" || described.palette then `Ansi256
+       else d.colors);
     kitty_keyboard =
       (if env.vhs then None
        else match ev.keyboard with Some _ as k -> k | None -> d.kitty_keyboard);

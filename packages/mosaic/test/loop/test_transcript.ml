@@ -7,7 +7,7 @@
 
 let caps : Matrix.Terminal.capabilities =
   {
-    rgb = true;
+    colors = `Truecolor;
     kitty_keyboard = None;
     kitty_graphics = false;
     bracketed_paste = true;

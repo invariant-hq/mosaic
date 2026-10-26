@@ -594,7 +594,7 @@ type fact =
   | Keyboard of int option
   | Multiplexer of [ `Tmux | `Screen ] option
   | Identity of (string * string) option
-  | Rgb of bool
+  | Colors of [ `Ansi16 | `Ansi256 | `Truecolor ]
   | Hyperlinks of bool
   | Meta of bool option
   | Grapheme of bool option
@@ -627,7 +627,13 @@ let check_fact (c : Caps.t) fact =
         (Testable.make ~equal:( = )
            ~pp:(opt (fun ppf (n, v) -> Format.fprintf ppf "%s %s" n v)))
         i c.identity
-  | Rgb b -> equal ~msg:"rgb" bool b c.rgb
+  | Colors n ->
+      equal ~msg:"colors"
+        (Testable.make ~equal:( = ) ~pp:(fun ppf -> function
+          | `Ansi16 -> Format.fprintf ppf "16"
+          | `Ansi256 -> Format.fprintf ppf "256"
+          | `Truecolor -> Format.fprintf ppf "24-bit"))
+        n c.colors
   | Hyperlinks b -> equal ~msg:"hyperlinks" bool b c.hyperlinks
   | Meta m ->
       equal ~msg:"meta sends escape"
@@ -667,14 +673,18 @@ let described name vars replies =
 (* A description says yes: matrix-test declares Tc, BE, fe and Sync. *)
 let test_description_adds () =
   let c = described "m/matrix-test" [ ("TERM", "matrix-test") ] [] in
-  is_true ~msg:"direct colour from Tc" c.rgb;
+  is_true ~msg:"direct colour from Tc" (c.colors = `Truecolor);
   is_true ~msg:"bracketed paste from BE" c.bracketed_paste;
   is_true ~msg:"focus reports from fe" c.focus_tracking;
   is_true ~msg:"synchronized output from Sync" c.sync;
   let c = described "x/xterm-direct" [ ("TERM", "xterm-direct") ] [] in
-  is_true ~msg:"direct colour from RGB" c.rgb;
+  is_true ~msg:"direct colour from RGB" (c.colors = `Truecolor);
+  let c = described "x/xterm-256color" [ ("TERM", "xterm") ] [] in
+  is_true ~msg:"256 colours from colors#256" (c.colors = `Ansi256);
+  let c = described "x/xterm" [ ("TERM", "xterm") ] [] in
+  is_true ~msg:"16 colours from colors#8" (c.colors = `Ansi16);
   let c = derive [ ("TERM", "matrix-test") ] [] in
-  is_false ~msg:"no description, no direct colour" c.rgb;
+  is_false ~msg:"no description, no direct colour" (c.colors = `Truecolor);
   is_false ~msg:"no description, no sync" c.sync
 
 (* Its silence takes nothing away: xterm-256color has no RGB. *)
@@ -684,7 +694,7 @@ let test_description_silence () =
       [ ("TERM", "xterm-256color"); ("COLORTERM", "truecolor") ]
       []
   in
-  is_true ~msg:"COLORTERM's direct colour" c.rgb
+  is_true ~msg:"COLORTERM's direct colour" (c.colors = `Truecolor)
 
 (* A guess: the terminal's answer and its identity come first. *)
 let test_description_below () =
@@ -742,7 +752,7 @@ let precedence_cases =
     ( "a guess fills what nothing answers",
       [ ("TERM", "xterm-kitty"); ("COLORTERM", "truecolor") ],
       [],
-      [ Sync true; Hyperlinks true; Rgb true; Width `Unicode ] );
+      [ Sync true; Hyperlinks true; Colors `Truecolor; Width `Unicode ] );
     ( "identity from the environment when directly attached",
       [ ("TERM_PROGRAM", "Alacritty"); ("TERM_PROGRAM_VERSION", "0.13") ],
       [],
@@ -759,7 +769,19 @@ let precedence_cases =
       [],
       [ Reply.Keyboard_flags 0; Reply.Keyboard_flags 5 ],
       [ Keyboard (Some 5) ] );
-    ("not a Windows console", [], [], [ Rgb false; Paste false ]);
+    ("not a Windows console", [], [], [ Colors `Ansi16; Paste false ]);
+    ( "256 colors from TERM",
+      [ ("TERM", "xterm-256color") ],
+      [],
+      [ Colors `Ansi256 ] );
+    ( "24-bit color from a direct TERM",
+      [ ("TERM", "foot-direct") ],
+      [],
+      [ Colors `Truecolor ] );
+    ( "COLORTERM above TERM",
+      [ ("TERM", "screen-256color"); ("COLORTERM", "24bit") ],
+      [],
+      [ Colors `Truecolor ] );
     ("metaSendsEscape reset", [], [ mode 1036 Reset ], [ Meta (Some false) ]);
     ( "metaSendsEscape set",
       [],
@@ -949,7 +971,7 @@ let test_assume () =
       plain with
       kitty_keyboard = Some 5;
       identity = Some ("kitty", "0.35");
-      rgb = false;
+      colors = `Ansi16;
     }
   in
   let tmux =

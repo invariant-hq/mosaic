@@ -3171,12 +3171,14 @@ let test_unix_session_environment () =
   Fun.protect
     ~finally:(fun () -> Unix.close devnull)
     (fun () ->
-      let rgb vars =
+      let truecolor vars =
         Matrix.run ~input:devnull ~output:devnull ~env:(env vars)
-          ~config:(quiet ()) (fun app -> (Matrix.capabilities app).rgb)
+          ~config:(quiet ()) (fun app ->
+            (Matrix.capabilities app).colors = `Truecolor)
       in
-      is_true ~msg:"a truecolor session" (rgb [ ("COLORTERM", "truecolor") ]);
-      is_false ~msg:"a session that says nothing" (rgb []))
+      is_true ~msg:"a truecolor session"
+        (truecolor [ ("COLORTERM", "truecolor") ]);
+      is_false ~msg:"a session that says nothing" (truecolor []))
 
 (* An output with no window keeps the size its terminal reported in band:
    giving the terminal away and taking it back reads no size to replace it
