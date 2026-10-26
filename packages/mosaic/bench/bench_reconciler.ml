@@ -94,6 +94,30 @@ let mount_and_empty rows =
       Mosaic.Reconciler.render reconciler ~viewport_width full;
       Mosaic.Reconciler.render reconciler ~viewport_width empty)
 
+(* Retyping every element of an unkeyed list, as a view that wraps each row
+   of a log in a box does, matches no old fiber: each is created anew and
+   every old one destroyed. A call mounts the 20,000 rows as texts, retypes
+   them to boxes holding the texts, and renders the list empty; the teardown
+   of the replaced rows must stay linear in the rows. *)
+let mount_retype_and_empty rows =
+  let labels = (keyed rows).labels in
+  Thumper.bench_with_setup
+    ~setup:(fun () ->
+      let renderer = Renderer.create () in
+      let reconciler =
+        Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+      in
+      ( reconciler,
+        Vnode.box (List.init rows (fun i -> Vnode.text labels.(i))),
+        Vnode.box
+          (List.init rows (fun i -> Vnode.box [ Vnode.text labels.(i) ])),
+        Vnode.box [] ))
+    (Printf.sprintf "unkeyed-list-%d" rows)
+    (fun (reconciler, texts, boxes, empty) ->
+      Mosaic.Reconciler.render reconciler ~viewport_width texts;
+      Mosaic.Reconciler.render reconciler ~viewport_width boxes;
+      Mosaic.Reconciler.render reconciler ~viewport_width empty)
+
 (* THUMPER_MACHINE=exact selects the section CI checks: allocation alone,
    whose counts are the same on any x86_64 Linux under the locked compiler in
    release, while time compares only on one machine. *)
@@ -134,4 +158,5 @@ let () =
         ];
       Thumper.group "mount-and-unmount" [ mount_and_unmount 20_000 ];
       Thumper.group "mount-and-empty" [ mount_and_empty 20_000 ];
+      Thumper.group "mount-retype-and-empty" [ mount_retype_and_empty 20_000 ];
     ]

@@ -14,10 +14,11 @@ measured region; the benchmark measures a steady-state frame and screen diff.
 The reconciler workload re-renders keyed lists of 500 and 5,000 rows through
 `Reconciler.render`, both unchanged (the per-redraw steady state) and rotated
 (keyed matching plus child moves). Vnode construction happens inside the
-measured region because a TEA view rebuilds its vnodes every frame. Two
+measured region because a TEA view rebuilds its vnodes every frame. Three
 more cases mount 20,000 rows, then unmount them as a program does when it
-quits, or render the list empty; their time shows a teardown that is not
-linear in the nodes it destroys.
+quits, render the list empty, or retype every row of an unkeyed list from a
+text to a box before rendering it empty; their time shows a teardown that is
+not linear in the nodes it destroys.
 
 The same alias checks time and allocation for editing, selection, text
 layout, highlighting, and the application loop. Promotions and minor
