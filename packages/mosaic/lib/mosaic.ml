@@ -869,17 +869,22 @@ let handle_resize runtime ~width ~height =
   synchronize runtime
 
 (* Each tick subscription ticks once per frame, with the time since its own
-   previous tick: none on its first, whatever the frames before it. *)
+   previous tick: none on its first, whatever the frames before it. With no
+   subscription it allocates nothing, so an early frame, which ticks nothing,
+   and a grid frame cost the same. *)
 let handle_tick runtime =
-  let now = Matrix.now runtime.matrix_app in
-  List.iter
-    (fun (id, f) ->
-      let last =
-        Option.value ~default:now (Hashtbl.find_opt runtime.ticked id)
-      in
-      Hashtbl.replace runtime.ticked id now;
-      push_msg runtime (f ~dt:(Float.of_int (now - last) *. 1e-9)))
-    runtime.tick_sub
+  match runtime.tick_sub with
+  | [] -> ()
+  | subs ->
+      let now = Matrix.now runtime.matrix_app in
+      List.iter
+        (fun (id, f) ->
+          let last =
+            Option.value ~default:now (Hashtbl.find_opt runtime.ticked id)
+          in
+          Hashtbl.replace runtime.ticked id now;
+          push_msg runtime (f ~dt:(Float.of_int (now - last) *. 1e-9)))
+        subs
 
 (* The timers whose deadline the turn reached fire once each, in the order of
    their deadlines: an [every] timer with the periods that ended since it
