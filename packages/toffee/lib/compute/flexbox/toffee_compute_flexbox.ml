@@ -3614,6 +3614,10 @@ let compute_flexbox_layout (type t)
     match styled_based_known_dimensions with
     | { width = Some width; height = Some height } ->
         Layout_output.from_outer_size Size.{ width; height }
+    (* Nor when the width is known and only the width is requested. *)
+    | { width = Some width; height = None }
+      when Layout_input.axis inputs = Requested_axis.Horizontal ->
+        Layout_output.from_outer_size Size.{ width; height = 0.0 }
     | _ ->
         (* Continue with compute_preliminary *)
         compute_preliminary

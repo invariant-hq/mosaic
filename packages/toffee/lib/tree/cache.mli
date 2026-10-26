@@ -1,153 +1,59 @@
 (** Layout computation result caching.
 
-    This module provides memoization for layout computations. During layout,
-    parent nodes often query child sizes multiple times under different
-    constraints. The cache prevents redundant computation and ensures earlier
-    results are not overwritten by later ones.
+    During layout, parents often lay a child out several times under different
+    constraints. A node's cache keeps the result of its final layout
+    ([Perform_layout]) and of up to {!cache_size} measurements ([Compute_size]),
+    so that asking again with the same inputs costs nothing. This is Taffy's
+    cache.
 
-    {1 Cache Structure}
+    {1 Keys}
 
-    The cache maintains two entry types:
+    An entry is keyed on its {!Layout_input.t}: on each axis, the known
+    dimension when there is one and else the available space; the parent size;
+    and the requested axis. The final layout matches only the same key. A
+    measurement matches the same known dimensions or available space and the
+    same parent width, and it answers a query for either axis only if it was
+    computed for both axes, since a measurement for one axis may hold garbage in
+    the other.
 
-    - {b Final layout entry}: Stores complete layout output including positions
-      and baselines, computed during [Perform_layout] mode
-    - {b Measure entries}: Nine slots for preliminary size measurements computed
-      during [Compute_size] mode
+    The sizing mode and the collapsibility of the vertical margins are not in
+    the key: they change for a node only when its parent's algorithm or its own
+    style does. A cache records the one mode its entries were computed with,
+    misses for any other, and drops its entries when a result computed with
+    another mode is stored.
 
-    {1 Slot Allocation Strategy}
+    {1 Eviction}
 
-    Measure cache slots are determined by two factors:
-
-    - How many dimensions are known: width, height, both, or neither
-    - For unknown dimensions: whether the available space constraint is
-      min-content or max-content
-
-    Definite available space shares a cache slot with max-content because nodes
-    are typically sized under one or the other, not both.
-
-    Slot assignments:
-
-    - Slot 0: Both width and height known
-    - Slots 1-2: Width known, height unknown
-    - Slot 1: Height max-content or definite
-    - Slot 2: Height min-content
-    - Slots 3-4: Height known, width unknown
-    - Slot 3: Width max-content or definite
-    - Slot 4: Width min-content
-    - Slots 5-8: Neither dimension known
-    - Slot 5: Both axes max-content or definite
-    - Slot 6: Width max-content or definite, height min-content
-    - Slot 7: Width min-content, height max-content or definite
-    - Slot 8: Both axes min-content
-
-    {1 Cache Matching}
-
-    A cache entry matches a query when:
-
-    - Known dimensions match the cached entry's known dimensions, OR known
-      dimensions match the cached result size
-    - For unknown dimensions, available space constraints are roughly equal
-      (within 0.0001 for definite values)
-
-    Hidden layouts ([Perform_hidden_layout] mode) are never cached. *)
+    Measurements are found by their full key, not by a fixed slot. When all
+    {!cache_size} are full, a new one replaces the first that was not used since
+    the eviction cursor last passed it (second chance, or CLOCK). Measurements
+    that carry margin-collapse metadata are not cached, as a hit gives back only
+    the size. Hidden layouts ([Perform_hidden_layout]) are never cached. *)
 
 val cache_size : int
-(** [cache_size] is the number of measure cache slots (9). *)
+(** [cache_size] is the number of measurements a cache keeps (9). *)
 
-type 'a cache_entry = {
-  known_dimensions : float option Toffee_geometry.size;
-  available_space : Available_space.t Toffee_geometry.size;
-  content : 'a;
-}
-(** Cached layout result paired with its input constraints.
-
-    Fields [known_dimensions] and [available_space] record the sizing
-    constraints that produced [content]. *)
-
-type t = {
-  mutable final_layout_entry : Layout_output.t cache_entry option;
-  mutable measure_entries : float Toffee_geometry.size cache_entry option array;
-  mutable is_empty : bool;
-}
-(** Cache for layout computation results.
-
-    Field [final_layout_entry] stores complete layout output with positions and
-    baselines from [Perform_layout] mode. Field [measure_entries] stores
-    preliminary size measurements from [Compute_size] mode. Field [is_empty]
-    tracks whether any entries are populated. *)
+type t
+(** A node's layout cache. *)
 
 val make : unit -> t
-(** [make ()] creates an empty cache with no entries. *)
+(** [make ()] is an empty cache. *)
 
 (** Result of a clear operation. *)
 type clear_state =
   | Cleared  (** Some entries were removed. *)
   | Already_empty  (** Cache was already empty. *)
 
-val compute_cache_slot :
-  float option Toffee_geometry.size ->
-  Available_space.t Toffee_geometry.size ->
-  int
-(** [compute_cache_slot known_dimensions available_space] returns the measure
-    cache slot index for the given constraints.
+val get : t -> Layout_input.t -> Layout_output.t option
+(** [get t inputs] is the cached result for [inputs], if any. *)
 
-    The slot is determined by which dimensions are known and the available space
-    constraints for unknown dimensions.
-
-    @return Value in range 0-8 corresponding to slot allocation strategy. *)
-
-val is_roughly_equal : Available_space.t -> Available_space.t -> bool
-(** [is_roughly_equal av1 av2] tests approximate equality of available space
-    values.
-
-    Definite values are equal when they differ by less than 0.0001. Min-content
-    and max-content values are equal only to themselves. *)
-
-val get :
-  t ->
-  known_dimensions:float option Toffee_geometry.size ->
-  available_space:Available_space.t Toffee_geometry.size ->
-  run_mode:Run_mode.t ->
-  Layout_output.t option
-(** [get t ~known_dimensions ~available_space ~run_mode] retrieves a cached
-    layout result matching the given constraints.
-
-    For [Perform_layout], searches the final layout entry. For [Compute_size],
-    searches all measure entries. For [Perform_hidden_layout], always returns
-    [None].
-
-    A cache entry matches when known dimensions match either the cached known
-    dimensions or the cached result size, and unknown dimensions have roughly
-    equal available space constraints.
-
-    @return [Some layout_output] if a matching entry exists, [None] otherwise.
-*)
-
-val store :
-  t ->
-  known_dimensions:float option Toffee_geometry.size ->
-  available_space:Available_space.t Toffee_geometry.size ->
-  run_mode:Run_mode.t ->
-  Layout_output.t ->
-  unit
-(** [store t ~known_dimensions ~available_space ~run_mode layout_output] stores
-    a layout result in the cache.
-
-    For [Perform_layout], stores complete [layout_output] in the final layout
-    entry, replacing any previous entry. For [Compute_size], stores only the
-    size component in the measure entry slot determined by
-    {!compute_cache_slot}. For [Perform_hidden_layout], performs no caching. *)
+val store : t -> Layout_input.t -> Layout_output.t -> unit
+(** [store t inputs output] caches [output] as the result for [inputs]. *)
 
 val clear : t -> clear_state
-(** [clear t] removes all cached entries and reports the operation outcome.
-
-    Resets both final layout entry and all measure entries to [None].
+(** [clear t] removes all entries.
 
     @return [Cleared] if entries were present, [Already_empty] otherwise. *)
 
 val is_empty : t -> bool
-(** [is_empty t] tests whether the cache contains no entries.
-
-    @return
-      [true] if both final layout entry and all measure entries are [None],
-      [false] otherwise. *)
+(** [is_empty t] is [true] iff [t] holds no entry. *)

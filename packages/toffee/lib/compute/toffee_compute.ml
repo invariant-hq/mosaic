@@ -168,21 +168,14 @@ let compute_cached_layout (type t)
     (node : Node_id.t) (inputs : Layout_input.t)
     (compute_uncached : t -> Node_id.t -> Layout_input.t -> Layout_output.t) :
     Layout_output.t =
-  let known_dimensions = Layout_input.known_dimensions inputs in
-  let available_space = Layout_input.available_space inputs in
-  let run_mode = Layout_input.run_mode inputs in
-
   (* First we check if we have a cached result for the given input *)
-  match
-    Tree.cache_get tree node ~known_dimensions ~available_space ~run_mode
-  with
+  match Tree.cache_get tree node inputs with
   | Some cached_size_and_baselines -> cached_size_and_baselines
   | None ->
       let computed_size_and_baselines = compute_uncached tree node inputs in
 
       (* Cache result *)
-      Tree.cache_store tree node ~known_dimensions ~available_space ~run_mode
-        computed_size_and_baselines;
+      Tree.cache_store tree node inputs computed_size_and_baselines;
 
       computed_size_and_baselines
 

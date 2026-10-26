@@ -38,23 +38,8 @@ end
 module type CACHE_TREE = sig
   type t
 
-  val cache_get :
-    t ->
-    Node_id.t ->
-    known_dimensions:float option Geometry.size ->
-    available_space:Available_space.t Geometry.size ->
-    run_mode:Run_mode.t ->
-    Layout_output.t option
-
-  val cache_store :
-    t ->
-    Node_id.t ->
-    known_dimensions:float option Geometry.size ->
-    available_space:Available_space.t Geometry.size ->
-    run_mode:Run_mode.t ->
-    Layout_output.t ->
-    unit
-
+  val cache_get : t -> Node_id.t -> Layout_input.t -> Layout_output.t option
+  val cache_store : t -> Node_id.t -> Layout_input.t -> Layout_output.t -> unit
   val cache_clear : t -> Node_id.t -> unit
 end
 

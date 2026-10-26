@@ -183,6 +183,10 @@ let compute_grid_layout (type t)
   match (run_mode, outer_node_size.width, outer_node_size.height) with
   | Run_mode.Compute_size, Some width, Some height ->
       Layout_output.from_outer_size Size.{ width; height }
+  (* Nor when the width is known and only the width is requested. *)
+  | Run_mode.Compute_size, Some width, None
+    when Layout_input.axis inputs = Requested_axis.Horizontal ->
+      Layout_output.from_outer_size Size.{ width; height = 0.0 }
   | _ ->
       (* 2. Resolve the explicit grid *)
 

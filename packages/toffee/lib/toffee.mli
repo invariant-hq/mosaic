@@ -585,30 +585,17 @@ module Cache_tree : sig
   type 'context t = 'context tree
 
   val cache_get :
-    'context t ->
-    Node_id.t ->
-    known_dimensions:float option size ->
-    available_space:Available_space.t size ->
-    run_mode:Run_mode.t ->
-    Layout_output.t option
-  (** [cache_get tree node_id ~known_dimensions ~available_space ~run_mode]
-      retrieves the cached layout output for [node_id] under the given
-      constraints.
+    'context t -> Node_id.t -> Layout_input.t -> Layout_output.t option
+  (** [cache_get tree node_id inputs] retrieves the cached layout output for
+      [node_id] under [inputs].
 
       Returns [Some output] if a valid cached result exists; [None] if the cache
       is invalid or empty. *)
 
   val cache_store :
-    'context t ->
-    Node_id.t ->
-    known_dimensions:float option size ->
-    available_space:Available_space.t size ->
-    run_mode:Run_mode.t ->
-    Layout_output.t ->
-    unit
-  (** [cache_store tree node_id ~known_dimensions ~available_space ~run_mode
-       output] stores [output] in the cache for [node_id] under the given
-      constraints. *)
+    'context t -> Node_id.t -> Layout_input.t -> Layout_output.t -> unit
+  (** [cache_store tree node_id inputs output] stores [output] in the cache for
+      [node_id] under [inputs]. *)
 
   val cache_clear : 'context t -> Node_id.t -> unit
   (** [cache_clear tree node_id] invalidates all cached layouts for [node_id].

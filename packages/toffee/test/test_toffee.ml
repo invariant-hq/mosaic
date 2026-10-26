@@ -473,7 +473,180 @@ let test_measure_count_flexbox () =
       failf "Failed to compute layout with measure: %s" (Error.to_string e));
   match get_node_context tree leaf with
   | None -> fail "Missing node context after layout"
-  | Some data -> equal ~msg:"Measure function call count" int 4 data.count
+  | Some data ->
+      (* 7, as in Taffy since its cache keys on the requested axis and the
+         parent size (#911). *)
+      equal ~msg:"Measure function call count" int 7 data.count
+
+(* The cache, as Taffy's cache.rs tests it: a measurement of a [width]-wide
+   node at max-content. *)
+let measure_input ?(sizing_mode = Toffee_tree.Sizing_mode.Inherent_size)
+    ?(axis = Toffee_tree.Requested_axis.Both) width =
+  Layout_input.make ~run_mode:Run_mode.Compute_size ~sizing_mode ~axis
+    ~known_dimensions:Size.{ width = Some width; height = None }
+    ~parent_size:Size.none
+    ~available_space:
+      Size.
+        {
+          width = Available_space.max_content;
+          height = Available_space.max_content;
+        }
+    ~vertical_margins_are_collapsible:Line.both_false
+
+let measured width =
+  Layout_output.from_outer_size Size.{ width; height = width }
+
+let cached cache input =
+  Option.map
+    (fun output -> (Layout_output.size output).width)
+    (Cache.get cache input)
+
+let cached_width = option float_exact
+
+let test_cache_second_chance () =
+  let cache = Cache.make () in
+  for width = 0 to Cache.cache_size do
+    Cache.store cache
+      (measure_input (float_of_int width))
+      (measured (float_of_int width))
+  done;
+  (* The tenth evicted the first; using the second gives it a second chance,
+     so the eleventh evicts the third. *)
+  equal ~msg:"evicted" cached_width None (cached cache (measure_input 0.));
+  equal ~msg:"used" cached_width (Some 1.) (cached cache (measure_input 1.));
+  Cache.store cache
+    (measure_input (float_of_int (Cache.cache_size + 1)))
+    (measured (float_of_int (Cache.cache_size + 1)));
+  equal ~msg:"kept" cached_width (Some 1.) (cached cache (measure_input 1.));
+  equal ~msg:"replaced" cached_width None (cached cache (measure_input 2.))
+
+let test_cache_update_in_place () =
+  let cache = Cache.make () in
+  Cache.store cache (measure_input 1.) (measured 1.);
+  Cache.store cache (measure_input 2.) (measured 2.);
+  Cache.store cache (measure_input 1.) (measured 3.);
+  equal ~msg:"updated" cached_width (Some 3.) (cached cache (measure_input 1.));
+  equal ~msg:"kept" cached_width (Some 2.) (cached cache (measure_input 2.))
+
+let test_cache_margin_collapse_not_cached () =
+  let cache = Cache.make () in
+  let with_margins ~through ~top width =
+    Layout_output.make
+      ~size:Size.{ width; height = width }
+      ~content_size:Size.{ width = 0.; height = 0. }
+      ~first_baselines:Point.none ~top_margin:top
+      ~bottom_margin:Toffee_tree.Collapsible_margin_set.zero
+      ~margins_can_collapse_through:through
+  in
+  Cache.store cache (measure_input 1.)
+    (with_margins ~through:true ~top:Toffee_tree.Collapsible_margin_set.zero 1.);
+  equal ~msg:"collapse through" cached_width None
+    (cached cache (measure_input 1.));
+  Cache.store cache (measure_input 2.)
+    (with_margins ~through:false
+       ~top:(Toffee_tree.Collapsible_margin_set.from_margin 10.)
+       2.);
+  equal ~msg:"carried margin" cached_width None
+    (cached cache (measure_input 2.))
+
+let test_cache_mode_and_axis () =
+  let cache = Cache.make () in
+  Cache.store cache (measure_input 1.) (measured 1.);
+  equal ~msg:"other sizing mode" cached_width None
+    (cached cache
+       (measure_input ~sizing_mode:Toffee_tree.Sizing_mode.Content_size 1.));
+  Cache.store cache
+    (measure_input ~sizing_mode:Toffee_tree.Sizing_mode.Content_size 1.)
+    (measured 4.);
+  equal ~msg:"mode change drops entries" cached_width None
+    (cached cache (measure_input 1.));
+  let cache = Cache.make () in
+  Cache.store cache
+    (measure_input ~axis:Toffee_tree.Requested_axis.Horizontal 1.)
+    (measured 1.);
+  equal ~msg:"same axis" cached_width (Some 1.)
+    (cached cache
+       (measure_input ~axis:Toffee_tree.Requested_axis.Horizontal 1.));
+  equal ~msg:"other axis" cached_width None
+    (cached cache (measure_input ~axis:Toffee_tree.Requested_axis.Vertical 1.));
+  equal ~msg:"both axes" cached_width None (cached cache (measure_input 1.));
+  Cache.store cache (measure_input 1.) (measured 2.);
+  equal ~msg:"both axes answer one" cached_width (Some 2.)
+    (cached cache (measure_input ~axis:Toffee_tree.Requested_axis.Vertical 1.))
+
+(* Taffy's grid_block_item_height_not_polluted_by_width_measure (#1010): the
+   block algorithm answers a width-only measurement with height 0, which a
+   later height query must not reuse. *)
+let test_cache_width_measure_does_not_answer_height () =
+  let tree = new_tree () in
+  let item row =
+    let leaf =
+      new_leaf_with_context tree Style.default ()
+      |> or_fail "Failed to create leaf"
+    in
+    new_with_children tree
+      (Style.make ~display:Style.Display.Block
+         ~grid_row:
+           Line.
+             {
+               start = Style.Grid_placement.line row;
+               end_ = Style.Grid_placement.line (row + 1);
+             }
+         ~grid_column:
+           Line.
+             {
+               start = Style.Grid_placement.line 1;
+               end_ = Style.Grid_placement.line 2;
+             }
+         ())
+      [| leaf |]
+    |> or_fail "Failed to create item"
+  in
+  let items = [ item 1; item 2; item 3 ] in
+  let container =
+    new_with_children tree
+      (Style.make ~display:Style.Display.Grid
+         ~grid_template_columns:
+           [
+             Style.Grid_template_component.percent 0.6;
+             Style.Grid_template_component.auto;
+           ]
+         ~size:
+           Size.
+             {
+               width = Style.Dimension.length 1000.;
+               height = Style.Dimension.auto;
+             }
+         ())
+      (Array.of_list items)
+    |> or_fail "Failed to create grid"
+  in
+  let measure known _available _node context _style =
+    match context with
+    | None -> Size.{ width = 0.; height = 0. }
+    | Some () ->
+        Size.
+          {
+            width = Option.value known.width ~default:100.;
+            height = Option.value known.height ~default:19.;
+          }
+  in
+  compute_layout_with_measure tree container
+    Size.
+      {
+        width = Available_space.Definite 1000.;
+        height = Available_space.Definite 1000.;
+      }
+    measure
+  |> or_fail "Failed to compute layout";
+  List.iteri
+    (fun index node ->
+      let layout = layout tree node |> or_fail "Missing layout" in
+      equal ~msg:"height" float_exact 19. (Layout.size layout).height;
+      equal ~msg:"y" float_exact
+        (19. *. float_of_int index)
+        (Layout.location layout).y)
+    items
 
 (* A percent-width item clamped by its own max-width must be measured at the
    clamped width when deriving content-based sizes, so wrapping content
@@ -1174,7 +1347,16 @@ let () =
       group "spacing" [ test "Padding" test_padding; test "Margin" test_margin ];
       group "sizing" [ test "Aspect ratio" test_aspect_ratio ];
       group "caching"
-        [ test "Measure count flexbox" test_measure_count_flexbox ];
+        [
+          test "Measure count flexbox" test_measure_count_flexbox;
+          test "Second chance eviction" test_cache_second_chance;
+          test "Update in place" test_cache_update_in_place;
+          test "Margin collapse not cached"
+            test_cache_margin_collapse_not_cached;
+          test "Mode and axis" test_cache_mode_and_axis;
+          test "Width measure does not answer height"
+            test_cache_width_measure_does_not_answer_height;
+        ];
       group "min_max_overrides"
         [
           test "Min overrides max" test_min_overrides_max;

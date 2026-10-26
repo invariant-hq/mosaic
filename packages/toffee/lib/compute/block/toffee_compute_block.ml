@@ -203,7 +203,7 @@ let determine_content_based_container_width (type t)
 
               let size_and_baselines =
                 Tree.compute_child_layout tree item.node_id
-                  (Layout_input.make ~run_mode:Run_mode.Perform_layout
+                  (Layout_input.make ~run_mode:Run_mode.Compute_size
                      ~sizing_mode:Sizing_mode.Inherent_size
                      ~axis:Requested_axis.Horizontal ~known_dimensions
                      ~parent_size:Size.none
@@ -1092,6 +1092,11 @@ let compute_inner (type t)
   | Run_mode.Compute_size, Some container_outer_height ->
       Layout_output.from_outer_size
         Size.{ width = container_outer_width; height = container_outer_height }
+  (* Nor is the height computed when only the width is requested. *)
+  | Run_mode.Compute_size, None
+    when Layout_input.axis inputs = Requested_axis.Horizontal ->
+      Layout_output.from_outer_size
+        Size.{ width = container_outer_width; height = 0.0 }
   | _ ->
       (* The height against which the children's percentages resolve: the
          container's own height when it is known. Its min-height alone is not
@@ -1338,6 +1343,10 @@ let compute_block_layout (type t)
     match styled_based_known_dimensions with
     | { width = Some width; height = Some height } ->
         Layout_output.from_outer_size Size.{ width; height }
+    (* Nor when the width is known and only the width is requested. *)
+    | { width = Some width; height = None }
+      when Layout_input.axis inputs = Requested_axis.Horizontal ->
+        Layout_output.from_outer_size Size.{ width; height = 0.0 }
     | _ ->
         (* Continue with compute_inner even in Compute_size mode if size not
            fully determined *)

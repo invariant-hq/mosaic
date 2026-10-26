@@ -192,9 +192,9 @@ val compute_cached_layout :
     - Grid intrinsic sizing passes
     - Multi-pass layout algorithms
 
-    The cache key includes [known_dimensions], [available_space], and
-    [run_mode]. Changes to node style or structure require calling
-    [Toffee_tree.cache_clear] to invalidate stale entries.
+    Entries are keyed on [inputs] (see {!Toffee_tree.Cache}). Changes to node
+    style or structure require calling [Toffee_tree.cache_clear] to invalidate
+    stale entries.
 
     This function is typically called by [Toffee_tree.compute_child_layout]
     implementations to wrap algorithm-specific layout functions. *)

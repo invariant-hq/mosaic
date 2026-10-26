@@ -119,28 +119,15 @@ module type CACHE_TREE = sig
   type t
   (** The tree structure type. *)
 
-  val cache_get :
-    t ->
-    Node_id.t ->
-    known_dimensions:float option Toffee_geometry.size ->
-    available_space:Available_space.t Toffee_geometry.size ->
-    run_mode:Run_mode.t ->
-    Layout_output.t option
-  (** [cache_get tree node ~known_dimensions ~available_space ~run_mode]
-      retrieves a cached layout result for [node].
+  val cache_get : t -> Node_id.t -> Layout_input.t -> Layout_output.t option
+  (** [cache_get tree node inputs] retrieves a cached layout result for [node]
+      under [inputs].
 
-      Returns [None] if no cached result matches the constraints. *)
+      Returns [None] if no cached result matches the inputs. *)
 
-  val cache_store :
-    t ->
-    Node_id.t ->
-    known_dimensions:float option Toffee_geometry.size ->
-    available_space:Available_space.t Toffee_geometry.size ->
-    run_mode:Run_mode.t ->
-    Layout_output.t ->
-    unit
-  (** [cache_store tree node ~known_dimensions ~available_space ~run_mode
-       output] stores [output] as a cached result for [node]. *)
+  val cache_store : t -> Node_id.t -> Layout_input.t -> Layout_output.t -> unit
+  (** [cache_store tree node inputs output] stores [output] as the cached result
+      for [node] under [inputs]. *)
 
   val cache_clear : t -> Node_id.t -> unit
   (** [cache_clear tree node] removes all cached entries for [node].
