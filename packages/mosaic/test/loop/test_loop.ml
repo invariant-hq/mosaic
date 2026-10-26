@@ -2130,6 +2130,103 @@ let%expect_test "S1: a shortcut does not take a key typed into an input" =
   equal ~msg:"Ctrl+Q types nothing, so it bubbles to the shortcut" int 1 !quit;
   [%expect {| |}]
 
+(* Rows a, b and c, each an input, [focus] focused. F2 removes the focused
+   row, F3 hides every row. The update answers [Sub.on_focus_lost] as
+   [answer] says: by declaring b focused, by [Cmd.focus_next], or not at
+   all. Returns the messages applied and the bytes written for [keys]. *)
+let lost_focus ?(focus = Some "a") ~answer keys =
+  let applied = ref [] in
+  let application =
+    {
+      Mosaic.init =
+        (fun () -> (([ "a"; "b"; "c" ], focus, true), Mosaic.Cmd.none));
+      update =
+        (fun msg (rows, focus, shown) ->
+          let name =
+            match msg with
+            | `Remove -> "remove"
+            | `Hide -> "hide"
+            | `Lost -> "lost"
+            | `Focus row -> "focus " ^ row
+            | `Edit (row, text) -> Printf.sprintf "edit %s %s" row text
+          in
+          applied := name :: !applied;
+          match (msg, answer) with
+          | `Remove, _ ->
+              ( (List.filter (fun r -> Some r <> focus) rows, focus, shown),
+                Mosaic.Cmd.none )
+          | `Hide, _ -> ((rows, focus, false), Mosaic.Cmd.none)
+          | `Focus row, _ | `Lost, `Declare row ->
+              ((rows, Some row, shown), Mosaic.Cmd.none)
+          | `Lost, `Next -> ((rows, focus, shown), Mosaic.Cmd.focus_next)
+          | `Lost, `Nothing | `Edit _, _ ->
+              ((rows, focus, shown), Mosaic.Cmd.none));
+      view =
+        (fun (rows, focus, shown) ->
+          Mosaic.box ~flex_direction:Column ~visible:shown
+            (List.map
+               (fun row ->
+                 Mosaic.input ~key:row
+                   ~size:(Mosaic.size ~width:20 ~height:1)
+                   ~state:Mosaic.Editor.empty ~focused:(focus = Some row)
+                   ~on_focus_request:(`Focus row)
+                   ~on_change:(fun e -> `Edit (row, Mosaic.Editor.text e))
+                   ())
+               rows));
+      subscriptions =
+        (fun _ ->
+          Mosaic.Sub.batch
+            [
+              Mosaic.Sub.on_keys
+                [ (Mosaic.Shortcut.f 2, `Remove); (Mosaic.Shortcut.f 3, `Hide) ];
+              Mosaic.Sub.on_focus_lost `Lost;
+            ]);
+    }
+  in
+  let out = ref "" in
+  drive ~width:20 ~height:3 application
+    [
+      `Run
+        (fun t ->
+          let from = String.length (written t) in
+          feed t keys;
+          let w = written t in
+          out := String.sub w from (String.length w - from));
+    ];
+  (List.rev !applied, !out)
+
+let hide_cursor = "\027[?25l"
+
+let%expect_test
+    "a lost focus answered with a focus presents no frame without it" =
+  (* The removal's frame is drawn early, in the turn that read F2: a report
+     delivered after it would present a frame with no focused input, its
+     cursor hidden, before the repair. *)
+  List.iter
+    (fun (msg, answer, repair) ->
+      let applied, out = lost_focus ~answer "\027OQx" in
+      not_contains
+        ~msg:(msg ^ ": no frame hides the cursor")
+        ~sub:hide_cursor out;
+      equal ~msg (list string)
+        ([ "remove"; "lost" ] @ repair @ [ "edit b x" ])
+        applied)
+    [ ("declared", `Declare "b", []); ("by focus_next", `Next, [ "focus b" ]) ];
+  [%expect {| |}]
+
+let%expect_test "a lost focus is reported once, and only after a focus" =
+  let reports applied = List.filter (String.equal "lost") applied in
+  let applied, out = lost_focus ~answer:`Nothing "\027OQ\027OQ" in
+  equal ~msg:"removing a: one report, none for the next frame" (list string)
+    [ "lost" ] (reports applied);
+  contains ~msg:"with nothing focused the cursor hides" ~sub:hide_cursor out;
+  let applied, _ = lost_focus ~answer:`Nothing "\027OR" in
+  equal ~msg:"hiding the focused element loses it" (list string) [ "lost" ]
+    (reports applied);
+  let applied, _ = lost_focus ~focus:None ~answer:`Nothing "\027OQ\027OR" in
+  equal ~msg:"no focus before, no report" (list string) [] (reports applied);
+  [%expect {| |}]
+
 let%expect_test "removing the focused element leaves nothing focused" =
   (* The update that removes the focused input does not move focus: keys
      then reach the application only, until the model declares another. *)

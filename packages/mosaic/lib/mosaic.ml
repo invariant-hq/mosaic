@@ -305,6 +305,7 @@ module Sub = struct
     | On_blur of 'msg
     | On_color_scheme of ([ `Dark | `Light ] -> 'msg option)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)
+    | On_focus_lost of 'msg
 
   let none = None
   let batch subs = Batch subs
@@ -350,6 +351,7 @@ module Sub = struct
   let on_focus msg = On_focus msg
   let on_blur msg = On_blur msg
   let on_color_scheme f = On_color_scheme f
+  let on_focus_lost msg = On_focus_lost msg
 
   let worker ~id f =
     if id = "" then invalid_arg "Mosaic.Sub.worker: empty id";
@@ -374,6 +376,7 @@ module Sub = struct
         On_color_scheme (fun scheme -> Option.map f (g scheme))
     | Worker (id, g) ->
         Worker (id, fun stop mailbox -> g stop (map_mailbox f mailbox))
+    | On_focus_lost msg -> On_focus_lost (f msg)
 end
 
 type ('model, 'msg) app = {
@@ -478,6 +481,9 @@ type ('model, 'msg) runtime = {
   mutable timers : 'msg timer list;
   mutable focus_sub : 'msg list;
   mutable blur_sub : 'msg list;
+  mutable focus_lost_sub : 'msg list;
+  (* The view last reconciled declared a focused element. *)
+  mutable had_focus : bool;
   mutable color_scheme_sub : ([ `Dark | `Light ] -> 'msg option) list;
   (* The timer armed at the earliest deadline of the timers and the
      paste stalls, and that deadline. *)
@@ -685,6 +691,8 @@ let rec collect_subs runtime (sub : _ Sub.t) =
   | Sub.On_color_scheme f ->
       runtime.color_scheme_sub <- f :: runtime.color_scheme_sub
   | Sub.Worker (id, f) -> runtime.worker_subs <- (id, f) :: runtime.worker_subs
+  | Sub.On_focus_lost msg ->
+      runtime.focus_lost_sub <- msg :: runtime.focus_lost_sub
 
 (* How long a paste may be silent before the program ends it, when the
    application declares no stall of its own. *)
@@ -775,6 +783,7 @@ let update_subscriptions runtime =
   runtime.worker_subs <- [];
   runtime.focus_sub <- [];
   runtime.blur_sub <- [];
+  runtime.focus_lost_sub <- [];
   runtime.color_scheme_sub <- [];
   collect_subs runtime (runtime.app.subscriptions runtime.model);
   runtime.key_subs <- List.rev runtime.key_subs;
@@ -785,6 +794,7 @@ let update_subscriptions runtime =
   runtime.tick_sub <- List.rev runtime.tick_sub;
   runtime.focus_sub <- List.rev runtime.focus_sub;
   runtime.blur_sub <- List.rev runtime.blur_sub;
+  runtime.focus_lost_sub <- List.rev runtime.focus_lost_sub;
   runtime.color_scheme_sub <- List.rev runtime.color_scheme_sub;
   let ids = Hashtbl.create 8 in
   let check_id id =
@@ -858,7 +868,11 @@ let layout_size runtime =
    geometry refresh, callbacks enqueue instead of re-entering reconciliation.
    A focus move waits for the view of the messages applied before it, so it
    counts from the focus that view declares and can reach an element the same
-   update added, as Elm's [Browser.Dom.focus] waits for the next render. *)
+   update added, as Elm's [Browser.Dom.focus] waits for the next render.
+   A view that loses the focus its predecessor declared delivers the
+   [on_focus_lost] messages here, before the frame is laid out, so the view
+   that answers them is the one the frame shows: an early frame, drawn in the
+   turn that read a key, never presents the unfocused view in between. *)
 let synchronize runtime =
   if not runtime.synchronizing then begin
     runtime.synchronizing <- true;
@@ -876,8 +890,15 @@ let synchronize runtime =
             Reconciler.render runtime.reconciler ~viewport_width:(max 1 width)
               vnode;
             (match Reconciler.focused runtime.reconciler with
-            | Some node -> ignore (Renderer.focus runtime.renderer node : bool)
-            | None -> Renderer.blur runtime.renderer);
+            | Some node ->
+                runtime.had_focus <- true;
+                ignore (Renderer.focus runtime.renderer node : bool)
+            | None ->
+                if runtime.had_focus then begin
+                  runtime.had_focus <- false;
+                  List.iter (push_msg runtime) runtime.focus_lost_sub
+                end;
+                Renderer.blur runtime.renderer);
             Renderer.prepare_layout runtime.renderer ~width ~height;
             settle ()
           end
@@ -1133,6 +1154,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       timers = [];
       focus_sub = [];
       blur_sub = [];
+      focus_lost_sub = [];
+      had_focus = false;
       color_scheme_sub = [];
       wakeup = None;
       focus_moves = Queue.create ();

@@ -1132,6 +1132,7 @@ module Sub : sig
     | On_color_scheme of ([ `Dark | `Light ] -> 'msg option)
         (** {!val-on_color_scheme}. *)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)  (** {!val-worker}. *)
+    | On_focus_lost of 'msg  (** {!val-on_focus_lost}. *)
 
   val none : 'msg t
   (** [none] is the subscription to nothing. *)
@@ -1246,6 +1247,14 @@ module Sub : sig
 
   val on_blur : 'msg -> 'msg t
   (** [on_blur msg] dispatches [msg] when the terminal window loses focus. *)
+
+  val on_focus_lost : 'msg -> 'msg t
+  (** [on_focus_lost msg] dispatches [msg] when the view stops declaring a
+      focused element, after a view that declared one: the focused element was
+      removed or hidden, or the model no longer declares it
+      ({{!elements}UI elements}). [msg] is applied before the frame is drawn, so
+      a view that answers it with a new focus, declared or asked with
+      {!Cmd.focus_next}, is the one the frame shows. *)
 
   val on_color_scheme : ([ `Dark | `Light ] -> 'msg option) -> 'msg t
   (** [on_color_scheme f] calls [f] with the terminal's color scheme when the
@@ -1495,12 +1504,14 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     not participate in focus.
 
     Focus is the model's, so nothing moves it but a declaration. Removing or
-    hiding the focused element leaves nothing focused, and no event says so:
-    keys reach subscriptions only until the model declares another element
-    focused. The update that removes the focused element is where to choose the
-    next one, such as the row now at its position. Some toolkits (AWT) move
-    focus forward by themselves when the focused component goes; here that would
-    give the model's focus a second owner.
+    hiding the focused element leaves nothing focused: keys reach subscriptions
+    only until the model declares another element focused. The update that
+    removes the focused element is where to choose the next one, such as the row
+    now at its position. An application that does not know which update did it
+    learns it from {!Sub.on_focus_lost}, before the frame without focus is
+    drawn, and answers with a declaration or with {!Cmd.focus_next}. Some
+    toolkits (AWT) move focus forward by themselves when the focused component
+    goes; here that would give the model's focus a second owner.
 
     An element with [on_focus_request] asks for focus with that message, and the
     application grants it by declaring the element [focused]. Such an element is
