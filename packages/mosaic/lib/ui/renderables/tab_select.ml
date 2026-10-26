@@ -29,7 +29,7 @@ let keymap = function
 module Props = struct
   type t = {
     key_bindings : key_binding list;
-    options : item List_source.t;
+    options : item Items.t;
     selected : int;
     tab_width : int;
     background : Ansi.Color.t;
@@ -74,7 +74,7 @@ module Props = struct
     in
     {
       key_bindings;
-      options = List_source.of_list options;
+      options = Items.of_list options;
       selected = max (-1) selected;
       tab_width = max 1 tab_width;
       background = background';
@@ -96,7 +96,7 @@ module Props = struct
 
   let equal a b =
     List.equal (Keymap.binding_equal ( = )) a.key_bindings b.key_bindings
-    && List_source.equal equal_item a.options b.options
+    && Items.equal equal_item a.options b.options
     && Int.equal a.selected b.selected
     && a.tab_width = b.tab_width
     && Ansi.Color.equal a.background b.background
@@ -113,7 +113,7 @@ module Props = struct
     && a.show_scroll_arrows = b.show_scroll_arrows
     && a.wrap_selection = b.wrap_selection
 
-  let with_options_of f l props = { props with options = List_source.map f l }
+  let with_options_of f l props = { props with options = Items.map_list f l }
 end
 
 (* ───── Types ───── *)
@@ -371,14 +371,14 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~options
 
 let set_source t options =
   t.props <- { t.props with options };
-  t.items <- List_source.to_list options;
+  t.items <- Items.to_list options;
   t.selected_index <- clamp_selected t.items t.selected_index;
   Renderable.mark_dirty t.node;
   request_render t
 
 let set_options t items =
   if not (List.equal Props.equal_item t.items items) then
-    set_source t (List_source.of_list items)
+    set_source t (Items.of_list items)
 
 let set_selected t i =
   let idx = clamp_selected t.items i in
@@ -471,8 +471,8 @@ let apply_props t (props : Props.t) =
   end;
   (* Options equal to the current ones are kept, with the new source, which a
      later declaration of the same list is then the same as. *)
-  if not (List_source.same t.props.options props.options) then
-    if List_source.equal Props.equal_item t.props.options props.options then
+  if not (Items.same t.props.options props.options) then
+    if Items.equal Props.equal_item t.props.options props.options then
       t.props <- { t.props with options = props.options }
     else set_source t props.options;
   set_selected t props.selected;

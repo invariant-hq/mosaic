@@ -14,6 +14,8 @@
       {!Canvas}, {!Select}, {!Tab_select}, {!Markdown}, {!Spinner},
       {!Progress_bar}, {!Textarea}, {!Scroll_bar}, {!Scroll_box}, {!Table},
       {!Tree}, {!Code}, {!Line_number}, and {!Diff}.
+    - {b Values.} {!Editor}, {!Scroll} and {!Items}, which an application keeps
+      in its model and widgets read.
     - {b Theming.} {!Syntax_style} for tree-sitter/TextMate-style syntax
       colouring and {!Syntax_highlight} for source highlight ranges. *)
 
@@ -118,3 +120,6 @@ module Editor = Editor
 
 module Scroll = Scroll
 (** Persistent viewport positions and symbolic follow/reveal targets. *)
+
+module Items = Items
+(** Sequences of the items a collection widget shows, read by position. *)

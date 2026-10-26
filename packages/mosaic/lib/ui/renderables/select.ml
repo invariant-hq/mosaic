@@ -31,7 +31,7 @@ let keymap = function
 
 module Props = struct
   type t = {
-    options : item List_source.t;
+    options : item Items.t;
     selected_index : int;
     background : Ansi.Color.t;
     text_color : Ansi.Color.t;
@@ -78,7 +78,7 @@ module Props = struct
       Option.value focused_text_color ~default:text_color
     in
     {
-      options = List_source.of_list options;
+      options = Items.of_list options;
       selected_index = max (-1) selected_index;
       background;
       text_color;
@@ -97,10 +97,10 @@ module Props = struct
     }
 
   let default = make ()
-  let with_options_of f l props = { props with options = List_source.map f l }
+  let with_options_of f l props = { props with options = Items.map_list f l }
 
   let equal a b =
-    List_source.equal item_equal a.options b.options
+    Items.equal item_equal a.options b.options
     && Int.equal a.selected_index b.selected_index
     && Ansi.Color.equal a.background b.background
     && Ansi.Color.equal a.text_color b.text_color
@@ -198,13 +198,13 @@ let selected_item t =
 
 let set_source t options =
   t.props <- { t.props with options };
-  t.items <- List_source.to_array options;
+  t.items <- Items.to_array options;
   t.content_widths <- None;
   Renderable.mark_dirty t.node;
   t.selected_index <- clamp_index t t.selected_index;
   request t
 
-let set_options t opts = set_source t (List_source.of_list opts)
+let set_options t opts = set_source t (Items.of_list opts)
 
 (* ───── Navigation ───── *)
 
@@ -509,7 +509,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?options
       ?show_description ?show_scroll_indicator ?wrap_selection ?item_spacing
       ?fast_scroll_step ?key_bindings ()
   in
-  let items = List_source.to_array props.options in
+  let items = Items.to_array props.options in
   let t =
     {
       node;
@@ -559,8 +559,8 @@ let set_key_bindings t bindings =
 let apply_props t (props : Props.t) =
   (* Options equal to the current ones are kept, with the new source, which a
      later declaration of the same list is then the same as. *)
-  if not (List_source.same t.props.options props.options) then
-    if List_source.equal item_equal t.props.options props.options then
+  if not (Items.same t.props.options props.options) then
+    if Items.equal item_equal t.props.options props.options then
       t.props <- { t.props with options = props.options }
     else set_source t props.options;
   set_selected_index t props.selected_index;

@@ -107,7 +107,7 @@ module Props = struct
   type t = {
     key_bindings : key_binding list;
     columns : column list;
-    rows : cell array List_source.t;
+    rows : cell array Items.t;
     selected_row : int;
     border : bool;
     border_style : Matrix_grid.Border.t;
@@ -159,7 +159,7 @@ module Props = struct
     {
       key_bindings;
       columns;
-      rows = List_source.of_list rows;
+      rows = Items.of_list rows;
       selected_row = max (-1) selected_row;
       border;
       border_style;
@@ -195,7 +195,7 @@ module Props = struct
   let equal a b =
     List.equal (Keymap.binding_equal ( = )) a.key_bindings b.key_bindings
     && columns_equal a.columns b.columns
-    && List_source.equal row_equal a.rows b.rows
+    && Items.equal row_equal a.rows b.rows
     && Int.equal a.selected_row b.selected_row
     && Bool.equal a.border b.border
     && a.border_style = b.border_style
@@ -221,7 +221,7 @@ module Props = struct
     && Bool.equal a.wrap_selection b.wrap_selection
     && Int.equal a.fast_scroll_step b.fast_scroll_step
 
-  let with_rows_of f l props = { props with rows = List_source.map f l }
+  let with_rows_of f l props = { props with rows = Items.map_list f l }
 end
 
 (* ───── Types ───── *)
@@ -453,14 +453,14 @@ let set_columns t cols =
 
 let set_source t rows =
   t.props <- { t.props with rows };
-  t.data_rows <- List_source.to_array rows;
+  t.data_rows <- Items.to_array rows;
   t.auto_widths <- None;
   t.selected_row <- clamp_index t t.selected_row;
   refresh_hover t;
   Renderable.mark_dirty t.node;
   request t
 
-let set_rows t data = set_source t (List_source.of_list data)
+let set_rows t data = set_source t (Items.of_list data)
 
 let set_selected_row t idx =
   let idx = clamp_index t idx in
@@ -1080,7 +1080,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?columns ?rows
       ?key_bindings ?fast_scroll_step ()
   in
   let col_specs = Array.of_list props.columns in
-  let data_rows = List_source.to_array props.rows in
+  let data_rows = Items.to_array props.rows in
   let initial_selected =
     let len = Array.length data_rows in
     if len = 0 then -1 else max (-1) (min (len - 1) props.selected_row)
@@ -1133,8 +1133,8 @@ let apply_props t (props : Props.t) =
     set_columns t props.columns;
   (* Rows equal to the current ones are kept, with the new source, which a
      later declaration of the same list is then the same as. *)
-  if not (List_source.same t.props.rows props.rows) then
-    if List_source.equal row_equal t.props.rows props.rows then
+  if not (Items.same t.props.rows props.rows) then
+    if Items.equal row_equal t.props.rows props.rows then
       t.props <- { t.props with rows = props.rows }
     else set_source t props.rows;
   set_selected_row t props.selected_row;

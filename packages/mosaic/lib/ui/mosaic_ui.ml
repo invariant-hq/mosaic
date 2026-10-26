@@ -31,3 +31,4 @@ module Vnode = Vnode
 module Editor = Editor
 module Scroll = Scroll
 module Shortcut = Shortcut
+module Items = Items
