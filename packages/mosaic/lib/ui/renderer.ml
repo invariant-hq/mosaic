@@ -211,6 +211,9 @@ let notify_selectables state sel =
   match state.containers with
   | [] -> ()
   | container :: _ ->
+      (* A selectable reads its position to find what the selection covers,
+         and one out of view has not been painted where it now is. *)
+      Renderable.Private.refresh_positions container;
       let new_touched = ref [] in
       iter_selectables container (fun node ->
           ignore (Renderable.Private.emit_selection_changed node sel : bool);

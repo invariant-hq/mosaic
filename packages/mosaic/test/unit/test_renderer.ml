@@ -736,6 +736,47 @@ let descendant_reaching_the_viewport_survives_its_offscreen_parent () =
     "row-0               \nrow-1   HERE        \nrow-2               "
     (frame_rows t ~width:20 ~height:3)
 
+let selection_reads_rows_out_of_view () =
+  (* Ten rows, each a text in a box, are painted at the bottom of a scroll
+     box and then at its top. Ten more are inserted above them while the view
+     stays at the top, so the first ten are never painted where they now are.
+     A selection of the five rows in view selects those five alone. *)
+  let t = make_renderer () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root t)
+      ~style:
+        (Toffee.Style.default
+        |> Toffee.Style.set_width (dim 20)
+        |> Toffee.Style.set_height (dim 5))
+      ~show_scrollbars:false ()
+  in
+  Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
+  let row index text =
+    let wrapper =
+      Renderable.create ~parent:(Scroll_box.node sb) ~index
+        ~style:(Toffee.Style.default |> Toffee.Style.set_flex_shrink 0.)
+        ()
+    in
+    ignore
+      (Text.create ~parent:wrapper ~content:text ~selectable:true () : Text.t)
+  in
+  for i = 0 to 9 do
+    row i (Printf.sprintf "old-%d" i)
+  done;
+  Scroll_box.scroll_to sb ~y:5 ();
+  do_frame ~width:20 ~height:5 t;
+  Scroll_box.scroll_to sb ~y:0 ();
+  do_frame ~width:20 ~height:5 t;
+  for i = 0 to 9 do
+    row i (Printf.sprintf "new-%d" i)
+  done;
+  do_frame ~width:20 ~height:5 t;
+  dispatch_mouse t (mouse_press ~x:0 ~y:0 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:19 ~y:4 ());
+  equal ~msg:"the rows in view" (option string)
+    (Some "new-0new-1new-2new-3new-4")
+    (Renderer.selection_text t)
+
 (* ── Scroll hints ── *)
 
 (* A full-width scroll box of [rows] one-cell text rows in a [vw]x[vh]
@@ -2329,6 +2370,8 @@ let () =
             descendant_reaching_the_viewport_survives_its_offscreen_parent;
           test "child far before the viewport is kept"
             child_far_before_the_viewport_is_kept;
+          test "a selection reads rows out of view where they are"
+            selection_reads_rows_out_of_view;
           culling_matches_a_scan;
         ];
       group "Scroll hints"

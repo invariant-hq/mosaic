@@ -1036,6 +1036,16 @@ let update_children_layout t =
     | Some _ | None -> ()
   done
 
+(* A culling node's index refreshes its direct children alone; below them,
+   only a paint does. *)
+let rec refresh_positions t =
+  update_children_layout t;
+  for i = 0 to t.child_count - 1 do
+    match t.children.(i) with
+    | Some child when child.visible -> refresh_positions child
+    | Some _ | None -> ()
+  done
+
 (* ───── Viewport Culling ─────
 
    A scroll container's content node culls: the renderer descends only into
@@ -1322,6 +1332,7 @@ module Private = struct
   let layout_dirty t = t.layout_dirty
   let clear_layout_dirty t = t.layout_dirty <- false
   let update_layout = update_layout
+  let refresh_positions = refresh_positions
   let measure t = t.measure
   let pre_render_update = pre_render_update
   let render = render_node

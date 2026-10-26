@@ -531,6 +531,12 @@ module Private : sig
       enabling O(1) queries via {!val-x}, {!val-y}, {!val-width}, and
       {!val-height}. *)
 
+  val refresh_positions : t -> unit
+  (** [refresh_positions t] caches, for every visible node below [t], the layout
+      the layout tree holds for it, as a paint that reached the node would. A
+      paint reaches only the nodes it draws, so a node below a culled child
+      otherwise keeps the layout of the last paint that reached it. *)
+
   val measure : t -> measure option
   (** [measure t] is [t]'s measure function, if any. *)
 
