@@ -5646,6 +5646,73 @@ let () =
             [| 0.; 20.; 50.; 1. |];
             [| 0.; 31.; 50.; 10. |];
           ];
+      case "margin_y_collapse_through_blocked_by_percentage_height"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 {
+                   width = Dimension.length 50.;
+                   height = Dimension.length 100.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 10. }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 10.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.percent 0.1 }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 10.;
+                       bottom = Length_percentage_auto.length 10.;
+                     }
+                   ())
+                [ node (Style.make ~display:Block ~box_sizing ()) [] ];
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 10. }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 10.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 50.; 100. |];
+            [| 0.; 0.; 50.; 10. |];
+            [| 0.; 20.; 50.; 10. |];
+            [| 0.; 0.; 50.; 0. |];
+            [| 0.; 40.; 50.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 50.; 100. |];
+            [| 0.; 0.; 50.; 10. |];
+            [| 0.; 20.; 50.; 10. |];
+            [| 0.; 0.; 50.; 0. |];
+            [| 0.; 40.; 50.; 10. |];
+          ];
       case "margin_y_collapse_through_negative"
         (fun box_sizing ->
           node
@@ -9641,4 +9708,98 @@ let () =
           [
             [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |];
           ];
+      case "percentage_height_with_min_height_parent"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 100.; height = Dimension.auto }
+               ~min_size:
+                 { width = Dimension.auto; height = Dimension.length 80. }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.percent 0.5 }
+                   ())
+                [
+                  node
+                    (Style.make ~display:Block ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 20.;
+                           height = Dimension.length 20.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 80. |];
+            [| 0.; 0.; 100.; 20. |];
+            [| 0.; 0.; 20.; 20. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 80. |];
+            [| 0.; 0.; 100.; 20. |];
+            [| 0.; 0.; 20.; 20. |];
+          ];
+      case "relative_inset_percentage_auto_height"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 100.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing ~position:Relative
+                   ~size:
+                     {
+                       width = Dimension.length 20.;
+                       height = Dimension.length 20.;
+                     }
+                   ~inset:
+                     {
+                       left = Length_percentage_auto.auto;
+                       right = Length_percentage_auto.auto;
+                       top = Length_percentage_auto.percent 0.5;
+                       bottom = Length_percentage_auto.auto;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 100.; 20. |]; [| 0.; 0.; 20.; 20. |] ]
+        ~content_box:[ [| 0.; 0.; 100.; 20. |]; [| 0.; 0.; 20.; 20. |] ];
+      case "relative_inset_percentage_definite_height"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 {
+                   width = Dimension.length 100.;
+                   height = Dimension.length 200.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing ~position:Relative
+                   ~size:
+                     {
+                       width = Dimension.length 20.;
+                       height = Dimension.length 20.;
+                     }
+                   ~inset:
+                     {
+                       left = Length_percentage_auto.percent 0.1;
+                       right = Length_percentage_auto.auto;
+                       top = Length_percentage_auto.percent 0.5;
+                       bottom = Length_percentage_auto.auto;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 100.; 200. |]; [| 10.; 100.; 20.; 20. |] ]
+        ~content_box:[ [| 0.; 0.; 100.; 200. |]; [| 10.; 100.; 20.; 20. |] ];
     ]

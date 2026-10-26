@@ -225,6 +225,7 @@ let determine_content_based_container_width (type t)
 let perform_final_layout_on_in_flow_children (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (items : block_item list) (container_outer_width : float)
+    (container_percentage_resolution_height : float option)
     (content_box_inset : float rect) (resolved_content_box_inset : float rect)
     (text_align : Text_align.t) (own_margins_collapse_with_children : bool line)
     : float size * float * Collapsible_margin_set.t * Collapsible_margin_set.t =
@@ -233,8 +234,20 @@ let perform_final_layout_on_in_flow_children (type t)
   let container_inner_width =
     container_outer_width -. Rect.horizontal_axis_sum content_box_inset
   in
+  (* The children's percentage heights and vertical insets resolve against
+     the container's content box height, when it is definite. *)
+  let container_percentage_resolution_height =
+    Option.map
+      (fun height ->
+        height -. Rect.vertical_axis_sum resolved_content_box_inset)
+      container_percentage_resolution_height
+  in
   let parent_size =
-    Size.{ width = Some container_outer_width; height = None }
+    Size.
+      {
+        width = Some container_outer_width;
+        height = container_percentage_resolution_height;
+      }
   in
   (* Vertical available space in block flow is indefinite, not a min-content
      constraint: Max_content is how toffee says indefinite. Under Min_content
@@ -308,13 +321,7 @@ let perform_final_layout_on_in_flow_children (type t)
           Tree.compute_child_layout tree item.node_id
             (Layout_input.make ~run_mode:Run_mode.Perform_layout
                ~sizing_mode:Sizing_mode.Inherent_size ~axis:Requested_axis.Both
-               ~known_dimensions
-               ~parent_size:
-                 Size.
-                   {
-                     width = Some container_outer_width;
-                     height = parent_size.height;
-                   }
+               ~known_dimensions ~parent_size
                ~available_space:
                  Size.
                    {
@@ -370,8 +377,12 @@ let perform_final_layout_on_in_flow_children (type t)
         (* Resolve item inset *)
         let inset =
           Rect.zip_size
-            Size.{ width = container_inner_width; height = 0.0 }
-            (fun p s -> Length_percentage_auto.maybe_resolve p (Some s) calc)
+            Size.
+              {
+                width = Some container_inner_width;
+                height = container_percentage_resolution_height;
+              }
+            (fun p s -> Length_percentage_auto.maybe_resolve p s calc)
             item.inset
         in
         let inset_offset =
@@ -1070,6 +1081,16 @@ let compute_inner (type t)
       Layout_output.from_outer_size
         Size.{ width = container_outer_width; height = container_outer_height }
   | _ ->
+      (* The height against which the children's percentages resolve: the
+         container's own height when it is known. Its min-height alone is not
+         a basis: percentages of an indefinite height behave as auto (CSS 2
+         10.5). *)
+      let container_percentage_resolution_height =
+        match (known_dimensions.height, size.height, min_size.height) with
+        | (Some _ as height), _, _ -> height
+        | None, Some height, Some min -> Some (Float.max height min)
+        | None, height, _ -> height
+      in
       (* 3. Perform final item layout and return content height *)
       let resolved_padding =
         raw_padding
@@ -1090,7 +1111,8 @@ let compute_inner (type t)
             last_child_bottom_margin_set ) =
         perform_final_layout_on_in_flow_children
           (module Tree)
-          tree items container_outer_width content_box_inset
+          tree items container_outer_width
+          container_percentage_resolution_height content_box_inset
           resolved_content_box_inset text_align
           own_margins_collapse_with_children
       in

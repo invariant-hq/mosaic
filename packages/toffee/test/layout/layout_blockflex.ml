@@ -310,4 +310,54 @@ let () =
             [| 0.; 0.; 0.; 50.; 40.; 0. |];
             [| 0.; 0.; 40.; 50. |];
           ];
+      case "percentage_height_in_auto_height_flex_item"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Flex ~box_sizing
+               ~size:{ width = Dimension.length 100.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~size:
+                     { width = Dimension.length 50.; height = Dimension.auto }
+                   ~min_size:
+                     { width = Dimension.auto; height = Dimension.length 0. }
+                   ())
+                [
+                  node
+                    (Style.make ~display:Block ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.percent 0.5;
+                         }
+                       ())
+                    [
+                      node
+                        (Style.make ~display:Block ~box_sizing
+                           ~size:
+                             {
+                               width = Dimension.length 50.;
+                               height = Dimension.length 50.;
+                             }
+                           ())
+                        [];
+                    ];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 50. |];
+            [| 0.; 0.; 50.; 50. |];
+            [| 0.; 0.; 50.; 25. |];
+            [| 0.; 0.; 50.; 50. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 50. |];
+            [| 0.; 0.; 50.; 50. |];
+            [| 0.; 0.; 50.; 25. |];
+            [| 0.; 0.; 50.; 50. |];
+          ];
     ]
