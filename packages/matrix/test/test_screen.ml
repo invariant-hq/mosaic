@@ -1273,36 +1273,179 @@ let test_region_plain () =
   not_contains ~msg:"no color in the rows" ~sub:"31m" bytes;
   contains ~msg:"the text" ~sub:"ab" bytes
 
+(* A cursor hidden between writes stays hidden, resting on the origin; one
+   placed on a cell shows there, and the next write goes back up from it. *)
+let test_region_cursor () =
+  let t = region_term ~cols:10 ~rows:8 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  let bytes =
+    Region.draw r ~cols:10 ~rows:8 ~cursor:Hidden (frame [ "a"; "b" ])
+  in
+  not_contains ~msg:"never shown" ~sub:"\027[?25h" bytes;
+  feed t bytes;
+  is_false ~msg:"hidden" (Vte.modes t).cursor_visible;
+  equal ~msg:"resting on the origin" cursor (1, 0) (Vte.cursor_pos t);
+  let at = Region.At { x = 2; y = 1 } in
+  feed t (Region.draw r ~cols:10 ~rows:8 ~cursor:at (frame [ "a"; "bcde" ]));
+  is_true ~msg:"shown" (Vte.modes t).cursor_visible;
+  equal ~msg:"on the row and column asked" cursor (3, 2) (Vte.cursor_pos t);
+  equal ~msg:"the same cursor, nothing written" Testable.string ""
+    (Region.draw r ~cols:10 ~rows:8 ~cursor:at (frame [ "a"; "bcde" ]));
+  feed t
+    (Region.draw r ~cols:10 ~rows:8
+       ~cursor:(At { x = 0; y = 5 })
+       (frame [ "c"; "d" ]));
+  equal ~msg:"back up from it: the line above stays" region_lines
+    [ "$ prog"; ""; "c"; "d" ] (lines t);
+  equal ~msg:"clamped to the last row" cursor (3, 0) (Vte.cursor_pos t);
+  feed t (Region.teardown r);
+  feed t "$ ";
+  equal ~msg:"teardown below the rows" region_lines
+    [ "$ prog"; ""; "c"; "d"; "$" ]
+    (lines t)
+
+(* A line written where the cursor rests in the region lands on its rows,
+   which the next write erases; no line above the origin is. *)
+let test_region_cursor_foreign () =
+  let t = region_term ~cols:10 ~rows:8 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  draw r t (frame [ "a" ]);
+  feed t
+    (Region.draw r ~cols:10 ~rows:8
+       ~cursor:(At { x = 1; y = 1 })
+       (frame [ "a"; "b"; "c" ]));
+  feed t "F\r\n";
+  Region.moved r;
+  draw r t (frame [ "d" ]);
+  equal ~msg:"the region's rows erased, the shell's line kept" region_lines
+    [ "$ prog"; ""; ""; "d" ] (lines t)
+
+(* Rows the caller writes, here a screen rendering relatively between
+   [start] and [finish]: afresh at first, then the cells that changed. *)
+let test_region_start_finish () =
+  let t = region_term ~cols:10 ~rows:8 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  let s = Screen.create () in
+  let write ?above ?(height = 2) ?cursor rows =
+    Screen.build s ~width:10 ~height (fun g _ ->
+        List.iteri (fun y text -> Grid.draw_text g ~x:0 ~y ~text) rows);
+    let w = Ansi.Writer.create 64 in
+    let whole = Region.start r ~cols:10 ~rows:8 ?above ~height w in
+    let before = Ansi.Writer.len w in
+    Screen.render_into ~full:whole ~relative:true
+      ~viewport:{ Screen.y = 1; height } s w;
+    let wrote = Ansi.Writer.len w > before in
+    Region.finish r ?cursor w;
+    let bytes = Ansi.Writer.contents w in
+    feed t bytes;
+    (whole, wrote, bytes)
+  in
+  let whole, _, _ = write [ "ab"; "cd" ] in
+  is_true ~msg:"the first write is afresh" whole;
+  equal ~msg:"below a blank origin" region_lines
+    [ "$ prog"; ""; "ab"; "cd" ]
+    (lines t);
+  equal ~msg:"resting on the origin" cursor (1, 0) (Vte.cursor_pos t);
+  let whole, _, bytes = write [ "ab"; "ce" ] in
+  is_false ~msg:"then the changes" whole;
+  not_contains ~msg:"nothing erased" ~sub:"\027[J" bytes;
+  equal ~msg:"the change" region_lines [ "$ prog"; ""; "ab"; "ce" ] (lines t);
+  let whole, wrote, _ = write [ "ab"; "ce" ] in
+  is_false ~msg:"no cell changed" (whole || wrote);
+  let whole, _, _ = write ~above:"x\n" [ "ab"; "ce" ] in
+  is_true ~msg:"lines above: afresh" whole;
+  equal ~msg:"the line above" region_lines
+    [ "$ prog"; "x"; ""; "ab"; "ce" ]
+    (lines t);
+  let whole, _, _ = write ~height:3 [ "ab"; "ce"; "f" ] in
+  is_true ~msg:"another height: afresh" whole;
+  ignore (write ~height:3 ~cursor:(At { x = 1; y = 2 }) [ "ab"; "ce"; "f" ]);
+  equal ~msg:"the cursor placed" cursor (5, 1) (Vte.cursor_pos t);
+  let whole, _, _ = write ~height:3 [ "ab"; "ce"; "g" ] in
+  is_false ~msg:"from the cursor placed, the changes" whole;
+  equal ~msg:"back up from the cursor" region_lines
+    [ "$ prog"; "x"; ""; "ab"; "ce"; "g" ]
+    (lines t);
+  Region.moved r;
+  let whole, _, _ = write ~height:3 [ "ab"; "ce"; "g" ] in
+  is_true ~msg:"after moved: afresh" whole
+
+(* [keep] leaves the rows as drawn, the origin's row deleted under them, and
+   the cursor below the rows kept. *)
+let test_region_keep () =
+  let t = region_term ~cols:10 ~rows:8 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  draw r t (frame [ "a"; "b"; "" ]);
+  feed t (Region.keep r 2);
+  feed t "$ ";
+  equal ~msg:"the rows kept, the prompt below" region_lines
+    [ "$ prog"; "a"; "b"; "$" ]
+    (lines t);
+  let t = region_term ~cols:10 ~rows:8 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  feed t
+    (Region.draw r ~cols:10 ~rows:8
+       ~cursor:(At { x = 1; y = 0 })
+       (frame [ "a"; "b" ]));
+  feed t (Region.keep r 0);
+  feed t "$ ";
+  equal ~msg:"none kept, no trace" region_lines [ "$ prog"; "$" ] (lines t)
+
+let test_region_clear () =
+  let t = region_term ~cols:10 ~rows:6 in
+  feed t "$ prog\r\n";
+  let r = Region.create () in
+  draw r t (frame [ "a" ]);
+  let bytes = Region.clear r in
+  equal ~msg:"the screen erased" Testable.string "\027[0m\027[H\027[2J" bytes;
+  feed t bytes;
+  draw r t (frame [ "b" ]);
+  equal ~msg:"drawn afresh from the top" region_lines [ ""; "b" ] (lines t)
+
 (* Resizes, lines above, foreign lines and frames of any height, in any
-   order: every line printed above and every complete foreign line shows once,
-   in order, and none is erased. A foreign line written over a region row
-   keeps what the row had past its end, so a line is found by its start. The
-   emulator does not rewrap, so this checks the motion and the erasing, not
-   a rewrap. *)
+   order, with the cursor resting on the origin or placed in the region:
+   every line printed above and every complete foreign line written while the
+   cursor rests on the origin shows once, in order, and none is erased. A line
+   written while the cursor is in the region lands on its rows, which are the
+   region's to erase. A foreign line written over a region row keeps what the
+   row had past its end, so a line is found by its start. The emulator does
+   not rewrap, so this checks the motion and the erasing, not a rewrap. *)
 let test_region_random () =
   let st = Random.State.make [| 7 |] in
   for _ = 1 to 300 do
     let t = region_term ~cols:30 ~rows:10 in
     let r = Region.create () in
-    let expected = ref [] and n = ref 0 in
+    let expected = ref [] and n = ref 0 and resting = ref true in
     let token () =
       incr n;
       let s = Printf.sprintf "T%03d" !n in
       expected := s :: !expected;
       s
     in
+    let draw ?above rows =
+      let cursor =
+        if Random.State.bool st then Region.Rest
+        else At { x = Random.State.int st 40; y = Random.State.int st 14 }
+      in
+      feed t
+        (Region.draw r ~cols:(Vte.cols t) ~rows:(Vte.rows t) ?above ~cursor
+           (frame rows));
+      resting := cursor = Rest || rows = []
+    in
     for _ = 1 to 30 do
       match Random.State.int st 5 with
       | 0 ->
           let above = token () ^ "\n" in
-          draw ~above r t
-            (frame
-               (List.init (Random.State.int st 14) (Printf.sprintf "row%d")))
-      | 1 ->
-          draw r t
-            (frame (List.init (Random.State.int st 14) (Printf.sprintf "r%d")))
+          draw ~above
+            (List.init (Random.State.int st 14) (Printf.sprintf "row%d"))
+      | 1 -> draw (List.init (Random.State.int st 14) (Printf.sprintf "r%d"))
       | 2 ->
-          feed t (token () ^ "\r\n");
+          feed t ((if !resting then token () else "region's") ^ "\r\n");
           Region.moved r
       | 3 ->
           ignore
@@ -1312,7 +1455,8 @@ let test_region_random () =
               : _ list)
       | _ ->
           feed t (Region.suspend r ~cols:(Vte.cols t));
-          feed t (token () ^ "\r\n")
+          feed t (token () ^ "\r\n");
+          resting := true
     done;
     feed t (Region.close r ~cols:(Vte.cols t) ~rows:(Vte.rows t) None);
     let shown =
@@ -1937,6 +2081,12 @@ let () =
           test "Teardown" test_region_teardown;
           test "A background left set" test_region_background;
           test "Plain rows" test_region_plain;
+          test "The cursor between writes" test_region_cursor;
+          test "A line written at a cursor in the region"
+            test_region_cursor_foreign;
+          test "Rows the caller writes" test_region_start_finish;
+          test "Keep" test_region_keep;
+          test "Clear" test_region_clear;
           test "Any order of writes loses no line" test_region_random;
         ];
       group "Pictures"
