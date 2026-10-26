@@ -186,6 +186,24 @@ let callback_runs_each_frame () =
   do_frame t;
   equal ~msg:"two frames" int 2 !count
 
+(* A frame that does not animate, as a host draws early for input, runs no
+   frame callback and no live node's on_frame hook, and the next frame that
+   animates runs both. *)
+let frame_without_animation () =
+  let t = make_renderer () in
+  let callbacks = ref 0 and hooks = ref 0 in
+  Renderer.add_frame_callback t (fun ~dt:_ -> incr callbacks);
+  let child = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:5 () in
+  Renderable.set_live child true;
+  Renderable.set_on_frame child (Some (fun _ ~dt:_ -> incr hooks));
+  do_frame t;
+  Renderer.render_frame ~animate:false t ~width:80 ~height:24 ~dt:0.;
+  equal ~msg:"frame callbacks" int 1 !callbacks;
+  equal ~msg:"on_frame hooks" int 1 !hooks;
+  do_frame t;
+  equal ~msg:"frame callbacks, then" int 2 !callbacks;
+  equal ~msg:"on_frame hooks, then" int 2 !hooks
+
 let callback_receives_delta () =
   let t = make_renderer () in
   let received = ref 0.0 in
@@ -2279,6 +2297,7 @@ let () =
           test "render request during frame survives"
             render_request_during_frame_survives;
           test "callback runs each frame" callback_runs_each_frame;
+          test "a frame without animation" frame_without_animation;
           test "callback receives delta" callback_receives_delta;
           test "remove callback stops it" remove_callback_stops_it;
           test "clear removes all callbacks" clear_removes_all_callbacks;

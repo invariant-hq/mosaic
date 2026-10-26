@@ -350,6 +350,28 @@ let test_idle_tick () =
     ~msg:(Printf.sprintf "%.1f wakeups/s, at most twice 60" rate)
     (rate > 0. && rate <= 120.)
 
+(* Ticks while keys are typed 30 times a second: the frames drawn early for
+   the keys tick nothing, so the ticks keep to one a frame interval, at 60
+   frames a second; ticking in those frames too would add one a key. A
+   loaded host ticks less, never more. *)
+let test_ticks_while_typing () =
+  with_session "tick-typing" @@ fun s ->
+  ignore (await s "N=0" : int);
+  pause s 0.3;
+  for _ = 1 to 30 do
+    send s "a";
+    pause s 0.033
+  done;
+  pause s 0.2;
+  send s "q";
+  ignore (wait_exit s : Unix.process_status);
+  let ticks = int_of_string (result s "ticks")
+  and seconds = float_of_string (result s "seconds") in
+  let most = Float.to_int (seconds *. 60.) + 6 in
+  is_true
+    ~msg:(Printf.sprintf "%d ticks in %.3f s, at most %d" ticks seconds most)
+    (ticks <= most)
+
 (* A timer's fires land on its grid: none comes before the grid point of
    the periods it counts, and the counts reach twelve periods. How late
    they come is the host's doing; "measure" prints it. *)
@@ -542,6 +564,9 @@ let () =
                  (counts_switches test_idle_every);
                test "a tick wakes once a frame" (counts_switches test_idle_tick);
              ]);
+        group "Ticks"
+          (if not supported then []
+           else [ test "keys typed add no tick" test_ticks_while_typing ]);
         group "Time"
           (if not supported then []
            else [ test "R-T: a timer keeps its grid" test_timer_grid ]);

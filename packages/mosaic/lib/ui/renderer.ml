@@ -820,7 +820,7 @@ let prepare_layout t ~width ~height =
     t.size_round.limit <- t.size_round.shallowest;
   t.input_geometry <- Some (width, height)
 
-let layout_frame t ~width ~height ~dt =
+let layout_frame ?(animate = true) t ~width ~height ~dt =
   t.input_geometry <- None;
   (* A frame starts a new round of size reports and admits every pending one,
      including those its layout passes refused. *)
@@ -835,8 +835,8 @@ let layout_frame t ~width ~height ~dt =
     (fun _num node -> Renderable.Private.run_lifecycle_pass node)
     t.lifecycle_set;
   (* Frame callbacks *)
-  List.iter (fun f -> f ~dt) t.frame_callbacks;
-  prepare_commands t ~width ~height ~frame:true ~dt;
+  if animate then List.iter (fun f -> f ~dt) t.frame_callbacks;
+  prepare_commands t ~width ~height ~frame:animate ~dt;
   t.frame <- Some { width; height; dt }
 
 let paint_frame t ~height =
@@ -891,8 +891,8 @@ let paint_frame t ~height =
         { cursor with position = None; visible = false });
   recheck_hover t
 
-let render_frame t ~width ~height ~dt =
-  layout_frame t ~width ~height ~dt;
+let render_frame ?animate t ~width ~height ~dt =
+  layout_frame ?animate t ~width ~height ~dt;
   paint_frame t ~height
 
 (* A hint is only forwarded when the scrolled region owns the full grid

@@ -247,9 +247,10 @@ val config :
       rows, but only from that frame on.
 
     {b Frames:}
-    - [fps] the most frames per second. Defaults to [60.]. The
-      {e frame interval} is [1 / fps] seconds. 60 is the refresh rate of most
-      displays.
+    - [fps] the frames per second of the frame grid ({!request_redraw}).
+      Defaults to [60.]. The {e frame interval} is [1 / fps] seconds. 60 is the
+      refresh rate of most displays. Discrete input adds at most one frame per
+      interval, so a run draws at most [2 * fps] frames a second.
 
     {b Input:}
     - [mouse] mouse tracking. Defaults to [`Sgr_any]. [`Off] leaves the mouse to
@@ -339,13 +340,12 @@ val run :
       order;
     + returns {!Stopped} once the input has ended and every event decoded before
       its end has been returned;
-    + returns a {!Frame} if one was asked for ({!request_redraw}), one frame
-      interval has passed since the last frame by the latest step's time (the
-      first frame waits for no interval), and the runtime waits for no answer
-      from the terminal (the place of the live region after a resize or a
-      release, for at most an answer wait). Work that took the turn's budget may
-      have taken the interval with it. Before the frame, if the usable size
-      changed, comes a {!Resize}.
+    + returns a {!Frame} if one was asked for and is due by the latest step's
+      time ({!request_redraw}; the first frame waits for no interval), and the
+      runtime waits for no answer from the terminal (the place of the live
+      region after a resize or a release, for at most an answer wait). Work that
+      took the turn's budget may have taken the interval with it. Before the
+      frame, if the usable size changed, comes a {!Resize}.
 
     Each step is done before the next is asked for, so the application handles
     one event at a time, and an event sees what the previous one did. A turn
@@ -454,12 +454,24 @@ val cancel : 'msg app -> timer -> unit
 
 val request_redraw : 'msg app -> unit
 (** [request_redraw app] asks for a frame. Requests until that frame is drawn
-    are one request. Frames are at least a frame interval apart ({!val-config}'s
-    [fps]). A frame asked for once that interval has passed since the last one
-    comes in the turn that asked, and one asked for sooner comes once the
-    interval has passed. A request made from a {!Frame} step until the next step
-    asks for the next frame, so an animation asks again from each frame, and
-    stops by not asking.
+    are one request. Frames come on a {e grid} a frame interval apart
+    ({!val-config}'s [fps]). A frame asked for once that interval has passed
+    since the last frame on the grid comes in the turn that asked and moves the
+    grid there, and one asked for sooner comes once the interval has passed. A
+    request made from a {!Frame} step until the next step asks for the next
+    frame on the grid, so an animation asks again from each frame, and stops by
+    not asking.
+
+    A frame asked for while the run handles {e discrete input}, a key pressed,
+    repeated or released, text, a mouse button pressed or released, the end of a
+    paste or a change of focus, is drawn sooner. It comes in the turn that
+    asked, after the turn's other work, unless a frame came early for discrete
+    input less than a frame interval before; then it comes once that interval
+    has passed, or with the grid's next frame if that comes first. A frame that
+    comes before the grid's is {e early} ({!early}), and leaves the grid where
+    it was. So discrete input adds at most one frame per interval. The mouse's
+    motion and wheel, a paste's data and a resize come in streams, and their
+    frames come on the grid.
 
     The runtime asks for frames itself: as the run begins, after a resize, a
     {!release} or a SIGCONT, when the terminal's capabilities change, and when
@@ -471,6 +483,13 @@ val frame_dt : 'msg app -> float
     returned them. It is [0.] in the run's first frame. An animation moves by it
     in each frame. One that stopped asking for frames sees the whole pause in
     the first frame it asks for again. *)
+
+val early : 'msg app -> bool
+(** [early app] is [true] if the latest {!Frame} is early, drawn before the
+    grid's next frame, as a frame asked for by discrete input is
+    ({!request_redraw}). An animation that moves a step per frame, rather than
+    by {!frame_dt}, must not move in an early frame, or it runs faster while the
+    user types. *)
 
 val draw : 'msg app -> ?primary_required_rows:int -> (Grid.t -> unit) -> unit
 (** [draw app f] draws the frame the last step returned. It lays the frame out
@@ -932,7 +951,13 @@ val run_on :
    - a frame asked for outside a frame (by input, a timer, a post or the
      runtime itself, as after a resize) is drawn in the turn that asked, and
      one asked for from a Frame step until the next step, an animation's,
-     waits its interval, whose grid a frame drawn early does not move;
+     waits its interval. A terminal draws early only for discrete input, at
+     most once per interval, and the others on the grid. That bound is in
+     real time, and the device's clock moves only when the test moves it:
+     under it, a second key at the same instant, or a frame a timer asks
+     for, would wait for a grid frame that never comes. The grid is the
+     same on both: a frame drawn before the grid's next one is early
+     ([early]) and does not move it;
    - input is decoded whole once nothing follows it, as the terminal has
      finished writing;
    - the run takes no signal of the process: [resized] is its window signal.

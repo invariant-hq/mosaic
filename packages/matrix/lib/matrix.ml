@@ -480,6 +480,18 @@ type 'msg app = {
   in_process : bool;
   mutable asked_outside : bool;
   mutable in_frame_step : bool;
+  (* Discrete input ([discrete_event]) is drawn early: a frame asked for
+     while the step being done is such an event comes in the turn that asked,
+     once an interval has passed since the last early frame. [discrete] is
+     whether the step being done is one, [asked_discrete] whether a frame was
+     asked for in one since the last frame. An early frame leaves the grid,
+     [last_frame], where it was. *)
+  mutable discrete : bool;
+  mutable asked_discrete : bool;
+  mutable last_early : int;
+  (* Whether the latest frame is early, drawn before the grid's next frame:
+     for discrete input, or by a device. *)
+  mutable early : bool;
   on_frame : unit -> unit;
   tools : tools option;
   (* Whether [next] returned a step since it last waited. *)
@@ -685,6 +697,10 @@ let frame_dt t =
   check t;
   Float.of_int t.frame_dt *. 1e-9
 
+let early t =
+  check t;
+  t.early
+
 (* A reply needs a terminal on the input side, in raw mode. *)
 let can_query t =
   t.backend.input_is_tty && t.config.raw_mode && not t.input_ended
@@ -698,6 +714,7 @@ let owe_frame t =
 
 let ask_frame t =
   if not t.in_frame_step then t.asked_outside <- true;
+  if t.discrete then t.asked_discrete <- true;
   t.dirty <- true
 
 let request_redraw t =
@@ -1609,9 +1626,21 @@ let adjust_event_for_offset t event =
       Mouse { mouse with y = Primary.map_mouse_y t.primary mouse.y }
   | _ -> event
 
+(* The events a person makes one at a time, each of which they expect to
+   see answered. Motion, the wheel and paste data come in streams, and a
+   resize as a drag. *)
+let discrete_event = function
+  | Key _ | Key_release _ | Text _ | Paste_end _ | Focus_in | Focus_out -> true
+  | Mouse { kind = Press _ | Release _; _ } -> true
+  | Mouse { kind = Motion _ | Scroll _; _ }
+  | Paste_start | Paste_data _ | Resize _ | Color_scheme _ | Invalid _ | Reply _
+    ->
+      false
+
 (* A Focus_in after a Focus_out sets the modes again, once: a multiplexer
    that was detached meanwhile may have lost them. *)
 let deliver t event =
+  t.discrete <- discrete_event event;
   (match event with
   | Focus_in ->
       if t.restore_modes_on_next_focus then (
@@ -1910,10 +1939,14 @@ let render_blocked t =
   | None -> false
 
 (* A frame is due once its interval has passed by the latest step's time:
-   work that took the turn's budget may have taken the interval with it. *)
+   work that took the turn's budget may have taken the interval with it. One
+   asked for by discrete input is due once an interval has passed since the
+   last early frame. *)
 let frame_due t =
   t.dirty && (not t.released)
-  && (t.latest >= t.last_frame + t.interval || (t.in_process && t.asked_outside))
+  && (t.latest >= t.last_frame + t.interval
+     || (t.in_process && t.asked_outside)
+     || (t.asked_discrete && t.latest >= t.last_early + t.interval))
   && not (render_blocked t)
 
 (* The time the run next needs a step if nothing it waits for comes first:
@@ -1930,6 +1963,10 @@ let wait_deadline t =
     let deadline =
       if t.dirty then
         let frame = t.last_frame + t.interval in
+        let frame =
+          if t.asked_discrete then min frame (t.last_early + t.interval)
+          else frame
+        in
         match t.anchor with
         | Some b when not b.answered ->
             min deadline (max frame (b.sent + answer_wait t))
@@ -2035,9 +2072,13 @@ let start_frame t =
   t.void <- false;
   if t.drawn <> no_frame then t.frame_dt <- t.latest - t.drawn;
   t.drawn <- t.latest;
-  (* A frame a device draws before the interval has passed keeps the
-     animation's grid. *)
-  if t.latest >= t.last_frame + t.interval then t.last_frame <- t.latest;
+  (* A frame drawn before the interval has passed, for discrete input or by
+     a device, keeps the grid. *)
+  let on_grid = t.latest >= t.last_frame + t.interval in
+  if on_grid then t.last_frame <- t.latest
+  else if t.asked_discrete then t.last_early <- t.latest;
+  t.early <- not on_grid;
+  t.asked_discrete <- false;
   t.on_frame ();
   Frame
 
@@ -2115,6 +2156,7 @@ let step_exn t ~now =
   t.latest <- now;
   t.drawing <- false;
   t.in_frame_step <- false;
+  t.discrete <- false;
   if t.frame_follows then (
     t.frame_follows <- false;
     start_frame t)
@@ -2235,6 +2277,10 @@ let make backend ?stop config =
     in_process = Option.is_some config.device;
     asked_outside = true;
     in_frame_step = false;
+    discrete = false;
+    asked_discrete = false;
+    last_early = no_frame;
+    early = false;
     stepped = false;
     on_frame =
       (match config.device with Some d -> d.frame | None -> Fun.const ());

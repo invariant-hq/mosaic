@@ -433,6 +433,9 @@ type ('model, 'msg) runtime = {
   mutable delivering : bool;
   (* A frame is being drawn, from the frame step on. *)
   mutable framing : bool;
+  (* The frame being drawn is early ([Matrix.early]): it ticks nothing and
+     runs no element's animation. *)
+  mutable early : bool;
   mutable quit : bool;
   mutable map_message : 'msg -> unit;
   app : ('model, 'msg) app;
@@ -703,6 +706,10 @@ let arm_wakeup runtime =
 let animating runtime =
   runtime.tick_sub <> []
   || Renderable.Private.live_count (Renderer.root runtime.renderer) > 0
+
+(* The renderer's [animate] for the frame being drawn: constants, so that a
+   frame allocates no option. *)
+let animate runtime = if runtime.early then Some false else None
 
 (* A worker runs from the update that declares its id to the one that no
    longer does. *)
@@ -1034,6 +1041,7 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       synchronizing = false;
       delivering = false;
       framing = false;
+      early = false;
       quit = false;
       map_message = Fun.const ();
       app;
@@ -1075,8 +1083,10 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
     (Some
        (fun _node -> if Renderable.Private.live_count root > 0 then redraw ()));
 
-  (* Seconds since the previous frame, which [on_tick] and the widgets'
-     frame callbacks receive. *)
+  (* Seconds since the previous frame on the grid, which [on_tick] and the
+     widgets' frame callbacks receive. An early frame, drawn for input before
+     the grid's next one ([Matrix.early]), runs neither, so animations keep
+     the grid's rate while the user types. *)
   let last_frame = ref (Matrix.now matrix_app) in
   let frame_delta = ref 0. in
   (* In [`Primary] mode the live region takes the rows of the frame before it
@@ -1091,7 +1101,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
     Fun.protect
       ~finally:(fun () -> runtime.delivering <- false)
       (fun () ->
-        Renderer.layout_frame runtime.renderer ~width ~height ~dt:!frame_delta);
+        Renderer.layout_frame ?animate:(animate runtime) runtime.renderer ~width
+          ~height ~dt:!frame_delta);
     max 1 (Renderable.height (Renderer.root runtime.renderer))
   in
   let finish_render () =
@@ -1120,8 +1131,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
         render runtime;
         Matrix.draw runtime.matrix_app (fun _grid ->
             let width, height = Matrix.size runtime.matrix_app in
-            Renderer.render_frame runtime.renderer ~width ~height
-              ~dt:!frame_delta;
+            Renderer.render_frame ?animate:(animate runtime) runtime.renderer
+              ~width ~height ~dt:!frame_delta;
             scroll_hint ())
     | `Primary ->
         let rows = primary_required_rows () in
@@ -1132,15 +1143,16 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
   in
   let frame () =
     let now = Matrix.now matrix_app in
+    runtime.early <- Matrix.early matrix_app;
     let dt = Float.of_int (now - !last_frame) *. 1e-9 in
-    last_frame := now;
+    if not runtime.early then last_frame := now;
     runtime.framing <- true;
     (* The frame renders what its ticks and the messages it applies change,
        so the requests to render they make are this frame's. *)
     Atomic.set rendering true;
-    handle_tick runtime;
+    if not runtime.early then handle_tick runtime;
     synchronize runtime;
-    frame_delta := dt;
+    frame_delta := if runtime.early then 0. else dt;
     runtime.delivering <- true;
     Fun.protect
       ~finally:(fun () ->

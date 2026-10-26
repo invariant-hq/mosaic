@@ -99,9 +99,11 @@ val prepare_layout : t -> width:int -> height:int -> unit
     ({{:https://www.w3.org/TR/resize-observer/#gather-active-observations-h}
       §3.4.1}). *)
 
-val render_frame : t -> width:int -> height:int -> dt:float -> unit
+val render_frame :
+  ?animate:bool -> t -> width:int -> height:int -> dt:float -> unit
 (** [render_frame t ~width ~height ~dt] builds the next frame: it is
-    {!layout_frame} followed by {!paint_frame} at the same [height].
+    {!layout_frame} followed by {!paint_frame} at the same [height], with the
+    same [animate].
 
     Each call replaces the complete unpresented frame. Blank cells therefore
     belong to the new pass rather than compositing over glyphs from an earlier
@@ -111,7 +113,8 @@ val render_frame : t -> width:int -> height:int -> dt:float -> unit
     [width] and [height] are the frame dimensions in terminal cells. [dt] is
     elapsed seconds since the last frame. *)
 
-val layout_frame : t -> width:int -> height:int -> dt:float -> unit
+val layout_frame :
+  ?animate:bool -> t -> width:int -> height:int -> dt:float -> unit
 (** [layout_frame t ~width ~height ~dt] lays out the next frame against [width]
     by [height] cells, for {!paint_frame} to draw. In order, it:
     - Runs lifecycle passes ([on_frame] and resize hooks).
@@ -123,11 +126,14 @@ val layout_frame : t -> width:int -> height:int -> dt:float -> unit
       [height] frame. Every pending size report is delivered.
     - Settles layout changes made by update/resize hooks.
 
-    Animation callbacks run once per frame, here. Afterwards the root's
-    {!Renderable.height} is the height of the frame's content, which a host can
-    read before it sizes the grid the frame is drawn into: a primary-mode host
-    lays the frame out against the terminal's height and draws it into a live
-    region as tall as the content.
+    Animation callbacks, the frame callbacks and the [on_frame] hooks of live
+    nodes, run once per frame, here, if [animate] is [true], its default. A host
+    passes [false] for an early frame ({!Matrix.early}), so that animations keep
+    the frame grid's rate. Afterwards the root's {!Renderable.height} is the
+    height of the frame's content, which a host can read before it sizes the
+    grid the frame is drawn into: a primary-mode host lays the frame out against
+    the terminal's height and draws it into a live region as tall as the
+    content.
 
     Raises [Invalid_argument] if layout callbacks do not converge. *)
 

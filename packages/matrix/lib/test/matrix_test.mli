@@ -35,11 +35,16 @@
 
     A session differs from a real terminal in two ways. A real terminal writes
     over time, so a lone ESC can wait for what may follow it, and a child on a
-    pseudo-terminal ({!Child}) shows that race. And a session draws a frame that
-    input asks for at once, where a real terminal waits out the frame interval,
-    so an animation that moves a step at each frame, rather than by the clock,
-    moves one more for each frame that input brings, and its goldens depend on
-    the input; one that moves by the clock does not.
+    pseudo-terminal ({!Child}) shows that race. And a session draws at once
+    every frame asked for outside a frame, where a run on a real terminal draws
+    early only for discrete input, at most once per frame interval, and draws
+    the others on the grid ({!Matrix.request_redraw}). Only a real clock can
+    measure that bound: on a session's clock, which moves only when the test
+    moves it, a second key at the same instant would wait for a frame that never
+    comes. The grid is the same on both: a frame a session draws before the
+    grid's next one is early ({!Matrix.early}), as on a terminal, and an
+    animation moves only in the frames that are not, as Mosaic's ticks do, so
+    its goldens do not depend on the input, the timers or the messages.
 
     The life cycle of a session:
     + {!Terminal.create} makes the terminal.

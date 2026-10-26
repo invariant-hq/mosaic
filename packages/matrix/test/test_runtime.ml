@@ -305,7 +305,8 @@ let test_frame_dt () =
    has passed since the clock was read; then the frame, once its interval
    has passed when the work ends. Each step here costs 10 ms; the interval is
    16.7 ms: the second turn's work ends at 1,050 ms, past the frame due at
-   1,046.7 ms. *)
+   1,046.7 ms. The key c asks for a frame before the grid's next one, which
+   comes early, in c's turn. *)
 let test_turn_order () =
   let f = fake ~input:[] () in
   let log = Buffer.create 64 in
@@ -350,8 +351,132 @@ let test_turn_order () =
         | Event _ -> loop ()
       in
       loop ());
-  equal string "a timer p1 frame@1030 b p2 frame@1050 c stopped "
+  equal string "a timer p1 frame@1030 b p2 frame@1050 c frame@1060 stopped "
     (Buffer.contents log)
+
+(* Discrete input *)
+
+(* A run at 60 frames a second on a scripted terminal. Each of [arrivals],
+   [(time, bytes)], comes while the run waits; a key costs [cost] and asks
+   for a frame, and [animate now] says whether a frame asks for the next. The
+   frames, as [(time, on the grid, keys handled)], the keys, and the
+   deadlines of the waits after the last arrival. *)
+let paced ?(cost = 0) ?(animate = fun _ -> false) arrivals =
+  let f = fake () in
+  let arrivals = ref arrivals in
+  let frames = ref [] and keys = ref [] and after = ref [] in
+  f.on_wait <-
+    (fun f ~until ->
+      match !arrivals with
+      | (at, bytes) :: rest
+        when match until with Some u -> at <= u | None -> true ->
+          arrivals := rest;
+          f.now <- max f.now at;
+          f.input <- [ bytes ]
+      | [] ->
+          after := until :: !after;
+          if until = None then f.eof <- true
+      | _ -> ());
+  run ~config:(quiet ()) f (fun app ->
+      let rec loop () =
+        match Matrix.next app with
+        | Stopped -> ()
+        | Event (Key { key = Char u; _ }) ->
+            keys := Uchar.to_char u :: !keys;
+            f.now <- f.now + cost;
+            Matrix.request_redraw app;
+            loop ()
+        | Frame ->
+            frames :=
+              (f.now, not (Matrix.early app), List.length !keys) :: !frames;
+            Matrix.draw app ignore;
+            if animate f.now then Matrix.request_redraw app;
+            loop ()
+        | _ -> loop ()
+      in
+      loop ());
+  (List.rev !frames, List.rev !keys, List.rev !after)
+
+let interval_60 = 16_666_667
+
+(* A key is drawn in the turn that read it, unless a frame came early less
+   than an interval before: then once that interval has passed, or with the
+   grid's frame if it comes first. An early frame leaves the grid. The key
+   at 50 ms comes after a pause, so its frame is on the grid. *)
+let test_discrete_input_early () =
+  let frames, _, _ =
+    paced [ (ms 50, "a"); (ms 55, "b"); (ms 60, "c"); (ms 70, "d") ]
+  in
+  equal
+    (list (triple int bool int))
+    [
+      (0, true, 0);
+      (ms 50, true, 1);
+      (ms 55, false, 2);
+      (ms 50 + interval_60, true, 3);
+      (ms 55 + interval_60, false, 4);
+    ]
+    frames
+
+(* A flood of keys, one a millisecond for a second: at most twice 60 frames
+   in any second, the keys in order, the last key's frame drawn, and then no
+   wakeup. *)
+let test_discrete_flood () =
+  let sent = List.init 1000 (fun i -> Char.chr (Char.code 'a' + (i mod 26))) in
+  let frames, keys, after =
+    paced ~cost:200_000
+      (List.mapi (fun i c -> (ms (i + 1), String.make 1 c)) sent)
+  in
+  equal ~msg:"the keys, in order" (list Testable.char) sent keys;
+  let _, _, last = List.nth frames (List.length frames - 1) in
+  equal ~msg:"the last frame shows every key" int 1000 last;
+  List.iter
+    (fun (t, _, _) ->
+      let n =
+        List.length
+          (List.filter (fun (u, _, _) -> u >= t && u < t + ms 1000) frames)
+      in
+      if n > 120 then failf "%d frames in the second from %d ns" n t)
+    frames;
+  let apart which =
+    let times =
+      List.filter_map
+        (fun (t, g, _) -> if g = which then Some t else None)
+        frames
+    in
+    ignore
+      (List.fold_left
+         (fun previous t ->
+           if t - previous < interval_60 then
+             failf "two frames %d ns apart" (t - previous);
+           t)
+         (min_int / 2) times
+        : int);
+    List.length times
+  in
+  let grid = apart true and early = apart false in
+  is_true ~msg:"frames on the grid" (grid >= 55);
+  is_true ~msg:"early frames" (early >= 55);
+  equal ~msg:"idle after the last frame, with no deadline" (option int) None
+    (List.nth after (List.length after - 1));
+  is_true ~msg:"at most the last frame's wakeup" (List.length after <= 2)
+
+(* An animation that asks for a frame from each frame has the same frames on
+   the grid with keys typed 30 times a second as without: early frames add
+   to them and move none. *)
+let test_discrete_keeps_the_grid () =
+  let animate now = now < ms 1000 in
+  let typed = List.init 30 (fun i -> (ms 5 + (i * 33_333_333), "k")) in
+  let on_grid frames =
+    List.filter_map (fun (t, g, _) -> if g then Some t else None) frames
+  in
+  let alone, _, _ = paced ~animate [] in
+  let typing, keys, _ = paced ~animate typed in
+  equal ~msg:"keys" int 30 (List.length keys);
+  equal ~msg:"the frames on the grid" (list int) (on_grid alone)
+    (on_grid typing);
+  equal ~msg:"an early frame for each key" int 30
+    (List.length (List.filter (fun (_, g, _) -> not g) typing))
 
 (* While an event decoded is still waiting, the input is not read: the rest
    stays in the operating system's buffer, which a terminal fills no faster
@@ -930,6 +1055,7 @@ let test_calls_off_the_loop_raise () =
           ("at", fun () -> ignore (Matrix.at app 0));
           ("request_redraw", fun () -> Matrix.request_redraw app);
           ("frame_dt", fun () -> ignore (Matrix.frame_dt app));
+          ("early", fun () -> ignore (Matrix.early app));
           ("current_grid", fun () -> ignore (Matrix.current_grid app));
           ("hits", fun () -> ignore (Matrix.hits app));
           ("screen", fun () -> ignore (Matrix.screen app));
@@ -3403,6 +3529,9 @@ let () =
           test "frame requests" test_frame_requests;
           test "frame_dt" test_frame_dt;
           test "turn order" test_turn_order;
+          test "discrete input is drawn early" test_discrete_input_early;
+          test "a flood of discrete input" test_discrete_flood;
+          test "discrete input keeps the grid" test_discrete_keeps_the_grid;
           test "input read when nothing is queued"
             test_input_read_when_nothing_is_queued;
           test "timers" test_timers;

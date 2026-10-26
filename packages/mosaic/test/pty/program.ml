@@ -65,6 +65,22 @@ let idle_every () =
 let idle_tick () =
   ignore (counter ~subs:(M.Sub.on_tick ~id:"t" (fun ~dt:_ -> `Other)) () : int)
 
+(* A tick counted from the first to the last, while [a] keys are typed:
+   how many, and the seconds between the first and the last. *)
+let tick_typing () =
+  let ticks = ref [] in
+  let tick ~dt:_ =
+    ticks := now () :: !ticks;
+    `Other
+  in
+  ignore (counter ~subs:(M.Sub.on_tick ~id:"t" tick) () : int);
+  match !ticks with
+  | last :: _ ->
+      let first = List.nth !ticks (List.length !ticks - 1) in
+      result "ticks" "%d" (List.length !ticks);
+      result "seconds" "%.6f" (last -. first)
+  | [] -> result "ticks" "0"
+
 (* Matrix alone, with its defaults: a frame drawn once. *)
 let idle_matrix () =
   Matrix.run @@ fun app ->
@@ -245,6 +261,7 @@ let () =
   | "idle-after-perform" -> idle_after_perform ()
   | "idle-every" -> idle_every ()
   | "idle-tick" -> idle_tick ()
+  | "tick-typing" -> tick_typing ()
   | "idle-matrix" -> idle_matrix ()
   | "timer" -> timer ()
   | "latency" -> latency ()

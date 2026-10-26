@@ -1149,12 +1149,14 @@ module Sub : sig
   (** [on_tick ~id f] dispatches [f ~dt] once per frame while declared, before
       the frame is laid out, and asks for the next frame, so frames then come at
       the frame rate ({!Matrix.val-config}'s [fps]), and stop when no tick
-      subscription or animated element, such as a spinner, asks. [dt] is the
-      time in seconds since this subscription's previous tick, [0.] on its
-      first, so an animation started after a pause does not jump by the pause.
-      Keeping [id] keeps the count of time; dropping it and declaring it again
-      starts at [0.]. Use this for animations; for work at a fixed rate,
-      {!val-every}.
+      subscription or animated element, such as a spinner, asks. An early frame
+      ({!Matrix.early}), drawn for input before the grid's next one, ticks
+      nothing and moves no element's animation, so ticks keep the frame rate
+      while the user types. [dt] is the time in seconds since this
+      subscription's previous tick, [0.] on its first, so an animation started
+      after a pause does not jump by the pause. Keeping [id] keeps the count of
+      time; dropping it and declaring it again starts at [0.]. Use this for
+      animations; for work at a fixed rate, {!val-every}.
 
       Raises [Invalid_argument] if [id] is empty. *)
 

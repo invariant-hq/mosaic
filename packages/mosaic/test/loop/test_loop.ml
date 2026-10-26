@@ -2488,8 +2488,9 @@ let%expect_test "T4: a tick's first dt is 0, after any idle time" =
 let%expect_test "T5: a tick fires once per frame, whatever else wakes the loop"
     =
   (* A frame the timer's message asks for is drawn when asked, on a terminal
-     in the process: 200 of them, and the 59 of the tick's own interval, each
-     with one tick. *)
+     in the process: 200 of them, early, which tick nothing. The tick comes
+     in the frames of its own interval, 60 in the second, as on any
+     terminal, the first with no time and the others an interval each. *)
   let ticks = ref 0 and total = ref 0. in
   let application =
     {
@@ -2514,7 +2515,7 @@ let%expect_test "T5: a tick fires once per frame, whatever else wakes the loop"
   in
   run_until 1.0 application;
   Printf.printf "%d ticks, %.3f s of dt\n" !ticks !total;
-  [%expect {| 260 ticks, 1.000 s of dt |}]
+  [%expect {| 60 ticks, 0.983 s of dt |}]
 
 (* Work done off the loop. *)
 
