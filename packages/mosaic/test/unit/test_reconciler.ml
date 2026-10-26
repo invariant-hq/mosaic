@@ -810,6 +810,75 @@ let unmount_tears_down_wide_view () =
     && Option.is_none (Renderable.parent nested));
   equal ~msg:"container empty" int 0 (child_count renderer)
 
+(* Shrinking a wide list destroys the rows it drops and keeps the others in
+   order, and the embedded nodes it drops are detached without being
+   destroyed. Emptying it then destroys the rest. *)
+let shrink_wide_list () =
+  let renderer, reconciler = make () in
+  let n = 2000 in
+  let embeds =
+    List.init 500 (fun _ ->
+        let node = Renderable.create ~parent:(Renderer.root renderer) () in
+        Renderable.detach node;
+        node)
+  in
+  let row i = Vnode.text ~key:(string_of_int i) (string_of_int i) in
+  render_view reconciler
+    (Vnode.box (List.init n row @ List.map Vnode.embed embeds));
+  let box = List.hd (children_of renderer) in
+  let rows = List.filteri (fun i _ -> i < n) (Renderable.children box) in
+  let kept = List.filteri (fun i _ -> i mod 10 = 0) rows in
+  let dropped = List.filteri (fun i _ -> i mod 10 <> 0) rows in
+  render_view reconciler
+    (Vnode.box
+       (List.filter_map
+          (fun i -> if i mod 10 = 0 then Some (row i) else None)
+          (List.init n Fun.id)));
+  is_true ~msg:"kept rows in order"
+    (List.equal ( == ) kept (Renderable.children box));
+  is_false ~msg:"kept rows alive" (List.exists Renderable.destroyed kept);
+  is_true ~msg:"dropped rows destroyed"
+    (List.for_all Renderable.destroyed dropped);
+  is_true ~msg:"embeds detached and kept"
+    (List.for_all
+       (fun node ->
+         Option.is_none (Renderable.parent node)
+         && not (Renderable.destroyed node))
+       embeds);
+  do_frame renderer;
+  render_view reconciler (Vnode.box []);
+  is_true ~msg:"emptied" (List.is_empty (Renderable.children box));
+  is_true ~msg:"all rows destroyed" (List.for_all Renderable.destroyed rows)
+
+(* Unmounting rows declared at the root destroys them and detaches the
+   embedded nodes beside them, which stay alive. *)
+let unmount_wide_root () =
+  let renderer, reconciler = make () in
+  let embeds =
+    List.init 500 (fun _ ->
+        let node = Renderable.create ~parent:(Renderer.root renderer) () in
+        Renderable.detach node;
+        node)
+  in
+  render_view reconciler
+    (Vnode.fragment
+       (List.init 2000 (fun i -> Vnode.text ~key:(string_of_int i) "row")
+       @ List.map Vnode.embed embeds));
+  let rows = children_of renderer in
+  Reconciler.unmount reconciler;
+  equal ~msg:"container empty" int 0 (child_count renderer);
+  is_true ~msg:"rows destroyed"
+    (List.for_all
+       (fun node ->
+         Renderable.destroyed node || List.exists (( == ) node) embeds)
+       rows);
+  is_true ~msg:"embeds detached and kept"
+    (List.for_all
+       (fun node ->
+         Option.is_none (Renderable.parent node)
+         && not (Renderable.destroyed node))
+       embeds)
+
 (* ── Runner ── *)
 
 let duplicate_visible_focus_is_rejected () =
@@ -1228,5 +1297,7 @@ let () =
           test "destroys nodes" unmount_destroys_nodes;
           test "allows reuse" unmount_allows_reuse;
           test "tears down a wide view" unmount_tears_down_wide_view;
+          test "tears down rows at the root" unmount_wide_root;
+          test "shrinks a wide list" shrink_wide_list;
         ];
     ]

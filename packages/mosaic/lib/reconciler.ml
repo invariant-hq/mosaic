@@ -774,24 +774,38 @@ let update_fiber (f : fiber) (elem : unit Vnode.element) : bool =
   changed
 
 (* A fiber's descendants have their nodes under its node, except embedded
-   nodes, which the application owns and which outlive the fiber. These are
-   detached, then one teardown of the fiber's node destroys the rest. A child
-   fiber that destroyed its own node would detach that node from its parent
-   alone, shifting the siblings after it, and the teardown would be quadratic
-   in their number. *)
-let rec detach_embeds = function
-  | Fiber f -> List.iter detach_embeds f.children
-  | Embedded n -> Renderable.detach n
-  | Memo_span span -> List.iter detach_embeds span.span_children
+   nodes, which the application owns and which outlive the fiber. Fibers are
+   destroyed together: their nodes and the embedded nodes under them are
+   detached in one pass, then each fiber's node is destroyed with the nodes
+   under it. Detaching or destroying them one by one would detach each node
+   from its parent alone, shifting the siblings after it, and the teardown
+   would be quadratic in their number. *)
+let rec embeds_under acc = function
+  | Fiber f -> List.fold_left embeds_under acc f.children
+  | Embedded n -> n :: acc
+  | Memo_span span -> List.fold_left embeds_under acc span.span_children
 
-let destroy_fiber (f : fiber) : unit =
-  List.iter detach_embeds f.children;
-  Renderable.destroy_recursively (fiber_node f)
+(* Destroys [fibers], in order, and detaches [embeds] with them. *)
+let destroy_fibers ?(embeds = []) fibers =
+  let embeds =
+    List.fold_left
+      (fun acc f -> List.fold_left embeds_under acc f.children)
+      (List.rev embeds) fibers
+  in
+  Renderable.Private.detach_all
+    (List.rev_append embeds (List.map fiber_node fibers));
+  List.iter (fun f -> Renderable.destroy_recursively (fiber_node f)) fibers
 
-let rec destroy_child = function
-  | Fiber f -> destroy_fiber f
-  | Embedded n -> Renderable.detach n
-  | Memo_span span -> List.iter destroy_child span.span_children
+(* The fibers among [children], spans flattened, and the embedded nodes, both
+   in order. *)
+let fibers_and_embeds children =
+  let rec go (fibers, embeds) = function
+    | Fiber f -> (f :: fibers, embeds)
+    | Embedded n -> (fibers, n :: embeds)
+    | Memo_span span -> List.fold_left go (fibers, embeds) span.span_children
+  in
+  let fibers, embeds = List.fold_left go ([], []) children in
+  (List.rev fibers, List.rev embeds)
 
 (* ───── Vnode Flattening ───── *)
 
@@ -902,11 +916,10 @@ let detach_stale_embeds ~stale (new_children : child list) =
     List.iter
       (iter_embeds (fun n -> Hashtbl.replace kept (Renderable.Private.num n) ()))
       new_children;
-    List.iter
-      (fun n ->
-        if not (Hashtbl.mem kept (Renderable.Private.num n)) then
-          Renderable.detach n)
-      stale
+    Renderable.Private.detach_all
+      (List.filter
+         (fun n -> not (Hashtbl.mem kept (Renderable.Private.num n)))
+         stale)
   end
 
 let place_node parent index node =
@@ -1063,21 +1076,21 @@ and reconcile_list ~(parent_node : Renderable.t) ~viewport_width ~stale
               (reconcile_span ~parent_node ~viewport_width ~stale previous memo))
       flattened
   in
-  Array.iteri
-    (fun i fiber -> if not maps.used.(i) then destroy_fiber fiber)
-    maps.by_index;
-  List.iter
-    (fun span -> List.iter (destroy_child_collecting ~stale) span.span_children)
-    !old_spans;
+  (* A discarded span's embedded nodes may reappear elsewhere, so they are
+     left to placement. *)
+  let unused = ref [] in
+  for i = Array.length maps.by_index - 1 downto 0 do
+    if not maps.used.(i) then unused := maps.by_index.(i) :: !unused
+  done;
+  (match (!unused, !old_spans) with
+  | [], [] -> ()
+  | unused, spans ->
+      let span_fibers, span_embeds =
+        fibers_and_embeds (List.map (fun span -> Memo_span span) spans)
+      in
+      stale := List.rev_append span_embeds !stale;
+      destroy_fibers (unused @ span_fibers));
   new_children
-
-(* A discarded span's embedded nodes may reappear elsewhere; leave them to
-   placement. *)
-and destroy_child_collecting ~stale = function
-  | Fiber f -> destroy_fiber f
-  | Embedded n -> stale := n :: !stale
-  | Memo_span span ->
-      List.iter (destroy_child_collecting ~stale) span.span_children
 
 (* Like Elm's lazy nodes, an equal memo stops the diff: its span keeps its
    children untouched. *)
@@ -1139,7 +1152,8 @@ let render (t : t) ~viewport_width (vnode : unit Vnode.t) : unit =
   Renderable.request_render t.container
 
 let unmount (t : t) : unit =
-  List.iter destroy_child t.root_children;
+  let fibers, embeds = fibers_and_embeds t.root_children in
+  destroy_fibers ~embeds fibers;
   t.root_children <- [];
   Renderable.request_render t.container
 

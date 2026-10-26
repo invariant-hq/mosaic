@@ -77,6 +77,23 @@ let mount_and_unmount rows =
       Mosaic.Reconciler.render reconciler ~viewport_width view;
       Mosaic.Reconciler.unmount reconciler)
 
+(* A list that empties drops every row by reconciliation, as a log or a
+   search result cleared by the application does. A call mounts the 20,000
+   rows and renders the list empty; dropping them must stay linear in the
+   rows. *)
+let mount_and_empty rows =
+  Thumper.bench_with_setup
+    ~setup:(fun () ->
+      let renderer = Renderer.create () in
+      let reconciler =
+        Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+      in
+      (reconciler, view (keyed rows) ~offset:0, Vnode.box []))
+    (Printf.sprintf "keyed-list-%d" rows)
+    (fun (reconciler, full, empty) ->
+      Mosaic.Reconciler.render reconciler ~viewport_width full;
+      Mosaic.Reconciler.render reconciler ~viewport_width empty)
+
 (* THUMPER_MACHINE=exact selects the section CI checks: allocation alone,
    whose counts are the same on any x86_64 Linux under the locked compiler in
    release, while time compares only on one machine. *)
@@ -116,4 +133,5 @@ let () =
           reorder_keyed_list 5000;
         ];
       Thumper.group "mount-and-unmount" [ mount_and_unmount 20_000 ];
+      Thumper.group "mount-and-empty" [ mount_and_empty 20_000 ];
     ]

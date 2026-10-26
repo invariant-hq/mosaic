@@ -488,6 +488,10 @@ module Private : sig
   val num : t -> int
   (** [num t] is [t]'s numeric identifier, unique within the renderer. *)
 
+  val detach_all : t list -> unit
+  (** [detach_all nodes] detaches each of [nodes] as {!detach} does, in time
+      linear in the number of children their parents had. *)
+
   val child_at : t -> int -> t option
   (** [child_at t i] is [t]'s [i]th child, or [None] when [i] is out of bounds.
       O(1) and allocation-free, unlike {!children} which materializes a fresh

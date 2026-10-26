@@ -386,6 +386,52 @@ let destroy_orphans_wide_children () =
     | Ok ids -> List.length ids
     | Error _ -> -1)
 
+(* [detach_all] detaches nodes of several parents at once: the others keep
+   their order in the nodes and in the layout tree, the live counts follow, a
+   focused node is blurred, and a node already detached is left alone. *)
+let detach_all_wide () =
+  let t = make_ctx () in
+  let root = make_root t in
+  let first = Renderable.create ~parent:root ~id:"first" () in
+  let second = Renderable.create ~parent:root ~id:"second" () in
+  let make parent prefix n =
+    List.init n (fun i ->
+        Renderable.create ~parent
+          ~id:(Printf.sprintf "%s%d" prefix i)
+          ~live:true ())
+  in
+  let a = make first "a" 1000 and b = make second "b" 10 in
+  let lone = Renderable.create ~parent:root () in
+  Renderable.detach lone;
+  let gone = List.filteri (fun i _ -> i mod 2 = 0) a @ [ List.nth b 3; lone ] in
+  let focused = List.hd gone in
+  Renderable.set_focusable focused true;
+  ignore (Renderable.focus focused : bool);
+  Renderable.Private.detach_all gone;
+  is_false ~msg:"blurred" (Renderable.focused focused);
+  is_true ~msg:"orphaned"
+    (List.for_all (fun node -> Option.is_none (Renderable.parent node)) gone);
+  let ids parent = List.map Renderable.id (Renderable.children parent) in
+  let left nodes = List.filter (fun n -> not (List.memq n gone)) nodes in
+  equal ~msg:"first keeps the rest" (list string)
+    (List.map Renderable.id (left a))
+    (ids first);
+  equal ~msg:"second keeps the rest" (list string)
+    (List.map Renderable.id (left b))
+    (ids second);
+  let layout parent =
+    match
+      Toffee.children t.ctx.tree (Renderable.Private.toffee_node parent)
+    with
+    | Ok ids -> ids
+    | Error _ -> []
+  in
+  is_true ~msg:"layout tree follows"
+    (List.equal Toffee.Node_id.equal
+       (List.map Renderable.Private.toffee_node (left a))
+       (layout first));
+  equal ~msg:"live count" int (500 + 9) (Renderable.Private.live_count root)
+
 (* ── Visual Properties ── *)
 
 let visible_toggle () =
@@ -1193,6 +1239,7 @@ let () =
             destroy_recursively_wide_subtree;
           test "orphans the children of a wide node"
             destroy_orphans_wide_children;
+          test "detach_all detaches from several parents" detach_all_wide;
         ];
       group "Visual properties"
         [

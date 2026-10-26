@@ -697,6 +697,51 @@ let detach t =
   blur_focused_subtree t;
   detach_impl t
 
+(* Detaches [nodes] as [detach] does, removing each parent's departing
+   children in one pass over its children: detaching them one by one would
+   shift the children after each, which is quadratic in their number. *)
+let detach_all = function
+  | [] -> ()
+  | nodes ->
+      List.iter blur_focused_subtree nodes;
+      let parents = Hashtbl.create 8 in
+      List.iter
+        (fun child ->
+          match child.parent with
+          | None -> ()
+          | Some parent ->
+              child.parent <- None;
+              Hashtbl.replace parents parent.num parent)
+        nodes;
+      Hashtbl.iter
+        (fun _ parent ->
+          let kept = ref 0 and live = ref 0 in
+          for i = 0 to parent.child_count - 1 do
+            match parent.children.(i) with
+            | Some child when Option.is_some child.parent ->
+                parent.children.(!kept) <- Some child;
+                incr kept
+            | Some child ->
+                live := !live + child.live_count;
+                update_lifecycle_registration child;
+                child.layout_valid <- false
+            | None -> ()
+          done;
+          ignore
+            (Toffee.set_children parent.ctx.tree parent.toffee_node
+               (Array.init !kept (fun i ->
+                    match parent.children.(i) with
+                    | Some child -> child.toffee_node
+                    | None -> assert false)));
+          Array.fill parent.children !kept (parent.child_count - !kept) None;
+          parent.child_count <- !kept;
+          parent.z_dirty <- true;
+          parent.cull_dirty <- true;
+          parent.layout_dirty <- true;
+          adjust_live_count parent (- !live);
+          parent.ctx.schedule ())
+        parents
+
 (* Detaches every child of [t] in one pass. Detaching them one by one would
    shift the children that follow each one, in [t] and in the layout tree,
    which is quadratic in their number. *)
@@ -1248,6 +1293,7 @@ module Private = struct
 
   let num t = t.num
   let toffee_node t = t.toffee_node
+  let detach_all = detach_all
 
   let child_at t i =
     if i < 0 || i >= t.child_count then None else t.children.(i)
