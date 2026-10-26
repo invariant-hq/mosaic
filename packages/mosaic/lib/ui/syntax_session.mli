@@ -4,8 +4,11 @@
     requests captures from a highlighter, at most one request at a time,
     coalesces the changes made meanwhile, keeps the latest result and the
     highlighter's state for the next request, and says which captures describe
-    the content shown. {!Code} and the editable surface of {!Textarea} each hold
-    one. {!Code} documents highlighters and syntax settings. *)
+    the content shown. A request asks for the bytes the view needs ({!view}); a
+    result replaces the captures over the bytes it was asked for, and the
+    captures elsewhere stay, carried across the changes made since. {!Code} and
+    the editable surface of {!Textarea} each hold one. {!Code} documents
+    highlighters and syntax settings. *)
 
 (** {1:highlighters Highlighters} *)
 
@@ -16,6 +19,7 @@ module Highlighter : sig
   type 'state request = {
     content : string;
     language : string;
+    range : int * int;
     previous : 'state previous option;
   }
 
@@ -64,10 +68,24 @@ val create : notify:(unit -> unit) -> off_loop:((unit -> unit) -> unit) -> t
     threaded highlighter's work off the rendering thread
     ({!Renderable.off_loop}). *)
 
-val set : t -> content:string -> syntax option -> unit
-(** [set t ~content syntax] makes [t] describe [content] under [syntax]. A
-    change of content, highlighter or language requests captures; a change of
-    style alone requests nothing. *)
+val set : t -> content:string -> range:int * int -> syntax option -> unit
+(** [set t ~content ~range syntax] makes [t] describe [content] under [syntax],
+    of which the view needs the bytes in [range] (see {!view}). A change of
+    content, highlighter or language requests captures; a change of style alone
+    requests nothing. *)
+
+val needs_range : t -> bool
+(** [needs_range t] is [true] when {!view} may request captures: [t]'s
+    highlighter keeps state between results, and [t] holds a result of it. A
+    highlighter that keeps nothing, and every highlighter on a view's first
+    request, is asked for the whole content. *)
+
+val view : t -> range:int * int -> bool
+(** [view t ~range] says that the view needs the captures of the bytes from
+    [fst range] to [snd range] of its content: the rows it shows and a screen
+    above and below them. If they are outside the results for the content shown,
+    and no request is pending and none failed since the content changed, [view]
+    requests them, and is [true] iff {!shown} may have changed, as {!poll}. *)
 
 val poll : t -> bool
 (** [poll t] takes the results of completed requests and starts the request that
@@ -75,12 +93,13 @@ val poll : t -> bool
 
 val shown : t -> conceal:bool -> Syntax_highlight.t option
 (** [shown t ~conceal] is the captures that describe the content shown, bound to
-    it, or [None] when it shows plain. While a request is pending they are the
-    latest result's, moved onto the content. A capture keeps the bytes the
-    content shares with the result's source as a common prefix or suffix, and
-    the other bytes are plain. When [conceal] holds, a concealing capture that
-    the change cuts through is dropped, since its replacement stood for all its
-    bytes. *)
+    it, or [None] when it shows plain. Each result's captures replace those of
+    the bytes it was asked for, and the others stay. Captures computed for an
+    earlier content are moved onto the content: a capture keeps the bytes the
+    content shares with their source as a common prefix or suffix, and the other
+    bytes are plain. When [conceal] holds, a concealing capture that the change
+    cuts through is dropped, since its replacement stood for all its bytes.
+    After a failure for the content shown, it shows plain. *)
 
 val is_highlighting : t -> bool
 (** [is_highlighting t] is [true] while a result for the content shown is

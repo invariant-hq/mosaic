@@ -482,9 +482,27 @@ let measure_single_line t ~known_dimensions ~available_space:_ ~style:_ =
 
 (* Rendering *)
 
+(* The bytes of [source] that a highlighter is asked for: those of the
+   logical lines of the rows the surface shows and of a screen above and below
+   them. [source] is the text the surface shows, or the next one, whose lines
+   moved little. *)
+let view_range t source =
+  let layout = Text_surface.layout t.surface in
+  let height = max 1 (Renderable.height t.node) in
+  let top = Text_surface.scroll_y t.surface in
+  let first = Layout.logical_line layout (top - height) in
+  let last = Layout.logical_line layout (top + (2 * height) - 1) in
+  ( Layout.Source.byte_offset source (Layout.Source.line_start source first),
+    Layout.Source.byte_offset source (Layout.Source.line_end source last) )
+
 let render_before t _self grid ~dt:_ =
   if Syntax_session.poll t.session then sync_content t;
   show_viewport t;
+  if
+    Syntax_session.needs_range t.session
+    && Syntax_session.view t.session
+         ~range:(view_range t (Editor.source t.props.state))
+  then sync_content t;
   let w = Renderable.width t.node in
   let h = Renderable.height t.node in
   if w <= 0 || h <= 0 then ()
@@ -810,7 +828,9 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~state
       ~notify:(fun () -> Renderable.request_render node)
       ~off_loop:(Renderable.off_loop node)
   in
-  Syntax_session.set session ~content:(Editor.text state) props.syntax;
+  (* A view's first request asks for the whole content. *)
+  Syntax_session.set session ~content:(Editor.text state) ~range:(0, 0)
+    props.syntax;
   let t =
     {
       node;
@@ -893,7 +913,12 @@ let apply_props t (props : Props.t) =
     t.keymap <- Action.keymap ~custom:props.key_bindings t.mode;
   if selectable_changed then register_selection t;
   if source_changed || syntax_changed then
-    Syntax_session.set t.session ~content:(Editor.text props.state) props.syntax;
+    Syntax_session.set t.session ~content:(Editor.text props.state)
+      ~range:
+        (if Syntax_session.needs_range t.session then
+           view_range t (Editor.source props.state)
+         else (0, 0))
+      props.syntax;
   if style_changed then sync_style t ~focused:(Renderable.focused t.node);
   if source_changed || annotations_changed || syntax_changed then sync t;
   if state_changed then show_viewport t;

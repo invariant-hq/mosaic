@@ -1287,6 +1287,175 @@ let syntax_mismatch_shows_plain () =
   is_true ~msg:"captures of other bytes show plain"
     (Ansi.Color.equal Ansi.Color.white (Matrix_grid.get_fg grid 0))
 
+(* ── Highlight ranges ──
+
+   A document of 100 lines "let NN", seven bytes each with the line feed, and
+   a highlighter that answers each request with the keywords of the whole
+   text that meet its range, as the contract allows. *)
+
+let lines = String.concat "\n" (List.init 100 (Printf.sprintf "let %02d"))
+
+let ranged_highlighter () =
+  let requests = ref [] in
+  let highlighter =
+    Code.Highlighter.async (fun request ~notify:_ ->
+        let outcome = ref None in
+        requests := (request, outcome) :: !requests;
+        Code.Highlighter.job
+          ~poll:(fun () ->
+            let result = !outcome in
+            outcome := None;
+            result)
+          ~cancel:ignore)
+  in
+  (* [answer ~keywords] completes the latest request: with the keywords that
+     meet its range, or with none, as after a change that turned them into
+     plain words. *)
+  let answer ?(keywords = true) () =
+    match !requests with
+    | ((request : unit Code.Highlighter.request), outcome) :: _ ->
+        let content = request.content and first, last = request.range in
+        let found = ref [] in
+        for i = 0 to String.length content - 3 do
+          if
+            keywords
+            && String.sub content i 3 = "let"
+            && i < last
+            && i + 3 > first
+          then found := (i, i + 3, "keyword") :: !found
+        done;
+        outcome := Some (Ok (Syntax_highlight.of_triples ~content !found, ()))
+    | [] -> fail "expected a request"
+  in
+  (requests, highlighter, answer)
+
+let ranged_textarea highlighter state =
+  let ctx = make_ctx () in
+  let root = make_root ctx in
+  let syntax =
+    Code.with_highlighter ~language:"ocaml" ~style:keyword_style highlighter
+  in
+  let ta =
+    Textarea.create ~parent:root ~state ~syntax ~on_change:ignore
+      ~text_color:Ansi.Color.white ~show_cursor:false ()
+  in
+  let show state =
+    Textarea.apply_props ta
+      (Textarea.Props.make ~state ~syntax ~show_cursor:false ())
+  in
+  (ta, show)
+
+let keyword_at ta line =
+  let buffer = Text_surface.buffer (Textarea.surface ta) in
+  let source = Text_buffer.source buffer in
+  let g = Matrix_text.Layout.Source.line_start source line + 1 in
+  Ansi.Style.equal
+    (Ansi.Style.make ~fg:Ansi.Color.red ())
+    (fst (Text_buffer.style_at buffer g))
+
+let requests_ask_for_the_rows_shown () =
+  let requests, highlighter, answer = ranged_highlighter () in
+  let ta, show = ranged_textarea highlighter (Editor.of_string lines) in
+  let render () =
+    ignore (render_textarea ta ~width:20 ~height:5 : Matrix_grid.t)
+  in
+  render ();
+  let range () = (fst (List.hd !requests)).Code.Highlighter.range in
+  equal ~msg:"the first request asks for the whole text" (pair int int)
+    (0, String.length lines)
+    (range ());
+  answer ();
+  render ();
+  equal ~msg:"its result covers every row" int 1 (List.length !requests);
+  is_true ~msg:"a row far below shows its result" (keyword_at ta 50);
+  show (Editor.of_string lines |> Editor.set_cursor 0 |> Editor.insert "x");
+  equal ~msg:"an edit asks again" int 2 (List.length !requests);
+  (* Lines 0 to 9, with the byte inserted on line 0. *)
+  equal ~msg:"for the lines shown and a screen below them" (pair int int)
+    (0, (9 * 7) + 6 + 1)
+    (range ());
+  answer ~keywords:false ();
+  render ();
+  is_false ~msg:"the result restyles the rows it was asked for"
+    (keyword_at ta 0);
+  is_true ~msg:"the rows outside keep their captures" (keyword_at ta 50)
+
+let scrolling_asks_for_rows_outside () =
+  let requests, highlighter, answer = ranged_highlighter () in
+  let state = Editor.of_string lines |> Editor.set_cursor 0 in
+  let ta, show = ranged_textarea highlighter state in
+  let render () =
+    ignore (render_textarea ta ~width:20 ~height:5 : Matrix_grid.t)
+  in
+  render ();
+  answer ();
+  render ();
+  let state = Editor.insert "x" state in
+  show state;
+  answer ();
+  render ();
+  equal ~msg:"two requests" int 2 (List.length !requests);
+  show (Editor.with_viewport ~x:0 ~y:50 ~follow:false state);
+  render ();
+  equal ~msg:"rows outside the asked bytes are asked for" int 3
+    (List.length !requests);
+  (* Lines 45 to 59, after the byte inserted on line 0. *)
+  equal ~msg:"for the lines shown and a screen above and below them"
+    (pair int int)
+    ((45 * 7) + 1, (59 * 7) + 6 + 1)
+    (fst (List.hd !requests)).Code.Highlighter.range;
+  is_some ~msg:"pending work reported"
+    (Renderable.Private.pending_work (Textarea.node ta));
+  is_true ~msg:"meanwhile they keep their carried captures" (keyword_at ta 50);
+  answer ~keywords:false ();
+  render ();
+  is_false ~msg:"then show the result" (keyword_at ta 50);
+  is_true ~msg:"rows outside its range keep theirs" (keyword_at ta 0);
+  render ();
+  equal ~msg:"rows asked for are not asked again" int 3 (List.length !requests)
+
+let failed_range_is_not_asked_again () =
+  let requests, highlighter, answer = ranged_highlighter () in
+  let state = Editor.of_string lines |> Editor.set_cursor 0 in
+  let ta, show = ranged_textarea highlighter state in
+  let render () =
+    ignore (render_textarea ta ~width:20 ~height:5 : Matrix_grid.t)
+  in
+  render ();
+  answer ();
+  render ();
+  let state = Editor.insert "x" state in
+  show state;
+  (match !requests with
+  | (_, outcome) :: _ -> outcome := Some (Error (Failure "toy"))
+  | [] -> fail "expected a request");
+  render ();
+  render ();
+  equal ~msg:"no request after the failure" int 2 (List.length !requests);
+  is_false ~msg:"the content shows plain" (keyword_at ta 0)
+
+let stateless_highlighter_is_asked_for_everything () =
+  let calls = ref [] in
+  let highlighter =
+    Code.Highlighter.sync (fun ~language:_ ~content ->
+        calls := String.length content :: !calls;
+        Syntax_highlight.of_triples ~content [])
+  in
+  let state = Editor.of_string lines |> Editor.set_cursor 0 in
+  let ta, show = ranged_textarea highlighter state in
+  let render () =
+    ignore (render_textarea ta ~width:20 ~height:5 : Matrix_grid.t)
+  in
+  render ();
+  let state = Editor.insert "x" state in
+  show state;
+  render ();
+  show (Editor.with_viewport ~x:0 ~y:50 ~follow:false state);
+  render ();
+  equal ~msg:"asked at creation and at the edit, never for scrolling" (list int)
+    [ String.length lines + 1; String.length lines ]
+    !calls
+
 let annotations_go_over_syntax () =
   let ctx = make_ctx () in
   let root = make_root ctx in
@@ -1353,6 +1522,12 @@ let () =
             syntax_highlights_and_shows_pending_edits;
           test "a mismatch shows plain" syntax_mismatch_shows_plain;
           test "annotations go over syntax" annotations_go_over_syntax;
+          test "requests ask for the rows shown" requests_ask_for_the_rows_shown;
+          test "scrolling asks for rows outside" scrolling_asks_for_rows_outside;
+          test "a failed range is not asked again"
+            failed_range_is_not_asked_again;
+          test "a stateless highlighter is asked for everything"
+            stateless_highlighter_is_asked_for_everything;
         ];
       group "Paint"
         [

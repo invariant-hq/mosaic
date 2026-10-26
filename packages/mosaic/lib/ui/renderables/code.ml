@@ -60,6 +60,8 @@ type t = {
   mutable props : Props.t;
   session : Syntax_session.t;
   mutable on_rows_change : (unit -> unit) option;
+  mutable lines : int * int;
+      (* The logical lines whose captures the view last needed. *)
 }
 
 (* Accessors *)
@@ -94,14 +96,68 @@ let show t =
            captures)
   | Some _, None | None, _ -> Text_renderable.set_text t.text content
 
+(* The bytes of [content] from the start of logical line [first] to the end
+   of line [last], found by its line breaks. *)
+let lines_range content (first, last) =
+  let n = String.length content in
+  let rec start_of line i =
+    if line = 0 || i >= n then i
+    else
+      match content.[i] with
+      | '\n' -> start_of (line - 1) (i + 1)
+      | '\r' when i + 1 < n && content.[i + 1] = '\n' -> start_of line (i + 1)
+      | '\r' -> start_of (line - 1) (i + 1)
+      | _ -> start_of line (i + 1)
+  in
+  let a = start_of first 0 in
+  (a, if last = max_int then n else start_of (last + 1 - first) a)
+
 let render_content t (props : Props.t) =
   t.props <- props;
-  Syntax_session.set t.session ~content:props.content props.syntax;
+  Syntax_session.set t.session ~content:props.content
+    ~range:
+      (if Syntax_session.needs_range t.session then
+         lines_range props.content t.lines
+       else (0, 0))
+    props.syntax;
   show t;
   if not (Syntax_session.is_highlighting t.session) then notify_rows_change t
 
-let render_before t _node _grid ~dt:_ =
-  if Syntax_session.poll t.session then begin
+(* The bytes whose captures a highlighter is asked for: those of the logical
+   lines of the rows that show through the grid's clip and of a screen above
+   and below them, or all of the content when concealment changed the bytes
+   shown. *)
+let view_range t grid =
+  let content = t.props.content in
+  if Text_buffer.plain_text (buffer t) != content then begin
+    t.lines <- (0, max_int);
+    (0, String.length content)
+  end
+  else
+    let module Layout = Matrix.Text.Layout in
+    let node = node t and surface = surface t in
+    let clip = Matrix_grid.clip_region grid in
+    let y = Renderable.y node in
+    let first = max y clip.y in
+    let shown =
+      max 1 (min (y + Renderable.height node) (clip.y + clip.height) - first)
+    in
+    let top = Text_surface.scroll_y surface + first - y in
+    let layout = Text_surface.layout surface in
+    let source = Layout.source layout in
+    let first = Layout.logical_line layout (top - shown) in
+    let last = Layout.logical_line layout (top + (2 * shown) - 1) in
+    t.lines <- (first, last);
+    ( Layout.Source.byte_offset source (Layout.Source.line_start source first),
+      Layout.Source.byte_offset source (Layout.Source.line_end source last) )
+
+let render_before t _node grid ~dt:_ =
+  let polled = Syntax_session.poll t.session in
+  let viewed =
+    Syntax_session.needs_range t.session
+    && Syntax_session.view t.session ~range:(view_range t grid)
+  in
+  if polled || viewed then begin
     show t;
     if not (Syntax_session.is_highlighting t.session) then notify_rows_change t;
     request_render t
@@ -129,7 +185,9 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?syntax
       ~notify:(fun () -> Renderable.request_render node)
       ~off_loop:(Renderable.off_loop node)
   in
-  let t = { text; props; session; on_rows_change = None } in
+  let t =
+    { text; props; session; on_rows_change = None; lines = (0, max_int) }
+  in
   Renderable.set_render_before node (Some (render_before t));
   Renderable.set_pending_provider node (Some (fun () -> pending_work t));
   Renderable.Private.set_cleanup node (fun () -> Syntax_session.cancel session);

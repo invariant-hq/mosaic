@@ -28,12 +28,13 @@ let point s byte =
   { Ts.row = !row; column = byte - !line }
 
 (* A grammar parses again from the tree of the view's latest result, edited as
-   the view says its content changed, then queries the whole new tree. A
-   highlighter makes one call at a time, so one parser per grammar is enough. *)
+   the view says its content changed, then queries the new tree for the
+   captures that meet the bytes the view needs. A highlighter makes one call at
+   a time, so one parser per grammar is enough. *)
 let grammar language query =
   let parser = Ts.Parser.create language in
   let query = Ts.Query.create language ~source:query in
-  fun ~content
+  fun ~content ~range
       (previous : Ts.Tree.t option Mosaic.Code.Highlighter.previous option) ->
     let old =
       match previous with
@@ -54,7 +55,8 @@ let grammar language query =
       | Some { state = None; _ } | None -> None
     in
     let tree = Ts.Parser.parse_string ?old parser content in
-    (Ts.highlight query tree, Some tree)
+    let start_byte, end_byte = range in
+    (Ts.highlight_range query tree ~start_byte ~end_byte, Some tree)
 
 let ocaml =
   grammar (Tree_sitter_ocaml.ocaml ()) Tree_sitter_ocaml.ocaml_highlights_query
@@ -66,12 +68,12 @@ let interface =
 
 let json = grammar (Tree_sitter_json.language ()) Tree_sitter_json.highlights_query
 
-let highlight { Mosaic.Code.Highlighter.language; content; previous } =
+let highlight { Mosaic.Code.Highlighter.language; content; range; previous } =
   let captures, tree =
     match language with
-    | "ocaml" | "ml" -> ocaml ~content previous
-    | "mli" -> interface ~content previous
-    | "json" -> json ~content previous
+    | "ocaml" | "ml" -> ocaml ~content ~range previous
+    | "mli" -> interface ~content ~range previous
+    | "json" -> json ~content ~range previous
     | _ -> ([], None)
   in
   (Mosaic.Syntax_highlight.of_triples ~content captures, tree)
@@ -89,14 +91,26 @@ let markdown_view md = Mosaic.markdown ~highlighter md
 `highlight` is the application's resolver. The language names, aliases and
 filename extensions your application uses go there, and unknown languages stay
 plain. Its state is the tree of the view's latest result. A keystroke in a large
-file is parsed again around the edit, and the query covers the whole new tree,
-as the result type of [`Code.Highlighter`](../packages/mosaic/lib/ui/renderables/code.mli)
-requires. `threaded_incremental` runs `highlight` on a worker thread and hands
-it each request with the view's latest result.
+file is parsed again around the edit, and the query runs over the whole new
+tree but returns only the captures that meet the request's `range`: the whole
+text on the view's first request, and afterwards the rows the view shows and a
+screen above and below them. A capture that meets the range comes whole, and
+the range never changes what a capture is, as the result type of
+[`Code.Highlighter`](../packages/mosaic/lib/ui/renderables/code.mli) requires.
+`threaded_incremental` runs `highlight` on a worker thread and hands it each
+request with the view's latest result.
+
+A grammar whose highlights resolve local variables, as tree-sitter's
+`locals.scm` does, still runs that query over the whole tree after each parse,
+and keeps the scopes and definitions it finds in its state; a reference in the
+range is then coloured by its definition wherever that lies, as in a highlight
+of the whole tree. The bindings used here have no locals resolution, so the
+glue above has nothing to keep.
 
 A highlighter that keeps nothing between results, such as a lexical one, is a
 function of the language and the content, and `threaded` or `sync` takes it as
-it is. This one marks every `let`:
+it is. Such a highlighter is always asked for the whole text, so scrolling the
+view never asks it again. This one marks every `let`:
 
 ```ocaml
 let lets ~language:_ ~content =

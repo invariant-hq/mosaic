@@ -719,6 +719,7 @@ module Code : sig
     type 'state request = 'state Mosaic_ui.Code.Highlighter.request = {
       content : string;
       language : string;
+      range : int * int;
       previous : 'state previous option;
     }
 
@@ -734,7 +735,8 @@ module Code : sig
     val sync :
       (language:string -> content:string -> Mosaic_ui.Syntax_highlight.t) -> t
     (** [sync f] runs [f ~language ~content] on the rendering thread and keeps
-        nothing between results; errors fall back to plain text. *)
+        nothing between results, so it is asked for the whole content; errors
+        fall back to plain text. *)
 
     val threaded :
       (language:string -> content:string -> Mosaic_ui.Syntax_highlight.t) -> t

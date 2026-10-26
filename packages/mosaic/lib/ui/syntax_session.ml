@@ -7,6 +7,7 @@ module Highlighter = struct
   type 'state request = {
     content : string;
     language : string;
+    range : int * int;
     previous : 'state previous option;
   }
 
@@ -19,13 +20,18 @@ module Highlighter = struct
 
   (* The state's type is the highlighter's own: a view never looks at it.
      [off_loop] runs work off the rendering thread, on the renderer's
-     executor. *)
+     executor. A highlighter that keeps nothing between results computes all
+     of them at each request, so it is asked for the whole content
+     ([whole]). *)
   type t =
-    | Highlighter :
-        ('state request ->
-        notify:(unit -> unit) ->
-        off_loop:((unit -> unit) -> unit) ->
-        'state job)
+    | Highlighter : {
+        start :
+          'state request ->
+          notify:(unit -> unit) ->
+          off_loop:((unit -> unit) -> unit) ->
+          'state job;
+        whole : bool;
+      }
         -> t
 
   let job ~poll ~cancel = { poll; cancel }
@@ -39,21 +45,31 @@ module Highlighter = struct
         result)
       ~cancel:(fun () -> pending := None)
 
-  let sync_incremental f =
+  let synchronous ~whole f =
     Highlighter
-      (fun request ~notify:_ ~off_loop:_ ->
-        completed (try Ok (f request) with exn -> Error exn))
+      {
+        start =
+          (fun request ~notify:_ ~off_loop:_ ->
+            completed (try Ok (f request) with exn -> Error exn));
+        whole;
+      }
+
+  let sync_incremental f = synchronous ~whole:false f
 
   (* A highlighter that keeps nothing has [()] as its state. *)
-  let stateless f { language; content; previous = _ } =
+  let stateless f { language; content; range = _; previous = _ } =
     (f ~language ~content, ())
 
-  let sync f = sync_incremental (stateless f)
+  let sync f = synchronous ~whole:true (stateless f)
 
   let async f =
     Highlighter
-      (fun request ~notify ~off_loop:_ ->
-        try f request ~notify with exn -> completed (Error exn))
+      {
+        start =
+          (fun request ~notify ~off_loop:_ ->
+            try f request ~notify with exn -> completed (Error exn));
+        whole = false;
+      }
 
   type 'state work = {
     request : 'state request;
@@ -62,7 +78,7 @@ module Highlighter = struct
     mutable outcome : 'state result option;
   }
 
-  let threaded_incremental f =
+  let worker ~whole f =
     let mutex = Mutex.create () in
     let pending = Queue.create () in
     let running = ref false in
@@ -89,40 +105,65 @@ module Highlighter = struct
     (* The worker runs on the renderer's executor, started outside the lock,
        which an executor that runs it at once takes. *)
     Highlighter
-      (fun request ~notify ~off_loop ->
-        let task = { request; notify; cancelled = false; outcome = None } in
-        let start =
-          Mutex.protect mutex (fun () ->
-              Queue.add task pending;
-              let start = not !running in
-              running := true;
-              start)
-        in
-        match if start then off_loop work with
-        | exception exn ->
-            Mutex.protect mutex (fun () ->
-                running := false;
-                Queue.clear pending);
-            completed (Error exn)
-        | () ->
-            job
-              ~poll:(fun () ->
+      {
+        whole;
+        start =
+          (fun request ~notify ~off_loop ->
+            let task = { request; notify; cancelled = false; outcome = None } in
+            let start =
+              Mutex.protect mutex (fun () ->
+                  Queue.add task pending;
+                  let start = not !running in
+                  running := true;
+                  start)
+            in
+            match if start then off_loop work with
+            | exception exn ->
                 Mutex.protect mutex (fun () ->
-                    let result = task.outcome in
-                    task.outcome <- None;
-                    result))
-              ~cancel:(fun () ->
-                Mutex.protect mutex (fun () ->
-                    task.cancelled <- true;
-                    task.outcome <- None;
-                    (* Remove cancelled input immediately, preserving the live FIFO. *)
-                    for _ = 1 to Queue.length pending do
-                      let queued = Queue.take pending in
-                      if queued != task then Queue.add queued pending
-                    done)))
+                    running := false;
+                    Queue.clear pending);
+                completed (Error exn)
+            | () ->
+                job
+                  ~poll:(fun () ->
+                    Mutex.protect mutex (fun () ->
+                        let result = task.outcome in
+                        task.outcome <- None;
+                        result))
+                  ~cancel:(fun () ->
+                    Mutex.protect mutex (fun () ->
+                        task.cancelled <- true;
+                        task.outcome <- None;
+                        (* Remove cancelled input immediately, preserving the live FIFO. *)
+                        for _ = 1 to Queue.length pending do
+                          let queued = Queue.take pending in
+                          if queued != task then Queue.add queued pending
+                        done)));
+      }
 
-  let threaded f = threaded_incremental (stateless f)
+  let threaded_incremental f = worker ~whole:false f
+  let threaded f = worker ~whole:true (stateless f)
 end
+
+(* The bytes [a] and [b] share from [i], up to [n], and from their ends, past
+   [k], up to [n], compared eight at a time. *)
+let rec prefix a b i n =
+  if i + 8 <= n && String.get_int64_ne a i = String.get_int64_ne b i then
+    prefix a b (i + 8) n
+  else if i < n && String.unsafe_get a i = String.unsafe_get b i then
+    prefix a b (i + 1) n
+  else i
+
+let rec suffix a b k n =
+  let la = String.length a and lb = String.length b in
+  if
+    k + 8 <= n
+    && String.get_int64_ne a (la - k - 8) = String.get_int64_ne b (lb - k - 8)
+  then suffix a b (k + 8) n
+  else if
+    k < n && String.unsafe_get a (la - 1 - k) = String.unsafe_get b (lb - 1 - k)
+  then suffix a b (k + 1) n
+  else k
 
 (* [edit ~source content] is the one span in which [content] differs from
    [source]: the longest common prefix, then the longest common suffix that
@@ -130,29 +171,19 @@ end
 let edit ~source content : Highlighter.edit =
   let source_length = String.length source in
   let length = String.length content in
-  let shorter = min source_length length in
-  let prefix = ref 0 in
-  while !prefix < shorter && source.[!prefix] = content.[!prefix] do
-    incr prefix
-  done;
-  let suffix = ref 0 in
-  while
-    !suffix < shorter - !prefix
-    && source.[source_length - 1 - !suffix] = content.[length - 1 - !suffix]
-  do
-    incr suffix
-  done;
+  let prefix = prefix source content 0 (min source_length length) in
+  let suffix = suffix source content 0 (min source_length length - prefix) in
   {
-    start = !prefix;
-    removed = source_length - !prefix - !suffix;
-    inserted = length - !prefix - !suffix;
+    start = prefix;
+    removed = source_length - prefix - suffix;
+    inserted = length - prefix - suffix;
   }
 
 (* A result accepted by a view, with the request that builds on it. The
    request holds the highlighter's state, so the view need not know its type. *)
 type latest = {
   captures : Syntax_highlight.t;
-  next : content:string -> notify:(unit -> unit) -> job;
+  next : content:string -> range:int * int -> notify:(unit -> unit) -> job;
 }
 
 and job = {
@@ -167,17 +198,18 @@ let rec request : type state.
     language:string ->
     state Highlighter.previous option ->
     content:string ->
+    range:int * int ->
     notify:(unit -> unit) ->
     job =
- fun start ~language previous ~content ~notify ->
-  let job = start { content; language; previous } ~notify in
+ fun start ~language previous ~content ~range ~notify ->
+  let job = start { content; language; range; previous } ~notify in
   let accept (captures, state) =
-    let next ~content ~notify =
+    let next ~content ~range ~notify =
       let source = Syntax_highlight.content captures in
       let previous =
         { Highlighter.content = source; state; edit = edit ~source content }
       in
-      request start ~language (Some previous) ~content ~notify
+      request start ~language (Some previous) ~content ~range ~notify
     in
     { captures; next }
   in
@@ -186,11 +218,11 @@ let rec request : type state.
     cancel = job.cancel;
   }
 
-let first_request (Highlighter.Highlighter start) ~off_loop ~language ~content
-    ~notify =
+let first_request (Highlighter.Highlighter { start; _ }) ~off_loop ~language
+    ~content ~range ~notify =
   request
     (fun request ~notify -> start request ~notify ~off_loop)
-    ~language None ~content ~notify
+    ~language None ~content ~range ~notify
 
 (* Syntax settings *)
 
@@ -234,6 +266,7 @@ type running = {
   generation : int;
   content : string;
   syntax : syntax;
+  range : int * int;
   job : job;
 }
 
@@ -244,15 +277,18 @@ type t = {
   mutable syntax : syntax option;
   mutable generation : int;
       (* Changes of content or producer, so a result knows if it is current. *)
-  mutable highlighting : bool;
   mutable running : running option;
-  mutable waiting : (string * syntax * Highlighter.t) option;
+  mutable waiting : (string * syntax * Highlighter.t * (int * int)) option;
   mutable latest : latest option;
-      (* The latest result of the current producer. While a result is pending
-         it describes an earlier content. *)
-  mutable result : Syntax_highlight.t option;
-      (* Once no result is pending, the result for the content, or [None] if
-         it failed. *)
+      (* The latest result of the current producer, with its state. *)
+  mutable captures : Syntax_highlight.t option;
+      (* The captures the view shows, bound to the content of the latest
+         result: that result's over its range, and the earlier results'
+         elsewhere, carried across the edits since. *)
+  mutable exact : int * int;
+      (* The bytes of [captures]'s content that results for that content
+         cover. *)
+  mutable failed : bool; (* The latest request for the content shown failed. *)
 }
 
 let create ~notify ~off_loop =
@@ -262,102 +298,31 @@ let create ~notify ~off_loop =
     content = "";
     syntax = None;
     generation = 0;
-    highlighting = false;
     running = None;
     waiting = None;
     latest = None;
-    result = None;
+    captures = None;
+    exact = (0, 0);
+    failed = false;
   }
 
-let is_highlighting t = t.highlighting
+let is_highlighting t =
+  Option.is_some t.waiting
+  ||
+  match t.running with
+  | Some running -> running.generation = t.generation
+  | None -> false
 
 let bound captures content =
   String.equal (Syntax_highlight.content captures) content
 
-let launch t content syntax highlighter =
-  let language = Option.value syntax.language ~default:"" in
-  let job =
-    match t.latest with
-    | Some latest -> latest.next ~content ~notify:t.notify
-    | None ->
-        first_request highlighter ~off_loop:t.off_loop ~language ~content
-          ~notify:t.notify
-  in
-  t.running <- Some { generation = t.generation; content; syntax; job }
+let within (first, last) (first', last') = first' <= first && last <= last'
 
-(* [finish t running outcome] is [true] iff it changes what [t] shows. A
-   result for content that has since changed still describes the bytes the
-   current content shares with it, so it becomes the latest. *)
-let finish t (running : running) outcome =
-  let accepted =
-    match outcome with
-    | Ok latest when bound latest.captures running.content -> Some latest
-    | Ok _ | Error _ -> None
-  in
-  if running.generation = t.generation then begin
-    t.highlighting <- false;
-    Option.iter (fun latest -> t.latest <- Some latest) accepted;
-    t.result <- Option.map (fun latest -> latest.captures) accepted;
-    true
-  end
-  else
-    match (accepted, t.syntax) with
-    | Some latest, Some syntax
-      when t.highlighting && same_producer running.syntax syntax ->
-        t.latest <- Some latest;
-        true
-    | _ -> false
-
-let rec poll t =
-  match t.running with
-  | None -> false
-  | Some running -> (
-      match try running.job.poll () with exn -> Some (Error exn) with
-      | None -> false
-      | Some outcome ->
-          t.running <- None;
-          let changed = finish t running outcome in
-          (match t.waiting with
-          | None -> ()
-          | Some (content, syntax, highlighter) ->
-              t.waiting <- None;
-              launch t content syntax highlighter);
-          poll t || changed)
-
-let set t ~content syntax =
-  let same_producer =
-    match (t.syntax, syntax) with
-    | Some old, Some syntax -> same_producer old syntax
-    | _ -> false
-  in
-  let same_content = String.equal t.content content in
-  t.content <- content;
-  t.syntax <- syntax;
-  if not same_producer then t.latest <- None;
-  if not (same_producer && same_content) then begin
-    t.generation <- t.generation + 1;
-    t.waiting <- None;
-    t.highlighting <- false;
-    t.result <- None;
-    match syntax with
-    | Some ({ source = Highlighter highlighter; _ } as syntax)
-      when not (String.equal content "") ->
-        t.highlighting <- true;
-        (match t.running with
-        | None -> launch t content syntax highlighter
-        | Some _ -> t.waiting <- Some (content, syntax, highlighter));
-        ignore (poll t : bool)
-    | Some _ | None -> ()
-  end
-
-let cancel t =
-  t.waiting <- None;
-  t.highlighting <- false;
-  match t.running with
-  | None -> ()
-  | Some running -> (
-      t.running <- None;
-      try running.job.cancel () with _ -> ())
+(* The smallest range that holds both, when they meet or touch. *)
+let join (first, last) (first', last') =
+  if first <= last' && first' <= last then
+    Some (min first first', max last last')
+  else None
 
 (* [carry ~conceal captures content] moves [captures] onto [content], which
    differs from their source in one span. A range keeps its scope over its
@@ -398,14 +363,191 @@ let carry ~conceal captures content =
     Syntax_highlight.make ~content
       (List.rev (List.fold_left move [] (Syntax_highlight.ranges captures)))
 
+(* [merge t captures range] takes a result's [captures] over [range] into
+   what [t] shows. A result holds every capture that meets its range, whole,
+   so it replaces the earlier captures that meet the range, and those that a
+   capture reaching out of the range overlaps; the earlier captures elsewhere
+   stay, carried onto the result's content. *)
+let merge t captures ((first, last) as range) =
+  let content = Syntax_highlight.content captures in
+  match t.captures with
+  | Some earlier when first > 0 || last < String.length content ->
+      let same = bound earlier content in
+      let earlier = carry ~conceal:true earlier content in
+      let fresh = Syntax_highlight.ranges captures in
+      let meets r first last =
+        Syntax_highlight.start_byte r < last
+        && Syntax_highlight.end_byte r > first
+      in
+      let reaching =
+        List.filter
+          (fun r ->
+            Syntax_highlight.start_byte r < first
+            || Syntax_highlight.end_byte r > last)
+          fresh
+      in
+      let kept =
+        List.filter
+          (fun r ->
+            (not (meets r first last))
+            && not
+                 (List.exists
+                    (fun c ->
+                      meets r
+                        (Syntax_highlight.start_byte c)
+                        (Syntax_highlight.end_byte c))
+                    reaching))
+          (Syntax_highlight.ranges earlier)
+      in
+      t.captures <- Some (Syntax_highlight.make ~content (kept @ fresh));
+      t.exact <-
+        (if same then Option.value ~default:range (join t.exact range)
+         else range)
+  | Some _ | None ->
+      t.captures <- Some captures;
+      t.exact <- range
+
+(* A highlighter that keeps nothing, and every highlighter on a view's first
+   request, is asked for the whole content. *)
+let launch t content syntax (Highlighter.Highlighter { whole; _ } as h) range =
+  let language = Option.value syntax.language ~default:"" in
+  let length = String.length content in
+  let range =
+    if whole || Option.is_none t.latest then (0, length)
+    else
+      let first = max 0 (min (fst range) length) in
+      (first, max first (min (snd range) length))
+  in
+  let job =
+    match t.latest with
+    | Some latest -> latest.next ~content ~range ~notify:t.notify
+    | None ->
+        first_request h ~off_loop:t.off_loop ~language ~content ~range
+          ~notify:t.notify
+  in
+  t.running <- Some { generation = t.generation; content; syntax; range; job }
+
+(* [finish t running outcome] is [true] iff it changes what [t] shows. A
+   result for content that has since changed still describes the bytes the
+   current content shares with it, so it becomes the latest. *)
+let finish t (running : running) outcome =
+  let accepted =
+    match outcome with
+    | Ok (latest : latest) when bound latest.captures running.content ->
+        Some latest
+    | Ok _ | Error _ -> None
+  in
+  let current = running.generation = t.generation in
+  let producer =
+    match t.syntax with
+    | Some syntax -> same_producer running.syntax syntax
+    | None -> false
+  in
+  if current then t.failed <- Option.is_none accepted;
+  match accepted with
+  | Some (latest : latest) when current || (producer && is_highlighting t) ->
+      t.latest <- Some latest;
+      merge t latest.captures running.range;
+      true
+  | Some _ | None -> current
+
+let rec poll t =
+  match t.running with
+  | None -> false
+  | Some running -> (
+      match try running.job.poll () with exn -> Some (Error exn) with
+      | None -> false
+      | Some outcome ->
+          t.running <- None;
+          let changed = finish t running outcome in
+          (match t.waiting with
+          | None -> ()
+          | Some (content, syntax, highlighter, range) ->
+              t.waiting <- None;
+              launch t content syntax highlighter range);
+          poll t || changed)
+
+(* Requests captures of [t.content] over [range], now or once the request in
+   flight completes. *)
+let ask t syntax highlighter range =
+  match t.running with
+  | None -> launch t t.content syntax highlighter range
+  | Some _ -> t.waiting <- Some (t.content, syntax, highlighter, range)
+
+let set t ~content ~range syntax =
+  let same_producer =
+    match (t.syntax, syntax) with
+    | Some old, Some syntax -> same_producer old syntax
+    | _ -> false
+  in
+  let same_content = String.equal t.content content in
+  t.content <- content;
+  t.syntax <- syntax;
+  if not same_producer then begin
+    t.latest <- None;
+    t.captures <- None
+  end;
+  if not (same_producer && same_content) then begin
+    t.generation <- t.generation + 1;
+    t.waiting <- None;
+    t.failed <- false;
+    match syntax with
+    | Some ({ source = Highlighter highlighter; _ } as syntax)
+      when not (String.equal content "") ->
+        ask t syntax highlighter range;
+        ignore (poll t : bool)
+    | Some _ | None -> ()
+  end
+
+let needs_range t =
+  match t.syntax with
+  | Some { source = Highlighter (Highlighter.Highlighter { whole; _ }); _ } ->
+      (not whole) && Option.is_some t.latest
+  | Some _ | None -> false
+
+let view t ~range =
+  match t.syntax with
+  | Some
+      ({
+         source =
+           Highlighter (Highlighter.Highlighter { whole = false; _ } as h);
+         _;
+       } as syntax)
+    when Option.is_some t.latest
+         && (not (String.equal t.content ""))
+         && (not (is_highlighting t))
+         && not t.failed ->
+      let shown =
+        match t.captures with
+        | Some captures -> bound captures t.content && within range t.exact
+        | None -> false
+      in
+      if shown then false
+      else begin
+        ask t syntax h range;
+        poll t
+      end
+  | Some _ | None -> false
+
+let cancel t =
+  t.waiting <- None;
+  match t.running with
+  | None -> ()
+  | Some running -> (
+      t.running <- None;
+      try running.job.cancel () with _ -> ())
+
 let shown t ~conceal =
   match t.syntax with
   | None -> None
   | Some { source = Ranges captures; _ } ->
       if bound captures t.content then Some captures else None
-  | Some { source = Highlighter _; _ } ->
-      if t.highlighting then
-        Option.map
-          (fun { captures; _ } -> carry ~conceal captures t.content)
-          t.latest
-      else t.result
+  | Some { source = Highlighter _; _ } -> (
+      match t.captures with
+      | None -> None
+      | Some _ when t.failed && not (is_highlighting t) -> None
+      | Some captures ->
+          if bound captures t.content then Some captures
+          else if is_highlighting t then
+            Some (carry ~conceal captures t.content)
+          else None)

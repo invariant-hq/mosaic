@@ -60,11 +60,16 @@ module Highlighter : sig
   type 'state request = {
     content : string;
     language : string;
+    range : int * int;
     previous : 'state previous option;
   }
   (** The type for highlight requests. [content] is the whole buffer the view
       shows, and [language] is the name given to {!with_highlighter}, passed
-      through uninterpreted.
+      through uninterpreted. [range] is the bytes of [content] whose captures
+      the view needs, from [fst range] to [snd range]: all of [content] on the
+      view's first request, as [previous] is [None], and for a highlighter made
+      by {!sync} or {!threaded}; otherwise the rows the view shows and a screen
+      above and below them.
 
       [previous] is [None] while the view holds no result of this highlighter
       for this language, as on its first request and after a change of
@@ -81,11 +86,17 @@ module Highlighter : sig
       bound to the request's [content] (see {!Syntax_highlight.make}) and the
       state that the view's next request receives in its [previous].
 
-      The captures must be the whole highlight of [content] by [state], for
-      tree-sitter the query of the whole returned tree. A highlighter must not
-      piece them together from the previous result's captures, because a capture
-      may depend on bytes far from the edit, such as through a pattern that
-      relates siblings or a field of a parent, and no span around the edit
+      The captures must hold every capture of the whole highlight of [content]
+      by [state] that meets the request's [range], whole, and only captures of
+      that highlight; those outside [range] may be left out. [range] bounds
+      which captures are returned and never what a capture depends on: a
+      reference that a definition before [range] colours, as tree-sitter's
+      locals do, is coloured as in the whole highlight. For tree-sitter, they
+      are the matches of the highlights query on the whole returned tree that
+      meet [range], with locals resolved over the whole tree. A highlighter must
+      not piece them together from the previous result's captures, because a
+      capture may depend on bytes far from the edit, such as through a pattern
+      that relates siblings or a field of a parent, and no span around the edit
       bounds those bytes. A [previous] therefore changes the cost of a result,
       and changes its captures only through the state. A tree parsed again from
       an edited tree can differ from a fresh parse of the same bytes only where
@@ -133,12 +144,13 @@ module Highlighter : sig
   (** [sync f] is a synchronous highlighter that keeps nothing between results:
       [f ~language ~content] runs on the rendering thread when content or syntax
       changes, and returns the captures of [content]. It is {!sync_incremental}
-      with a function that ignores [previous]. *)
+      with a function that ignores [previous] and [range], except that it is
+      asked for all of [content], so scrolling the view asks it nothing. *)
 
   val threaded : (language:string -> content:string -> Syntax_highlight.t) -> t
   (** [threaded f] is {!threaded_incremental} with [f ~language ~content] for
       each request: [f] runs off the rendering thread and keeps nothing between
-      results. *)
+      results. Like {!sync}, it is asked for all of the content. *)
 
   val sync_incremental : ('state request -> Syntax_highlight.t * 'state) -> t
   (** [sync_incremental f] is a synchronous highlighter that may build on the
@@ -194,7 +206,8 @@ val with_highlighter :
   language:string -> ?style:Syntax_style.t -> Highlighter.t -> syntax
 (** [with_highlighter ~language highlighter] is a syntax configuration that
     derives highlight ranges from [highlighter], which receives [language] and
-    the whole content in each request. Empty content is shown without a request.
+    the whole content in each request, with the bytes of it that the view needs
+    ({!Highlighter.type-request}). Empty content is shown without a request.
 
     A synchronous highlighter's result is shown immediately. While an
     asynchronous result is pending, the code still shows its current content.
@@ -208,7 +221,13 @@ val with_highlighter :
     content that has since changed is never shown as such, but it becomes the
     latest result, with its state, so styling keeps up with content that changes
     faster than it can be highlighted. A different highlighter or language
-    starts again from plain text. *)
+    starts again from plain text.
+
+    A result restyles the bytes it was asked for, and the other bytes keep the
+    captures of earlier results, moved across the changes made since as while a
+    result is pending. When the view shows rows outside the bytes asked for
+    since its content changed, it asks for them, and until that result arrives
+    they show those earlier captures. *)
 
 (** {1:props Props} *)
 
@@ -345,7 +364,8 @@ val is_highlighting : t -> bool
 (** [is_highlighting t] is [true] while a highlighter result for [t]'s current
     content and syntax settings is pending. Meanwhile the shown buffer and its
     line metrics are provisional (see {!with_highlighter}); once [false], they
-    are final until the content or syntax changes. *)
+    are final until the content or syntax changes, or the view shows rows
+    outside the bytes asked for since. *)
 
 val display_line_count : t -> int
 (** [display_line_count t] is the number of display lines in [t] after wrapping.
