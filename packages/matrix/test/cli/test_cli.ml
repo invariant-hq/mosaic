@@ -721,6 +721,193 @@ let console_tests =
         List.iter (fun l -> is_true ~msg:l (measure l <= room)) lines);
   ]
 
+(* ───── The output decision ───── *)
+
+module Caps = Matrix_terminal.Caps
+
+let styling_t =
+  Testable.make ~equal:( = ) ~pp:(fun ppf s ->
+      Format.pp_print_string ppf
+        (match s with
+        | `Plain -> "plain"
+        | `Mono -> "mono"
+        | `Ansi8 -> "8"
+        | `Ansi16 -> "16"
+        | `Ansi256 -> "256"
+        | `Truecolor -> "24-bit"))
+
+let decide ?color ~tty vars =
+  let getenv v = List.assoc_opt v vars in
+  let caps = Caps.derive (Caps.evidence (Caps.env getenv ~win32:false)) in
+  ( Matrix_cli.Policy.styling ?color getenv ~tty caps,
+    Matrix_cli.Policy.live getenv ~tty caps )
+
+let t256 = ("TERM", "xterm-256color")
+
+(* Each row: the program's choice, a terminal or not, the environment, and
+   the styling. *)
+let styling_rows =
+  [
+    ("a 256-color terminal", None, true, [ t256 ], `Ansi256);
+    ("a 16-color terminal", None, true, [ ("TERM", "xterm") ], `Ansi16);
+    ("24-bit", None, true, [ t256; ("COLORTERM", "truecolor") ], `Truecolor);
+    ("a pipe", None, false, [ t256 ], `Plain);
+    ( "NO_COLOR keeps the attributes",
+      None,
+      true,
+      [ t256; ("NO_COLOR", "1") ],
+      `Mono );
+    ("NO_COLOR on a pipe", None, false, [ t256; ("NO_COLOR", "1") ], `Plain);
+    ( "an empty NO_COLOR is unset",
+      None,
+      true,
+      [ t256; ("NO_COLOR", "") ],
+      `Ansi256 );
+    ( "FORCE_COLOR into a pipe",
+      None,
+      false,
+      [ t256; ("FORCE_COLOR", "1") ],
+      `Ansi256 );
+    ( "FORCE_COLOR of any other value",
+      None,
+      false,
+      [ t256; ("FORCE_COLOR", "3") ],
+      `Ansi256 );
+    ( "FORCE_COLOR=0 forces nothing",
+      None,
+      false,
+      [ t256; ("FORCE_COLOR", "0") ],
+      `Plain );
+    ( "FORCE_COLOR=false forces nothing",
+      None,
+      false,
+      [ t256; ("FORCE_COLOR", "false") ],
+      `Plain );
+    ( "CLICOLOR_FORCE into a pipe",
+      None,
+      false,
+      [ t256; ("CLICOLOR_FORCE", "1") ],
+      `Ansi256 );
+    ( "NO_COLOR above a force",
+      None,
+      false,
+      [ t256; ("NO_COLOR", "1"); ("FORCE_COLOR", "1") ],
+      `Mono );
+    ("CLICOLOR=0", None, true, [ t256; ("CLICOLOR", "0") ], `Mono);
+    ("CLICOLOR=1 adds nothing", None, false, [ t256; ("CLICOLOR", "1") ], `Plain);
+    ( "a force above CLICOLOR=0",
+      None,
+      true,
+      [ t256; ("CLICOLOR", "0"); ("FORCE_COLOR", "1") ],
+      `Ansi256 );
+    ("a dumb terminal", None, true, [ ("TERM", "dumb") ], `Plain);
+    ("TERM unset", None, true, [], `Plain);
+    ( "forced on a dumb terminal",
+      None,
+      true,
+      [ ("TERM", "dumb"); ("FORCE_COLOR", "1") ],
+      `Ansi16 );
+    ("CI keeps the colors", None, true, [ t256; ("CI", "true") ], `Ansi256);
+    ("--color=never", Some `Never, true, [ t256 ], `Plain);
+    ("--color=always into a pipe", Some `Always, false, [ t256 ], `Ansi256);
+    ( "--color=always above NO_COLOR",
+      Some `Always,
+      true,
+      [ t256; ("NO_COLOR", "1") ],
+      `Ansi256 );
+    ( "--color=never above a force",
+      Some `Never,
+      true,
+      [ t256; ("FORCE_COLOR", "1") ],
+      `Plain );
+  ]
+
+let live_rows =
+  [
+    ("a terminal", true, [ t256 ], true);
+    ("a pipe", false, [ t256 ], false);
+    ("a dumb terminal", true, [ ("TERM", "dumb") ], false);
+    ("TERM unset", true, [], false);
+    ("CI", true, [ t256; ("CI", "true") ], false);
+    ("CI=1", true, [ t256; ("CI", "1") ], false);
+    ("CI=false", true, [ t256; ("CI", "false") ], true);
+    ("NO_COLOR leaves the region", true, [ t256; ("NO_COLOR", "1") ], true);
+  ]
+
+let policy_tests =
+  List.map
+    (fun (name, color, tty, vars, expected) ->
+      test name (fun () ->
+          equal ~msg:"styling" styling_t expected
+            (fst (decide ?color ~tty vars))))
+    styling_rows
+  @ List.map
+      (fun (name, tty, vars, expected) ->
+        test ("live: " ^ name) (fun () ->
+            equal ~msg:"live" bool expected (snd (decide ~tty vars))))
+      live_rows
+  @ [
+      test "choices" (fun () ->
+          equal ~msg:"names" (list string)
+            [ "auto"; "always"; "never" ]
+            (List.map fst Matrix_cli.Policy.choices));
+    ]
+
+(* ───── Adapting ───── *)
+
+let adapt styling pieces =
+  let a = Matrix_cli.adapter styling in
+  String.concat "" (List.map (Matrix_cli.adapt a) pieces)
+
+let red_bold = "\027[1;38;2;255;0;0mred\027[0m plain\n"
+
+let adapt_tests =
+  [
+    test "colors at the depth, attributes alone, text alone" (fun () ->
+        equal ~msg:"24-bit" string "\027[38;2;255;0;0;1mred\027[0m plain\n"
+          (adapt `Truecolor [ red_bold ]);
+        equal ~msg:"16" string "\027[91;1mred\027[0m plain\n"
+          (adapt `Ansi16 [ red_bold ]);
+        equal ~msg:"mono" string "\027[1mred\027[0m plain\n"
+          (adapt `Mono [ red_bold ]);
+        equal ~msg:"plain" string "red plain\n" (adapt `Plain [ red_bold ]));
+    test "other control functions go" (fun () ->
+        equal ~msg:"motion, erase, title, a DCS" string "abcd"
+          (adapt `Truecolor
+             [ "a\027[2Jb\027[3A\027]0;title\007c\027P1$qm\027\\\007\bd" ]));
+    test "every line end is LF, a run of CRs and its LF one" (fun () ->
+        equal ~msg:"CR, CR LF, VT, FF, NEL" string "a\nb\nc\nd\ne\nf\n"
+          (adapt `Plain [ "a\rb\r\r\nc\x0bd\x0ce\027Ef\n" ]);
+        equal ~msg:"a tab stays" string "a\tb" (adapt `Plain [ "a\tb" ]));
+    test "a style is closed at each line end and opened again" (fun () ->
+        equal ~msg:"bold over two lines" string
+          "\027[1ma\027[0m\n\027[1mb\027[0m\n"
+          (adapt `Ansi256 [ "\027[1ma\nb\027[0m\n" ]);
+        equal ~msg:"and at the end of a piece" string
+          "\027[1ma\027[0m\027[1mb\027[0m"
+          (adapt `Ansi256 [ "\027[1ma"; "b" ]));
+    test "a sequence cut between pieces" (fun () ->
+        equal ~msg:"SGR in two pieces" string "\027[38;5;1mx\027[0m"
+          (adapt `Ansi256 [ "\027[3"; "1mx" ]));
+    test "hyperlinks stay unless plain" (fun () ->
+        let linked = "\027]8;;https://a.example\027\\a\027]8;;\027\\ b" in
+        equal ~msg:"kept" string
+          "\027]8;;https://a.example\027\\a\027]8;;\027\\ b"
+          (adapt `Mono [ linked ]);
+        equal ~msg:"plain" string "a b" (adapt `Plain [ linked ]));
+    test "a formatter writes once a flush" (fun () ->
+        let writes = ref [] in
+        let ppf =
+          Matrix_cli.formatter `Mono (fun s -> writes := s :: !writes)
+        in
+        Format.fprintf ppf "\027[1;31mE\027[0m: %s@." "one";
+        Format.fprintf ppf "two@\nthree@?";
+        Format.pp_print_flush ppf ();
+        equal ~msg:"two records" (list string)
+          [ "\027[1mE\027[0m: one\n"; "two\nthree" ]
+          (List.rev !writes));
+  ]
+
 let () =
   run "matrix.cli"
     [
@@ -729,4 +916,6 @@ let () =
       group "tables of text" text_tests;
       group "trees" tree_tests;
       group "ocaml-console" console_tests;
+      group "policy" policy_tests;
+      group "adapting" adapt_tests;
     ]

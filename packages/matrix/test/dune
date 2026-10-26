@@ -220,7 +220,8 @@
   matrix.charts
   matrix.vte
   matrix.terminal
-  matrix.terminfo)
+  matrix.terminfo
+  matrix.cli)
  (forbidden_libraries unix threads))
 
 (test

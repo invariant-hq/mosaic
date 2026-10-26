@@ -21,6 +21,7 @@ let () =
     (Matrix_charts.layout ~width:8 ~height:1 (Matrix_charts.spark [ 1. ])
       : Matrix_charts.Layout.t);
   ignore (Ansi.strip "pure" : string);
+  ignore (Matrix_cli.adapt (Matrix_cli.adapter `Mono) "pure" : string);
   let terminal =
     Matrix_terminal.make ~output:ignore ~tty:false
       (Matrix_terminal.Caps.derive

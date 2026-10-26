@@ -1,3 +1,171 @@
+type styling = [ `Plain | Ansi.Color.depth ]
+
+module Policy = struct
+  type choice = [ `Auto | `Always | `Never ]
+
+  let choices = [ ("auto", `Auto); ("always", `Always); ("never", `Never) ]
+
+  (* An empty variable is unset, as NO_COLOR, force-color.org and bixense's
+     CLICOLOR all say. *)
+  let get getenv name =
+    match getenv name with Some "" | None -> None | Some _ as v -> v
+
+  (* FORCE_COLOR and CLICOLOR_FORCE force colors unless they are 0 or false,
+     the values Node's tools read as off: a force read wrongly writes escapes
+     into a file, where a refusal read wrongly only prints plain text. *)
+  let forced getenv name =
+    match get getenv name with
+    | None | Some ("0" | "false") -> false
+    | Some _ -> true
+
+  let styling ?(color = `Auto) getenv ~tty (caps : Matrix_terminal.Caps.t) :
+      styling =
+    let colors = (caps.colors :> styling) in
+    match color with
+    | `Always -> colors
+    | `Never -> `Plain
+    | `Auto ->
+        let force =
+          forced getenv "FORCE_COLOR" || forced getenv "CLICOLOR_FORCE"
+        in
+        if not (force || (tty && not caps.dumb)) then `Plain
+        else if Option.is_some (get getenv "NO_COLOR") then `Mono
+        else if force then colors
+        else if get getenv "CLICOLOR" = Some "0" then `Mono
+        else colors
+
+  let live getenv ~tty (caps : Matrix_terminal.Caps.t) =
+    tty && (not caps.dumb)
+    &&
+    match get getenv "CI" with
+    | None | Some "false" -> true
+    | Some _ -> false
+end
+
+(* Adapting. The adapter reads the program's bytes with Ansi.Parser and
+   keeps the style the program's SGR and OSC 8 select ([want]) apart from
+   the style written on the current line ([have], [link]): a style is
+   written just before the text it applies to, at the styling, and closed
+   at each line end and at the end of each call, so every call's bytes are
+   whole lines of their own and a style never spills into what another
+   writer prints next. *)
+
+type adapter = {
+  styling : styling;
+  parser : Ansi.Parser.t;
+  mutable want : Ansi.Style.t;
+  mutable have : Ansi.Style.t;
+  mutable link : string option;
+  mutable osc : Buffer.t option;
+  mutable cr : bool;
+}
+
+let adapter styling =
+  {
+    styling;
+    parser = Ansi.Parser.create ();
+    want = Ansi.Style.default;
+    have = Ansi.Style.default;
+    link = None;
+    osc = None;
+    cr = false;
+  }
+
+let close a b =
+  if Option.is_some a.link then (
+    Buffer.add_string b (Ansi.to_string Ansi.hyperlink_end);
+    a.link <- None);
+  if not (Ansi.Style.equal a.have Ansi.Style.default) then (
+    Buffer.add_string b "\027[0m";
+    a.have <- Ansi.Style.default)
+
+let open_style a b =
+  match a.styling with
+  | `Plain -> ()
+  | #Ansi.Color.depth as depth ->
+      let link = Ansi.Style.link a.want in
+      if link <> a.link then (
+        Buffer.add_string b
+          (Ansi.to_string
+             (match link with
+             | Some url -> Ansi.hyperlink_start ~params:"" ~url
+             | None -> Ansi.hyperlink_end));
+        a.link <- link);
+      let want = Ansi.Style.unlink a.want in
+      let want =
+        if depth = `Mono then Ansi.Style.(with_no_fg (with_no_bg want))
+        else want
+      in
+      Buffer.add_string b (Ansi.Style.sgr_sequence ~depth ~prev:a.have want);
+      a.have <- want
+
+let line_end a b =
+  close a b;
+  Buffer.add_char b '\n'
+
+(* OSC 8 ; params ; uri sets the link of the text after it, or ends it when
+   the uri is empty. *)
+let osc_link a payload =
+  match String.index_opt payload ';' with
+  | Some i when String.sub payload 0 i = "8" -> (
+      match String.index_from_opt payload (i + 1) ';' with
+      | Some j ->
+          let uri =
+            String.sub payload (j + 1) (String.length payload - j - 1)
+          in
+          a.want <-
+            (if uri = "" then Ansi.Style.unlink a.want
+             else Ansi.Style.hyperlink uri a.want)
+      | None -> ())
+  | _ -> ()
+
+let token a b : Ansi.Parser.token -> unit = function
+  | Text s ->
+      a.cr <- false;
+      open_style a b;
+      Buffer.add_string b s
+  | Control '\t' ->
+      a.cr <- false;
+      open_style a b;
+      Buffer.add_char b '\t'
+  | Control '\r' ->
+      if not a.cr then line_end a b;
+      a.cr <- true
+  | Control ('\n' | '\x0b' | '\x0c' | '\x85') ->
+      if a.cr then a.cr <- false else line_end a b
+  | Control _ | Esc _ -> ()
+  | Csi { marker = None; intermediates = ""; final = 'm'; params } ->
+      a.want <- Ansi.Style.apply_sgr params a.want
+  | Csi _ -> ()
+  | Open Osc -> a.osc <- Some (Buffer.create 64)
+  | Open _ -> ()
+  | Data d -> Option.iter (fun o -> Buffer.add_string o d) a.osc
+  | Close (`St | `Bel) ->
+      Option.iter (fun o -> osc_link a (Buffer.contents o)) a.osc;
+      a.osc <- None
+  | Close `Aborted -> a.osc <- None
+
+let adapt a s =
+  let b = Buffer.create (String.length s + 16) in
+  let (_ : int) =
+    Ansi.Parser.feed a.parser (Bytes.unsafe_of_string s) ~off:0
+      ~len:(String.length s) (token a b)
+  in
+  close a b;
+  Buffer.contents b
+
+let formatter styling write =
+  let a = adapter styling in
+  let pending = Buffer.create 256 in
+  let out_string s off len = Buffer.add_substring pending s off len in
+  let out_flush () =
+    let s = Buffer.contents pending in
+    Buffer.clear pending;
+    let bytes = adapt a s in
+    if bytes <> "" then write bytes
+  in
+  Format.make_formatter out_string out_flush
+
 module Lines = Matrix_grid.Lines
 
 module Table = struct

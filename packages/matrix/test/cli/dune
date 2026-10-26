@@ -1,4 +1,10 @@
 (test
  (name test_cli)
  (package matrix)
- (libraries windtrap matrix.cli matrix.grid matrix.text matrix.ansi))
+ (libraries
+  windtrap
+  matrix.cli
+  matrix.grid
+  matrix.text
+  matrix.ansi
+  matrix.terminal))

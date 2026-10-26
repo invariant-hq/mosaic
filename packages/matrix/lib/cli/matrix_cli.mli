@@ -1,14 +1,131 @@
 (** Output for programs that write to a terminal they do not own.
 
-    A command-line program prints its output once, at the width of the terminal
-    or of the destination it writes to, and leaves it in the scrollback. It
-    shares the terminal with the shell and the programs around it. This library
-    is the layer for such programs, between the grid of cells ({!Matrix_grid})
-    that a program draws into and the bytes it writes. Its first helpers lay out
-    tables ({!Table}) and trees ({!Tree}). Each is a function of plain values,
-    so a program prints the result with {!Matrix_grid.to_ansi} or
-    {!Matrix_grid.to_text}, and a full-screen program can draw the same layout
-    into its own frame. *)
+    A command-line program prints its output once and leaves it in the
+    scrollback, at the width of the terminal or of the destination it writes to.
+    It shares the terminal with the shell and the programs around it, and its
+    output may as well go to a pipe or a file. This library holds what such a
+    program decides and lays out, and does no I/O. [Matrix_cli_unix] writes to
+    the standard outputs with it, redraws a region of rows below the output
+    while the program works, and asks questions at the terminal.
+
+    Each destination has a {e styling}, which says how the styles a program
+    writes reach it, in colors of some depth, as attributes such as bold without
+    colors, or not at all. {!Policy} decides it from the program's choice, the
+    user's environment and the terminal, and decides whether a region may be
+    redrawn there. An {e adapter} rewrites what a program prints for a styling
+    ({!section-adapting}), so that printers written for any destination, such as
+    Fmt's, obey the decision. {!Table} and {!Tree} lay out tables and trees.
+    Each is a function of plain values that draws into a grid of cells
+    ({!Matrix_grid}), so a program prints the result with {!Matrix_grid.to_ansi}
+    at its destination's styling, and a full-screen program can draw the same
+    layout into its own frame.
+
+    This prints a word in bold red on standard output, as the environment
+    decides for a terminal, where [caps] are the terminal's capabilities
+    ({!Matrix_terminal.Caps.derive}):
+    {[
+    let styling =
+      Matrix_cli.Policy.styling Sys.getenv_opt ~tty:(Unix.isatty Unix.stdout)
+        caps
+    in
+    let a = Matrix_cli.adapter styling in
+    print_string (Matrix_cli.adapt a "\027[1;31mdone\027[0m\n")
+    ]} *)
+
+type styling = [ `Plain | Ansi.Color.depth ]
+(** The type for stylings. A color depth writes styles with each color reduced
+    to it ({!Ansi.Color.to_depth}), so [`Mono] writes the attributes, such as
+    bold and underline, and no color. [`Plain] writes no style and no hyperlink.
+*)
+
+(** The decision of what a destination receives.
+
+    A program's styles reach a destination as the program asks and as its user
+    lets them. The program's {e choice} ({!type-choice}), from a [--color]
+    option or a configuration file, comes first. [`Always] writes colors, and
+    [`Never] writes no style at all, as Fmt_cli's [--color=never] "forces no
+    styling". [`Auto] leaves the decision to the environment, read in this
+    order, where an empty variable counts as unset:
+    + [NO_COLOR] set removes the colors and keeps the attributes, since it "only
+      signals the user's intention regarding adding ANSI color" (no-color.org,
+      FAQ).
+    + [FORCE_COLOR] or [CLICOLOR_FORCE] set, unless to [0] or [false], writes
+      colors, also to a destination that is not a terminal, such as a CI job's
+      log (force-color.org; bixense.com/clicolors).
+    + [CLICOLOR] set to [0] removes the colors as [NO_COLOR] does.
+    + A destination that is not a terminal, or a dumb one
+      ({!Matrix_terminal.Caps.t}'s [dumb]), gets no style.
+    + Any other gets the colors the terminal shows ([colors]).
+
+    Removing the colors keeps the attributes only on a destination that shows
+    styles at all, a terminal or one where colors are forced, and gives [`Plain]
+    elsewhere. A wrong force writes escapes into a file, so a variable that may
+    mean either way, such as [FORCE_COLOR=0], forces nothing. Each destination
+    is decided on its own, so a program whose standard output is a pipe still
+    writes colors to its standard error on a terminal. *)
+module Policy : sig
+  type choice = [ `Auto | `Always | `Never ]
+  (** The type for a program's choices. *)
+
+  val choices : (string * choice) list
+  (** [choices] is the choices as a [--color] option names them, [auto],
+      [always] and [never], as [Cmdliner.Arg.enum] takes them. *)
+
+  val styling :
+    ?color:choice ->
+    (string -> string option) ->
+    tty:bool ->
+    Matrix_terminal.Caps.t ->
+    styling
+  (** [styling ~color getenv ~tty caps] is the styling of a destination, which
+      is a terminal iff [tty], whose capabilities are [caps], for the program's
+      choice [color] ([`Auto] by default) and the environment read through
+      [getenv], such as [Sys.getenv_opt], by the module's rule. *)
+
+  val live :
+    (string -> string option) -> tty:bool -> Matrix_terminal.Caps.t -> bool
+  (** [live getenv ~tty caps] is [true] iff rows may be redrawn on the
+      destination, which is then a terminal that is not dumb, with [CI] unset or
+      [false]. A continuous integration job keeps its output as a log that
+      replays line by line, where redrawn rows pile up. *)
+end
+
+(** {1:adapting Adapting what a program prints}
+
+    A program prints through printers written for any destination, such as
+    Fmt's, which write SGR for colors and attributes when they are asked to. An
+    {e adapter} rewrites the bytes a program prints for a destination of a
+    styling. It writes the styles the program's SGR selects at the styling, so a
+    24-bit color becomes the nearest of 256 or of 16, [`Mono] keeps the
+    attributes and [`Plain] the text alone, and it keeps hyperlinks (OSC 8)
+    unless the styling is [`Plain]. It drops every other control function but HT
+    and the line ends. A line ends at CR, VT, FF and NEL as at LF, and a run of
+    CRs with the line end after it ends one line. So nothing printed through an
+    adapter moves the cursor up or back along its row. A style is written just
+    before the text it applies to, and closed at each line end and at the end of
+    each piece adapted, so each piece shows the same whatever is written after
+    it. Text from someone else, such as a file name, goes through
+    {!Ansi.sanitize} first, which also removes the characters that reorder or
+    hide text. *)
+
+type adapter
+(** The type for adapters. An adapter is mutable and must not be used by two
+    threads in parallel. *)
+
+val adapter : styling -> adapter
+(** [adapter styling] is an adapter for [styling], at the start of a stream. *)
+
+val adapt : adapter -> string -> string
+(** [adapt a s] is [s] adapted, the next piece of [a]'s stream. A control
+    function that [s] leaves unfinished is completed by the next piece, and the
+    styles [s] selects apply to the text of the next pieces. *)
+
+val formatter : styling -> (string -> unit) -> Format.formatter
+(** [formatter styling write] is a formatter whose output is adapted to
+    [styling] and given to [write] at each flush, one call for each flush after
+    which there is something to write. So a record a printer flushes, such as a
+    Logs message or Fmt's ["@."], is one write. Its margin is Format's default,
+    which a program sets to its destination's width. *)
 
 (** Tables, how their columns share a width and where their rows and cells go.
 
