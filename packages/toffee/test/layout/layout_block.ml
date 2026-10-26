@@ -9802,6 +9802,137 @@ let () =
           [
             [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |];
           ];
+      case "padding_percentage_nonstretch_width"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 40.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~size:
+                     { width = Dimension.length 100.; height = Dimension.auto }
+                   ~padding:
+                     {
+                       left = Length_percentage.percent 0.1;
+                       right = Length_percentage.percent 0.1;
+                       top = Length_percentage.percent 0.1;
+                       bottom = Length_percentage.percent 0.1;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~display:Block ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 40.; 18. |];
+            [| 0.; 0.; 100.; 18. |];
+            [| 4.; 4.; 92.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 40.; 18. |];
+            [| 0.; 0.; 108.; 18. |];
+            [| 4.; 4.; 100.; 10. |];
+          ];
+      case "padding_percentage_padded_container"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 120.; height = Dimension.auto }
+               ~padding:
+                 {
+                   left = Length_percentage.length 10.;
+                   right = Length_percentage.length 10.;
+                   top = Length_percentage.length 10.;
+                   bottom = Length_percentage.length 10.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~padding:
+                     {
+                       left = Length_percentage.percent 0.1;
+                       right = Length_percentage.percent 0.1;
+                       top = Length_percentage.percent 0.1;
+                       bottom = Length_percentage.percent 0.1;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~display:Block ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                ];
+              node
+                (Style.make ~display:Flex ~box_sizing
+                   ~padding:
+                     {
+                       left = Length_percentage.percent 0.1;
+                       right = Length_percentage.percent 0.1;
+                       top = Length_percentage.percent 0.1;
+                       bottom = Length_percentage.percent 0.1;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 10.;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                ];
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 10. }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.percent 0.1;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 120.; 90. |];
+            [| 10.; 10.; 100.; 30. |];
+            [| 10.; 10.; 80.; 10. |];
+            [| 10.; 40.; 100.; 30. |];
+            [| 10.; 10.; 10.; 10. |];
+            [| 20.; 70.; 90.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 140.; 98. |];
+            [| 10.; 10.; 120.; 34. |];
+            [| 12.; 12.; 96.; 10. |];
+            [| 10.; 44.; 120.; 34. |];
+            [| 12.; 12.; 10.; 10. |];
+            [| 22.; 78.; 108.; 10. |];
+          ];
       case "percentage_height_with_min_height_parent"
         (fun box_sizing ->
           node

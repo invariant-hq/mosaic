@@ -245,7 +245,7 @@ let perform_final_layout_on_in_flow_children (type t)
   let parent_size =
     Size.
       {
-        width = Some container_outer_width;
+        width = Some container_inner_width;
         height = container_percentage_resolution_height;
       }
   in
@@ -285,7 +285,7 @@ let perform_final_layout_on_in_flow_children (type t)
           item.margin
           |> Rect.map (fun margin ->
               Length_percentage_auto.resolve_to_option_with_calc margin
-                container_outer_width calc)
+                container_inner_width calc)
         in
         let item_non_auto_margin =
           item_margin |> Rect.map (fun m -> Option.value m ~default:0.0)
@@ -1109,15 +1109,22 @@ let compute_inner (type t)
         | None, height, _ -> height
       in
       (* 3. Perform final item layout and return content height *)
+      (* Percentage padding and border resolve against the containing block's
+         width, not the box's own: they differ when the box's width does not
+         stretch. Without a containing block, at the root, the box's own width
+         is the basis. *)
+      let percentage_resolution_width =
+        Option.value parent_size.width ~default:container_outer_width
+      in
       let resolved_padding =
         raw_padding
         |> Style.Length_percentage.resolve_rect_or_zero
-             (Some container_outer_width) calc
+             (Some percentage_resolution_width) calc
       in
       let resolved_border =
         raw_border
         |> Style.Length_percentage.resolve_rect_or_zero
-             (Some container_outer_width) calc
+             (Some percentage_resolution_width) calc
       in
       let resolved_content_box_inset =
         Rect.add (Rect.add resolved_padding resolved_border) scrollbar_gutter
