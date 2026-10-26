@@ -537,9 +537,8 @@ let layout tree node =
       else Ok node_data.unrounded_layout
 
 let unrounded_layout tree node =
-  match node_index tree node with
-  | Error _ -> Layout.default
-  | Ok idx -> tree.nodes.(idx).unrounded_layout
+  if is_valid tree node then tree.nodes.(Node_id.index node).unrounded_layout
+  else Layout.default
 
 let mark_dirty tree node =
   match node_index tree node with
