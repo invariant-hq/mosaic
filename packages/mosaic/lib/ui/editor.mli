@@ -3,8 +3,9 @@
 type t
 (** Text, caret, selection, undo history, and the viewport at which an edit
     surface shows them. Operations leave their argument intact. Cursor-only
-    changes share the indexed source and history; text edits currently splice
-    and index a flat string.
+    changes share the indexed source and history. A text edit copies the text
+    and indexes again only the lines it touches
+    ({!Matrix.Text.Layout.Source.edit}).
 
     The viewport is interaction state like the caret: wheel scrolling over an
     edit surface proposes a value with a new viewport, and a surface shows the

@@ -44,23 +44,23 @@ module Engine = struct
         (* The kind of the latest undo step while it can still grow: set by
            the edit that recorded it, cleared by any operation that records
            nothing, and by undo and redo. *)
-    mutable cache : Source.t option;
+    mutable index : Source.t; (* The indexed text, shared by copies. *)
     mutable preferred_col : int option;
     mutable viewport : viewport;
   }
 
-  (* ───── Cache ───── *)
+  (* ───── Index ───── *)
 
-  let ensure_cache t =
-    match t.cache with
-    | Some c -> c
-    | None ->
-        let c = Source.of_string t.content in
-        t.cache <- Some c;
-        c
+  let source t = t.index
 
-  let source = ensure_cache
-  let invalidate_cache t = t.cache <- None
+  (* Replaces the bytes [first, last) with [text], indexing again only the
+     lines the replacement touches. *)
+  let splice t ~first ~last text =
+    let source = Source.edit t.index ~first ~last text in
+    t.content <- Source.text source;
+    t.index <- source;
+    source
+
   let find_line = Source.line_of_offset
   let byte_offset_of_grapheme_in_content c i = Source.byte_offset c i
 
@@ -78,7 +78,7 @@ module Engine = struct
       undo_stack = [];
       redo_stack = [];
       open_step = None;
-      cache = Some source;
+      index = source;
       preferred_col = None;
       viewport = { x = 0; y = 0; follow = false };
     }
@@ -101,7 +101,7 @@ module Engine = struct
   let text t = t.content
 
   let length t =
-    let c = ensure_cache t in
+    let c = t.index in
     Source.length c
 
   let is_empty t = String.length t.content = 0
@@ -112,7 +112,7 @@ module Engine = struct
 
   let set_cursor t pos =
     t.affinity <- Layout.Downstream;
-    let c = ensure_cache t in
+    let c = t.index in
     t.cursor_pos <- Int.max 0 (Int.min pos (Source.length c));
     t.selection_anchor <- None
 
@@ -134,7 +134,7 @@ module Engine = struct
     match selection t with
     | None -> ""
     | Some (lo, hi) ->
-        let c = ensure_cache t in
+        let c = t.index in
         let byte_lo = byte_offset_of_grapheme_in_content c lo in
         let byte_hi = byte_offset_of_grapheme_in_content c hi in
         String.sub t.content byte_lo (byte_hi - byte_lo)
@@ -143,7 +143,7 @@ module Engine = struct
 
   let select_all t =
     t.affinity <- Layout.Downstream;
-    let c = ensure_cache t in
+    let c = t.index in
     t.selection_anchor <- Some 0;
     t.cursor_pos <- Source.length c
 
@@ -206,30 +206,25 @@ module Engine = struct
   (* Applies [change] and returns its inverse, which reapplies the current
      state. *)
   let apply t change =
-    let content = t.content in
-    let tail = change.at + change.inserted in
     let inverse =
       {
         at = change.at;
-        removed = String.sub content change.at change.inserted;
+        removed = String.sub t.content change.at change.inserted;
         inserted = String.length change.removed;
         cursor_pos = t.cursor_pos;
         affinity = t.affinity;
         selection_anchor = t.selection_anchor;
       }
     in
-    t.content <-
-      String.concat ""
-        [
-          String.sub content 0 change.at;
-          change.removed;
-          String.sub content tail (String.length content - tail);
-        ];
+    ignore
+      (splice t ~first:change.at
+         ~last:(change.at + change.inserted)
+         change.removed
+        : Source.t);
     t.cursor_pos <- change.cursor_pos;
     t.affinity <- change.affinity;
     t.selection_anchor <- change.selection_anchor;
     t.open_step <- None;
-    invalidate_cache t;
     inverse
 
   let undo t =
@@ -253,18 +248,13 @@ module Engine = struct
   (* ───── Internal mutation ───── *)
 
   let delete_grapheme_range ?step t lo hi =
-    let c = ensure_cache t in
+    let c = t.index in
     let byte_lo = byte_offset_of_grapheme_in_content c lo in
     let byte_hi = byte_offset_of_grapheme_in_content c hi in
     record t ~step ~first:byte_lo ~last:byte_hi "";
-    let total_len = String.length t.content in
-    t.content <-
-      String.sub t.content 0 byte_lo
-      ^ String.sub t.content byte_hi (total_len - byte_hi);
+    let source = splice t ~first:byte_lo ~last:byte_hi "" in
     t.selection_anchor <- None;
-    invalidate_cache t;
-    t.cursor_pos <-
-      Source.grapheme_of_byte (ensure_cache t) ~affinity:Downstream byte_lo;
+    t.cursor_pos <- Source.grapheme_of_byte source ~affinity:Downstream byte_lo;
     t.affinity <- Layout.Downstream
 
   let delete_selection ?step t =
@@ -284,16 +274,14 @@ module Engine = struct
   (* ───── Editing ───── *)
 
   let insert t inserted =
-    let old = ensure_cache t in
+    let old = t.index in
     let first, last =
       match selection t with
       | Some range -> range
       | None -> (t.cursor_pos, t.cursor_pos)
     in
     let a = Source.byte_offset old first and b = Source.byte_offset old last in
-    let prefix = String.sub t.content 0 a in
-    let suffix = String.sub t.content b (String.length t.content - b) in
-    let candidate = Source.of_string (prefix ^ inserted ^ suffix) in
+    let candidate = Source.edit old ~first:a ~last:b inserted in
     let candidate, admitted =
       if Source.length candidate <= t.max_length then (candidate, inserted)
       else
@@ -303,18 +291,17 @@ module Engine = struct
         let admitted =
           Source.slice (Source.of_string inserted) ~first:0 ~last:available
         in
-        (Source.of_string (prefix ^ admitted ^ suffix), admitted)
+        (Source.edit old ~first:a ~last:b admitted, admitted)
     in
-    let content = Source.text candidate in
-    if String.equal content t.content then false
+    if String.equal admitted (String.sub t.content a (b - a)) then false
     else begin
       (* One grapheme cluster is typing; several at once, a paste. *)
       let step =
         if Matrix.Text.grapheme_count admitted = 1 then Some Typing else None
       in
       record t ~step ~first:a ~last:b admitted;
-      t.content <- content;
-      t.cache <- Some candidate;
+      t.content <- Source.text candidate;
+      t.index <- candidate;
       t.cursor_pos <-
         Source.grapheme_of_byte candidate ~affinity:Downstream
           (a + String.length admitted);
@@ -336,7 +323,7 @@ module Engine = struct
     let step = Deleting_forward in
     if has_selection t then delete_selection ~step t
     else
-      let c = ensure_cache t in
+      let c = t.index in
       if t.cursor_pos >= Source.length c then false
       else begin
         delete_grapheme_range ~step t t.cursor_pos (t.cursor_pos + 1);
@@ -358,7 +345,7 @@ module Engine = struct
     loop start
 
   let word_break_set t =
-    let c = ensure_cache t in
+    let c = t.index in
     let s = Hashtbl.create 16 in
     Matrix.Text.iter_word_breaks
       (fun ~break_byte_offset ~next_byte_offset ~grapheme_offset ->
@@ -372,7 +359,7 @@ module Engine = struct
     s
 
   let next_word_boundary t =
-    let c = ensure_cache t in
+    let c = t.index in
     let breaks = word_break_set t in
     let pos = ref t.cursor_pos in
     while !pos < Source.length c && not (Hashtbl.mem breaks !pos) do
@@ -408,7 +395,7 @@ module Engine = struct
   let delete_word_forward t =
     if has_selection t then delete_selection t
     else
-      let c = ensure_cache t in
+      let c = t.index in
       if t.cursor_pos >= Source.length c then false
       else begin
         let pos = next_word_boundary t in
@@ -419,7 +406,7 @@ module Engine = struct
   let delete_to_line_start t =
     if has_selection t then delete_selection t
     else
-      let c = ensure_cache t in
+      let c = t.index in
       let line = find_line c t.cursor_pos in
       let line_start = Source.line_start c line in
       if t.cursor_pos <= line_start then false
@@ -431,7 +418,7 @@ module Engine = struct
   let delete_to_line_end t =
     if has_selection t then delete_selection t
     else
-      let c = ensure_cache t in
+      let c = t.index in
       let line = find_line c t.cursor_pos in
       let line_end =
         if line + 1 < Source.line_count c then
@@ -445,7 +432,7 @@ module Engine = struct
       end
 
   let delete_line t =
-    let c = ensure_cache t in
+    let c = t.index in
     if Source.length c = 0 then false
     else begin
       let line = find_line c t.cursor_pos in
@@ -492,7 +479,7 @@ module Engine = struct
     else update_cursor_with_selection t ~select (t.cursor_pos - 1)
 
   let move_right ?(select = false) t =
-    let c = ensure_cache t in
+    let c = t.index in
     if (not select) && has_selection t then begin
       let _, hi = Option.get (selection t) in
       t.cursor_pos <- hi;
@@ -504,7 +491,7 @@ module Engine = struct
     else update_cursor_with_selection t ~select (t.cursor_pos + 1)
 
   let move_word_forward ?(select = false) t =
-    let c = ensure_cache t in
+    let c = t.index in
     if (not select) && has_selection t then begin
       let _, hi = Option.get (selection t) in
       t.cursor_pos <- hi;
@@ -541,7 +528,7 @@ module Engine = struct
     else update_cursor_with_selection t ~select 0
 
   let move_end ?(select = false) t =
-    let c = ensure_cache t in
+    let c = t.index in
     if (not select) && has_selection t then begin
       t.cursor_pos <- Source.length c;
       t.selection_anchor <- None;
@@ -552,7 +539,7 @@ module Engine = struct
     else update_cursor_with_selection t ~select (Source.length c)
 
   let move_line_start ?(select = false) t =
-    let c = ensure_cache t in
+    let c = t.index in
     let line = find_line c t.cursor_pos in
     let target = Source.line_start c line in
     if (not select) && has_selection t then begin
@@ -565,7 +552,7 @@ module Engine = struct
     else update_cursor_with_selection t ~select target
 
   let move_line_end ?(select = false) t =
-    let c = ensure_cache t in
+    let c = t.index in
     let line = find_line c t.cursor_pos in
     let target =
       if line + 1 < Source.line_count c then Source.line_start c (line + 1) - 1
@@ -581,7 +568,7 @@ module Engine = struct
     else update_cursor_with_selection t ~select target
 
   let set_cursor_offset ?(select = false) t pos =
-    let c = ensure_cache t in
+    let c = t.index in
     let pos = Int.max 0 (Int.min pos (Source.length c)) in
     ignore (update_cursor_with_selection t ~select pos : bool)
 
@@ -611,7 +598,6 @@ let transform f t =
   if Engine.same t next && t.Engine.preferred_col = None then t
   else begin
     if next.undo_stack == t.undo_stack then next.open_step <- None;
-    ignore (Engine.source next : Matrix.Text.Layout.Source.t);
     next.preferred_col <- None;
     if not next.viewport.follow then
       next.viewport <- { next.viewport with follow = true };

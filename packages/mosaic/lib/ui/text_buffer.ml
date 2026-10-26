@@ -342,16 +342,22 @@ let line_width t ~width_method line =
       ~first:(Source.line_start src line)
       ~last:(Source.line_end src line)
 
+(* A text of one line measures it. A longer one asks for the layout without
+   wrapping that its source keeps, which an edit carries, so an editor's
+   widest line costs the lines the edit touched. *)
 let max_line_width t ~width_method =
   match t.cached_max_line_width with
   | Some (cached, width) when cached = width_method -> width
   | Some _ | None ->
-      let width = ref 0 in
-      for line = 0 to line_count t - 1 do
-        width := max !width (line_width t ~width_method line)
-      done;
-      t.cached_max_line_width <- Some (width_method, !width);
-      !width
+      let width =
+        if line_count t = 1 then line_width t ~width_method 0
+        else
+          snd
+            (Matrix.Text.Layout.measure (source t) ~width_method
+               ~tab_width:t.tab_width ~width:0 ~wrap:`None)
+      in
+      t.cached_max_line_width <- Some (width_method, width);
+      width
 
 (* ───── Text In Range ───── *)
 

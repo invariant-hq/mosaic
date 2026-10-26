@@ -10,19 +10,19 @@ log-50000/append-a-line-and-drop-it	alloc_words	exact	67269010
 loop/burst-1000-keys	alloc_words	exact	2291835
 loop/idle-turns-10000	alloc_words	exact	11
 loop/posts-1000	alloc_words	exact	133030
-primary-transcript-5000/type-and-erase	alloc_words	exact	45343
+primary-transcript-5000/type-and-erase	alloc_words	exact	45337
 primary-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	100336
 select-10000/down-up	alloc_words	exact	6572
 select-100000/down-up	alloc_words	exact	6572
-startup/transcript-5000-first-frame	alloc_words	exact	211969328
+startup/transcript-5000-first-frame	alloc_words	exact	211969326
 table-100000/down-up	alloc_words	exact	8056
 transcript-20000/resize-roundtrip-249x69	alloc_words	exact	126251388
 transcript-20000/resize-roundtrip-250x69	alloc_words	exact	299060
-transcript-20000/type-and-erase	alloc_words	exact	64657
+transcript-20000/type-and-erase	alloc_words	exact	64651
 transcript-20000/wheel-roundtrip-2x8	alloc_words	exact	148887
 transcript-5000/resize-roundtrip-249x69	alloc_words	exact	31617784
 transcript-5000/resize-roundtrip-250x69	alloc_words	exact	128084
-transcript-5000/type-and-erase	alloc_words	exact	64657
+transcript-5000/type-and-erase	alloc_words	exact	64651
 transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	148887
 
 # machine: fudge

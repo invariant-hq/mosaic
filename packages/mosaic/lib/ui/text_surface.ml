@@ -15,9 +15,11 @@ type t = {
   mutable selection_fg : Ansi.Color.t option;
   mutable selection : (int * int) option;
   (* Retain a bounded set of geometries, keyed by source version, the
-     screen's width method and width. Measurement probes use count-only
-     results unless geometry already exists. Wrap-mode and truncation changes
-     invalidate both caches. *)
+     screen's width method and width, so that reading one again allocates
+     nothing. The buffer's source keeps them too, and an edit carries them
+     to the source it makes. Measurement probes keep their sizes unless
+     geometry already exists. Wrap-mode and truncation changes invalidate
+     both caches. *)
   mutable display_cache : (geometry_key * Layout.t) list;
   mutable measure_cache : (geometry_key * (int * int)) list;
 }
@@ -63,7 +65,9 @@ let layout_for t ~width =
       in
       (* Cap all retained rows at 32 MiB. An oversized active layout is kept
          alone, so changing the active width cannot leave oversized inactive
-         rows behind, even on a cache hit. Eight words include each row slot. *)
+         rows behind, even on a cache hit. Eight words a row count more than
+         a layout's rows take, so what the surface keeps stays within the
+         budget. *)
       let row_bytes layout =
         Layout.row_count layout * 8 * (Sys.word_size / 8)
       in
