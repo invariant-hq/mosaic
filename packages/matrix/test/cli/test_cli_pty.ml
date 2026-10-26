@@ -75,6 +75,23 @@ let test_sigint () =
         (3, 0) (row, col)
   | None -> fail "the cursor is hidden"
 
+(* A live inside a live on the same terminal joins its region: its rows show
+   below the outer ones, its last rows go above when it ends, and the outer
+   region stays until its own end. *)
+let test_nested () =
+  spawn "nested" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "INNER 1");
+  (match
+     ( T.Screen.find (T.Terminal.screen term) "OUTER",
+       T.Screen.find (T.Terminal.screen term) "INNER 1" )
+   with
+  | [ (o, _) ], [ (i, _) ] -> equal ~msg:"inner below outer" int (o + 1) i
+  | _ -> fail "both regions once");
+  exited 0 (T.Child.exit c ~within:10.);
+  equal ~msg:"each scope's last rows stay, in order" strings
+    [ "line"; "INNER done"; "OUTER done" ]
+    (lines term)
+
 let test_exit () =
   spawn "exit" @@ fun term c ->
   exited 3 (T.Child.exit c ~within:10.);
@@ -277,6 +294,7 @@ let () =
           test "a line waits for its end" test_partial;
           test "SIGINT" test_sigint;
           test "exit" test_exit;
+          test "a live inside a live" test_nested;
           test "resizes" test_resize;
           test "a child's output" test_suspend;
           test "raw bytes" test_raw;

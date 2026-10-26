@@ -87,7 +87,9 @@ and state = {
   device : device;
   fd : Unix.file_descr;
   region : Region.t;
-  mutable frame : width:int -> Matrix_grid.t option;
+  mutable parts : part list;
+      (** The scopes that show rows in it, in the order they began: a [live]
+          inside another on the same terminal joins its region. *)
   mutable cached : (int * Matrix_grid.t option) option;
   mutable failed : (exn * Printexc.raw_backtrace) option;
   mutable on_screen : bool;
@@ -96,7 +98,12 @@ and state = {
   mutable last_draw : int;
   mutable pending : bool;
   mutable published : string;  (** The teardown of the last whole write. *)
-  mutable closed : bool;  (** Its scope has ended. *)
+}
+
+(* The rows of one [live] scope, below those of the scopes before it. *)
+and part = {
+  mutable frame : width:int -> Matrix_grid.t option;
+  mutable ended : bool;
 }
 
 and prompt = { on_stop : unit -> unit; on_continue : unit -> unit }
@@ -162,22 +169,43 @@ let write l bytes =
       Signal.write s.holder l.fd b 0 (Bytes.length b)
   | None -> write_all l.fd bytes 0 (String.length bytes)
 
-(* The frame at [width], from the program's function, which runs on
+(* A part's rows at [width], from the program's function, which runs on
    whichever thread draws: one that raises is dropped, and raised again at
    the program's next call. *)
+let part_frame l p ~width =
+  match p.frame ~width with
+  | g -> g
+  | exception e ->
+      if l.failed = None then l.failed <- Some (e, Printexc.get_raw_backtrace ());
+      None
+
+(* The parts' rows, each part's below the one before. *)
+let stack = function
+  | [] -> None
+  | [ g ] -> Some g
+  | gs ->
+      let width =
+        List.fold_left (fun w g -> max w (Matrix_grid.width g)) 1 gs
+      in
+      let height = List.fold_left (fun h g -> h + Matrix_grid.height g) 0 gs in
+      let dst = Matrix_grid.create ~width ~height () in
+      ignore
+        (List.fold_left
+           (fun y src ->
+             let height = Matrix_grid.height src in
+             Matrix_grid.blit_region ~src ~dst ~src_x:0 ~src_y:0
+               ~width:(Matrix_grid.width src) ~height ~dst_x:0 ~dst_y:y;
+             y + height)
+           0 gs
+          : int);
+      Some dst
+
 let frame_at l ~width =
   match l.cached with
   | Some (w, g) when w = width -> g
   | _ when width < 1 -> None
   | _ ->
-      let g =
-        match l.frame ~width with
-        | g -> g
-        | exception e ->
-            if l.failed = None then
-              l.failed <- Some (e, Printexc.get_raw_backtrace ());
-            None
-      in
+      let g = stack (List.filter_map (part_frame l ~width) l.parts) in
       l.cached <- Some (width, g);
       g
 
@@ -517,82 +545,112 @@ let bell t = control t Matrix_terminal.bell
 
 type live = {
   state : state option;  (** [None] where no region may be drawn. *)
+  part : part;
   mutable last : width:int -> Matrix_grid.t option;
 }
 
 let no_frame ~width:_ = None
 
-let start t =
+(* A scope's rows join the region that lives on the terminal, or begin
+   one. *)
+let join t p =
   let d = t.out_device in
   Mutex.protect d.lock (fun () ->
-      if Option.is_some d.live then
-        invalid_arg "Matrix_cli_unix.live: a region lives on this terminal";
-      let l =
-        {
-          device = d;
-          fd = t.fd;
-          region =
-            Region.create ~eager_wrap:t.caps.eager_wrap
-              ~lifts_resting_cursor:t.caps.lifts_resting_cursor
-              ~styling:t.styling ();
-          frame = no_frame;
-          cached = None;
-          failed = None;
-          on_screen = false;
-          suspended = 0;
-          held = "";
-          last_draw = 0;
-          pending = false;
-          published = "";
-          closed = false;
-        }
-      in
-      enter d t.fd;
-      d.live <- Some l;
-      l)
+      match d.live with
+      | Some l ->
+          l.parts <- l.parts @ [ p ];
+          l.cached <- None;
+          l
+      | None ->
+          let l =
+            {
+              device = d;
+              fd = t.fd;
+              region =
+                Region.create ~eager_wrap:t.caps.eager_wrap
+                  ~lifts_resting_cursor:t.caps.lifts_resting_cursor
+                  ~styling:t.styling ();
+              parts = [ p ];
+              cached = None;
+              failed = None;
+              on_screen = false;
+              suspended = 0;
+              held = "";
+              last_draw = 0;
+              pending = false;
+              published = "";
+            }
+          in
+          enter d t.fd;
+          d.live <- Some l;
+          l)
 
-(* The rows of the last frame as lines, for an output where no region is
-   drawn. *)
-let frame_lines t frame =
-  match frame ~width:(max 1 (Option.value (width t) ~default:80)) with
+let plain_width t = max 1 (Option.value (width t) ~default:80)
+
+(* Rows as lines, each ended where it shows nothing more. *)
+let lines t = function
   | Some g -> Matrix_grid.to_ansi ~styling:t.styling ~trim:true g ^ "\n"
   | None -> ""
 
-let finish t l =
+(* A scope ends. While other scopes show rows, its own last rows go above
+   the region, which stays for them. The last scope to end closes the
+   region, its last frame staying below the output. *)
+let finish t l p =
   let d = l.device in
-  Mutex.protect d.lock (fun () ->
-      d.live <- None;
-      l.closed <- true;
-      flush_std ();
-      let above = if l.held = "" then "" else l.held ^ "\n" in
-      l.held <- "";
-      (match window l with
-      | Some (cols, rows) when l.suspended = 0 && not (Tty.background l.fd) ->
-          l.cached <- None;
-          let frame = frame_at l ~width:(Region.width l.region ~cols) in
-          write l (Region.close l.region ~cols ~rows ~above frame)
-      | _ -> write l (above ^ frame_lines t l.frame));
-      Option.iter (fun s -> Signal.set_reset s.holder "") d.session);
-  leave d
+  let last =
+    Mutex.protect d.lock (fun () ->
+        p.ended <- true;
+        l.parts <- List.filter (fun q -> q != p) l.parts;
+        l.cached <- None;
+        flush_std ();
+        let drawable = l.suspended = 0 && not (Tty.background l.fd) in
+        match (l.parts, window l) with
+        | _ :: _, size ->
+            let width =
+              match size with
+              | Some (cols, _) -> Region.width l.region ~cols
+              | None -> plain_width t
+            in
+            let above = lines t (part_frame l p ~width) in
+            if l.on_screen && drawable then draw l ~above
+            else if above <> "" then write l above;
+            false
+        | [], size ->
+            d.live <- None;
+            let held = if l.held = "" then "" else l.held ^ "\n" in
+            l.held <- "";
+            (match size with
+            | Some (cols, rows) when drawable ->
+                let width = Region.width l.region ~cols in
+                write l
+                  (Region.close l.region ~cols ~rows ~above:held
+                     (part_frame l p ~width))
+            | _ ->
+                write l (held ^ lines t (part_frame l p ~width:(plain_width t))));
+            Option.iter (fun s -> Signal.set_reset s.holder "") d.session;
+            true)
+  in
+  if last then leave d
 
 let live t f =
-  match if t.live_ok then Some (start t) else None with
+  let part = { frame = no_frame; ended = false } in
+  match if t.live_ok then Some (join t part) else None with
   | None ->
-      let v = { state = None; last = no_frame } in
+      let v = { state = None; part; last = no_frame } in
       let result = f v in
       Mutex.protect t.out_device.lock (fun () ->
-          let lines = frame_lines t v.last in
+          let lines = lines t (v.last ~width:(plain_width t)) in
           if lines <> "" then emit t lines);
       result
   | Some l -> (
-      match f { state = Some l; last = no_frame } with
+      match f { state = Some l; part; last = no_frame } with
       | result ->
-          finish t l;
+          finish t l part;
           reraise l;
           result
       | exception e ->
           let bt = Printexc.get_raw_backtrace () in
-          (try finish t l with _ -> ());
+          (try finish t l part with _ -> ());
           Printexc.raise_with_backtrace e bt)
 
 let show v frame =
@@ -601,10 +659,10 @@ let show v frame =
   | None -> ()
   | Some l ->
       Mutex.protect l.device.lock (fun () ->
-          if l.closed then
+          if v.part.ended then
             invalid_arg "Matrix_cli_unix.show: the region's scope has ended";
           reraise l;
-          l.frame <- frame;
+          v.part.frame <- frame;
           l.cached <- None;
           if Tty.now () >= l.last_draw + interval then draw l ~above:""
           else if not l.pending then (

@@ -69,6 +69,16 @@ let () =
           C.show live (text_frame "R");
           C.write_raw err "\027]0;TITLE\007";
           C.print err "after raw\n")
+  | "nested" ->
+      C.live err (fun outer ->
+          C.show outer (text_frame "OUTER");
+          C.live err (fun inner ->
+              C.show inner (text_frame "INNER 1");
+              C.print err "line\n";
+              Unix.sleepf 0.6;
+              C.show inner (text_frame "INNER done"));
+          Unix.sleepf 0.3;
+          C.show outer (text_frame "OUTER done"))
   | "color" ->
       let out = C.stdout () in
       C.print out "\027[1;38;2;255;0;0mBOLDRED\027[0m\n"

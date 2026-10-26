@@ -25,11 +25,14 @@
     is redrawn when the terminal's width changes, and drawn afresh when the job
     is continued. A job stopped with Ctrl+Z first erases it. A job in the
     background ({!Tty.background}) draws no frame, so its rows never land among
-    what the shell writes, and its lines go out as they are. When the scope
-    ends, its last frame stays in the scrollback with the cursor below it. On an
-    output where no region may be drawn, such as a pipe or a CI job's log, the
-    lines go out as they are printed and the last frame is printed once, at the
-    end.
+    what the shell writes, and its lines go out as they are. A [live] scope that
+    begins while another lives on the same terminal joins its region, and its
+    rows show below the rows of the scopes that began before it. When a scope
+    ends, its last rows go above the region, which stays for the others, and
+    when the last one ends, its last rows stay in the scrollback with the cursor
+    below them. On an output where no region may be drawn, such as a pipe or a
+    CI job's log, the lines go out as they are printed and the last frame is
+    printed once, at the end.
 
     The program's own writes to a terminal that bypass its outputs, such as
     [print_string] or a child process's output, land where the cursor rests, at
@@ -138,16 +141,16 @@ type live
 (** The type for live regions. *)
 
 val live : t -> (live -> 'a) -> 'a
-(** [live o f] runs [f] with a live region on [o], or with one that draws
-    nothing where none may be drawn ({!Matrix_cli.Policy.live}). When [f]
-    returns or raises, the region's last frame stays with the cursor below it,
-    or is printed once, at [o]'s {!width} or 80 columns when it has none.
+(** [live o f] runs [f] with a live region on [o], the region that lives on
+    [o]'s terminal if one does, or with one that draws nothing where none may be
+    drawn ({!Matrix_cli.Policy.live}). When [f] returns or raises, its last rows
+    stay, as the module's preamble says, or are printed once, at [o]'s {!width}
+    or 80 columns when it has none.
 
-    Raises [Invalid_argument] if a region already lives on [o]'s terminal, and
-    what a frame given to {!show} raised, if [f] returned. *)
+    Raises what a frame given to {!show} raised, if [f] returned. *)
 
 val show : live -> (width:int -> Matrix_grid.t option) -> unit
-(** [show l frame] makes [frame] [l]'s frame and draws it, now or at most a
+(** [show l frame] makes [frame] [l]'s rows and draws them, now or at most a
     tenth of a second later. The region calls [frame ~width] for the width its
     rows take, at least 1, whenever it draws, from any thread, so [frame] must
     only read values that do not change while it runs, and must not print. Rows
