@@ -16,3 +16,6 @@ dune.lock/
 .spice/
 AGENTS.md
 prompts/
+
+# Thumper writes the counts it measured next to a baseline it differs from
+*.thumper.corrected
