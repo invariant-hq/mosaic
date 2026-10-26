@@ -972,9 +972,6 @@ let compute_inner (type t)
   let padding_border = Rect.add padding border in
   let padding_border_size = Rect.sum_axes padding_border in
   let content_box_inset = Rect.add padding_border scrollbar_gutter in
-  let container_content_box_size =
-    Size.maybe_sub (Rect.sum_axes content_box_inset) known_dimensions
-  in
 
   let box_sizing_adjustment =
     if Style.box_sizing style = Box_sizing.Content_box then padding_border_size
@@ -1012,6 +1009,21 @@ let compute_inner (type t)
       }
     |> Size.apply_aspect_ratio aspect_ratio
     |> Size.maybe_add box_sizing_adjustment
+  in
+  (* A definite size in one axis transfers through aspect-ratio to the other
+     (css-sizing-4). A block parent knows an axis only when it constrains it,
+     as the stretched width at final layout does, and leaves it unknown while
+     measuring the intrinsic size, so the transfer applies to real constraints
+     only. Only an unknown axis takes the derived size, clamped: a known size
+     stays as the parent resolved it. *)
+  let known_dimensions =
+    Size.choose_first known_dimensions
+      (known_dimensions
+      |> Size.apply_aspect_ratio aspect_ratio
+      |> Size.clamp_option min_size max_size)
+  in
+  let container_content_box_size =
+    Size.maybe_sub (Rect.sum_axes content_box_inset) known_dimensions
   in
 
   (* Determine margin collapsing behaviour *)

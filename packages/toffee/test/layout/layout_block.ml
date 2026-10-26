@@ -2905,6 +2905,100 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 100. |]; [| 0.; 0.; 80.; 40. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 100. |]; [| 0.; 0.; 80.; 40. |] ];
+      case "aspect_ratio_stretch_width"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 {
+                   width = Dimension.length 100.;
+                   height = Dimension.length 200.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing ~aspect_ratio:1. ())
+                [ node (Style.make ~display:Block ~box_sizing ()) [] ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 200. |];
+            [| 0.; 0.; 100.; 100. |];
+            [| 0.; 0.; 100.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 200. |];
+            [| 0.; 0.; 100.; 100. |];
+            [| 0.; 0.; 100.; 0. |];
+          ];
+      case "aspect_ratio_stretch_width_max_height"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 {
+                   width = Dimension.length 100.;
+                   height = Dimension.length 200.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~max_size:
+                     { width = Dimension.auto; height = Dimension.length 40. }
+                   ~aspect_ratio:1. ())
+                [ node (Style.make ~display:Block ~box_sizing ()) [] ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 200. |];
+            [| 0.; 0.; 40.; 40. |];
+            [| 0.; 0.; 40.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 200. |];
+            [| 0.; 0.; 40.; 40. |];
+            [| 0.; 0.; 40.; 0. |];
+          ];
+      case "aspect_ratio_stretch_width_percentage_child"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 {
+                   width = Dimension.length 100.;
+                   height = Dimension.length 200.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing ~aspect_ratio:2. ())
+                [
+                  node
+                    (Style.make ~display:Block ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.percent 1.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 200. |];
+            [| 0.; 0.; 100.; 50. |];
+            [| 0.; 0.; 100.; 50. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 200. |];
+            [| 0.; 0.; 100.; 50. |];
+            [| 0.; 0.; 100.; 50. |];
+          ];
       case "basic"
         (fun box_sizing ->
           node
