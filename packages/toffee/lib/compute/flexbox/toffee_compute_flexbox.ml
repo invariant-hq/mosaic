@@ -1032,11 +1032,17 @@ let determine_container_main_size (type t)
                       else flex_item.max_size.height
                     in
 
-                    (* Compute clamping basis *)
+                    (* The clamping basis: for a row container, the flex base
+                       size or the preferred size, whichever is larger, as
+                       Chrome and Firefox do; for a column container, the flex
+                       base size alone, as the spec says, so that an item's
+                       height does not grow the container's max-content size
+                       past the item's flex basis. *)
                     let clamping_basis =
                       match style_preferred with
-                      | Some pref -> Some (Float.max flex_item.flex_basis pref)
-                      | None -> Some flex_item.flex_basis
+                      | Some pref when constants.is_row ->
+                          Some (Float.max flex_item.flex_basis pref)
+                      | _ -> Some flex_item.flex_basis
                     in
 
                     let flex_basis_min =

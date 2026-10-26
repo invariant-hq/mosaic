@@ -282,6 +282,43 @@ let () =
             [| 0.; 0.; 0.; 10. |];
             [| 0.; 0.; 0.; 10. |];
           ];
+      case "min_content_ignores_own_height_as_percentage_basis"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Flex ~box_sizing ~flex_direction:Column
+               ~size:{ width = Dimension.length 100.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing
+                   ~flex_basis:(Dimension.length 100.)
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 200. }
+                   ())
+                [
+                  node
+                    (Style.make ~display:Block ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.percent 1.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 100. |];
+            [| 0.; 0.; 100.; 100. |];
+            [| 0.; 0.; 100.; 100. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 100. |];
+            [| 0.; 0.; 100.; 100. |];
+            [| 0.; 0.; 100.; 100. |];
+          ];
       case "overflow_hidden"
         (fun box_sizing ->
           node

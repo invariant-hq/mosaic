@@ -1084,10 +1084,15 @@ let compute_inner (type t)
       (* The height against which the children's percentages resolve: the
          container's own height when it is known. Its min-height alone is not
          a basis: percentages of an indefinite height behave as auto (CSS 2
-         10.5). *)
+         10.5). Under Content_size the container's height and min-height are
+         ignored, so they are no basis either: the content size of a flex item
+         must not depend on its specified height. *)
       let container_percentage_resolution_height =
         match (known_dimensions.height, size.height, min_size.height) with
         | (Some _ as height), _, _ -> height
+        | None, _, _
+          when Layout_input.sizing_mode inputs <> Sizing_mode.Inherent_size ->
+            None
         | None, Some height, Some min -> Some (Float.max height min)
         | None, height, _ -> height
       in
