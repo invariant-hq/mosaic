@@ -5,6 +5,11 @@
   `7e964e4c`: diff on the pane's source index, rows read from the layout, the hit and locate
   properties and the fixes they found, the recorded gates, and text following the screen's width
   method. §3 records the decisions taken during implementation and what stays open.
+- Amended 2026-10-26 (campaign 15, P2: incremental editing): a source is indexed per logical line,
+  `Source.edit` indexes again only the lines an edit touches and shares the others' index, a
+  layout counts each line's rows and builds a line's rows when they are asked, and a source keeps
+  its layouts (§2.1, §2.6, §2.7, §4, D7, D12, §6). Highlight requests carry the view's byte range
+  (RFC 0002, amended the same day).
 - Baseline: mosaic @ `8e31eee7`, the parent of `766eb0e3` (the audit's working-tree hashes
   `7a6454d5`–`168d4772` are not in the history); OpenTUI @
   `4b1474e009bf78365a7a4866e83a9e522533ef42`, a datapoint.
@@ -75,7 +80,7 @@ reason.
 | Queries | Construction, measurement, bounded rows, byte/grapheme conversion, `coverage`, `hit`, `locate`, `iter_cells`. Mosaic decides what a gesture does and proposes it under RFC 0001 | — | high |
 | Row access | Counts, and bounded iteration over absolute visual rows of one geometry revision, giving row, logical line and continuation; adapters convert viewport coordinates. Full traversal stays for diff alignment; arrays are immutable | a gutter needs only visible rows | high |
 | Caret | `{ grapheme; affinity }`: RFC 0001's interaction value plus soft-wrap affinity | §2.4 | high |
-| Storage | Flat strings; no storage-provider interface. A later representation meets the same contracts (flattening a rope per event needs its own cost case). RFC 0001's persistent editor is unaffected | no second implementation | high |
+| Storage | Flat strings, indexed per logical line: a source made by an edit (`Source.edit`) shares the index of every line the edit leaves whole with the source it was made from. No storage-provider interface. A later representation meets the same contracts (flattening a rope per event needs its own cost case). RFC 0001's persistent editor is unaffected (amended 2026-10-26) | no second implementation. The index, not the bytes, was the cost of an edit: indexing B4's 500 KB document took 2.9 ms, splicing it 47–55 µs. xi: a contiguous string, "if you know your document is always under a megabyte or so, it's probably the best choice". UAX #29 GB3–GB5 make a line with its terminator a text of its own | high |
 
 ### 2.2 Bytes, graphemes and cells
 
@@ -138,17 +143,18 @@ With N bytes, G graphemes, E style endpoints and R rows:
 
 | decision | rule | reference / reason | confidence |
 |---|---|---|---|
-| Complexity | Indexing O(N); a new width O(G + R) by ordered sweeps, never rows × spans; flat edits O(N); memory O(N + G + E + R), plus the bytes the undo history's edits replaced. Packed arrays change constants, not order | §6 | high |
+| Complexity | Indexing O(N); a new width O(G) to count every line's rows by ordered sweeps, and a line's rows O(its clusters) when they are first asked, never rows × spans. An edit copies the N bytes and O(L) line entries for the source and for each layout it keeps, and indexes and measures only the lines it touches; one that touches every line carries no layout. Memory per logical line: five words at one geometry (byte start, first cluster and index slot in the source; rows before it and rows slot in the layout), two more per further geometry; per asked line that holds more than printable ASCII, two words per cluster and three; per shown line that wraps or hangs blanks, two words per row; plus E and the bytes the undo history's edits replaced. Packed arrays change constants, not order (amended 2026-10-26) | §6. VS Code's line array failed at 40–60 B a line on 13.7 M lines; five words is the bottom of that range, so a tree of line chunks stays the successor for files of tens of millions of lines | high |
 | Paint | Intersect the node with the grid's scissor before asking for rows; per row, seek columns and style runs and stop at the right edge; skip indexed zero-width runs. Repeated paint scales with visible rows, visible clusters and their bytes, and style transitions, plus logarithmic seeks; never with height, hidden prefix or total overlays. Batches may be copied: no zero-allocation promise | §6 | high |
 | Highlights | Sorting is O(E log E); resolving A simultaneous overlays is O(E·A), stated where it is implemented (`text_buffer.ml`). Unchanged paint never repeats it | no algorithm here reaches O(E log E) total | high |
-| Caches | At most four widths share one source index (D7 adds a byte bound). Probes use the count-only builder unless the layout exists, and their results go first. Replacement and unmount release obsolete references. An optional cache without repeatable benefit, or over its budget, is removed; the coordinate correction stays | — | medium |
+| Caches | A source keeps the layouts of its last four geometries, within 32 MiB of built rows (D7), and an edit carries them, so measuring and painting an edited text share one layout. Every layout counts rows and builds them on demand; a text surface keeps its own four entries and probe sizes over them so that reading them again allocates nothing. Replacement and unmount release obsolete references. An optional cache without repeatable benefit, or over its budget, is removed; the coordinate correction stays (amended 2026-10-26) | — | medium |
 
 ### 2.7 Scope
 
 Out of scope, as separate features: alignment, a new CJK break policy (but see D1), copying
-unconcealed source, word or line click selection, positional tab stops, incremental editor storage,
+unconcealed source, word or line click selection, positional tab stops, a tree as editor storage,
 and the rest of RFC 0001's migration. In scope: Text, materialized Code, the editor buffer and edit
-surface, crop helpers, gutters, diff. No shipped consumer keeps another coordinate algorithm.
+surface, crop helpers, gutters, diff, and since 2026-10-26 incremental editing, as an index per line
+over the flat string (§2.1). No shipped consumer keeps another coordinate algorithm.
 
 ## 3. Decisions taken during implementation, and what stays open
 
@@ -182,7 +188,9 @@ surface, crop helpers, gutters, diff. No shipped consumer keeps another coordina
   ranges of the installed source, without copies; an interior boundary resolves downstream (the
   first-byte rule). Code installs highlights this way, so a theme change rebuilds no geometry.
 - **D7. A byte bound on cached rows** (`5690a3f8`): besides four widths, cached rows share 32 MiB,
-  and an oversized active layout is kept alone. Count-only probes have their own cache.
+  and an oversized active layout is kept alone. Count-only probes have their own cache. Amended
+  2026-10-26: the bound applies to the layouts a source keeps, counting the rows they have built,
+  two words a row; a text surface's cache still counts eight words a row, more than rows take.
 - **D8. No edit retains a selection**: insertion and deletion clear it, so the rule for retained
   endpoints has no case yet.
 - **D9. Diff kept two coordinate algorithms** until `f6f86367`: it placed spans by counting each
@@ -197,6 +205,20 @@ surface, crop helpers, gutters, diff. No shipped consumer keeps another coordina
   measurement and paint and keys its geometry by it, and the renderer re-measures on a change.
 - **D11. Layout's tests live with `matrix.text`** (`29cf1839`): `matrix/test/test_text_layout.ml`,
   beside `test_text.ml`. None of them involves Mosaic.
+- **D12. Incremental editing** (2026-10-26, campaign 15, P2). A line of printable ASCII and its
+  terminator is plain: its clusters are its bytes, so its slot holds nothing. Another line's index
+  is one int array (a key, the byte offsets, the cells for one width method and tab width, and the
+  zero-width skip when needed), made when the line is first asked about. A layout keeps a count of
+  lines per widest row, counted when an edit first carries it, so an edit finds the new widest row
+  from the touched lines. `Source.edit` splits again the touched lines, one line back when it ends
+  with a CR that an LF may now follow, and forward until a terminator nothing joins. Text_surface
+  kept its cache: reading the source's layout again would allocate `Layout.create`'s optional
+  arguments on every call. The audit derived the highlighter's edit from the two sources' shared
+  line records; plain lines have no record to share, so the edit is still the common prefix and
+  suffix, compared eight bytes at a time. Checked by `test_text_layout.ml`'s "edits match indexing
+  from scratch": random edits (CR, LF, CR LF, combining marks, ZWJ emoji, invalid UTF-8, line joins
+  and splits, undo) on sources laid out at up to four geometries answer every query as a source
+  made from scratch; 500 cases in `runtest`, and 20,000 cases of up to 64 edits once.
 - **G1. Closed: the gates are recorded** (`f8becdea`, `7e964e4c`). `text_layout.thumper` adds the
   reference workloads: a painted label, the middle of 100,000 tall lines and of a wrapped 100 KB
   line of 10,000 styled spans, 200 nested highlights, 10,000 highlights offscreen, five widths
@@ -237,7 +259,13 @@ surface, crop helpers, gutters, diff. No shipped consumer keeps another coordina
   price of overlap, boundary and provenance contracts nothing has today. The materialized buffer
   fixes every confirmed defect and keeps that limitation explicit.
 
-The accepted cost is eager rows: layout and reflow stay linear and retain O(rows) metadata.
+The accepted cost was eager rows: layout and reflow stayed linear and retained O(rows) metadata.
+Since 2026-10-26 a layout counts every line's rows eagerly, one word a line, and builds a line's
+rows when they are asked, so a new width stays linear and retains O(lines). The rope stays
+rejected: an edit's cost was the index, not the bytes (splicing B4's 500 KB takes 47–55 µs, indexing
+it took 2.9 ms), and a per-line index removes it while `Editor.text` keeps returning the text
+without copying. A tree of line chunks (CodeMirror's, the piece tree) is the successor for files of
+tens of millions of lines.
 
 ## 5. What it replaced
 
@@ -290,6 +318,18 @@ The recorded budgets, run by `dune runtest` (re-measured on 2026-10-23, same hos
   whole-text versions retained 208.0 MB; a weak array checks that no obsolete index survives;
 - `text_layout.thumper` holds each case's allocation within 5% of its recorded baseline;
 - the 32 MiB row cache (D7).
+
+Added 2026-10-26 (campaign 15, P2), in process, release, typing at the start of line 5,000 of B4's
+document (10,000 lines, 500 KB) in a textarea of 120×40, 30 keys, interleaved runs on one CPU,
+`Editor.insert` plus the frame: unwrapped 2.99–3.13 + 4.74–4.93 ms → 0.23–0.24 + 0.16 ms;
+word-wrapped 3.17–3.47 + 17.34–17.60 ms → 0.51–0.52 + 0.17 ms. The editor suite records the
+key's allocation (`insert/b4-line-5000`, `insert/b4-line-5000-word`). The budgets above are kept;
+they were measured on that day with every row asked for, as the checks now do: a million rows
+retain 15.3 MiB, and 1 MB of prose at four widths 1.2 MiB with a 5.2 MiB peak. `test_cost.ml` adds
+memory per logical line, at width 80 with forty rows shown: 32 B on lines of 2 bytes (106 before),
+40 B on B4's lines (938), 37 B on Greek and CJK lines (846), and 784 B there with every row shown;
+the check fails above six words a line, and with every row shown above nine words a line and two a
+cluster.
 
 Tests (`matrix/test/test_text.ml`, `matrix/test/test_text_layout.ml`, `mosaic/test/unit/`,
 `mosaic/test/expect/test_diff.ml`) pin the §1 regressions ("truncation keeps later source

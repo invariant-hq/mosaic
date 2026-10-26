@@ -9,6 +9,12 @@
   parses again from its edited tree and queries the new tree whole. Merging captures was weighed
   and refuted: with a real query it gives wrong colors. `conceal` became a property of the code
   view, and a textarea takes syntax settings beside its annotations.
+- Amended 2026-10-26 (campaign 15, P2): a request carries `range`, the bytes the view needs: the
+  whole content on a view's first request and for a highlighter that keeps nothing, then the lines
+  the view shows and a screen above and below them. A result holds every capture of the whole
+  highlight that meets the range, whole, so the range bounds which captures come back and never
+  what they depend on; a result replaces the captures of its range and the others stay carried.
+  Rows 3 and 4 of §8 hold within the range. `code.mli` states the rule.
 - Bindings: public at [invariant-hq/ocaml-tree-sitter](https://github.com/invariant-hq/ocaml-tree-sitter)
   @ `880ae2c`. Its mosaic example (`examples/mosaic`) does not compile against the API of `07d38086`
   and later. A patch that makes it the recipe of [doc/highlighting.md](../highlighting.md) again is
