@@ -450,6 +450,12 @@ type 'msg app = {
   mailbox : 'msg list Atomic.t;
   accepting : bool Atomic.t;
   posted : 'msg Queue.t;
+  (* Posts made and not yet returned as steps, in the mailbox or in
+     [posted]. Off the loop's thread a post waits on [room], with
+     [room_lock], while [most_pending] are pending. *)
+  pending : int Atomic.t;
+  room_lock : Mutex.t;
+  room : Condition.t;
   (* Whether a turn has begun since the run last had nothing to do, and
      whether each kind of work still owes the current turn the step every
      turn gives it. *)
@@ -708,15 +714,49 @@ let cancel t timer =
   | Some e -> heap_remove t.heap e
   | None -> ()
 
-let post t msg =
+(* Back-pressure on posts. A post off the loop's thread reserves its place
+   in [pending], and waits while [most_pending] are pending, so that a
+   producer faster than the loop holds a bounded backlog. The loop wakes
+   the posts waiting once it has taken [pending] down to [resume_pending],
+   half the bound, so that a producer refills it in one go rather than one
+   post per wake. A post reads [pending] and waits with [room_lock] held,
+   and the loop broadcasts with it held, so a post that read the bound
+   before the loop took it down is in [Condition.wait] when the broadcast
+   comes. Every post that waits read the bound, and [pending] passes
+   [resume_pending] on its way back down, unless the run ends first, which
+   broadcasts too. A post on the loop's thread never waits, since the loop
+   would wait for itself. Nor does a post to a run on a device: there the
+   test harness decides when the program steps, and it holds the program
+   still while the test runs and while [quiesce] waits for work that may be
+   posting, so a post that waited for steps could wait forever. *)
+let most_pending = 65_536
+let resume_pending = most_pending / 2
+
+let wait_for_room t =
+  Mutex.lock t.room_lock;
+  while Atomic.get t.accepting && Atomic.get t.pending >= most_pending do
+    Condition.wait t.room t.room_lock
+  done;
+  Mutex.unlock t.room_lock
+
+let wake_posts t =
+  Mutex.lock t.room_lock;
+  Condition.broadcast t.room;
+  Mutex.unlock t.room_lock
+
+let rec push t msg =
+  let posts = Atomic.get t.mailbox in
+  if not (Atomic.compare_and_set t.mailbox posts (msg :: posts)) then push t msg
+  else if posts = [] then t.backend.wake ()
+
+let rec post t msg =
   if Atomic.get t.accepting then
-    let rec push () =
-      let posts = Atomic.get t.mailbox in
-      if not (Atomic.compare_and_set t.mailbox posts (msg :: posts)) then
-        push ()
-      else if posts = [] then t.backend.wake ()
-    in
-    push ()
+    let n = Atomic.get t.pending in
+    if n >= most_pending && (not t.in_process) && thread_id () <> t.owner then (
+      wait_for_room t;
+      post t msg)
+    else if Atomic.compare_and_set t.pending n (n + 1) then push t msg
+    else post t msg
 
 (* The terminal cuts what it receives into cells by the width method the
    runtime sets, and the screen lays out its cells by the same, so a cell is
@@ -1948,6 +1988,12 @@ let take_posts t =
   | [] -> ()
   | posts -> List.iter (fun f -> Queue.push f t.posted) (List.rev posts)
 
+(* The next post taken, returned as a step. *)
+let take_post t =
+  let msg = Queue.pop t.posted in
+  if Atomic.fetch_and_add t.pending (-1) = resume_pending + 1 then wake_posts t;
+  Posted msg
+
 (* A turn begins at [now]. The input is looked at without waiting, unless
    [next]'s wait has just said whether it is readable; then the signals, the
    input and the posts received are taken. *)
@@ -2004,12 +2050,11 @@ let rec work t =
     take_timer t)
   else if t.owe_post && not (Queue.is_empty t.posted) then (
     t.owe_post <- false;
-    Posted (Queue.pop t.posted))
+    take_post t)
   else if (not (Queue.is_empty t.events)) && within_budget t then
     deliver t (Queue.pop t.events)
   else if has_due_timer t && within_budget t then take_timer t
-  else if (not (Queue.is_empty t.posted)) && within_budget t then
-    Posted (Queue.pop t.posted)
+  else if (not (Queue.is_empty t.posted)) && within_budget t then take_post t
   else if t.input_ended && Queue.is_empty t.events then Stopped
   else if frame_due t then begin_frame t
   else raise_notrace Idle
@@ -2162,6 +2207,9 @@ let make backend ?stop config =
     mailbox = Atomic.make [];
     accepting = Atomic.make true;
     posted = Queue.create ();
+    pending = Atomic.make 0;
+    room_lock = Mutex.create ();
+    room = Condition.create ();
     begun = false;
     latest = now;
     waited = false;
@@ -2336,6 +2384,7 @@ let run_on backend ?stop ?(config = config ()) f =
     config.device;
   let finish () =
     Atomic.set t.accepting false;
+    wake_posts t;
     Option.iter (fun s -> Stop.detach s t.serial) stop;
     unhold t;
     t.backend.cleanup ()

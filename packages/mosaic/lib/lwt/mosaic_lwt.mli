@@ -45,7 +45,9 @@ val run :
     terminal is given back. A stop request made before the program has begun
     ends it as it begins. Work that sends with [mailbox.send]
     ({!Mosaic.type-mailbox}) blocks Lwt's thread until the program has applied
-    the message. The optional arguments are {!Mosaic.val-run}'s.
+    the message, and work that dispatches while 65,536 posts to the program's
+    run are pending ({!Matrix.post}) blocks it until the program has taken half
+    of them. The optional arguments are {!Mosaic.val-run}'s.
 
     The promise is rejected with what {!Mosaic.val-run} raises. [run] itself
     raises [Failure] if no domain can be spawned for the program, and

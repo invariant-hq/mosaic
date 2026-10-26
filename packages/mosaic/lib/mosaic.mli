@@ -829,10 +829,10 @@ val map : ('a -> 'b) -> 'a t -> 'b t
 
 type 'msg mailbox = {
   dispatch : 'msg -> unit;
-      (** [dispatch msg] queues [msg] for the loop and returns. It never blocks.
-          The queue has no bound, so work that dispatches faster than the loop
-          applies its messages grows memory, and collecting it slows the loop.
-      *)
+      (** [dispatch msg] queues [msg] for the loop and returns. Off the loop's
+          thread it blocks while 65,536 posts to the run are pending
+          ({!Matrix.post}), so work that dispatches faster than the loop applies
+          its messages keeps pace with it. *)
   send : 'msg -> unit;
       (** [send msg] queues [msg] as [dispatch] does, and returns once the loop
           has taken it and [update] has applied it, or the run has ended, so
@@ -904,9 +904,9 @@ module Cmd : sig
   (** [perform f] runs [f dispatch] off the loop, by {!val-run}'s
       [process_perform] (by default a thread of a helper domain), so that long
       work never holds the loop. [f] gives the program messages with [dispatch],
-      which is a mailbox's [dispatch] ({!type-mailbox}) and never blocks.
-      [dispatch] stays valid after [f] returns, until the run ends, so [f] may
-      hand it to a thread or a callback the program did not start:
+      which is a mailbox's [dispatch] ({!type-mailbox}). [dispatch] stays valid
+      after [f] returns, until the run ends, so [f] may hand it to a thread or a
+      callback the program did not start:
       {[
       Cmd.perform (fun dispatch ->
           Watcher.on_change (fun path -> dispatch (Changed path)))
@@ -1385,9 +1385,10 @@ val deadline : 'msg running -> int option
 
 val dispatch : 'msg running -> 'msg -> unit
 (** [dispatch r msg] gives [msg] to [r]'s [update] in a later step, as the
-    [dispatch] of work done off the loop does ({!type-mailbox}). It never
-    blocks. Any thread, domain or fiber may call it; after the run ends it does
-    nothing. *)
+    [dispatch] of work done off the loop does ({!type-mailbox}). Any thread,
+    domain or fiber may call it. Off the thread that runs [r] it blocks while
+    65,536 posts to the run are pending ({!Matrix.post}). After the run ends it
+    does nothing. *)
 
 (** {1:dim_helpers Dimension helpers} *)
 

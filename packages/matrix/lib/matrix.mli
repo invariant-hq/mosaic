@@ -515,11 +515,19 @@ val screen : 'msg app -> Screen.t
 val post : 'msg app -> 'msg -> unit
 (** [post app msg] has the run return [Posted msg] in a later turn. It is the
     one function of this module that any thread, domain or fiber may call, and
-    it never blocks and never fails. Posts come in the order they were made,
-    those of one thread in program order. The queue has no bound, so a producer
-    that posts faster than the loop handles what it posts grows memory, and
-    collecting that memory slows the loop. After the run ends, [post] does
-    nothing. *)
+    it never fails. Posts come in the order they were made, those of one thread
+    in program order. After the run ends, [post] does nothing.
+
+    A post is {e pending} from when it is made until the run returns it. On the
+    loop's thread [post] never blocks, nor in a run on a terminal that
+    [Matrix_test] emulates in the process, whose steps the test decides. On
+    another thread, while 65,536 posts are pending, it blocks until the loop has
+    taken half of them or the run has ended, so a producer faster than the loop
+    keeps pace with it and the posts pending stay bounded. It blocks the whole
+    thread, with every fiber or promise that thread runs, and lets the other
+    threads of its domain run meanwhile. The loop's thread must not wait for a
+    thread that posts, as by joining it, while it takes no steps, since the two
+    could wait for each other forever. *)
 
 (** {1:lifecycle Taking and giving back the terminal}
 
@@ -939,7 +947,8 @@ val run_on :
    input is queued or the clock has moved, and says whether input is
    queued. As the run begins, [presented] is given a function that is the
    frame the run last presented ({!current_grid}), the terminal row its
-   first row is shown on, and the form its picture cells were written in. *)
+   first row is shown on, and the form its picture cells were written in.
+   A post to a run on a device never waits for its steps ({!post}). *)
 
 type device = {
   read_clock : unit -> int;

@@ -1022,6 +1022,92 @@ let test_post_after_the_run () =
   Matrix.post app (fun () -> fail "a post after the run ran");
   equal ~msg:"no wake" int wakes (Atomic.get f.wakes)
 
+(* Off the loop's thread, a post waits while 65,536 posts are pending: a
+   producer that floods a loop that takes nothing stops there, and while
+   the loop takes them, the posts made and not yet taken never pass the
+   bound. [spawn] runs the producer on a systhread or a domain, and returns
+   its join. *)
+let test_posts_wait_above_the_bound spawn () =
+  let bound = 65_536 and total = 200_000 in
+  let f = fake () in
+  f.on_wait <-
+    (fun f ~until:_ ->
+      while Atomic.get f.wakes = 0 do
+        Thread.yield ()
+      done;
+      Atomic.set f.wakes 0);
+  let made = Atomic.make 0 in
+  run ~config:(quiet ()) f (fun app ->
+      let join =
+        spawn (fun () ->
+            for i = 1 to total do
+              Matrix.post app i;
+              Atomic.incr made
+            done)
+      in
+      (* The loop takes nothing until the producer has stopped making
+         posts. *)
+      let rec settle last =
+        Unix.sleepf 0.05;
+        let n = Atomic.get made in
+        if n < total && n <> last then settle n
+      in
+      settle (-1);
+      equal ~msg:"posts made before the loop takes any" int bound
+        (Atomic.get made);
+      let received = ref 0 and most = ref 0 in
+      while !received < total do
+        match Matrix.next app with
+        | Posted i ->
+            incr received;
+            equal ~msg:"in order" int !received i;
+            most := max !most (Atomic.get made - !received)
+        | Frame -> Matrix.draw app ignore
+        | _ -> ()
+      done;
+      join ();
+      is_true
+        ~msg:(Printf.sprintf "%d posts pending at most" !most)
+        (!most <= bound))
+
+(* A post on the loop's own thread never waits, whatever is pending. *)
+let test_loop_posts_never_wait () =
+  let f = fake () in
+  let total = 100_000 in
+  run ~config:(quiet ()) f (fun app ->
+      for i = 1 to total do
+        Matrix.post app i
+      done;
+      let received = ref 0 in
+      while !received < total do
+        match Matrix.next app with
+        | Posted _ -> incr received
+        | Frame -> Matrix.draw app ignore
+        | _ -> ()
+      done)
+
+(* The run's end lets a waiting post return, and the posts after it do
+   nothing. *)
+let test_run_end_ends_the_wait () =
+  let f = fake () in
+  let made = Atomic.make 0 in
+  let producer =
+    run ~config:(quiet ()) f (fun app ->
+        let producer =
+          Domain.spawn (fun () ->
+              for i = 1 to 100_000 do
+                Matrix.post app i;
+                Atomic.incr made
+              done)
+        in
+        while Atomic.get made < 65_536 do
+          Unix.sleepf 0.01
+        done;
+        producer)
+  in
+  Domain.join producer;
+  equal ~msg:"every post returned" int 100_000 (Atomic.get made)
+
 (* A frame is drawn after [Frame]; outside, [draw] raises. A frame not
    drawn is dropped. *)
 let test_frame_calls_outside_a_frame () =
@@ -3324,6 +3410,17 @@ let () =
           test "post from other domains" test_post_from_other_domains;
           test "calls off the loop raise" test_calls_off_the_loop_raise;
           test "post after the run" test_post_after_the_run;
+          test "a post from a systhread waits above the bound"
+            (test_posts_wait_above_the_bound (fun f ->
+                 let t = Thread.create f () in
+                 fun () -> Thread.join t));
+          test "a post from a domain waits above the bound"
+            (test_posts_wait_above_the_bound (fun f ->
+                 let d = Domain.spawn f in
+                 fun () -> Domain.join d));
+          test "a post on the loop's thread never waits"
+            test_loop_posts_never_wait;
+          test "the run's end ends a post's wait" test_run_end_ends_the_wait;
           test "a step never waits" test_step_never_waits;
           test "a stop requested before the run" test_stop_before_the_run;
           test "an idle step leaves nothing due, a property"
