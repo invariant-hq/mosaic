@@ -68,9 +68,10 @@ type device = {
   mutable session : session option;
   mutable users : int;
   mutable live : state option;
+  mutable prompt : prompt option;
 }
 
-(* The signals of a terminal, while a region uses it: a holder,
+(* The signals of a terminal, while a region or a prompt uses it: a holder,
    with a descriptor of its own for the bytes an abort writes, and the
    thread that acts on the signals and draws the frames that wait. *)
 and session = {
@@ -98,6 +99,8 @@ and state = {
   mutable closed : bool;  (** Its scope has ended. *)
 }
 
+and prompt = { on_stop : unit -> unit; on_continue : unit -> unit }
+
 let devices : device list ref = ref []
 let devices_lock = Mutex.create ()
 
@@ -116,7 +119,14 @@ let device fd =
   | Some d -> d
   | None ->
       let d =
-        { key; lock = Mutex.create (); session = None; users = 0; live = None }
+        {
+          key;
+          lock = Mutex.create ();
+          session = None;
+          users = 0;
+          live = None;
+          prompt = None;
+        }
       in
       devices := d :: !devices;
       d
@@ -243,23 +253,25 @@ let terminate d s =
         write_until l.fd l.published (Tty.now () + teardown_wait)
     | _ -> ());
     Option.iter (fun s -> Signal.set_reset s.holder "") d.session;
-    (* The other holders' terminals. *)
+    (* The settings a prompt changed, and the other holders' terminals. *)
     Signal.restore_all ();
     Signal.raise_default s;
     exit 2)
   else forever ()
 
-(* After a stop, or a SIGCONT that ended someone else's stop: the region
-   draws itself from a row of its own; called with the device's lock
-   held. *)
+(* After a stop, or a SIGCONT that ended someone else's stop: a prompt sets
+   its settings again, and the region draws itself from a row of its own;
+   called with the device's lock held. *)
 let continued d =
+  Option.iter (fun p -> p.on_continue ()) d.prompt;
   match d.live with
   | Some l ->
       Region.moved l.region;
       if l.suspended = 0 then draw l ~above:""
   | None -> ()
 
-(* SIGTSTP: the region off the screen, then the stop. It is [true] when the lock was held, and [continued] has
+(* SIGTSTP: the region off the screen and a prompt's settings put back,
+   then the stop. It is [true] when the lock was held, and [continued] has
    then run. *)
 let stop d session =
   let locked = lock_until d.lock (Tty.now () + teardown_wait) in
@@ -267,6 +279,7 @@ let stop d session =
     ~finally:(fun () -> if locked then Mutex.unlock d.lock)
     (fun () ->
       if locked then Option.iter take_off d.live;
+      Option.iter (fun p -> p.on_stop ()) d.prompt;
       Signal.raise_default Sys.sigtstp;
       ignore (Signal.take Sys.sigtstp : bool);
       (* The SIGCONT that ended the stop is this one's. *)
@@ -614,3 +627,118 @@ let off_screen d f =
 
 let suspend v f =
   match v.state with None -> f () | Some l -> off_screen l.device f
+
+(* Prompts *)
+
+module Prompt = struct
+  type error = [ `Not_interactive | `End_of_input ]
+
+  (* Setting a terminal's settings from the background would stop the
+     process with SIGTTOU. *)
+  let restore fd saved =
+    let mask = Thread.sigmask SIG_BLOCK [ Sys.sigttou ] in
+    Fun.protect
+      ~finally:(fun () -> ignore (Thread.sigmask SIG_SETMASK mask))
+      (fun () -> try Tty.restore fd saved with Unix.Unix_error _ -> ())
+
+  (* The controlling terminal, for what only its user answers. *)
+  let with_terminal f =
+    match Unix.openfile "/dev/tty" [ O_RDWR; O_CLOEXEC ] 0 with
+    | exception Unix.Unix_error _ -> Error `Not_interactive
+    | fd -> Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
+
+  (* Runs [f] with the terminal [fd] in settings that [set] gives, put back
+     on every way out, before the process stops and when it ends on a
+     signal; [again] runs when it continues. *)
+  let in_settings fd ~set ~again f =
+    let d = device fd in
+    Mutex.protect d.lock (fun () -> enter d fd);
+    Fun.protect ~finally:(fun () -> leave d) @@ fun () ->
+    let holder = Option.map (fun s -> s.holder) d.session in
+    Option.iter (fun h -> Signal.keep_settings h ~input:fd) holder;
+    let saved = set fd in
+    Mutex.protect d.lock (fun () ->
+        d.prompt <-
+          Some
+            {
+              on_stop = (fun () -> restore fd saved);
+              on_continue =
+                (fun () ->
+                  ignore (set fd : Tty.settings);
+                  again ());
+            });
+    Fun.protect
+      ~finally:(fun () ->
+        Mutex.protect d.lock (fun () -> d.prompt <- None);
+        restore fd saved;
+        Option.iter Signal.forget_settings holder)
+      f
+
+  let rec read_line fd buf b =
+    match Unix.read fd b 0 (Bytes.length b) with
+    | 0 -> Error `End_of_input
+    | n -> (
+        Buffer.add_subbytes buf b 0 n;
+        let s = Buffer.contents buf in
+        match String.index_opt s '\n' with
+        | Some i -> Ok (String.sub s 0 i)
+        | None -> read_line fd buf b)
+    | exception Unix.Unix_error (Unix.EINTR, _, _) -> read_line fd buf b
+
+  let line question =
+    if not (Tty.is_tty Unix.stdin) then Error `Not_interactive
+    else
+      off_screen (device Unix.stdin) @@ fun () ->
+      print (stderr ()) question;
+      match In_channel.input_line Stdlib.stdin with
+      | Some l -> Ok l
+      | None -> Error `End_of_input
+
+  let secret question =
+    with_terminal @@ fun fd ->
+    let ask () = write_all fd question 0 (String.length question) in
+    off_screen (device fd) @@ fun () ->
+    (* The echo goes off, and what was typed before is discarded, before the
+       question shows, so that nothing typed once it shows is echoed or
+       discarded. *)
+    let answer =
+      in_settings fd ~set:Tty.no_echo
+        ~again:(fun () ->
+          write_all fd "\r\n" 0 2;
+          ask ())
+        (fun () ->
+          ask ();
+          read_line fd (Buffer.create 64) (Bytes.create 256))
+    in
+    write_all fd "\r\n" 0 2;
+    answer
+
+  let keys f =
+    with_terminal @@ fun fd ->
+    in_settings fd ~set:Tty.keys ~again:ignore @@ fun () ->
+    let module D = Matrix_input.Decoder in
+    let d = D.create () and queue = Queue.create () in
+    let buf = Bytes.create 256 in
+    let push = function D.Key k -> Queue.push k queue | _ -> () in
+    let rec next () =
+      match Queue.take_opt queue with
+      | Some k -> Seq.Cons (k, next)
+      | None -> (
+          let timeout = if D.pending d = D.Nothing then -1. else 0.05 in
+          match Unix.select [ fd ] [] [] timeout with
+          | exception Unix.Unix_error (Unix.EINTR, _, _) -> next ()
+          | [], _, _ ->
+              D.idle d push;
+              next ()
+          | _ -> (
+              match Unix.read fd buf 0 (Bytes.length buf) with
+              | 0 ->
+                  D.finish d push;
+                  if Queue.is_empty queue then Seq.Nil else next ()
+              | n ->
+                  D.feed d buf ~off:0 ~len:n push;
+                  next ()
+              | exception Unix.Unix_error (Unix.EINTR, _, _) -> next ()))
+    in
+    Ok (f next)
+end

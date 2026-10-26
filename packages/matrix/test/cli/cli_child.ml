@@ -83,6 +83,64 @@ let () =
       C.notify err ~title:"Done" ~body:"built";
       C.bell err;
       print_string "NOTIFIED\n"
+  | "line" -> (
+      match C.Prompt.line "Name? " with
+      | Ok name -> Printf.printf "HELLO %s\n" name
+      | Error `End_of_input -> print_string "EOF\n"
+      | Error `Not_interactive -> print_string "NOT INTERACTIVE\n")
+  | "secret" -> (
+      C.live err @@ fun live ->
+      C.show live (text_frame "BUSY");
+      match C.Prompt.secret "Password: " with
+      | Ok p -> C.print err (Printf.sprintf "GOT %s\n" p)
+      | Error `End_of_input -> C.print err "EOF\n"
+      | Error `Not_interactive -> C.print err "NOT INTERACTIVE\n")
+  | "secret-int" -> (
+      (* The secret is asked by a child, which Ctrl+C ends; this process
+         then reads the terminal's settings. *)
+      ignore (Sys.signal Sys.sigint Sys.Signal_ignore : Sys.signal_behavior);
+      match Unix.fork () with
+      | 0 ->
+          ignore
+            (Sys.signal Sys.sigint Sys.Signal_default : Sys.signal_behavior);
+          ignore
+            (C.Prompt.secret "Password: " : (string, C.Prompt.error) result);
+          exit 0
+      | pid ->
+          let status =
+            match Unix.waitpid [] pid with
+            | _, WSIGNALED s when s = Sys.sigint -> "SIGINT"
+            | _ -> "OTHER"
+          in
+          let echo = (Unix.tcgetattr Unix.stdin).c_echo in
+          Printf.printf "\r\nENDED %s ECHO %b\n" status echo)
+  | "keys" -> (
+      let result =
+        C.Prompt.keys (fun keys ->
+            print_string "READY\n";
+            flush stdout;
+            let b = Buffer.create 16 in
+            let rec loop keys =
+              match keys () with
+              | Seq.Nil -> ()
+              | Seq.Cons ({ Matrix_input.Keystroke.key = Char c; _ }, _)
+                when Uchar.to_int c = Char.code 'q' ->
+                  ()
+              | Seq.Cons (k, rest) ->
+                  (match k.Matrix_input.Keystroke.key with
+                  | Char c -> Buffer.add_utf_8_uchar b c
+                  | Enter -> Buffer.add_string b "<enter>"
+                  | Escape -> Buffer.add_string b "<esc>"
+                  | Up -> Buffer.add_string b "<up>"
+                  | _ -> Buffer.add_string b "<key>");
+                  loop rest
+            in
+            loop keys;
+            Buffer.contents b)
+      in
+      match result with
+      | Ok s -> Printf.printf "KEYS %s\n" s
+      | Error _ -> print_string "NO KEYS\n")
   | "tstp" ->
       C.live err (fun live ->
           C.show live (text_frame "LIVE");

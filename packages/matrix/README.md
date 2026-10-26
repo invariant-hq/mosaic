@@ -123,7 +123,7 @@ Matrix is organized into focused libraries that can be used together or independ
 | `matrix.pty`      | `Pty`             | POSIX pseudo-terminal spawning                     |
 | `matrix.vte`      | `Vte`             | Virtual terminal emulator for embedding output     |
 | `matrix.cli`      | `Matrix_cli`      | Command-line output: styling, tables and trees     |
-| `matrix.cli.unix` | `Matrix_cli_unix` | The standard outputs and a live region below them  |
+| `matrix.cli.unix` | `Matrix_cli_unix` | Standard outputs, a live region below, prompts     |
 | `matrix.test`     | `Matrix_test`     | Programs run on an emulated terminal in tests      |
 
 `Matrix` gives the modules of the libraries it uses short names, such as

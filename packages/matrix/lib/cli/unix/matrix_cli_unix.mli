@@ -1,5 +1,5 @@
-(** Command-line output on Unix: the standard outputs, and a region of rows
-    redrawn below them.
+(** Command-line output on Unix: the standard outputs, a region of rows redrawn
+    below them, and questions asked at the terminal.
 
     An {e output} ({!t}) is a descriptor together with what {!Matrix_cli.Policy}
     decides for it, its styling and whether a region of rows may be redrawn on
@@ -41,13 +41,14 @@
     first column can be lost when the window's width changes, whatever library
     prints it.
 
-    A region takes the signals of its terminal, as {!Tty.Signal} shares them,
-    and gives them back when it ends. SIGINT, SIGTERM, SIGHUP and SIGQUIT, at
-    their default action, end the process once the terminal is put back. The
-    region's write that a signal cut is ended, and the cursor is shown and moved
-    below the region's rows. A process that ends with [exit] while a region
-    lives does the same. A terminal that stops taking output, as under Ctrl+S,
-    holds this back for at most a second.
+    A region and a prompt take the signals of their terminal, as {!Tty.Signal}
+    shares them, and give them back when they end. SIGINT, SIGTERM, SIGHUP and
+    SIGQUIT, at their default action, end the process once the terminal is put
+    back. The region's write that a signal cut is ended, the cursor is shown and
+    moved below the region's rows, and a prompt's settings are restored. A
+    process that ends with [exit] while a region lives does the same. A terminal
+    that stops taking output, as under Ctrl+S, holds this back for at most a
+    second.
 
     This prints the files a program compiles above a line that counts them, on
     standard error:
@@ -159,3 +160,49 @@ val suspend : live -> (unit -> 'a) -> 'a
 (** [suspend l f] erases [l]'s rows and runs [f], for something else that writes
     to the terminal, such as a child process, then draws [l] again from a row of
     its own, below a line [f] left without its end. *)
+
+(** {1:prompts Prompts} *)
+
+(** Questions asked at the terminal.
+
+    A prompt asks only a user at a terminal. A question about the program's
+    input reads standard input in the terminal's canonical mode, where the user
+    edits a line before Enter sends it. A question only the user can answer,
+    such as a password, is asked on the {e controlling terminal} ([/dev/tty]),
+    as getpass(3) asks it, however the program's input is redirected. While a
+    line or a secret is asked, a live region on its terminal is off the screen.
+    While keys are read it stays, so a program can draw a menu in it.
+
+    A prompt leaves the interrupt, quit and suspend characters to the terminal,
+    so Ctrl+C ends the job, the quit character quits it and Ctrl+Z stops it as
+    at the shell's prompt. A prompt that changed the terminal's settings puts
+    them back before the job stops and turns them on again when it continues,
+    asking its question again on a new line. *)
+module Prompt : sig
+  type error =
+    [ `Not_interactive  (** No terminal to ask on. *)
+    | `End_of_input  (** The input ended before a line did. *) ]
+  (** The type for the reasons a prompt has no answer. *)
+
+  val line : string -> (string, error) result
+  (** [line question] writes [question] to standard error and is the line read
+      from standard input, without its end. It is [Error `Not_interactive],
+      writing nothing, when standard input is not a terminal. *)
+
+  val secret : string -> (string, error) result
+  (** [secret question] writes [question] to the controlling terminal and is the
+      line read there with the echo off ({!Tty.no_echo}), without its end. What
+      was typed before the question is discarded, the terminal's settings are
+      put back on every way out, and the line end the echo did not show is
+      written after the answer. It is [Error `Not_interactive] when the process
+      has no controlling terminal. *)
+
+  val keys : (Matrix_input.Keystroke.t Seq.t -> 'a) -> ('a, error) result
+  (** [keys f] is [Ok (f ks)] where [ks] is the keys typed at the controlling
+      terminal, read as they are typed ({!Tty.keys}) while [f] runs, after which
+      the settings are put back on every way out. [ks] blocks for each key it
+      gives, ends when the terminal's input ends, and must be read once, inside
+      [f]. An Escape is told from the start of a key's sequence by 50
+      milliseconds of silence. It is [Error `Not_interactive] when the process
+      has no controlling terminal. *)
+end

@@ -144,6 +144,38 @@ let test_notify () =
         String.ends_with ~suffix:"built" body
     | _ -> false)
 
+let test_line () =
+  spawn "line" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "Name?");
+  T.Child.send c "Ada\r";
+  exited 0 (T.Child.exit c ~within:10.);
+  is_true ~msg:"the answer" (has_line "HELLO Ada" term)
+
+let test_secret () =
+  spawn "secret" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "Password:");
+  is_false ~msg:"the region is off the screen" (shows "BUSY" term);
+  T.Child.send c "hunter2\r";
+  exited 0 (T.Child.exit c ~within:10.);
+  is_true ~msg:"the answer" (has_line "GOT hunter2" term);
+  is_true ~msg:"never echoed" (List.mem "Password:" (lines term));
+  is_true ~msg:"the region came back and stays" (has_line "BUSY" term)
+
+let test_secret_interrupted () =
+  spawn "secret-int" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "Password:");
+  T.Child.send c "hun\003";
+  exited 0 (T.Child.exit c ~within:10.);
+  is_true ~msg:"Ctrl+C ended the prompt, and the echo is back"
+    (has_line "ENDED SIGINT ECHO true" term)
+
+let test_keys () =
+  spawn "keys" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "READY");
+  T.Child.send c "ab\r\027[Aq";
+  exited 0 (T.Child.exit c ~within:10.);
+  is_true ~msg:"each key, as typed" (has_line "KEYS ab<enter><up>" term)
+
 (* Ctrl+Z under a job-control shell stops the job with the region off the
    screen; continued, it draws the region again. *)
 let test_stop () =
@@ -178,6 +210,34 @@ let test_background () =
   is_false ~msg:"no frame from the background" (shows "LIVE" term);
   T.Child.wait c ~within:10. (shows "JOB-EXIT 0");
   is_true ~msg:"the last frame once" (shows "LIVE END" term)
+
+(* Ctrl+Z in a secret puts the echo back while the job is stopped, and asks
+   again once it continues. *)
+let test_secret_stop () =
+  let term = T.Terminal.create ~cols:40 ~rows:10 () in
+  T.Child.with_spawn term
+    ~env:[ ("CLI_CHILD", "secret") ]
+    ~prog:job ~args:[ child ]
+  @@ fun c ->
+  T.Child.wait c ~within:10. (shows "Password:");
+  T.Child.send c "\026";
+  T.Child.wait c ~within:10. (shows "JOB-STOPPED TSTP");
+  T.Child.send c "xyz f\r";
+  (* Asked again: a question below the stop's line. Where the shell's echo
+     lands on the rows above depends on how the two writers interleave. *)
+  T.Child.wait c ~within:10. (fun t ->
+      let screen = T.Terminal.screen t in
+      match T.Screen.find screen "JOB-STOPPED" with
+      | (stopped, _) :: _ ->
+          List.exists
+            (fun (row, _) -> row > stopped)
+            (T.Screen.find screen "Password:")
+      | [] -> false);
+  is_true ~msg:"the shell's line was echoed" (shows "xyz f" term);
+  T.Child.send c "pw\r";
+  T.Child.wait c ~within:10. (shows "JOB-EXIT 0");
+  is_true ~msg:"the answer" (shows "GOT pw" term);
+  is_false ~msg:"never echoed" (shows "Password: pw" term)
 
 (* A terminal that stops taking output (Ctrl+S) does not keep Ctrl+C from
    ending the process. *)
@@ -230,5 +290,13 @@ let () =
           test "colors and NO_COLOR" test_color;
           test "Format's formatters" test_fmt;
           test "a notification" test_notify;
+        ];
+      group "prompts"
+        [
+          test "a line" test_line;
+          test "a secret" test_secret;
+          test "Ctrl+C in a secret" test_secret_interrupted;
+          test "Ctrl+Z in a secret" test_secret_stop;
+          test "keys" test_keys;
         ];
     ]
