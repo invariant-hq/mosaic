@@ -1125,6 +1125,36 @@ let determine_container_main_size (type t)
                               | None, None -> with_flex_basis
                             in
                             Float.max clamped main_content_box_inset
+                      | _, Some pref, _ ->
+                          (* A definite preferred main size is the item's
+                             content contribution (an inherent-size measure
+                             would return it), floored by its main-axis
+                             padding and border, so the item is not measured;
+                             min and max clamp it as they clamp a measured
+                             contribution. *)
+                          let item_padding_border =
+                            if constants.is_row then
+                              flex_item.padding.left +. flex_item.padding.right
+                              +. flex_item.border.left +. flex_item.border.right
+                            else
+                              flex_item.padding.top +. flex_item.padding.bottom
+                              +. flex_item.border.top +. flex_item.border.bottom
+                          in
+                          let content_main_size =
+                            Float.max pref item_padding_border +. margin_sum
+                          in
+                          let clamp size =
+                            match (style_min, style_max) with
+                            | Some min, Some max ->
+                                Float.max min (Float.min size max)
+                            | Some min, None -> Float.max min size
+                            | None, Some max -> Float.min size max
+                            | None, None -> size
+                          in
+                          if constants.is_row then clamp content_main_size
+                          else
+                            clamp
+                              (Float.max content_main_size flex_item.flex_basis)
                       | _ ->
                           (* Need to compute content size *)
                           let cross_axis_parent_size =
@@ -1233,7 +1263,7 @@ let determine_container_main_size (type t)
                           let layout_output =
                             Tree.compute_child_layout tree flex_item.node
                               (Layout_input.make ~run_mode:Run_mode.Compute_size
-                                 ~sizing_mode:Sizing_mode.Inherent_size
+                                 ~sizing_mode:Sizing_mode.Content_size
                                  ~axis:
                                    (if constants.is_row then
                                       Requested_axis.Horizontal
@@ -1249,8 +1279,29 @@ let determine_container_main_size (type t)
                             let measured_size =
                               Layout_output.size layout_output
                             in
-                            (if constants.is_row then measured_size.width
-                             else measured_size.height)
+                            let measured_main_size =
+                              if constants.is_row then measured_size.width
+                              else measured_size.height
+                            in
+                            (* A known cross size, transferred through the
+                               item's aspect ratio, floors the measured
+                               content size. *)
+                            let known_cross =
+                              if constants.is_row then
+                                child_known_dimensions.height
+                              else child_known_dimensions.width
+                            in
+                            let aspect_ratio =
+                              Style.aspect_ratio
+                                (Tree.get_core_container_style tree
+                                   flex_item.node)
+                            in
+                            (match (aspect_ratio, known_cross) with
+                              | Some ratio, Some cross ->
+                                  Float.max measured_main_size
+                                    (if constants.is_row then cross *. ratio
+                                     else cross /. ratio)
+                              | _ -> measured_main_size)
                             +. margin_sum
                           in
 
