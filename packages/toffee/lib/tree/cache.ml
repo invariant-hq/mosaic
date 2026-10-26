@@ -4,7 +4,16 @@
 
 module Geometry = Toffee_geometry
 
-let cache_size = 9
+(* Taffy keeps 9, fewer than a flex column asks each of its children in one
+   layout under a root that sizes it by its content: three questions (the
+   max-content and min-content heights, then the size at a known height) at
+   the max-content width, at the min-content width, and at each definite width
+   the column is tried at, those once with the parent's width and once
+   without. A scroll box's content in a column is tried at three definite
+   widths, 24 questions. They come in the same order in every layout, and
+   second chance over fewer entries than questions evicts each one before it
+   is asked again, so no child hits. *)
+let cache_size = 24
 
 (* A key and, for a measurement, the size measured. Every field is a float, so
    an entry is a single flat block, which a store overwrites in place.

@@ -4,7 +4,7 @@
     constraints. A node's cache keeps the result of its final layout
     ([Perform_layout]) and of up to {!cache_size} measurements ([Compute_size]),
     so that asking again with the same inputs costs nothing. This is Taffy's
-    cache.
+    cache, with more measurements.
 
     {1 Keys}
 
@@ -31,7 +31,7 @@
     the size. Hidden layouts ([Perform_hidden_layout]) are never cached. *)
 
 val cache_size : int
-(** [cache_size] is the number of measurements a cache keeps (9). *)
+(** [cache_size] is the number of measurements a cache keeps (24). *)
 
 type t
 (** A node's layout cache. *)
