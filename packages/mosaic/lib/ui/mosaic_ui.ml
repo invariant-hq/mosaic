@@ -33,3 +33,5 @@ module Scroll = Scroll
 module Shortcut = Shortcut
 module Items = Items
 module Cursor = Cursor
+module Column = Column
+module Glyphs = Glyphs

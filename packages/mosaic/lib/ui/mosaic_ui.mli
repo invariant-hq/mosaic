@@ -15,9 +15,11 @@
       {!Progress_bar}, {!Textarea}, {!Scroll_bar}, {!Scroll_box}, {!Table},
       {!Tree}, {!Code}, {!Line_number}, and {!Diff}.
     - {b Values.} {!Editor}, {!Scroll}, {!Items} and {!Cursor}, which an
-      application keeps in its model and widgets read.
+      application keeps in its model and widgets read, and {!Column}, the
+      columns of a collection's rows.
     - {b Theming.} {!Syntax_style} for tree-sitter/TextMate-style syntax
-      colouring and {!Syntax_highlight} for source highlight ranges. *)
+      colouring, {!Syntax_highlight} for source highlight ranges, and {!Glyphs}
+      for the characters widgets draw to show state. *)
 
 (** {1:events Events and input} *)
 
@@ -126,3 +128,9 @@ module Items = Items
 
 module Cursor = Cursor
 (** A collection's cursor item, scroll and range anchor, and its keys. *)
+
+module Column = Column
+(** Columns of a collection's rows: the cell of each item and its width. *)
+
+module Glyphs = Glyphs
+(** The characters widgets draw to show state, in Unicode and ASCII sets. *)

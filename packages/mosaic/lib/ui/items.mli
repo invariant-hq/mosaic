@@ -59,6 +59,9 @@ val to_array : 'a t -> 'a array
 val to_list : 'a t -> 'a list
 (** [to_list s] is the items of [s]. *)
 
+val iter : ('a -> unit) -> 'a t -> unit
+(** [iter f s] applies [f] to the items of [s] in order. *)
+
 (**/**)
 
 (* For the widgets that hold lists of their own items: select, tab_select and

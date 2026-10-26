@@ -82,3 +82,11 @@ let equal eq s s' =
       &&
       let rec from i = i = n || (eq (get s i) (get s' i) && from (i + 1)) in
       from 0
+
+let iter g = function
+  | List (l, f) -> List.iter (fun x -> g (f x)) l
+  | Array (a, f) -> Array.iter (fun x -> g (f x)) a
+  | Make (n, f) ->
+      for i = 0 to n - 1 do
+        g (f i)
+      done

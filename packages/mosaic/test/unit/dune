@@ -37,7 +37,8 @@
   test_navigation_keys
   test_cost
   test_items
-  test_cursor)
+  test_cursor
+  test_column)
  (package mosaic)
  (libraries
   windtrap
