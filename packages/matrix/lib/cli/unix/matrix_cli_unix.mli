@@ -9,10 +9,12 @@
     a program prints through an output is adapted to its styling
     ({!Matrix_cli.section-adapting}) and written at once, one write for each
     call to {!print} and each flush of its {!formatter}, so a pipe gets each
-    record whole and as soon as it is printed. Outputs whose descriptors reach
-    one terminal, or one file, share a lock, so their writes never interleave,
-    and what the program printed through [Stdlib.stdout] and [Stdlib.stderr] is
-    flushed before each write, so the two keep their order under [2>&1].
+    record whole and as soon as it is printed. A grid, such as a table that
+    {!Matrix_cli.Table.grid} lays out, is printed with {!print_grid}. Outputs
+    whose descriptors reach one terminal, or one file, share a lock, so their
+    writes never interleave, and what the program printed through
+    [Stdlib.stdout] and [Stdlib.stderr] is flushed before each write, so the two
+    keep their order under [2>&1].
 
     A {e live} region ({!live}) is a few rows that a program redraws below its
     output while it works, such as a progress bar. It is a
@@ -73,6 +75,18 @@
           Matrix_cli_unix.print err (file ^ "\n"))
         files;
       Matrix_cli_unix.show live (progress n)
+    ]}
+    This prints a table as wide as standard output allows, with styles as the
+    output decides:
+    {[
+    let print_table cols rows =
+      let out = Matrix_cli_unix.stdout () in
+      let room = Option.value (Matrix_cli_unix.width out) ~default:80 in
+      let frame =
+        { Matrix_cli.Table.edge = Some `Light; line = Some `Light; pad = 1 }
+      in
+      Matrix_cli_unix.print_grid out
+        (Matrix_cli.Table.grid frame ~room cols rows)
     ]} *)
 
 (** {1:outputs Outputs} *)
@@ -103,6 +117,11 @@ val width : t -> int option
 
 val print : t -> string -> unit
 (** [print o s] writes [s] to [o], adapted to its styling, in one write. *)
+
+val print_grid : t -> Matrix_grid.t -> unit
+(** [print_grid o g] writes the rows of [g] to [o] in one write, at [o]'s
+    styling ({!Matrix_grid.to_ansi}), each row ending at its last cell that
+    shows something and with a line end. *)
 
 val formatter : t -> Format.formatter
 (** [formatter o] is a formatter that writes to [o] as {!print} does, one write

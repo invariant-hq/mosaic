@@ -17,8 +17,8 @@
     Fmt's, obey the decision. {!Table} and {!Tree} lay out tables and trees.
     Each is a function of plain values that draws into a grid of cells
     ({!Matrix_grid}), so a program prints the result with {!Matrix_grid.to_ansi}
-    at its destination's styling, and a full-screen program can draw the same
-    layout into its own frame.
+    at its destination's styling, or with [Matrix_cli_unix.print_grid], and a
+    full-screen program can draw the same layout into its own frame.
 
     This prints a word in bold red on standard output, as the environment
     decides for a terminal, where [caps] are the terminal's capabilities

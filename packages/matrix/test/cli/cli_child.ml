@@ -79,6 +79,20 @@ let () =
               C.show inner (text_frame "INNER done"));
           Unix.sleepf 0.3;
           C.show outer (text_frame "OUTER done"))
+  | "table" ->
+      let out = C.stdout () in
+      let open Matrix_cli.Table in
+      let frame = { edge = None; line = Some `Light; pad = 1 } in
+      C.print_grid out
+        (grid frame ~room:40
+           [|
+             { align = `Left; overflow = `Wrap };
+             { align = `Right; overflow = `Wrap };
+           |]
+           [
+             Cells [| cell "file"; cell "size" |];
+             Cells [| cell "a.ml"; cell "12" |];
+           ])
   | "color" ->
       let out = C.stdout () in
       C.print out "\027[1;38;2;255;0;0mBOLDRED\027[0m\n"

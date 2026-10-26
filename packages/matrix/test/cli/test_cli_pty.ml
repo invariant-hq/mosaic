@@ -269,6 +269,22 @@ let test_flow_control () =
   is_true ~msg:"ended within 2 s" (Unix.gettimeofday () -. t0 < 2.);
   ignore term
 
+(* A grid printed on an output: its rows at the output's styling, each
+   ended where it shows nothing more. *)
+let test_print_grid () =
+  let r, w = Unix.pipe ~cloexec:true () in
+  let pid =
+    Unix.create_process_env child [| child; "table" |]
+      [| "TERM=xterm-256color" |]
+      Unix.stdin w w
+  in
+  Unix.close w;
+  let out = In_channel.input_all (Unix.in_channel_of_descr r) in
+  Unix.close r;
+  ignore (Unix.waitpid [] pid : int * Unix.process_status);
+  equal ~msg:"plain rows, no trailing blanks" Testable.string
+    "file \226\148\130 size\na.ml \226\148\130   12\n" out
+
 (* Piped, the output gets no escape, its lines as they are printed and the
    last frame once. *)
 let test_pipe () =
@@ -306,6 +322,7 @@ let () =
       group "outputs"
         [
           test "colors and NO_COLOR" test_color;
+          test "a grid" test_print_grid;
           test "Format's formatters" test_fmt;
           test "a notification" test_notify;
         ];

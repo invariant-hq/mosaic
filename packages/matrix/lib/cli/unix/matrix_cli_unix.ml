@@ -669,6 +669,9 @@ let show v frame =
             l.pending <- true;
             Option.iter (fun s -> Signal.wake s.holder) l.device.session))
 
+let print_grid t g =
+  Mutex.protect t.out_device.lock (fun () -> emit t (lines t (Some g)))
+
 (* Runs [f] with the region of [d], if one lives, off the screen. *)
 let off_screen d f =
   match Mutex.protect d.lock (fun () -> d.live) with
