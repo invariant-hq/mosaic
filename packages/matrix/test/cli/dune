@@ -1,6 +1,7 @@
 (test
  (name test_cli)
  (package matrix)
+ (modules test_cli)
  (libraries
   windtrap
   matrix.cli
@@ -8,3 +9,19 @@
   matrix.text
   matrix.ansi
   matrix.terminal))
+
+(executable
+ (name cli_child)
+ (modules cli_child)
+ (libraries matrix.cli.unix matrix.grid matrix.input unix))
+
+; A pseudo-terminal, process groups and the controlling terminal are POSIX.
+
+(test
+ (name test_cli_pty)
+ (package matrix)
+ (build_if
+  (= %{os_type} Unix))
+ (modules test_cli_pty)
+ (deps cli_child.exe ../runtime_job.exe)
+ (libraries windtrap matrix matrix.test unix))

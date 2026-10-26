@@ -1,0 +1,14 @@
+(library
+ (name matrix_cli_unix)
+ (public_name matrix.cli.unix)
+ (libraries
+  matrix.cli
+  matrix.ansi
+  matrix.grid
+  matrix.input
+  matrix.text
+  matrix.screen
+  matrix.terminal
+  matrix.tty
+  unix
+  threads.posix))
