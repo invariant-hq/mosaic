@@ -41,17 +41,21 @@ let rows_of r ~width ~height = function
   | Some g ->
       let h = Matrix_grid.height g in
       let shown = min h height in
-      let g =
-        if Matrix_grid.width g <= width && shown = h then g
+      let text =
+        if Matrix_grid.width g <= width && shown = h then
+          Matrix_grid.to_ansi ~styling:r.styling ~trim:true g
         else
           let w = min width (Matrix_grid.width g) in
           let dst = Matrix_grid.create_like g ~width:w ~height:shown in
           Matrix_grid.blit_region ~src:g ~dst ~src_x:0 ~src_y:(h - shown)
             ~width:w ~height:shown ~dst_x:0 ~dst_y:0;
-          dst
+          let text = Matrix_grid.to_ansi ~styling:r.styling ~trim:true dst in
+          (* The copy is dropped here: give back its graphemes now rather
+             than when the GC finalises it. *)
+          Matrix_grid.clear dst;
+          text
       in
-      String.split_on_char '\n'
-        (Matrix_grid.to_ansi ~styling:r.styling ~trim:true g)
+      String.split_on_char '\n' text
 
 let bsu = "\027[?2026h"
 let esu = "\027[?2026l"

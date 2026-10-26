@@ -423,6 +423,24 @@ let overwritten_hyperlinks_are_collected () =
   equal ~msg:"copy remains usable after collection" string ""
     (Grid.get_link copy 0)
 
+(* A resize recounts the cells' graphemes in the grid's own tracker, so the
+   store's counts stay exact with no GC, and no tracker is left for the GC to
+   finalise. *)
+let resized_grid_keeps_exact_grapheme_counts () =
+  let grid = Grid.create ~width:8 ~height:2 () in
+  Grid.draw_text grid ~x:0 ~y:0 ~text:"🇫🇷👩‍🚀";
+  Grid.draw_text grid ~x:0 ~y:1 ~text:"🇫🇷";
+  for i = 1 to 8 do
+    Grid.resize grid ~width:(8 + (i mod 2)) ~height:(2 + (i mod 2));
+    equal ~msg:"both graphemes still counted" int 2
+      (fst (Grid.grapheme_stats grid))
+  done;
+  Grid.resize grid ~width:3 ~height:1;
+  equal ~msg:"the cut grapheme is given back" int 1
+    (fst (Grid.grapheme_stats grid));
+  Grid.clear grid;
+  equal ~msg:"clear gives back the rest" int 0 (fst (Grid.grapheme_stats grid))
+
 let[@inline never] abandon_shared_graphemes owner =
   let grid = Grid.create_like owner ~width:4 ~height:1 in
   Grid.draw_text grid ~x:0 ~y:0 ~text:"🇫🇷👩‍🚀";
@@ -2351,6 +2369,8 @@ let tests =
       overwritten_hyperlinks_are_collected;
     test "collected grids release shared graphemes"
       collected_grid_releases_shared_graphemes;
+    test "resized grids keep exact grapheme counts"
+      resized_grid_keeps_exact_grapheme_counts;
     test "combining mark stays with ascii base"
       combining_mark_stays_with_ascii_base;
     test "Thai spacing mark cell placement" thai_spacing_mark_cell_placement;

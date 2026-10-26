@@ -2,7 +2,7 @@ type entry = { sample : Packed_cell.t; mutable count : int }
 
 type t = {
   (* Map from Grapheme payload (ID + generation) -> local reference count *)
-  counts : (int, entry) Hashtbl.t;
+  mutable counts : (int, entry) Hashtbl.t;
   store : Grapheme_store.t;
   mutable unique : int;
 }
@@ -45,6 +45,17 @@ let clear t =
   t.unique <- 0
 
 let unique_count t = t.unique
+
+type counts = (int, entry) Hashtbl.t
+
+let start_recount t =
+  let old = t.counts in
+  t.counts <- Hashtbl.create 128;
+  t.unique <- 0;
+  old
+
+let finish_recount t old =
+  Hashtbl.iter (fun _ entry -> Packed_cell.decref t.store entry.sample) old
 
 let create store =
   let t = { counts = Hashtbl.create 128; store; unique = 0 } in

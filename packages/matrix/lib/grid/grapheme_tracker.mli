@@ -34,6 +34,20 @@ val clear : t -> unit
 (** [clear t] takes back the store reference of every grapheme [t] counts, and
     counts none afterwards. A grid calls it when it clears all its cells. *)
 
+type counts
+(** The counts a tracker held before a recount. *)
+
+val start_recount : t -> counts
+(** [start_recount t] has [t] count no cell, keeping the store references of the
+    counts it held, which it returns. The cells are then counted again with
+    {!add}, and the old references given back with {!finish_recount}, so that a
+    grapheme both counts keep its reference. A grid recounts its cells when it
+    resizes, with no new tracker to drop. *)
+
+val finish_recount : t -> counts -> unit
+(** [finish_recount t old] gives back the store references of [old], the counts
+    {!start_recount} returned. *)
+
 val unique_count : t -> int
 (** [unique_count t] is the number of graphemes [t] counts. It reads one field.
 *)

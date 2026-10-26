@@ -1121,6 +1121,20 @@ let test_region_below () =
   equal ~msg:"nothing changed, nothing written" Testable.string ""
     (Region.draw r ~cols:20 ~rows:6 (frame [ "70%" ]))
 
+(* A frame wider than the region is cut into a copy, which shares the frame's
+   graphemes; the copy gives them back when the region drops it, with no GC. *)
+let test_region_cut_releases_graphemes () =
+  let g = Grid.create ~width:30 ~height:2 () in
+  Grid.draw_text g ~x:0 ~y:0 ~text:"🇫🇷👩‍🚀🇫🇷";
+  Grid.draw_text g ~x:0 ~y:1 ~text:"👩‍🚀";
+  let r = Region.create () in
+  ignore (Region.draw r ~cols:10 ~rows:6 (Some g) : string);
+  equal ~msg:"the frame's two graphemes" Testable.int 2
+    (fst (Grid.grapheme_stats g));
+  Grid.clear g;
+  equal ~msg:"none left once the frame clears" Testable.int 0
+    (fst (Grid.grapheme_stats g))
+
 let test_region_foreign () =
   let t = region_term ~cols:20 ~rows:8 in
   let r = Region.create () in
@@ -1854,6 +1868,8 @@ let () =
           test "Moved" test_region_moved;
           test "A frame taller than the screen" test_region_tall;
           test "Rows cut to the width" test_region_width;
+          test "A cut copy gives its graphemes back"
+            test_region_cut_releases_graphemes;
           test "Close" test_region_close;
           test "Suspend" test_region_suspend;
           test "Teardown" test_region_teardown;

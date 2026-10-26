@@ -1245,8 +1245,15 @@ let static_snapshot t ?rows grid =
     let grid = Grid.copy grid in
     ( rows,
       fun ~top ->
-        rows_of (wrap_graphics t (Screen.static_rows t.screen grid ~rows ~top))
-    ))
+        let text =
+          rows_of
+            (wrap_graphics t (Screen.static_rows t.screen grid ~rows ~top))
+        in
+        (* The copy is drawn once and dropped: give back its graphemes now
+           rather than when the GC finalises it. A write the screen drops
+           undrawn leaves them to the finaliser. *)
+        Grid.clear grid;
+        text ))
   else
     let text = rows_of (Grid.to_ansi ~complete_rows:true ~rows grid) in
     (rows, fun ~top:_ -> text)
