@@ -18,8 +18,12 @@
     fills, clears and empty cells; cursor moves, shapes and visibility;
     terminals with synchronized output or [explicit_cursor_positioning]; resizes
     between frames, growing and shrinking; and releases of the terminal, during
-    which a program writes rows. While released, the screen must be as
-    {!Matrix.release} leaves it, the cursor shown.
+    which a program writes rows. Each case runs at one styling, the terminal's
+    24-bit, 256 or 16 colors, [NO_COLOR] or [--color=never], and the terminal
+    must show each cell as that styling writes it: its colors reduced to the
+    depth, none under [NO_COLOR], and neither attributes nor a hyperlink under
+    [--color=never]. While released, the screen must be as {!Matrix.release}
+    leaves it, the cursor shown.
 
     {b Alternate screen.} The frame is the whole screen, and scroll hints, true
     or not, never change what it shows. The VTE's replies are ignored.
@@ -125,6 +129,9 @@ type case = {
           which the runtime's capabilities had wrong until then. *)
   reposition : bool;  (** The terminal has [explicit_cursor_positioning]. *)
   keep : bool;  (** The run keeps its last frame, primary only. *)
+  styling : Ansi.Styling.t;
+      (** What the run writes at: the terminal's colors, [NO_COLOR] ([`Mono]) or
+          [--color=never] ([`Plain]). *)
   frames : frame list;
 }
 
@@ -392,6 +399,16 @@ let case_gen =
     match mode with `Alt -> pure 1 | `Primary -> int_range 0 rows
   in
   let* keep = bool in
+  let* styling =
+    frequency
+      [
+        (4, pure `Truecolor);
+        (1, pure `Ansi256);
+        (1, pure `Ansi16);
+        (1, pure `Mono);
+        (1, pure `Plain);
+      ]
+  in
   let* n = int_range 1 6 in
   (* A frame laid out by another method than the terminal's can scroll the
      screen, which in primary mode moves the transcript for good. DECRPM
@@ -417,6 +434,7 @@ let case_gen =
     report;
     reposition;
     keep;
+    styling;
     frames;
   }
 
@@ -490,6 +508,14 @@ let pp_case fmt c =
       (if c.prompt then " prompt" else "")
       c.min_live
       (if c.keep then " keep" else "");
+  Format.fprintf fmt " %s"
+    (match c.styling with
+    | `Truecolor -> "24-bit"
+    | `Ansi256 -> "256"
+    | `Ansi16 -> "16"
+    | `Ansi8 -> "8"
+    | `Mono -> "mono"
+    | `Plain -> "plain");
   List.iter (fun f -> Format.fprintf fmt "@,%a" pp_frame f) c.frames;
   Format.fprintf fmt "@]"
 
@@ -548,21 +574,35 @@ let cell_desc g idx =
     (shown (Grid.get_bg g idx))
     (Grid.get_attrs g idx) (Grid.get_link g idx)
 
+(* A color as the terminal stores it once a run writes it at [styling]. *)
+let shown_at styling c =
+  match styling with
+  | `Plain -> `Default
+  | #Color.depth as d -> shown (Color.to_depth d c)
+
+(* What a run at [styling] writes of a cell's attributes and link. *)
+let attrs_at styling g idx =
+  if styling = `Plain then 0 else Grid.get_attrs g idx
+
+let link_at styling g idx = if styling = `Plain then "" else Grid.get_link g idx
+
 (* A space shows its foreground only through an attribute. *)
-let shown_fg g idx =
-  if cell_text g idx = " " && Grid.get_attrs g idx = 0 then `Default
-  else shown (Grid.get_fg g idx)
+let shown_fg ?(styling = `Truecolor) g idx =
+  if cell_text g idx = " " && attrs_at styling g idx = 0 then `Default
+  else shown_at styling (Grid.get_fg g idx)
 
 (* An empty cell shows as a space, one cell wide. *)
 let shown_width g idx = if Grid.is_empty g idx then 1 else Grid.cell_width g idx
 
-let same_cell e ei v vi =
+(* Whether the terminal shows cell [vi] of [v] as a run at [styling] writes
+   cell [ei] of [e]. *)
+let same_cell ?(styling = `Truecolor) e ei v vi =
   String.equal (cell_text e ei) (cell_text v vi)
   && shown_width e ei = shown_width v vi
-  && shown_fg e ei = shown_fg v vi
-  && shown (Grid.get_bg e ei) = shown (Grid.get_bg v vi)
-  && Grid.get_attrs e ei = Grid.get_attrs v vi
-  && String.equal (Grid.get_link e ei) (Grid.get_link v vi)
+  && shown_fg ~styling e ei = shown_fg v vi
+  && shown_at styling (Grid.get_bg e ei) = shown (Grid.get_bg v vi)
+  && attrs_at styling e ei = Grid.get_attrs v vi
+  && String.equal (link_at styling e ei) (Grid.get_link v vi)
 
 let blank = Grid.create ~width:1 ~height:1 ()
 
@@ -587,7 +627,11 @@ let rtrim s =
 
 let capabilities case : Matrix.Terminal.capabilities =
   {
-    colors = `Truecolor;
+    colors =
+      (match case.styling with
+      | `Ansi256 -> `Ansi256
+      | `Ansi16 -> `Ansi16
+      | _ -> `Truecolor);
     dumb = false;
     eager_wrap = false;
     lifts_resting_cursor = false;
@@ -713,7 +757,7 @@ let check_live r app (expected, cursor) =
     for x = 0 to cols - 1 do
       let vi = ((offset + y) * cols) + x in
       let e, ei = if y < eh then (expected, (y * ew) + x) else (blank, 0) in
-      if not (same_cell e ei v vi) then
+      if not (same_cell ~styling:r.case.styling e ei v vi) then
         fail_frame r "live row %d col %d: expected %s, shows %s" y x
           (cell_desc e ei) (cell_desc v vi)
     done
@@ -832,7 +876,8 @@ and check_end r =
       for y = 0 to kept - 1 do
         for x = 0 to min fw cols - 1 do
           let vi = ((crow - kept + y) * cols) + x in
-          if not (same_cell frame ((y * fw) + x) v vi) then
+          if not (same_cell ~styling:r.case.styling frame ((y * fw) + x) v vi)
+          then
             fail_frame r "kept row %d col %d: expected %s, shows %s" y x
               (cell_desc frame ((y * fw) + x))
               (cell_desc v vi)
@@ -1022,11 +1067,16 @@ let run_case case =
       set_raw_mode = ignore;
       flush_input = ignore;
       cleanup = ignore;
-      env = Matrix.Terminal.Caps.env (fun _ -> None) ~win32:false;
+      env =
+        Matrix.Terminal.Caps.env
+          (function
+            | "NO_COLOR" when case.styling = `Mono -> Some "1" | _ -> None)
+          ~win32:false;
     }
   in
   let config =
     Matrix.config ~mode:case.mode ~mouse:`Off ~bracketed_paste:false
+      ?color:(if case.styling = `Plain then Some `Never else None)
       ~kitty_keyboard:`Off
       ?min_tui_height:(if case.min_live = 0 then None else Some case.min_live)
       ~caps:(capabilities case) ()

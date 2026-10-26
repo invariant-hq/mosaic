@@ -2,6 +2,7 @@ type t = [ `Plain | Color.depth ]
 type choice = [ `Auto | `Always | `Never ]
 
 let choices = [ ("auto", `Auto); ("always", `Always); ("never", `Never) ]
+let variables = [ "NO_COLOR"; "FORCE_COLOR"; "CLICOLOR_FORCE"; "CLICOLOR" ]
 
 (* An empty variable is unset, as NO_COLOR, force-color.org and bixense's
    CLICOLOR all say. *)

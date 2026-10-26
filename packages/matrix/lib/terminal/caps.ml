@@ -86,6 +86,8 @@ type env = {
   dumb : bool;
       (** [TERM] unset, [dumb] or [unknown], outside a Windows console. *)
   described : described;
+  styling : (string * string) list;
+      (** The variables of [Ansi.Styling.variables] that are set. *)
 }
 
 (* What the description of [TERM] says, where it says yes: a description
@@ -169,11 +171,16 @@ let env ?terminfo getenv ~win32 =
     win32;
     dumb = (not win32) && List.mem term [ ""; "dumb"; "unknown" ];
     described = describe terminfo;
+    styling =
+      List.filter_map
+        (fun name -> Option.map (fun v -> (name, v)) (get name))
+        Ansi.Styling.variables;
   }
 
 (* No environment, which says nothing of the terminal, not even that its
    TERM is unset. *)
 let no_env = { (env (fun _ -> None) ~win32:false) with dumb = false }
+let variable env name = List.assoc_opt name env.styling
 
 (* Evidence *)
 

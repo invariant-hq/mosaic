@@ -120,6 +120,7 @@
  (libraries
   windtrap
   matrix
+  matrix.test
   matrix.tty
   matrix.vte
   matrix.input

@@ -246,6 +246,7 @@ val config :
   ?explicit_width:bool ->
   ?min_tui_height:int ->
   ?caps:Terminal.capabilities ->
+  ?color:Ansi.Styling.choice ->
   unit ->
   config
 (** [config ()] is the configuration of a run.
@@ -271,6 +272,14 @@ val config :
       only from that frame on. By default the application states no height, the
       fewest rows are [1], and the live region takes the rows down to the
       terminal's last row ({!type-mode}).
+    - [color] the program's choice of styling, such as from a [--color] option.
+      Defaults to [`Auto]. The run writes its frames at the styling
+      {!Ansi.Styling.decide} gives for [color], the environment of {!run}'s
+      [env] ([NO_COLOR], [FORCE_COLOR], [CLICOLOR_FORCE] and [CLICOLOR]),
+      whether the output is a terminal, and the terminal's [colors] and [dumb]
+      ({!Terminal.capabilities}). So with [NO_COLOR] set a run writes its
+      attributes, such as bold and reverse, without a color, a terminal of 16
+      colors gets 16, and [`Never] writes no style and no hyperlink.
 
     {b Frames:}
     - [fps] the frames per second of the frame grid ({!request_redraw}).
@@ -289,7 +298,8 @@ val config :
       Defaults to [false].
     - [caps] the capabilities to assume where the terminal does not answer, in
       place of what the environment says ({!Terminal.Caps.assume}). By default
-      {!run}'s [env] is read when the run begins.
+      {!run}'s [env] is read when the run begins. The styling is decided from
+      [env] either way.
 
     Focus reports (mode 1004), color scheme reports (2031) and resize reports
     (2048) are always set, without asking whether the terminal has them, since

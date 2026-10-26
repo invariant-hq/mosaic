@@ -31,9 +31,11 @@ let backend () : Matrix.Backend.t =
     env = Matrix.Terminal.Caps.env (fun _ -> None) ~win32:false;
   }
 
+(* The output is no terminal, which a run writes no style to unless told:
+   frames are written with their styles, as to a terminal. *)
 let config =
   Matrix.config ~mode:`Alt ~raw_mode:false ~mouse:`Off ~bracketed_paste:false
-    ~kitty_keyboard:`Off ()
+    ~kitty_keyboard:`Off ~color:`Always ()
 
 let frame app draw =
   Matrix.request_redraw app;

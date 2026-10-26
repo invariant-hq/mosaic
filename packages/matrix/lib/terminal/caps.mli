@@ -227,6 +227,12 @@ val env :
     [terminfo] is the description of [TERM], if there is one ([Tty.terminfo]
     finds it). [win32] says the terminal is a Windows console. *)
 
+val variable : env -> string -> string option
+(** [variable env name] is the value [env] read for [name], one of the variables
+    that decide a styling ({!Ansi.Styling.variables}), and [None] for any other
+    name. So a run decides its styling ({!Ansi.Styling.decide}) from the
+    environment its capabilities come from. *)
+
 (** {1:evidence Evidence} *)
 
 type evidence

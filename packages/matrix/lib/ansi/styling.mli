@@ -47,6 +47,11 @@ val choices : (string * choice) list
 (** [choices] is the choices as a [--color] option names them, [auto], [always]
     and [never], as [Cmdliner.Arg.enum] takes them. *)
 
+val variables : string list
+(** [variables] is the environment variables {!decide} reads, [NO_COLOR],
+    [FORCE_COLOR], [CLICOLOR_FORCE] and [CLICOLOR], for a program that keeps
+    them as it read them, such as with the rest of a terminal's environment. *)
+
 val decide :
   ?color:choice ->
   (string -> string option) ->

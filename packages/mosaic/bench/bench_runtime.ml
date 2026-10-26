@@ -96,7 +96,9 @@ type driver = {
 }
 
 (* A plain modern terminal: truecolor and Unicode width tables, no kitty
-   extensions, so that the measures never depend on the environment. *)
+   extensions, so that the measures never depend on the environment. The
+   output is a pipe, so the run is told to write colors ([~color:`Always]),
+   as it would to such a terminal. *)
 let caps : Matrix.Terminal.capabilities =
   {
     colors = `Truecolor;
@@ -244,8 +246,8 @@ let require condition message =
    has come for it, given the run's deadline. *)
 let drive ?(mode = `Alt) ?process_perform ~on_idle (t : Term.t) application =
   Mosaic.start ~input:t.input_r ~output:t.output ~env
-    ~config:(Matrix.config ~mode ~caps ()) ?process_perform application
-    (fun r ->
+    ~config:(Matrix.config ~mode ~caps ~color:`Always ())
+    ?process_perform application (fun r ->
       (* The clock starts at the run's time, which the steps never precede. *)
       t.now <- Matrix.clock ();
       let rec loop () =

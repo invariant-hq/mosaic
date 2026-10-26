@@ -226,6 +226,12 @@ declared `~phase:Capture` runs before the focused widget; call
 let view _model = text ~style:(Ansi.Style.make ~bold:true ~fg:Ansi.Color.cyan ()) "Hello"
 ```
 
+The run writes styles as its user lets it (`Ansi.Styling`): with `NO_COLOR`
+set, the word above is bold and not cyan; a terminal of 16 colors gets 16;
+output to a pipe gets no style. A `--color` option is passed as
+`Mosaic.run ~config:(Matrix.config ~color ())`, where `` `Never `` writes no
+style at all and `` `Always `` writes colors whatever the environment says.
+
 For expensive subtrees, use
 `memo ~key:(document_id, revision, theme_version) view`. Keys are immutable,
 function-free values containing every dependency of the subtree, including

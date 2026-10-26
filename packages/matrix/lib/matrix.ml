@@ -321,6 +321,7 @@ type config = {
   explicit_width : bool;
   min_tui_height : int option;  (** [None] when the application states none. *)
   caps : Terminal.capabilities option;
+  color : Ansi.Styling.choice option;  (** [None] for [`Auto]. *)
   device : device option;
   (* [MATRIX_DEBUG], which [run] reads for a run on descriptors. *)
   debug : string option;
@@ -328,7 +329,7 @@ type config = {
 
 let config ?(mode = `Alt) ?(raw_mode = true) ?(mouse = `Sgr_any)
     ?(bracketed_paste = true) ?(kitty_keyboard = `Auto) ?(key_releases = false)
-    ?(fps = 60.) ?(explicit_width = false) ?min_tui_height ?caps () =
+    ?(fps = 60.) ?(explicit_width = false) ?min_tui_height ?caps ?color () =
   if (not (Float.is_finite fps)) || fps <= 0. then
     invalid_arg "Matrix.config: fps must be positive and finite";
   {
@@ -342,6 +343,7 @@ let config ?(mode = `Alt) ?(raw_mode = true) ?(mouse = `Sgr_any)
     explicit_width;
     min_tui_height;
     caps;
+    color;
     device = None;
     debug = None;
   }
@@ -421,6 +423,9 @@ type 'msg app = {
   events : event Queue.t;
   config : config;
   backend : Backend.t;
+  variable : string -> string option;
+      (* [Caps.variable] of the backend's environment, made once: a frame
+         decides the styling and allocates nothing for it. *)
   stop : Stop.t option;
   owner : int;
   screen : Screen.t;
@@ -818,19 +823,21 @@ let set_width_method t m =
     Screen.set_width_method t.screen m;
     force_full_redraw t)
 
+(* The styling is decided from the environment the run's capabilities were
+   read from, also when [config.caps] stands in for what it says of the
+   terminal, so a test's terminal never reads the process's NO_COLOR. *)
 let refresh_capabilities t =
   let caps = Terminal.capabilities t.terminal in
-  (* Colors are reduced to 256 where the terminal shows fewer than 24 bits,
-     16 included, as before the capabilities told 16 from 256. *)
-  let color_depth =
-    match caps.colors with
-    | `Truecolor -> `Truecolor
-    | `Ansi256 | `Ansi16 -> `Ansi256
+  let styling =
+    Ansi.Styling.decide ?color:t.config.color t.variable
+      ~tty:t.backend.output_is_tty ~dumb:caps.dumb
+      (caps.colors :> Ansi.Color.depth)
   in
   Screen.apply_capabilities t.screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
-    ~hyperlinks:caps.hyperlinks ~colors:color_depth ~styling:color_depth
-    ~graphics:caps.graphics ~cell_size:t.cell_size;
+    ~hyperlinks:caps.hyperlinks
+    ~colors:(caps.colors :> Ansi.Color.depth)
+    ~styling ~graphics:caps.graphics ~cell_size:t.cell_size;
   set_width_method t (width_method t)
 
 (* A batch's queries are sent, and what they are owed is added to the
@@ -2367,6 +2374,7 @@ let make backend ?stop config =
     events = Queue.create ();
     config;
     backend;
+    variable = Terminal.Caps.variable backend.env;
     stop;
     owner = thread_id ();
     screen;

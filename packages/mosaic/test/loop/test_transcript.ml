@@ -90,7 +90,9 @@ let profile = { Matrix_test.Profile.pipe with width_method = `Unicode }
    on its session. *)
 let with_transcript blocks f =
   let term = Matrix_test.Terminal.create ~profile ~cols:250 ~rows:70 () in
-  Mosaic_test.run ~config:(Matrix.config ~mode:`Alt ~caps ())
+  (* The output is a pipe, which the run writes no style to unless told:
+     the bytes are those of a terminal of [caps]. *)
+  Mosaic_test.run ~config:(Matrix.config ~mode:`Alt ~caps ~color:`Always ())
     term (transcript blocks) (fun s -> f s term)
 
 (* Eight wheel events over the transcript's second row. *)

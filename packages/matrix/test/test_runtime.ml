@@ -134,9 +134,9 @@ let backend f : Matrix.Backend.t =
     env = no_env;
   }
 
-let quiet ?(mode = `Alt) ?(fps = 60.) ?caps ?(min_tui_height = 1) () =
+let quiet ?(mode = `Alt) ?(fps = 60.) ?caps ?(min_tui_height = 1) ?color () =
   Matrix.config ~mode ~fps ~mouse:`Off ~bracketed_paste:false
-    ~kitty_keyboard:`Off ?caps ~min_tui_height ()
+    ~kitty_keyboard:`Off ?caps ~min_tui_height ?color ()
 
 let run ?config f body = Matrix.run_on (backend f) ?config body
 
@@ -1687,7 +1687,8 @@ let test_frame_above_default_capacity () =
       done
     done
   in
-  run ~config:(quiet ~mode:`Primary ~caps ()) f (fun app ->
+  (* The output is no terminal: the links are written as asked. *)
+  run ~config:(quiet ~mode:`Primary ~caps ~color:`Always ()) f (fun app ->
       ignore (frame ~required:height ~draw app [] : _ list);
       is_true ~msg:"a frame above 2 MiB"
         (String.length (output f) > 2 * 1024 * 1024);
@@ -1871,11 +1872,11 @@ let vte_term ?(shell = "") ~cols ~rows () =
   f.answer <- (fun s -> Matrix_input.Reply.encode (Vte.feed_string vte s));
   { vte; f }
 
-let run_term ?(mode = `Primary) ?(min_tui_height = 1) ?caps ?(mouse = `Off) term
-    body =
+let run_term ?(mode = `Primary) ?(min_tui_height = 1) ?caps ?(mouse = `Off)
+    ?color term body =
   let config =
     Matrix.config ~mode ~mouse ~bracketed_paste:false ~kitty_keyboard:`Off ?caps
-      ~min_tui_height ()
+      ~min_tui_height ?color ()
   in
   run ~config term.f body
 
@@ -2371,7 +2372,9 @@ let test_primary_full_redraw_keeps_cursor_row () =
 
 let test_primary_full_redraw_paints_background_rows () =
   let term = vte_term ~cols:6 ~rows:4 () in
-  run_term term (fun app ->
+  (* The terminal's environment names none: its colors are written as
+     asked. *)
+  run_term ~color:`Always term (fun app ->
       ignore
         (frame ~required:2 app [ "x" ] ~draw:(fun grid ->
              Matrix.Grid.fill_rect grid ~x:0 ~y:1 ~width:6 ~height:1
@@ -3858,6 +3861,180 @@ let unix_backend f () =
     skip ~reason:"Backend.unix, which needs a wake pipe Windows lacks" ()
   else f ()
 
+(* Styling ----------------------------------------------------------------- *)
+
+(* A run on an emulated terminal whose session's environment is [vars],
+   whose output is a terminal iff [tty], that draws a red, bold, linked "R".
+   It is the style the terminal shows the "R" in, every SGR the run wrote
+   that sets a style (one with a parameter other than 0), and whether it
+   wrote an OSC 8. *)
+let styled_run ?color ?(tty = true) vars =
+  let module T = Matrix_test in
+  let module P = Matrix.Ansi.Parser in
+  let profile = { T.Profile.vte with env = vars; tty; answers = tty } in
+  let term = T.Terminal.create ~profile ~cols:8 ~rows:2 () in
+  let style =
+    Matrix.Ansi.Style.make
+      ~fg:(Matrix.Ansi.Color.of_rgb 255 0 0)
+      ~bold:true ~link:"https://example.org" ()
+  in
+  T.run ~config:(Matrix.config ?color ()) term
+    (fun s ->
+      Matrix.run ~config:(T.config s) @@ fun app ->
+      let rec loop () =
+        match Matrix.next app with
+        | Stopped -> ()
+        | Frame ->
+            Matrix.draw app (fun g ->
+                Matrix.Grid.draw_text g ~x:0 ~y:0 ~text:"R" ~style);
+            loop ()
+        | _ -> loop ()
+      in
+      loop ())
+    (fun _ -> snd (T.Screen.cell (T.Terminal.screen term) ~row:0 ~col:0))
+  |> fun shown ->
+  let tokens = P.parse (T.Terminal.output term) in
+  let sgr =
+    List.filter_map
+      (function
+        | P.Csi { final = 'm'; marker = None; intermediates = ""; params } ->
+            let codes =
+              List.init (P.Params.count params) (fun i ->
+                  P.Params.ps params i ~default:0)
+            in
+            if List.exists (fun c -> c <> 0) codes then
+              Some (String.concat ";" (List.map string_of_int codes))
+            else None
+        | _ -> None)
+      tokens
+  in
+  let rec links = function
+    | P.Open _ :: P.Data d :: rest ->
+        String.starts_with ~prefix:"8;" d || links rest
+    | _ :: rest -> links rest
+    | [] -> false
+  in
+  (shown, sgr, links tokens)
+
+let t256 = ("TERM", "xterm-256color")
+
+(* Each row: the program's choice, a terminal or not, the session's
+   environment, and the color the "R" shows in, whether it is bold, and
+   whether the run wrote a link. *)
+let styling_rows =
+  let t24 = ("COLORTERM", "truecolor") in
+  [
+    ("24-bit", None, true, [ t256; t24 ], "Rgb(255,0,0)", true, true);
+    ("256", None, true, [ t256 ], "Indexed(196)", true, false);
+    ( "16 colors are written as 16",
+      None,
+      true,
+      [ ("TERM", "xterm") ],
+      "Bright_red",
+      true,
+      false );
+    ( "NO_COLOR keeps bold and the link",
+      None,
+      true,
+      [ t256; t24; ("NO_COLOR", "1") ],
+      "Default",
+      true,
+      true );
+    ( "CLICOLOR=0",
+      None,
+      true,
+      [ t256; t24; ("CLICOLOR", "0") ],
+      "Default",
+      true,
+      true );
+    ( "--color=never writes no style",
+      Some `Never,
+      true,
+      [ t256; t24 ],
+      "Default",
+      false,
+      false );
+    ( "--color=always above NO_COLOR",
+      Some `Always,
+      true,
+      [ t256; t24; ("NO_COLOR", "1") ],
+      "Rgb(255,0,0)",
+      true,
+      true );
+    ("a pipe gets no style", None, false, [ t256; t24 ], "Default", false, false);
+    ( "FORCE_COLOR into a pipe",
+      None,
+      false,
+      [ t256; t24; ("FORCE_COLOR", "1") ],
+      "Rgb(255,0,0)",
+      true,
+      true );
+    ( "a dumb terminal gets no style",
+      None,
+      true,
+      [ ("TERM", "dumb") ],
+      "Default",
+      false,
+      false );
+  ]
+
+(* A run on an emulated kitty, a 24-bit terminal, that draws a picture in
+   four cells: the first row the terminal shows. A placeholder's foreground
+   is the image's id, which NO_COLOR leaves, and --color=never writes no
+   SGR, so no picture. *)
+let kitty_run ?color vars =
+  let module T = Matrix_test in
+  let profile =
+    {
+      T.Profile.vte with
+      env = vars;
+      identity = { Vte.vt100 with version = Some "kitty(0.49.2)" };
+      cell_size = Some (10, 20);
+    }
+  in
+  let term = T.Terminal.create ~profile ~cols:8 ~rows:2 () in
+  let pic =
+    Matrix.Grid.picture ~width:40 ~height:20 (String.make (4 * 40 * 20) '\255')
+  in
+  T.run ~config:(Matrix.config ?color ()) term
+    (fun s ->
+      Matrix.run ~config:(T.config s) @@ fun app ->
+      let rec loop () =
+        match Matrix.next app with
+        | Stopped -> ()
+        | Frame ->
+            Matrix.draw app (fun g ->
+                Matrix.Grid.draw_picture g ~x:1 ~y:0 ~width:4 ~height:1 pic);
+            loop ()
+        | _ -> loop ()
+      in
+      loop ())
+    (fun _ -> T.Screen.row (T.Terminal.screen term) 0)
+
+let test_kitty_stylings () =
+  let held = " \u{FFFC}\u{FFFC}\u{FFFC}\u{FFFC}" in
+  equal ~msg:"24-bit" string held (kitty_run [ t256 ]);
+  equal ~msg:"NO_COLOR shows the picture" string held
+    (kitty_run [ t256; ("NO_COLOR", "1") ]);
+  equal ~msg:"--color=never shows none" string ""
+    (kitty_run ~color:`Never [ t256 ])
+
+let styling_tests =
+  List.map
+    (fun (name, color, tty, vars, fg, bold, link) ->
+      test name (fun () ->
+          let (shown : Matrix.Ansi.Style.t), sgr, links =
+            styled_run ?color ~tty vars
+          in
+          equal ~msg:"color" string fg
+            (Format.asprintf "%a" Matrix.Ansi.Color.pp
+               (Option.value shown.fg ~default:Matrix.Ansi.Color.default_fg));
+          equal ~msg:"bold" bool bold (Matrix.Ansi.Attr.mem Bold shown.attrs);
+          equal ~msg:"a link written" bool link links;
+          if not bold then equal ~msg:"no SGR sets a style" (list string) [] sgr))
+    styling_rows
+  @ [ test "a kitty picture" test_kitty_stylings ]
+
 let () =
   Windtrap.run "matrix.runtime"
     [
@@ -3947,6 +4124,7 @@ let () =
           test "giving back restores touched cursor appearance"
             test_give_back_restores_touched_cursor_appearance;
         ];
+      group "Styling" styling_tests;
       group "Frame output"
         [
           test "unchanged frame emits no bytes"
