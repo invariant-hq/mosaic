@@ -38,7 +38,8 @@
   test_cost
   test_items
   test_cursor
-  test_column)
+  test_column
+  test_combobox)
  (package mosaic)
  (libraries
   windtrap

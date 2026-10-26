@@ -35,3 +35,4 @@ module Items = Items
 module Cursor = Cursor
 module Column = Column
 module Glyphs = Glyphs
+module Combobox = Combobox

@@ -14,9 +14,9 @@
       {!Canvas}, {!Select}, {!Tab_select}, {!Markdown}, {!Spinner},
       {!Progress_bar}, {!Textarea}, {!Scroll_bar}, {!Scroll_box}, {!Table},
       {!Tree}, {!Code}, {!Line_number}, and {!Diff}.
-    - {b Values.} {!Editor}, {!Scroll}, {!Items} and {!Cursor}, which an
-      application keeps in its model and widgets read, and {!Column}, the
-      columns of a collection's rows.
+    - {b Values.} {!Editor}, {!Scroll}, {!Items}, {!Cursor} and {!Combobox},
+      which an application keeps in its model and widgets read, and {!Column},
+      the columns of a collection's rows.
     - {b Theming.} {!Syntax_style} for tree-sitter/TextMate-style syntax
       colouring, {!Syntax_highlight} for source highlight ranges, and {!Glyphs}
       for the characters widgets draw to show state. *)
@@ -134,3 +134,6 @@ module Column = Column
 
 module Glyphs = Glyphs
 (** The characters widgets draw to show state, in Unicode and ASCII sets. *)
+
+module Combobox = Combobox
+(** An editable choice: a text field, a list cursor, and its keys. *)
