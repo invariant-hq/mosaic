@@ -32,44 +32,25 @@
     print_string (Matrix_cli.adapt a "\027[1;31mdone\027[0m\n")
     ]} *)
 
-type styling = [ `Plain | Ansi.Color.depth ]
-(** The type for stylings. A color depth writes styles with each color reduced
-    to it ({!Ansi.Color.to_depth}), so [`Mono] writes the attributes, such as
-    bold and underline, and no color. [`Plain] writes no style and no hyperlink.
-*)
+type styling = Ansi.Styling.t
+(** The type for stylings ({!Ansi.Styling.t}). A color depth writes styles with
+    each color reduced to it ({!Ansi.Color.to_depth}), so [`Mono] writes the
+    attributes, such as bold and underline, and no color. [`Plain] writes no
+    style and no hyperlink. *)
 
 (** The decision of what a destination receives.
 
-    A program's styles reach a destination as the program asks and as its user
-    lets them. The program's {e choice} ({!type-choice}), from a [--color]
-    option or a configuration file, comes first. [`Always] writes colors, and
-    [`Never] writes no style at all, as Fmt_cli's [--color=never] "forces no
-    styling". [`Auto] leaves the decision to the environment, read in this
-    order, where an empty variable counts as unset:
-    + [NO_COLOR] set removes the colors and keeps the attributes, since it "only
-      signals the user's intention regarding adding ANSI color" (no-color.org,
-      FAQ).
-    + [FORCE_COLOR] or [CLICOLOR_FORCE] set, unless to [0] or [false], writes
-      colors, also to a destination that is not a terminal, such as a CI job's
-      log (force-color.org; bixense.com/clicolors).
-    + [CLICOLOR] set to [0] removes the colors as [NO_COLOR] does.
-    + A destination that is not a terminal, or a dumb one
-      ({!Matrix_terminal.Caps.t}'s [dumb]), gets no style.
-    + Any other gets the colors the terminal shows ([colors]).
-
-    Removing the colors keeps the attributes only on a destination that shows
-    styles at all, a terminal or one where colors are forced, and gives [`Plain]
-    elsewhere. A wrong force writes escapes into a file, so a variable that may
-    mean either way, such as [FORCE_COLOR=0], forces nothing. Each destination
-    is decided on its own, so a program whose standard output is a pipe still
-    writes colors to its standard error on a terminal. *)
+    A destination's styling is decided by {!Ansi.Styling}'s rule, from the
+    program's choice, the user's environment and the terminal's capabilities,
+    each destination on its own. Whether rows may be redrawn there is this
+    module's decision ({!live}). *)
 module Policy : sig
-  type choice = [ `Auto | `Always | `Never ]
-  (** The type for a program's choices. *)
+  type choice = Ansi.Styling.choice
+  (** The type for a program's choices ({!Ansi.Styling.type-choice}). *)
 
   val choices : (string * choice) list
-  (** [choices] is the choices as a [--color] option names them, [auto],
-      [always] and [never], as [Cmdliner.Arg.enum] takes them. *)
+  (** [choices] is {!Ansi.Styling.choices}, the choices as a [--color] option
+      names them. *)
 
   val styling :
     ?color:choice ->
@@ -80,14 +61,15 @@ module Policy : sig
   (** [styling ~color getenv ~tty caps] is the styling of a destination, which
       is a terminal iff [tty], whose capabilities are [caps], for the program's
       choice [color] ([`Auto] by default) and the environment read through
-      [getenv], such as [Sys.getenv_opt], by the module's rule. *)
+      [getenv], such as [Sys.getenv_opt]. It is {!Ansi.Styling.decide} with
+      [caps]' [dumb] and [colors]. *)
 
   val live :
     (string -> string option) -> tty:bool -> Matrix_terminal.Caps.t -> bool
   (** [live getenv ~tty caps] is [true] iff rows may be redrawn on the
-      destination, which is then a terminal that is not dumb, with [CI] unset or
-      [false]. A continuous integration job keeps its output as a log that
-      replays line by line, where redrawn rows pile up. *)
+      destination, which is then a terminal that is not dumb, with [CI] unset,
+      empty or [false]. A continuous integration job keeps its output as a log
+      that replays line by line, where redrawn rows pile up. *)
 end
 
 (** {1:adapting Adapting what a program prints}

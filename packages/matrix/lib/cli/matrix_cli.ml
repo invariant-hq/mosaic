@@ -1,44 +1,20 @@
-type styling = [ `Plain | Ansi.Color.depth ]
+type styling = Ansi.Styling.t
 
 module Policy = struct
-  type choice = [ `Auto | `Always | `Never ]
+  type choice = Ansi.Styling.choice
 
-  let choices = [ ("auto", `Auto); ("always", `Always); ("never", `Never) ]
+  let choices = Ansi.Styling.choices
 
-  (* An empty variable is unset, as NO_COLOR, force-color.org and bixense's
-     CLICOLOR all say. *)
-  let get getenv name =
-    match getenv name with Some "" | None -> None | Some _ as v -> v
+  let styling ?color getenv ~tty (caps : Matrix_terminal.Caps.t) =
+    Ansi.Styling.decide ?color getenv ~tty ~dumb:caps.dumb
+      (caps.colors :> Ansi.Color.depth)
 
-  (* FORCE_COLOR and CLICOLOR_FORCE force colors unless they are 0 or false,
-     the values Node's tools read as off: a force read wrongly writes escapes
-     into a file, where a refusal read wrongly only prints plain text. *)
-  let forced getenv name =
-    match get getenv name with
-    | None | Some ("0" | "false") -> false
-    | Some _ -> true
-
-  let styling ?(color = `Auto) getenv ~tty (caps : Matrix_terminal.Caps.t) :
-      styling =
-    let colors = (caps.colors :> styling) in
-    match color with
-    | `Always -> colors
-    | `Never -> `Plain
-    | `Auto ->
-        let force =
-          forced getenv "FORCE_COLOR" || forced getenv "CLICOLOR_FORCE"
-        in
-        if not (force || (tty && not caps.dumb)) then `Plain
-        else if Option.is_some (get getenv "NO_COLOR") then `Mono
-        else if force then colors
-        else if get getenv "CLICOLOR" = Some "0" then `Mono
-        else colors
-
+  (* An empty CI is unset, as Ansi.Styling reads its variables. *)
   let live getenv ~tty (caps : Matrix_terminal.Caps.t) =
     tty && (not caps.dumb)
     &&
-    match get getenv "CI" with
-    | None | Some "false" -> true
+    match getenv "CI" with
+    | None | Some ("" | "false") -> true
     | Some _ -> false
 end
 
