@@ -595,6 +595,7 @@ type fact =
   | Multiplexer of [ `Tmux | `Screen ] option
   | Identity of (string * string) option
   | Colors of [ `Ansi16 | `Ansi256 | `Truecolor ]
+  | Dumb of bool
   | Hyperlinks of bool
   | Meta of bool option
   | Grapheme of bool option
@@ -627,6 +628,7 @@ let check_fact (c : Caps.t) fact =
         (Testable.make ~equal:( = )
            ~pp:(opt (fun ppf (n, v) -> Format.fprintf ppf "%s %s" n v)))
         i c.identity
+  | Dumb b -> equal ~msg:"dumb" bool b c.dumb
   | Colors n ->
       equal ~msg:"colors"
         (Testable.make ~equal:( = ) ~pp:(fun ppf -> function
@@ -686,6 +688,28 @@ let test_description_adds () =
   let c = derive [ ("TERM", "matrix-test") ] [] in
   is_false ~msg:"no description, no direct colour" (c.colors = `Truecolor);
   is_false ~msg:"no description, no sync" c.sync
+
+(* A terminal that wraps as soon as it prints in the last column says so with
+   am and no xenl, as the Wyse 350's description and dumb's do. *)
+let test_description_eager_wrap () =
+  let eager name =
+    (described name [ ("TERM", Filename.basename name) ] []).eager_wrap
+  in
+  is_true ~msg:"wy350" (eager "w/wy350");
+  is_true ~msg:"dumb" (eager "d/dumb");
+  is_false ~msg:"xterm" (eager "x/xterm");
+  is_false ~msg:"linux" (eager "l/linux");
+  is_false ~msg:"no description" (derive [ ("TERM", "wy350") ] []).eager_wrap;
+  let console =
+    Caps.derive
+      (Caps.evidence
+         (Caps.env ~terminfo:(description "w/wy350")
+            (fun v -> List.assoc_opt v [ ("TERM", "wy350") ])
+            ~win32:true))
+  in
+  is_false ~msg:"a Windows console defers its wrap" console.eager_wrap;
+  is_false ~msg:"a Windows console has no TERM and is not dumb"
+    (Caps.derive (Caps.evidence (env ~win32:true []))).dumb
 
 (* Its silence takes nothing away: xterm-256color has no RGB. *)
 let test_description_silence () =
@@ -770,6 +794,11 @@ let precedence_cases =
       [ Reply.Keyboard_flags 0; Reply.Keyboard_flags 5 ],
       [ Keyboard (Some 5) ] );
     ("not a Windows console", [], [], [ Colors `Ansi16; Paste false ]);
+    ("TERM unset is dumb", [], [], [ Dumb true ]);
+    ("TERM dumb", [ ("TERM", "dumb") ], [], [ Dumb true ]);
+    ("TERM unknown", [ ("TERM", "unknown") ], [], [ Dumb true ]);
+    ("TERM empty is unset", [ ("TERM", "") ], [], [ Dumb true ]);
+    ("a terminal type is not dumb", [ ("TERM", "vt100") ], [], [ Dumb false ]);
     ( "256 colors from TERM",
       [ ("TERM", "xterm-256color") ],
       [],
@@ -1252,6 +1281,7 @@ let () =
       group "capabilities"
         [
           test "a description adds" test_description_adds;
+          test "a description's eager wrap" test_description_eager_wrap;
           test "a description's silence" test_description_silence;
           test "a description is a guess" test_description_below;
           cases "precedence" precedence_cases

@@ -64,6 +64,8 @@ let app ?(subs = fun _ -> Mosaic.Sub.none) ?(init_cmd = Mosaic.Cmd.none) () =
 let caps : Matrix.Terminal.capabilities =
   {
     colors = `Truecolor;
+    dumb = false;
+    eager_wrap = false;
     kitty_keyboard = None;
     kitty_graphics = false;
     bracketed_paste = true;

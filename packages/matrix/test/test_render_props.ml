@@ -576,6 +576,8 @@ let rtrim s =
 let capabilities case : Matrix.Terminal.capabilities =
   {
     colors = `Truecolor;
+    dumb = false;
+    eager_wrap = false;
     kitty_keyboard = None;
     kitty_graphics = false;
     bracketed_paste = false;

@@ -12,14 +12,14 @@ primary-transcript-5000/type-and-erase	alloc_words	exact	48259
 primary-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	105212
 select-10000/down-up	alloc_words	exact	6624
 select-100000/down-up	alloc_words	exact	6624
-startup/transcript-5000-first-frame	alloc_words	exact	152659059
+startup/transcript-5000-first-frame	alloc_words	exact	152659063
 table-100000/down-up	alloc_words	exact	8108
-transcript-20000/resize-roundtrip-249x69	alloc_words	exact	784626036
-transcript-20000/resize-roundtrip-250x69	alloc_words	exact	636502398
+transcript-20000/resize-roundtrip-249x69	alloc_words	exact	784626040
+transcript-20000/resize-roundtrip-250x69	alloc_words	exact	636502402
 transcript-20000/type-and-erase	alloc_words	exact	68125
 transcript-20000/wheel-roundtrip-2x8	alloc_words	exact	156779
-transcript-5000/resize-roundtrip-249x69	alloc_words	exact	196236027
-transcript-5000/resize-roundtrip-250x69	alloc_words	exact	159202398
+transcript-5000/resize-roundtrip-249x69	alloc_words	exact	196236031
+transcript-5000/resize-roundtrip-250x69	alloc_words	exact	159202402
 transcript-5000/type-and-erase	alloc_words	exact	68125
 transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	156779
 

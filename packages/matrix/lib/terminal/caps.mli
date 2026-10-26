@@ -46,11 +46,11 @@
       the description the terminfo database has for [TERM] ({!val-env}). A
       description only ever adds a fact, direct color ([RGB], [Tc], or [setrgbf]
       with [setrgbb]), 256 colors ([colors]), bracketed paste ([BE]), focus
-      reporting ([fe]) or synchronized output ([Sync] as mode 2026).
-      Descriptions leave out direct color and synchronized output for most
-      terminals that have them, and a terminal other than the one [TERM] names
-      (over ssh, or in a multiplexer) may have no description here, so a
-      description's silence takes nothing away.
+      reporting ([fe]), synchronized output ([Sync] as mode 2026) or an eager
+      wrap ([am] without [xenl]). Descriptions leave out direct color and
+      synchronized output for most terminals that have them, and a terminal
+      other than the one [TERM] names (over ssh, or in a multiplexer) may have
+      no description here, so a description's silence takes nothing away.
     + The default, [false], [None], [`Ansi16] or [`Wcwidth], or the facts the
       caller assumes in place of the environment ({!assume}).
 
@@ -97,6 +97,18 @@ type t = {
           description's direct color. 256 colors come from a [TERM] that
           contains [256color], or a description with 256 colors or more
           ([colors]). Any other terminal gets 16. *)
+  dumb : bool;
+      (** The terminal performs no control function and shows only text, as a
+          printer does. [TERM] says so when it is unset, [dumb] or [unknown],
+          outside a Windows console, which has no [TERM]. *)
+  eager_wrap : bool;
+      (** The terminal moves the cursor to the next line as soon as it prints a
+          character in the last column, where a VT100 waits for the next
+          character, so that a line as wide as the screen and its line end take
+          one row. The description says so with [am] and without [xenl]
+          (terminfo(5), "Glitches and Brain Damage"). A Windows console waits,
+          since [Tty.enable_vt] has it wait. A program that must keep the cursor
+          on its row writes nothing in the last column of such a terminal. *)
   kitty_keyboard : int option;
       (** [Some flags] when the terminal has answered the kitty keyboard
           protocol's query, with the enhancement flags it last reported. It is

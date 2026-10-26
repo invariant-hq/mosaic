@@ -3,6 +3,8 @@ module Decoder = Matrix_input.Decoder
 
 type t = {
   colors : [ `Ansi16 | `Ansi256 | `Truecolor ];
+  dumb : bool;
+  eager_wrap : bool;
   kitty_keyboard : int option;
   kitty_graphics : bool;
   bracketed_paste : bool;
@@ -27,6 +29,8 @@ type t = {
 let defaults =
   {
     colors = `Ansi16;
+    dumb = false;
+    eager_wrap = false;
     kitty_keyboard = None;
     kitty_graphics = false;
     bracketed_paste = false;
@@ -72,6 +76,8 @@ type env = {
   force_unicode : bool;
   graphics : [ `Kitty | `Sixel | `Blocks ] option;  (** [MATRIX_GRAPHICS]. *)
   win32 : bool;
+  dumb : bool;
+      (** [TERM] unset, [dumb] or [unknown], outside a Windows console. *)
   described : described;
 }
 
@@ -80,6 +86,7 @@ type env = {
 and described = {
   direct_color : bool;  (** [RGB], [Tc], or [setrgbf] and [setrgbb]. *)
   palette : bool;  (** [colors] of 256 or more. *)
+  eager : bool;  (** [am] without [xenl]. *)
   paste : bool;  (** [BE]. *)
   focus : bool;  (** [fe]. *)
   synchronized : bool;  (** [Sync], as mode 2026. *)
@@ -90,6 +97,7 @@ let describe = function
       {
         direct_color = false;
         palette = false;
+        eager = false;
         paste = false;
         focus = false;
         synchronized = false;
@@ -105,6 +113,7 @@ let describe = function
           || (has "setrgbf" && has "setrgbb");
         palette =
           (match T.number t "colors" with Some n -> n >= 256 | None -> false);
+        eager = T.flag t "am" && not (T.flag t "xenl");
         paste = has "BE";
         focus = has "fe";
         synchronized =
@@ -151,10 +160,13 @@ let env ?terminfo getenv ~win32 =
       | "blocks" -> Some `Blocks
       | _ -> None);
     win32;
+    dumb = (not win32) && List.mem term [ ""; "dumb"; "unknown" ];
     described = describe terminfo;
   }
 
-let no_env = env (fun _ -> None) ~win32:false
+(* No environment, which says nothing of the terminal, not even that its
+   TERM is unset. *)
+let no_env = { (env (fun _ -> None) ~win32:false) with dumb = false }
 
 (* Evidence *)
 
@@ -387,6 +399,8 @@ let derive ev =
          `Truecolor
        else if contains env.term "256color" || described.palette then `Ansi256
        else d.colors);
+    dumb = env.dumb || d.dumb;
+    eager_wrap = (not env.win32) && (described.eager || d.eager_wrap);
     kitty_keyboard =
       (if env.vhs then None
        else match ev.keyboard with Some _ as k -> k | None -> d.kitty_keyboard);
