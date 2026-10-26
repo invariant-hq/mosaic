@@ -29,7 +29,7 @@ let keymap = function
 module Props = struct
   type t = {
     key_bindings : key_binding list;
-    options : item list;
+    options : item List_source.t;
     selected : int;
     tab_width : int;
     background : Ansi.Color.t;
@@ -74,7 +74,7 @@ module Props = struct
     in
     {
       key_bindings;
-      options;
+      options = List_source.of_list options;
       selected = max (-1) selected;
       tab_width = max 1 tab_width;
       background = background';
@@ -96,7 +96,7 @@ module Props = struct
 
   let equal a b =
     List.equal (Keymap.binding_equal ( = )) a.key_bindings b.key_bindings
-    && List.equal equal_item a.options b.options
+    && List_source.equal equal_item a.options b.options
     && Int.equal a.selected b.selected
     && a.tab_width = b.tab_width
     && Ansi.Color.equal a.background b.background
@@ -112,6 +112,8 @@ module Props = struct
     && a.show_description = b.show_description
     && a.show_scroll_arrows = b.show_scroll_arrows
     && a.wrap_selection = b.wrap_selection
+
+  let with_options_of f l props = { props with options = List_source.map f l }
 end
 
 (* ───── Types ───── *)
@@ -119,6 +121,7 @@ end
 type t = {
   node : Renderable.t;
   mutable props : Props.t;
+  mutable items : item list;  (** The options of [props]. *)
   mutable keymap : action Keymap.t;
   mutable selected_index : int;
   mutable on_change : (int -> unit) option;
@@ -131,8 +134,8 @@ let node t = t.node
 
 let request_render t = Renderable.request_render t.node
 
-let clamp_selected props idx =
-  let n = List.length props.Props.options in
+let clamp_selected items idx =
+  let n = List.length items in
   if n = 0 then -1 else max (-1) (min idx (n - 1))
 
 let intrinsic_height props =
@@ -146,7 +149,7 @@ let intrinsic_height props =
 let scroll_offset t =
   let w = Renderable.width t.node in
   let tw = t.props.tab_width in
-  let n = List.length t.props.options in
+  let n = List.length t.items in
   if tw <= 0 || w <= 0 then 0
   else
     let max_visible = max 1 (w / tw) in
@@ -171,7 +174,7 @@ let truncate_text ~width_method text max_width =
 
 let measure t ~known_dimensions ~available_space ~style:_ =
   let content_width =
-    Float.of_int (List.length t.props.Props.options * max 1 t.props.tab_width)
+    Float.of_int (List.length t.items * max 1 t.props.tab_width)
   in
   let width =
     match known_dimensions.Toffee.Geometry.Size.width with
@@ -206,7 +209,7 @@ let rec render t _self grid ~dt:_ =
     let bg = if focused then props.focused_background else props.background in
     Matrix_grid.clear_rect ~color:bg grid ~x:0 ~y:0 ~width:w ~height:h;
     let tw = props.tab_width in
-    let n = List.length props.options in
+    let n = List.length t.items in
     let max_visible = max 1 (w / tw) in
     let scroll = scroll_offset t in
     let base_text_color =
@@ -215,12 +218,12 @@ let rec render t _self grid ~dt:_ =
     render_tabs t grid ~width_method ~props ~w ~h ~tw ~max_visible ~scroll
       ~base_text_color;
     render_scroll_arrows grid ~props ~w ~n ~max_visible ~scroll;
-    render_description grid ~width_method ~props ~w ~h
+    render_description grid ~width_method ~props ~items:t.items ~w ~h
       ~selected_index:t.selected_index
 
 and render_tabs t grid ~width_method ~props ~w ~h ~tw ~max_visible ~scroll
     ~base_text_color =
-  let visible_opts = list_drop scroll props.Props.options in
+  let visible_opts = list_drop scroll t.items in
   let rec loop lst col =
     if col >= max_visible then ()
     else
@@ -266,11 +269,11 @@ and render_scroll_arrows grid ~props ~w ~n ~max_visible ~scroll =
       Matrix_grid.draw_text ~style:arrow_style grid ~x:(w - 1) ~y:0
         ~text:"\xe2\x80\xba")
 
-and render_description grid ~width_method ~props ~w ~h ~selected_index =
+and render_description grid ~width_method ~props ~items ~w ~h ~selected_index =
   if props.Props.show_description && selected_index >= 0 then
     let desc_y = 1 + if props.show_underline then 1 else 0 in
     if desc_y < h then
-      match List.nth_opt props.options selected_index with
+      match List.nth_opt items selected_index with
       | Some item when item.description <> "" ->
           let desc = truncate_text ~width_method item.description (w - 1) in
           Matrix_grid.draw_text
@@ -283,15 +286,14 @@ and render_description grid ~width_method ~props ~w ~h ~selected_index =
 let selected_index t = t.selected_index
 
 let selected_item t =
-  if t.selected_index < 0 then None
-  else List.nth_opt t.props.options t.selected_index
+  if t.selected_index < 0 then None else List.nth_opt t.items t.selected_index
 
-let options t = t.props.options
+let options t = t.items
 
 (* ───── Navigation ───── *)
 
 let move t ~next_index =
-  let n = List.length t.props.options in
+  let n = List.length t.items in
   if n > 0 then
     let idx = t.selected_index in
     let next = next_index ~n ~idx ~wrap:t.props.wrap_selection in
@@ -315,7 +317,7 @@ let select_current t =
 (* ───── Key Handler ───── *)
 
 let handle_key t (event : Event.key) =
-  if t.props.options <> [] then
+  if t.items <> [] then
     match Keymap.action t.keymap (Event.Key.data event) with
     | None -> ()
     | Some action -> (
@@ -344,12 +346,13 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~options
       ?key_bindings ()
   in
   let selected_index =
-    clamp_selected props (Option.value ~default:0 selected)
+    clamp_selected options (Option.value ~default:0 selected)
   in
   let t =
     {
       node;
       props;
+      items = options;
       keymap = keymap props.key_bindings;
       selected_index;
       on_change;
@@ -366,15 +369,19 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~options
 
 (* ───── Setters ───── *)
 
+let set_source t options =
+  t.props <- { t.props with options };
+  t.items <- List_source.to_list options;
+  t.selected_index <- clamp_selected t.items t.selected_index;
+  Renderable.mark_dirty t.node;
+  request_render t
+
 let set_options t items =
-  if not (List.equal Props.equal_item t.props.options items) then (
-    t.props <- { t.props with options = items };
-    t.selected_index <- clamp_selected t.props t.selected_index;
-    Renderable.mark_dirty t.node;
-    request_render t)
+  if not (List.equal Props.equal_item t.items items) then
+    set_source t (List_source.of_list items)
 
 let set_selected t i =
-  let idx = clamp_selected t.props i in
+  let idx = clamp_selected t.items i in
   if idx <> t.selected_index then (
     t.selected_index <- idx;
     request_render t)
@@ -462,7 +469,12 @@ let apply_props t (props : Props.t) =
     t.keymap <- keymap props.key_bindings;
     t.props <- { t.props with key_bindings = props.key_bindings }
   end;
-  set_options t props.options;
+  (* Options equal to the current ones are kept, with the new source, which a
+     later declaration of the same list is then the same as. *)
+  if not (List_source.same t.props.options props.options) then
+    if List_source.equal Props.equal_item t.props.options props.options then
+      t.props <- { t.props with options = props.options }
+    else set_source t props.options;
   set_selected t props.selected;
   set_wrap_selection t props.wrap_selection;
   set_tab_width t props.tab_width;
@@ -481,7 +493,7 @@ let apply_props t (props : Props.t) =
 (* ───── Pretty-printing ───── *)
 
 let pp ppf t =
-  let n = List.length t.props.options in
+  let n = List.length t.items in
   Format.fprintf ppf "Tab_select(%s, %d/%d" (Renderable.id t.node)
     t.selected_index n;
   if t.props.show_underline then Format.pp_print_string ppf ", underline";

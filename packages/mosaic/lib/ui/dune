@@ -7,6 +7,7 @@
   diff_patch
   edit_surface
   keymap
+  list_source
   syntax_session
   text_crop
   text_renderable)

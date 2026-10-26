@@ -8,13 +8,35 @@ let selected_bg = Ansi.Color.of_rgb 17 83 149
 let changed value = Changed value
 let activated value = Activated value
 
+(* [f values], the same list while [values] is the same list, as an
+   application keeps its items in its model. *)
+let kept f =
+  let last = ref None in
+  fun values ->
+    match !last with
+    | Some (previous, items) when previous == values -> items
+    | _ ->
+        let items = f values in
+        last := Some (values, items);
+        items
+
+let select_items = kept (List.map (fun value -> Mosaic.Select.item value value))
+
+let tab_items =
+  kept (List.map (fun value -> Mosaic.Tab_select.item value value))
+
+let table_rows =
+  kept
+    (List.map (fun value ->
+         Mosaic.Table.row value [| Mosaic.Table.cell value |]))
+
 let select ?key ~equal ~selected values =
   Mosaic.select ?key
     ~size:{ width = Mosaic.px 24; height = Mosaic.px 6 }
     ~equal ~selected ~focused:true ~on_change:changed ~on_activate:activated
     ~show_description:false ~background:Ansi.Color.black
     ~focused_background:Ansi.Color.black ~selected_background:selected_bg
-    (List.map (fun value -> Mosaic.Select.item value value) values)
+    (select_items values)
 
 let tabs ?key ~equal ~selected values =
   Mosaic.tab_select ?key
@@ -22,8 +44,7 @@ let tabs ?key ~equal ~selected values =
     ~equal ~selected ~focused:true ~on_change:changed ~on_activate:activated
     ~show_description:false ~show_underline:false ~tab_width:8
     ~background:Ansi.Color.black ~focused_background:Ansi.Color.black
-    ~selected_background:selected_bg
-    (List.map (fun value -> Mosaic.Tab_select.item value value) values)
+    ~selected_background:selected_bg (tab_items values)
 
 let table ?key ~equal ~selected values =
   Mosaic.table ?key
@@ -33,11 +54,7 @@ let table ?key ~equal ~selected values =
     ~background:Ansi.Color.black ~selected_background:selected_bg
     ~focused_selected_background:selected_bg
     ~columns:[ Mosaic.Table.column ~width:(`Fixed 8) "" ]
-    ~rows:
-      (List.map
-         (fun value -> Mosaic.Table.row value [| Mosaic.Table.cell value |])
-         values)
-    ()
+    ~rows:(table_rows values) ()
 
 let tree ?key ~equal:_ ~selected values =
   Mosaic.tree ?key
@@ -218,6 +235,38 @@ let custom_equality build =
   equal ~msg:"callback returns current collection value" (list string)
     [ "activate:B" ] (take ())
 
+(* A widget declared again with the same list, physically, reuses its
+   conversion of the list. Its selection and the values of its callbacks
+   follow each declaration as they do for a new list: after a step, a jump,
+   an absent value, another list, a copy of the list and a new equality, and
+   the first of two equal values is the one selected. *)
+let same_list_declared_again build =
+  let render, key, take, highlighted = fixture build in
+  let values prefix = List.init 200 (Printf.sprintf "%s%03d" prefix) in
+  let first = values "v" and second = values "w" in
+  let activates ?by selected values expected =
+    render ?equal:by selected values;
+    key Enter;
+    equal
+      ~msg:("activates " ^ String.concat "," expected)
+      (list string)
+      (List.map (( ^ ) "activate:") expected)
+      (take ())
+  in
+  activates (Some "v100") first [ "v100" ];
+  activates (Some "v101") first [ "v101" ];
+  activates (Some "v000") first [ "v000" ];
+  activates (Some "v199") first [ "v199" ];
+  render (Some "x") first;
+  is_false ~msg:"an absent value has no highlight" (highlighted ());
+  activates (Some "x") first [];
+  activates (Some "w150") second [ "w150" ];
+  activates (Some "v020") first [ "v020" ];
+  activates (Some "v050") (values "v") [ "v050" ];
+  let same_hundred a b = String.sub a 0 2 = String.sub b 0 2 in
+  activates ~by:same_hundred (Some "v150") first [ "v100" ];
+  activates ~by:same_hundred (Some "v100") first [ "v100" ]
+
 let mlx_selection_values () =
   let build ~equal ~selected values =
     Mosaic_mlx.select
@@ -318,6 +367,8 @@ let () =
                  test "absent and empty selection" (fun () ->
                      absent_and_empty build forward backward);
                  test "custom equality" (fun () -> custom_equality build);
+                 test "same list declared again" (fun () ->
+                     same_list_declared_again build);
                ])
            widgets
     @ List.map

@@ -72,6 +72,7 @@ it.
 - `table` and `tree` apply the `focused_selected_*` colors declared as props
 - Word motions in an editor treat a line break as a boundary
 - A single-line editor reserves the caret's cell, so an empty focused input shows its cursor
+- `select`, `tab_select` and `table` convert their list for display only when the view declares another list than the one it declared last, physically, where every declaration converted and compared every option or row. A declaration finds the selection, and a callback its value, in time linear in its position. A key in a select of 100,000 options took 6 ms and takes 0.2 ms, and in a table of 100,000 rows 8 ms and 0.2 ms
 - Destroying a node, unmounting a view, and dropping rows or embedded nodes from a view take time linear in the nodes they remove. Each node was detached from its parent alone, which took time quadratic in their number, 0.75 s for 20,000 rows
 
 #### Removed

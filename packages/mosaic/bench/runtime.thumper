@@ -10,10 +10,10 @@ loop/idle-turns-10000	alloc_words	exact	11
 loop/posts-1000	alloc_words	exact	133030
 primary-transcript-5000/type-and-erase	alloc_words	exact	48259
 primary-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	105212
-select-10000/down-up	alloc_words	exact	86578
-select-100000/down-up	alloc_words	exact	806578
+select-10000/down-up	alloc_words	exact	6624
+select-100000/down-up	alloc_words	exact	6624
 startup/transcript-5000-first-frame	alloc_words	exact	152659037
-table-100000/down-up	alloc_words	exact	3808054
+table-100000/down-up	alloc_words	exact	8108
 transcript-20000/resize-roundtrip-249x69	alloc_words	exact	784626014
 transcript-20000/resize-roundtrip-250x69	alloc_words	exact	636502376
 transcript-20000/type-and-erase	alloc_words	exact	68125

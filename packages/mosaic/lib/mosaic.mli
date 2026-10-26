@@ -2059,9 +2059,12 @@ val select :
     value; activation without a selection does nothing. Values must be distinct
     under [equal]. Callbacks receive the value from the current options.
 
-    When focused, the list acts on the keys {!Mosaic_ui.Select} lists. Each
-    declaration performs a linear selection lookup and presentation conversion.
-    Event-to-value lookup is constant-time. *)
+    When focused, the list acts on the keys {!Mosaic_ui.Select} lists. A
+    declaration looks for [selected] among the values from the first option on,
+    and a callback finds its value by its position, each in time linear in that
+    position. The element converts [options] for display only when they are not
+    the list it was last declared with, physically, so declaring again the list
+    the model keeps costs no conversion. *)
 
 val tab_select :
   ?key:string ->
@@ -2137,7 +2140,8 @@ val tab_select :
     with the value-selection and callback semantics of {!select}. [None] or a
     value absent from [options] displays no selection. Values must be distinct
     under [equal]. When focused, the tabs act on the keys
-    {!Mosaic_ui.Tab_select} lists. *)
+    {!Mosaic_ui.Tab_select} lists. Declarations and callbacks cost what they
+    cost for {!select}. *)
 
 val canvas :
   ?key:string ->
@@ -2937,9 +2941,9 @@ val table :
     the table cancels the remaining callbacks. [on_hover] receives [None] when
     the pointer leaves all rows.
 
-    When focused, the table acts on the keys {!Mosaic_ui.Table} lists. Each
-    declaration performs a linear selection lookup and row conversion.
-    Event-to-value lookup is constant-time. *)
+    When focused, the table acts on the keys {!Mosaic_ui.Table} lists.
+    Declarations and callbacks cost what they cost for {!select}, with [rows]
+    for its options. *)
 
 val tree :
   ?key:string ->

@@ -5,12 +5,12 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-select-positional-5000	alloc_words	exact	53
-select-value-5000	alloc_words	exact	20128
-table-positional-5000	alloc_words	exact	65
-table-value-5000	alloc_words	exact	20145
-tabs-positional-5000	alloc_words	exact	51
-tabs-value-5000	alloc_words	exact	20126
+select-positional-5000	alloc_words	exact	56
+select-value-5000	alloc_words	exact	151
+table-positional-5000	alloc_words	exact	68
+table-value-5000	alloc_words	exact	177
+tabs-positional-5000	alloc_words	exact	54
+tabs-value-5000	alloc_words	exact	151
 tree-selection-roundtrip-1000	alloc_words	exact	52
 tree-selection-roundtrip-10000	alloc_words	exact	52
 

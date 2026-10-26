@@ -160,6 +160,12 @@ module Props : sig
   val default : t
   (** [default] is [make ()]. *)
 
+  val with_options_of : ('a -> item) -> 'a list -> t -> t
+  (** [with_options_of f l props] is [props] with the options [List.map f l],
+      where [f] must return equal items for one element every time. A select
+      given the same [l] and [f], physically, as by its previous properties
+      neither converts nor compares its options. *)
+
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] have identical visual properties. *)
 end

@@ -270,6 +270,12 @@ module Props : sig
   val default : t
   (** [default] is [make ()]. *)
 
+  val with_rows_of : ('a -> cell array) -> 'a list -> t -> t
+  (** [with_rows_of f l props] is [props] with the rows [List.map f l], where
+      [f] must return equal cells for one element every time. A table given the
+      same [l] and [f], physically, as by its previous properties neither
+      converts nor compares its rows. *)
+
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] describe identical properties. *)
 end

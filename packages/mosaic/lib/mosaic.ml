@@ -1538,16 +1538,32 @@ let input ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
     ?key_bindings ~on_change ?on_submit ()
 
+(* The position of the first of [items] whose value is [selected], or [-1]. *)
+let rec position ~equal ~value selected index = function
+  | [] -> -1
+  | item :: items ->
+      if equal (value item) selected then index
+      else position ~equal ~value selected (index + 1) items
+
 let selection_index ~equal ~value selected items =
   match selected with
   | None -> -1
-  | Some selected ->
-      let rec find index =
-        if index = Array.length items then -1
-        else if equal (value items.(index)) selected then index
-        else find (index + 1)
-      in
-      find 0
+  | Some selected -> position ~equal ~value selected 0 items
+
+(* A select, a tab select and a table take their options or rows from the
+   application's list through these functions, which are the same on every
+   declaration. A widget given the same list as before then neither converts
+   nor compares it ([Mosaic_ui.Select.Props.with_options_of]). *)
+let select_presentation item = item.Select.presentation
+let tab_presentation item = item.Tab_select.presentation
+let row_cells item = item.Table.cells
+
+(* [with_kind f vnode] is the element [vnode] with its kind [k] replaced by
+   [f k]. *)
+let with_kind props = function
+  | Vnode.Element element ->
+      Vnode.Element { element with kind = props element.kind }
+  | vnode -> vnode
 
 let select ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
@@ -1573,21 +1589,27 @@ let select ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
       ?grid_row ?grid_column ()
   in
-  let items = Array.of_list options in
   let selected_index =
-    selection_index ~equal ~value:(fun item -> item.Select.value) selected items
+    selection_index ~equal
+      ~value:(fun item -> item.Select.value)
+      selected options
   in
-  let options = List.map (fun item -> item.Select.presentation) options in
-  let value index = items.(index).Select.value in
+  let value index = (List.nth options index).Select.value in
   let on_change index = on_change (value index) in
   let on_activate = Option.map (fun f index -> f (value index)) on_activate in
-  Vnode.select ~selected_index ?key ~style ?visible ?z_index ?opacity ?buffered
-    ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ?focused ~options ?background ?text_color ?focused_background
-    ?focused_text_color ?selected_background ?selected_text_color
-    ?description_color ?selected_description_color ?show_description
-    ?show_scroll_indicator ?wrap_selection ?key_bindings ?item_spacing
-    ?fast_scroll_step ~on_change ?on_activate ()
+  with_kind (function
+    | Vnode.Select props ->
+        Vnode.Select
+          (Mosaic_ui.Select.Props.with_options_of select_presentation options
+             props)
+    | kind -> kind)
+  @@ Vnode.select ~selected_index ?key ~style ?visible ?z_index ?opacity
+       ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+       ?on_size ?focused ?background ?text_color ?focused_background
+       ?focused_text_color ?selected_background ?selected_text_color
+       ?description_color ?selected_description_color ?show_description
+       ?show_scroll_indicator ?wrap_selection ?key_bindings ?item_spacing
+       ?fast_scroll_step ~on_change ?on_activate ()
 
 let tab_select ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
@@ -1612,23 +1634,27 @@ let tab_select ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
       ?grid_row ?grid_column ()
   in
-  let items = Array.of_list options in
   let selected =
     selection_index ~equal
       ~value:(fun item -> item.Tab_select.value)
-      selected items
+      selected options
   in
-  let options = List.map (fun item -> item.Tab_select.presentation) options in
-  let value index = items.(index).Tab_select.value in
+  let value index = (List.nth options index).Tab_select.value in
   let on_change index = on_change (value index) in
   let on_activate = Option.map (fun f index -> f (value index)) on_activate in
-  Vnode.tab_select ~selected ?key ~style ?visible ?z_index ?opacity ?buffered
-    ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ?focused ~options ?tab_width ?background ?text_color ?focused_background
-    ?focused_text_color ?selected_background ?selected_text_color
-    ?description_color ?selected_description_color ?show_underline
-    ?show_description ?show_scroll_arrows ?wrap_selection ?key_bindings
-    ~on_change ?on_activate ()
+  with_kind (function
+    | Vnode.Tab_select props ->
+        Vnode.Tab_select
+          (Mosaic_ui.Tab_select.Props.with_options_of tab_presentation options
+             props)
+    | kind -> kind)
+  @@ Vnode.tab_select ~selected ?key ~style ?visible ?z_index ?opacity ?buffered
+       ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+       ?focused ~options:[] ?tab_width ?background ?text_color
+       ?focused_background ?focused_text_color ?selected_background
+       ?selected_text_color ?description_color ?selected_description_color
+       ?show_underline ?show_description ?show_scroll_arrows ?wrap_selection
+       ?key_bindings ~on_change ?on_activate ()
 
 let canvas ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
@@ -1936,26 +1962,28 @@ let table ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
       ?grid_row ?grid_column ()
   in
-  let items = Array.of_list rows in
   let selected_row =
-    selection_index ~equal ~value:(fun item -> item.Table.value) selected items
+    selection_index ~equal ~value:(fun item -> item.Table.value) selected rows
   in
-  let rows = List.map (fun item -> item.Table.cells) rows in
-  let value index = items.(index).Table.value in
+  let value index = (List.nth rows index).Table.value in
   let on_change index = on_change (value index) in
   let on_activate = Option.map (fun f index -> f (value index)) on_activate in
   let on_hover =
     Option.map (fun f index -> f (Option.map value index)) on_hover
   in
-  Vnode.table ~selected_row ?key ~style ?visible ?z_index ?opacity ?buffered
-    ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ?focused ?columns ~rows ?border ?border_style ?show_header
-    ?show_column_separator ?show_row_separator ?cell_padding ?header_color
-    ?header_background ?text_color ?background ?selected_text_color
-    ?selected_background ?focused_selected_text_color
-    ?focused_selected_background ?selection_visible ?show_scroll_indicator
-    ?activate_on_click ?wheel_navigation ?row_styles ?wrap_selection
-    ?key_bindings ?fast_scroll_step ~on_change ?on_activate ?on_hover ()
+  with_kind (function
+    | Vnode.Table props ->
+        Vnode.Table (Mosaic_ui.Table.Props.with_rows_of row_cells rows props)
+    | kind -> kind)
+  @@ Vnode.table ~selected_row ?key ~style ?visible ?z_index ?opacity ?buffered
+       ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+       ?focused ?columns ?border ?border_style ?show_header
+       ?show_column_separator ?show_row_separator ?cell_padding ?header_color
+       ?header_background ?text_color ?background ?selected_text_color
+       ?selected_background ?focused_selected_text_color
+       ?focused_selected_background ?selection_visible ?show_scroll_indicator
+       ?activate_on_click ?wheel_navigation ?row_styles ?wrap_selection
+       ?key_bindings ?fast_scroll_step ~on_change ?on_activate ?on_hover ()
 
 let tree ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
