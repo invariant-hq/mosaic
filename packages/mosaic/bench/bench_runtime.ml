@@ -82,7 +82,10 @@ end
 
 type model = { editor : Mosaic.Editor.t; scroll : Mosaic.Scroll.t }
 type msg = Edit of Mosaic.Editor.t | Scroll of Mosaic.Scroll.t
-type workload = Keystroke | Wheel_burst | Resize
+
+(* A resize alternates the terminal between its initial size and the one
+   it carries. *)
+type workload = Keystroke | Wheel_burst | Resize of int * int
 
 type driver = {
   terminal : Term.t;
@@ -206,8 +209,11 @@ let step workload driver =
   | Wheel_burst ->
       Term.feed driver.terminal
         (if driver.alternate then driver.wheel_down else driver.wheel_up)
-  | Resize ->
-      let width, height = if driver.alternate then (249, 69) else (250, 70) in
+  | Resize (width, height) ->
+      let width, height =
+        if driver.alternate then (width, height)
+        else (initial_width, initial_height)
+      in
       Term.resize driver.terminal ~width ~height);
   resume driver;
   if !(driver.continuation) = None then
@@ -320,8 +326,9 @@ let setup ~mode ~blocks workload () =
   (* What the terminal shows, at the size last reported. *)
   let screen () =
     let width, height =
-      if workload = Resize && driver.alternate then (249, 69)
-      else (initial_width, initial_height)
+      match workload with
+      | Resize (width, height) when driver.alternate -> (width, height)
+      | _ -> (initial_width, initial_height)
     in
     Term.screen terminal ~width ~height
   in
@@ -358,7 +365,7 @@ let setup ~mode ~blocks workload () =
         require
           (y = if driver.alternate then 7508 else 7500)
           (Printf.sprintf "wheel burst resolved to %d" y)
-    | Resize -> ()
+    | Resize _ -> ()
   done;
   driver
 
@@ -667,14 +674,16 @@ let () =
             [
               ("type-and-erase", Keystroke);
               ("wheel-roundtrip-2x8", Wheel_burst);
-              ("resize-roundtrip-249x69", Resize);
+              ("resize-roundtrip-249x69", Resize (249, 69));
+              ("resize-roundtrip-250x69", Resize (250, 69));
             ] );
           ( `Alt,
             20000,
             [
               ("type-and-erase", Keystroke);
               ("wheel-roundtrip-2x8", Wheel_burst);
-              ("resize-roundtrip-249x69", Resize);
+              ("resize-roundtrip-249x69", Resize (249, 69));
+              ("resize-roundtrip-250x69", Resize (250, 69));
             ] );
           ( `Primary,
             5000,
