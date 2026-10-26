@@ -657,8 +657,11 @@ let as_shown grid ~top ~form shown =
     grid
 
 (* The frame's first row is a row of the screen, or, in [`Primary] mode, a
-   number of rows below the cursor's. *)
-let check_presented s =
+   number of rows below the cursor's. Once the run has given the terminal
+   back, no frame is presented. *)
+let rec check_presented s = if not s.ended then check_shown s
+
+and check_shown s =
   let grid, place, form = s.presented () in
   let top =
     match place with

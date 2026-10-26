@@ -410,7 +410,8 @@ val check_presented : t -> unit
     ([Matrix]'s live region in [`Primary] mode), the text of the frame the run
     believes it presented ([Matrix.current_grid]), which the run's own diff of
     frames wrote. A test calls it after its steps to catch output that puts on
-    the terminal another frame than the run drew.
+    the terminal another frame than the run drew. Once the run has ended, and
+    given the terminal back, it checks nothing.
 
     Raises [Failure], with each row that differs, if they differ, and
     [Invalid_argument] if no run has begun on [s]. *)

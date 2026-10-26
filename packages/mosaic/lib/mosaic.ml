@@ -210,6 +210,7 @@ module Cmd = struct
     | Static_commit of 'msg Vnode.t
     | Static_clear
     | Abort_paste
+    | Keep_frame of bool
 
   let none = None
   let batch cmds = Batch cmds
@@ -227,6 +228,7 @@ module Cmd = struct
   let static_commit view = Static_commit view
   let static_clear = Static_clear
   let abort_paste = Abort_paste
+  let keep_frame keep = Keep_frame keep
 
   let rec map (f : 'a -> 'b) (cmd : 'a t) : 'b t =
     match cmd with
@@ -246,6 +248,7 @@ module Cmd = struct
     | Static_commit view -> Static_commit (Vnode.map f view)
     | Static_clear -> Static_clear
     | Abort_paste -> Abort_paste
+    | Keep_frame keep -> Keep_frame keep
 end
 
 module Sub = struct
@@ -437,6 +440,11 @@ type ('model, 'msg) runtime = {
      runs no element's animation. *)
   mutable early : bool;
   mutable quit : bool;
+  (* Whether the program leaves its last frame when it ends
+     ([Cmd.keep_frame]), and, then, whether it has quit and draws that
+     frame. *)
+  mutable keep : bool;
+  mutable closing : bool;
   mutable map_message : 'msg -> unit;
   app : ('model, 'msg) app;
   matrix_app : 'msg post Matrix.app;
@@ -575,6 +583,16 @@ let start_worker runtime id f =
       with exn when Sub.Stop.requested stop -> ignore exn);
   (id, stop)
 
+(* The program ends. One that leaves its last frame in [`Primary] mode draws
+   it first, from the model it ends with, which the frame before may not
+   show; nothing is applied meanwhile. *)
+let end_program runtime =
+  if runtime.keep && Matrix.mode runtime.matrix_app = `Primary then (
+    if not runtime.closing then (
+      runtime.closing <- true;
+      Matrix.request_redraw runtime.matrix_app))
+  else runtime.quit <- true
+
 let rec process_cmd runtime (cmd : _ Cmd.t) =
   match cmd with
   | Cmd.None -> ()
@@ -584,7 +602,7 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
           f (mailbox runtime).dispatch)
   | Cmd.Exec f -> push_msg runtime (Matrix.release runtime.matrix_app f)
   | Cmd.Suspend -> Matrix.stop_job runtime.matrix_app
-  | Cmd.Quit -> runtime.quit <- true
+  | Cmd.Quit -> end_program runtime
   | Cmd.Set_title title ->
       let term = Matrix.terminal runtime.matrix_app in
       Matrix.Terminal.set_title term title
@@ -610,6 +628,9 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
       Matrix.static_write ~rows runtime.matrix_app grid
   | Cmd.Static_clear -> Matrix.static_clear runtime.matrix_app
   | Cmd.Abort_paste -> Matrix.abort_paste runtime.matrix_app
+  | Cmd.Keep_frame keep ->
+      runtime.keep <- keep;
+      Matrix.keep_frame runtime.matrix_app keep
 
 let rec collect_subs runtime (sub : _ Sub.t) =
   match sub with
@@ -786,7 +807,7 @@ let update_subscriptions runtime =
 (* Nothing after the update that quit is applied, not even a message the
    same event gives a later listener. *)
 let dispatch runtime msg =
-  if not runtime.quit then (
+  if not (runtime.quit || runtime.closing) then (
     let model', cmd = runtime.app.update msg runtime.model in
     runtime.view_dirty <- runtime.view_dirty || not (model' == runtime.model);
     runtime.model <- model';
@@ -969,7 +990,7 @@ let handle_input runtime (input : Matrix.event) =
       if
         Matrix.Input.Keystroke.is_interrupt key
         && not (Event.Key.default_prevented event)
-      then runtime.quit <- true
+      then end_program runtime
   | Key_release release ->
       List.iter
         (fun f -> Option.iter (deliver runtime) (f release))
@@ -1051,6 +1072,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       framing = false;
       early = false;
       quit = false;
+      keep = true;
+      closing = false;
       map_message = Fun.const ();
       app;
       matrix_app;
@@ -1182,8 +1205,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
   in
   let handle : _ Matrix.step -> unit = function
     | Stopped -> runtime.quit <- true
-    | Event input -> handle_input runtime input
-    | Timer fired -> timer fired
+    | Event input -> if not runtime.closing then handle_input runtime input
+    | Timer fired -> if not runtime.closing then timer fired
     | Posted (Message (stop, msg)) ->
         (* Applied now, so the turn's budget counts its update. *)
         Atomic.decr runtime.posted_msgs;
@@ -1200,7 +1223,9 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
               push_msg runtime msg;
               process_pending_msgs runtime))
     | Posted (Failed (exn, bt)) -> Printexc.raise_with_backtrace exn bt
-    | Frame -> frame ()
+    | Frame ->
+        frame ();
+        if runtime.closing then runtime.quit <- true
   in
   (* The run's end stops the workers and the senders' waits. *)
   let finish () =

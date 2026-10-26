@@ -891,6 +891,7 @@ module Cmd : sig
     | Static_commit of 'msg Vnode.t  (** {!val-static_commit}. *)
     | Static_clear  (** {!val-static_clear}. *)
     | Abort_paste  (** {!val-abort_paste}. *)
+    | Keep_frame of bool  (** {!val-keep_frame}. *)
 
   val none : 'msg t
   (** [none] is the command that does nothing. *)
@@ -951,7 +952,8 @@ module Cmd : sig
       that update is applied. The messages that come after it, from the same
       event too, and the events read and not yet handled, typed for a program
       that has ended, are dropped, and no frame is drawn after the step that
-      quit. *)
+      quit, but, in [`Primary] mode, the last one, which a program keeps unless
+      it says otherwise ({!val-keep_frame}). *)
 
   val set_title : string -> 'msg t
   (** [set_title s] sets the terminal window's title to [s]
@@ -992,6 +994,14 @@ module Cmd : sig
   (** [static_clear] erases the transcript and the screen
       ({!Matrix.static_clear}). The scrollback stays. In [`Alt] mode it does
       nothing. *)
+
+  val keep_frame : bool -> 'msg t
+  (** [keep_frame keep] says what a program in [`Primary] mode leaves on the
+      screen when it ends ({!Matrix.keep_frame}). With [true], as by default, it
+      draws the view of the model it ends with as its last frame, after the
+      update that quit, and the frame stays, with the cursor below it. With
+      [false], the live region is erased. The latest [keep_frame] holds,
+      whichever way the program ends. In [`Alt] mode it does nothing. *)
 
   val abort_paste : 'msg t
   (** [abort_paste] ends the bracketed paste in progress, if any, and drops what

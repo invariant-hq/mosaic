@@ -967,6 +967,46 @@ let%expect_test "static output follows the terminal's width method" =
     live
     |}]
 
+(* A program keeps its frame by default: it draws the view of the model it
+   ends with, after the update that quit, and leaves it with the cursor below
+   it; with [keep_frame false] the live region is erased. *)
+let%expect_test "a program keeps its last view, or erases it" =
+  let application keep =
+    {
+      (app ~subs:on_keys ()) with
+      Mosaic.update =
+        (fun msg model ->
+          let model, _ = update msg model in
+          ( model,
+            if msg = Pressed "q" then
+              Mosaic.Cmd.batch
+                ((match keep with
+                   | None -> []
+                   | Some keep -> [ Mosaic.Cmd.keep_frame keep ])
+                @ [ Mosaic.Cmd.quit ])
+            else Mosaic.Cmd.none ));
+    }
+  in
+  List.iter
+    (fun keep ->
+      let t =
+        terminal ~profile:Matrix_test.Profile.vte ~width:40 ~height:4 ()
+      in
+      run ~mode:`Primary t (application keep) (fun _ -> feed t "aq");
+      Printf.printf "keep %s, the cursor on row %d:\n%s\n"
+        (match keep with None -> "unsaid" | Some k -> string_of_bool k)
+        (match Matrix_test.Screen.cursor (screen_value t) with
+        | Some c -> c.row + 1
+        | None -> 0)
+        (rstrip_rows (screen t)))
+    [ None; Some false ];
+  [%expect
+    {|
+    keep unsaid, the cursor on row 2:
+    keys:[a,q] ticks:0 size:- note:-
+    keep false, the cursor on row 1:
+    |}]
+
 let%expect_test "static commit emits content taller than the viewport" =
   (* Cmd.static_commit renders offscreen at the content's natural height:
      every line of a static view taller than the terminal must reach the
