@@ -185,12 +185,14 @@ let at_most ~msg cap bytes =
 let live_bytes () = (Gc.stat ()).live_words * (Sys.word_size / 8)
 let peak_bytes () = (Gc.stat ()).top_heap_words * (Sys.word_size / 8)
 
-(* A megabyte at width 1 is a million rows. *)
+(* A megabyte at width 1 is a million rows, which a layout builds when one of
+   them is asked. *)
 let million_rows () =
   let module L = Matrix_text.Layout in
   Gc.full_major ();
   let before = live_bytes () in
   let layout = L.create (L.Source.of_string megabyte) ~width:1 ~wrap:`Char in
+  ignore (L.row_start layout (L.row_count layout - 1) : int);
   Gc.full_major ();
   let retained = live_bytes () - before in
   let replacement =
@@ -203,10 +205,12 @@ let million_rows () =
   at_most ~msg:"heap peak while a second layout is built" (256 * mib) peak
 
 (* A megabyte of prose in paragraphs of 585 bytes, laid out at the four widths
-   a text surface caches. The measured 20.4 MiB retained and 42.0 MiB peak
-   leave less room than one more array per grapheme (7.6 MiB): such an array
-   exceeds both caps. The peak allows the old and the new text's geometry
-   together. *)
+   a text surface caches, every row asked for. The caps date from a source
+   that indexed every grapheme and a layout that built every row, measured at
+   20.4 MiB retained and 42.0 MiB at peak. Laid out per line, with rows built
+   when asked, it is 1.2 MiB and 5.2 MiB; one more array per grapheme
+   (7.6 MiB) now exceeds the per-line caps below instead. The peak allows the
+   old and the new text's geometry together. *)
 let prose =
   let sentence = "The quick brown fox jumps over the lazy dog; " in
   let paragraph = String.concat "" (List.init 13 (fun _ -> sentence)) in
@@ -224,7 +228,10 @@ let cached_widths () =
   List.iter
     (fun width ->
       Text_surface.set_wrap_width surface (Some width);
-      ignore (Text_surface.display_line_count surface : int))
+      let layout = Text_surface.layout surface in
+      for row = 0 to Matrix_text.Layout.row_count layout - 1 do
+        ignore (Matrix_text.Layout.row_start layout row : int)
+      done)
     [ 40; 60; 80; 120 ];
   ignore
     (Matrix_text.Layout.measure
@@ -242,6 +249,59 @@ let cached_widths () =
     retained;
   at_most ~msg:"heap peak while the text is replaced" (48 * mib) peak
 
+(* A logical line costs five words at one geometry: its byte start, its first
+   cluster and its index in the source, and the rows before it and its rows in
+   the layout. A line asked about that holds more than printable ASCII adds
+   two words per cluster and three, and a shown line that wraps two words per
+   row. The caps allow one word a line more. Indexing the whole text and its rows, as a source did before
+   it indexed lines apart, held 106 bytes a line on lines of 2 bytes, 938 on
+   lines of 50 and 846 on lines of Greek and CJK. *)
+let per_line () =
+  let module L = Matrix_text.Layout in
+  let retained ~shown text =
+    Gc.full_major ();
+    let before = live_bytes () in
+    let source = L.Source.of_string text in
+    let layout = L.create source ~width:80 ~wrap:`Word in
+    let first = if shown = `Forty then L.row_count layout / 2 else 0 in
+    let last = if shown = `Forty then first + 39 else L.row_count layout - 1 in
+    for row = first to last do
+      L.iter_cells layout ~row ~first_column:0 ~last_column:80
+        (fun ~first:_ ~last:_ ~column:_ ~width:_ ~ellipsis:_ -> ())
+    done;
+    Gc.full_major ();
+    let bytes = live_bytes () - before in
+    ignore (Sys.opaque_identity layout);
+    (bytes, L.Source.line_count source, L.Source.length source)
+  in
+  let short = String.concat "" (List.init 500_000 (fun _ -> "x\n")) in
+  let prose =
+    String.concat ""
+      (List.init 10_000 (fun i ->
+           String.sub "The quick brown fox jumps over the lazy dog; it naps.\n"
+             (i mod 20)
+             (54 - (i mod 20))))
+  in
+  let other =
+    String.concat ""
+      (List.init 6_000 (fun i ->
+           Printf.sprintf "%05d αβγδε ζηθ 漢字かな交じり文 ιкλμ %s\n" i
+             (String.make (i mod 30) 'x')))
+  in
+  List.iter
+    (fun (what, text) ->
+      let bytes, lines, _ = retained ~shown:`Forty text in
+      at_most ~msg:(what ^ ", forty rows shown") (48 * lines) bytes)
+    [
+      ("lines of 2 bytes", short);
+      ("lines of 50 bytes", prose);
+      ("lines of Greek and CJK", other);
+    ];
+  let bytes, lines, clusters = retained ~shown:`All other in
+  at_most ~msg:"lines of Greek and CJK, every row shown"
+    ((72 * lines) + (16 * clusters))
+    bytes
+
 let () =
   run "mosaic.cost"
     [
@@ -250,6 +310,7 @@ let () =
         [
           test "four cached widths of a megabyte" cached_widths;
           test "a million rows" million_rows;
+          test "per line" per_line;
         ];
       group "Repaint follows the visible area"
         [

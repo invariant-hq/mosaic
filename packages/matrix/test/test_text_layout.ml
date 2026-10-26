@@ -407,6 +407,274 @@ let wrapped_rows_fit c =
     done
   end
 
+(* ───── Edits ─────
+
+   A source made by edits answers every query as the source of the same text
+   made from scratch, and so do its layouts, carried from those of the
+   sources it was made from. Before each edit the source is laid out at each
+   geometry, and every other step it is fully read, so that sources with and
+   without indexed lines and built rows are edited. *)
+
+type edit = Replace of int * int * string | Undo
+
+type geometry = {
+  g_width : int;
+  g_wrap : Layout.wrap;
+  g_truncate : bool;
+  g_method : Matrix_text.width_method;
+  g_tab : int;
+}
+
+type session = { start : string; geometries : geometry list; edits : edit list }
+
+let pp_session ppf s =
+  Format.fprintf ppf "{ start = %S; geometries = [%s]; edits = [%s] }" s.start
+    (String.concat "; "
+       (List.map
+          (fun g ->
+            Printf.sprintf "(%d, %s, %b, %s, %d)" g.g_width
+              (match g.g_wrap with
+              | `None -> "`None"
+              | `Char -> "`Char"
+              | `Word -> "`Word")
+              g.g_truncate
+              (match g.g_method with
+              | `Unicode -> "`Unicode"
+              | `Unicode_wide -> "`Unicode_wide"
+              | `Wcwidth -> "`Wcwidth")
+              g.g_tab)
+          s.geometries))
+    (String.concat "; "
+       (List.map
+          (function
+            | Replace (at, removed, s) ->
+                Printf.sprintf "Replace (%d, %d, %S)" at removed s
+            | Undo -> "Undo")
+          s.edits))
+
+let gen_session =
+  let open Gen in
+  let piece =
+    one_of
+      [
+        fragment;
+        of_list
+          [
+            "\xe2\x82" (* a truncated scalar *);
+            "\xf0\x9f\x87\xab" (* a regional indicator *);
+            "\xd8\x80" (* U+0600, which joins what follows *);
+            "x\r";
+            "\ny";
+          ];
+      ]
+  in
+  let text size = map (String.concat "") (list ~size piece) in
+  let edit =
+    frequency
+      [
+        ( 4,
+          map
+            (fun (at, removed, s) -> Replace (at, removed, s))
+            (triple (int_range 0 60) (int_range 0 6) (text (int_range 0 3))) );
+        (1, pure Undo);
+      ]
+  in
+  let geometry =
+    of_list
+      [
+        {
+          g_width = 7;
+          g_wrap = `Word;
+          g_truncate = false;
+          g_method = `Unicode;
+          g_tab = 2;
+        };
+        {
+          g_width = 7;
+          g_wrap = `Char;
+          g_truncate = false;
+          g_method = `Wcwidth;
+          g_tab = 4;
+        };
+        {
+          g_width = 5;
+          g_wrap = `None;
+          g_truncate = true;
+          g_method = `Unicode;
+          g_tab = 2;
+        };
+        {
+          g_width = 1;
+          g_wrap = `Word;
+          g_truncate = false;
+          g_method = `Unicode_wide;
+          g_tab = 3;
+        };
+        {
+          g_width = 0;
+          g_wrap = `None;
+          g_truncate = false;
+          g_method = `Unicode;
+          g_tab = 1;
+        };
+        {
+          g_width = 3;
+          g_wrap = `None;
+          g_truncate = true;
+          g_method = `Unicode_wide;
+          g_tab = 2;
+        };
+        {
+          g_width = -1;
+          g_wrap = `Word;
+          g_truncate = false;
+          g_method = `Wcwidth;
+          g_tab = 2;
+        };
+      ]
+  in
+  with_pp pp_session
+    (map
+       (fun (start, geometries, edits) -> { start; geometries; edits })
+       (triple
+          (text (int_range 0 16))
+          (list ~size:(int_range 1 4) geometry)
+          (list ~size:(int_range 1 16) edit)))
+
+let lay_out source g =
+  Layout.create ~width_method:g.g_method ~tab_width:g.g_tab
+    ~truncate:g.g_truncate source ~width:g.g_width ~wrap:g.g_wrap
+
+(* Everything a reader asks of a source and its layouts. *)
+let agree ~msg geometries edited =
+  let module S = Layout.Source in
+  let text = S.text edited in
+  let fresh = S.of_string text in
+  let msg what = Printf.sprintf "%s: %s of %S" msg what text in
+  let ints what f = equal ~msg:(msg what) (list int) (f fresh) (f edited) in
+  let upto n f = List.init (n + 1) f in
+  ints "lines" (fun s ->
+      S.length s :: S.line_count s
+      :: List.concat
+           (List.init (S.line_count s) (fun l ->
+                [ S.line_start s l; S.line_end s l ])));
+  ints "boundaries" (fun s ->
+      upto (S.length s) (fun g -> S.byte_offset s g)
+      @ upto (S.length s) (fun g -> S.line_of_offset s g));
+  ints "bytes" (fun s ->
+      upto (String.length text) (fun b ->
+          S.grapheme_of_byte s ~affinity:Upstream b
+          + (1000 * S.grapheme_of_byte s ~affinity:Downstream b)));
+  List.iter
+    (fun g ->
+      ints "columns" (fun s ->
+          List.init (S.line_count s) (fun l ->
+              S.columns ~width_method:g.g_method ~tab_width:g.g_tab s
+                ~first:(S.line_start s l) ~last:(S.line_end s l))
+          @ [
+              S.columns ~width_method:g.g_method ~tab_width:g.g_tab s
+                ~first:(S.length s) ~last:0;
+            ]);
+      let a = lay_out fresh g and b = lay_out edited g in
+      let rows l =
+        Layout.row_count l :: Layout.max_width l
+        :: List.concat
+             (List.init (Layout.row_count l) (fun r ->
+                  let cells = ref [] in
+                  Layout.iter_cells l ~row:r ~first_column:0
+                    ~last_column:(Layout.max_width l + 1)
+                    (fun ~first ~last ~column ~width ~ellipsis ->
+                      cells :=
+                        first :: last :: column :: width :: Bool.to_int ellipsis
+                        :: !cells);
+                  Layout.row_start l r :: Layout.row_end l r
+                  :: Layout.row_width l r :: Layout.logical_line l r
+                  :: Layout.continuation l r :: !cells))
+      in
+      equal ~msg:(msg "rows") (list int) (rows a) (rows b);
+      let n = S.length fresh in
+      List.iter
+        (fun affinity ->
+          let carets l =
+            List.concat
+              (upto n (fun grapheme ->
+                   let row, column = Layout.locate l { grapheme; affinity } in
+                   [ row; column ]))
+            @ List.concat
+                (List.init
+                   (Layout.row_count l + 2)
+                   (fun row ->
+                     List.concat
+                       (List.init
+                          (Layout.max_width l + 3)
+                          (fun column ->
+                            let k =
+                              Layout.hit ~affinity l ~row:(row - 1)
+                                ~column:(column - 1)
+                            in
+                            let first, last =
+                              Layout.coverage l ~row:(row - 1)
+                                ~column:(column - 1)
+                            in
+                            [
+                              k.grapheme;
+                              Bool.to_int (k.affinity = Upstream);
+                              first;
+                              last;
+                            ]))))
+          in
+          equal ~msg:(msg "carets") (list int) (carets a) (carets b))
+        [ Layout.Upstream; Downstream ])
+    geometries
+
+let edits_match_fresh_indexing s =
+  let source = ref (Layout.Source.of_string s.start) and undo = ref [] in
+  let last_step = List.length s.edits - 1 in
+  List.iteri
+    (fun step edit ->
+      List.iter
+        (fun g ->
+          let l = lay_out !source g in
+          ignore (Layout.row_start l (Layout.row_count l / 2) : int))
+        s.geometries;
+      let text = Layout.Source.text !source in
+      let first, last, inserted =
+        match (edit, !undo) with
+        | Replace (at, removed, inserted), _ ->
+            let first = at mod (String.length text + 1) in
+            let last = min (String.length text) (first + removed) in
+            undo :=
+              ( first,
+                first + String.length inserted,
+                String.sub text first (last - first) )
+              :: !undo;
+            (first, last, inserted)
+        | Undo, change :: rest ->
+            undo := rest;
+            change
+        | Undo, [] -> (0, 0, "")
+      in
+      source := Layout.Source.edit !source ~first ~last inserted;
+      let expected =
+        String.sub text 0 first ^ inserted
+        ^ String.sub text last (String.length text - last)
+      in
+      equal ~msg:"edited text" string expected (Layout.Source.text !source);
+      if step mod 2 = 1 || step = last_step then
+        agree ~msg:(Printf.sprintf "edit %d" step) s.geometries !source)
+    s.edits
+
+let edit_bounds () =
+  let source = Layout.Source.of_string "ab" in
+  raises
+    (Invalid_argument "Matrix_text.Layout.Source.edit: bytes out of bounds")
+    (fun () -> ignore (Layout.Source.edit source ~first:1 ~last:3 "x"));
+  raises
+    (Invalid_argument "Matrix_text.Layout.Source.edit: bytes out of bounds")
+    (fun () -> ignore (Layout.Source.edit source ~first:2 ~last:1 "x"));
+  equal ~msg:"the source edited is unchanged" string "ab"
+    (Layout.Source.text source)
+
 let () =
   run "matrix.text_layout"
     [
@@ -442,5 +710,11 @@ let () =
         [
           prop ~count:1000 "cells skip zero-width clusters" gen_case
             cells_skip_zero_width;
+        ];
+      group "Edits"
+        [
+          test "bytes out of bounds" edit_bounds;
+          prop ~count:500 "edits match indexing from scratch" gen_session
+            edits_match_fresh_indexing;
         ];
     ]

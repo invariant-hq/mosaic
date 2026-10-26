@@ -54,13 +54,20 @@ let replacement_releases_geometry () =
   ignore (Sys.opaque_identity surface)
 
 let oversized_layout_is_released_on_width_switch () =
-  let length = 40 * 1024 * 1024 / (8 * (Sys.word_size / 8)) in
+  (* At width 1, 40 MiB of rows: a built row takes two words. *)
+  let length = 40 * 1024 * 1024 / (2 * (Sys.word_size / 8)) in
   let surface = make_surface ~wrap:`Char ~content:(String.make length 'x') () in
   Text_surface.set_wrap_width surface (Some 80);
   ignore (Text_surface.layout surface : Layout.t);
   let old = Weak.create 1 in
   Text_surface.set_wrap_width surface (Some 1);
-  Weak.set old 0 (Some (Text_surface.layout surface));
+  (* A layout builds a line's rows when they are asked: asking for the last
+     row builds all of them. *)
+  let shown layout =
+    ignore (Layout.row_start layout (Layout.row_count layout - 1) : int);
+    layout
+  in
+  Weak.set old 0 (Some (shown (Text_surface.layout surface)));
   Text_surface.set_wrap_width surface (Some 80);
   equal int (length / 80) (Text_surface.display_line_count surface);
   Gc.full_major ();

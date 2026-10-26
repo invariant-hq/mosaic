@@ -97,7 +97,7 @@
 (executable
  (name bench_editor)
  (modules bench_editor)
- (libraries thumper mosaic.ui))
+ (libraries thumper mosaic.ui matrix.text))
 
 (executable
  (name bench_highlighting)

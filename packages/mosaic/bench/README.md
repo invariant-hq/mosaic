@@ -39,6 +39,10 @@ of allocation counts that CI checks). These suites therefore stay out of
 `runtest`, where a new machine (a CI runner, a contributor's laptop) would
 fail on the proposal.
 
+Editing covers caret moves and inserts in 128 bytes and 1 MB of text, and a
+key typed at line 5,000 of the 500 KB document of the cross-framework
+editor benchmark (B4), laid out at its width unwrapped and word-wrapped.
+
 Highlighting covers 100 KB and 1 MB sources with 1,000 captures: alternating
 themes over a retained capture batch, and installing fresh capture batches over
 already indexed text. Both cases resolve paint styles inside the measured
@@ -57,10 +61,12 @@ hold a fixed cap:
   repaint allocates more when the text hides more rows, columns, overlays or
   wrapped rows, or a steady frame of a scrolled transcript allocates more
   behind 10,000 rows than behind 1,000. It caps the memory of 1 MB laid out
-  at width 1 (128 MiB retained, 256 MiB heap peak) and of 1 MB of prose at
-  the four widths a text surface caches (24 MiB retained, 48 MiB peak: the
-  measured 20.4 MiB and 42.0 MiB leave less room than one more array per
-  grapheme, 7.6 MiB).
+  at width 1 with every row asked for (128 MiB retained, 256 MiB heap peak)
+  and of 1 MB of prose at the four widths a text surface caches (24 MiB
+  retained, 48 MiB peak). It caps a source and its layout at six words per
+  logical line with forty rows shown, on lines of 2 and 50 bytes and of Greek
+  and CJK, where they hold five, and with every row shown at nine words a line
+  and two a cluster, which one more array per grapheme exceeds.
 - `test/loop/test_transcript.ml` runs the runtime suite's transcript on an
   emulated terminal and fails if typing or a wheel burst allocates more over
   20,000 messages than over 5,000.

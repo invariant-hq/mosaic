@@ -7,7 +7,9 @@
 
 cursor-persistent-128b	alloc_words	exact	46
 cursor-persistent-1mb	alloc_words	exact	46
-insert-persistent-1mb	alloc_words	exact	1312588
+insert-b4-line-5000	alloc_words	exact	196924
+insert-b4-line-5000-word	alloc_words	exact	224952
+insert-persistent-1mb	alloc_words	exact	312579
 
 # machine: m1max
 # host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos

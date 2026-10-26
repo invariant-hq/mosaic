@@ -353,7 +353,8 @@ module Layout : sig
       grapheme clusters even under [`Wcwidth].
 
       The life cycle of a layout:
-      + {!Source.of_string} indexes a text once.
+      + {!Source.of_string} indexes a text once, and {!Source.edit} indexes
+        again only the lines an edit touches.
       + {!create} lays it out at a width, and again when the width changes.
       + {!iter_rows} and {!iter_cells} draw the rows that show, and {!locate},
         {!hit} and {!coverage} map carets and cells to each other. *)
@@ -377,9 +378,13 @@ module Layout : sig
 
         A source keeps its text's bytes as they are, and indexes every cluster,
         those of width [0] included. CR LF is one cluster of two bytes. A source
-        caches the widths of its clusters for the width method and tab width it
-        was last laid out with, so it must not be used by two domains in
-        parallel. *)
+        indexes each logical line, and a source made by {!edit} shares the index
+        of every line the edit leaves whole with the source it was made from. A
+        line that holds more than printable ASCII has its clusters indexed when
+        something first asks about it, with their widths by the width method and
+        tab width it was last laid out with. A source also keeps its layouts
+        ({!Layout.create}). Sources made from one another share what they cache,
+        so they must not be used by two domains in parallel. *)
 
     type t
     (** The type for sources. *)
@@ -428,6 +433,15 @@ module Layout : sig
     val slice : t -> first:int -> last:int -> string
     (** [slice t ~first ~last] is a copy of the bytes from boundary [first] to
         boundary [last], and [""] if [last] is not after [first]. *)
+
+    val edit : t -> first:int -> last:int -> string -> t
+    (** [edit t ~first ~last s] is the source of [t]'s text with the bytes from
+        [first] to [last] replaced by [s]. It copies the text, indexes again the
+        lines the replacement touches, and shares the index of the others with
+        [t], which is unchanged.
+
+        Raises [Invalid_argument] unless
+        [0 <= first <= last <= String.length (text t)]. *)
   end
 
   type t
@@ -446,7 +460,16 @@ module Layout : sig
   (** [create source ~width ~wrap] is the layout of [source] in rows of [width]
       cells, wrapped by [wrap]. A [width] of [0] or less keeps one row per
       logical line. With [~truncate:true] and [`None] a line wider than [width]
-      is truncated. [truncate] defaults to [false]. *)
+      is truncated. [truncate] defaults to [false].
+
+      [source] keeps the layouts of its last four calls that lay it out
+      differently, and [create] returns the one it keeps when its arguments lay
+      it out the same way. A layout makes the rows of a line when they are first
+      asked, and the layouts a source keeps share 32 MiB of rows: the one
+      [create] returns is kept whatever its rows, and the others while their
+      rows fit what it leaves. When [source] was made by {!Source.edit} from a
+      source that keeps a layout for the same arguments, [create] lays out only
+      the lines the edit touched. *)
 
   val measure :
     ?width_method:width_method ->
@@ -457,7 +480,7 @@ module Layout : sig
     wrap:wrap ->
     int * int
   (** [measure source ~width ~wrap] is [(row_count l, max_width l)] for the
-      layout [l] that {!create} would make, without making it. *)
+      layout [l] that {!create} returns, which makes no rows. *)
 
   val source : t -> Source.t
   (** [source t] is the source of [t]. *)
