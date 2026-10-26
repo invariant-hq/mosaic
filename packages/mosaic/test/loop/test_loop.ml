@@ -728,6 +728,42 @@ let%expect_test "a mouse press a widget stops skips on_mouse" =
     |
     |}]
 
+(* Cmd.copy_selection asks the terminal to set the clipboard to the text
+   dragged over (OSC 52). A pipe is asked nothing, as the run writes it no
+   control sequence. *)
+let%expect_test "Cmd.copy_selection sends the dragged text to the clipboard" =
+  let application =
+    {
+      Mosaic.init = (fun () -> ((), Mosaic.Cmd.none));
+      update = (fun () () -> ((), Mosaic.Cmd.copy_selection));
+      view = (fun () -> Mosaic.text "hello world");
+      subscriptions =
+        (fun () -> Mosaic.Sub.on_keys [ (Mosaic.Shortcut.char 'c', ()) ]);
+    }
+  in
+  (* A drag from the first column to the fifth, then c. *)
+  let drag = "\027[<0;1;1M\027[<32;5;1M\027[<0;5;1m" in
+  List.iter
+    (fun (name, profile) ->
+      let t = terminal ~profile ~width:20 ~height:1 () in
+      run t application (fun _ ->
+          feed t drag;
+          feed t "c");
+      let request = function
+        | Vte.Clipboard { selection; data } ->
+            Printf.sprintf "clipboard %S %S" selection data
+        | Vte.Bell | Vte.Notification _ -> "other"
+      in
+      Printf.printf "%s: %s\n" name
+        (match Matrix_test.Terminal.requests t.term with
+        | [] -> "nothing"
+        | requests -> String.concat ", " (List.map request requests)))
+    [ ("terminal", Matrix_test.Profile.vte); ("pipe", profile) ];
+  [%expect {|
+    terminal: clipboard "c" "hello"
+    pipe: nothing
+    |}]
+
 let%expect_test "model focus follows a remounted editor" =
   let observed = ref Mosaic.Editor.empty in
   let application =
