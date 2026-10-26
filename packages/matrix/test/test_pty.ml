@@ -671,10 +671,15 @@ let with_interrupts f =
     Unix.create_process "sh" [| "sh"; "-c"; script |] null null null
   in
   Unix.close null;
+  (* A signal the sender sent before it was killed can interrupt the reap. *)
+  let rec reap () =
+    try ignore (Unix.waitpid [] sender : int * Unix.process_status)
+    with Unix.Unix_error (Unix.EINTR, _, _) -> reap ()
+  in
   Fun.protect
     ~finally:(fun () ->
       Unix.kill sender Sys.sigkill;
-      ignore (Unix.waitpid [] sender : int * Unix.process_status);
+      reap ();
       Sys.set_signal Sys.sigusr1 previous)
     f
 
