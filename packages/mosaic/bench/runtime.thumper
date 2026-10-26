@@ -7,7 +7,7 @@
 
 log-20000/append-a-line-and-drop-it	alloc_words	exact	26999466
 log-50000/append-a-line-and-drop-it	alloc_words	exact	67269010
-loop/burst-1000-keys	alloc_words	exact	2291835
+loop/burst-1000-keys	alloc_words	exact	2291837
 loop/idle-turns-10000	alloc_words	exact	11
 loop/posts-1000	alloc_words	exact	133030
 primary-transcript-5000/type-and-erase	alloc_words	exact	45337

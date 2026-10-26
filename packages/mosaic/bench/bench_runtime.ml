@@ -428,8 +428,10 @@ let start_suspended ?(pause = fun () -> true) (t : Term.t) application =
   suspended
 
 (* A program that counts keys, over a 40x2 terminal; its messages from
-   elsewhere change nothing. [pause] runs at each idle turn with no deadline
-   left. *)
+   elsewhere change nothing. It shows the count modulo 2,000 from 1,000, so
+   every view writes four digits and a burst of 1,000 keys changes only the
+   first: each burst does the same work, which a growing count would not.
+   [pause] runs at each idle turn with no deadline left. *)
 let loop_setup ~pause () =
   let dispatch = ref ignore in
   let views = ref 0 in
@@ -445,7 +447,7 @@ let loop_setup ~pause () =
       view =
         (fun n ->
           incr views;
-          Mosaic.text (string_of_int n));
+          Mosaic.text (string_of_int (1000 + (n mod 2000))));
       subscriptions = (fun _ -> Mosaic.Sub.on_key (fun _ -> Some `Key));
     }
   in
@@ -476,22 +478,25 @@ let idle_turns () =
   require (!(loop.suspended) <> None) "the loop did not go idle";
   loop
 
-(* 1,000 keys in one read, applied, viewed and painted once. *)
+(* 1,000 keys in one read, applied, viewed and painted once. The burst
+   comes a second after the last, so its frame is drawn at once, on the grid:
+   bursts at the same instant would alternate between drawing at once and
+   waiting for the frame interval, and allocate by their parity. *)
+let burst_sample loop =
+  Term.advance loop.t 1_000_000_000;
+  Term.feed loop.t (String.make 1000 'a');
+  loop_resume loop
+
 let burst () =
   let loop = loop_setup ~pause:(fun () -> true) () in
   let views = !(loop.views) in
   let written = String.length (Term.written loop.t) in
-  Term.feed loop.t (String.make 1000 'a');
-  loop_resume loop;
+  burst_sample loop;
   require (!(loop.views) - views = 1000) "a burst is not 1,000 views";
   require
     (paints ~from:written (Term.written loop.t) = 1)
     "a burst is not one paint";
   loop
-
-let burst_sample loop =
-  Term.feed loop.t (String.make 1000 'a');
-  loop_resume loop
 
 (* 1,000 messages posted from elsewhere, taken and applied: they change
    nothing, so nothing is viewed or painted. *)
