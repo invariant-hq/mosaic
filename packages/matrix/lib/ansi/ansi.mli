@@ -406,8 +406,8 @@ val modify_other_keys_off : t
 
 (** The type for terminal queries. The terminal answers in its input stream,
     after what it was already sending. The reader of the input must expect the
-    answer. An answer that is a control string, as DA3's and XTVERSION's are, is
-    otherwise read as keys. *)
+    answer. An answer that is a control string, as those of DA3, XTVERSION and
+    the color queries are, is otherwise read as keys. *)
 type query =
   | Cursor_position  (** DSR 6. *)
   | Pixel_size  (** [CSI 14 t]. *)
@@ -432,6 +432,16 @@ type query =
   | Color_scheme_report
       (** DSR [CSI ? 996 n], which asks for the light or dark color scheme. The
           terminal replies [CSI ? 997 ; value n]. *)
+  | Foreground_color
+      (** OSC 10 with [?], which asks for the default foreground color. The
+          terminal replies with the OSC 10 that would set it. *)
+  | Background_color
+      (** OSC 11 with [?], which asks for the default background color. The
+          terminal replies with the OSC 11 that would set it. *)
+  | Palette_color of int
+      (** OSC 4 with [i] and [?], which asks for palette entry [i], clamped to
+          \[[0];[255]\]. The terminal replies with the OSC 4 that would set it.
+      *)
 
 val query : query -> t
 (** [query q] is the sequence that asks [q]. *)

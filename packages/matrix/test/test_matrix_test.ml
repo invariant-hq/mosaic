@@ -596,6 +596,56 @@ let test_picture_static () =
        (String.sub output before (String.length output - before))
        "\027_Ga=d,d=I,")
 
+(* The terminal's colors, asked with [Ansi.query]: the replies come back as
+   [Reply.Color], from the palette its user configured. *)
+let test_colors () =
+  let colors = Array.copy Vte.default_palette.colors in
+  colors.(1) <- (0xcd, 0, 0);
+  colors.(12) <- (0x5c, 0x5c, 0xff);
+  let palette =
+    {
+      Vte.default_palette with
+      colors;
+      foreground = (0xe5, 0xe5, 0xe5);
+      background = (0x10, 0x20, 0x30);
+    }
+  in
+  let replies = ref [] in
+  let on _ = function
+    | Matrix.Event (Reply r) ->
+        replies := r :: !replies;
+        true
+    | _ -> true
+  in
+  ignore
+  @@ session ~profile:{ T.Profile.vte with palette } ~on
+  @@ fun s _ app ->
+  let q = Matrix.Ansi.query in
+  Matrix.query app
+    ~owed:{ cursor_reports = 0; string_replies = 4 }
+    (Matrix.Ansi.to_string
+       (Matrix.Ansi.seq
+          [
+            q Foreground_color;
+            q Background_color;
+            q (Palette_color 1);
+            q (Palette_color 12);
+          ]));
+  T.settle s;
+  let color target rgb =
+    Matrix.Input.Reply.Color { target; rgb; terminator = `St }
+  in
+  equal ~msg:"the replies, then DA1's"
+    (list (Testable.make ~pp:Matrix.Input.Reply.pp ~equal:( = )))
+    [
+      color `Foreground (0xe5, 0xe5, 0xe5);
+      color `Background (0x10, 0x20, 0x30);
+      color (`Palette 1) (0xcd, 0, 0);
+      color (`Palette 12) (0x5c, 0x5c, 0xff);
+      Primary_attributes Vte.vt100.attributes;
+    ]
+    (List.rev !replies)
+
 let () =
   run "matrix.test"
     [
@@ -606,6 +656,7 @@ let () =
           test "the probe is answered in no time" test_probe;
           test "a silent terminal costs its wait" test_silent;
           test "a pipe" test_pipe;
+          test "the terminal's colors" test_colors;
         ];
       group "Input"
         [

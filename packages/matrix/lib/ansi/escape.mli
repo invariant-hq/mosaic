@@ -200,5 +200,8 @@ type query =
   | Unicode_mode
   | Color_scheme_mode
   | Color_scheme_report
+  | Foreground_color
+  | Background_color
+  | Palette_color of int
 
 val query : query -> t

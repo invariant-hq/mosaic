@@ -1395,6 +1395,15 @@ let tmux_passthrough_doubles_esc () =
   check_seq "DCS wrap with doubled ESC" "\x1bPtmux;\x1b\x1b]0;t\x1b\x1b\\\x1b\\"
     (Ansi.to_string (Ansi.tmux_passthrough (Ansi.set_title ~title:"t")))
 
+let color_queries () =
+  let q x = to_string (query x) in
+  check_seq "foreground" "\027]10;?\027\\" (q Foreground_color);
+  check_seq "background" "\027]11;?\027\\" (q Background_color);
+  check_seq "palette entry" "\027]4;1;?\027\\" (q (Palette_color 1));
+  check_seq "bright entry" "\027]4;15;?\027\\" (q (Palette_color 15));
+  check_seq "clamped below" "\027]4;0;?\027\\" (q (Palette_color (-3)));
+  check_seq "clamped above" "\027]4;255;?\027\\" (q (Palette_color 300))
+
 let color_scheme_report_query () =
   check_seq "DSR 996" "\x1b[?996n"
     (Ansi.to_string (Ansi.query Ansi.Color_scheme_report))
@@ -2010,6 +2019,7 @@ let tests =
         test "OSC text is printable" osc_text_is_printable;
         test "tmux passthrough doubles ESC" tmux_passthrough_doubles_esc;
         test "color scheme report query" color_scheme_report_query;
+        test "color queries" color_queries;
         test "invalid scalar replacement" writer_invalid_scalar_replacement;
         test "growth preserves output" writer_growth_preserves_output;
         test "checked bounds" writer_checked_bounds;
