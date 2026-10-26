@@ -2782,10 +2782,178 @@ let kitty_graphics () =
   equal ~msg:"no extension, no answer" string "\x1b[?1;2c"
     (answers bare "\x1b_Gi=31337,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c\x1b[16t")
 
+(* Updates ---------------------------------------------------------------- *)
+
+let bsu = "\x1b[?2026h"
+let esu = "\x1b[?2026l"
+
+(* Output with every way to open or end an update, and bytes that look like
+   one and do not: replies inside and outside updates, nested and stray
+   brackets, a DECSET and a DECRST of several modes, the text of a string,
+   a sequence cancelled by CAN, an ESC that ends an OSC, RIS, DECSTR, and
+   UTF-8 cut by a bracket. *)
+let update_stream =
+  String.concat ""
+    [
+      "plain\x1b[6n";
+      bsu;
+      "\x1b[Hframe-1\x1b[?2026$p";
+      esu;
+      "\x1b[?2026$p";
+      bsu;
+      "\x1b[Hframe-2";
+      bsu;
+      esu;
+      esu;
+      "\x1b[?25;2026h\x1b[Hframe-3";
+      "\x1b]0;[?2026l\x07\x1bPq?2026l\x1b\\";
+      "\x1b[?2026;25l";
+      bsu;
+      "\x1b[Hframe-4\x1b[?2026\x18l";
+      "\x1b]0;t\x1b[?2026l";
+      bsu;
+      "\x1b[Hframe-5\x1bc";
+      bsu;
+      "\x1b[Hframe-6\x1b[!p\x1b[6n";
+      esu;
+      "\xc3\xa9";
+      bsu;
+      "\xe2\x82";
+      esu;
+      "tail";
+    ]
+
+(* What a reader looping on [Vte.advance] sees of [chunks]: each update
+   opened or ended, with the offset in the output just after it and, at an
+   end, the first row; the replies of the bytes between two such points;
+   and the screen at the end. *)
+let updates ?extensions chunks =
+  let t = Vte.create ?extensions ~rows:2 ~cols:20 () in
+  let log = Buffer.create 256 and replies = Buffer.create 64 in
+  let take_replies () =
+    if Buffer.length replies > 0 then (
+      Printf.bprintf log "replies %S\n" (Buffer.contents replies);
+      Buffer.clear replies)
+  in
+  let pos = ref 0 in
+  List.iter
+    (fun chunk ->
+      let b = Bytes.of_string chunk in
+      let rec go off =
+        if off < Bytes.length b then (
+          let was = (Vte.modes t).synchronized_output in
+          let n = Vte.advance t b off (Bytes.length b - off) in
+          Buffer.add_string replies (Matrix_input.Reply.encode (Vte.replies t));
+          let now = (Vte.modes t).synchronized_output in
+          if was <> now then (
+            take_replies ();
+            if now then Printf.bprintf log "open at %d\n" (!pos + off + n)
+            else
+              Printf.bprintf log "end at %d: %S\n"
+                (!pos + off + n)
+                (Vte.text t 0))
+          else if off + n < Bytes.length b then
+            Printf.bprintf log "a stop with no change at %d\n" (!pos + off + n);
+          go (off + n))
+      in
+      go 0;
+      pos := !pos + Bytes.length b)
+    chunks;
+  take_replies ();
+  Printf.bprintf log "screen %S" (Vte.to_string t);
+  Buffer.contents log
+
+let updates_stops () =
+  equal string
+    (String.concat "\n"
+       [
+         {|replies "\027[1;6R"|};
+         "open at 17";
+         {|replies "\027[?2026;1$y"|};
+         {|end at 44: "frame-1"|};
+         {|replies "\027[?2026;2$y"|};
+         "open at 61";
+         {|end at 87: "frame-2"|};
+         "open at 106";
+         {|end at 150: "frame-3"|};
+         "open at 158";
+         {|end at 190: "frame-4l"|};
+         "open at 198";
+         {|end at 210: ""|};
+         "open at 218";
+         {|replies "\027[1;8R"|};
+         {|end at 244: "frame-6"|};
+         "open at 254";
+         {|end at 264: "frame-6\195\169\239\191\189"|};
+         {|screen "frame-6\195\169\239\191\189tail       \n                    "|};
+       ])
+    (updates [ update_stream ])
+
+(* The reader sees the same at every split of the output in two, and when
+   it comes a byte at a time. *)
+let updates_split () =
+  let whole = updates [ update_stream ] in
+  let n = String.length update_stream in
+  for i = 1 to n - 1 do
+    equal
+      ~msg:(Printf.sprintf "split at %d" i)
+      string whole
+      (updates
+         [ String.sub update_stream 0 i; String.sub update_stream i (n - i) ])
+  done;
+  equal ~msg:"a byte at a time" string whole
+    (updates (List.init n (fun i -> String.make 1 update_stream.[i])))
+
+(* [feed] is [advance] until every byte is applied, then [replies]. *)
+let updates_feed () =
+  let t = Vte.create ~rows:2 ~cols:20 () in
+  let replies = Matrix_input.Reply.encode (Vte.feed_string t update_stream) in
+  equal ~msg:"the replies" string
+    "\027[1;6R\027[?2026;1$y\027[?2026;2$y\027[1;8R" replies;
+  equal ~msg:"the screen" string
+    "frame-6\195\169\239\191\189tail       \n                    "
+    (Vte.to_string t)
+
+let updates_without_the_extension () =
+  let extensions =
+    List.filter (( <> ) Vte.Synchronized_output) Vte.extensions
+  in
+  equal string
+    (String.concat "\n"
+       [
+         {|replies "\027[1;6R\027[?2026;0$y\027[?2026;0$y\027[1;8R"|};
+         {|screen "frame-6\195\169\239\191\189tail       \n                    "|};
+       ])
+    (updates ~extensions [ update_stream ])
+
+(* An update's end and the next one's start in one piece of output: the
+   reader sees the finished frame between them. *)
+let updates_end_then_open () =
+  let t = Vte.create ~rows:1 ~cols:20 () in
+  let b =
+    Bytes.of_string (bsu ^ "frame-1" ^ esu ^ bsu ^ "\x1b[Hframe-2" ^ esu)
+  in
+  let n = Vte.advance t b 0 (Bytes.length b) in
+  equal ~msg:"the first opens" int (String.length bsu) n;
+  let n' = Vte.advance t b n (Bytes.length b - n) in
+  equal ~msg:"the frame" string "frame-1" (Vte.text t 0);
+  is_false ~msg:"no update open" (Vte.modes t).synchronized_output;
+  equal ~msg:"its end" int (String.length (bsu ^ "frame-1" ^ esu)) (n + n')
+
+let update_tests =
+  [
+    test "where updates open and end" updates_stops;
+    test "split anywhere" updates_split;
+    test "feed applies every byte" updates_feed;
+    test "without the extension" updates_without_the_extension;
+    test "an end, then an opening" updates_end_then_open;
+  ]
+
 let () =
   run "matrix.vte"
     [
       group "vte" tests;
       group "user and host" user_tests;
       group "graphics" [ test "kitty graphics" kitty_graphics ];
+      group "updates" update_tests;
     ]

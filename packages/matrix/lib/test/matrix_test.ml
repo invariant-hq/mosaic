@@ -302,6 +302,15 @@ module Terminal = struct
     let replies = Vte.feed t.vte b off len in
     if t.profile.answers then Reply.encode replies else ""
 
+  (* Applies what the program wrote up to where an update opens or ends
+     ([Vte.advance]), and is how many bytes it applied and the terminal's
+     answer. *)
+  let advance t b off len =
+    let n = Vte.advance t.vte b off len in
+    Buffer.add_subbytes t.output b off n;
+    let replies = Vte.replies t.vte in
+    (n, if t.profile.answers then Reply.encode replies else "")
+
   (* The user's side *)
 
   let keystroke t k = Keystroke.encode (Vte.keyboard t.vte) k
@@ -716,6 +725,12 @@ module Child = struct
     term : Terminal.t;
     pty : Pty.t;
     buf : Bytes.t;
+    (* The output read and not yet applied, [buf] from [start] to [stop]. *)
+    mutable start : int;
+    mutable stop : int;
+    (* The screen is one a reader may show: no update is open, or one has
+       just opened. *)
+    mutable whole : bool;
     mutable over : bool;
   }
 
@@ -740,7 +755,16 @@ module Child = struct
       { Pty.rows = Vte.rows vte; cols = Vte.cols vte; xpixel = 0; ypixel = 0 }
     in
     Pty.with_spawn ~env ?cwd ~winsize ~prog ~args (fun pty ->
-        f { term; pty; buf = Bytes.create 65536; over = false })
+        f
+          {
+            term;
+            pty;
+            buf = Bytes.create 65536;
+            start = 0;
+            stop = 0;
+            whole = true;
+            over = false;
+          })
 
   let send t bytes = write_all t bytes
 
@@ -749,39 +773,24 @@ module Child = struct
     Pty.resize t.pty ~rows ~cols;
     write_all t report
 
-  let esu = "\027[?2026l"
+  let synchronized t = (Vte.modes (Terminal.vte t.term)).synchronized_output
 
-  let rec find s sub from =
-    let n = String.length sub in
-    if from + n > String.length s then None
-    else if String.sub s from n = sub then Some from
-    else find s sub (from + 1)
+  (* Applies the output read, answering as the terminal does, up to the
+     first point where the screen is whole and [ready] holds, and says
+     whether it found one. The rest waits for the next call. *)
+  let rec apply t ~ready =
+    t.start < t.stop
+    &&
+    let was = synchronized t in
+    let n, answer = Terminal.advance t.term t.buf t.start (t.stop - t.start) in
+    write_all t answer;
+    t.start <- t.start + n;
+    t.whole <- not (was && synchronized t);
+    (t.whole && ready t.term) || apply t ~ready
 
-  (* Applies [len] bytes of output from [off], answering as the terminal
-     does, and checks [ready] at each point where no synchronized update is
-     open: after each end of one, and at the end. *)
-  let apply t ~ready off len =
-    let vte = Terminal.vte t.term in
-    let data = Bytes.sub_string t.buf off len in
-    let found = ref false in
-    let feed from upto =
-      write_all t (Terminal.apply t.term t.buf (off + from) (upto - from));
-      if (not !found) && not (Vte.modes vte).synchronized_output then
-        found := ready t.term
-    in
-    let rec go from =
-      match find data esu from with
-      | Some i ->
-          feed from (i + String.length esu);
-          go (i + String.length esu)
-      | None -> if from < len then feed from len
-    in
-    go 0;
-    !found
-
-  (* Reads output for at most [timeout] seconds; [false] at the end of the
-     output. *)
-  let read_some t ~ready ~timeout =
+  (* Reads output, once all that was read is applied, for at most [timeout]
+     seconds. *)
+  let read_some t ~timeout =
     let fd = Pty.file_descr t.pty in
     match Unix.select [ fd ] [] [] timeout with
     | exception Unix.Unix_error (Unix.EINTR, _, _) -> `Nothing
@@ -789,7 +798,10 @@ module Child = struct
     | _ -> (
         match Pty.read t.pty t.buf 0 (Bytes.length t.buf) with
         | 0 -> `End
-        | n -> if apply t ~ready 0 n then `Ready else `Read
+        | n ->
+            t.start <- 0;
+            t.stop <- n;
+            `Read
         | exception Unix.Unix_error (Unix.EIO, _, _) -> `End
         | exception Unix.Unix_error (Unix.EINTR, _, _) -> `Nothing)
 
@@ -799,34 +811,32 @@ module Child = struct
          (Screen.text (Terminal.screen t.term)))
 
   let wait t ~within ready =
-    let vte = Terminal.vte t.term in
     let deadline = Unix.gettimeofday () +. within in
     let rec go () =
-      let left = deadline -. Unix.gettimeofday () in
-      if left <= 0. then
-        fail_with t (Printf.sprintf "not ready within %gs" within)
-      else if t.over then fail_with t "the child's output ended"
-      else
-        match read_some t ~ready ~timeout:left with
-        | `Ready -> ()
-        | `Read | `Nothing -> go ()
-        | `End ->
-            t.over <- true;
-            go ()
+      if not (apply t ~ready) then
+        let left = deadline -. Unix.gettimeofday () in
+        if left <= 0. then
+          fail_with t (Printf.sprintf "not ready within %gs" within)
+        else if t.over then fail_with t "the child's output ended"
+        else (
+          (match read_some t ~timeout:left with
+          | `End -> t.over <- true
+          | `Read | `Nothing -> ());
+          go ())
     in
-    if not ((not (Vte.modes vte).synchronized_output) && ready t.term) then
-      go ()
+    if not (t.whole && ready t.term) then go ()
 
   let exit t ~within =
     let deadline = Unix.gettimeofday () +. within in
     let rec drain () =
+      ignore (apply t ~ready:(fun _ -> false) : bool);
       let left = deadline -. Unix.gettimeofday () in
       if left <= 0. then
         fail_with t (Printf.sprintf "no exit within %gs" within)
       else if not t.over then
-        match read_some t ~ready:(fun _ -> false) ~timeout:left with
+        match read_some t ~timeout:left with
         | `End -> t.over <- true
-        | _ -> drain ()
+        | `Read | `Nothing -> drain ()
     in
     drain ();
     Pty.wait t.pty

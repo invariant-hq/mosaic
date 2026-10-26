@@ -338,7 +338,7 @@ let create () =
 let forward d c =
   Bytes.unsafe_set d.one 0 c;
   d.token <- None;
-  P.feed d.p d.one ~off:0 ~len:1 d.on_token
+  ignore (P.feed d.p d.one ~off:0 ~len:1 d.on_token : int)
 
 (* The token the last byte forwarded gave, which is then forgotten. *)
 let take d =
@@ -800,7 +800,7 @@ let csi_bytes = Bytes.of_string "\x1b["
 (* The parser, at the start of a control sequence's header. *)
 let open_header d =
   P.reset d.p;
-  P.feed d.p csi_bytes ~off:0 ~len:2 ignore
+  ignore (P.feed d.p csi_bytes ~off:0 ~len:2 ignore : int)
 
 let flush_invalid d emit =
   let s = Bytes.sub_string d.u8 0 d.u8_len in
@@ -1026,7 +1026,7 @@ let string_run d b i stop emit =
   done;
   if !j > i then (
     d.token <- None;
-    P.feed d.p b ~off:i ~len:(!j - i) d.on_token;
+    ignore (P.feed d.p b ~off:i ~len:(!j - i) d.on_token : int);
     !j)
   else (
     step d (Char.code (Bytes.unsafe_get b i)) emit;
@@ -1045,7 +1045,7 @@ let parameter_run d b i stop emit =
     incr j
   done;
   if !j > i then (
-    P.feed d.p b ~off:i ~len:(!j - i) d.on_token;
+    ignore (P.feed d.p b ~off:i ~len:(!j - i) d.on_token : int);
     !j)
   else (
     step d (Char.code (Bytes.unsafe_get b i)) emit;

@@ -6,7 +6,7 @@ open Ansi
 (* Test helper that wraps callback-based feed to return a list *)
 let feed_to_list p bytes off len =
   let acc = ref [] in
-  Parser.feed p bytes ~off ~len (fun tok -> acc := tok :: !acc);
+  ignore (Parser.feed p bytes ~off ~len (fun tok -> acc := tok :: !acc) : int);
   List.rev !acc
 
 let check_color = Testable.make ~pp:Color.pp ~equal:Color.equal
@@ -640,8 +640,10 @@ let feed_all feeds =
   let acc = ref [] in
   List.iter
     (fun s ->
-      Parser.feed p (Bytes.of_string s) ~off:0 ~len:(String.length s)
-        (fun tok -> acc := tok :: !acc))
+      ignore
+        (Parser.feed p (Bytes.of_string s) ~off:0 ~len:(String.length s)
+           (fun tok -> acc := tok :: !acc)
+          : int))
     feeds;
   List.rev !acc
 
@@ -888,7 +890,9 @@ let parser_finish () =
     let emit tok = acc := tok :: !acc in
     List.iter
       (fun s ->
-        Parser.feed p (Bytes.of_string s) ~off:0 ~len:(String.length s) emit;
+        ignore
+          (Parser.feed p (Bytes.of_string s) ~off:0 ~len:(String.length s) emit
+            : int);
         Parser.finish p emit)
       feeds;
     show (List.rev !acc)
@@ -911,7 +915,10 @@ let parser_at_boundary () =
     let p = Parser.create () in
     List.iter
       (fun s ->
-        Parser.feed p (Bytes.of_string s) ~off:0 ~len:(String.length s) ignore)
+        ignore
+          (Parser.feed p (Bytes.of_string s) ~off:0 ~len:(String.length s)
+             ignore
+            : int))
       feeds;
     p
   in
@@ -1209,9 +1216,9 @@ let parser_params () =
 let parser_feed_contract () =
   let p = Parser.create () in
   raises (Invalid_argument "Ansi.Parser.feed") (fun () ->
-      Parser.feed p (Bytes.create 4) ~off:2 ~len:3 ignore);
+      ignore (Parser.feed p (Bytes.create 4) ~off:2 ~len:3 ignore : int));
   raises (Invalid_argument "Ansi.Parser.feed") (fun () ->
-      Parser.feed p (Bytes.create 4) ~off:(-1) ~len:1 ignore);
+      ignore (Parser.feed p (Bytes.create 4) ~off:(-1) ~len:1 ignore : int));
   equal ~msg:"len 0 does nothing" int 0
     (List.length (feed_to_list p (Bytes.of_string "\x1b]") 0 0));
   (* reset drops the string in progress without closing it. *)
@@ -1219,6 +1226,43 @@ let parser_feed_contract () =
   Parser.reset p;
   equal ~msg:"after reset" string "\"x\""
     (show (feed_to_list p (Bytes.of_string "x\x1b\\") 0 3))
+
+(* A stop takes effect after the token it is called on: [feed] reads no
+   later byte and says how many it read, and the next feed goes on from
+   there. *)
+let parser_stop () =
+  let p = Parser.create () in
+  let stop_at keep b off len =
+    let acc = ref [] in
+    let n =
+      Parser.feed p (Bytes.of_string b) ~off ~len (fun tok ->
+          acc := tok :: !acc;
+          if keep tok then Parser.stop p)
+    in
+    (n, show (List.rev !acc))
+  in
+  let csi = function Parser.Csi _ -> true | _ -> false in
+  let text = function Parser.Text _ -> true | _ -> false in
+  let s = "ab\x1b[1mcd" in
+  equal ~msg:"after a sequence" (pair int string) (6, "\"ab\", CSI 1 m")
+    (stop_at csi s 0 (String.length s));
+  equal ~msg:"the rest" (pair int string) (2, "\"cd\"")
+    (stop_at csi s 6 (String.length s - 6));
+  equal ~msg:"after text that a control ends" (pair int string) (2, "\"ab\"")
+    (stop_at text "ab\ncd" 0 5);
+  equal ~msg:"the control, then text" (pair int string) (3, "LF, \"cd\"")
+    (stop_at text "ab\ncd" 2 3);
+  ignore (stop_at text "\xc3" 0 1 : int * string);
+  equal ~msg:"after a character a feed completes" (pair int string)
+    (1, "\"\xc3\xa9\"") (stop_at text "\xa9x" 0 2);
+  equal ~msg:"CAN ends a string and is reported" (pair int string)
+    (6, "OSC, \"0;t\", Aborted, CAN")
+    (stop_at
+       (function Parser.Close _ -> true | _ -> false)
+       "\x1b]0;t\x18x" 0 7);
+  Parser.stop p;
+  equal ~msg:"a stop outside a feed does nothing" (pair int string) (2, "\"xy\"")
+    (stop_at (fun _ -> false) "xy" 0 2)
 
 let parser_split_invariance () =
   (* Every rule above, cut anywhere. *)
@@ -1798,6 +1842,7 @@ let tests =
         test "string terminators and c1" parser_string_terminators;
         test "params" parser_params;
         test "feed contract" parser_feed_contract;
+        test "stop" parser_stop;
         test "split invariance" parser_split_invariance;
         test "known defects" parser_known_defects;
         test "pp_token" parser_pp_token;

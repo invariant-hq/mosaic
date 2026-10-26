@@ -180,6 +180,8 @@ type t = {
   (* The open string, in [String] and [String_esc]; [None] for a malformed
      DCS, consumed without tokens. *)
   mutable string : opening option;
+  (* [stop] was called in the feed in progress. *)
+  mutable stopped : bool;
 }
 
 let create () =
@@ -200,6 +202,7 @@ let create () =
     intermediates = Bytes.create max_intermediates;
     nintermediates = 0;
     string = None;
+    stopped = false;
   }
 
 let reset p =
@@ -450,8 +453,11 @@ let feed p b ~off ~len emit =
       run := -1)
   in
   let i = ref off in
+  p.stopped <- false;
   if p.held_len > 0 then i := off + complete_held p b off len emit;
-  while !i < stop do
+  (* A stop takes effect after the token reported, so a run of text flushed
+     before a byte stops before that byte. *)
+  while !i < stop && not p.stopped do
     let c = Char.code (Bytes.unsafe_get b !i) in
     if c < 0x80 then (
       match p.state with
@@ -463,8 +469,9 @@ let feed p b ~off ~len emit =
           i := scan b !i stop ~content:true
       | Ground | String ->
           flush !i;
-          step p c emit;
-          incr i
+          if not p.stopped then (
+            step p c emit;
+            incr i)
       | Csi_header | Dcs_header ->
           header_byte p c emit;
           incr i
@@ -479,7 +486,8 @@ let feed p b ~off ~len emit =
         i := scan b (!i + n) stop ~content:(p.state = String))
       else (
         flush !i;
-        if n = 0 then (
+        if p.stopped then ()
+        else if n = 0 then (
           Bytes.blit b !i p.held 0 (stop - !i);
           p.held_len <- stop - !i;
           i := stop)
@@ -487,7 +495,10 @@ let feed p b ~off ~len emit =
           non_ascii p ~replace:(n < 0) emit;
           i := !i + abs n))
   done;
-  flush stop
+  flush !i;
+  !i - off
+
+let stop p = p.stopped <- true
 
 let finish p emit =
   if p.held_len > 0 then non_ascii p ~replace:true emit;
@@ -500,6 +511,6 @@ let parse s =
   let p = create () in
   let tokens = ref [] in
   let emit t = tokens := t :: !tokens in
-  feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s) emit;
+  ignore (feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s) emit);
   finish p emit;
   List.rev !tokens

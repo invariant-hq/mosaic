@@ -451,6 +451,32 @@ let test_child_timeout () =
   T.Child.send c "q";
   ignore (T.Child.exit c ~within:10. : Unix.process_status)
 
+(* One write holds text, then an update's whole frame and the opening of the
+   next, which ends once a line is read. A wait sees the text where the first
+   update opens, and the frame where it ends, and the rest of the output
+   waits for the next wait. *)
+let test_child_updates () =
+  if Sys.win32 then skip ~reason:"a pseudo-terminal, which Windows lacks" ();
+  let term = T.Terminal.create ~cols:30 ~rows:3 () in
+  let row0 term = T.Screen.row (T.Terminal.screen term) 0 in
+  let shows text term = row0 term = text in
+  let script =
+    "printf \
+     'ready\\033[?2026h\\033[Hframe-1\\033[?2026l\\033[?2026h\\033[Hframe-2'; \
+     read line; printf '\\033[?2026l'"
+  in
+  let status =
+    T.Child.with_spawn term ~prog:"/bin/sh" ~args:[ "-c"; script ] @@ fun c ->
+    T.Child.wait c ~within:10. (shows "ready");
+    T.Child.wait c ~within:10. (shows "frame-1");
+    is_false ~msg:"the frame, with no update open"
+      (T.Terminal.modes term).synchronized_output;
+    T.Child.send c "\n";
+    T.Child.wait c ~within:10. (shows "frame-2");
+    T.Child.exit c ~within:10.
+  in
+  is_true ~msg:"exited" (status = Unix.WEXITED 0)
+
 (* Pictures ---------------------------------------------------------------- *)
 
 (* A tile-coded picture: [n] tiles of 10 by 20 pixels side by side, red,
@@ -614,5 +640,6 @@ let () =
         [
           test "a child, resized, and its goodbye" test_child;
           test "a wait that times out" test_child_timeout;
+          test "a wait sees each finished frame" test_child_updates;
         ];
     ]

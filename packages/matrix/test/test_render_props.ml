@@ -644,10 +644,12 @@ let shape_code shape =
   !code
 
 let scan_shapes r bytes off len =
-  Ansi.Parser.feed r.decscusr bytes ~off ~len (function
-    | Ansi.Parser.Csi { final = 'q'; intermediates = " "; params; _ } ->
-        r.last_shape <- Some (Ansi.Parser.Params.ps params 0 ~default:0)
-    | _ -> ())
+  ignore
+    (Ansi.Parser.feed r.decscusr bytes ~off ~len (function
+       | Ansi.Parser.Csi { final = 'q'; intermediates = " "; params; _ } ->
+           r.last_shape <- Some (Ansi.Parser.Params.ps params 0 ~default:0)
+       | _ -> ())
+      : int)
 
 (* The rows of the live region and of what is above it. *)
 let live_region r app =

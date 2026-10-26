@@ -206,13 +206,20 @@ val reset : t -> unit
 (** [reset p] returns [p] to the start of a stream. It drops the character,
     sequence or string in progress without reporting it. *)
 
-val feed : t -> bytes -> off:int -> len:int -> (token -> unit) -> unit
-(** [feed p b ~off ~len f] reads the [len] bytes of [b] from [off] and calls [f]
-    on each token, in order. A character, sequence or string unfinished at the
-    end of the bytes continues with the next call.
+val feed : t -> bytes -> off:int -> len:int -> (token -> unit) -> int
+(** [feed p b ~off ~len f] reads the [len] bytes of [b] from [off], calls [f] on
+    each token, in order, and is the number of bytes it read. It reads them all
+    unless [f] calls {!stop}, and then reads no byte after the one that ended
+    the token [f] was given. A byte that ends one token and begins another, such
+    as CAN in a string, gives both. A character, sequence or string unfinished
+    at the end of the bytes read continues with the next call.
 
     Raises [Invalid_argument] if [off] and [len] do not designate a valid range
     of [b]. *)
+
+val stop : t -> unit
+(** [stop p], called by the function given to {!feed}, makes that feed return
+    after the token it is reporting. Called elsewhere, it does nothing. *)
 
 val finish : t -> (token -> unit) -> unit
 (** [finish p f] ends the stream. It calls [f] on the tokens the end of the

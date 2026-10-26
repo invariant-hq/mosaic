@@ -525,8 +525,10 @@ let tokens chunks =
   let out = ref [] in
   List.iter
     (fun c ->
-      Parser.feed p (Bytes.of_string c) ~off:0 ~len:(String.length c) (fun t ->
-          out := t :: !out))
+      ignore
+        (Parser.feed p (Bytes.of_string c) ~off:0 ~len:(String.length c)
+           (fun t -> out := t :: !out)
+          : int))
     chunks;
   List.rev !out
 

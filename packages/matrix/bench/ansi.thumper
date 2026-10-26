@@ -11,11 +11,11 @@ sgr_state/sgr_hyperlink_transitions	alloc_words	exact	720
 sgr_state/sgr_partial_changes	alloc_words	exact	0
 sgr_state/sgr_same_style_1920	alloc_words	exact	0
 sgr_state/sgr_tui_frame_80x24	alloc_words	exact	0
-strip_parse/parse_ansi_block	alloc_words	exact	24102
+strip_parse/parse_ansi_block	alloc_words	exact	24103
 strip_parse/parse_ansi_block_iter	alloc_words	exact	14351
-strip_parse/parse_tui_frame	alloc_words	exact	2790
+strip_parse/parse_tui_frame	alloc_words	exact	2791
 strip_parse/parse_tui_frame_iter	alloc_words	exact	1511
-strip_parse/strip_ansi_block	alloc_words	exact	18767
+strip_parse/strip_ansi_block	alloc_words	exact	18768
 strip_parse/strip_plain_block	alloc_words	exact	0
 styled/inline_styled	alloc_words	exact	82
 styled/render_log_segments	alloc_words	exact	201

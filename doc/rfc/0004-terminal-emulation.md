@@ -30,6 +30,15 @@
   narrow spacing mark has no width of its own, so one that starts a cluster leaves it no cells,
   as kitty's protocol states and kitty, WezTerm and foot draw it. The
   grid's span tests place wide spans with `Grid.set_grapheme`: no text is wider than two cells.
+- Amended 2026-10-26 (update boundaries): `Vte.advance` applies bytes up to and including one that
+  opens or ends a synchronized update (mode 2026), whatever sequence does it and however the bytes
+  are split, and returns how many it applied; `Vte.replies` takes the replies of the bytes applied.
+  `feed` keeps its signature and applies every byte. The picture an update presents is the screen
+  where it ends ("Use `CSI ? 2026 l` when done with your current frame rendering", the mode's
+  specification), so a reader takes the screen at each stop, as Alacritty's
+  `advance_until_terminated` counts the bytes up to its stop; the terminal keeps no snapshot and no
+  clock. `Ansi.Parser.feed` returns the bytes it read, and `Parser.stop`, called from its callback,
+  ends the feed after the token.
 
 ## Summary
 

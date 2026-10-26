@@ -15,6 +15,18 @@ let ascii size =
 
 let unicode width_method name = feed_run name width_method (repeat 1024 "a中é👨‍💻")
 
+(* Sixteen frames as a program draws them, each a synchronized update of 24
+   positioned, colored rows: [feed] stops at each update's two ends. *)
+let frames_text =
+  let row k y =
+    Printf.sprintf "\027[%d;1H\027[3%dmrow %02d of frame %02d\027[0m\027[K"
+      (y + 1) (y mod 8) y k
+  in
+  let frame k =
+    "\027[?2026h" ^ String.concat "" (List.init 24 (row k)) ^ "\027[?2026l"
+  in
+  String.concat "" (List.init 16 frame)
+
 let history_text =
   repeat 256 "\027[31mcolored\027[0m plain \027[44m    \027[0m\r\n"
 
@@ -62,6 +74,7 @@ let () =
           ascii 65536;
           unicode `Unicode "feed/unicode";
           unicode `Wcwidth "feed/wcwidth";
+          feed_run "feed/updates" `Unicode frames_text;
           scrollback_append;
           scrollback_render;
         ];

@@ -28,7 +28,11 @@
     bytes the terminal sends for its user's keys and mouse ({!section-user}).
     The terminal performs no input or output, so the caller writes the replies
     to the program's input. The screen depends only on the bytes fed, and
-    splitting them differently across {!feed} calls leaves the same screen.
+    splitting them differently across {!feed} calls leaves the same screen. A
+    program marks the output of one picture as an {e update}, and the picture is
+    the screen where the update ends. {!advance} applies bytes up to the byte
+    that opens or ends an update, so that a reader can take the screen there
+    ({!section-updates}).
 
     The life cycle of a terminal usually goes like this:
     + {!val-create} makes one in its power-up state, with a size, a palette, an
@@ -173,7 +177,8 @@ val feed : t -> bytes -> int -> int -> Matrix_input.Reply.t list
     [Matrix_input.Reply.encode replies] to the program's input, after rewriting
     or dropping any it answers otherwise. It is [[]], with no allocation, when
     there are none. A sequence split across calls is answered by the call that
-    completes it.
+    completes it. It applies the bytes with {!advance} until all are applied,
+    then takes {!replies}.
 
     Raises [Invalid_argument] if [off] and [len] do not designate a range of
     [b]. *)
@@ -310,6 +315,44 @@ val reset : t -> unit
     style, bracketed paste, the tab stops, the title and the palette stay as
     they are, since the table lists none of LNM, DECSCUSR or the colors. *)
 
+(** {2:updates Updates}
+
+    A program brackets the output of one picture between the start and the end
+    of a synchronized update, DECSET and DECRST 2026, so that a reader shows the
+    picture whole. An update is open from the byte that sets the mode to the
+    byte that resets it, whatever sequence does either: [CSI ? 2026 h] or a
+    DECSET that lists 2026 among other modes, and a DECRST that lists it, or
+    RIS. DECSTR leaves an update open. A set while an update is open and a reset
+    while none is open change nothing, and a terminal without the
+    {!Synchronized_output} extension has no updates. The picture an update
+    {e presents} is the screen where it ends. While no update is open, every
+    state of the screen is one the program lets a reader show, the state where
+    an update opens among them.
+
+    The terminal applies each byte as it is fed, inside an update too, and
+    answers a query from the screen as it is where the query is applied.
+    {!advance} returns after the byte that opens or ends an update, so a reader
+    takes the screen at each update's end to see every presented picture. The
+    terminal keeps no clock. A reader that shows the screen to a person must
+    show it anyway once an update has been open longer than a timeout of its
+    own, or a program that never ends one freezes the screen. *)
+
+val advance : t -> bytes -> int -> int -> int
+(** [advance t b off len] applies bytes of [b] from [off] to [t], in order, and
+    is the number it applied: the [len] bytes, or fewer when one of them opens
+    or ends an update, which is then the last applied. It keeps the replies the
+    bytes ask for until {!replies} takes them. It stops at each update's two
+    ends whichever way the bytes are split, so a reader that loops on it sees
+    the same points whatever its reads.
+
+    Raises [Invalid_argument] if [off] and [len] do not designate a range of
+    [b]. *)
+
+val replies : t -> Matrix_input.Reply.t list
+(** [replies t] is the replies asked for by the bytes {!advance} has applied
+    since [replies] was last called, in order ({!section-replies}), which [t]
+    then forgets. It is [[]], with no allocation, when there are none. *)
+
 (** {1:cursor The cursor}
 
     The {e cursor state} decides where and how the next character is written. It
@@ -439,10 +482,8 @@ type modes = {
           ([ESC >]) resets. The keypad sends its application forms. *)
   focus_reports : bool;  (** Focus reports (DECSET 1004). *)
   synchronized_output : bool;
-      (** Synchronized output (DECSET 2026). The program is between the start
-          and the end of an update. This terminal shows every change as it is
-          fed, so a reader that must see only whole updates reads while the mode
-          is off. *)
+      (** Synchronized output (DECSET 2026). An update is open
+          ({!section-updates}). *)
   color_scheme_reports : bool;  (** Color scheme reports (DECSET 2031). *)
   resize_reports : bool;  (** In-band resize reports (DECSET 2048). *)
 }

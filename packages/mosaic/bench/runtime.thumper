@@ -12,7 +12,7 @@ primary-transcript-5000/type-and-erase	alloc_words	exact	45733
 primary-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	100676
 select-10000/down-up	alloc_words	exact	6578
 select-100000/down-up	alloc_words	exact	6578
-startup/transcript-5000-first-frame	alloc_words	exact	206448926
+startup/transcript-5000-first-frame	alloc_words	exact	206448927
 table-100000/down-up	alloc_words	exact	8062
 transcript-20000/resize-roundtrip-249x69	alloc_words	exact	126233202
 transcript-20000/resize-roundtrip-250x69	alloc_words	exact	22711342

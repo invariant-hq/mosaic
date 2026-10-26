@@ -26,7 +26,9 @@ let strip s =
       | _ -> ()
     in
     let p = Parser.create () in
-    Parser.feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s) keep;
+    ignore
+      (Parser.feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s)
+         keep);
     Parser.finish p keep;
     Buffer.contents b
 
@@ -157,6 +159,8 @@ let sanitize s =
       | _ -> ()
     in
     let p = Parser.create () in
-    Parser.feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s) keep;
+    ignore
+      (Parser.feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s)
+         keep);
     Parser.finish p keep;
     drop_ignorables (Buffer.contents b)

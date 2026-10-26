@@ -1906,6 +1906,12 @@ let malformed (s : Ansi.Parser.sequence) =
   let rec go i = i < Params.count p && (Params.fields p i > 1 || go (i + 1)) in
   go 0
 
+(* An update opens or ends where mode 2026 changes, which only a control
+   sequence (DECSET, DECRST) or an escape sequence (RIS) does: the feed stops
+   there. *)
+let stop_at_update t was =
+  if t.modes.synchronized_output <> was then Ansi.Parser.stop t.parser
+
 (* Every token but text ends the unit in progress. REP reads it first. *)
 let handle_token t = function
   | Ansi.Parser.Text s -> print t s
@@ -1915,26 +1921,43 @@ let handle_token t = function
       break_text t
   | Csi s ->
       break_text t;
-      csi t s
+      let was = t.modes.synchronized_output in
+      csi t s;
+      stop_at_update t was
   | Control c ->
       break_text t;
       control t c
   | Esc { intermediates; final } ->
       break_text t;
-      esc t intermediates final
+      let was = t.modes.synchronized_output in
+      esc t intermediates final;
+      stop_at_update t was
   | Open o ->
       break_text t;
       open_string t o
   | Data s -> string_data t s
   | Close ending -> close_string t ending
 
-let feed t bytes off len =
-  Ansi.Parser.feed t.parser bytes ~off ~len (handle_token t);
+let advance t bytes off len =
+  Ansi.Parser.feed t.parser bytes ~off ~len (handle_token t)
+
+let replies t =
   match t.replies with
   | [] -> []
   | replies ->
       t.replies <- [];
       List.rev replies
+
+let rec advance_all t bytes off len =
+  if len > 0 then
+    let n = advance t bytes off len in
+    advance_all t bytes (off + n) (len - n)
+
+(* The first [advance] checks the range, even an empty one. *)
+let feed t bytes off len =
+  let n = advance t bytes off len in
+  advance_all t bytes (off + n) (len - n);
+  replies t
 
 let feed_string t s = feed t (Bytes.unsafe_of_string s) 0 (String.length s)
 

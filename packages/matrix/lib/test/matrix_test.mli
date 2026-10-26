@@ -441,8 +441,9 @@ val ended : t -> bool
     terminal, so {!resize} signals it as a window does, and the terminal answers
     its queries as its profile says, as soon as its output is read. Nothing
     outside the child knows when it is done, so a test waits for what it expects
-    to see, and checks it only where no synchronized update (mode 2026) is open,
-    where a frame is complete. *)
+    to see, and checks it only where the screen is one a terminal may show:
+    where no update (mode 2026) is open, and where one opens
+    ({!Vte.section-updates}). *)
 module Child : sig
   type t
   (** The type for children. *)
@@ -474,9 +475,11 @@ module Child : sig
 
   val wait : t -> within:float -> (Terminal.t -> bool) -> unit
   (** [wait c ~within ready] applies the child's output to the terminal and
-      answers it until [ready] holds of the terminal. [ready] is checked at once
-      and whenever the output read has no synchronized update open. It blocks
-      for at most [within] seconds.
+      answers it until [ready] holds of the terminal, and returns with the
+      terminal at that point of the output. The output read after it is applied
+      by the next call. [ready] is checked at each point of the output where no
+      update is open or where one opens, from the point the terminal is at. It
+      blocks for at most [within] seconds.
 
       Raises [Failure], with the screen, if [within] seconds pass or the child's
       output ends first. *)
