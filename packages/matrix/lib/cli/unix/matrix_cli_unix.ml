@@ -94,7 +94,7 @@ and session = {
 (* A live region, while its scope runs. *)
 and state = {
   device : device;
-  fd : Unix.file_descr;
+  out : t;  (** The output of the scope that began the region. *)
   region : Region.t;
   mutable parts : part list;
       (** The scopes that show rows in it, in the order they began: a [live]
@@ -116,6 +116,18 @@ and part = {
 }
 
 and prompt = { on_stop : unit -> unit; on_continue : unit -> unit }
+
+(* An output: its descriptor and what the policy decided for it. *)
+and t = {
+  fd : Unix.file_descr;
+  tty : bool;
+  caps : Caps.t;
+  styling : Matrix_cli.styling;
+  live_ok : bool;
+  columns : int option;
+  adapter : Matrix_cli.adapter;
+  out_device : device;
+}
 
 let devices : device list ref = ref []
 let devices_lock = Mutex.create ()
@@ -161,7 +173,7 @@ let lock_until m until =
 
 (* Regions *)
 
-let window l = Tty.window l.fd
+let window l = Tty.window l.out.fd
 
 (* The teardown of the write that has just returned, for a signal that ends
    the process before the next: none while the region is off the screen. *)
@@ -175,8 +187,8 @@ let write l bytes =
   match l.device.session with
   | Some s ->
       let b = Bytes.unsafe_of_string bytes in
-      Signal.write s.holder l.fd b 0 (Bytes.length b)
-  | None -> write_all l.fd bytes 0 (String.length bytes)
+      Signal.write s.holder l.out.fd b 0 (Bytes.length b)
+  | None -> write_all l.out.fd bytes 0 (String.length bytes)
 
 (* A part's rows at [width], from the program's function, which runs on
    whichever thread draws: one that raises is dropped, and raised again at
@@ -234,7 +246,7 @@ let draw l ~above =
   l.pending <- false;
   let size = window l in
   match size with
-  | Some (cols, rows) when l.suspended = 0 && not (Tty.background l.fd) ->
+  | Some (cols, rows) when l.suspended = 0 && not (Tty.background l.out.fd) ->
       let frame = frame_at l ~width:(Region.width l.region ~cols) in
       let bytes = Region.draw l.region ~cols ~rows ~above frame in
       if bytes <> "" then (
@@ -287,7 +299,7 @@ let terminate d s =
     ignore (lock_until d.lock (Tty.now () + teardown_wait) : bool);
     (match d.live with
     | Some l when l.on_screen ->
-        write_until l.fd l.published (Tty.now () + teardown_wait)
+        write_until l.out.fd l.published (Tty.now () + teardown_wait)
     | _ -> ());
     Option.iter (fun s -> Signal.set_reset s.holder "") d.session;
     (* The settings a prompt changed, and the other holders' terminals. *)
@@ -376,14 +388,28 @@ let rec watch d session ~continue ~redraw =
       watch d session ~continue:false ~redraw:false)
     else watch d session ~continue ~redraw:(redraw || due))
 
-let exit_restores = Atomic.make false
+(* [exit] runs the program's [at_exit] functions and ends the process,
+   leaving every [live] scope that runs unended. What ends them is set once
+   they are defined, below. *)
+let end_scopes = ref ignore
+let exit_registered = Atomic.make false
+
+(* The first region, prompt or scope registers what [exit] does: the scopes
+   end, then the terminals' settings are put back. A program's [at_exit]
+   function registered before then runs after, with no region on the
+   screen. *)
+let register_exit () =
+  if not (Atomic.exchange exit_registered true) then
+    at_exit (fun () ->
+        !end_scopes ();
+        if not Sys.win32 then Signal.restore_all ())
 
 (* A use of the device's signals begins: the first takes them, for the
    controlling terminal its job-control and window signals too. *)
 let enter d fd =
   d.users <- d.users + 1;
+  register_exit ();
   if d.session = None && not Sys.win32 then (
-    if not (Atomic.exchange exit_restores true) then at_exit Signal.restore_all;
     let output = Unix.dup ~cloexec:true fd in
     let controlling = d.key = Controlling in
     let holder = Signal.hold ~controlling ~output:(Some output) in
@@ -419,17 +445,6 @@ let leave d =
       Unix.close session.output
 
 (* Outputs *)
-
-type t = {
-  fd : Unix.file_descr;
-  tty : bool;
-  caps : Caps.t;
-  styling : Matrix_cli.styling;
-  live_ok : bool;
-  columns : int option;
-  adapter : Matrix_cli.adapter;
-  out_device : device;
-}
 
 (* The Windows consoles whose VT processing an output turned on, which the
    exit path turns back off: the console is the shell's too. *)
@@ -579,7 +594,7 @@ let join t p =
           let l =
             {
               device = d;
-              fd = t.fd;
+              out = t;
               region =
                 Region.create ~eager_wrap:t.caps.eager_wrap
                   ~lifts_resting_cursor:t.caps.lifts_resting_cursor
@@ -606,6 +621,20 @@ let lines t = function
   | Some g -> Matrix_grid.to_ansi ~styling:t.styling ~trim:true g ^ "\n"
   | None -> ""
 
+(* The bytes that end the region, its last rows being [frame]'s: its last
+   write where it can be drawn, else the rows as lines after the line it
+   holds back. The device then has no region; called with its lock held. *)
+let closing l frame =
+  l.device.live <- None;
+  let held = if l.held = "" then "" else l.held ^ "\n" in
+  l.held <- "";
+  let drawable = l.suspended = 0 && not (Tty.background l.out.fd) in
+  match window l with
+  | Some (cols, rows) when drawable ->
+      Region.close l.region ~cols ~rows ~above:held
+        (frame ~width:(Region.width l.region ~cols))
+  | _ -> held ^ lines l.out (frame ~width:(plain_width l.out))
+
 (* A scope ends. While other scopes show rows, its own last rows go above
    the region, which stays for them. The last scope to end closes the
    region, its last frame staying below the output. *)
@@ -617,7 +646,7 @@ let finish t l p =
         l.parts <- List.filter (fun q -> q != p) l.parts;
         l.cached <- None;
         flush_std ();
-        let drawable = l.suspended = 0 && not (Tty.background l.fd) in
+        let drawable = l.suspended = 0 && not (Tty.background l.out.fd) in
         match (l.parts, window l) with
         | _ :: _, size ->
             let width =
@@ -629,35 +658,46 @@ let finish t l p =
             if l.on_screen && drawable then draw l ~above
             else if above <> "" then write l above;
             false
-        | [], size ->
-            d.live <- None;
-            let held = if l.held = "" then "" else l.held ^ "\n" in
-            l.held <- "";
-            (match size with
-            | Some (cols, rows) when drawable ->
-                let width = Region.width l.region ~cols in
-                write l
-                  (Region.close l.region ~cols ~rows ~above:held
-                     (part_frame l p ~width))
-            | _ ->
-                write l (held ^ lines t (part_frame l p ~width:(plain_width t))));
+        | [], _ ->
+            write l (closing l (part_frame l p));
             Option.iter (fun s -> Signal.set_reset s.holder "") d.session;
             true)
   in
   if last then leave d
 
+(* The scopes where no region may be drawn, in the order they began: each
+   prints its last rows when it ends. *)
+let plain_scopes : (t * live) list ref = ref []
+let plain_lock = Mutex.create ()
+
+let print_last t v =
+  flush_formatters ();
+  Mutex.protect t.out_device.lock (fun () ->
+      let lines = lines t (v.last ~width:(plain_width t)) in
+      if lines <> "" then emit t lines)
+
 let live t f =
   flush_formatters ();
   let part = { frame = no_frame; ended = false } in
   match if t.live_ok then Some (join t part) else None with
-  | None ->
+  | None -> (
       let v = { state = None; part; last = no_frame } in
-      let result = f v in
-      flush_formatters ();
-      Mutex.protect t.out_device.lock (fun () ->
-          let lines = lines t (v.last ~width:(plain_width t)) in
-          if lines <> "" then emit t lines);
-      result
+      register_exit ();
+      Mutex.protect plain_lock (fun () ->
+          plain_scopes := !plain_scopes @ [ (t, v) ]);
+      let ended () =
+        Mutex.protect plain_lock (fun () ->
+            plain_scopes := List.filter (fun (_, w) -> w != v) !plain_scopes);
+        print_last t v
+      in
+      match f v with
+      | result ->
+          ended ();
+          result
+      | exception e ->
+          let bt = Printexc.get_raw_backtrace () in
+          (try ended () with _ -> ());
+          Printexc.raise_with_backtrace e bt)
   | Some l -> (
       match f { state = Some l; part; last = no_frame } with
       | result ->
@@ -672,6 +712,39 @@ let live t f =
              finish t l part
            with _ -> ());
           Printexc.raise_with_backtrace e bt)
+
+(* At [exit], each region ends as its last scope's end would end it, with
+   the rows of every scope that runs, within the wait a signal's teardown
+   has; one whose lock that wait cannot take is left to the teardown that
+   [Signal.restore_all] writes next. Then each scope where no region may be
+   drawn prints its last rows. A process that a signal ends has torn its
+   regions down already. *)
+let end_at_exit () =
+  if not (Atomic.get ending) then (
+    flush_formatters ();
+    let devices = Mutex.protect devices_lock (fun () -> !devices) in
+    List.iter
+      (fun d ->
+        let until = Tty.now () + teardown_wait in
+        if lock_until d.lock until then
+          Fun.protect ~finally:(fun () -> Mutex.unlock d.lock) @@ fun () ->
+          match d.live with
+          | None -> ()
+          | Some l ->
+              flush_std ();
+              l.cached <- None;
+              write_until l.out.fd (closing l (frame_at l)) until;
+              Option.iter (fun s -> Signal.set_reset s.holder "") d.session)
+      devices;
+    let plain =
+      Mutex.protect plain_lock (fun () ->
+          let p = !plain_scopes in
+          plain_scopes := [];
+          p)
+    in
+    List.iter (fun (t, v) -> try print_last t v with _ -> ()) plain)
+
+let () = end_scopes := end_at_exit
 
 let show v frame =
   v.last <- frame;

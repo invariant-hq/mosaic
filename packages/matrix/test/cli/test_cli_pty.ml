@@ -101,11 +101,32 @@ let test_nested () =
     [ "line"; "INNER done"; "OUTER done" ]
     (lines term)
 
+let cursor_at term =
+  match T.Screen.cursor (T.Terminal.screen term) with
+  | Some { row; col; _ } -> (row, col)
+  | None -> fail "the cursor is hidden"
+
+(* [exit] ends the region as the scope's end would: the frame stays from
+   its origin, with the cursor below it, and what an [at_exit] function
+   prints then goes below as plain lines. *)
 let test_exit () =
-  spawn "exit" @@ fun term c ->
+  ( spawn "exit" @@ fun term c ->
+    exited 3 (T.Child.exit c ~within:10.);
+    usable term;
+    equal ~msg:"the frame stays, with no blank row" strings [ "EXITING" ]
+      (lines term);
+    equal ~msg:"the cursor below it"
+      Testable.(pair int int)
+      (1, 0) (cursor_at term) );
+  spawn "exit-at-exit" @@ fun term c ->
   exited 3 (T.Child.exit c ~within:10.);
   usable term;
-  is_true ~msg:"the frame stays" (has_line "EXITING" term)
+  equal ~msg:"the at_exit line below the frame, once" strings
+    [ "EXITING"; "printed at exit" ]
+    (lines term);
+  equal ~msg:"the cursor below it"
+    Testable.(pair int int)
+    (2, 0) (cursor_at term)
 
 let test_resize () =
   spawn ~cols:40 "resize" @@ fun term c ->
@@ -304,7 +325,12 @@ let test_print_grid () =
 let test_pipe () =
   let out = piped "progress" in
   equal ~msg:"plain lines, the last frame once" Testable.string
-    "SHELL\nline 1\nline 2\nline 3\nP done\nAFTER\n" out
+    "SHELL\nline 1\nline 2\nline 3\nP done\nAFTER\n" out;
+  equal ~msg:"the last frame at exit" Testable.string "EXITING\n" (piped "exit");
+  equal ~msg:"the last frame, then what at_exit prints" Testable.string
+    "EXITING\nprinted at exit\n" (piped "exit-at-exit");
+  equal ~msg:"the last frame when the scope raises" Testable.string
+    "RAISED\nCAUGHT\n" (piped "raise")
 
 (* Lines printed through Format's standard formatters and left in their
    buffers go out before an output's next write, whether the formatters are

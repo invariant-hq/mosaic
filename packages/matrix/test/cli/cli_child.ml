@@ -56,6 +56,18 @@ let () =
       C.live err (fun live ->
           C.show live (text_frame "EXITING");
           exit 3)
+  | "exit-at-exit" ->
+      at_exit (fun () -> C.print err "printed at exit\n");
+      C.live err (fun live ->
+          C.show live (text_frame "EXITING");
+          Unix.sleepf 0.15;
+          exit 3)
+  | "raise" -> (
+      try
+        C.live err (fun live ->
+            C.show live (text_frame "RAISED");
+            failwith "raise")
+      with Failure _ -> C.print err "CAUGHT\n")
   | "resize" ->
       C.live err (fun live ->
           C.show live (fun ~width ->

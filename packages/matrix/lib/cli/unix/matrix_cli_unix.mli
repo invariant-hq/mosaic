@@ -53,9 +53,12 @@
     SIGQUIT, at their default action, end the process once the terminal is put
     back. The region's write that a signal cut is ended, the cursor is shown and
     moved below the region's rows, and a prompt's settings are restored. A
-    process that ends with [exit] while a region lives does the same. A terminal
-    that stops taking output, as under Ctrl+S, holds this back for at most a
-    second.
+    process that ends with [exit] inside [live] scopes ends them as their ends
+    would. A region leaves the last rows of every scope in the scrollback, with
+    the cursor below them, and an output where no region may be drawn prints its
+    last frame. This happens before the [at_exit] functions registered before
+    the first scope run, so what they print goes below the rows. A terminal that
+    stops taking output, as under Ctrl+S, holds this back for at most a second.
 
     This prints the files a program compiles above a line that counts them, on
     standard error:
@@ -164,9 +167,9 @@ type live
 val live : t -> (live -> 'a) -> 'a
 (** [live o f] runs [f] with a live region on [o], the region that lives on
     [o]'s terminal if one does, or with one that draws nothing where none may be
-    drawn ({!Matrix_cli.Policy.live}). When [f] returns or raises, its last rows
-    stay, as the module's preamble says, or are printed once, at [o]'s {!width}
-    or 80 columns when it has none.
+    drawn ({!Matrix_cli.Policy.live}). When [f] returns or raises, or the
+    process exits in it, its last rows stay, as the module's preamble says, or
+    are printed once, at [o]'s {!width} or 80 columns when it has none.
 
     Raises what a frame given to {!show} raised, if [f] returned. *)
 
