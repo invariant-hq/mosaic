@@ -6,7 +6,6 @@ module Style = Style
 module Parser = Parser
 module Sgr_state = Sgr_state
 module Styling = Styling
-module Theme = Theme
 
 let render ?depth ?hyperlinks_enabled segments =
   Segment.render ?depth ?hyperlinks_enabled segments

@@ -13,12 +13,11 @@
 
     The submodules cover the rest of a terminal's output. {!Color}, {!Attr} and
     {!Style} describe how text looks, and {!Style.emit} writes the codes that
-    turn one style into another. {!Theme} gives text a style by its purpose,
-    legible in the terminal's own colors. {!Sgr_state} tracks the style a
-    terminal is in, for a renderer that writes cell after cell. {!Styling}
-    decides how much of a style a destination shows, from the program's choice,
-    the user's environment and the terminal. {!Parser} reads a stream that holds
-    escape sequences, such as a program's output, back into tokens.
+    turn one style into another. {!Sgr_state} tracks the style a terminal is in,
+    for a renderer that writes cell after cell. {!Styling} decides how much of a
+    style a destination shows, from the program's choice, the user's environment
+    and the terminal. {!Parser} reads a stream that holds escape sequences, such
+    as a program's output, back into tokens.
 
     Unless a value's doc says otherwise:
     - A count, such as the [n] of {!cursor_up}, below [0] is [0], and a count of
@@ -545,6 +544,3 @@ module Sgr_state = Sgr_state
 
 module Styling = Styling
 (** The styling of a destination. *)
-
-module Theme = Theme
-(** Roles and themes. *)

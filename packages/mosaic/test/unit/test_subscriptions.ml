@@ -353,7 +353,7 @@ let palette =
 
 let reported (p : Vte.palette) =
   {
-    Ansi.Theme.foreground = p.foreground;
+    Ansi.Color.foreground = p.foreground;
     background = p.background;
     palette = Array.init 16 (fun i -> Some p.colors.(i));
   }
@@ -379,7 +379,7 @@ let colors_given ?(profile = { Matrix_test.Profile.vte with palette }) steps =
 
 let colors_testable =
   Testable.make
-    ~pp:(fun ppf (c : Ansi.Theme.colors) ->
+    ~pp:(fun ppf (c : Ansi.Color.reported) ->
       let rgb ppf (r, g, b) = Format.fprintf ppf "#%02x%02x%02x" r g b in
       Format.fprintf ppf "{fg %a; bg %a; palette [%a]}" rgb c.foreground rgb
         c.background
@@ -488,7 +488,7 @@ let terminal_colors_without_palette () =
   equal ~msg:"foreground and background" (list colors_testable)
     [
       {
-        Ansi.Theme.foreground = (0xe5, 0xe5, 0xe5);
+        Ansi.Color.foreground = (0xe5, 0xe5, 0xe5);
         background = (0x10, 0x20, 0x30);
         palette = Array.make 16 None;
       };
@@ -534,7 +534,7 @@ let drawn term =
   (style.fg, Ansi.Attr.mem Underline style.attrs)
 
 let link_of theme =
-  let style = Ansi.Theme.style theme Link in
+  let style = Theme.style theme Link in
   ( Some (Option.value style.fg ~default:Ansi.Color.default_fg),
     Ansi.Attr.mem Underline style.attrs )
 
@@ -543,7 +543,7 @@ let root_theme_follows_colors () =
   let views = ref 0 in
   let colors =
     {
-      Ansi.Theme.foreground = (0, 0, 0);
+      Ansi.Color.foreground = (0, 0, 0);
       background = (0xff, 0xff, 0xff);
       palette = Array.make 16 None;
     }
@@ -552,13 +552,13 @@ let root_theme_follows_colors () =
   let term = Matrix_test.Terminal.create ~profile ~cols:4 ~rows:1 () in
   Mosaic_test.run term (link_app views) (fun s ->
       asked s term;
-      equal ~msg:"plain" link (link_of Ansi.Theme.plain) (drawn term);
+      equal ~msg:"plain" link (link_of Theme.plain) (drawn term);
       let views_before = !views in
       Matrix_test.input s
         ("\027]10;rgb:0000/0000/0000\027\\\027]11;rgb:ffff/ffff/ffff\027\\\027]4;4;rgb:0000/0000/eeee\027\\"
        ^ "\027[?62;22c");
       equal ~msg:"the default of the colors" link
-        (link_of (Ansi.Theme.default colors))
+        (link_of (Theme.default colors))
         (drawn term);
       equal ~msg:"no view built" int views_before !views)
 
@@ -583,7 +583,7 @@ let root_theme_follows_a_change () =
       background = (0xff, 0xff, 0xff);
     }
   in
-  let theme p = Ansi.Theme.default (reported p) in
+  let theme p = Theme.default (reported p) in
   is_false ~msg:"the themes draw the link apart"
     (link_of (theme dark) = link_of (theme light));
   let profile = { Matrix_test.Profile.vte with palette = dark } in

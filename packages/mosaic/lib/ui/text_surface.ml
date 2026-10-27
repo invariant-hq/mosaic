@@ -11,7 +11,7 @@ type t = {
   mutable truncate : bool;
   mutable scroll_x : int;
   mutable scroll_y : int;
-  mutable ground : Theme.surface option;
+  mutable ground : Theme.role option;
   (* The styles of the render in progress, resolved from the theme in scope
      as it starts ([render]), and the content's style of the run at hand. *)
   mutable role : Ansi.Style.t;
@@ -303,8 +303,8 @@ let render t _self grid ~dt:_ =
     t.ground_style <-
       (match t.ground with
       | None -> Ansi.Style.default
-      | Some s -> Theme.surface theme s);
-    t.highlight <- Theme.surface theme Highlight;
+      | Some s -> Theme.style theme s);
+    t.highlight <- Theme.style theme Highlight;
     for y = y0 to y1 - 1 do
       let row = t.scroll_y + y - oy in
       let first_byte = ref 0 and last_byte = ref 0 and batch_x = ref 0 in

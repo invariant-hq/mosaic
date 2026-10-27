@@ -79,7 +79,7 @@ let plain =
 let rgb (r, g, b) = Ansi.Color.of_rgb r g b
 
 (* The entries of a scope's hue and of a comment are chosen as those of
-   [Ansi.Theme.default]'s text are: a legible entry, and for a comment entry
+   [Theme.default]'s text are: a legible entry, and for a comment entry
    8 where it is legible and quieter than the pair, as [Muted] text. *)
 let of_colors (c : Ansi.Color.reported) =
   let pair = Ansi.Color.contrast (rgb c.foreground) (rgb c.background) in

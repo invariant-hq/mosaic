@@ -311,7 +311,7 @@ module Sub = struct
     | On_color_scheme of ([ `Dark | `Light ] -> 'msg option)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)
     | On_focus_lost of 'msg
-    | On_terminal_colors of (Ansi.Theme.colors -> 'msg option)
+    | On_terminal_colors of (Ansi.Color.reported -> 'msg option)
 
   let none = None
   let batch subs = Batch subs
@@ -501,7 +501,7 @@ type ('model, 'msg) runtime = {
   (* The view last reconciled declared a focused element. *)
   mutable had_focus : bool;
   mutable color_scheme_sub : ([ `Dark | `Light ] -> 'msg option) list;
-  mutable terminal_colors_sub : (Ansi.Theme.colors -> 'msg option) list;
+  mutable terminal_colors_sub : (Ansi.Color.reported -> 'msg option) list;
   reported : reported;
   (* The timer armed at the earliest deadline of the timers and the
      paste stalls, and that deadline. *)
@@ -1067,7 +1067,7 @@ let take_reply runtime (reply : Matrix.Input.Reply.t) =
       | Some foreground, Some background ->
           let colors =
             {
-              Ansi.Theme.foreground;
+              Ansi.Color.foreground;
               background;
               palette = Array.copy r.palette;
             }

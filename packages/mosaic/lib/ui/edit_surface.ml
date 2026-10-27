@@ -514,8 +514,7 @@ let view_range t source =
    over both. *)
 let muted_style theme ?fg ?bg ~italic () =
   let s =
-    Ansi.Style.merge
-      ~base:(Theme.surface theme Field)
+    Ansi.Style.merge ~base:(Theme.style theme Field)
       ~overlay:(Theme.style theme Muted)
   in
   let s = Option.fold ~none:s ~some:(fun c -> Ansi.Style.fg c s) fg in
@@ -552,7 +551,7 @@ let render_before t _self grid ~dt:_ =
       match bg with
       | Some c -> c
       | None ->
-          Option.value (Theme.surface theme Field).bg
+          Option.value (Theme.style theme Field).bg
             ~default:Ansi.Color.transparent
     in
     Matrix_grid.clear_rect ~color grid ~x:x0 ~y:y0 ~width:w ~height:h;

@@ -1,63 +1,191 @@
-type surface = Canvas | Panel | Field | Cursor | Selected | Highlight
+type role =
+  | Plain
+  | Muted
+  | Emphasis
+  | Accent
+  | Link
+  | Ok
+  | Warning
+  | Error
+  | Added
+  | Removed
+  | Border
+  | Canvas
+  | Panel
+  | Field
+  | Cursor
+  | Selected
+  | Highlight
 
-let surfaces = [ Canvas; Panel; Field; Cursor; Selected; Highlight ]
+let roles =
+  [
+    Plain;
+    Muted;
+    Emphasis;
+    Accent;
+    Link;
+    Ok;
+    Warning;
+    Error;
+    Added;
+    Removed;
+    Border;
+    Canvas;
+    Panel;
+    Field;
+    Cursor;
+    Selected;
+    Highlight;
+  ]
 
 let index = function
-  | Canvas -> 0
-  | Panel -> 1
-  | Field -> 2
-  | Cursor -> 3
-  | Selected -> 4
-  | Highlight -> 5
+  | Plain -> 0
+  | Muted -> 1
+  | Emphasis -> 2
+  | Accent -> 3
+  | Link -> 4
+  | Ok -> 5
+  | Warning -> 6
+  | Error -> 7
+  | Added -> 8
+  | Removed -> 9
+  | Border -> 10
+  | Canvas -> 11
+  | Panel -> 12
+  | Field -> 13
+  | Cursor -> 14
+  | Selected -> 15
+  | Highlight -> 16
 
-(* The surfaces' styles are indexed by [index]; the array is never mutated
-   once built. *)
+(* A theme holds three styles per role, indexed by [index]: its text, a
+   state glyph a word repeats, and a state glyph alone. The arrays are never
+   mutated once built. *)
 type t = {
-  text : Ansi.Theme.t;
-  surfaces : Ansi.Style.t array;
+  text : Ansi.Style.t array;
+  mark : Ansi.Style.t array;
+  alone : Ansi.Style.t array;
   glyphs : Glyphs.t;
   syntax : Syntax_style.t;
 }
 
-let plain_surface = function
-  | Canvas | Panel | Field -> Ansi.Style.default
+(* The palette entry of a role's hue, whose bright variant is 8 entries
+   above. *)
+let slot = function
+  | Error | Removed -> Some 1
+  | Ok | Added -> Some 2
+  | Warning -> Some 3
+  | Link -> Some 4
+  | Accent -> Some 6
+  | Plain | Muted | Emphasis | Border | Canvas | Panel | Field | Cursor
+  | Selected | Highlight ->
+      None
+
+let plain_text = function
+  | Emphasis | Accent | Warning | Error -> Ansi.Style.make ~bold:true ()
+  | Link -> Ansi.Style.make ~underline:true ()
   | Cursor | Highlight -> Ansi.Style.make ~inverse:true ()
   | Selected -> Ansi.Style.make ~bold:true ~underline:true ()
+  | Plain | Muted | Ok | Added | Removed | Border | Canvas | Panel | Field ->
+      Ansi.Style.default
+
+let make f = Array.of_list (List.map f roles)
 
 let plain =
+  let text = make plain_text in
+  let mark =
+    make (fun role ->
+        match slot role with
+        | Some s -> Ansi.Style.make ~fg:(Ansi.Color.indexed s) ()
+        | None -> plain_text role)
+  in
   {
-    text = Ansi.Theme.plain;
-    surfaces = Array.of_list (List.map plain_surface surfaces);
+    text;
+    mark;
+    alone = text;
     glyphs = Glyphs.unicode;
     syntax = Syntax_style.plain;
   }
 
-let default colors =
+let pair (c : Ansi.Color.reported) =
+  let rgb (r, g, b) = Ansi.Color.of_rgb r g b in
+  Ansi.Color.contrast (rgb c.foreground) (rgb c.background)
+
+let default c =
+  let text =
+    make (fun role ->
+        let base = plain_text role in
+        let entry =
+          match role with
+          | Link | Added | Removed ->
+              Ansi.Color.legible c (Option.get (slot role))
+          | Muted -> (
+              (* Entry 8 where it is legible and quieter than the pair. *)
+              match
+                (Ansi.Color.legible c 8, Ansi.Color.legible ~target:(pair c) c 8)
+              with
+              | Some e, None -> Some e
+              | _ -> None)
+          | _ -> None
+        in
+        match entry with Some e -> Ansi.Style.fg e base | None -> base)
+  in
+  let alone =
+    make (fun role ->
+        match Option.bind (slot role) (Ansi.Color.legible ~target:3. c) with
+        | Some e -> Ansi.Style.make ~fg:e ()
+        | None -> text.(index role))
+  in
+  let mark =
+    make (fun role ->
+        match slot role with
+        | Some _ -> plain.mark.(index role)
+        | None -> text.(index role))
+  in
   {
-    plain with
-    text = Ansi.Theme.default colors;
-    syntax = Syntax_style.of_colors colors;
+    text;
+    mark;
+    alone;
+    glyphs = Glyphs.unicode;
+    syntax = Syntax_style.of_colors c;
   }
 
-let text t = t.text
-let style t role = Ansi.Theme.style t.text role
-let mark ?alone t role = Ansi.Theme.mark ?alone t.text role
-let surface t s = t.surfaces.(index s)
+let style t role = t.text.(index role)
+
+let mark ?(alone = false) t role =
+  (if alone then t.alone else t.mark).(index role)
+
 let glyphs t = t.glyphs
 let syntax t = t.syntax
-let with_text text t = { t with text }
-let with_style role s t = { t with text = Ansi.Theme.with_style role s t.text }
 
-let with_surface s style t =
-  let surfaces = Array.copy t.surfaces in
-  surfaces.(index s) <- style;
-  { t with surfaces }
+let with_style role s t =
+  let set a =
+    let a = Array.copy a in
+    a.(index role) <- s;
+    a
+  in
+  { t with text = set t.text; mark = set t.mark; alone = set t.alone }
 
 let with_glyphs glyphs t = { t with glyphs }
 let with_syntax syntax t = { t with syntax }
 
+let check c t =
+  let pair = pair c in
+  List.filter_map
+    (fun role ->
+      let s = style t role in
+      let target = Float.min (if role = Border then 3. else 4.5) pair in
+      let or_default d = Option.value ~default:d in
+      match
+        Ansi.Color.contrast_on c
+          ~fg:(or_default Ansi.Color.default_fg s.Ansi.Style.fg)
+          ~bg:(or_default Ansi.Color.default_bg s.bg)
+      with
+      | Some k when k < target -> Some (role, k)
+      | _ -> None)
+    roles
+
 let equal a b =
-  Ansi.Theme.equal a.text b.text
-  && Array.for_all2 Ansi.Style.equal a.surfaces b.surfaces
+  let same x y = Array.for_all2 Ansi.Style.equal x y in
+  same a.text b.text && same a.mark b.mark && same a.alone b.alone
   && Glyphs.equal a.glyphs b.glyphs
   && Syntax_style.equal a.syntax b.syntax

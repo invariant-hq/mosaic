@@ -294,14 +294,14 @@ let xterm_palette =
     (0xff, 0xff, 0xff);
   |]
 
-let xterm_light : Ansi.Theme.colors =
+let xterm_light : Ansi.Color.reported =
   {
     foreground = (0, 0, 0);
     background = (255, 255, 255);
     palette = Array.map Option.some xterm_palette;
   }
 
-let xterm_dark : Ansi.Theme.colors =
+let xterm_dark : Ansi.Color.reported =
   {
     foreground = (0xe5, 0xe5, 0xe5);
     background = (0, 0, 0);
@@ -311,7 +311,7 @@ let xterm_dark : Ansi.Theme.colors =
 (* The RGB a cell's color shows on a terminal of colors [c]: the default
    color, and a transparent background, are the terminal's own, and an
    entry of 0 to 15 its palette's. *)
-let shown (c : Ansi.Theme.colors) ~default color =
+let shown (c : Ansi.Color.reported) ~default color =
   if Ansi.Color.alpha color = 0. then default
   else
     match Ansi.Color.intent color with
@@ -323,7 +323,7 @@ let rgb (r, g, b) = Ansi.Color.of_rgb r g b
 
 (* The cells of [grid] that hold text below the contrast of text, the lower
    of 4.5 and the pair's, on a terminal of colors [c], as "x,y". *)
-let illegible (c : Ansi.Theme.colors) grid =
+let illegible (c : Ansi.Color.reported) grid =
   let pair = Ansi.Color.contrast (rgb c.foreground) (rgb c.background) in
   let target = Float.min 4.5 pair in
   let bad = ref [] in

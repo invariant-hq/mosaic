@@ -220,9 +220,9 @@ let rec render t _self grid ~dt:_ =
       match props.selected_background with
       | Some bg -> Ansi.Style.make ~bg ()
       | None ->
-          let s = Theme.surface theme Selected in
+          let s = Theme.style theme Selected in
           if focused then
-            Ansi.Style.merge ~base:s ~overlay:(Theme.surface theme Cursor)
+            Ansi.Style.merge ~base:s ~overlay:(Theme.style theme Cursor)
           else s
     in
     let selected =

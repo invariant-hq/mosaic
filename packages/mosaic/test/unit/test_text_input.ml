@@ -1360,7 +1360,7 @@ let paint_legible_on_light () =
 
 let paint_field_surface () =
   let field =
-    Theme.with_surface Field (Ansi.Style.make ~fg:paint_blue ~bg:paint_red ())
+    Theme.with_style Field (Ansi.Style.make ~fg:paint_blue ~bg:paint_red ())
   in
   let s = cell_style (paint (Mosaic.themed field (paint_input ()))) ~x:0 ~y:0 in
   is_true ~msg:"the surface's pair" (fg_is paint_blue s && bg_is paint_red s);

@@ -123,7 +123,7 @@ val local_caret : t -> x:int -> y:int -> Matrix.Text.Layout.caret
     surface instead, unless a selection color is given, which then replaces that
     color of the text's style. *)
 
-val set_ground : t -> Theme.surface option -> unit
+val set_ground : t -> Theme.role option -> unit
 (** [set_ground t s] makes [s] the surface [t]'s text lies on, such as [Field]
     for an editor's. [None], the default, draws the text over what is beneath
     it. *)

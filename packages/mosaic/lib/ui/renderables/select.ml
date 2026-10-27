@@ -370,8 +370,7 @@ let render t _self grid ~dt:_ =
     let row_surface =
       match t.props.selected_background with
       | Some bg -> Ansi.Style.make ~bg ()
-      | None ->
-          if focused then Theme.surface theme Cursor else Ansi.Style.default
+      | None -> if focused then Theme.style theme Cursor else Ansi.Style.default
     in
     let selected_fg =
       labelled t.props.selected_text_color

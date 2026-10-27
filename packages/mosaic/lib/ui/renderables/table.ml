@@ -895,7 +895,7 @@ let render t _self grid ~dt:_ =
       let surface =
         match sel_bg with
         | Some bg -> Ansi.Style.make ~bg ()
-        | None -> Theme.surface theme (if focused then Cursor else Selected)
+        | None -> Theme.style theme (if focused then Cursor else Selected)
       in
       labelled sel_fg
         (Ansi.Style.merge ~base:surface ~overlay:default_text_style)

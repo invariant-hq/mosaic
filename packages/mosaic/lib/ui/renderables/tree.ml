@@ -807,7 +807,7 @@ let render t _self grid ~dt:_ =
         else t.props.selected_background
       with
       | Some bg -> Ansi.Style.make ~bg ()
-      | None -> Theme.surface theme (if focused then Cursor else Selected)
+      | None -> Theme.style theme (if focused then Cursor else Selected)
     in
 
     for vi = start_index to end_index - 1 do

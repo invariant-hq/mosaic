@@ -19,7 +19,7 @@ let error_blue = Theme.with_style Error blue
 (* ───── Values ───── *)
 
 let plain_surfaces () =
-  let surface s = Theme.surface Theme.plain s in
+  let surface s = Theme.style Theme.plain s in
   equal ~msg:"canvas" bool true
     (Ansi.Style.equal (surface Canvas) Ansi.Style.default);
   equal ~msg:"cursor" bool true
@@ -30,37 +30,861 @@ let plain_surfaces () =
   equal ~msg:"glyphs" bool true
     (Glyphs.equal (Theme.glyphs Theme.plain) Glyphs.unicode)
 
-let default_text () =
+let surfaces : Theme.role list =
+  [ Canvas; Panel; Field; Cursor; Selected; Highlight ]
+
+let default_surfaces () =
   let colors =
     {
-      Ansi.Theme.foreground = (0, 0, 0);
+      Ansi.Color.foreground = (0, 0, 0);
       background = (255, 255, 255);
       palette = Array.init 16 (fun i -> Some (i * 16, 0, 0));
     }
   in
   let t = Theme.default colors in
-  equal ~msg:"text" bool true
-    (Ansi.Theme.equal (Theme.text t) (Ansi.Theme.default colors));
   List.iter
     (fun s ->
       equal ~msg:"surfaces as plain's" bool true
-        (Ansi.Style.equal (Theme.surface t s) (Theme.surface Theme.plain s)))
-    Theme.surfaces
+        (Ansi.Style.equal (Theme.style t s) (Theme.style Theme.plain s)))
+    surfaces
 
 let modifiers () =
-  let t = Theme.with_surface Cursor red Theme.plain in
+  let t = Theme.with_style Cursor red Theme.plain in
   equal ~msg:"the surface" bool true
-    (Ansi.Style.equal (Theme.surface t Cursor) red);
+    (Ansi.Style.equal (Theme.style t Cursor) red);
   equal ~msg:"the others kept" bool true
-    (Ansi.Style.equal
-       (Theme.surface t Highlight)
-       (Theme.surface Theme.plain Highlight));
+    (Ansi.Style.equal (Theme.style t Highlight)
+       (Theme.style Theme.plain Highlight));
   equal ~msg:"plain unchanged" bool false (Theme.equal t Theme.plain);
   let t = error_red Theme.plain in
   equal ~msg:"the role's text" bool true
     (Ansi.Style.equal (Theme.style t Error) red);
   equal ~msg:"the role's glyphs" bool true
     (Ansi.Style.equal (Theme.mark ~alone:true t Error) red)
+
+(* ───── Role tables ───── *)
+
+let check_style = Testable.make ~pp:Ansi.Style.pp ~equal:Ansi.Style.equal
+
+(* The colors of 27 configurations, each with what Theme.default draws.
+   Eight were measured by querying the terminal (OSC 10, 11 and 4) with an
+   empty configuration and with only its background set white; Solarized
+   comes from its specification; the others from their sources (st
+   config.def.h, foot foot.ini, Alacritty color.rs, Ghostty Config.zig,
+   Windows Terminal defaults.json, Konsole Breeze.colorscheme, GNOME
+   Terminal's gschema, and each theme's own). Each gives the default
+   foreground and background, entries 0 to 15 ("" where not read), and the
+   entry Theme.default gives Link, Added, Removed and Muted text and a state
+   glyph alone of Error, Ok, Warning, Link and Accent ("-" for none). *)
+let palettes =
+  [
+    ( "xterm, black on white (its default)",
+      "000000",
+      "ffffff",
+      [
+        "000000";
+        "cd0000";
+        "00cd00";
+        "cdcd00";
+        "0000ee";
+        "cd00cd";
+        "00cdcd";
+        "e5e5e5";
+        "7f7f7f";
+        "ff0000";
+        "00ff00";
+        "ffff00";
+        "5c5cff";
+        "ff00ff";
+        "00ffff";
+        "ffffff";
+      ],
+      "link 4 added - removed 1 muted -, alone 1 - - 4 -" );
+    ( "xterm, XTerm-color",
+      "e5e5e5",
+      "000000",
+      [
+        "000000";
+        "cd0000";
+        "00cd00";
+        "cdcd00";
+        "0000ee";
+        "cd00cd";
+        "00cdcd";
+        "e5e5e5";
+        "7f7f7f";
+        "ff0000";
+        "00ff00";
+        "ffff00";
+        "5c5cff";
+        "ff00ff";
+        "00ffff";
+        "ffffff";
+      ],
+      "link - added 2 removed 9 muted 8, alone 1 2 3 12 6" );
+    ( "VTE",
+      "c0c0c0",
+      "000000",
+      [
+        "000000";
+        "c00000";
+        "00c000";
+        "c0c000";
+        "0000c0";
+        "c000c0";
+        "00c0c0";
+        "c0c0c0";
+        "3f3f3f";
+        "ff3f3f";
+        "3fff3f";
+        "ffff3f";
+        "3f3fff";
+        "ff3fff";
+        "3fffff";
+        "ffffff";
+      ],
+      "link - added 2 removed 9 muted -, alone 1 2 3 12 6" );
+    ( "VTE, white background",
+      "000000",
+      "ffffff",
+      [
+        "000000";
+        "c00000";
+        "00c000";
+        "c0c000";
+        "0000c0";
+        "c000c0";
+        "00c0c0";
+        "c0c0c0";
+        "3f3f3f";
+        "ff3f3f";
+        "3fff3f";
+        "ffff3f";
+        "3f3fff";
+        "ff3fff";
+        "3fffff";
+        "ffffff";
+      ],
+      "link 4 added - removed 1 muted 8, alone 1 - - 4 -" );
+    ( "kitty",
+      "dddddd",
+      "000000",
+      [
+        "000000";
+        "cc0403";
+        "19cb00";
+        "cecb00";
+        "0d73cc";
+        "cb1ed1";
+        "0dcdcd";
+        "dddddd";
+        "767676";
+        "f2201f";
+        "23fd00";
+        "fffd00";
+        "1a8fff";
+        "fd28ff";
+        "14ffff";
+        "ffffff";
+      ],
+      "link 12 added 2 removed 9 muted 8, alone 1 2 3 4 6" );
+    ( "kitty, white background",
+      "000000",
+      "ffffff",
+      [
+        "000000";
+        "cc0403";
+        "19cb00";
+        "cecb00";
+        "0d73cc";
+        "cb1ed1";
+        "0dcdcd";
+        "dddddd";
+        "767676";
+        "f2201f";
+        "23fd00";
+        "fffd00";
+        "1a8fff";
+        "fd28ff";
+        "14ffff";
+        "ffffff";
+      ],
+      "link 4 added - removed 1 muted 8, alone 1 - - 4 -" );
+    ( "WezTerm",
+      "b2b2b2",
+      "000000",
+      [
+        "000000";
+        "cc5555";
+        "55cc55";
+        "cdcd55";
+        "5455cb";
+        "cc55cc";
+        "7acaca";
+        "cccccc";
+        "555555";
+        "ff5555";
+        "55ff55";
+        "ffff55";
+        "5555ff";
+        "ff55ff";
+        "55ffff";
+        "ffffff";
+      ],
+      "link - added 2 removed 1 muted -, alone 1 2 3 4 6" );
+    ( "WezTerm, white background",
+      "000000",
+      "ffffff",
+      [
+        "000000";
+        "cc5555";
+        "55cc55";
+        "cdcd55";
+        "5455cb";
+        "cc55cc";
+        "7acaca";
+        "cccccc";
+        "555555";
+        "ff5555";
+        "55ff55";
+        "ffff55";
+        "5555ff";
+        "ff55ff";
+        "55ffff";
+        "ffffff";
+      ],
+      "link 4 added - removed - muted 8, alone 1 - - 4 -" );
+    ( "Solarized dark",
+      "839496",
+      "002b36",
+      [
+        "073642";
+        "dc322f";
+        "859900";
+        "b58900";
+        "268bd2";
+        "d33682";
+        "2aa198";
+        "eee8d5";
+        "002b36";
+        "cb4b16";
+        "586e75";
+        "657b83";
+        "839496";
+        "6c71c4";
+        "93a1a1";
+        "fdf6e3";
+      ],
+      "link 12 added 2 removed - muted -, alone 1 2 3 4 6" );
+    ( "Solarized light",
+      "657b83",
+      "fdf6e3",
+      [
+        "073642";
+        "dc322f";
+        "859900";
+        "b58900";
+        "268bd2";
+        "d33682";
+        "2aa198";
+        "eee8d5";
+        "002b36";
+        "cb4b16";
+        "586e75";
+        "657b83";
+        "839496";
+        "6c71c4";
+        "93a1a1";
+        "fdf6e3";
+      ],
+      "link - added 10 removed 1 muted -, alone 1 10 11 4 -" );
+    ( "st 0.9 (config.def.h)",
+      "e5e5e5",
+      "000000",
+      [
+        "000000";
+        "cd0000";
+        "00cd00";
+        "cdcd00";
+        "0000ee";
+        "cd00cd";
+        "00cdcd";
+        "e5e5e5";
+        "7f7f7f";
+        "ff0000";
+        "00ff00";
+        "ffff00";
+        "5c5cff";
+        "ff00ff";
+        "00ffff";
+        "";
+      ],
+      "link - added 2 removed 9 muted 8, alone 1 2 3 12 6" );
+    ( "foot master (foot.ini)",
+      "ffffff",
+      "242424",
+      [
+        "242424";
+        "f62b5a";
+        "47b413";
+        "e3c401";
+        "24acd4";
+        "f2affd";
+        "13c299";
+        "e6e6e6";
+        "616161";
+        "ff4d51";
+        "35d450";
+        "e9e836";
+        "5dc5f8";
+        "feabf2";
+        "24dfc4";
+        "";
+      ],
+      "link 4 added 2 removed 9 muted -, alone 1 2 3 4 6" );
+    ( "Alacritty (color.rs)",
+      "d8d8d8",
+      "181818",
+      [
+        "181818";
+        "ac4242";
+        "90a959";
+        "f4bf75";
+        "6a9fb5";
+        "aa759f";
+        "75b5aa";
+        "d8d8d8";
+        "6b6b6b";
+        "c55555";
+        "aac474";
+        "feca88";
+        "82b8c8";
+        "c28cb8";
+        "93d3c3";
+        "";
+      ],
+      "link 4 added 2 removed - muted -, alone 1 2 3 4 6" );
+    ( "Ghostty (Config.zig, color.zig)",
+      "ffffff",
+      "282c34",
+      [
+        "1d1f21";
+        "cc6666";
+        "b5bd68";
+        "f0c674";
+        "81a2be";
+        "b294bb";
+        "8abeb7";
+        "c5c8c6";
+        "666666";
+        "d54e53";
+        "b9ca4a";
+        "e7c547";
+        "7aa6da";
+        "c397d8";
+        "70c0b1";
+        "";
+      ],
+      "link 4 added 2 removed - muted -, alone 1 2 3 4 6" );
+    ( "Windows Terminal Campbell",
+      "cccccc",
+      "0c0c0c",
+      [
+        "0c0c0c";
+        "c50f1f";
+        "13a10e";
+        "c19c00";
+        "0037da";
+        "881798";
+        "3a96dd";
+        "cccccc";
+        "767676";
+        "e74856";
+        "16c60c";
+        "f9f1a5";
+        "3b78ff";
+        "b4009e";
+        "61d6d6";
+        "";
+      ],
+      "link 12 added 2 removed 9 muted -, alone 1 2 3 12 6" );
+    ( "Windows Terminal One Half Light",
+      "383a42",
+      "fafafa",
+      [
+        "383a42";
+        "e45649";
+        "50a14f";
+        "c18301";
+        "0184bc";
+        "a626a4";
+        "0997b3";
+        "fafafa";
+        "4f525d";
+        "df6c75";
+        "98c379";
+        "e4c07a";
+        "61afef";
+        "c577dd";
+        "56b5c1";
+        "";
+      ],
+      "link - added - removed - muted 8, alone 1 2 3 4 6" );
+    ( "Konsole Breeze",
+      "fcfcfc",
+      "232627",
+      [
+        "232627";
+        "ed1515";
+        "11d116";
+        "f67400";
+        "1d99f3";
+        "9b59b6";
+        "1abc9c";
+        "fcfcfc";
+        "7f8c8d";
+        "c0392b";
+        "1cdc9a";
+        "fdbc4b";
+        "3daee9";
+        "8e44ad";
+        "16a085";
+        "";
+      ],
+      "link 4 added 2 removed - muted -, alone 1 2 3 4 6" );
+    ( "GNOME Terminal schema (light)",
+      "1e1e1e",
+      "ffffff",
+      [
+        "1e1e1e";
+        "c01c28";
+        "26a269";
+        "a2734c";
+        "12488b";
+        "a347ba";
+        "2aa1b3";
+        "cfcfcf";
+        "5d5d5d";
+        "f66151";
+        "33d17a";
+        "e9ad0c";
+        "2a7bde";
+        "c061cb";
+        "33c7de";
+        "";
+      ],
+      "link 4 added - removed 1 muted 8, alone 1 2 3 4 6" );
+    ( "Dracula",
+      "f8f8f2",
+      "282a36",
+      [
+        "21222c";
+        "ff5555";
+        "50fa7b";
+        "f1fa8c";
+        "bd93f9";
+        "ff79c6";
+        "8be9fd";
+        "f8f8f2";
+        "6272a4";
+        "ff6e6e";
+        "69ff94";
+        "ffffa5";
+        "d6acff";
+        "ff92df";
+        "a4ffff";
+        "";
+      ],
+      "link 4 added 2 removed 1 muted -, alone 1 2 3 4 6" );
+    ( "Gruvbox dark",
+      "ebdbb2",
+      "282828",
+      [
+        "282828";
+        "cc241d";
+        "98971a";
+        "d79921";
+        "458588";
+        "b16286";
+        "689d6a";
+        "a89984";
+        "928374";
+        "fb4934";
+        "b8bb26";
+        "fabd2f";
+        "83a598";
+        "d3869b";
+        "8ec07c";
+        "";
+      ],
+      "link 12 added 2 removed - muted -, alone 9 2 3 4 6" );
+    ( "Gruvbox light",
+      "3c3836",
+      "fbf1c7",
+      [
+        "fbf1c7";
+        "cc241d";
+        "98971a";
+        "d79921";
+        "458588";
+        "b16286";
+        "689d6a";
+        "7c6f64";
+        "928374";
+        "9d0006";
+        "79740e";
+        "b57614";
+        "076678";
+        "8f3f71";
+        "427b58";
+        "";
+      ],
+      "link 12 added - removed 1 muted -, alone 1 10 11 4 14" );
+    ( "Nord",
+      "d8dee9",
+      "2e3440",
+      [
+        "3b4252";
+        "bf616a";
+        "a3be8c";
+        "ebcb8b";
+        "81a1c1";
+        "b48ead";
+        "88c0d0";
+        "e5e9f0";
+        "4c566a";
+        "bf616a";
+        "a3be8c";
+        "ebcb8b";
+        "81a1c1";
+        "b48ead";
+        "8fbcbb";
+        "";
+      ],
+      "link 4 added 2 removed - muted -, alone 1 2 3 4 6" );
+    ( "One Dark",
+      "abb2bf",
+      "282c34",
+      [
+        "1e2127";
+        "e06c75";
+        "98c379";
+        "d19a66";
+        "61afef";
+        "c678dd";
+        "56b6c2";
+        "abb2bf";
+        "5c6370";
+        "e06c75";
+        "98c379";
+        "d19a66";
+        "61afef";
+        "c678dd";
+        "56b6c2";
+        "";
+      ],
+      "link 4 added 2 removed - muted -, alone 1 2 3 4 6" );
+    ( "Tokyo Night",
+      "c0caf5",
+      "1a1b26",
+      [
+        "15161e";
+        "f7768e";
+        "9ece6a";
+        "e0af68";
+        "7aa2f7";
+        "bb9af7";
+        "7dcfff";
+        "a9b1d6";
+        "414868";
+        "ff899d";
+        "9fe044";
+        "faba4a";
+        "8db0ff";
+        "c7a9ff";
+        "a4daff";
+        "";
+      ],
+      "link 4 added 2 removed 1 muted -, alone 1 2 3 4 6" );
+    ( "Catppuccin Mocha",
+      "cdd6f4",
+      "1e1e2e",
+      [
+        "45475a";
+        "f38ba8";
+        "a6e3a1";
+        "f9e2af";
+        "89b4fa";
+        "f5c2e7";
+        "94e2d5";
+        "bac2de";
+        "585b70";
+        "";
+        "";
+        "";
+        "";
+        "";
+        "";
+        "";
+      ],
+      "link 4 added 2 removed 1 muted -, alone 1 2 3 4 6" );
+    ( "Catppuccin Latte",
+      "4c4f69",
+      "eff1f5",
+      [
+        "5c5f77";
+        "d20f39";
+        "40a02b";
+        "df8e1d";
+        "1e66f5";
+        "ea76cb";
+        "179299";
+        "acb0be";
+        "6c6f85";
+        "";
+        "";
+        "";
+        "";
+        "";
+        "";
+        "";
+      ],
+      "link - added - removed 1 muted -, alone 1 - - 4 6" );
+    ( "GitHub light",
+      "24292f",
+      "ffffff",
+      [
+        "24292e";
+        "d73a49";
+        "28a745";
+        "dbab09";
+        "0366d6";
+        "5a32a3";
+        "0598bc";
+        "6a737d";
+        "959da5";
+        "cb2431";
+        "22863a";
+        "b08800";
+        "005cc5";
+        "5a32a3";
+        "3192aa";
+        "";
+      ],
+      "link 4 added 10 removed 1 muted -, alone 1 2 11 4 6" );
+  ]
+
+let hex h =
+  let byte i = int_of_string ("0x" ^ String.sub h i 2) in
+  (byte 0, byte 2, byte 4)
+
+let colors_of fg bg entries =
+  {
+    Ansi.Color.foreground = hex fg;
+    background = hex bg;
+    palette =
+      Array.of_list
+        (List.map (function "" -> None | h -> Some (hex h)) entries);
+  }
+
+let role_name : Theme.role -> string = function
+  | Plain -> "Plain"
+  | Muted -> "Muted"
+  | Emphasis -> "Emphasis"
+  | Accent -> "Accent"
+  | Link -> "Link"
+  | Ok -> "Ok"
+  | Warning -> "Warning"
+  | Error -> "Error"
+  | Added -> "Added"
+  | Removed -> "Removed"
+  | Border -> "Border"
+  | Canvas -> "Canvas"
+  | Panel -> "Panel"
+  | Field -> "Field"
+  | Cursor -> "Cursor"
+  | Selected -> "Selected"
+  | Highlight -> "Highlight"
+
+let check_result =
+  list
+    (pair
+       (Testable.make
+          ~pp:(fun ppf r -> Format.pp_print_string ppf (role_name r))
+          ~equal:( = ))
+       (float 0.005))
+
+let entry (s : Ansi.Style.t) =
+  match Option.map Ansi.Color.intent s.fg with
+  | None -> "-"
+  | Some (Indexed i) -> string_of_int i
+  | Some _ -> "?"
+
+let summary t =
+  let alone r = entry (Theme.mark ~alone:true t r) in
+  Printf.sprintf "link %s added %s removed %s muted %s, alone %s"
+    (entry (Theme.style t Link))
+    (entry (Theme.style t Added))
+    (entry (Theme.style t Removed))
+    (entry (Theme.style t Muted))
+    (String.concat " " (List.map alone [ Error; Ok; Warning; Link; Accent ]))
+
+let slot : Theme.role -> int option = function
+  | Error | Removed -> Some 1
+  | Ok | Added -> Some 2
+  | Warning -> Some 3
+  | Link -> Some 4
+  | Accent -> Some 6
+  | Plain | Muted | Emphasis | Border | Canvas | Panel | Field | Cursor
+  | Selected | Highlight ->
+      None
+
+(* What every theme of [default] holds on a terminal of colors [c]: no
+   text below its target, a state glyph a word repeats always in its
+   role's entry, the other roles' text as [plain] draws it, and never bold
+   with a palette entry or dim. *)
+let theme_laws ~msg c =
+  let t = Theme.default c in
+  equal
+    ~msg:(msg ^ ": no text below its target")
+    check_result [] (Theme.check c t);
+  List.iter
+    (fun role ->
+      let styles =
+        [ Theme.style t role; Theme.mark t role; Theme.mark ~alone:true t role ]
+      in
+      List.iter
+        (fun (s : Ansi.Style.t) ->
+          is_false ~msg:(msg ^ ": no dim") (Ansi.Attr.mem Dim s.attrs);
+          is_false
+            ~msg:(msg ^ ": no bold with an entry")
+            (Ansi.Attr.mem Bold s.attrs && s.fg <> None))
+        styles;
+      (match slot role with
+      | Some s ->
+          equal
+            ~msg:(msg ^ ": a repeated glyph takes its entry")
+            check_style
+            (Ansi.Style.make ~fg:(Ansi.Color.indexed s) ())
+            (Theme.mark t role)
+      | None ->
+          equal
+            ~msg:(msg ^ ": a glyph without an entry is text")
+            check_style (Theme.style t role) (Theme.mark t role));
+      match role with
+      | Link | Added | Removed | Muted -> ()
+      | _ ->
+          equal
+            ~msg:(msg ^ ": text in the pair")
+            check_style
+            (Theme.style Theme.plain role)
+            (Theme.style t role))
+    Theme.roles
+
+let theme_palettes () =
+  List.iter
+    (fun (name, fg, bg, entries, expected) ->
+      let c = colors_of fg bg entries in
+      theme_laws ~msg:name c;
+      equal ~msg:name string expected (summary (Theme.default c)))
+    palettes
+
+(* Adjudicated classes: message text stays in the pair with its attribute;
+   a glyph a word repeats takes its entry, reported or not; a glyph alone
+   takes an entry that reaches 3:1, or the role's text; text whose hue is
+   its content takes entry s, else s + 8, at the target. *)
+let theme_classes () =
+  let xterm_light =
+    let _, fg, bg, entries, _ = List.hd palettes in
+    colors_of fg bg entries
+  in
+  let vte =
+    let _, fg, bg, entries, _ = List.nth palettes 2 in
+    colors_of fg bg entries
+  in
+  let t = Theme.default xterm_light in
+  let bold = Ansi.Style.make ~bold:true () in
+  let fg i = Ansi.Style.make ~fg:(Ansi.Color.indexed i) () in
+  equal ~msg:"error text" check_style bold (Theme.style t Error);
+  equal ~msg:"warning text" check_style bold (Theme.style t Warning);
+  equal ~msg:"ok text" check_style Ansi.Style.default (Theme.style t Ok);
+  equal ~msg:"a repeated glyph, unreported" check_style (fg 1)
+    (Theme.mark Theme.plain Error);
+  equal ~msg:"a repeated glyph below 3:1" check_style (fg 3)
+    (Theme.mark t Warning);
+  equal ~msg:"a glyph alone, unreported" check_style bold
+    (Theme.mark ~alone:true Theme.plain Error);
+  equal ~msg:"a glyph alone at 5.84:1" check_style (fg 1)
+    (Theme.mark ~alone:true t Error);
+  equal ~msg:"a glyph alone below 3:1" check_style bold
+    (Theme.mark ~alone:true t Warning);
+  equal ~msg:"a link at 9.40:1" check_style
+    (Ansi.Style.make ~fg:(Ansi.Color.indexed 4) ~underline:true ())
+    (Theme.style t Link);
+  equal ~msg:"added below 4.5:1 in both entries" check_style Ansi.Style.default
+    (Theme.style t Added);
+  equal ~msg:"removed in the bright entry" check_style (fg 9)
+    (Theme.style (Theme.default vte) Removed);
+  equal ~msg:"plain links are underlined" check_style
+    (Ansi.Style.make ~underline:true ())
+    (Theme.style Theme.plain Link)
+
+let theme_with_style () =
+  let red = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 200 0 0) () in
+  let t = Theme.with_style Error red Theme.plain in
+  equal ~msg:"text" check_style red (Theme.style t Error);
+  equal ~msg:"glyph" check_style red (Theme.mark t Error);
+  equal ~msg:"glyph alone" check_style red (Theme.mark ~alone:true t Error);
+  is_true ~msg:"equal" (Theme.equal Theme.plain Theme.plain);
+  is_false ~msg:"changed" (Theme.equal Theme.plain t);
+  let white =
+    {
+      Ansi.Color.foreground = (0, 0, 0);
+      background = (255, 255, 255);
+      palette = Array.make 16 None;
+    }
+  in
+  equal ~msg:"a gray below 4.5:1" check_result
+    [ (Plain, 4.48) ]
+    (Theme.check white
+       (Theme.with_style Plain
+          (Ansi.Style.make ~fg:(Ansi.Color.of_rgb 0x77 0x77 0x77) ())
+          Theme.plain));
+  equal ~msg:"a surface below 4.5:1" check_result
+    [ (Field, 4.48) ]
+    (Theme.check white
+       (Theme.with_style Field
+          (Ansi.Style.make
+             ~bg:(Ansi.Color.of_rgb 0x77 0x77 0x77)
+             ~fg:(Ansi.Color.of_rgb 255 255 255)
+             ())
+          Theme.plain));
+  equal ~msg:"an unreported entry is left out" check_result []
+    (Theme.check white
+       (Theme.with_style Error
+          (Ansi.Style.make ~fg:Ansi.Color.yellow ())
+          Theme.plain))
+
+let gen_rgb =
+  Gen.triple (Gen.int_range 0 255) (Gen.int_range 0 255) (Gen.int_range 0 255)
+
+let gen_rgb_pp ppf (r, g, b) = Format.fprintf ppf "#%02x%02x%02x" r g b
+
+let gen_reported =
+  Gen.map
+    (fun (foreground, background, palette) ->
+      { Ansi.Color.foreground; background; palette })
+    (Gen.triple gen_rgb gen_rgb
+       (Gen.array ~size:(Gen.int_range 0 16) (Gen.option gen_rgb)))
+  |> Gen.with_pp (fun ppf (c : Ansi.Color.reported) ->
+      Format.fprintf ppf "%a on %a, palette [%a]" gen_rgb_pp c.foreground
+        gen_rgb_pp c.background
+        (Format.pp_print_list
+           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
+           (Format.pp_print_option
+              ~none:(fun ppf () -> Format.pp_print_string ppf "-")
+              gen_rgb_pp))
+        (Array.to_list c.palette))
 
 (* ───── Scope ───── *)
 
@@ -264,7 +1088,7 @@ let palette hex =
     hex
   |> Array.of_list
 
-let vte : Ansi.Theme.colors =
+let vte : Ansi.Color.reported =
   {
     foreground = (0xc0, 0xc0, 0xc0);
     background = (0, 0, 0);
@@ -290,7 +1114,7 @@ let vte : Ansi.Theme.colors =
         ];
   }
 
-let kitty_white : Ansi.Theme.colors =
+let kitty_white : Ansi.Color.reported =
   {
     foreground = (0, 0, 0);
     background = (255, 255, 255);
@@ -406,8 +1230,16 @@ let () =
       group "Values"
         [
           test "plain's surfaces and glyphs" plain_surfaces;
-          test "default's text" default_text;
+          test "default's surfaces" default_surfaces;
           test "modifiers" modifiers;
+        ];
+      group "Role tables"
+        [
+          test "27 palettes" theme_palettes;
+          test "adjudicated classes" theme_classes;
+          test "with_style, equal, check" theme_with_style;
+          prop "any reported colors" gen_reported (fun c ->
+              theme_laws ~msg:"random" c);
         ];
       group "Scope"
         [

@@ -813,7 +813,7 @@ module Syntax_style : sig
   val plain : t
   (** {!Mosaic_ui.Syntax_style.plain}. *)
 
-  val of_colors : Ansi.Theme.colors -> t
+  val of_colors : Ansi.Color.reported -> t
   (** {!Mosaic_ui.Syntax_style.of_colors}. *)
 
   val equal : t -> t -> bool
@@ -1163,7 +1163,7 @@ module Sub : sig
         (** {!val-on_color_scheme}. *)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)  (** {!val-worker}. *)
     | On_focus_lost of 'msg  (** {!val-on_focus_lost}. *)
-    | On_terminal_colors of (Ansi.Theme.colors -> 'msg option)
+    | On_terminal_colors of (Ansi.Color.reported -> 'msg option)
         (** {!val-on_terminal_colors}. *)
 
   val none : 'msg t
@@ -1293,7 +1293,7 @@ module Sub : sig
       terminal answers {!Cmd.val-query_color_scheme} or reports a change (mode
       2031), and dispatches the message it returns. *)
 
-  val on_terminal_colors : (Ansi.Theme.colors -> 'msg option) -> 'msg t
+  val on_terminal_colors : (Ansi.Color.reported -> 'msg option) -> 'msg t
   (** [on_terminal_colors f] calls [f] with the colors the terminal reports, its
       default foreground and background and the first 16 entries of its palette,
       and dispatches the message it returns. The program asks for them as it
