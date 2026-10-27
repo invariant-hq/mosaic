@@ -13,9 +13,9 @@
       {!Canvas}, {!Select}, {!Tab_select}, {!Markdown}, {!Spinner},
       {!Progress_bar}, {!Textarea}, {!Scroll_bar}, {!Scroll_box}, {!Table},
       {!Tree}, {!Code}, {!Line_number}, and {!Diff}.
-    - {b Values.} {!Editor}, {!Scroll}, {!Items}, {!Cursor} and {!Combobox},
-      which an application keeps in its model and widgets read, and {!Column},
-      the columns of a collection's rows.
+    - {b Values.} {!Editor}, {!Scroll}, {!Items}, {!Keyed}, {!Cursor} and
+      {!Combobox}, which an application keeps in its model and widgets read, and
+      {!Column}, the columns of a collection's rows.
     - {b Theming.} {!Syntax_style} for tree-sitter/TextMate-style syntax
       colouring, {!Syntax_highlight} for source highlight ranges, {!Glyphs} for
       the characters widgets draw to show state, and {!Theme} for the styles of
@@ -122,6 +122,9 @@ module Scroll = Scroll
 
 module Items = Items
 (** Sequences of the items a collection widget shows, read by position. *)
+
+module Keyed = Keyed
+(** Persistent ordered maps that a view shows with [Mosaic.keyed]. *)
 
 module Cursor = Cursor
 (** A collection's cursor item, scroll and range anchor, and its keys. *)

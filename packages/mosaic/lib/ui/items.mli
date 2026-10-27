@@ -10,9 +10,10 @@
     costs the position and {!length} the number of items. A widget reads the
     items it draws and the items a key moves over. A widget that reads a list by
     position converts it to an array once and keeps the array while the items
-    stay the same.
+    stay the same. On items made by {!of_keyed}, {!get} costs the logarithm of
+    the number of items and {!length} a constant.
 
-    Two sequences are {e the same} when they hold the same list, array or
+    Two sequences are {e the same} when they hold the same list, array, map or
     function, physically ({!same}). Sequences that are the same have the same
     items, provided nobody mutated the array in between. A widget compares a
     declaration's items with the previous declaration's in constant time when
@@ -30,6 +31,11 @@ val of_array : 'a array -> 'a t
 (** [of_array a] is the items of [a]. [a] must not be mutated while a widget
     shows it: the widget would not see the change, since the items stay the
     same. *)
+
+val of_keyed : ('k, 'a) Keyed.t -> 'a t
+(** [of_keyed m] is the values of [m], in [m]'s order. A model that keeps its
+    items in a {!Keyed.t}, to show them with [Mosaic.keyed], gives a collection
+    widget the same value. *)
 
 val make : length:int -> (int -> 'a) -> 'a t
 (** [make ~length f] is the [length] items [f 0], ..., [f (length - 1)]. [f] is

@@ -1337,6 +1337,133 @@ let plain_rich_transitions_reuse_text_and_select_wrapped_content () =
        (Matrix_screen.next_grid (Renderer.screen renderer))
        0)
 
+(* ── Keyed ── *)
+
+let ints l = Mosaic.Keyed.of_list ~compare:Int.compare l
+
+(* The texts of the root's column, top to bottom. *)
+let rows renderer n = List.init n (fun row -> screen_row renderer row)
+let line _ text = Mosaic.text text
+
+(* Bindings show in the map's order among the elements around them, as
+   bindings are added, removed and emptied. *)
+let keyed_keeps_order () =
+  let renderer, reconciler = make () in
+  let view a b =
+    column
+      [
+        Mosaic.text "head";
+        Mosaic.keyed a line;
+        Mosaic.text "mid";
+        Mosaic.keyed b line;
+        Mosaic.text "tail";
+      ]
+  in
+  let a = ints [ (4, "a4"); (5, "a5") ] and b = ints [ (7, "b7") ] in
+  render_view reconciler (view a b);
+  equal ~msg:"mounted" (list string)
+    [ "head"; "a4"; "a5"; "mid"; "b7"; "tail" ]
+    (rows renderer 6);
+  let a = Mosaic.Keyed.add 9 "a9" (Mosaic.Keyed.add 1 "a1" a) in
+  render_view reconciler (view a b);
+  equal ~msg:"added at both ends" (list string)
+    [ "head"; "a1"; "a4"; "a5"; "a9"; "mid"; "b7"; "tail" ]
+    (rows renderer 8);
+  let a = Mosaic.Keyed.remove 4 a and b = Mosaic.Keyed.remove 7 b in
+  render_view reconciler (view a b);
+  equal ~msg:"removed and emptied" (list string)
+    [ "head"; "a1"; "a5"; "a9"; "mid"; "tail" ]
+    (rows renderer 6)
+
+(* A render views only the bindings that changed, and the others keep their
+   nodes. *)
+let keyed_views_what_changed () =
+  let renderer, reconciler = make () in
+  let views = ref 0 in
+  let item _ text =
+    incr views;
+    Mosaic.text text
+  in
+  let m = ints (List.init 100 (fun i -> (i, string_of_int i))) in
+  render_view reconciler (column [ Mosaic.keyed m item ]);
+  let node row =
+    List.nth (Renderable.children (List.hd (children_of renderer))) row
+  in
+  let first = node 0 and middle = node 5 in
+  views := 0;
+  let m = Mosaic.Keyed.add 5 "five" (Mosaic.Keyed.add 100 "100" m) in
+  render_view reconciler (column [ Mosaic.keyed m item ]);
+  equal ~msg:"viewed the changed and the added" int 2 !views;
+  is_true ~msg:"kept the first" (node 0 == first);
+  is_true ~msg:"updated the changed in place" (node 5 == middle);
+  equal ~msg:"changed" string "five" (screen_row renderer 5)
+
+(* An item function that captures a value is another function each render:
+   every binding is viewed again and keeps its nodes. *)
+let keyed_capturing_item_keeps_nodes () =
+  let renderer, reconciler = make () in
+  let m = ints (List.init 10 (fun i -> (i, string_of_int i))) in
+  let view prefix =
+    column [ Mosaic.keyed m (fun _ text -> Mosaic.text (prefix ^ text)) ]
+  in
+  render_view reconciler (view "a");
+  let nodes () = Renderable.children (List.hd (children_of renderer)) in
+  let before = nodes () in
+  render_view reconciler (view "b");
+  is_true ~msg:"same nodes" (List.for_all2 ( == ) before (nodes ()));
+  equal ~msg:"viewed again" string "b3" (screen_row renderer 3)
+
+(* A binding's view is any view: a map, a memo, a fragment or nothing. *)
+let keyed_items_are_any_view () =
+  let renderer, reconciler = make () in
+  let received = ref [] in
+  let item key text =
+    match key mod 4 with
+    | 0 ->
+        Mosaic.map
+          (fun message -> received := message :: !received)
+          (Mosaic.box ~on_focus_request:text [ Mosaic.text text ])
+    | 1 -> Mosaic.memo ~key:text Mosaic.text
+    | 2 -> Mosaic.fragment [ Mosaic.text text; Mosaic.text (text ^ "'") ]
+    | _ -> Mosaic.empty
+  in
+  render_view reconciler
+    (column
+       [ Mosaic.keyed (ints [ (0, "m"); (1, "e"); (2, "f"); (3, "x") ]) item ]);
+  equal ~msg:"in order" (list string)
+    [ "m"; "e"; "f"; "f'"; "" ]
+    (rows renderer 5)
+
+(* A focus declared inside a binding is the reconciler's focus, and two
+   bindings declaring focus are rejected. *)
+let keyed_focus () =
+  let _renderer, reconciler = make () in
+  let item focused _ text = Mosaic.text ~focused:(List.mem text focused) text in
+  let m = ints (List.init 20 (fun i -> (i, string_of_int i))) in
+  render_view reconciler (column [ Mosaic.keyed m (item [ "7" ]) ]);
+  (match Reconciler.focused reconciler with
+  | Some node -> is_true ~msg:"found" (Renderable.focusable node)
+  | None -> fail "expected the binding's focus");
+  render_view reconciler (column [ Mosaic.keyed m (item [ "7"; "12" ]) ]);
+  raises_match ~msg:"two focused bindings"
+    (function Invalid_argument _ -> true | _ -> false)
+    (fun () -> ignore (Reconciler.focused reconciler : Renderable.t option))
+
+(* A change of viewport width resolves a viewport switch inside a binding
+   again. *)
+let keyed_width_change () =
+  let renderer, reconciler = make () in
+  let item _ text =
+    Mosaic.viewport_switch ~at_least_width:30
+      ~wide:(Mosaic.text ("wide " ^ text))
+      ~narrow:(Mosaic.text ("narrow " ^ text))
+  in
+  let m = ints [ (0, "a"); (1, "b") ] in
+  render_view ~viewport_width:20 reconciler (column [ Mosaic.keyed m item ]);
+  equal ~msg:"narrow" string "narrow b" (screen_row renderer 1);
+  render_view ~viewport_width:40 reconciler (column [ Mosaic.keyed m item ]);
+  equal ~msg:"wide" string "wide b" (screen_row renderer 1)
+
 let () =
   run "mosaic.reconciler"
     [
@@ -1350,6 +1477,16 @@ let () =
             hidden_subtrees_do_not_contribute_focus;
           test "inert elements do not contribute focus"
             inert_elements_do_not_contribute_focus;
+        ];
+      group "Keyed"
+        [
+          test "keeps the order" keyed_keeps_order;
+          test "views what changed" keyed_views_what_changed;
+          test "a capturing item keeps the nodes"
+            keyed_capturing_item_keeps_nodes;
+          test "items are any view" keyed_items_are_any_view;
+          test "focus inside a binding" keyed_focus;
+          test "a width change" keyed_width_change;
         ];
       group "Memo"
         [

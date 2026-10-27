@@ -138,6 +138,7 @@ type 'msg t =
   | Embed of Renderable.t
   | Themed of (Theme.t -> Theme.t) * 'msg t
   | Map : ('a -> 'msg) * 'a t -> 'msg t
+  | Keyed : ('k, 'v) Keyed.t * ('k -> 'v -> 'msg t) -> 'msg t
   | Empty
       (** The type for a virtual node in the UI tree.
 
@@ -151,6 +152,8 @@ type 'msg t =
           - [Themed] draws a vnode with a theme ({!val-themed}).
           - [Map] gives the messages of its subtree to its function
             ({!val-map}).
+          - [Keyed] is the item views of a map's bindings, in its order
+            ({!val-keyed}).
           - [Empty] renders nothing. *)
 
 and 'msg element = {
@@ -256,3 +259,10 @@ val map : ('a -> 'b) -> 'a t -> 'b t
     - under a map whose place is kept while its subtree changes, where the
       subtree is reconciled again and every fiber takes the new handlers. A
       fiber never moves to another list, so its route is fixed for its life. *)
+
+val keyed : ('k, 'v) Keyed.t -> ('k -> 'v -> 'msg t) -> 'msg t
+(** [keyed m item] is [Keyed (m, item)], [Mosaic.keyed]. The reconciler keeps
+    one span per binding and the map it declared last, and compares that map
+    with the next one ([Keyed.Private.diff]). The erasure of the keys' and
+    values' types is sound as [map]'s is: a kept binding's view is reused only
+    while its value and [item] are physically those it was built from. *)

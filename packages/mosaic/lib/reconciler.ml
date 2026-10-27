@@ -540,10 +540,12 @@ and fiber = {
   mutable pass : int;  (** The last matching pass that matched it. *)
 }
 
-(* A span owns the children of a memo's view or of a map's subtree; an
-   unchanged span keeps them without visiting them. *)
+(* A span owns the children of a memo's view, of a map's subtree or of one
+   binding of a keyed map; an unchanged span keeps them without visiting
+   them. A keyed map's span owns the spans of its bindings instead. *)
 and span = {
   tagged : tagged option;  (** A map's span: its route cell. *)
+  keyed : keyed option;  (** A keyed map's span: its bindings. *)
   span_route : route;  (** The route of its children. *)
   mutable memo : msg Vnode.memo option;  (** A memo's span: its memo. *)
   mutable span_theme : (Theme.t -> Theme.t) option;
@@ -559,6 +561,17 @@ and span = {
   mutable reused : bool;
       (** The current render kept the span's children unchanged. *)
   mutable span_pass : int;  (** The last pass that matched it. *)
+}
+
+(* A keyed map's place: the map and item function it declared last, and one
+   span per binding, in the map's order. [focused] holds the bindings that
+   declare focus, so that the span's focus is found without visiting the
+   others. *)
+and keyed = {
+  mutable declared : (Obj.t, Obj.t) Keyed.t;
+  mutable item : Obj.t -> Obj.t -> msg Vnode.t;
+  mutable bindings : (Obj.t, span) Keyed.t;
+  mutable focused : (Obj.t, span) Keyed.t;
 }
 
 let fiber_node f = node_of f.instance
@@ -847,10 +860,20 @@ let update_fiber (f : fiber) (elem : msg Vnode.element) : bool =
    under it. Detaching or destroying them one by one would detach each node
    from its parent alone, shifting the siblings after it, and the teardown
    would be quadratic in their number. *)
+(* [fold_children f acc span] folds [f] over [span]'s children, or over its
+   bindings' children for a keyed map's span, in order. *)
+let fold_children f acc span =
+  match span.keyed with
+  | None -> List.fold_left f acc span.span_children
+  | Some k ->
+      Keyed.fold
+        (fun _ binding acc -> List.fold_left f acc binding.span_children)
+        k.bindings acc
+
 let rec embeds_under acc = function
   | Fiber f -> List.fold_left embeds_under acc f.children
   | Embedded n -> n :: acc
-  | Span span -> List.fold_left embeds_under acc span.span_children
+  | Span span -> fold_children embeds_under acc span
 
 (* Destroys [fibers], in order, and detaches [embeds] with them. *)
 let destroy_fibers ?(embeds = []) fibers =
@@ -869,7 +892,7 @@ let fibers_and_embeds children =
   let rec go (fibers, embeds) = function
     | Fiber f -> (f :: fibers, embeds)
     | Embedded n -> (fibers, n :: embeds)
-    | Span span -> List.fold_left go (fibers, embeds) span.span_children
+    | Span span -> fold_children go (fibers, embeds) span
   in
   let fibers, embeds = List.fold_left go ([], []) children in
   (List.rev fibers, List.rev embeds)
@@ -907,10 +930,9 @@ type matcher = {
   old_children : child list;
   mutable next_element : child list;
       (** The old children from the next element position on. *)
-  mutable next_memo : child list;
-      (** The old children from the next memo position on. *)
-  mutable next_map : child list;
-      (** The old children from the next map position on. *)
+  mutable next_span : child list;
+      (** The old children from the next span position on: memos, maps and keyed
+          maps share their positions. *)
   mutable keys : (string, child list) Hashtbl.t option;
 }
 
@@ -920,8 +942,7 @@ let matcher old_children =
     pass = !current_pass;
     old_children;
     next_element = old_children;
-    next_memo = old_children;
-    next_map = old_children;
+    next_span = old_children;
     keys = None;
   }
 
@@ -937,25 +958,17 @@ let rec take_element m =
       m.next_element <- rest;
       take_element m
 
-let rec take_memo m =
-  match m.next_memo with
+(* The cell of the old span at the next span position, or [], moving the
+   position past it. The caller matches it only if it is of its kind. *)
+let rec take_span m =
+  match m.next_span with
   | [] -> []
-  | Span { memo = Some _; _ } :: rest as cell ->
-      m.next_memo <- rest;
+  | Span _ :: rest as cell ->
+      m.next_span <- rest;
       cell
-  | (Embedded _ | Fiber _ | Span _) :: rest ->
-      m.next_memo <- rest;
-      take_memo m
-
-let rec take_map m =
-  match m.next_map with
-  | [] -> []
-  | Span { tagged = Some _; _ } :: rest as cell ->
-      m.next_map <- rest;
-      cell
-  | (Embedded _ | Fiber _ | Span _) :: rest ->
-      m.next_map <- rest;
-      take_map m
+  | (Embedded _ | Fiber _) :: rest ->
+      m.next_span <- rest;
+      take_span m
 
 (* First occurrence wins on duplicate keys, so when a view accidentally
    emits duplicate-keyed siblings the first keeps its identity across
@@ -1056,7 +1069,7 @@ let finish b =
 let rec iter_embeds f = function
   | Fiber _ -> ()
   | Embedded n -> f n
-  | Span span -> List.iter (iter_embeds f) span.span_children
+  | Span span -> fold_children (fun () child -> iter_embeds f child) () span
 
 let detach_stale_embeds ~stale (new_children : child list) =
   if stale <> [] then begin
@@ -1077,21 +1090,36 @@ let rec first_misplaced parent index = function
   | Fiber f :: rest -> probe parent index (fiber_node f) rest
   | Embedded n :: rest -> probe parent index n rest
   | Span span :: rest -> (
-      let in_place =
-        span.reused
-        &&
-        match (span.first_node, Renderable.Private.child_at parent index) with
-        | Some first, Some n -> n == first
-        | None, _ -> true
-        | Some _, None -> false
-      in
-      let misplaced =
-        if in_place then None
-        else first_misplaced parent index span.span_children
-      in
-      match misplaced with
+      match misplaced_in_span parent index span with
       | None -> first_misplaced parent (index + span.node_count) rest
-      | Some _ -> misplaced)
+      | Some _ as misplaced -> misplaced)
+
+and misplaced_in_span parent index span =
+  let in_place =
+    span.reused
+    &&
+    match (span.first_node, Renderable.Private.child_at parent index) with
+    | Some first, Some n -> n == first
+    | None, _ -> true
+    | Some _, None -> false
+  in
+  if in_place then None
+  else
+    match span.keyed with
+    | None -> first_misplaced parent index span.span_children
+    | Some k -> (
+        let index = ref index and found = ref None in
+        try
+          Keyed.Private.iter
+            (fun _ binding ->
+              match misplaced_in_span parent !index binding with
+              | None -> index := !index + binding.node_count
+              | Some _ as misplaced ->
+                  found := misplaced;
+                  raise_notrace Exit)
+            k.bindings;
+          None
+        with Exit -> !found)
 
 and probe parent index node rest =
   match Renderable.Private.child_at parent index with
@@ -1115,9 +1143,18 @@ let iter_from from children f =
         visit n;
         go rest
     | Span span :: rest ->
-        if !position + span.node_count <= from then
-          position := !position + span.node_count
-        else go span.span_children;
+        (if !position + span.node_count <= from then
+           position := !position + span.node_count
+         else
+           match span.keyed with
+           | None -> go span.span_children
+           | Some k ->
+               Keyed.Private.iter
+                 (fun _ binding ->
+                   if !position + binding.node_count <= from then
+                     position := !position + binding.node_count
+                   else go binding.span_children)
+                 k.bindings);
         go rest
   in
   go children
@@ -1311,19 +1348,27 @@ and walk ~parent_node ~route m b ~viewport_width ~stale ~theme
       in
       emit b child
   | Vnode.Memo memo ->
-      let previous = take_memo m in
+      let previous = take_span m in
       emit b
         (span_child m previous
            (reconcile_memo ~parent_node ~route ~viewport_width ~stale ~theme
               previous memo))
   | Vnode.Map (f, child) ->
-      let previous = take_map m in
+      let previous = take_span m in
       emit b
         (span_child m previous
            (reconcile_map ~parent_node ~route ~viewport_width ~stale ~theme
               previous
               (Obj.magic f : msg -> msg)
               (Obj.magic child : msg Vnode.t)))
+  | Vnode.Keyed (map, item) ->
+      let previous = take_span m in
+      emit b
+        (span_child m previous
+           (reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme
+              previous
+              (Obj.magic map : (Obj.t, Obj.t) Keyed.t)
+              (Obj.magic item : Obj.t -> Obj.t -> msg Vnode.t)))
   | Vnode.Themed (f, child) ->
       walk ~parent_node ~route m b ~viewport_width ~stale
         ~theme:(Some (compose theme f))
@@ -1349,9 +1394,10 @@ and span_child m previous span =
   | (Span old as child) :: _ when old == span -> child
   | _ -> Span span
 
-and new_span ~tagged ~memo ~route ~theme ~viewport_width view =
+and new_span ?keyed ~tagged ~memo ~route ~theme ~viewport_width view =
   {
     tagged;
+    keyed;
     span_route = route;
     memo;
     span_theme = theme;
@@ -1424,6 +1470,160 @@ and reconcile_map ~parent_node ~route ~viewport_width ~stale ~theme previous f
       in
       update_span ~parent_node ~viewport_width ~stale span;
       span
+
+(* A keyed map's bindings are patched by the difference of the map declared
+   last and this one: a removed key's span is destroyed, an added key's
+   created, and a key whose value is another value is viewed again. When
+   [item] is another function, the viewport width or the theme another, or
+   the two maps have different orders, every binding is viewed or
+   reconciled again instead, in place. Placement puts the bindings' nodes
+   in the map's order. *)
+and reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme previous
+    map item =
+  match previous with
+  | Span ({ keyed = Some k; _ } as span) :: _ ->
+      let all =
+        k.item != item
+        || span.span_viewport_width <> viewport_width
+        || (not (same_theme span.span_theme theme))
+        || not (Keyed.Private.same_order k.declared map)
+      in
+      let changed =
+        if all then begin
+          rebind_all ~parent_node ~route ~viewport_width ~stale ~theme span k
+            map item;
+          true
+        end
+        else
+          Keyed.Private.diff k.declared map
+            (fun key change _ ->
+              (match change with
+              | Keyed.Private.Removed _ -> unbind ~stale span k key
+              | Added value ->
+                  bind ~parent_node ~route ~viewport_width ~stale ~theme span k
+                    key (item key value)
+              | Changed (_, value) -> (
+                  match Keyed.find_opt key k.bindings with
+                  | Some binding ->
+                      rebind ~parent_node ~viewport_width ~stale ~theme span k
+                        key binding
+                        (Some (item key value))
+                  | None -> ()));
+              true)
+            false
+      in
+      k.declared <- map;
+      k.item <- item;
+      span.span_viewport_width <- viewport_width;
+      span.span_theme <- theme;
+      span.reused <- not changed;
+      if changed then keyed_summary span k;
+      span
+  | _ ->
+      let k =
+        {
+          declared = map;
+          item;
+          bindings = Keyed.Private.empty_like map;
+          focused = Keyed.Private.empty_like map;
+        }
+      in
+      let span =
+        new_span ~keyed:k ~tagged:None ~memo:None ~route ~theme ~viewport_width
+          Vnode.Empty
+      in
+      Keyed.Private.iter
+        (fun key value ->
+          bind ~parent_node ~route ~viewport_width ~stale ~theme span k key
+            (item key value))
+        map;
+      keyed_summary span k;
+      span
+
+(* The span of a new binding, reconciled from [view]. *)
+and bind ~parent_node ~route ~viewport_width ~stale ~theme span k key view =
+  let binding =
+    new_span ~tagged:None ~memo:None ~route ~theme ~viewport_width view
+  in
+  update_span ~parent_node ~viewport_width ~stale binding;
+  k.bindings <- Keyed.add key binding k.bindings;
+  span.node_count <- span.node_count + binding.node_count;
+  note_focus k key binding
+
+and unbind ~stale span k key =
+  match Keyed.find_opt key k.bindings with
+  | None -> ()
+  | Some binding ->
+      let fibers, embeds = fibers_and_embeds binding.span_children in
+      stale := List.rev_append embeds !stale;
+      destroy_fibers fibers;
+      k.bindings <- Keyed.remove key k.bindings;
+      k.focused <- Keyed.remove key k.focused;
+      span.node_count <- span.node_count - binding.node_count
+
+(* Reconciles a binding again, from [view] if it is given, else from the view
+   it has. *)
+and rebind ~parent_node ~viewport_width ~stale ~theme span k key binding view =
+  let count = binding.node_count in
+  Option.iter (fun view -> binding.view <- view) view;
+  binding.span_viewport_width <- viewport_width;
+  binding.span_theme <- theme;
+  update_span ~parent_node ~viewport_width ~stale binding;
+  span.node_count <- span.node_count - count + binding.node_count;
+  note_focus k key binding
+
+and rebind_all ~parent_node ~route ~viewport_width ~stale ~theme span k map item
+    =
+  let old = k.bindings in
+  Keyed.Private.iter
+    (fun key _ ->
+      if Option.is_none (Keyed.find_opt key map) then unbind ~stale span k key)
+    old;
+  let same_item = k.item == item in
+  Keyed.Private.iter
+    (fun key value ->
+      match Keyed.find_opt key k.bindings with
+      | Some binding ->
+          let unchanged =
+            same_item
+            &&
+            match Keyed.find_opt key k.declared with
+            | Some declared -> declared == value
+            | None -> false
+          in
+          let view = if unchanged then None else Some (item key value) in
+          rebind ~parent_node ~viewport_width ~stale ~theme span k key binding
+            view
+      | None ->
+          bind ~parent_node ~route ~viewport_width ~stale ~theme span k key
+            (item key value))
+    map;
+  if not (Keyed.Private.same_order old map) then begin
+    let bindings = Keyed.Private.empty_like map in
+    k.bindings <-
+      Keyed.fold
+        (fun key binding acc -> Keyed.add key binding acc)
+        k.bindings bindings;
+    k.focused <-
+      Keyed.fold
+        (fun key binding acc -> Keyed.add key binding acc)
+        k.focused
+        (Keyed.Private.empty_like map)
+  end
+
+and note_focus k key binding =
+  match binding.span_focus with
+  | Focus_none -> k.focused <- Keyed.remove key k.focused
+  | Focus_one _ | Focus_many | Modal _ ->
+      k.focused <- Keyed.add key binding k.focused
+
+(* The span's focus and first node, from its bindings. *)
+and keyed_summary span k =
+  span.span_focus <-
+    Keyed.fold
+      (fun _ binding focus -> combine_focus focus binding.span_focus)
+      k.focused Focus_none;
+  span.first_node <- Keyed.Private.find_map (fun b -> b.first_node) k.bindings
 
 and update_span ~parent_node ~viewport_width ~stale span =
   let children =

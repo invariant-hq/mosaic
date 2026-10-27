@@ -6,6 +6,7 @@ type 'a t =
   | List : 'b list * ('b -> 'a) -> 'a t
   | Array : 'b array * ('b -> 'a) -> 'a t
   | Make : int * (int -> 'a) -> 'a t
+  | Keyed : ('k, 'b) Keyed.t * ('b -> 'a) -> 'a t
 
 (* Physical equality of two values of any types. It only compares the values'
    addresses or immediate representations, as [==] does. *)
@@ -14,6 +15,7 @@ external physically_equal : 'a -> 'b -> bool = "%eq"
 let of_list l = List (l, Fun.id)
 let of_array a = Array (a, Fun.id)
 let map_list f l = List (l, f)
+let of_keyed m = Keyed (m, Fun.id)
 
 let make ~length f =
   if length < 0 then invalid_arg "Items.make: negative length";
@@ -23,6 +25,7 @@ let length = function
   | List (l, _) -> List.length l
   | Array (a, _) -> Array.length a
   | Make (n, _) -> n
+  | Keyed (m, _) -> Keyed.cardinal m
 
 let out_of_range () = invalid_arg "Items.get: no item at this position"
 
@@ -37,6 +40,9 @@ let get s i =
   | List (l, f) -> f (nth l i)
   | Array (a, f) -> if i < Array.length a then f a.(i) else out_of_range ()
   | Make (n, f) -> if i < n then f i else out_of_range ()
+  | Keyed (m, f) ->
+      if i < Keyed.cardinal m then f (snd (Keyed.Private.nth m i))
+      else out_of_range ()
 
 let same s s' =
   match (s, s') with
@@ -44,6 +50,8 @@ let same s s' =
   | Array (a, f), Array (a', f') ->
       physically_equal a a' && physically_equal f f'
   | Make (n, f), Make (n', f') -> n = n' && physically_equal f f'
+  | Keyed (m, f), Keyed (m', f') ->
+      physically_equal m m' && physically_equal f f'
   | _ -> false
 
 let to_array = function
@@ -56,11 +64,24 @@ let to_array = function
           a)
   | Array (a, f) -> Array.map f a
   | Make (n, f) -> Array.init n f
+  | Keyed (m, f) -> (
+      match Keyed.min_binding_opt m with
+      | None -> [||]
+      | Some (_, x) ->
+          let a = Array.make (Keyed.cardinal m) (f x) in
+          let i = ref 0 in
+          Keyed.Private.iter
+            (fun _ x ->
+              a.(!i) <- f x;
+              incr i)
+            m;
+          a)
 
 let to_list = function
   | List (l, f) -> List.map f l
   | Array (a, f) -> List.init (Array.length a) (fun i -> f a.(i))
   | Make (n, f) -> List.init n f
+  | Keyed (m, f) -> Keyed.fold (fun _ x acc -> f x :: acc) m [] |> List.rev
 
 let rec pairwise eq f f' l l' =
   match (l, l') with
@@ -90,3 +111,4 @@ let iter g = function
       for i = 0 to n - 1 do
         g (f i)
       done
+  | Keyed (m, f) -> Keyed.Private.iter (fun _ x -> g (f x)) m

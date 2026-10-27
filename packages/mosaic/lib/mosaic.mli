@@ -74,6 +74,9 @@ module Editor = Mosaic_ui.Editor
 module Scroll = Mosaic_ui.Scroll
 (** Persistent viewport position and following intent. *)
 
+module Keyed = Mosaic_ui.Keyed
+(** Persistent ordered maps that {!val-keyed} shows. *)
+
 module Event = Mosaic_ui.Event
 (** Input event types for keyboard, mouse, and paste events. *)
 
@@ -1579,16 +1582,16 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     whatever that order, in time linear in their number. An embedded node
     ({!embed}) is placed among them and is otherwise left to its owner.
 
-    A memo ({!memo}) matches the old memo at the same position among the
-    parent's memos. An equal memo does not call its view again, and when the
-    viewport width and the [themed] functions around it are the same it keeps
-    its subtree without visiting it, so it costs one comparison. A memo that is
-    not equal calls its view, and its subtree is reconciled with the old memo's.
-    A map ({!map}) likewise matches the old map at the same position among the
-    parent's maps, whatever its function. Its view is reconciled with the old
-    map's, unless it is the same value, and then its subtree is kept. The
-    children of a memo or a map match only children of the memo or map they
-    match.
+    Memos ({!memo}), maps ({!val-map}) and keyed maps ({!val-keyed}) are
+    {e spans}: each owns the children its view gives. A span matches the old
+    span at the same position among the parent's spans, when that span is of the
+    same kind, and the children of a span match only children of the span it
+    matches. An equal memo does not call its view again, and when the viewport
+    width and the [themed] functions around it are the same it keeps its subtree
+    without visiting it, so it costs one comparison. A memo that is not equal
+    calls its view, and its subtree is reconciled with the old memo's. A map
+    matches whatever its function; its view is reconciled with the old map's,
+    unless it is the same value, and then its subtree is kept.
 
     [focused] declares keyboard focus. With no focused element, keys reach
     subscriptions only. Declaring more than one visible focused element that is
@@ -1698,6 +1701,25 @@ val memo : key:'key -> ('key -> 'msg t) -> 'msg t
     parts of the key that are not, physically, those of the key it is compared
     with. A key that shares most of the last one is therefore cheap to compare.
 *)
+
+val keyed : ('k, 'v) Keyed.t -> ('k -> 'v -> 'msg t) -> 'msg t
+(** [keyed m item] is the views [item k v] of the bindings [k] to [v] of [m], in
+    [m]'s order. Each binding keeps its own widgets: a render compares [m] with
+    the map the same place declared last, skipping what the two share
+    ({!Keyed}), and calls [item] for the bindings added since and those whose
+    value is not, physically, the one it had. The others keep their widgets
+    untouched, so a log kept in a [Keyed.t] costs a render what changed in it,
+    whatever its length. A binding's view can be any view: an element, a
+    {!fragment}, a {!val-map}, a {!memo} or {!empty}. A [keyed] matches as a
+    span does ({{!elements}UI elements}), and the children of a binding match
+    only those of the binding of the same key.
+
+    [item] is called for every binding again when it is not, physically, the
+    function the last render gave, as when it captures a value of the view, and
+    each binding then updates its widgets in place. A change of the viewport
+    width or of the [themed] functions around [keyed] reconciles every binding's
+    view again. Define [item] once, at top level, so that a render calls it only
+    for what changed. *)
 
 val viewport_switch :
   at_least_width:int -> wide:'msg t -> narrow:'msg t -> 'msg t

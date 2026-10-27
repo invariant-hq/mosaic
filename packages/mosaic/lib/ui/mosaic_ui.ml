@@ -31,6 +31,7 @@ module Editor = Editor
 module Scroll = Scroll
 module Shortcut = Shortcut
 module Items = Items
+module Keyed = Keyed
 module Cursor = Cursor
 module Column = Column
 module Glyphs = Glyphs

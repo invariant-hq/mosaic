@@ -37,6 +37,7 @@
   test_navigation_keys
   test_cost
   test_items
+  test_keyed
   test_cursor
   test_column
   test_combobox

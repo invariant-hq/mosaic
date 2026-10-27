@@ -728,6 +728,108 @@ let log_benches =
         ])
     [ 20_000; 50_000 ]
 
+(* The same log kept in a [Keyed.t] by a counter and shown with [keyed]:
+   appending a line and dropping it, and appending one and dropping the
+   oldest, as a capped log does. *)
+type keyed_log = { lines : (int, string) Mosaic.Keyed.t; next : int }
+
+let keyed_line _ line = Mosaic.text line
+
+let keyed_log_application n =
+  let lines =
+    Mosaic.Keyed.of_list ~compare:Int.compare
+      (List.init n (fun i -> (i, log_line i)))
+  in
+  let view log =
+    Mosaic.box ~flex_direction:Mosaic.Flex_direction.Column
+      ~size:(Mosaic.size_wh (Mosaic.pct 100) (Mosaic.pct 100))
+      [
+        Mosaic.scroll_box ~flex_grow:1. ~scroll_x:false
+          ~min_size:(Mosaic.size ~width:0 ~height:0)
+          ~scroll:(Mosaic.Scroll.follow `Bottom (Mosaic.Scroll.at 0))
+          ~on_scroll:(fun _ -> `Nothing)
+          [ Mosaic.keyed log.lines keyed_line ];
+        Mosaic.text
+          (Printf.sprintf "%d lines" (Mosaic.Keyed.cardinal log.lines));
+      ]
+  in
+  {
+    Mosaic.init = (fun () -> ({ lines; next = n }, none));
+    update =
+      (fun msg log ->
+        match msg with
+        | `Append ->
+            ( {
+                lines = Mosaic.Keyed.add log.next (log_line log.next) log.lines;
+                next = log.next + 1;
+              },
+              none )
+        | `Drop ->
+            (* Dropping the newest line gives its number back, so a sample
+               leaves the model as it found it. *)
+            ( {
+                lines = Mosaic.Keyed.remove (log.next - 1) log.lines;
+                next = log.next - 1;
+              },
+              none )
+        | `Drop_oldest -> (
+            match Mosaic.Keyed.min_binding_opt log.lines with
+            | Some (oldest, _) ->
+                ({ log with lines = Mosaic.Keyed.remove oldest log.lines }, none)
+            | None -> (log, none))
+        | `Nothing -> (log, none));
+    view;
+    subscriptions =
+      (fun _ ->
+        Mosaic.Sub.on_keys
+          [
+            (Mosaic.Shortcut.char 'a', `Append);
+            (Mosaic.Shortcut.char 'd', `Drop);
+            (Mosaic.Shortcut.char 'o', `Drop_oldest);
+          ]);
+  }
+
+let keyed_log_setup n () =
+  let t = Term.create ~width:120 ~height:40 () in
+  let suspended = start_suspended t (keyed_log_application n) in
+  let loop = { t; suspended; dispatch = ref ignore; views = ref 0 } in
+  let screen () = Term.screen t ~width:120 ~height:40 in
+  let before = screen () in
+  Term.feed t "a";
+  loop_resume loop;
+  Term.feed t "d";
+  loop_resume loop;
+  require
+    (String.equal before (screen ()))
+    "appending and dropping did not restore the log";
+  loop
+
+let append_and_drop_oldest loop =
+  Term.feed loop.t "a";
+  loop_resume loop;
+  Term.feed loop.t "o";
+  loop_resume loop
+
+(* A capped log moves forward: each sample leaves another map, whose tree
+   allocates a few words more or less, so its words are not exact and the
+   case runs with the timed metrics only. *)
+let keyed_log_benches ~exact =
+  List.map
+    (fun n ->
+      Thumper.group
+        (Printf.sprintf "log-keyed-%d" n)
+        (Thumper.bench_with_setup ~setup:(keyed_log_setup n)
+           ~teardown:loop_close "append-a-line-and-drop-it" append_and_drop
+        ::
+        (if exact then []
+         else
+           [
+             Thumper.bench_with_setup ~setup:(keyed_log_setup n)
+               ~teardown:loop_close "append-a-line-and-drop-the-oldest"
+               append_and_drop_oldest;
+           ])))
+    [ 20_000; 50_000 ]
+
 (* Startup: a run of the 5,000-message transcript from its start to its
    first presented frame, then its end. *)
 let startup output =
@@ -789,7 +891,8 @@ let () =
     (* Per-input cost must not grow with mounted content: the 20,000-block
        transcript repeats the input workloads. The primary-mode group runs them
        in an inline region shorter than the terminal. *)
-    ((loop_benches :: startup_benches :: (list_benches @ log_benches))
+    (loop_benches :: startup_benches
+     :: (list_benches @ log_benches @ keyed_log_benches ~exact)
     @ [
         Thumper.group "nested-dialog"
           [

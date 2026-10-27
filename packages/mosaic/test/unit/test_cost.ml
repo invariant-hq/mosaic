@@ -303,6 +303,63 @@ let nested_maps () =
   same "reconciling texts under four maps" ~small:(under_maps 4 1_000)
     ~large:(under_maps 4 16_000)
 
+(* ───── A keyed log ─────
+
+   [keyed] compares the map a view declares with the one it declared last,
+   skipping the subtrees they share, so a render costs what changed in the
+   map. Appending a line, appending one and dropping the oldest, and editing
+   the newest allocate within a factor 2 at 5,000 and at 50,000 lines: the
+   logarithm of the size grows, the work per line does not. *)
+
+let log_line _ text = Mosaic.text text
+
+(* The words of the render that declares the second change of [lines]. *)
+let keyed_log n change =
+  let lines =
+    Mosaic.Keyed.of_list ~compare:Int.compare
+      (List.init n (fun i -> (i, Printf.sprintf "line %d" i)))
+  in
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
+  let render lines =
+    Mosaic.Reconciler.render reconciler ~viewport_width:80
+      (Mosaic.box [ Mosaic.keyed lines log_line ])
+  in
+  render lines;
+  let next = ref 0 in
+  let states = Array.make 3 lines in
+  for i = 1 to 2 do
+    states.(i) <- change (n + i - 1) states.(i - 1)
+  done;
+  words (fun () ->
+      incr next;
+      render states.(!next))
+
+let append n lines = Mosaic.Keyed.add n "new line" lines
+let capped n lines = Mosaic.Keyed.remove 0 (Mosaic.Keyed.add n "new line" lines)
+
+let streamed next lines =
+  match Mosaic.Keyed.max_binding_opt lines with
+  | Some (newest, text) -> Mosaic.Keyed.add newest (text ^ ".") lines
+  | None ->
+      ignore next;
+      lines
+
+let keyed_log_changes () =
+  List.iter
+    (fun (what, change) ->
+      let small = keyed_log 5_000 change and large = keyed_log 50_000 change in
+      if large > 2 * small then
+        failf "%s: %d words at 5,000 lines, %d at 50,000, over twice" what small
+          large)
+    [
+      ("appending a line", append);
+      ("appending a line and dropping the oldest", capped);
+      ("editing the newest line", streamed);
+    ]
+
 (* ───── A shared layout ─────
 
    An element given [~layout] and no layout label uses that record itself,
@@ -699,6 +756,8 @@ let () =
         [ test "under four maps" nested_maps ];
       group "A memo's key is checked where it changed"
         [ test "a keystroke beside a memo" memo_key_check ];
+      group "A keyed log costs what changed"
+        [ test "append, capped append and edit" keyed_log_changes ];
       group "A shared layout costs nothing per element"
         [ test "a text given ~layout" shared_layout ];
       group "Keys follow the items moved over"

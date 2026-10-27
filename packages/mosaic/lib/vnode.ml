@@ -102,6 +102,7 @@ type 'msg t =
   | Embed of Renderable.t
   | Themed of (Theme.t -> Theme.t) * 'msg t
   | Map : ('a -> 'msg) * 'a t -> 'msg t
+  | Keyed : ('k, 'v) Keyed.t * ('k -> 'v -> 'msg t) -> 'msg t
   | Empty
 
 and 'msg memo = { key : Obj.t; view : Obj.t; build : unit -> 'msg t }
@@ -279,3 +280,4 @@ let element ?key ~style ?visible ?z_index ?opacity ~focusable ?focused ?buffered
 (* ───── Transformation ───── *)
 
 let map f vnode = Map (f, vnode)
+let keyed m item = Keyed (m, item)

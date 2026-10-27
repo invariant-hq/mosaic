@@ -10,6 +10,7 @@ module Event = Mosaic_ui.Event
 module Canvas = Mosaic_ui.Canvas
 module Theme = Mosaic_ui.Theme
 module Scroll = Mosaic_ui.Scroll
+module Keyed = Mosaic_ui.Keyed
 module Editor = Mosaic_ui.Editor
 
 module Focus = struct
@@ -1461,6 +1462,7 @@ let fragment = Vnode.fragment
 let embed = Vnode.embed
 let viewport_switch = Vnode.viewport_switch
 let memo = Vnode.memo
+let keyed = Vnode.keyed
 
 (* [override v set layout] is [layout] with [set v] applied, if [v] is given. *)
 let override v set layout =
