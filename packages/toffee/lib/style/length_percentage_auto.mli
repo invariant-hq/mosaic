@@ -133,6 +133,16 @@ val resolve_or_zero : t -> float option -> (int -> float -> float) -> float
 
     Raises [Failure] if [t] has an invalid tag. *)
 
+val resolve_rect_or_zero :
+  float option ->
+  (int -> float -> float) ->
+  t Toffee_geometry.Rect.t ->
+  Toffee_geometry.Rectf.t
+(** [resolve_rect_or_zero context calc_resolver rect] is [rect] with
+    {!resolve_or_zero} applied to each side, as margins resolve, an [auto] side
+    to [0.], against the containing block's width. A rect of four zero lengths
+    is {!Toffee_geometry.Rectf.zero} itself, allocating nothing. *)
+
 (** {1 Additional Helpers} *)
 
 val uses_percentage : t -> bool
@@ -174,14 +184,3 @@ val compare : t -> t -> int
 
 val pp : Format.formatter -> t -> unit
 (** [pp fmt t] prints [t] to the formatter [fmt]. *)
-
-(**/**)
-
-val resolve_rect_or_zero :
-  float option ->
-  (int -> float -> float) ->
-  t Toffee_geometry.Rect.t ->
-  Toffee_geometry.Rectf.t
-(** [resolve_rect_or_zero context calc_resolver rect] is [rect] with
-    {!resolve_or_zero} applied to each side. A rect of zero lengths resolves to
-    {!Toffee_geometry.Rectf.zero} without allocating. *)

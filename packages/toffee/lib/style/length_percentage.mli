@@ -100,6 +100,16 @@ val resolve_or_zero : t -> float option -> (int -> float -> float) -> float
     Equivalent to
     [maybe_resolve t context calc_resolver |> Option.value ~default:0.0]. *)
 
+val resolve_rect_or_zero :
+  float option ->
+  (int -> float -> float) ->
+  t Toffee_geometry.Rect.t ->
+  Toffee_geometry.Rectf.t
+(** [resolve_rect_or_zero context calc_resolver rect] is [rect] with
+    {!resolve_or_zero} applied to each side, as padding and border resolve
+    against the containing block's width. A rect of four zero lengths is
+    {!Toffee_geometry.Rectf.zero} itself, allocating nothing. *)
+
 (** {1 Utilities} *)
 
 val uses_percentage : t -> bool
@@ -145,14 +155,3 @@ val to_string : t -> string
 
 val pp : Format.formatter -> t -> unit
 (** [pp fmt t] formats [t] using {!to_string}. *)
-
-(**/**)
-
-val resolve_rect_or_zero :
-  float option ->
-  (int -> float -> float) ->
-  t Toffee_geometry.Rect.t ->
-  Toffee_geometry.Rectf.t
-(** [resolve_rect_or_zero context calc_resolver rect] is [rect] with
-    {!resolve_or_zero} applied to each side. A rect of zero lengths resolves to
-    {!Toffee_geometry.Rectf.zero} without allocating. *)

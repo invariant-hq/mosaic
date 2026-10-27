@@ -2692,6 +2692,40 @@ let test_moved_child_rounded_at_new_position () =
   equal ~msg:"c1 at y 10.4" float_exact 11.0 (height c1);
   equal ~msg:"c2 at y 0" float_exact 10.0 (height c2)
 
+(* A rect of lengths and percentages resolves side by side against one
+   width, and a rect of zero lengths resolves to the shared zero rect,
+   allocating nothing. *)
+let test_resolve_rects () =
+  let calc _ _ = 0. in
+  let lp = Style.Length_percentage.length
+  and pct = Style.Length_percentage.percent in
+  let rect left right top bottom = Rect.{ left; right; top; bottom } in
+  let r =
+    Style.Length_percentage.resolve_rect_or_zero (Some 200.) calc
+      (rect (lp 1.) (pct 0.1) (lp 0.) (lp 3.))
+  in
+  equal ~msg:"sides" (list float_exact) [ 1.; 20.; 0.; 3. ]
+    [ r.left; r.right; r.top; r.bottom ];
+  let zero = Style.Length_percentage.zero in
+  is_true ~msg:"zero rect"
+    (Style.Length_percentage.resolve_rect_or_zero None calc
+       (rect zero zero zero zero)
+    == Toffee_geometry.Rectf.zero);
+  let auto = Style.Length_percentage_auto.auto in
+  let a =
+    Style.Length_percentage_auto.resolve_rect_or_zero (Some 200.) calc
+      (rect auto
+         (Style.Length_percentage_auto.length 2.)
+         auto
+         (Style.Length_percentage_auto.percent 0.5))
+  in
+  equal ~msg:"auto sides are zero" (list float_exact) [ 0.; 2.; 0.; 100. ]
+    [ a.left; a.right; a.top; a.bottom ];
+  let z = Style.Length_percentage_auto.zero in
+  is_true ~msg:"zero auto rect"
+    (Style.Length_percentage_auto.resolve_rect_or_zero None calc (rect z z z z)
+    == Toffee_geometry.Rectf.zero)
+
 (* A subtree whose layouts are whole, moved by whole cells, rounds to the
    layouts it had: rounding keeps its final layouts, the same values. A
    subtree moved by a fraction of a cell is rounded again. *)
@@ -2815,6 +2849,7 @@ let () =
             incremental_rounding_matches_full_rounding;
           prop ~count:300 "Incremental rounding of whole layouts" Gen.int
             (incremental_rounding_matches_full_rounding ~whole:true);
+          test "Rects resolve side by side" test_resolve_rects;
           test "A whole move keeps rounded layouts"
             test_whole_move_keeps_rounded_layouts;
           prop ~count:300 "Drawn edges are the rounded edges" Gen.int

@@ -219,6 +219,7 @@ it.
 - **Replaced elements.** `Style.set_item_is_replaced` makes a leaf a replaced element, such as an image, whose measure function gives its natural size, as Taffy's `item_is_replaced` does. A block container keeps its natural width instead of stretching it to its own (CSS 2 §10.3.4, Taffy #1002), and a grid's `normal` alignment sizes it as `Start` (CSS Grid §6.2, Taffy #1281); a flex container stretches it as any item. Its measure function is given the size the layout fixes, or else its style's, in a measurement and in a final layout alike (Taffy #1157), so a width sets its height through its ratio and the two agree: an image of 100 by 50 that is 60 wide is 30 tall
 - `retain_children tree parent keep` keeps the children at the indices for which `keep` holds and removes the others in one pass, in time linear in the number of children and with no allocation per child, where removing them one by one with `remove_child` takes time quadratic in it
 - `Style.set_box_sizing` sets a style's box sizing, the one field `Style.make` takes that had no setter
+- `Length_percentage.resolve_rect_or_zero` and `Length_percentage_auto.resolve_rect_or_zero` resolve a rect of padding, border or margin side by side, as `resolve_or_zero` resolves one, and a rect of zero lengths without allocating
 
 #### Changed
 
