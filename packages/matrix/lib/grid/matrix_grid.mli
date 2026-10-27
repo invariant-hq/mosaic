@@ -311,6 +311,28 @@ val draw_text :
 
     Raises [Invalid_argument] if [tab_width < 1]. *)
 
+val draw_spans :
+  ?tab_width:int ->
+  ?width_method:Matrix_text.width_method ->
+  ?width:int ->
+  t ->
+  x:int ->
+  y:int ->
+  Ansi.span list ->
+  int
+(** [draw_spans ~tab_width ~width_method ~width g ~x ~y spans] draws the line
+    [spans] from column [x] of row [y], each span after the one before it as
+    {!draw_text} draws its text in its style, and is the column after the line.
+    The line's text is drawn as {!Ansi.sanitize_spans} leaves it, so a grapheme
+    cut between two spans is drawn whole, in the style of the span its first
+    byte is in, and a line end is drawn as a space. A line wider than [width]
+    cells, up to the grid's right edge by default, is cut after the graphemes
+    that leave room for an ellipsis (…), which is drawn in the style of the
+    first grapheme it hides. [tab_width] and [width_method] are as for
+    {!draw_text}.
+
+    Raises [Invalid_argument] if [tab_width < 1]. *)
+
 module Border = Border
 (** Box-drawing characters. *)
 

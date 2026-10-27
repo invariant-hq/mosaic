@@ -1235,6 +1235,60 @@ let draw_text ?style ?(tab_width = 2) ?width_method t ~x ~y ~text =
             text
         with Exit -> ()
 
+let draw_spans ?(tab_width = 2) ?width_method ?width t ~x ~y spans =
+  if tab_width < 1 then invalid_arg "Matrix_grid.draw_spans: tab width below 1";
+  let width_method = Option.value width_method ~default:t.width_method in
+  let room = Option.value width ~default:(t.width - x) in
+  let spans =
+    List.map
+      (fun (s : Ansi.span) ->
+        if String.contains s.text '\n' then
+          { s with text = String.map (function '\n' -> ' ' | c -> c) s.text }
+        else s)
+      (Ansi.sanitize_spans spans)
+  in
+  let measure text = Text.measure ~width_method ~tab_width text in
+  let draw x (s : Ansi.span) text =
+    draw_text ~style:s.style ~tab_width ~width_method t ~x ~y ~text
+  in
+  let total =
+    List.fold_left (fun a (s : Ansi.span) -> a + measure s.text) 0 spans
+  in
+  if total <= room then
+    List.fold_left
+      (fun x (s : Ansi.span) ->
+        draw x s s.text;
+        x + measure s.text)
+      x spans
+  else
+    (* The line is cut after the graphemes that leave room for the ellipsis,
+       which takes the style of the first grapheme it hides. *)
+    let ellipsis = "\u{2026}" in
+    let fit = room - measure ellipsis in
+    let rec go used = function
+      | [] -> x + used
+      | (s : Ansi.span) :: rest ->
+          let w = measure s.text in
+          if used + w <= fit then (
+            draw (x + used) s s.text;
+            go (used + w) rest)
+          else
+            let start = used in
+            let used = ref used and stop = ref 0 in
+            (try
+               Text.iter_units ~width_method ~tab_width
+                 (fun ~offset ~len ~width:w ->
+                   if !used + w > fit then raise Exit;
+                   used := !used + w;
+                   stop := offset + len)
+                 s.text
+             with Exit -> ());
+            draw (x + start) s (String.sub s.text 0 !stop);
+            draw (x + !used) s ellipsis;
+            x + !used + measure ellipsis
+    in
+    if fit < 0 then x else go 0 spans
+
 (* {1 Box drawing} *)
 
 let draw_box t ~x ~y ~width ~height ?(border = Border.single)

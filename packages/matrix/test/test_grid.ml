@@ -2305,6 +2305,93 @@ let lines_tests =
             ignore (Lines.create ~x:0 ~y:0 ~width:(-1) ~height:1)));
   ]
 
+(* A line of spans is drawn as one text, from column [x], and the column
+   after it is what [draw_spans] returns. *)
+let draw_spans_tests =
+  let red = Ansi.Style.make ~fg:Ansi.Color.red ()
+  and blue = Ansi.Style.make ~fg:Ansi.Color.blue () in
+  let row g =
+    String.concat "" (List.init (Grid.width g) (fun x -> Grid.get_text g x))
+  in
+  let fg g x = Grid.get_fg g x in
+  let color = Testable.make ~pp:Ansi.Color.pp ~equal:Ansi.Color.equal in
+  [
+    test "each span after the one before, the next column returned" (fun () ->
+        let g = Grid.create ~width:10 ~height:1 () in
+        let next =
+          Grid.draw_spans g ~x:1 ~y:0
+            [
+              Ansi.span ~style:red "a";
+              Ansi.span "\u{4E2D}";
+              Ansi.span ~style:blue "\tb";
+            ]
+        in
+        equal ~msg:"next column" int 7 next;
+        equal ~msg:"cells" string " a\u{4E2D}  b   " (row g);
+        equal ~msg:"a in red" color Ansi.Color.red (fg g 1);
+        equal ~msg:"b in blue" color Ansi.Color.blue (fg g 6));
+    test "a grapheme cut between spans stays whole" (fun () ->
+        let g = Grid.create ~width:6 ~height:1 () in
+        let next =
+          Grid.draw_spans g ~x:0 ~y:0
+            [ Ansi.span ~style:red "e"; Ansi.span ~style:blue "\u{0301}x" ]
+        in
+        equal ~msg:"next column" int 2 next;
+        equal ~msg:"e and its accent" string "e\u{0301}" (Grid.get_text g 0);
+        equal ~msg:"in the style of its first byte" color Ansi.Color.red
+          (fg g 0);
+        equal ~msg:"x" string "x" (Grid.get_text g 1);
+        let g = Grid.create ~width:6 ~height:1 () in
+        let next =
+          Grid.draw_spans g ~x:0 ~y:0
+            [ Ansi.span "\u{1F468}"; Ansi.span "\u{200D}\u{1F469}" ]
+        in
+        equal ~msg:"a ZWJ sequence, one grapheme" string
+          "\u{1F468}\u{200D}\u{1F469}" (Grid.get_text g 0);
+        equal ~msg:"two cells" int 2 next);
+    test "a line end draws as a space, a control as nothing" (fun () ->
+        let g = Grid.create ~width:10 ~height:1 () in
+        let next =
+          Grid.draw_spans g ~x:0 ~y:0
+            [
+              Ansi.span "foo\nbar"; Ansi.span "\027[31m!\027]8;;http://x\027\\";
+            ]
+        in
+        equal ~msg:"cells" string "foo bar!  " (row g);
+        equal ~msg:"next column" int 8 next;
+        equal ~msg:"no link" string "" (Grid.get_link g 7));
+    test "a line too wide ends with an ellipsis in the next one's style"
+      (fun () ->
+        let g = Grid.create ~width:10 ~height:1 () in
+        let next =
+          Grid.draw_spans ~width:4 g ~x:0 ~y:0
+            [ Ansi.span ~style:red "abc"; Ansi.span ~style:blue "de" ]
+        in
+        equal ~msg:"cells" string "abc\u{2026}      " (row g);
+        equal ~msg:"next column" int 4 next;
+        equal ~msg:"the ellipsis hides d" color Ansi.Color.blue (fg g 3));
+    test "the ellipsis takes the style of the first grapheme it hides"
+      (fun () ->
+        let g = Grid.create ~width:10 ~height:1 () in
+        let next =
+          Grid.draw_spans ~width:4 g ~x:0 ~y:0
+            [ Ansi.span ~style:red "ab\u{6F22}"; Ansi.span ~style:blue "z" ]
+        in
+        equal ~msg:"cells" string "ab\u{2026}       " (row g);
+        equal ~msg:"next column" int 3 next;
+        equal ~msg:"the ellipsis hides the wide one" color Ansi.Color.red
+          (fg g 2));
+    test "the grid's right edge bounds the line" (fun () ->
+        let g = Grid.create ~width:5 ~height:1 () in
+        let next = Grid.draw_spans g ~x:0 ~y:0 [ Ansi.span "abcdefg" ] in
+        equal ~msg:"cells" string "abcd\u{2026}" (row g);
+        equal ~msg:"next column" int 5 next;
+        let g = Grid.create ~width:5 ~height:1 () in
+        equal ~msg:"no room" int 2
+          (Grid.draw_spans ~width:0 g ~x:2 ~y:0 [ Ansi.span "a" ]);
+        equal ~msg:"nothing drawn" string "     " (row g));
+  ]
+
 let tests =
   [
     test "spaces draw, layers composite" spaces_draw_and_layers_composite;
@@ -2775,6 +2862,7 @@ let () =
   run "matrix.grid"
     [
       group "grid" tests;
+      group "draw_spans" draw_spans_tests;
       group "lines" lines_tests;
       group "pictures" picture_tests;
     ]
