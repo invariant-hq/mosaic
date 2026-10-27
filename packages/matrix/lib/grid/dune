@@ -2,4 +2,9 @@
  (name matrix_grid)
  (public_name matrix.grid)
  (libraries matrix.ansi matrix.text)
- (private_modules grapheme_tracker grapheme_store grid_data packed_cell))
+ (private_modules
+  grapheme_tracker
+  grapheme_store
+  grid_data
+  lines
+  packed_cell))
