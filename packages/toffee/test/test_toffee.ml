@@ -793,6 +793,24 @@ let reader length (known : float option size)
         | None, Max_content -> length);
     }
 
+(* A text of [length] cells, which wraps to the width it is given. *)
+let text length (known : float option size) (available : Available_space.t size)
+    =
+  let width =
+    match (known.width, available.width) with
+    | Some width, _ -> width
+    | None, Definite width -> Float.min width length
+    | None, Min_content -> Float.min 5. length
+    | None, Max_content -> length
+  in
+  Sizef.
+    {
+      width;
+      height =
+        Option.value known.height
+          ~default:(Float.ceil (length /. Float.max 1. width));
+    }
+
 (* A grid holding a leaf whose style is [leaf_style] is laid out [width] wide
    at the root height [before], then at [after]. The grid measures the leaf
    against its own inner height, unknown while the grid is measured and known
@@ -864,23 +882,6 @@ let test_cache_min_height_follows_parent_height () =
    root height, the block's final layout comes from its cache, and the text
    keeps the layout of that final layout. *)
 let test_block_measurement_keeps_child_layouts () =
-  let text length (known : float option size)
-      (available : Available_space.t size) =
-    let width =
-      match (known.width, available.width) with
-      | Some width, _ -> width
-      | None, Definite width -> Float.min width length
-      | None, Min_content -> Float.min 5. length
-      | None, Max_content -> length
-    in
-    Sizef.
-      {
-        width;
-        height =
-          Option.value known.height
-            ~default:(Float.ceil (length /. Float.max 1. width));
-      }
-  in
   let tree = new_tree () in
   let leaf = new_leaf_with_context tree Style.default () |> or_fail "text" in
   let block =
@@ -915,6 +916,147 @@ let test_block_measurement_keeps_child_layouts () =
   lay 60.;
   equal ~msg:"width after relayout" float_exact 8. (size ()).width;
   equal ~msg:"height after relayout" float_exact 1. (size ()).height
+
+(* The leaves of these trees hold a text or a reader. *)
+type content = Text of float | Reader of float
+
+let content_measure known available _ content _ =
+  match content with
+  | Some (Text length) -> text length known available
+  | Some (Reader length) -> reader length known available
+  | None -> Sizef.zero
+
+(* A tree that [build] makes is laid out [width] wide at the root height
+   [before], changed by [change] and laid out at [after]. Each node gets the
+   layout it gets in a tree that is built, changed and laid out once at
+   [after]. *)
+let relayout_matches_fresh ?(change = fun _ _ -> ()) ~build ~width ~before
+    ~after () =
+  let lay tree root height =
+    compute_layout_with_measure tree root
+      Size.
+        {
+          width = Available_space.of_float width;
+          height = Available_space.of_float height;
+        }
+      content_measure
+    |> or_fail "layout"
+  in
+  let tree = new_tree () in
+  let root = build tree in
+  lay tree root before;
+  change tree root;
+  lay tree root after;
+  let fresh = new_tree () in
+  let fresh_root = build fresh in
+  change fresh fresh_root;
+  lay fresh fresh_root after;
+  let rec check path node fresh_node =
+    let l = unrounded_layout tree node
+    and f = unrounded_layout fresh fresh_node in
+    let msg what = Printf.sprintf "node %s %s" path what in
+    equal ~msg:(msg "x") (float 1e-6) (Layout.location f).x
+      (Layout.location l).x;
+    equal ~msg:(msg "y") (float 1e-6) (Layout.location f).y
+      (Layout.location l).y;
+    equal ~msg:(msg "width") (float 1e-6) (Layout.size f).width
+      (Layout.size l).width;
+    equal ~msg:(msg "height") (float 1e-6) (Layout.size f).height
+      (Layout.size l).height;
+    List.iteri
+      (fun i (child, fresh_child) ->
+        check (Printf.sprintf "%s/%d" path i) child fresh_child)
+      (List.combine
+         (children tree node |> or_fail "children")
+         (children fresh fresh_node |> or_fail "children"))
+  in
+  check "root" root fresh_root
+
+let node tree style children =
+  new_with_children tree style (Array.of_list children) |> or_fail "node"
+
+let leaf tree ?(style = Style.default) content =
+  new_leaf_with_context tree style content |> or_fail "leaf"
+
+(* A block measured to size its flex item lays out its in-flow children
+   while its own height is unknown, so its child's height of 84% behaves as
+   auto and the child lays its text out 1 cell tall instead of 84% of the
+   block. The relayout at another root height measures the block again and
+   takes its final layout from the cache, which lays nothing out again. *)
+let test_block_measurement_lays_out_children () =
+  relayout_matches_fresh ~width:40. ~before:60. ~after:40.
+    ~build:(fun tree ->
+      node tree Style.default
+        [
+          node tree
+            (Style.default |> Style.set_display Style.Display.Block)
+            [
+              node tree
+                (Style.default
+                |> Style.set_height (Style.Dimension.percent 0.84))
+                [ leaf tree (Text 1.) ];
+            ];
+        ])
+    ()
+
+(* A flex row aligning its items on their baselines lays the items out to
+   find them, also when it is only measured. Here the row is absolutely
+   positioned in a column and measured when a sibling text changes. *)
+let test_baseline_measurement_lays_out_items () =
+  relayout_matches_fresh ~width:70. ~before:30. ~after:30.
+    ~build:(fun tree ->
+      node tree
+        (Style.default |> Style.set_flex_direction Style.Flex_direction.Column)
+        [
+          node tree
+            (Style.default
+            |> Style.set_position Style.Position.Absolute
+            |> Style.set_align_items (Some Style.Align_items.Baseline))
+            [
+              node tree
+                (Style.default
+                |> Style.set_height (Style.Dimension.percent 0.85))
+                [ leaf tree (Text 1.) ];
+              leaf tree (Text 1.);
+            ];
+          leaf tree (Text 1.);
+        ])
+    ~change:(fun tree root ->
+      let sibling = child_at_index tree root 1 |> or_fail "sibling" in
+      set_node_context tree sibling (Some (Text 14.)) |> or_fail "context")
+    ()
+
+(* A grid aligning its items on their baselines lays them out at their
+   min-content size to find them. *)
+let test_grid_baseline_measurement_lays_out_items () =
+  let module G = Style.Grid_template_component in
+  relayout_matches_fresh ~width:50. ~before:10. ~after:36.
+    ~build:(fun tree ->
+      node tree Style.default
+        [
+          node tree
+            (Style.default
+            |> Style.set_display Style.Display.Grid
+            |> Style.set_align_items (Some Style.Align_items.Baseline)
+            |> Style.set_grid_template_columns
+                 [
+                   G.fr 3.;
+                   G.minmax ~min:Style.Compact_length.auto
+                     ~max:(Style.Compact_length.fr 1.);
+                   G.minmax ~min:Style.Compact_length.auto
+                     ~max:(Style.Compact_length.fr 1.);
+                 ])
+            [
+              leaf tree
+                ~style:
+                  (Style.default
+                  |> Style.set_padding_top
+                       (Style.Length_percentage.percent 0.215))
+                (Text 22.);
+              node tree Style.default [ leaf tree (Reader 29.) ];
+            ];
+        ])
+    ()
 
 (* A percent-width item clamped by its own max-width must be measured at the
    clamped width when deriving content-based sizes, so wrapping content
@@ -1738,6 +1880,12 @@ let () =
             test_cache_min_height_follows_parent_height;
           test "Block measurement keeps its children's layouts"
             test_block_measurement_keeps_child_layouts;
+          test "Block measurement lays out its children"
+            test_block_measurement_lays_out_children;
+          test "Baseline measurement lays out the items"
+            test_baseline_measurement_lays_out_items;
+          test "Grid baseline measurement lays out the items"
+            test_grid_baseline_measurement_lays_out_items;
         ];
       group "min_max_overrides"
         [

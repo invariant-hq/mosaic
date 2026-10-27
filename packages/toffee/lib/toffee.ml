@@ -164,6 +164,9 @@ type 'context tree = {
   mutable free_list : int list;
   mutable next_index : int;
   mutable live_node_count : int;
+  mutable layout_changes : int;
+      (* The number of layouts stored that differ from the layouts they
+         replace. *)
   config : config;
 }
 (* The main TaffyTree type *)
@@ -180,6 +183,7 @@ let make_arrays capacity config =
     free_list = [];
     next_index = 0;
     live_node_count = 0;
+    layout_changes = 0;
     config;
   }
 
@@ -647,6 +651,7 @@ module View = struct
     let node_data = taffy.nodes.(idx) in
     if not (same_layout node_data.unrounded_layout layout) then begin
       node_data.unrounded_layout <- layout;
+      taffy.layout_changes <- taffy.layout_changes + 1;
       unround taffy idx
     end
 
@@ -672,7 +677,27 @@ module View = struct
       compute_hidden_layout tree.hidden_tree tree node
     else compute_cached_layout tree.cache_tree tree node inputs compute_uncached
 
+  (* A measurement may lay out descendants to find the node's size: a block
+     lays out its in-flow children, and a flex row or a grid its items aligned
+     on their baselines. Their layouts then replace those of the node's final
+     layout, so a measurement that changes a stored layout makes the node's
+     final layout forget its cached result, which no longer describes the
+     node's subtree. Each node measured in the same chain of measurements
+     forgets its own. The next final layout of these nodes lays the subtree
+     out again. *)
   and compute_uncached tree node inputs =
+    match Layout_input.run_mode inputs with
+    | Run_mode.Compute_size ->
+        let changes = tree.taffy.layout_changes in
+        let output = compute_algorithm tree node inputs in
+        if tree.taffy.layout_changes <> changes then
+          Cache.forget_final_layout
+            tree.taffy.nodes.(node_index_exn tree.taffy node).cache;
+        output
+    | Perform_layout | Perform_hidden_layout ->
+        compute_algorithm tree node inputs
+
+  and compute_algorithm tree node inputs =
     let node_idx = node_index_exn tree.taffy node in
     let node_data = tree.taffy.nodes.(node_idx) in
     let display_mode = Style.display node_data.style in

@@ -59,5 +59,10 @@ val clear : t -> clear_state
 
     @return [Cleared] if entries were present, [Already_empty] otherwise. *)
 
+val forget_final_layout : t -> unit
+(** [forget_final_layout t] makes [t]'s final layout answer no inputs, so that
+    the next final layout of the node is computed. [t] keeps its measurements
+    and stays non-empty ({!is_empty}). *)
+
 val is_empty : t -> bool
 (** [is_empty t] is [true] iff [t] holds no entry. *)

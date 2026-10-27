@@ -299,4 +299,12 @@ let store t style inputs output =
             set_recently_used t (recently_used t lor (1 lsl !index)))
       | Perform_hidden_layout -> ())
 
+(* The entry stays valid, as dirtying stops at a node whose cache is already
+   empty and takes its ancestors to be dirty already, but no inputs match its
+   key: no requested axis is NaN. *)
+let forget_final_layout t =
+  if valid t cache_size then (
+    t.entries.(cache_size).axis <- nan;
+    t.final_layout <- Layout_output.default)
+
 let is_empty t = t.state land valid_mask = 0
