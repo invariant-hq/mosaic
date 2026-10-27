@@ -872,6 +872,24 @@ let unchanged tree node_id available_space =
         && node_data.rounded_at.(0) = 0.
         && node_data.rounded_at.(1) = 0.)
 
+(* A node below the node at [idx] was laid out as a root, which replaced
+   layouts that the final layouts cached at [idx] and above had laid out.
+   Each forgets its final layout and is no longer rounded, so that the next
+   layout of the root lays out and rounds the path to the node again, as it
+   would in a tree that was never laid out below its root. A cached
+   measurement gives back a size and writes no layout, so their measurements
+   stay; their caches stay non-empty, so the root is not dirtied. Dirtying
+   keeps an empty cache's ancestors empty, so the walk stops at one. *)
+let rec laid_out_below tree idx =
+  unround tree idx;
+  let cache = tree.nodes.(idx).cache in
+  if not (Cache.is_empty cache) then begin
+    Cache.forget_final_layout cache;
+    match tree.parents.(idx) with
+    | Some parent -> laid_out_below tree (Node_id.index parent)
+    | None -> ()
+  end
+
 (* Main layout computation *)
 let compute_changed_layout (type ctx) (tree : ctx tree) node_id available_space
     measure_function =
@@ -945,7 +963,11 @@ let compute_changed_layout (type ctx) (tree : ctx tree) node_id available_space
       end)
       view node_id;
 
-  tree.last_root <- Node_id.index node_id;
+  let idx = Node_id.index node_id in
+  (match tree.parents.(idx) with
+  | Some parent -> laid_out_below tree (Node_id.index parent)
+  | None -> ());
+  tree.last_root <- idx;
   tree.last_space <- available_space;
   Ok ()
 

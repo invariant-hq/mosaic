@@ -1522,10 +1522,56 @@ let test_hidden_child_relaid_out () =
     (unrounded_layout fresh fresh_hidden)
     (unrounded_layout tree hidden)
 
-(* Random trees of texts and readers, laid out at their root in spaces drawn
-   from three, with contexts, styles and parents changed between layouts,
-   then laid out once more: every node has the layouts it has in a tree built
-   with the same changes and laid out once. *)
+(* A column of a row, laid out as a root at a width of 10, wraps its text
+   to 10 cells. The next layout of the row lays the column out again in the
+   row, as a tree laid out once does, and the row stays clean: nothing in it
+   changed. *)
+let test_layout_below_root_then_root () =
+  let build tree =
+    let text = leaf tree (Text 30.) in
+    let column =
+      node tree
+        (Style.make ~flex_direction:Style.Flex_direction.Column ())
+        [ text ]
+    in
+    (node tree Style.default [ column ], column, text)
+  in
+  let space width =
+    Size.
+      {
+        width = Available_space.of_float width;
+        height = Available_space.max_content;
+      }
+  in
+  let lay tree node width =
+    compute_layout_with_measure tree node (space width) content_measure
+    |> or_fail "compute"
+  in
+  let tree = new_tree () in
+  let root, column, text = build tree in
+  lay tree root 40.;
+  lay tree column 10.;
+  equal ~msg:"wrapped as a root" float_exact 10.
+    (Layout.size (layout tree text |> or_fail "layout")).width;
+  equal ~msg:"root clean" bool false (dirty tree root |> or_fail "dirty");
+  lay tree root 40.;
+  let fresh = new_tree () in
+  let fresh_root, fresh_column, fresh_text = build fresh in
+  lay fresh fresh_root 40.;
+  List.iter
+    (fun (name, node, fresh_node) ->
+      equal ~msg:(name ^ " unrounded") layout_t
+        (unrounded_layout fresh fresh_node)
+        (unrounded_layout tree node);
+      equal ~msg:(name ^ " final") layout_t
+        (layout fresh fresh_node |> or_fail "layout")
+        (layout tree node |> or_fail "layout"))
+    [ ("column", column, fresh_column); ("text", text, fresh_text) ]
+
+(* Random trees of texts and readers, laid out at their root or at another
+   node in spaces drawn from three, with contexts, styles and parents changed
+   between layouts, then laid out once more at their root: every node has the
+   layouts it has in a tree built with the same changes and laid out once. *)
 let relayout_is_fresh_layout seed =
   let rng = Random.State.make [| seed |] in
   let int n = Random.State.int rng n in
@@ -1581,8 +1627,11 @@ let relayout_is_fresh_layout seed =
     | None -> false
   in
   for _ = 1 to 1 + int 6 do
-    match int 4 with
+    match int 5 with
     | 0 -> lay tree root spaces.(int 3)
+    | 4 ->
+        let i = int (Array.length all) in
+        lay tree all.(i) spaces.(int 3)
     | 1 ->
         let i = int (Array.length leaves) in
         let content = Some (Text (Float.of_int (1 + int 30))) in
@@ -3299,6 +3348,8 @@ let () =
             test_hidden_child_relaid_out;
           prop ~count:1000 "A relayout is a fresh layout" Gen.int
             relayout_is_fresh_layout;
+          test "A layout below the root, then of the root"
+            test_layout_below_root_then_root;
           test "A layout asked again does nothing"
             test_layout_asked_again_does_nothing;
           test "A change between layouts is laid out"

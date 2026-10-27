@@ -580,6 +580,11 @@ val compute_layout_with_measure :
     function computes intrinsic size for leaves. Returns [Ok ()] on success.
     Returns [Error (Invalid_input_node node_id)] if [node_id] does not exist.
 
+    [node_id] may have a parent. It is then laid out as the root of its own
+    layout, in [available_space], and its layout and those below it replace the
+    ones its ancestors gave. The next layout of a node above it lays it out
+    again in its parent.
+
     After computation, query layouts with {!val-layout}. *)
 
 val compute_layout :
@@ -588,8 +593,9 @@ val compute_layout :
     and all descendants.
 
     Uses a default measure function that returns zero size. This is suitable for
-    layouts without leaf content (e.g., pure container hierarchies). Returns
-    [Ok ()] on success. Returns [Error (Invalid_input_node node_id)] if
+    layouts without leaf content (e.g., pure container hierarchies). A [node_id]
+    with a parent is laid out as {!compute_layout_with_measure} lays it out.
+    Returns [Ok ()] on success. Returns [Error (Invalid_input_node node_id)] if
     [node_id] does not exist. *)
 
 (** {1 Tree Traversal Modules}
