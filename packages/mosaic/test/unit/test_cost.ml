@@ -283,6 +283,95 @@ let rotated_children () =
        %.3f ms), over 96"
       ratio (large *. 1e3) (small *. 1e3)
 
+(* ───── Removing children ─────
+
+   Removing children compacts their parent's children in one pass, in the
+   node and in the layout tree, so it allocates nothing for the children it
+   keeps. Removing the first, the last, every other or ten scattered children
+   of 1,000 and of 16,000 allocates the same words. In a culling column, whose
+   layout tree holds the children in chunks, a removed child costs words of
+   its own, so every other child is left out there. The time of removing
+   every other child, then placing it back, is linear in the children, as
+   with rotations above. *)
+
+let rows ~cull n =
+  let renderer = Renderer.create () in
+  let column =
+    Renderable.create ~parent:(Renderer.root renderer)
+      ~style:Toffee.Style.(default |> set_flex_direction Flex_direction.Column)
+      ()
+  in
+  if cull then Renderable.Private.set_viewport_cull column true;
+  let row =
+    Toffee.Style.(
+      default
+      |> set_size { width = Dimension.length 10.; height = Dimension.length 1. })
+  in
+  let children =
+    Array.init n (fun _ -> Renderable.create ~parent:column ~style:row ())
+  in
+  Renderer.render_frame renderer ~width:20 ~height:10 ~dt:0.;
+  (renderer, column, children)
+
+let first children = [ List.hd children ]
+let last children = [ List.nth children (List.length children - 1) ]
+let every_other children = List.filteri (fun i _ -> i mod 2 = 0) children
+
+let scattered children =
+  let step = List.length children / 10 in
+  List.filteri (fun i _ -> i mod step = 3 && i / step < 10) children
+
+(* The words of each removal, made one after the other from the same
+   column. *)
+let removal_words ~cull n removals =
+  let renderer, column, _ = rows ~cull n in
+  List.map
+    (fun (what, pick) ->
+      let gone = pick (Renderable.children column) in
+      let minor, promoted, major = Gc.counters () in
+      Renderable.Private.detach_all gone;
+      let minor', promoted', major' = Gc.counters () in
+      ignore (Sys.opaque_identity renderer : Renderer.t);
+      ( what,
+        Float.to_int
+          (minor' -. minor +. (major' -. major) -. (promoted' -. promoted)) ))
+    removals
+
+let removal_time ~cull n =
+  let renderer, column, children = rows ~cull n in
+  let gone = every_other (Array.to_list children) in
+  let step () =
+    Renderable.Private.detach_all gone;
+    Renderable.Private.place_children column 0 (fun f -> Array.iter f children)
+  in
+  let best = ref infinity in
+  for _ = 1 to 5 do
+    best := Float.min !best (cpu_time_per step)
+  done;
+  ignore (Sys.opaque_identity renderer : Renderer.t);
+  !best
+
+let removed_children ~cull () =
+  let removals =
+    [
+      ("the first child", first);
+      ("the last child", last);
+      ("ten scattered children", scattered);
+    ]
+    @ if cull then [] else [ ("every other child", every_other) ]
+  in
+  List.iter2
+    (fun (what, small) (_, large) -> same ("removing " ^ what) ~small ~large)
+    (removal_words ~cull 1_000 removals)
+    (removal_words ~cull 16_000 removals);
+  let small = removal_time ~cull 1_000 and large = removal_time ~cull 16_000 in
+  let ratio = large /. small in
+  if ratio > 96. then
+    failf
+      "removing every other of 16,000 children takes %.0f times as long as of \
+       1,000 (%.3f ms, %.3f ms), over 96"
+      ratio (large *. 1e3) (small *. 1e3)
+
 (* ───── Memory ───── *)
 
 let mib = 1024 * 1024
@@ -434,4 +523,9 @@ let () =
         [ test "a cursor's Down and Up" cursor_keys ];
       group "Placement is linear in the children"
         [ test "rotated keyed children" rotated_children ];
+      group "Removal keeps nothing per kept child"
+        [
+          test "a column" (removed_children ~cull:false);
+          test "a culling column" (removed_children ~cull:true);
+        ];
     ]

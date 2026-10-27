@@ -1100,7 +1100,11 @@ let detach t =
 
 (* Detaches [nodes] as [detach] does, removing each parent's departing
    children in one pass over its children: detaching them one by one would
-   shift the children after each, which is quadratic in their number. *)
+   shift the children after each, which is quadratic in their number. A
+   departing child is one whose parent is unset. A kept child keeps its
+   option as it moves down, and the layout tree compacts its children in the
+   same order ([Toffee.retain_children]), before the array moves, so the pass
+   allocates nothing per kept child. A culling node regroups instead. *)
 let detach_all = function
   | [] -> ()
   | nodes ->
@@ -1116,11 +1120,18 @@ let detach_all = function
         nodes;
       Hashtbl.iter
         (fun _ parent ->
+          if not parent.viewport_cull then
+            toffee_exn
+              (Toffee.retain_children parent.ctx.tree parent.toffee_node
+                 (fun i ->
+                   match parent.children.(i) with
+                   | Some child -> Option.is_some child.parent
+                   | None -> true));
           let kept = ref 0 and live = ref 0 and first = ref max_int in
           for i = 0 to parent.child_count - 1 do
             match parent.children.(i) with
-            | Some child when Option.is_some child.parent ->
-                parent.children.(!kept) <- Some child;
+            | Some child as kept_child when Option.is_some child.parent ->
+                parent.children.(!kept) <- kept_child;
                 incr kept
             | Some child ->
                 first := min !first i;
@@ -1136,14 +1147,7 @@ let detach_all = function
                 child.layout_valid <- false
             | None -> ()
           done;
-          if parent.viewport_cull then note_regroup parent !first
-          else
-            ignore
-              (Toffee.set_children parent.ctx.tree parent.toffee_node
-                 (Array.init !kept (fun i ->
-                      match parent.children.(i) with
-                      | Some child -> child.toffee_node
-                      | None -> assert false)));
+          if parent.viewport_cull then note_regroup parent !first;
           Array.fill parent.children !kept (parent.child_count - !kept) None;
           parent.child_count <- !kept;
           parent.z_dirty <- true;
