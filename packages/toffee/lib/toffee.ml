@@ -720,16 +720,22 @@ module View = struct
      display none and of each node below it, whose layouts it replaces. It
      forgets their final layouts and keeps their caches non-empty: dirtying
      stops at an empty cache and takes its ancestors to be dirty, while the
-     node of display none that the hidden layout started at keeps the result it
-     cached, so a change below it would not reach it nor the root. *)
+     root keeps the result it cached, so a change below a node of display
+     none would not reach the root. *)
   let cache_clear tree node_id =
     let idx = node_index_exn tree.taffy node_id in
     let node_data = tree.taffy.nodes.(idx) in
     Cache.forget_final_layout node_data.cache
 
+  (* A node of display none is laid out hidden each time, uncached, so that
+     hidden layout writes its layout at every layout of its parent: a cached
+     result would keep the layout the node had, which a layout of the node as
+     a root writes. *)
   let rec compute_child_layout tree node inputs =
-    if Layout_input.run_mode inputs = Run_mode.Perform_hidden_layout then
-      compute_hidden_layout tree.hidden_tree tree node
+    if
+      Layout_input.run_mode inputs = Run_mode.Perform_hidden_layout
+      || Style.display (get_core_container_style tree node) = Style.Display.None
+    then compute_hidden_layout tree.hidden_tree tree node
     else compute_cached_layout tree.cache_tree tree node inputs compute_uncached
 
   (* A measurement may lay out descendants to find the node's size: a block

@@ -5,10 +5,10 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-log-20000/append-a-line-and-drop-it	alloc_words	exact	1216864
-log-50000/append-a-line-and-drop-it	alloc_words	exact	2975068
-log-keyed-20000/append-a-line-and-drop-it	alloc_words	exact	99869
-log-keyed-50000/append-a-line-and-drop-it	alloc_words	exact	178417
+log-20000/append-a-line-and-drop-it	alloc_words	exact	1216846
+log-50000/append-a-line-and-drop-it	alloc_words	exact	2975050
+log-keyed-20000/append-a-line-and-drop-it	alloc_words	exact	99851
+log-keyed-50000/append-a-line-and-drop-it	alloc_words	exact	178399
 loop/burst-1000-keys	alloc_words	exact	1300828
 loop/idle-turns-10000	alloc_words	exact	11
 loop/posts-1000	alloc_words	exact	133030
@@ -17,15 +17,15 @@ primary-transcript-5000/type-and-erase	alloc_words	exact	38117
 primary-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	93244
 select-10000/down-up	alloc_words	exact	5580
 select-100000/down-up	alloc_words	exact	5580
-startup/transcript-5000-first-frame	alloc_words	exact	25807271
+startup/transcript-5000-first-frame	alloc_words	exact	25807177
 table-100000/down-up	alloc_words	exact	7782
-transcript-20000/resize-roundtrip-249x69	alloc_words	exact	49961460
-transcript-20000/resize-roundtrip-250x69	alloc_words	exact	74128
+transcript-20000/resize-roundtrip-249x69	alloc_words	exact	49961424
+transcript-20000/resize-roundtrip-250x69	alloc_words	exact	74092
 transcript-20000/type-and-erase	alloc_words	exact	57873
 transcript-20000/wheel-roundtrip-2x8	alloc_words	exact	141700
-transcript-5000/resize-roundtrip-249x69	alloc_words	exact	12538154
-transcript-5000/resize-roundtrip-250x69	alloc_words	exact	64452
-transcript-5000/resize-sweep-25-widths	alloc_words	exact	380428522
+transcript-5000/resize-roundtrip-249x69	alloc_words	exact	12538118
+transcript-5000/resize-roundtrip-250x69	alloc_words	exact	64416
+transcript-5000/resize-sweep-25-widths	alloc_words	exact	380428054
 transcript-5000/type-and-erase	alloc_words	exact	57873
 transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	141700
 

@@ -1013,6 +1013,8 @@ let test_block_measurement_keeps_child_layouts () =
   equal ~msg:"width after relayout" float_exact 8. (size ()).width;
   equal ~msg:"height after relayout" float_exact 1. (size ()).height
 
+let layout_t = Testable.make ~pp:Layout.pp ~equal:Layout.equal
+
 (* The leaves of these trees hold a text or a reader. *)
 type content =
   | Text of float
@@ -1452,6 +1454,152 @@ let test_change_between_layouts_is_laid_out () =
         (Layout.size (layout fresh fresh_second |> or_fail "layout")).height
         (Layout.size (layout tree second |> or_fail "layout")).height)
     [ true; false ]
+
+(* A node of display none, third in a row, is laid out hidden again when the
+   row is laid out at another width: its layout is the hidden layout, of
+   order 0, as in a tree laid out once at that width, and not the order its
+   parent gives it first. *)
+let test_hidden_child_relaid_out () =
+  let build tree =
+    let hidden =
+      leaf tree ~style:(Style.make ~display:Style.Display.None ()) (Text 4.)
+    in
+    let root =
+      node tree Style.default
+        [ leaf tree (Text 12.); leaf tree (Text 30.); hidden ]
+    in
+    (root, hidden)
+  in
+  let lay tree root width =
+    compute_layout_with_measure tree root
+      Size.
+        {
+          width = Available_space.of_float width;
+          height = Available_space.max_content;
+        }
+      content_measure
+    |> or_fail "compute"
+  in
+  let tree = new_tree () in
+  let root, hidden = build tree in
+  lay tree root 40.;
+  lay tree root 20.;
+  let fresh = new_tree () in
+  let fresh_root, fresh_hidden = build fresh in
+  lay fresh fresh_root 20.;
+  equal ~msg:"unrounded" layout_t
+    (unrounded_layout fresh fresh_hidden)
+    (unrounded_layout tree hidden)
+
+(* Random trees of texts and readers, laid out at their root in spaces drawn
+   from three, with contexts, styles and parents changed between layouts,
+   then laid out once more: every node has the layouts it has in a tree built
+   with the same changes and laid out once. *)
+let relayout_is_fresh_layout seed =
+  let rng = Random.State.make [| seed |] in
+  let int n = Random.State.int rng n in
+  let space () =
+    match int 4 with
+    | 0 -> Available_space.max_content
+    | 1 -> Available_space.min_content
+    | _ -> Available_space.of_float (Float.of_int (10 + (10 * int 3)))
+  in
+  let spaces =
+    Array.init 3 (fun _ -> Size.{ width = space (); height = space () })
+  in
+  let build () =
+    let rng = Random.State.make [| seed; 1 |] in
+    let tree = new_tree () in
+    let leaves = ref [] and all = ref [] in
+    let rec node depth =
+      let node =
+        if depth = 0 || Random.State.int rng 3 = 0 then (
+          let length = Float.of_int (1 + Random.State.int rng 30) in
+          let node =
+            leaf tree
+              ~style:(random_any_style rng ~container:false)
+              (if Random.State.bool rng then Text length else Reader length)
+          in
+          leaves := node :: !leaves;
+          node)
+        else
+          new_with_children tree
+            (random_any_style rng ~container:true)
+            (Array.init
+               (1 + Random.State.int rng 3)
+               (fun _ -> node (depth - 1)))
+          |> or_fail "node"
+      in
+      all := node :: !all;
+      node
+    in
+    let root = node 3 in
+    (tree, root, Array.of_list (List.rev !leaves), Array.of_list (List.rev !all))
+  in
+  let tree, root, leaves, all = build () in
+  let fresh, fresh_root, fresh_leaves, fresh_all = build () in
+  let lay tree node space =
+    compute_layout_with_measure tree node space content_measure
+    |> or_fail "compute"
+  in
+  let rec inside tree node ancestor =
+    Node_id.equal node ancestor
+    ||
+    match parent tree node with
+    | Some parent -> inside tree parent ancestor
+    | None -> false
+  in
+  for _ = 1 to 1 + int 6 do
+    match int 4 with
+    | 0 -> lay tree root spaces.(int 3)
+    | 1 ->
+        let i = int (Array.length leaves) in
+        let content = Some (Text (Float.of_int (1 + int 30))) in
+        set_node_context tree leaves.(i) content |> or_fail "context";
+        set_node_context fresh fresh_leaves.(i) content |> or_fail "context"
+    | 2 ->
+        let i = int (Array.length all) in
+        let style_rng = Random.State.make [| seed; 2; i |] in
+        let container = children tree all.(i) |> or_fail "children" <> [] in
+        let style = random_any_style style_rng ~container in
+        set_style tree all.(i) style |> or_fail "style";
+        set_style fresh fresh_all.(i) style |> or_fail "style"
+    | _ -> (
+        (* Move a node into another, at a random index *)
+        let i = int (Array.length all)
+        and j = int (Array.length all) in
+        match (parent tree all.(i), parent fresh fresh_all.(i)) with
+        | Some from, Some fresh_from when not (inside tree all.(j) all.(i)) ->
+            remove_child tree from all.(i) |> or_fail "remove" |> ignore;
+            remove_child fresh fresh_from fresh_all.(i)
+            |> or_fail "remove" |> ignore;
+            let index =
+              int (1 + List.length (children tree all.(j) |> or_fail "children"))
+            in
+            insert_child_at_index tree all.(j) index all.(i) |> or_fail "insert";
+            insert_child_at_index fresh fresh_all.(j) index fresh_all.(i)
+            |> or_fail "insert"
+        | _ -> ())
+  done;
+  let space = spaces.(int 3) in
+  lay tree root space;
+  lay fresh fresh_root space;
+  let rec check node fresh_node =
+    let layout tree node = layout tree node |> or_fail "layout" in
+    if
+      not
+        (Layout.equal
+           (unrounded_layout tree node)
+           (unrounded_layout fresh fresh_node)
+        && Layout.equal (layout tree node) (layout fresh fresh_node))
+    then
+      failf "seed %d, node %d: a relayout is not a fresh layout" seed
+        (Node_id.to_int node);
+    List.iter2 check
+      (children tree node |> or_fail "children")
+      (children fresh fresh_node |> or_fail "children")
+  in
+  check root fresh_root
 
 (* A chunk of lines, a column 100% wide and of automatic height, ahead of a
    text that grows in a column: the column grows, and the chunk, which
@@ -2475,8 +2623,6 @@ let test_toggle_grid_child_display_none () =
   equal ~msg:"Hidden height again" (float 0.001) 0.0
     (Layout.size layout_hidden_again).height
 
-let layout_t = Testable.make ~pp:Layout.pp ~equal:Layout.equal
-
 (* A text moved from a visible row into a node below a node of display none
    is hidden at the next layout: hidden layout keeps the caches below the
    node of display none non-empty, so the move dirties the node of display
@@ -3116,6 +3262,10 @@ let () =
           prop ~count:1000 "Every cache hit is a computation" Gen.int
             every_cache_hit_is_a_computation;
           test "A chunk keeps its final layout" test_chunk_keeps_final_layout;
+          test "A hidden child is laid out hidden again"
+            test_hidden_child_relaid_out;
+          prop ~count:1000 "A relayout is a fresh layout" Gen.int
+            relayout_is_fresh_layout;
           test "A layout asked again does nothing"
             test_layout_asked_again_does_nothing;
           test "A change between layouts is laid out"

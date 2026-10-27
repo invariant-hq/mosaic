@@ -3364,8 +3364,7 @@ let compute_preliminary (type t)
       if
         Style.box_generation_mode (Tree.get_core_container_style tree child)
         = Box_generation_mode.None
-      then (
-        Tree.set_unrounded_layout tree child (Layout.with_order order);
+      then
         Tree.compute_child_layout tree child
           (Layout_input.make ~run_mode:Run_mode.Perform_layout
              ~sizing_mode:Sizing_mode.Inherent_size ~axis:Requested_axis.Both
@@ -3377,7 +3376,7 @@ let compute_preliminary (type t)
                    height = Available_space.max_content;
                  }
              ~vertical_margins_are_collapsible:Line.both_false)
-        |> ignore)
+        |> ignore
     done;
 
     (* Calculate flex container baselines *)

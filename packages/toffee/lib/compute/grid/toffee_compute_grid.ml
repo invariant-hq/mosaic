@@ -746,8 +746,7 @@ let compute_grid_layout (type t)
 
           (* Position hidden child *)
           if Style.box_generation_mode child_style = Box_generation_mode.None
-          then (
-            Tree.set_unrounded_layout tree child (Layout.with_order !order);
+          then
             let _ =
               Tree.compute_child_layout tree child
                 (Layout_input.make ~run_mode:Run_mode.Perform_layout
@@ -762,8 +761,7 @@ let compute_grid_layout (type t)
                        }
                    ~vertical_margins_are_collapsible:Line.both_false)
             in
-            incr order
-            (* Position absolutely positioned child *))
+            incr order (* Position absolutely positioned child *)
           else if Style.position child_style = Position.Absolute then (
             (* Convert grid-col-{start/end} into Option's of indexes into the
                columns vector *)

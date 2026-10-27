@@ -322,7 +322,7 @@ let compute_hidden_layout (type t)
     (node : Node_id.t) : Layout_output.t =
   (* Clear cache and set zeroed-out layout for the node *)
   Tree.cache_clear tree node;
-  Tree.set_unrounded_layout tree node (Layout.with_order 0);
+  Tree.set_unrounded_layout tree node Layout.default;
 
   (* Perform hidden layout on all children *)
   let child_count = Tree.child_count tree node in

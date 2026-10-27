@@ -1207,8 +1207,7 @@ let compute_inner (type t)
           let child = Tree.get_child_id tree node_id order in
           let child_style = Tree.get_core_container_style tree child in
           if Style.box_generation_mode child_style = Box_generation_mode.None
-          then (
-            Tree.set_unrounded_layout tree child (Layout.with_order order);
+          then
             (* Note: Rust uses perform_child_layout which internally uses
                RunMode::PerformLayout, not a special hidden layout mode *)
             Tree.compute_child_layout tree child
@@ -1223,7 +1222,7 @@ let compute_inner (type t)
                        height = Available_space.max_content;
                      }
                  ~vertical_margins_are_collapsible:Line.both_false)
-            |> ignore)
+            |> ignore
         done;
 
         (* 7. Determine whether this node can be collapsed through *)
