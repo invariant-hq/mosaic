@@ -206,7 +206,7 @@ module Cmd = struct
     | Copy_to_clipboard of string
     | Copy_selection
     | Query_color_scheme
-    | Query_terminal_colors
+    | Query_palette
     | Bell
     | Notify of { title : string; body : string }
     | Clear_selection
@@ -227,7 +227,7 @@ module Cmd = struct
   let copy_to_clipboard text = Copy_to_clipboard text
   let copy_selection = Copy_selection
   let query_color_scheme = Query_color_scheme
-  let query_terminal_colors = Query_terminal_colors
+  let query_palette = Query_palette
   let bell = Bell
   let notify ~title ~body = Notify { title; body }
   let clear_selection = Clear_selection
@@ -250,7 +250,7 @@ module Cmd = struct
     | Copy_to_clipboard text -> Copy_to_clipboard text
     | Copy_selection -> Copy_selection
     | Query_color_scheme -> Query_color_scheme
-    | Query_terminal_colors -> Query_terminal_colors
+    | Query_palette -> Query_palette
     | Bell -> Bell
     | Notify { title; body } -> Notify { title; body }
     | Clear_selection -> Clear_selection
@@ -311,7 +311,7 @@ module Sub = struct
     | On_color_scheme of ([ `Dark | `Light ] -> 'msg option)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)
     | On_focus_lost of 'msg
-    | On_terminal_colors of (Ansi.Palette.t -> 'msg option)
+    | On_palette of (Ansi.Palette.t -> 'msg option)
 
   let none = None
   let batch subs = Batch subs
@@ -358,7 +358,7 @@ module Sub = struct
   let on_blur msg = On_blur msg
   let on_color_scheme f = On_color_scheme f
   let on_focus_lost msg = On_focus_lost msg
-  let on_terminal_colors f = On_terminal_colors f
+  let on_palette f = On_palette f
 
   let worker ~id f =
     if id = "" then invalid_arg "Mosaic.Sub.worker: empty id";
@@ -384,8 +384,7 @@ module Sub = struct
     | Worker (id, g) ->
         Worker (id, fun stop mailbox -> g stop (map_mailbox f mailbox))
     | On_focus_lost msg -> On_focus_lost (f msg)
-    | On_terminal_colors g ->
-        On_terminal_colors (fun colors -> Option.map f (g colors))
+    | On_palette g -> On_palette (fun p -> Option.map f (g p))
 end
 
 type ('model, 'msg) app = {
@@ -441,13 +440,6 @@ type 'msg post =
    runtime's [sync]. *)
 and latch = { mutable received : bool }
 
-(* The colors the terminal reported to the query in flight. *)
-type reported = {
-  mutable foreground : (int * int * int) option;
-  mutable background : (int * int * int) option;
-  palette : (int * int * int) option array;
-}
-
 type ('model, 'msg) runtime = {
   mutable model : 'model;
   (* Messages to apply on the loop's thread, newest first. Widgets deliver
@@ -501,8 +493,7 @@ type ('model, 'msg) runtime = {
   (* The view last reconciled declared a focused element. *)
   mutable had_focus : bool;
   mutable color_scheme_sub : ([ `Dark | `Light ] -> 'msg option) list;
-  mutable terminal_colors_sub : (Ansi.Palette.t -> 'msg option) list;
-  reported : reported;
+  mutable palette_sub : (Ansi.Palette.t -> 'msg option) list;
   (* The timer armed at the earliest deadline of the timers and the
      paste stalls, and that deadline. *)
   mutable wakeup : (Matrix.timer * int) option;
@@ -627,23 +618,6 @@ let end_program runtime =
       Matrix.request_redraw runtime.matrix_app))
   else runtime.quit <- true
 
-(* The terminal's default foreground and background and the first 16
-   entries of its palette, asked with [Matrix.query], which ends the batch
-   with DA1: a terminal that answers some of them and not the others has
-   answered them all once DA1's reply comes. *)
-let colors_query =
-  Ansi.(
-    to_string
-      (seq
-         (query Foreground_color :: query Background_color
-         :: List.init 16 (fun i -> query (Palette_entry i)))))
-
-let colors_owed =
-  { Matrix.Input.Decoder.cursor_reports = 0; string_replies = 18 }
-
-let ask_colors runtime =
-  Matrix.query runtime.matrix_app ~owed:colors_owed colors_query
-
 let rec process_cmd runtime (cmd : _ Cmd.t) =
   match cmd with
   | Cmd.None -> ()
@@ -670,7 +644,7 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
       | Some _ | None -> ())
   | Cmd.Query_color_scheme ->
       Matrix.Terminal.query_color_scheme (Matrix.terminal runtime.matrix_app)
-  | Cmd.Query_terminal_colors -> ask_colors runtime
+  | Cmd.Query_palette -> Matrix.query_palette runtime.matrix_app
   | Cmd.Bell -> Matrix.Terminal.bell (Matrix.terminal runtime.matrix_app)
   | Cmd.Notify { title; body } ->
       Matrix.Terminal.notify (Matrix.terminal runtime.matrix_app) ~title ~body
@@ -730,8 +704,7 @@ let rec collect_subs runtime (sub : _ Sub.t) =
   | Sub.Worker (id, f) -> runtime.worker_subs <- (id, f) :: runtime.worker_subs
   | Sub.On_focus_lost msg ->
       runtime.focus_lost_sub <- msg :: runtime.focus_lost_sub
-  | Sub.On_terminal_colors f ->
-      runtime.terminal_colors_sub <- f :: runtime.terminal_colors_sub
+  | Sub.On_palette f -> runtime.palette_sub <- f :: runtime.palette_sub
 
 (* How long a paste may be silent before the program ends it, when the
    application declares no stall of its own. *)
@@ -824,7 +797,7 @@ let update_subscriptions runtime =
   runtime.blur_sub <- [];
   runtime.focus_lost_sub <- [];
   runtime.color_scheme_sub <- [];
-  runtime.terminal_colors_sub <- [];
+  runtime.palette_sub <- [];
   collect_subs runtime (runtime.app.subscriptions runtime.model);
   runtime.key_subs <- List.rev runtime.key_subs;
   runtime.key_release_subs <- List.rev runtime.key_release_subs;
@@ -836,7 +809,7 @@ let update_subscriptions runtime =
   runtime.blur_sub <- List.rev runtime.blur_sub;
   runtime.focus_lost_sub <- List.rev runtime.focus_lost_sub;
   runtime.color_scheme_sub <- List.rev runtime.color_scheme_sub;
-  runtime.terminal_colors_sub <- List.rev runtime.terminal_colors_sub;
+  runtime.palette_sub <- List.rev runtime.palette_sub;
   let ids = Hashtbl.create 8 in
   let check_id id =
     if id = "" || Hashtbl.mem ids id then
@@ -1052,35 +1025,11 @@ let dispatch_paste runtime text =
     (Renderer.dispatch_paste runtime.renderer path)
     (Event.Paste.of_text text)
 
-(* The replies to [colors_query] are collected until DA1's, which ends the
-   batch: the colors are known when the foreground and the background
-   came, and the root's theme is then the default of those colors. *)
-let take_reply runtime (reply : Matrix.Input.Reply.t) =
-  let r = runtime.reported in
-  match reply with
-  | Color { target = `Foreground; rgb; _ } -> r.foreground <- Some rgb
-  | Color { target = `Background; rgb; _ } -> r.background <- Some rgb
-  | Color { target = `Entry i; rgb; _ } when i < 16 -> r.palette.(i) <- Some rgb
-  | Primary_attributes _ ->
-      (match (r.foreground, r.background) with
-      | Some foreground, Some background ->
-          let colors =
-            {
-              Ansi.Palette.foreground;
-              background;
-              cursor = None;
-              entries = Array.copy r.palette;
-            }
-          in
-          Renderer.set_theme runtime.renderer (Theme.default colors);
-          List.iter
-            (fun f -> Option.iter (deliver runtime) (f colors))
-            runtime.terminal_colors_sub
-      | _ -> ());
-      r.foreground <- None;
-      r.background <- None;
-      Array.fill r.palette 0 16 None
-  | _ -> ()
+(* The root's theme is the default of the terminal's palette, and the
+   subscribers are given it. *)
+let take_palette runtime p =
+  Renderer.set_theme runtime.renderer (Theme.default p);
+  List.iter (fun f -> Option.iter (deliver runtime) (f p)) runtime.palette_sub
 
 (* Tab and Shift+Tab, with no other modifier, move focus; Escape alone
    closes the modal. *)
@@ -1102,8 +1051,8 @@ let handle_input runtime (input : Matrix.event) =
   | Focus_in -> List.iter (deliver runtime) runtime.focus_sub
   | Focus_out -> List.iter (deliver runtime) runtime.blur_sub
   | Color_scheme scheme ->
-      (* The user may have changed the colors with the scheme. *)
-      ask_colors runtime;
+      (* The user may have changed the palette with the scheme. *)
+      Matrix.query_palette runtime.matrix_app;
       List.iter
         (fun f -> Option.iter (deliver runtime) (f scheme))
         runtime.color_scheme_sub
@@ -1151,8 +1100,8 @@ let handle_input runtime (input : Matrix.event) =
       arm_wakeup runtime
   | Text text -> dispatch_paste runtime text
   | Resize (width, height) -> handle_resize runtime ~width ~height
-  | Reply reply -> take_reply runtime reply
-  | Palette _ | Invalid _ -> ());
+  | Palette (Some p) -> take_palette runtime p
+  | Palette None | Reply _ | Invalid _ -> ());
   synchronize runtime;
   Matrix.request_redraw runtime.matrix_app
 
@@ -1238,9 +1187,7 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       focus_lost_sub = [];
       had_focus = false;
       color_scheme_sub = [];
-      terminal_colors_sub = [];
-      reported =
-        { foreground = None; background = None; palette = Array.make 16 None };
+      palette_sub = [];
       wakeup = None;
       focus_moves = Queue.create ();
     }
@@ -1346,6 +1293,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
   in
   let handle : _ Matrix.step -> unit = function
     | Stopped -> runtime.quit <- true
+    (* A terminal that gives no palette changes nothing to draw. *)
+    | Event (Palette None) -> ()
     | Event input -> if not runtime.closing then handle_input runtime input
     | Timer fired -> if not runtime.closing then timer fired
     | Posted (Message (stop, msg)) ->
@@ -1378,7 +1327,7 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
     Reconciler.unmount runtime.reconciler
   in
   Fun.protect ~finally:finish (fun () ->
-      ask_colors runtime;
+      Matrix.query_palette matrix_app;
       let width, height = Matrix.size matrix_app in
       handle_resize runtime ~width ~height;
       f

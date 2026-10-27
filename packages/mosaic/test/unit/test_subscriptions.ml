@@ -283,7 +283,7 @@ let cmd_copy_to_clipboard_maps_without_changing_payload () =
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Clear_selection | Cmd.Static_commit _
   | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Query_color_scheme
-  | Cmd.Query_terminal_colors | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
+  | Cmd.Query_palette | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
   | Cmd.Keep_frame _ | Cmd.Focus_next | Cmd.Focus_prev ->
       fail "expected Copy_to_clipboard"
 
@@ -293,7 +293,7 @@ let cmd_clear_selection_maps_to_itself () =
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Static_commit _
   | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Query_color_scheme
-  | Cmd.Query_terminal_colors | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
+  | Cmd.Query_palette | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
   | Cmd.Keep_frame _ | Cmd.Focus_next | Cmd.Focus_prev ->
       fail "expected Clear_selection"
 
@@ -303,7 +303,7 @@ let cmd_copy_selection_maps_to_itself () =
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Clear_selection
   | Cmd.Static_commit _ | Cmd.Static_clear | Cmd.Query_color_scheme
-  | Cmd.Query_terminal_colors | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
+  | Cmd.Query_palette | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
   | Cmd.Keep_frame _ | Cmd.Focus_next | Cmd.Focus_prev ->
       fail "expected Copy_selection"
 
@@ -313,7 +313,7 @@ let cmd_query_color_scheme_maps_to_itself () =
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Clear_selection
   | Cmd.Static_commit _ | Cmd.Static_clear | Cmd.Copy_selection
-  | Cmd.Query_terminal_colors | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
+  | Cmd.Query_palette | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
   | Cmd.Keep_frame _ | Cmd.Focus_next | Cmd.Focus_prev ->
       fail "expected Query_color_scheme"
 
@@ -338,7 +338,7 @@ let sub_on_color_scheme_maps_messages () =
       match f `Dark with Some Quit -> () | _ -> fail "expected mapped Quit")
   | _ -> fail "expected On_color_scheme"
 
-(* ── Terminal colors ── *)
+(* ── The palette ── *)
 
 let palette =
   let entries = Array.copy Ansi.Palette.default.entries in
@@ -351,42 +351,41 @@ let palette =
     background = (0x10, 0x20, 0x30);
   }
 
-(* The program asks for the pair and entries 0 to 15 of what the terminal
-   holds. *)
-let reported (p : Ansi.Palette.t) =
-  { p with cursor = None; entries = Array.sub p.entries 0 16 }
+(* The program asks for the pair, the cursor and entries 0 to 15 of what
+   the terminal holds. *)
+let queried (p : Ansi.Palette.t) = { p with entries = Array.sub p.entries 0 16 }
 
-(* Runs a program that records the colors it is given, on a terminal of
-   [profile], through [steps]; the colors given, oldest first. *)
-let colors_given ?(profile = { Matrix_test.Profile.vte with palette }) steps =
+(* Runs a program that records the palettes it is given, on a terminal of
+   [profile], through [steps]; the palettes given, oldest first. *)
+let palettes_given ?(profile = { Matrix_test.Profile.vte with palette }) steps =
   let given = ref [] in
   let app =
     {
       init = (fun () -> ((), Cmd.none));
       update =
-        (fun colors () ->
-          given := colors :: !given;
+        (fun p () ->
+          given := p :: !given;
           ((), Cmd.none));
-      view = (fun () -> text "colors");
-      subscriptions = (fun () -> Sub.on_terminal_colors (fun c -> Some c));
+      view = (fun () -> text "palette");
+      subscriptions = (fun () -> Sub.on_palette (fun p -> Some p));
     }
   in
   let term = Matrix_test.Terminal.create ~profile ~cols:20 ~rows:2 () in
   Mosaic_test.run term app (fun s -> steps s term);
   List.rev !given
 
-let colors_testable =
+let palette_testable =
   Testable.make ~pp:Ansi.Palette.pp ~equal:Ansi.Palette.equal
 
 (* The program asks as it begins, and the terminal's answer is the palette
    its user configured. *)
-let terminal_colors_on_start () =
-  equal ~msg:"the colors" (list colors_testable)
-    [ reported palette ]
-    (colors_given (fun _ _ -> ()))
+let palette_on_start () =
+  equal ~msg:"the palette" (list palette_testable)
+    [ queried palette ]
+    (palettes_given (fun _ _ -> ()))
 
 (* The user picks another theme: the terminal reports its color scheme,
-   and the program asks again and is given the new colors. *)
+   and the program asks again and is given the new palette. *)
 let light =
   {
     palette with
@@ -395,18 +394,18 @@ let light =
     background = (0xff, 0xff, 0xff);
   }
 
-let terminal_colors_after_scheme () =
+let palette_after_scheme () =
   let given =
-    colors_given (fun s term ->
+    palettes_given (fun s term ->
         Matrix_test.input s (Matrix_test.Terminal.set_palette term light))
   in
-  equal ~msg:"the colors, then the new ones" (list colors_testable)
-    [ reported palette; reported light ]
+  equal ~msg:"the palette, then the new one" (list palette_testable)
+    [ queried palette; queried light ]
     given
 
 (* An application that subscribes after the program began asks once, and
    the answer comes to its subscription. *)
-let terminal_colors_asked_late () =
+let palette_asked_late () =
   let given = ref [] in
   let app =
     {
@@ -414,14 +413,14 @@ let terminal_colors_asked_late () =
       update =
         (fun msg subscribed ->
           match msg with
-          | `Subscribe -> (true, Cmd.query_terminal_colors)
-          | `Colors c ->
-              given := c :: !given;
+          | `Subscribe -> (true, Cmd.query_palette)
+          | `Palette p ->
+              given := p :: !given;
               (subscribed, Cmd.none));
-      view = (fun _ -> text "colors");
+      view = (fun _ -> text "palette");
       subscriptions =
         (fun subscribed ->
-          if subscribed then Sub.on_terminal_colors (fun c -> Some (`Colors c))
+          if subscribed then Sub.on_palette (fun p -> Some (`Palette p))
           else Sub.on_key (fun _ -> Some `Subscribe));
     }
   in
@@ -430,8 +429,8 @@ let terminal_colors_asked_late () =
   Mosaic_test.run term app (fun s ->
       equal ~msg:"none before" int 0 (List.length !given);
       Matrix_test.input s (Matrix_test.Terminal.text term "s"));
-  equal ~msg:"the colors, once" (list colors_testable)
-    [ reported palette ]
+  equal ~msg:"the palette, once" (list palette_testable)
+    [ queried palette ]
     (List.rev !given)
 
 (* Waits until the program has asked for the colors, from a terminal that
@@ -456,39 +455,25 @@ let asked s term =
   in
   wait 30
 
-(* A terminal that reports its foreground and background and no palette
-   entry: its answer to DA1 ends the wait, at once, and the colors come
-   without entries. A terminal that reports neither gives none. The
-   terminal answers no query by itself, so the test answers the program's
-   once it has asked, after the run gave up on those it sent before. *)
-let terminal_colors_without_palette () =
+(* A terminal that reports its pair and nothing else gives a palette that
+   knows no cursor and no entry. *)
+let palette_pair_only () =
+  let pair_only = { palette with Ansi.Palette.cursor = None; entries = [||] } in
+  let profile = { Matrix_test.Profile.vte with palette = pair_only } in
+  equal ~msg:"the pair alone" (list palette_testable) [ pair_only ]
+    (palettes_given ~profile (fun _ _ -> ()))
+
+(* A terminal that reports neither its foreground nor its background gives
+   none. It answers no query by itself, so the test answers the program's
+   DA1 once it has asked, after the run gave up on those it sent before. *)
+let palette_none () =
   let profile = { Matrix_test.Profile.vte with answers = false } in
-  let da1 = "\027[?62;22c" in
   let given =
-    colors_given ~profile (fun s term ->
+    palettes_given ~profile (fun s term ->
         asked s term;
-        let before = Matrix_test.now s in
-        Matrix_test.input s
-          ("\027]10;rgb:e5e5/e5e5/e5e5\027\\\027]11;rgb:1010/2020/3030\027\\"
-         ^ da1);
-        equal ~msg:"no wait" int before (Matrix_test.now s))
+        Matrix_test.input s "\027[?62;22c")
   in
-  equal ~msg:"foreground and background" (list colors_testable)
-    [
-      {
-        Ansi.Palette.foreground = (0xe5, 0xe5, 0xe5);
-        background = (0x10, 0x20, 0x30);
-        cursor = None;
-        entries = [||];
-      };
-    ]
-    given;
-  let given =
-    colors_given ~profile (fun s term ->
-        asked s term;
-        Matrix_test.input s da1)
-  in
-  equal ~msg:"none" (list colors_testable) [] given
+  equal ~msg:"none" (list palette_testable) [] given
 
 (* The root's theme is the default of the colors the terminal reports,
    and roles resolve as the frame is drawn: the program draws again with
@@ -573,7 +558,7 @@ let root_theme_follows_a_change () =
       background = (0xff, 0xff, 0xff);
     }
   in
-  let theme p = Theme.default (reported p) in
+  let theme p = Theme.default (queried p) in
   is_false ~msg:"the themes draw the link apart"
     (link_of (theme dark) = link_of (theme light));
   let profile = { Matrix_test.Profile.vte with palette = dark } in
@@ -617,12 +602,11 @@ let () =
       test "Sub.on_color_scheme delivers reports"
         sub_on_color_scheme_delivers_reports;
       test "Sub.on_color_scheme maps messages" sub_on_color_scheme_maps_messages;
-      test "terminal colors as the program begins" terminal_colors_on_start;
-      test "terminal colors after the user changes them"
-        terminal_colors_after_scheme;
-      test "terminal colors asked by a late subscriber"
-        terminal_colors_asked_late;
-      test "terminal colors without a palette" terminal_colors_without_palette;
+      test "the palette as the program begins" palette_on_start;
+      test "the palette after the user changes it" palette_after_scheme;
+      test "the palette asked by a late subscriber" palette_asked_late;
+      test "a palette of the pair alone" palette_pair_only;
+      test "no palette without the pair" palette_none;
       test "the root's theme follows the terminal's colors"
         root_theme_follows_colors;
       test "the root's theme follows a change of the colors"

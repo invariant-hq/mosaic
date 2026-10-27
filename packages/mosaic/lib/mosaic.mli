@@ -905,7 +905,7 @@ module Cmd : sig
     | Copy_to_clipboard of string  (** {!val-copy_to_clipboard}. *)
     | Copy_selection  (** {!val-copy_selection}. *)
     | Query_color_scheme  (** {!val-query_color_scheme}. *)
-    | Query_terminal_colors  (** {!val-query_terminal_colors}. *)
+    | Query_palette  (** {!val-query_palette}. *)
     | Bell  (** {!val-bell}. *)
     | Notify of {
         title : string;  (** [notify]'s [~title]. *)
@@ -999,11 +999,10 @@ module Cmd : sig
       ({!Matrix.Terminal.query_color_scheme}). A terminal that knows the query
       answers, and the answer comes to {!Sub.val-on_color_scheme}. *)
 
-  val query_terminal_colors : 'msg t
-  (** [query_terminal_colors] asks the terminal for its default foreground and
-      background and the first 16 entries of its palette (OSC 10, 11 and 4). A
-      terminal that knows the queries answers, and the answer comes to
-      {!Sub.val-on_terminal_colors}. *)
+  val query_palette : 'msg t
+  (** [query_palette] asks the terminal for its palette
+      ({!Matrix.query_palette}). A terminal that knows the queries answers, and
+      the answer comes to {!Sub.val-on_palette}. *)
 
   val bell : 'msg t
   (** [bell] rings the terminal's bell (BEL). *)
@@ -1163,8 +1162,7 @@ module Sub : sig
         (** {!val-on_color_scheme}. *)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)  (** {!val-worker}. *)
     | On_focus_lost of 'msg  (** {!val-on_focus_lost}. *)
-    | On_terminal_colors of (Ansi.Palette.t -> 'msg option)
-        (** {!val-on_terminal_colors}. *)
+    | On_palette of (Ansi.Palette.t -> 'msg option)  (** {!val-on_palette}. *)
 
   val none : 'msg t
   (** [none] is the subscription to nothing. *)
@@ -1293,18 +1291,16 @@ module Sub : sig
       terminal answers {!Cmd.val-query_color_scheme} or reports a change (mode
       2031), and dispatches the message it returns. *)
 
-  val on_terminal_colors : (Ansi.Palette.t -> 'msg option) -> 'msg t
-  (** [on_terminal_colors f] calls [f] with the terminal's palette
-      ({!Ansi.Palette}), as far as the terminal reports its default foreground
-      and background and the first 16 entries, and dispatches the message it
-      returns. The program asks for them as it begins, after each report of the
-      color scheme ({!val-on_color_scheme}), with which the user may have
-      changed them, and when the application asks
-      ({!Cmd.val-query_terminal_colors}); [f] is called once the terminal has
-      answered, with the entries it reported. A subscription declared after the
-      program began receives the colors from the next answer, so an application
-      that subscribes later asks once. A terminal that reports no foreground or
-      no background, or an output that is not a terminal, gives no call. *)
+  val on_palette : (Ansi.Palette.t -> 'msg option) -> 'msg t
+  (** [on_palette f] calls [f] with the terminal's palette ({!Ansi.Palette}) and
+      dispatches the message it returns. The program asks for it as it begins,
+      after each report of the color scheme ({!val-on_color_scheme}), with which
+      the user may have changed it, and when the application asks
+      ({!Cmd.val-query_palette}); [f] is called once the terminal has answered.
+      A subscription declared after the program began receives the palette from
+      the next answer, so an application that subscribes later asks once. A
+      terminal that reports no foreground or no background, or an output that is
+      not a terminal, gives no call. *)
 
   val worker : id:string -> (Stop.t -> 'msg mailbox -> unit) -> 'msg t
   (** [worker ~id f] runs [f stop mailbox] off the loop, on {!val-run}'s
@@ -1761,10 +1757,9 @@ val themed : (Theme.t -> Theme.t) -> 'msg t -> 'msg t
 (** [themed f child] draws [child] with [f] applied to the theme in scope around
     it, as {!Theme} describes scopes, so [themed (Theme.with_style Error s)]
     restyles one role and keeps the others. The view's root is in the scope of
-    {!Theme.default} of the colors the terminal reports
-    ({!Sub.on_terminal_colors}), and of {!Theme.plain} until it reports them or
-    when it reports none. [themed] is no element of its own: it changes neither
-    layout nor focus. *)
+    {!Theme.default} of the terminal's palette ({!Sub.on_palette}), and of
+    {!Theme.plain} until it reports it or when it reports none. [themed] is no
+    element of its own: it changes neither layout nor focus. *)
 
 val button :
   ?key:string ->
