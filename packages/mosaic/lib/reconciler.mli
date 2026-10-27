@@ -12,7 +12,8 @@ val create : container:Renderable.t -> deliver:('msg -> unit) -> 'msg t
 val container : 'msg t -> Renderable.t
 
 val render : 'msg t -> viewport_width:int -> 'msg Vnode.t -> unit
-(** Raises [Invalid_argument] if [viewport_width] is not positive. *)
+(** Raises [Invalid_argument] if [viewport_width] is not positive, or if a
+    memo's key holds a function, an object or an abstract value. *)
 
 val unmount : 'msg t -> unit
 

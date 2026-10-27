@@ -413,6 +413,48 @@ let rotated_children () =
        %.3f ms), over 96"
       ratio (large *. 1e3) (small *. 1e3)
 
+(* ───── A memo's key ─────
+
+   A memo's key is checked for functions in full when the memo mounts, and
+   afterwards only where it is not the key compared last, physically. A
+   keystroke beside a memo keyed on the lines of a transcript therefore
+   costs the same time whatever the number of lines: the time of 16,000
+   lines over that of 1,000 is near 1, where walking the key each render
+   makes it 16. The threshold, 4, leaves each a margin of 4. *)
+
+let keystroke_time lines =
+  let lines = List.init lines (fun i -> Printf.sprintf "line %d" i) in
+  let transcript lines = Mosaic.box (List.map (fun l -> Mosaic.text l) lines) in
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
+  let view input =
+    Mosaic.box [ Mosaic.memo ~key:lines transcript; Mosaic.text input ]
+  in
+  let render input =
+    Mosaic.Reconciler.render reconciler ~viewport_width:80 (view input)
+  in
+  render "a";
+  let step () =
+    render "ab";
+    render "a"
+  in
+  let best = ref infinity in
+  for _ = 1 to 5 do
+    best := Float.min !best (cpu_time_per step)
+  done;
+  !best
+
+let memo_key_check () =
+  let small = keystroke_time 1_000 and large = keystroke_time 16_000 in
+  let ratio = large /. small in
+  if ratio > 4. then
+    failf
+      "a keystroke beside a memo keyed on 16,000 lines takes %.1f times as \
+       long as on 1,000 (%.3f ms, %.3f ms), over 4"
+      ratio (large *. 1e3) (small *. 1e3)
+
 (* ───── Removing children ─────
 
    Removing children compacts their parent's children in one pass, in the
@@ -655,6 +697,8 @@ let () =
         [ test "a fresh but equal list of texts" unchanged_list ];
       group "A map costs nothing per element"
         [ test "under four maps" nested_maps ];
+      group "A memo's key is checked where it changed"
+        [ test "a keystroke beside a memo" memo_key_check ];
       group "A shared layout costs nothing per element"
         [ test "a text given ~layout" shared_layout ];
       group "Keys follow the items moved over"

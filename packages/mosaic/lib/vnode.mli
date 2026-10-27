@@ -182,14 +182,23 @@ val embed : Renderable.t -> 'msg t
 val themed : (Theme.t -> Theme.t) -> 'msg t -> 'msg t
 
 val memo : key:'key -> ('key -> 'msg t) -> 'msg t
-(** [memo ~key view] is [Mosaic.memo].
+(** [memo ~key view] is [Mosaic.memo]. It does not look into [key]. *)
 
-    Raises [Invalid_argument] if [key] contains a function, an object or an
+val check_memo : 'msg memo -> unit
+(** [check_memo m] walks all of [m]'s key. The reconciler calls it when [m]
+    mounts.
+
+    Raises [Invalid_argument] if the key contains a function, an object or an
     abstract value. *)
 
 val memo_equal : 'a memo -> 'a memo -> bool
-(** [memo_equal a b] is [true] iff [a] and [b] are equal in the sense of
-    [Mosaic.memo]: then they build equal subtrees. *)
+(** [memo_equal old m] is [true] iff [old] and [m] are equal in the sense of
+    [Mosaic.memo], where [old]'s key has been checked. It walks every part of
+    [m]'s key that is not physically the part of [old]'s at the same place,
+    whatever the result.
+
+    Raises [Invalid_argument] if such a part contains a function, an object or
+    an abstract value. *)
 
 val memo_view : 'msg memo -> 'msg t
 (** [memo_view m] calls [m]'s view function on its key. *)

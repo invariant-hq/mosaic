@@ -1214,16 +1214,27 @@ let memo_compares_float_bits () =
   render_view reconciler (Mosaic.memo ~key:(-0.) float_view);
   equal ~msg:"negative zero is another key" string "-0" (screen_row renderer 0)
 
+(* A function, an object or an abstract value in a memo's key raises in the
+   first render that holds it, whatever the rest of the key: at mount, and
+   in a later render where the key differs from the last one before the
+   function is reached. *)
 let memo_rejects_functions_in_key () =
-  let rejects key =
-    raises_match ~msg:"rejected at memo"
+  let rejects ?before key =
+    let _renderer, reconciler = make () in
+    Option.iter
+      (fun before ->
+        render_view reconciler (Mosaic.memo ~key:before (fun _ -> Mosaic.empty)))
+      before;
+    raises_match ~msg:"rejected in render"
       (function Invalid_argument _ -> true | _ -> false)
       (fun () ->
-        ignore (Mosaic.memo ~key (fun _ -> Mosaic.empty) : unit Mosaic.t))
+        render_view reconciler (Mosaic.memo ~key (fun _ -> Mosaic.empty)))
   in
   rejects (1, fun x -> x + 1);
   rejects [ Some succ ];
-  rejects object end
+  rejects object end;
+  rejects ~before:("a", [ None ]) ("b", [ Some succ ]);
+  rejects ~before:("a", [ None ]) ("a", [ Some succ ])
 
 let list_view () = column [ Mosaic.text "one"; Mosaic.text "two" ]
 let rows_view () = Mosaic.fragment [ Mosaic.text "one"; Mosaic.text "two" ]

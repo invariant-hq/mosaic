@@ -1373,7 +1373,7 @@ and reconcile_memo ~parent_node ~route ~viewport_width ~stale ~theme previous
   match previous with
   | Span ({ memo = Some old; _ } as span) :: _ ->
       let equal = Vnode.memo_equal old memo in
-      (* An equal memo keeps the one mounted. *)
+      (* An equal memo keeps the one mounted, whose key was checked. *)
       if not equal then span.memo <- Some memo;
       if
         equal
@@ -1388,6 +1388,7 @@ and reconcile_memo ~parent_node ~route ~viewport_width ~stale ~theme previous
       end;
       span
   | _ ->
+      Vnode.check_memo memo;
       let span =
         new_span ~tagged:None ~memo:(Some memo) ~route ~theme ~viewport_width
           (Vnode.memo_view memo)

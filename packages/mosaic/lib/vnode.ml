@@ -129,15 +129,24 @@ let embed node = Embed node
 let themed f child = Themed (f, child)
 
 (* A memo key is compared by representation (see [Mosaic.memo]).
-   Functions, objects and abstract blocks have no comparable representation and
-   are rejected where the key is given. *)
+   Functions, objects and abstract blocks have no comparable representation
+   and are rejected. A key is walked in full when its memo mounts
+   ([check_memo_key]), and afterwards only where it is not, physically, the
+   key it is compared with ([same_memo_key]): a block shared with the old
+   key was checked with it. The rejection is the same whatever the rest of
+   the key, so the first render that holds a function raises, and a key
+   that changed little costs little. *)
+let opaque tag =
+  tag = Obj.closure_tag || tag = Obj.infix_tag || tag = Obj.object_tag
+  || tag = Obj.abstract_tag || tag = Obj.cont_tag
+
+let reject () =
+  invalid_arg "Mosaic.memo: key contains a function or an abstract value"
+
 let rec check_memo_key v =
   if Obj.is_block v then
     let tag = Obj.tag v in
-    if
-      tag = Obj.closure_tag || tag = Obj.infix_tag || tag = Obj.object_tag
-      || tag = Obj.abstract_tag || tag = Obj.cont_tag
-    then invalid_arg "Mosaic.memo: key contains a function or an abstract value"
+    if opaque tag then reject ()
     else if tag < Obj.no_scan_tag then
       for i = 0 to Obj.size v - 1 do
         check_memo_key (Obj.field v i)
@@ -145,39 +154,50 @@ let rec check_memo_key v =
 
 let float_bits v i = Int64.bits_of_float (Obj.double_field v i)
 
-let rec same_memo_key a b =
-  a == b
-  || Obj.is_block a && Obj.is_block b
-     &&
-     let tag = Obj.tag a and size = Obj.size a in
-     tag = Obj.tag b
-     && size = Obj.size b
-     &&
-     if tag = Obj.double_tag then
-       Int64.equal
-         (Int64.bits_of_float (Obj.obj a))
-         (Int64.bits_of_float (Obj.obj b))
-     else if tag = Obj.double_array_tag then
-       let rec loop i =
-         i = size
-         || (Int64.equal (float_bits a i) (float_bits b i) && loop (i + 1))
-       in
-       loop 0
-     else if tag = Obj.string_tag then String.equal (Obj.obj a) (Obj.obj b)
-     else if tag < Obj.no_scan_tag then
-       let rec loop i =
-         i = size
-         || (same_memo_key (Obj.field a i) (Obj.field b i) && loop (i + 1))
-       in
-       loop 0
-     else compare a b = 0
+(* Whether [v] has the representation of [old], which has been checked. It
+   walks every block of [v] that is not physically the one at the same place
+   in [old], whatever the result, and raises on an opaque one. *)
+let rec same_memo_key old v =
+  if old == v then true
+  else if not (Obj.is_block v) then false
+  else
+    let tag = Obj.tag v and size = Obj.size v in
+    if opaque tag then reject ()
+    else if
+      (not (Obj.is_block old)) || Obj.tag old <> tag || Obj.size old <> size
+    then (
+      check_memo_key v;
+      false)
+    else if tag = Obj.double_tag then
+      Int64.equal
+        (Int64.bits_of_float (Obj.obj old))
+        (Int64.bits_of_float (Obj.obj v))
+    else if tag = Obj.double_array_tag then
+      let rec loop i =
+        i = size
+        || (Int64.equal (float_bits old i) (float_bits v i) && loop (i + 1))
+      in
+      loop 0
+    else if tag = Obj.string_tag then String.equal (Obj.obj old) (Obj.obj v)
+    else if tag < Obj.no_scan_tag then (
+      let same = ref true in
+      for i = 0 to size - 1 do
+        if not (same_memo_key (Obj.field old i) (Obj.field v i)) then
+          same := false
+      done;
+      !same)
+    else compare old v = 0
 
 let memo ~key view =
   let key = Obj.repr key in
-  check_memo_key key;
   Memo { key; view = Obj.repr view; build = (fun () -> view (Obj.obj key)) }
 
-let memo_equal a b = a.view == b.view && same_memo_key a.key b.key
+let check_memo m = check_memo_key m.key
+
+let memo_equal old m =
+  let same_key = same_memo_key old.key m.key in
+  old.view == m.view && same_key
+
 let memo_view m = m.build ()
 
 let viewport_switch ~at_least_width ~wide ~narrow =

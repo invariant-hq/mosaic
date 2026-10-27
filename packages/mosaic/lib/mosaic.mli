@@ -1691,8 +1691,13 @@ val memo : key:'key -> ('key -> 'msg t) -> 'msg t
     type with the same representation, such as [bytes] where the view took a
     [string], is reused as the key it was.
 
-    Raises [Invalid_argument] if [key] contains a function, an object or an
-    abstract value, which have no representation to compare. *)
+    A key cannot hold a function, an object or an abstract value, which have no
+    representation to compare. The render that first holds one in a memo's key
+    raises [Invalid_argument], whatever the rest of the key: the render that
+    mounts the memo looks into all of its key, and a later render looks into the
+    parts of the key that are not, physically, those of the key it is compared
+    with. A key that shares most of the last one is therefore cheap to compare.
+*)
 
 val viewport_switch :
   at_least_width:int -> wide:'msg t -> narrow:'msg t -> 'msg t
@@ -3301,7 +3306,9 @@ module Reconciler : sig
       is the terminal's width in cells, which selects the branch of each
       {!viewport_switch} before its elements are reconciled and laid out.
 
-      Raises [Invalid_argument] if [viewport_width] is not positive. *)
+      Raises [Invalid_argument] if [viewport_width] is not positive, or if a
+      memo's key holds a function, an object or an abstract value ({!val-memo}).
+  *)
 
   val unmount : 'msg t -> unit
   (** [unmount r] removes every element [r] mounted and detaches the nodes the
