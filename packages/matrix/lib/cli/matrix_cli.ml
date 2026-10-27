@@ -1,9 +1,4 @@
-type styling = Ansi.Styling.t
-
 module Policy = struct
-  type choice = Ansi.Styling.choice
-
-  let choices = Ansi.Styling.choices
   let styling = Ansi.Styling.decide
 
   (* An empty CI is unset, as Ansi.Styling reads its variables. *)
@@ -24,7 +19,7 @@ end
    writer prints next. *)
 
 type adapter = {
-  styling : styling;
+  styling : Ansi.Styling.t;
   parser : Ansi.Parser.t;
   mutable want : Ansi.Style.t;
   mutable have : Ansi.Style.t;

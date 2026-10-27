@@ -103,18 +103,18 @@
 type t
 (** The type for outputs. *)
 
-val make : ?color:Matrix_cli.Policy.choice -> Unix.file_descr -> t
+val make : ?color:Ansi.Styling.choice -> Unix.file_descr -> t
 (** [make ~color fd] is the output on [fd], with the program's choice [color]
     ([`Auto] by default). On Windows, a console's VT processing is turned on
     ({!Tty.enable_vt}) and turned back off when the program exits. *)
 
-val stdout : ?color:Matrix_cli.Policy.choice -> unit -> t
+val stdout : ?color:Ansi.Styling.choice -> unit -> t
 (** [stdout ~color ()] is [make ~color Unix.stdout]. *)
 
-val stderr : ?color:Matrix_cli.Policy.choice -> unit -> t
+val stderr : ?color:Ansi.Styling.choice -> unit -> t
 (** [stderr ~color ()] is [make ~color Unix.stderr]. *)
 
-val styling : t -> Matrix_cli.styling
+val styling : t -> Ansi.Styling.t
 (** [styling o] is [o]'s styling, at which a program writes a grid for it
     ({!Matrix_grid.to_ansi}). *)
 
@@ -138,7 +138,7 @@ val formatter : t -> Format.formatter
     when its style renderer is set ([Fmt.set_style_renderer]), as on any
     formatter, and [o] then decides how they show. *)
 
-val adapt_std_formatters : ?color:Matrix_cli.Policy.choice -> unit -> unit
+val adapt_std_formatters : ?color:Ansi.Styling.choice -> unit -> unit
 (** [adapt_std_formatters ~color ()] makes [Format.std_formatter] and
     [Format.err_formatter] write as {!formatter}s of [stdout ~color ()] and
     [stderr ~color ()] do, with their margins at the outputs' widths. So the

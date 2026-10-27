@@ -8,17 +8,18 @@
     the standard outputs with it, redraws a region of rows below the output
     while the program works, and asks questions at the terminal.
 
-    Each destination has a {e styling}, which says how the styles a program
-    writes reach it, in colors of some depth, as attributes such as bold without
-    colors, or not at all. {!Policy} decides it from the program's choice, the
-    user's environment and the terminal, and decides whether a region may be
-    redrawn there. An {e adapter} rewrites what a program prints for a styling
-    ({!section-adapting}), so that printers written for any destination, such as
-    Fmt's, obey the decision. {!Table} and {!Tree} lay out tables and trees.
-    Each is a function of plain values that draws into a grid of cells
-    ({!Matrix_grid}), so a program prints the result with {!Matrix_grid.to_ansi}
-    at its destination's styling, or with [Matrix_cli_unix.print_grid], and a
-    full-screen program can draw the same layout into its own frame.
+    Each destination has a {e styling} ({!Ansi.Styling.t}), which says how the
+    styles a program writes reach it, in colors of some depth, as attributes
+    such as bold without colors, or not at all. {!Policy} decides it from the
+    program's choice, the user's environment and the terminal, and decides
+    whether a region may be redrawn there. An {e adapter} rewrites what a
+    program prints for a styling ({!section-adapting}), so that printers written
+    for any destination, such as Fmt's, obey the decision. {!Table} and {!Tree}
+    lay out tables and trees. Each is a function of plain values that draws into
+    a grid of cells ({!Matrix_grid}), so a program prints the result with
+    {!Matrix_grid.to_ansi} at its destination's styling, or with
+    [Matrix_cli_unix.print_grid], and a full-screen program can draw the same
+    layout into its own frame.
 
     This prints a word in bold red on standard output, as the environment
     decides for a terminal, where [caps] are the terminal's capabilities
@@ -26,18 +27,11 @@
     {[
     let styling =
       Matrix_cli.Policy.styling Sys.getenv_opt ~tty:(Unix.isatty Unix.stdout)
-        ~dumb:caps.dumb
-        (caps.colors :> Ansi.Color.depth)
+        ~dumb:caps.dumb caps.colors
     in
     let a = Matrix_cli.adapter styling in
     print_string (Matrix_cli.adapt a "\027[1;31mdone\027[0m\n")
     ]} *)
-
-type styling = Ansi.Styling.t
-(** The type for stylings ({!Ansi.Styling.t}). A color depth writes styles with
-    each color reduced to it ({!Ansi.Color.to_depth}), so [`Mono] writes the
-    attributes, such as bold and underline, and no color. [`Plain] writes no
-    style and no hyperlink. *)
 
 (** The decision of what a destination receives.
 
@@ -49,20 +43,13 @@ type styling = Ansi.Styling.t
     Whether rows may be redrawn there is this module's decision
     ({!Policy.live}). *)
 module Policy : sig
-  type choice = Ansi.Styling.choice
-  (** The type for a program's choices ({!Ansi.Styling.type-choice}). *)
-
-  val choices : (string * choice) list
-  (** [choices] is {!Ansi.Styling.choices}, the choices as a [--color] option
-      names them. *)
-
   val styling :
-    ?color:choice ->
+    ?color:Ansi.Styling.choice ->
     (string -> string option) ->
     tty:bool ->
     dumb:bool ->
-    Ansi.Color.depth ->
-    styling
+    [< Ansi.Color.depth ] ->
+    Ansi.Styling.t
   (** [styling ~color getenv ~tty ~dumb colors] is the styling of a destination,
       which is a terminal iff [tty], a dumb one iff [dumb], that shows colors of
       depth [colors], for the program's choice [color] ([`Auto] by default) and
@@ -99,7 +86,7 @@ type adapter
 (** The type for adapters. An adapter is mutable and must not be used by two
     threads in parallel. *)
 
-val adapter : styling -> adapter
+val adapter : Ansi.Styling.t -> adapter
 (** [adapter styling] is an adapter for [styling], at the start of a stream. *)
 
 val adapt : adapter -> string -> string
@@ -107,7 +94,7 @@ val adapt : adapter -> string -> string
     function that [s] leaves unfinished is completed by the next piece, and the
     styles [s] selects apply to the text of the next pieces. *)
 
-val formatter : styling -> (string -> unit) -> Format.formatter
+val formatter : Ansi.Styling.t -> (string -> unit) -> Format.formatter
 (** [formatter styling write] is a formatter whose output is adapted to
     [styling] and given to [write] at each flush, one call for each flush after
     which there is something to write. So a record a printer flushes, such as a
