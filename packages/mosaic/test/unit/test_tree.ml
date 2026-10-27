@@ -860,6 +860,385 @@ let step_hidden_cursor () =
     (changed ~selected:"a" ())
     (tree_step (state ~selected:"zz" ()) Next)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.tree}) or to {!Tree.create},
+   reaches the live tree ({!Test_harness.reaches}). Keys propose a state
+   through [on_change], which both doors record. *)
+
+let doors_size = Mosaic.size ~width:20 ~height:6
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+
+let doors_items =
+  [
+    Tree.item ~id:"a"
+      ~children:[ Tree.item ~id:"a1" "a1"; Tree.item ~id:"a2" "a2" ]
+      "a";
+    Tree.item ~id:"b" ~children:[ Tree.item ~id:"b1" "b1" ] "b";
+    Tree.item ~id:"c" "c";
+  ]
+
+let doors_state = Tree.State.make ~selected:"a" ~expanded:[ "a" ] ()
+
+let many_items =
+  List.init 8 (fun i -> Tree.item ~id:(string_of_int i) (string_of_int i))
+
+let many_state = Tree.State.make ~selected:"0" ()
+let doors_proposals = ref []
+
+let doors_record state =
+  doors_proposals :=
+    Option.value ~default:"(none)" (Tree.State.selected state)
+    :: !doors_proposals
+
+let doors_recording tree =
+  Tree.set_on_change tree (Some doors_record);
+  Tree.node tree
+
+let doors_proposed _ _ = String.concat ";" (List.rev !doors_proposals)
+
+let doors_press key renderer node =
+  doors_proposals := [];
+  Test_harness.press_key key renderer node
+
+let doors_items_label () =
+  Test_harness.reaches "items"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:many_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:many_items
+           ~state:doors_state ()))
+
+let doors_state_label () =
+  Test_harness.reaches "state"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items
+         ~state:(Tree.State.make ~selected:"b" ())
+         ~on_change:doors_record ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:(Tree.State.make ~selected:"b" ())
+           ()))
+
+let doors_indent_size () =
+  Test_harness.reaches "indent_size"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~indent_size:4 ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~indent_size:4 ()))
+
+let doors_show_guides () =
+  Test_harness.reaches "show_guides"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~show_guides:true ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~show_guides:true ()))
+
+let doors_guide_style () =
+  Test_harness.reaches "guide_style"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~show_guides:true ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~show_guides:true
+         ~guide_style:Matrix_grid.Border.double ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~show_guides:true ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~show_guides:true
+           ~guide_style:Matrix_grid.Border.double ()))
+
+let doors_expand_icon () =
+  Test_harness.reaches "expand_icon"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~expand_icon:"+" ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~expand_icon:"+" ()))
+
+let doors_collapse_icon () =
+  Test_harness.reaches "collapse_icon"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~collapse_icon:"-" ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~collapse_icon:"-" ()))
+
+let doors_leaf_icon () =
+  Test_harness.reaches "leaf_icon"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~leaf_icon:"*" ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~leaf_icon:"*" ()))
+
+let doors_background () =
+  Test_harness.reaches "background"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~background:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~background:doors_red ()))
+
+let doors_text_color () =
+  Test_harness.reaches "text_color"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~text_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~text_color:doors_red ()))
+
+let doors_selected_background () =
+  Test_harness.reaches "selected_background"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~selected_background:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~selected_background:doors_red ()))
+
+let doors_selected_text_color () =
+  Test_harness.reaches "selected_text_color"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~selected_text_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~selected_text_color:doors_red ()))
+
+let doors_focused_selected_background () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_selected_background"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~focused_selected_background:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~focused_selected_background:doors_red ()))
+
+let doors_focused_selected_text_color () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_selected_text_color"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~focused_selected_text_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~focused_selected_text_color:doors_red ()))
+
+let doors_guide_color () =
+  Test_harness.reaches "guide_color"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~show_guides:true ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~show_guides:true ~guide_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~show_guides:true ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~show_guides:true ~guide_color:doors_red ()))
+
+let doors_icon_color () =
+  Test_harness.reaches "icon_color"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~icon_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~icon_color:doors_red ()))
+
+let doors_wrap_selection () =
+  Test_harness.reaches
+    ~act:(doors_press (make_key Up))
+    ~observe:doors_proposed "wrap_selection"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ~wrap_selection:true ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ~wrap_selection:true ()))
+
+let doors_key_bindings () =
+  Test_harness.reaches
+    ~act:(doors_press (char_key 'x'))
+    ~observe:doors_proposed "key_bindings"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+         ~on_change:doors_record
+         ~key_bindings:[ (Shortcut.char 'x', Tree.Move_down) ]
+         ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:doors_items
+           ~state:doors_state
+           ~key_bindings:[ (Shortcut.char 'x', Tree.Move_down) ]
+           ()))
+
+let doors_fast_scroll_step () =
+  Test_harness.reaches
+    ~act:(doors_press (make_key ~shift:true Down))
+    ~observe:doors_proposed "fast_scroll_step"
+    ~base:
+      (Mosaic.tree ~size:doors_size ~items:many_items ~state:many_state
+         ~on_change:doors_record ())
+    ~element:
+      (Mosaic.tree ~size:doors_size ~items:many_items ~state:many_state
+         ~on_change:doors_record ~fast_scroll_step:2 ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:many_items
+           ~state:many_state ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Tree.create ~parent ~style:doors_style ~items:many_items
+           ~state:many_state ~fast_scroll_step:2 ()))
+
 let () =
   run "mosaic.tree"
     [
@@ -995,5 +1374,27 @@ let () =
             apply_props_restores_declared_selection;
           test "controlled selection is silent"
             apply_props_controlled_selection_is_silent;
+        ];
+      group "Both doors"
+        [
+          test "items" doors_items_label;
+          test "state" doors_state_label;
+          test "indent_size" doors_indent_size;
+          test "show_guides" doors_show_guides;
+          test "guide_style" doors_guide_style;
+          test "expand_icon" doors_expand_icon;
+          test "collapse_icon" doors_collapse_icon;
+          test "leaf_icon" doors_leaf_icon;
+          test "background" doors_background;
+          test "text_color" doors_text_color;
+          test "selected_background" doors_selected_background;
+          test "selected_text_color" doors_selected_text_color;
+          test "focused_selected_background" doors_focused_selected_background;
+          test "focused_selected_text_color" doors_focused_selected_text_color;
+          test "guide_color" doors_guide_color;
+          test "icon_color" doors_icon_color;
+          test "wrap_selection" doors_wrap_selection;
+          test "key_bindings" doors_key_bindings;
+          test "fast_scroll_step" doors_fast_scroll_step;
         ];
     ]

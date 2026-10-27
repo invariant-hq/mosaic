@@ -175,12 +175,10 @@ val create :
   ?fast_scroll_step:int ->
   unit ->
   t
-(** [create ~parent ()] is a table node attached to [parent].
+(** [create ~parent ()] is a table node attached to [parent]. The labels after
+    [opacity] are {!Props.make}'s and take its defaults.
 
-    The node is focusable and uses buffered rendering. All optional arguments
-    correspond to fields of {!Props.t}; their defaults match those of
-    {!Props.make}. See {!Props.make} for a full description of each parameter.
-*)
+    The node is focusable and uses buffered rendering. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
@@ -264,8 +262,12 @@ module Props : sig
       - [row_styles] the list of alternating row styles, applied by modulo
         index. Defaults to [[]] (no alternation).
       - [wrap_selection] wraps selection at row boundaries. Defaults to [false].
+      - [key_bindings] adds keys to those {!section-keys} lists or binds one of
+        them to another action. Defaults to [[]].
       - [fast_scroll_step] the number of rows to skip on Shift+Up/Down. Defaults
-        to [5]. *)
+        to [5].
+
+      {!val-create} and {!Vnode.table} take these labels with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)

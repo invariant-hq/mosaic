@@ -95,10 +95,10 @@ val create :
   ?key_bindings:(Shortcut.t * action) list ->
   unit ->
   t
-(** [create ~parent ()] is a select node attached to [parent].
+(** [create ~parent ()] is a select node attached to [parent]. The labels after
+    [opacity] are {!Props.make}'s and take its defaults.
 
-    The node is focusable and uses buffered rendering. See {!Props.make} for
-    parameter defaults. *)
+    The node is focusable and uses buffered rendering. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying renderable. *)
@@ -128,7 +128,7 @@ module Props : sig
     ?key_bindings:(Shortcut.t * action) list ->
     unit ->
     t
-  (** [make ()] is a property set with the same defaults as {!val-create}, with:
+  (** [make ()] is the properties of a select, with:
       - [options] items to display. Defaults to [[]].
       - [selected_index] the accepted index. Negative values mean no selection
         ([-1]); other values clamp to the last item. The default [0] selects the
@@ -155,6 +155,8 @@ module Props : sig
         [1]. Defaults to [5].
       - [key_bindings] custom shortcut/action pairs, default [[]]. Later
         bindings override equivalent defaults; other defaults remain available.
+
+      {!val-create} and {!Vnode.select} take these labels with these defaults.
   *)
 
   val default : t

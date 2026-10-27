@@ -173,11 +173,10 @@ val create :
   ?fast_scroll_step:int ->
   unit ->
   t
-(** [create ~parent ()] is a tree widget attached to [parent].
+(** [create ~parent ()] is a tree widget attached to [parent]. The labels after
+    [opacity] are {!Props.make}'s and take its defaults.
 
-    The widget is focusable and uses buffered rendering. Tree-specific
-    parameters are forwarded to {!Props.make}; refer to {!Props.make} for their
-    defaults. *)
+    The widget is focusable and uses buffered rendering. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
@@ -237,7 +236,11 @@ module Props : sig
       - [icon_color]: expand/collapse icon color; defaults to gray.
       - [wrap_selection]: wrap selection at list boundaries; defaults to
         [false].
-      - [fast_scroll_step]: rows to skip with Shift+Up/Down; defaults to [5]. *)
+      - [key_bindings]: adds keys to those {!section-keys} lists or binds one of
+        them to another action; defaults to [[]].
+      - [fast_scroll_step]: rows to skip with Shift+Up/Down; defaults to [5].
+
+      {!val-create} and {!Vnode.tree} take these labels with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)

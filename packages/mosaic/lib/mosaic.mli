@@ -2175,12 +2175,14 @@ val select :
     value; activation without a selection does nothing. Values must be distinct
     under [equal]. Callbacks receive the value from the current options.
 
-    When focused, the list acts on the keys {!Mosaic_ui.Select} lists. A
-    declaration looks for [selected] among the values from the first option on,
-    and a callback finds its value by its position, each in time linear in that
-    position. The element converts [options] for display only when they are not
-    the list it was last declared with, physically, so declaring again the list
-    the model keeps costs no conversion. *)
+    The labels from [background] to [fast_scroll_step] are
+    {!Mosaic_ui.Select.Props.make}'s and take its defaults. When focused, the
+    list acts on the keys {!Mosaic_ui.Select} lists. A declaration looks for
+    [selected] among the values from the first option on, and a callback finds
+    its value by its position, each in time linear in that position. The element
+    converts [options] for display only when they are not the list it was last
+    declared with, physically, so declaring again the list the model keeps costs
+    no conversion. *)
 
 val tab_select :
   ?key:string ->
@@ -2255,9 +2257,10 @@ val tab_select :
 (** [tab_select ~equal ~selected ~on_change options] displays horizontal tabs
     with the value-selection and callback semantics of {!select}. [None] or a
     value absent from [options] displays no selection. Values must be distinct
-    under [equal]. When focused, the tabs act on the keys
-    {!Mosaic_ui.Tab_select} lists. Declarations and callbacks cost what they
-    cost for {!select}. *)
+    under [equal]. The labels from [tab_width] to [key_bindings] are
+    {!Mosaic_ui.Tab_select.Props.make}'s and take its defaults. When focused,
+    the tabs act on the keys {!Mosaic_ui.Tab_select} lists. Declarations and
+    callbacks cost what they cost for {!select}. *)
 
 val canvas :
   ?key:string ->
@@ -3060,9 +3063,10 @@ val table :
     the table cancels the remaining callbacks. [on_hover] receives [None] when
     the pointer leaves all rows.
 
-    When focused, the table acts on the keys {!Mosaic_ui.Table} lists.
-    Declarations and callbacks cost what they cost for {!select}, with [rows]
-    for its options. *)
+    [columns] and the labels from [border] to [fast_scroll_step] are
+    {!Mosaic_ui.Table.Props.make}'s and take its defaults. When focused, the
+    table acts on the keys {!Mosaic_ui.Table} lists. Declarations and callbacks
+    cost what they cost for {!select}, with [rows] for its options. *)
 
 val tree :
   ?key:string ->
@@ -3137,8 +3141,9 @@ val tree :
   state:Tree.State.t ->
   unit ->
   'msg t
-(** [tree ()] is a tree view. Widget-specific visual options follow
-    {!Mosaic_ui.Tree}, which lists the keys the tree acts on when focused;
-    layout and paint use the labelled arguments above. *)
+(** [tree ~state ~on_change ()] is a tree view. [state] and the labels from
+    [items] to [fast_scroll_step] are {!Mosaic_ui.Tree.Props.make}'s and take
+    its defaults; {!Mosaic_ui.Tree} lists the keys the tree acts on when
+    focused. Layout and paint use the other labelled arguments. *)
 
 module Reconciler = Reconciler

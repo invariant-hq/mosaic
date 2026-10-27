@@ -847,6 +847,551 @@ let absent_selection_is_preserved () =
   equal ~msg:"click selects a valid row from absence" int 1
     (Table.selected_row tbl)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.table}) or to {!Table.create},
+   reaches the live table ({!Test_harness.reaches}). The element's rows are
+   rows of values and its [selected] a value, which give the table's rows of
+   cells and [selected_row]. Keys, clicks and the wheel propose a selection
+   through [on_change] and an activation through [on_activate], which both
+   doors record. *)
+
+let doors_size = Mosaic.size ~width:24 ~height:6
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+let doors_columns = [ Table.column "Name"; Table.column "N" ]
+
+let cells i =
+  [| Table.cell ("row" ^ string_of_int i); Table.cell (string_of_int i) |]
+
+let few_rows = List.init 3 (fun i -> Mosaic.Table.row i (cells i))
+let few_cells = List.init 3 cells
+let many_rows = List.init 12 (fun i -> Mosaic.Table.row i (cells i))
+let many_cells = List.init 12 cells
+let doors_proposals = ref []
+let doors_record i = doors_proposals := string_of_int i :: !doors_proposals
+
+let doors_activated i =
+  doors_proposals := ("activate " ^ string_of_int i) :: !doors_proposals
+
+let doors_recording table =
+  Table.set_on_change table (Some doors_record);
+  Table.set_on_activate table (Some doors_activated);
+  Table.node table
+
+let doors_proposed _ _ = String.concat ";" (List.rev !doors_proposals)
+
+let doors_press key renderer node =
+  doors_proposals := [];
+  Test_harness.press_key key renderer node
+
+(* A click on the second data row, under the border and the header. *)
+let doors_click renderer node =
+  ignore (Renderer.render ~full:true renderer : string);
+  doors_proposals := [];
+  let x = Renderable.x node + 2 and y = Renderable.y node + 4 in
+  ignore
+    (Test_harness.dispatch_mouse renderer (mouse_report ~x ~y (Press Left)));
+  ignore
+    (Test_harness.dispatch_mouse renderer
+       (mouse_report ~x ~y (Release (Some Left))))
+
+let doors_wheel renderer node =
+  ignore (Renderer.render ~full:true renderer : string);
+  doors_proposals := [];
+  let x = Renderable.x node + 2 and y = Renderable.y node + 3 in
+  ignore
+    (Test_harness.dispatch_mouse renderer (mouse_report ~x ~y (Scroll `Down)))
+
+let doors_columns_label () =
+  let other = [ Table.column "Name"; Table.column "Number" ] in
+  Test_harness.reaches "columns"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~columns:other ~rows:few_rows ())
+    ~create_base:(fun parent ->
+      Table.node
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      Table.node
+        (Table.create ~parent ~style:doors_style ~columns:other ~rows:few_cells
+           ()))
+
+let doors_rows () =
+  Test_harness.reaches "rows"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~columns:doors_columns ~rows:many_rows ())
+    ~create_base:(fun parent ->
+      Table.node
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      Table.node
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:many_cells ()))
+
+let doors_selected_row () =
+  Test_harness.reaches "selected_row (the element's selected)"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 1)
+         ~on_change:ignore ~columns:doors_columns ~rows:few_rows ())
+    ~create_base:(fun parent ->
+      Table.node
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      Table.node
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~selected_row:1 ()))
+
+let doors_border () =
+  Test_harness.reaches "border"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~border:false ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~border:false ()))
+
+let doors_border_style () =
+  Test_harness.reaches "border_style"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows
+         ~border_style:Matrix_grid.Border.double ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~border_style:Matrix_grid.Border.double ()))
+
+let doors_show_header () =
+  Test_harness.reaches "show_header"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~show_header:false ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~show_header:false ()))
+
+let doors_show_column_separator () =
+  Test_harness.reaches "show_column_separator"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~show_column_separator:true ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~show_column_separator:true ()))
+
+let doors_show_row_separator () =
+  Test_harness.reaches "show_row_separator"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~show_row_separator:true ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~show_row_separator:true ()))
+
+let doors_cell_padding () =
+  Test_harness.reaches "cell_padding"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~cell_padding:1 ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~cell_padding:1 ()))
+
+let doors_header_color () =
+  Test_harness.reaches "header_color"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~header_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~header_color:doors_red ()))
+
+let doors_header_background () =
+  Test_harness.reaches "header_background"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~header_background:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~header_background:doors_red ()))
+
+let doors_text_color () =
+  Test_harness.reaches "text_color"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~text_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~text_color:doors_red ()))
+
+let doors_background () =
+  Test_harness.reaches "background"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~background:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~background:doors_red ()))
+
+let doors_selected_text_color () =
+  Test_harness.reaches "selected_text_color"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~selected_text_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~selected_text_color:doors_red ()))
+
+let doors_selected_background () =
+  Test_harness.reaches "selected_background"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~selected_background:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~selected_background:doors_red ()))
+
+let doors_focused_selected_text_color () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_selected_text_color"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows
+         ~focused_selected_text_color:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~focused_selected_text_color:doors_red ()))
+
+let doors_focused_selected_background () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_selected_background"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows
+         ~focused_selected_background:doors_red ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~focused_selected_background:doors_red ()))
+
+let doors_selection_visible () =
+  Test_harness.reaches "selection_visible"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~selection_visible:false ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~selection_visible:false ()))
+
+let doors_show_scroll_indicator () =
+  Test_harness.reaches "show_scroll_indicator"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:many_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:many_rows ~show_scroll_indicator:true ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:many_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:many_cells ~show_scroll_indicator:true ()))
+
+let doors_activate_on_click () =
+  Test_harness.reaches ~act:doors_click ~observe:doors_proposed
+    "activate_on_click"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~activate_on_click:true ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~activate_on_click:true ()))
+
+let doors_wheel_navigation () =
+  Test_harness.reaches ~act:doors_wheel ~observe:doors_proposed
+    "wheel_navigation"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~wheel_navigation:false ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~wheel_navigation:false ()))
+
+let doors_row_styles () =
+  Test_harness.reaches "row_styles"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows
+         ~row_styles:[ Ansi.Style.default; Ansi.Style.make ~bg:doors_red () ]
+         ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells
+           ~row_styles:[ Ansi.Style.default; Ansi.Style.make ~bg:doors_red () ]
+           ()))
+
+let doors_wrap_selection () =
+  Test_harness.reaches
+    ~act:(doors_press (make_key Up))
+    ~observe:doors_proposed "wrap_selection"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ~wrap_selection:true ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ~wrap_selection:true ()))
+
+let doors_key_bindings () =
+  Test_harness.reaches
+    ~act:(doors_press (char_key 'x'))
+    ~observe:doors_proposed "key_bindings"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:few_rows
+         ~key_bindings:[ (Shortcut.char 'x', Table.Move_down) ]
+         ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:few_cells
+           ~key_bindings:[ (Shortcut.char 'x', Table.Move_down) ]
+           ()))
+
+let doors_fast_scroll_step () =
+  Test_harness.reaches
+    ~act:(doors_press (make_key ~shift:true Down))
+    ~observe:doors_proposed "fast_scroll_step"
+    ~base:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:many_rows ())
+    ~element:
+      (Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~on_activate:doors_activated
+         ~columns:doors_columns ~rows:many_rows ~fast_scroll_step:2 ())
+    ~create_base:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:many_cells ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Table.create ~parent ~style:doors_style ~columns:doors_columns
+           ~rows:many_cells ~fast_scroll_step:2 ()))
+
 let () =
   run "mosaic.table"
     [
@@ -980,5 +1525,33 @@ let () =
             apply_props_restores_declared_selection;
           test "controlled selection is silent"
             apply_props_controlled_selection_is_silent;
+        ];
+      group "Both doors"
+        [
+          test "columns" doors_columns_label;
+          test "rows" doors_rows;
+          test "selected_row" doors_selected_row;
+          test "border" doors_border;
+          test "border_style" doors_border_style;
+          test "show_header" doors_show_header;
+          test "show_column_separator" doors_show_column_separator;
+          test "show_row_separator" doors_show_row_separator;
+          test "cell_padding" doors_cell_padding;
+          test "header_color" doors_header_color;
+          test "header_background" doors_header_background;
+          test "text_color" doors_text_color;
+          test "background" doors_background;
+          test "selected_text_color" doors_selected_text_color;
+          test "selected_background" doors_selected_background;
+          test "focused_selected_text_color" doors_focused_selected_text_color;
+          test "focused_selected_background" doors_focused_selected_background;
+          test "selection_visible" doors_selection_visible;
+          test "show_scroll_indicator" doors_show_scroll_indicator;
+          test "activate_on_click" doors_activate_on_click;
+          test "wheel_navigation" doors_wheel_navigation;
+          test "row_styles" doors_row_styles;
+          test "wrap_selection" doors_wrap_selection;
+          test "key_bindings" doors_key_bindings;
+          test "fast_scroll_step" doors_fast_scroll_step;
         ];
     ]

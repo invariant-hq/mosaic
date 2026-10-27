@@ -29,6 +29,8 @@ let keymap = function
 
 (* ───── Props ───── *)
 
+(* [Props.make] is the one place the select's labels get their
+   defaults: [create] and [Vnode.select] pass their labels on unset. *)
 module Props = struct
   type t = {
     options : item Items.t;

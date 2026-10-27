@@ -189,7 +189,9 @@ let mouse_scroll_up ~x ~y =
    without it, and the element with the label, mounted or declared after the
    element without it (the update path, [apply_props]), is observed the same.
    Each door's widget sits alone in a renderer's root and is observed after
-   [act], by default by the frame it draws. *)
+   [act], by default by the frame it draws. A label the widget stores and
+   never draws or acts on is checked with [~shows:false]: both doors then only
+   agree. *)
 
 let doors_width = 30
 let doors_height = 8
@@ -228,8 +230,8 @@ let through_create ~act ~observe create =
   act renderer node;
   observe renderer node
 
-let reaches ?(act = no_act) ?(observe = frame) label ~base ~element ~create_base
-    ~create =
+let reaches ?(act = no_act) ?(observe = frame) ?(shows = true) label ~base
+    ~element ~create_base ~create =
   let msg what = Printf.sprintf "%s: %s" label what in
   let without = through_create ~act ~observe create_base in
   let with_label = through_create ~act ~observe create in
@@ -237,9 +239,10 @@ let reaches ?(act = no_act) ?(observe = frame) label ~base ~element ~create_base
     ~msg:(msg "both doors without the label")
     Windtrap.string without
     (through_element ~act ~observe base);
-  Windtrap.not_equal
-    ~msg:(msg "create shows the label")
-    Windtrap.string without with_label;
+  if shows then
+    Windtrap.not_equal
+      ~msg:(msg "create shows the label")
+      Windtrap.string without with_label;
   Windtrap.equal
     ~msg:(msg "the element mounted with the label")
     Windtrap.string with_label
@@ -261,3 +264,8 @@ let select_text renderer node =
 let focus renderer node =
   Renderable.set_focusable node true;
   ignore (Renderer.focus renderer node : bool)
+
+(* [press_key key] focuses the widget and presses [key]. *)
+let press_key key renderer node =
+  focus renderer node;
+  ignore (dispatch_key renderer key : Event.key)

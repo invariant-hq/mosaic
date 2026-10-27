@@ -81,25 +81,8 @@ val create :
   unit ->
   t
 (** [create ~parent ~options ()] is a tab selector attached to [parent]. The
-    node is focusable and uses buffered rendering.
-
-    - [selected] defaults to [0] for a nonempty list. Negative values mean no
-      selection ([-1]); positive overflow clamps to the last tab. Empty lists
-      have no selection.
-    - [tab_width] defaults to [12] (minimum [1]).
-    - [background] defaults to transparent (RGBA 0 0 0 0).
-    - [text_color] defaults to light gray (RGB 226 232 240).
-    - [focused_background] falls back to [background] if provided, otherwise
-      dark gray (RGB 26 26 26).
-    - [focused_text_color] falls back to [text_color].
-    - [selected_background] defaults to blue (RGB 59 130 246).
-    - [selected_text_color] defaults to white.
-    - [description_color] defaults to slate (RGB 203 213 225).
-    - [selected_description_color] defaults to light gray (RGB 204 204 204).
-    - [show_underline] defaults to [true].
-    - [show_description] defaults to [false].
-    - [show_scroll_arrows] defaults to [true].
-    - [wrap_selection] defaults to [false].
+    node is focusable and uses buffered rendering. The labels from [options] to
+    [key_bindings] are {!Props.make}'s and take its defaults.
     - [on_change] fires when the selected index changes via navigation or
       {!set_selected}.
     - [on_activate] fires when a tab is activated (Enter key or
@@ -134,9 +117,31 @@ module Props : sig
     ?key_bindings:key_binding list ->
     unit ->
     t
-  (** [make ~options ()] is a property set with the same defaults as
-      {!val-create}. [selected] is the accepted index, defaulting to [0].
-      {!apply_props} accepts it without firing the change callback. *)
+  (** [make ~options ()] is the properties of a tab selector showing [options],
+      with:
+      - [selected] is the accepted index. Defaults to [0] for a nonempty list.
+        Negative values mean no selection ([-1]); positive overflow clamps to
+        the last tab. Empty lists have no selection. {!apply_props} accepts it
+        without firing the change callback.
+      - [tab_width] defaults to [12] (minimum [1]).
+      - [background] defaults to transparent (RGBA 0 0 0 0).
+      - [text_color] defaults to light gray (RGB 226 232 240).
+      - [focused_background] falls back to [background] if provided, otherwise
+        dark gray (RGB 26 26 26).
+      - [focused_text_color] falls back to [text_color].
+      - [selected_background] defaults to blue (RGB 59 130 246).
+      - [selected_text_color] defaults to white.
+      - [description_color] defaults to slate (RGB 203 213 225).
+      - [selected_description_color] defaults to light gray (RGB 204 204 204).
+      - [show_underline] defaults to [true].
+      - [show_description] defaults to [false].
+      - [show_scroll_arrows] defaults to [true].
+      - [wrap_selection] defaults to [false].
+      - [key_bindings] adds keys to those {!section-keys} lists or binds one of
+        them to another action. Defaults to [[]].
+
+      {!val-create} and {!Vnode.tab_select} take these labels with these
+      defaults. *)
 
   val default : t
   (** [default] is [make ~options:[] ()]. *)

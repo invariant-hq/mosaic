@@ -371,6 +371,323 @@ let absent_selection_is_preserved () =
   equal ~msg:"first Left selects last without wrapping" int 4
     (Tab_select.selected_index ts)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.tab_select}) or to
+   {!Tab_select.create}, reaches the live tabs ({!Test_harness.reaches}).
+   Keys propose a selection through [on_change], which records it. *)
+
+let doors_size = Mosaic.size ~width:30 ~height:3
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+let doors_labels = [ ("zero", "a"); ("one", "b"); ("two", "c") ]
+
+let doors_tabs =
+  List.mapi
+    (fun i (label, description) -> Mosaic.Tab_select.item i ~description label)
+    doors_labels
+
+let doors_tab_items =
+  List.map
+    (fun (label, description) -> Tab_select.item ~label ~description ())
+    doors_labels
+
+let doors_proposals = ref []
+let doors_record i = doors_proposals := i :: !doors_proposals
+
+let doors_press key renderer node =
+  doors_proposals := [];
+  Test_harness.press_key key renderer node
+
+let doors_proposed _ _ =
+  String.concat ";" (List.rev_map string_of_int !doors_proposals)
+
+let doors_options () =
+  Test_harness.reaches "options"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 2)
+         ~on_change:ignore (List.rev doors_tabs))
+      (* The element keeps the selection on its value: the value at the first
+       place of the reversed list is 2. *)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style
+           ~options:(List.rev doors_tab_items) ()))
+
+let doors_selected () =
+  Test_harness.reaches "selected"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 1)
+         ~on_change:ignore doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~selected:1 ()))
+
+let doors_tab_width () =
+  Test_harness.reaches "tab_width"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~tab_width:8 doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~tab_width:8 ()))
+
+let doors_background () =
+  Test_harness.reaches "background"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~background:doors_red doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~background:doors_red ()))
+
+let doors_text_color () =
+  Test_harness.reaches "text_color"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~text_color:doors_red doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~text_color:doors_red ()))
+
+let doors_focused_background () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_background"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~focused_background:doors_red doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~focused_background:doors_red ()))
+
+let doors_focused_text_color () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_text_color"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~focused_text_color:doors_red doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~focused_text_color:doors_red ()))
+
+let doors_selected_background () =
+  Test_harness.reaches "selected_background"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~selected_background:doors_red doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~selected_background:doors_red ()))
+
+let doors_selected_text_color () =
+  Test_harness.reaches "selected_text_color"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~selected_text_color:doors_red doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~selected_text_color:doors_red ()))
+
+let doors_selected_description_color () =
+  Test_harness.reaches "selected_description_color"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_description:true doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_description:true
+         ~selected_description_color:doors_red doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~show_description:true ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~show_description:true
+           ~selected_description_color:doors_red ()))
+
+let doors_description_color () =
+  Test_harness.reaches ~shows:false "description_color"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_description:true doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_description:true
+         ~description_color:doors_red doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~show_description:true ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~show_description:true
+           ~description_color:doors_red ()))
+
+let doors_show_underline () =
+  Test_harness.reaches "show_underline"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_underline:false doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~show_underline:false ()))
+
+let doors_show_description () =
+  Test_harness.reaches "show_description"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_description:true doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~show_description:true ()))
+
+let doors_show_scroll_arrows () =
+  Test_harness.reaches "show_scroll_arrows"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_scroll_arrows:false doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~show_scroll_arrows:false ()))
+
+let doors_wrap_selection () =
+  Test_harness.reaches
+    ~act:(doors_press (make_key Left))
+    ~observe:doors_proposed "wrap_selection"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~wrap_selection:true doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ~wrap_selection:true ()))
+
+let doors_key_bindings () =
+  Test_harness.reaches
+    ~act:(doors_press (char_key 'x'))
+    ~observe:doors_proposed "key_bindings"
+    ~base:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record doors_tabs)
+    ~element:
+      (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record
+         ~key_bindings:[ (Shortcut.char 'x', Tab_select.Move_right) ]
+         doors_tabs)
+    ~create_base:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record ()))
+    ~create:(fun parent ->
+      Tab_select.node
+        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
+           ~on_change:doors_record
+           ~key_bindings:[ (Shortcut.char 'x', Tab_select.Move_right) ]
+           ()))
+
 let () =
   run "mosaic.tab_select"
     [
@@ -443,5 +760,24 @@ let () =
           test "truncation keeps CJK graphemes intact"
             truncation_keeps_cjk_graphemes_intact;
           test "truncation never splits emoji" truncation_never_splits_emoji;
+        ];
+      group "Both doors"
+        [
+          test "options" doors_options;
+          test "selected" doors_selected;
+          test "tab_width" doors_tab_width;
+          test "background" doors_background;
+          test "text_color" doors_text_color;
+          test "focused_background" doors_focused_background;
+          test "focused_text_color" doors_focused_text_color;
+          test "selected_background" doors_selected_background;
+          test "selected_text_color" doors_selected_text_color;
+          test "selected_description_color" doors_selected_description_color;
+          test "description_color (drawn by no tab)" doors_description_color;
+          test "show_underline" doors_show_underline;
+          test "show_description" doors_show_description;
+          test "show_scroll_arrows" doors_show_scroll_arrows;
+          test "wrap_selection" doors_wrap_selection;
+          test "key_bindings" doors_key_bindings;
         ];
     ]

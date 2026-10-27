@@ -473,32 +473,8 @@ val select :
   unit ->
   'msg t
 (** [select ()] is a vertical selection list leaf element. Select does not
-    accept children.
-
-    Select-specific attributes:
-    - [focusable] controls whether the node can receive focus. Defaults to
-      [true].
-    - [options] is the list of items to display. Defaults to [[]].
-    - [selected_index] is the initial selection index. Defaults to [0].
-    - [background] is the item background color.
-    - [text_color] is the item text color.
-    - [focused_background] is the item background color when the widget is
-      focused.
-    - [focused_text_color] is the item text color when the widget is focused.
-    - [selected_background] is the selected item background color.
-    - [selected_text_color] is the selected item text color.
-    - [description_color] is the description text color.
-    - [selected_description_color] is the selected item description color.
-    - [show_description] controls whether description lines are displayed.
-      Defaults to [true].
-    - [show_scroll_indicator] controls whether a scroll indicator is displayed.
-      Defaults to [false].
-    - [wrap_selection] controls whether selection wraps at list boundaries.
-      Defaults to [false].
-    - [item_spacing] is the vertical spacing between items in rows. Defaults to
-      [0].
-    - [fast_scroll_step] is the number of items skipped with Shift+Up/Down.
-      Defaults to [5].
+    accept children. [focusable] defaults to [true]. The labels from [options]
+    to [fast_scroll_step] are {!Select.Props.make}'s and take its defaults.
     - [on_change] is called when the selection index changes.
     - [on_activate] is called when the current item is activated via Enter. *)
 
@@ -539,32 +515,9 @@ val tab_select :
   unit ->
   'msg t
 (** [tab_select ~options ()] is a horizontal tab selection leaf element.
-    Tab_select does not accept children.
-
-    Tab_select-specific attributes:
-    - [focusable] controls whether the node can receive focus. Defaults to
-      [true].
-    - [options] is the list of tab items to display. Required.
-    - [selected] is the initial selection index. Defaults to [0].
-    - [tab_width] is the fixed width of each tab cell in columns. Defaults to
-      [12].
-    - [background] is the tab background color.
-    - [text_color] is the tab text color.
-    - [focused_background] is the tab background color when the widget is
-      focused.
-    - [focused_text_color] is the tab text color when the widget is focused.
-    - [selected_background] is the selected tab background color.
-    - [selected_text_color] is the selected tab text color.
-    - [description_color] is the description text color.
-    - [selected_description_color] is the selected tab description color.
-    - [show_underline] controls whether a selection underline is displayed.
-      Defaults to [true].
-    - [show_description] controls whether the description line below the tabs is
-      displayed. Defaults to [false].
-    - [show_scroll_arrows] controls whether scroll indicator arrows are
-      displayed. Defaults to [true].
-    - [wrap_selection] controls whether selection wraps at tab boundaries.
-      Defaults to [false].
+    Tab_select does not accept children. [focusable] defaults to [true]. The
+    labels from [options] to [key_bindings] are {!Tab_select.Props.make}'s and
+    take its defaults.
     - [on_change] is called when the selection index changes.
     - [on_activate] is called when the current tab is activated via Enter. *)
 
@@ -877,49 +830,8 @@ val table :
   unit ->
   'msg t
 (** [table ()] is a data table leaf element. Table does not accept children.
-
-    Table-specific attributes:
-    - [focusable] controls whether the node can receive focus. Defaults to
-      [true].
-    - [columns] is the list of column specifications. Defaults to [[]].
-    - [rows] is the list of data rows, each a [cell array]. Defaults to [[]].
-    - [selected_row] is the initial selection index. Defaults to [0].
-    - [border] enables the outer border and header separator. Defaults to
-      [true].
-    - [border_style] is the border character set. Defaults to
-      {!Matrix_grid.Border.single}.
-    - [show_header] controls whether the header row is shown. Defaults to
-      [true].
-    - [show_column_separator] controls whether vertical lines between columns
-      are shown. Defaults to [false].
-    - [show_row_separator] controls whether horizontal lines between rows are
-      shown. Defaults to [false].
-    - [cell_padding] is the horizontal padding per side of each cell in columns.
-      Defaults to [0].
-    - [header_color] is the header text color.
-    - [header_background] is the header background color.
-    - [text_color] is the row text color.
-    - [background] is the row background color.
-    - [selected_text_color] is the selected row text color when unfocused.
-    - [selected_background] is the selected row background color when unfocused.
-    - [focused_selected_text_color] is the selected row text color when focused.
-    - [focused_selected_background] is the selected row background color when
-      focused.
-    - [selection_visible] controls whether selected-row colors are drawn while
-      retaining the current row for navigation and scrolling. Defaults to
-      [true].
-    - [show_scroll_indicator] shows a trailing directional overflow indicator
-      when rows do not fit. Defaults to [false].
-    - [activate_on_click] activates a data row on left click after selecting it.
-      Defaults to [false].
-    - [wheel_navigation] controls whether wheel events change selection and are
-      consumed. Defaults to [true].
-    - [row_styles] is a list of styles cycled by modulo across rows for
-      alternating row styling. Defaults to [[]] (no alternation).
-    - [wrap_selection] controls whether selection wraps at row boundaries.
-      Defaults to [false].
-    - [fast_scroll_step] is the number of rows skipped with Shift+Up/Down.
-      Defaults to [5].
+    [focusable] defaults to [true]. The labels from [columns] to
+    [fast_scroll_step] are {!Table.Props.make}'s and take its defaults.
     - [on_change] is called when the selected row changes.
     - [on_activate] is called when the current row is activated via Enter.
     - [on_hover] is called with the complete-data index under the pointer, or
@@ -1159,43 +1071,13 @@ val tree :
   state:Tree.State.t ->
   unit ->
   'msg t
-(** [tree ()] is a hierarchical tree leaf element. Tree does not accept
-    children.
-
-    Tree-specific attributes:
-    - [focusable] controls whether the node can receive focus. Defaults to
-      [true].
-    - [items] is the list of tree items. Defaults to [[]].
-    - [selected_index] is the initial selection index. Defaults to [0].
-    - [expand_depth] is the initial expansion depth. [0] means all nodes are
-      collapsed. Defaults to [0].
-    - [indent_size] is the number of columns per depth level. Defaults to [2].
-    - [show_guides] controls whether box-drawing guide lines are drawn. Defaults
-      to [false].
-    - [guide_style] is the guide character set. Defaults to
-      {!Matrix_grid.Border.single}.
-    - [expand_icon] is the icon string for expandable nodes.
-    - [collapse_icon] is the icon string for collapsible nodes.
-    - [leaf_icon] is the icon string for leaf nodes.
-    - [background] is the item background color.
-    - [text_color] is the item text color.
-    - [selected_background] is the selected item background color when
-      unfocused.
-    - [selected_text_color] is the selected item text color when unfocused.
-    - [focused_selected_background] is the selected item background color when
-      focused.
-    - [focused_selected_text_color] is the selected item text color when
-      focused.
-    - [guide_color] is the guide line color.
-    - [icon_color] is the icon color.
-    - [wrap_selection] controls whether selection wraps at boundaries. Defaults
-      to [false].
-    - [fast_scroll_step] is the number of items skipped with Shift+Up/Down.
-      Defaults to [5].
-    - [on_change] is called when the selected index changes.
-    - [on_activate] is called when the current node is activated via Enter.
-    - [on_expand] is called when a node is expanded or collapsed, receiving the
-      node index and the new expansion state. *)
+(** [tree ~state ~on_change ()] is a hierarchical tree leaf element. Tree does
+    not accept children. [focusable] defaults to [true]. [state] and the labels
+    from [items] to [fast_scroll_step] are {!Tree.Props.make}'s and take its
+    defaults.
+    - [on_change] is called with the proposed state when the selection or the
+      expansion changes.
+    - [on_activate] is called when the current node is activated via Enter. *)
 
 (** {1:transform Transformation} *)
 

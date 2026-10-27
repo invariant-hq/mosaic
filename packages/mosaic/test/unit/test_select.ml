@@ -709,6 +709,317 @@ let raw_handler_can_prevent_navigation () =
   equal ~msg:"raw handlers run before default navigation" int 0
     (Select.selected_index sel)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.select}) or to {!Select.create},
+   reaches the live select ({!Test_harness.reaches}). The element's
+   [selected] gives the select's [selected_index]. *)
+
+let doors_size = Mosaic.size ~width:16 ~height:4
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+let doors_labels = [ ("zero", "a"); ("one", "b"); ("two", "c") ]
+
+let few_options =
+  List.mapi
+    (fun i (label, description) -> Mosaic.Select.item i ~description label)
+    doors_labels
+
+let few_items =
+  List.map
+    (fun (label, description) ->
+      { Select.label; description = Some description })
+    doors_labels
+
+let doors_many = List.init 8 string_of_int
+
+let many_options =
+  List.mapi (fun i label -> Mosaic.Select.item i label) doors_many
+
+let many_items =
+  List.map (fun label -> { Select.label; description = None }) doors_many
+
+(* Keys propose a selection through [on_change]. *)
+let doors_proposals = ref []
+let doors_record i = doors_proposals := i :: !doors_proposals
+
+let doors_recording select =
+  Select.set_on_change select (Some doors_record);
+  Select.node select
+
+let doors_press key renderer node =
+  doors_proposals := [];
+  Test_harness.press_key key renderer node
+
+let doors_proposed _ _ =
+  String.concat ";" (List.rev_map string_of_int !doors_proposals)
+
+let doors_options () =
+  Test_harness.reaches "options"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore many_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:many_items ()))
+
+let doors_selected_index () =
+  Test_harness.reaches "selected_index (the element's selected)"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 1)
+         ~on_change:ignore few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~selected_index:1 ()))
+
+let doors_background () =
+  Test_harness.reaches "background"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~background:doors_red few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~background:doors_red ()))
+
+let doors_text_color () =
+  Test_harness.reaches "text_color"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~text_color:doors_red few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~text_color:doors_red ()))
+
+let doors_focused_background () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_background"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~focused_background:doors_red few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~focused_background:doors_red ()))
+
+let doors_focused_text_color () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_text_color"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~focused_text_color:doors_red few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~focused_text_color:doors_red ()))
+
+let doors_selected_background () =
+  Test_harness.reaches "selected_background"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~selected_background:doors_red few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~selected_background:doors_red ()))
+
+let doors_selected_text_color () =
+  Test_harness.reaches "selected_text_color"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~selected_text_color:doors_red few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~selected_text_color:doors_red ()))
+
+let doors_description_color () =
+  Test_harness.reaches "description_color"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~description_color:doors_red few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~description_color:doors_red ()))
+
+let doors_selected_description_color () =
+  Test_harness.reaches "selected_description_color"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~selected_description_color:doors_red few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~selected_description_color:doors_red ()))
+
+let doors_show_description () =
+  Test_harness.reaches "show_description"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~show_description:false few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~show_description:false ()))
+
+let doors_show_scroll_indicator () =
+  Test_harness.reaches "show_scroll_indicator"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore many_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~show_scroll_indicator:true many_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:many_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:many_items
+           ~show_scroll_indicator:true ()))
+
+let doors_wrap_selection () =
+  Test_harness.reaches
+    ~act:(doors_press (make_key Up))
+    ~observe:doors_proposed "wrap_selection"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~wrap_selection:true few_options)
+    ~create_base:(fun parent ->
+      doors_recording
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~wrap_selection:true ()))
+
+let doors_item_spacing () =
+  Test_harness.reaches "item_spacing"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:ignore ~item_spacing:1 few_options)
+    ~create_base:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      Select.node
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~item_spacing:1 ()))
+
+let doors_fast_scroll_step () =
+  Test_harness.reaches
+    ~act:(doors_press (make_key ~shift:true Down))
+    ~observe:doors_proposed "fast_scroll_step"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_description:false many_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record ~show_description:false ~fast_scroll_step:2
+         many_options)
+    ~create_base:(fun parent ->
+      doors_recording
+        (Select.create ~parent ~style:doors_style ~options:many_items
+           ~show_description:false ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Select.create ~parent ~style:doors_style ~options:many_items
+           ~show_description:false ~fast_scroll_step:2 ()))
+
+let doors_key_bindings () =
+  Test_harness.reaches
+    ~act:(doors_press (char_key 'x'))
+    ~observe:doors_proposed "key_bindings"
+    ~base:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record few_options)
+    ~element:
+      (Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+         ~on_change:doors_record
+         ~key_bindings:[ (Shortcut.char 'x', Select.Move_down) ]
+         few_options)
+    ~create_base:(fun parent ->
+      doors_recording
+        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+    ~create:(fun parent ->
+      doors_recording
+        (Select.create ~parent ~style:doors_style ~options:few_items
+           ~key_bindings:[ (Shortcut.char 'x', Select.Move_down) ]
+           ()))
+
 let () =
   run "mosaic.select"
     [
@@ -832,5 +1143,24 @@ let () =
             apply_props_restores_declared_selection;
           test "controlled selection is silent"
             apply_props_controlled_selection_is_silent;
+        ];
+      group "Both doors"
+        [
+          test "options" doors_options;
+          test "selected_index" doors_selected_index;
+          test "background" doors_background;
+          test "text_color" doors_text_color;
+          test "focused_background" doors_focused_background;
+          test "focused_text_color" doors_focused_text_color;
+          test "selected_background" doors_selected_background;
+          test "selected_text_color" doors_selected_text_color;
+          test "description_color" doors_description_color;
+          test "selected_description_color" doors_selected_description_color;
+          test "show_description" doors_show_description;
+          test "show_scroll_indicator" doors_show_scroll_indicator;
+          test "wrap_selection" doors_wrap_selection;
+          test "item_spacing" doors_item_spacing;
+          test "fast_scroll_step" doors_fast_scroll_step;
+          test "key_bindings" doors_key_bindings;
         ];
     ]
