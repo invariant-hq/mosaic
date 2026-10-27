@@ -278,26 +278,8 @@ val box :
     - [live] enables continuous rendering. When [true], the renderer runs every
       frame rather than only on request. Defaults to [false].
 
-    Box-specific attributes:
-    - [inert] makes the box and its descendants inert ({!Renderable.set_inert}).
-      Defaults to [false].
-    - [border] enables border rendering. Defaults to [false]; also enabled
-      automatically when any border option is set.
-    - [border_style] is the border character set. Defaults to
-      {!Matrix_grid.Border.single}.
-    - [border_sides] is the set of sides on which the border is drawn. Defaults
-      to all four sides.
-    - [border_width] is the border width of each side, in whole cells, as
-      {!Box.val-create} lays it out. Defaults to one cell on each side. The box
-      replaces the border of [style] with its border widths.
-    - [border_color] is the border color when unfocused.
-    - [focused_border_color] is the border color when focused.
-    - [background] is the background fill color.
-    - [fill] controls whether the background fills the interior. Defaults to
-      [true].
-    - [title] is the text rendered in the top border.
-    - [title_alignment] is the alignment of the title text. Defaults to [`Left].
-*)
+    [inert] and the labels from [border] on are {!Box.Props.make}'s and take its
+    defaults. The box replaces the border of [style] with its border widths. *)
 
 val modal : ?key:string -> ?on_close:'msg -> 'msg t -> 'msg t
 (** [modal child] is a box that centres [child] and that, while it is shown and
@@ -334,19 +316,8 @@ val text :
   string ->
   'msg t
 (** [text content] is a text leaf element displaying [content]. Text does not
-    accept children.
-
-    Text-specific attributes:
-    - [text_style] is the ANSI style applied to the text. Defaults to
-      {!Ansi.Style.default}.
-    - [wrap] is the line-wrapping mode. Defaults to [`None].
-    - [selectable] controls whether text can be mouse-selected. Defaults to
-      [true].
-    - [selection_bg] is the selection background color.
-    - [selection_fg] is the selection foreground color.
-    - [tab_width] is the tab-stop width in columns. Defaults to [2].
-    - [truncate] controls whether overlong lines are truncated with an ellipsis.
-      Defaults to [false].
+    accept children. The labels from [text_style] on are {!Text.Props.make}'s
+    and take its defaults.
 
     Raises [Invalid_argument] if [tab_width < 1]. *)
 

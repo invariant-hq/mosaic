@@ -68,6 +68,7 @@ val box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?inert:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->

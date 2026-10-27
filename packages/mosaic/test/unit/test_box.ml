@@ -421,6 +421,120 @@ let set_title_alignment_noop_same_value () =
 
 (* ── Runner ── *)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.box}) or to {!Box.create},
+   reaches the live box ({!Test_harness.reaches}). The box holds a text, so
+   its border widths show where the text goes. *)
+
+let size = Mosaic.size ~width:12 ~height:4
+let style = Toffee.Style.make ~size ()
+let red = Ansi.Color.red
+
+let boxed b =
+  ignore (Text.create ~parent:(Box.node b) ~content:"x" () : Text.t);
+  Box.node b
+
+let reaches ?act ?observe label ~base ~element ~create_base ~create =
+  Test_harness.reaches ?act ?observe label
+    ~base:(base [ Mosaic.text "x" ])
+    ~element:(element [ Mosaic.text "x" ])
+    ~create_base:(fun parent -> boxed (create_base ~parent))
+    ~create:(fun parent -> boxed (create ~parent))
+
+let doors_border () =
+  reaches "border" ~base:(Mosaic.box ~size)
+    ~element:(Mosaic.box ~size ~border:true)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
+    ~create:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+
+let doors_border_style () =
+  reaches "border_style"
+    ~base:(Mosaic.box ~size ~border:true)
+    ~element:
+      (Mosaic.box ~size ~border:true ~border_style:Matrix_grid.Border.double)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true
+        ~border_style:Matrix_grid.Border.double ())
+
+let doors_border_sides () =
+  reaches "border_sides"
+    ~base:(Mosaic.box ~size ~border:true)
+    ~element:(Mosaic.box ~size ~border:true ~border_sides:[ `Top ])
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~border_sides:[ `Top ] ())
+
+let doors_border_width () =
+  let two = Toffee.Style.Length_percentage.length 2. in
+  let one = Toffee.Style.Length_percentage.length 1. in
+  let widths =
+    Toffee.Geometry.Rect.make ~left:two ~right:one ~top:one ~bottom:one
+  in
+  reaches "border_width"
+    ~base:(Mosaic.box ~size ~border:true)
+    ~element:(Mosaic.box ~size ~border:true ~border_width:widths)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~border_width:widths ())
+
+let doors_border_color () =
+  reaches "border_color"
+    ~base:(Mosaic.box ~size ~border:true)
+    ~element:(Mosaic.box ~size ~border:true ~border_color:red)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~border_color:red ())
+
+let doors_focused_border_color () =
+  reaches "focused_border_color" ~act:Test_harness.focus
+    ~base:(Mosaic.box ~size ~border:true)
+    ~element:(Mosaic.box ~size ~border:true ~focused_border_color:red)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~focused_border_color:red ())
+
+let doors_background () =
+  reaches "background" ~base:(Mosaic.box ~size)
+    ~element:(Mosaic.box ~size ~background:red)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
+    ~create:(fun ~parent -> Box.create ~parent ~style ~background:red ())
+
+let doors_fill () =
+  reaches "fill"
+    ~base:(Mosaic.box ~size ~background:red)
+    ~element:(Mosaic.box ~size ~background:red ~fill:false)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~background:red ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~background:red ~fill:false ())
+
+let doors_title () =
+  reaches "title"
+    ~base:(Mosaic.box ~size ~border:true)
+    ~element:(Mosaic.box ~size ~border:true ~title:"T")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~title:"T" ())
+
+let doors_title_alignment () =
+  reaches "title_alignment"
+    ~base:(Mosaic.box ~size ~border:true ~title:"T")
+    ~element:(Mosaic.box ~size ~border:true ~title:"T" ~title_alignment:`Right)
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~title:"T" ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~title:"T" ~title_alignment:`Right
+        ())
+
+let doors_inert () =
+  reaches "inert"
+    ~observe:(fun _ node -> string_of_bool (Renderable.inert node))
+    ~base:(Mosaic.box ~size)
+    ~element:(Mosaic.box ~size ~inert:true)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
+    ~create:(fun ~parent -> Box.create ~parent ~style ~inert:true ())
+
 let () =
   run "mosaic.box"
     [
@@ -488,6 +602,20 @@ let () =
           test "default is Bright_cyan" focused_border_color_default;
           test "explicit color differs from default"
             focused_border_color_explicit;
+        ];
+      group "Both doors"
+        [
+          test "border" doors_border;
+          test "border_style" doors_border_style;
+          test "border_sides" doors_border_sides;
+          test "border_width" doors_border_width;
+          test "border_color" doors_border_color;
+          test "focused_border_color" doors_focused_border_color;
+          test "background" doors_background;
+          test "fill" doors_fill;
+          test "title" doors_title;
+          test "title_alignment" doors_title_alignment;
+          test "inert" doors_inert;
         ];
       group "Setter no-ops"
         [

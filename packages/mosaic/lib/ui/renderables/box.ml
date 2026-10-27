@@ -11,6 +11,10 @@ let cells_of_border_width w =
       (Format.asprintf "Box: border width %a is not a whole number of cells"
          Lp.pp w)
 
+(* [Props.make] is the one place the box's labels get their defaults.
+   [create] and the element ([Vnode.box], which [Mosaic.box] and the MLX box
+   call) pass their labels on unset, and the reconciler applies the props
+   the element made with [apply_props]. *)
 module Props = struct
   type t = {
     border : bool;

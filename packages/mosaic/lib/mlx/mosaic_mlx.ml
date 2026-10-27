@@ -9,10 +9,10 @@ let box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?border ?border_style
-    ?border_sides ?border_color ?focused_border_color ?background ?fill ?title
-    ?title_alignment ?(children = []) () =
+    ?visible ?z_index ?opacity ?buffered ?live ?inert ?on_mouse ?on_key
+    ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?border
+    ?border_style ?border_sides ?border_color ?focused_border_color ?background
+    ?fill ?title ?title_alignment ?(children = []) () =
   Mosaic.box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
     ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
@@ -20,10 +20,10 @@ let box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?border ?border_style
-    ?border_sides ?border_color ?focused_border_color ?background ?fill ?title
-    ?title_alignment children
+    ?visible ?z_index ?opacity ?buffered ?live ?inert ?on_mouse ?on_key
+    ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?border
+    ?border_style ?border_sides ?border_color ?focused_border_color ?background
+    ?fill ?title ?title_alignment children
 
 let button ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

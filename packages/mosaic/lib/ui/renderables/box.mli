@@ -40,24 +40,10 @@ val create :
   ?inert:bool ->
   unit ->
   t
-(** [create ~parent ()] is a box node attached to [parent] with:
-    - [border] defaults to [false]. Providing any of [border_style],
-      [border_color], or [focused_border_color] implicitly enables it.
-    - [border_style] defaults to {!Matrix_grid.Border.single}.
-    - [border_sides] defaults to {!Matrix_grid.Border.all} (all four sides).
-    - [border_width] is the border width of each side, in whole cells. Defaults
-      to one cell on each side.
-    - [border_color] defaults to {!Ansi.Color.white}.
-    - [focused_border_color] defaults to {!Ansi.Color.bright_cyan}.
-    - [background] defaults to [None] (transparent).
-    - [fill] defaults to [true].
-    - [title] defaults to [None].
-    - [title_alignment] defaults to [`Left].
-    - [inert] makes the box and its descendants inert ({!Renderable.set_inert}).
-      Defaults to [false].
+(** [create ~parent ()] is a box node attached to [parent]. The labels after
+    [opacity] are {!Props.make}'s and take its defaults.
 
-    Raises [Invalid_argument] if a border width is not a length of a whole
-    number of cells, [0] or more. *)
+    Raises [Invalid_argument] as {!Props.make} does. *)
 
 val node : t -> Renderable.t
 (** [node t] is [t]'s underlying renderable. *)
@@ -82,10 +68,26 @@ module Props : sig
     ?inert:bool ->
     unit ->
     t
-  (** [make ()] is a property set with the same defaults as {!val-create}.
-      Border-related options auto-enable borders when present.
+  (** [make ()] is the properties of a box, with:
+      - [border] defaults to [false]. Providing any of [border_style],
+        [border_color], or [focused_border_color] implicitly enables it.
+      - [border_style] defaults to {!Matrix_grid.Border.single}.
+      - [border_sides] defaults to {!Matrix_grid.Border.all} (all four sides).
+      - [border_width] is the border width of each side, in whole cells.
+        Defaults to one cell on each side.
+      - [border_color] defaults to {!Ansi.Color.white}.
+      - [focused_border_color] defaults to {!Ansi.Color.bright_cyan}.
+      - [background] defaults to [None] (transparent).
+      - [fill] defaults to [true].
+      - [title] defaults to [None].
+      - [title_alignment] defaults to [`Left].
+      - [inert] makes the box and its descendants inert
+        ({!Renderable.set_inert}). Defaults to [false].
 
-      Raises [Invalid_argument] as {!val-create} does. *)
+      {!val-create} and {!Vnode.box} take these labels with these defaults.
+
+      Raises [Invalid_argument] if a border width is not a length of a whole
+      number of cells, [0] or more. *)
 
   val default : t
   (** [default] is [make ()]. *)

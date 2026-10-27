@@ -3,9 +3,11 @@
  (modules test_harness)
  (libraries
   windtrap
+  mosaic
   mosaic.ui
   toffee
   matrix.grid
   matrix.ansi
   matrix.input
+  matrix.screen
   threads.posix))

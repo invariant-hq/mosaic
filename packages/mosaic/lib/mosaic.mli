@@ -1708,11 +1708,10 @@ val box :
   ?title_alignment:[ `Left | `Center | `Right ] ->
   'msg t list ->
   'msg t
-(** [box children] is a container for [children]. Widget-specific visual options
-    follow {!Mosaic_ui.Box}; layout and paint use the labelled arguments above,
-    except [border_width], which sets the box's border widths as
-    {!Mosaic_ui.Box} lays them out. [inert], default [false], makes the box and
-    its descendants inert ({{!elements}UI elements}).
+(** [box children] is a container for [children]. [border_width], [inert] and
+    the labels from [border] on are {!Mosaic_ui.Box.Props.make}'s and take its
+    defaults; the box lays out its border widths in place of a layout border.
+    {{!elements}UI elements} describes inert elements and the other labels.
 
     Raises [Invalid_argument] if a border width is not a length of a whole
     number of cells, [0] or more. *)
@@ -1884,8 +1883,10 @@ val text :
   ?truncate:bool ->
   string ->
   'msg t
-(** [text content] is a text element. Widget-specific visual options follow
-    {!Mosaic_ui.Text}; layout and paint use the labelled arguments above. *)
+(** [text content] is a text element. The labels from [text_style] on are
+    {!Mosaic_ui.Text.Props.make}'s and take its defaults; [style] is the text
+    style when [text_style] is absent. Layout and paint use the other labelled
+    arguments. *)
 
 val rich_text :
   ?key:string ->

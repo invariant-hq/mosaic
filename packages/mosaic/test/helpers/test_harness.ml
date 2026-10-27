@@ -179,3 +179,85 @@ let mouse_scroll_down ~x ~y =
 let mouse_scroll_up ~x ~y =
   Event.Mouse.make ~x ~y ~modifiers:no_mod
     (Scroll { direction = Scroll_up; delta = 1 })
+
+(* ── A widget's two doors ── *)
+
+(* A widget takes its labels through its element and through its imperative
+   [create], and both build its properties with its [Props.make]. [reaches]
+   checks that one label, given through either door, reaches the live widget:
+   the widget made by [create] with the label differs from the one made
+   without it, and the element with the label, mounted or declared after the
+   element without it (the update path, [apply_props]), is observed the same.
+   Each door's widget sits alone in a renderer's root and is observed after
+   [act], by default by the frame it draws. *)
+
+let doors_width = 30
+let doors_height = 8
+
+let frame renderer _node =
+  Renderer.render_frame renderer ~width:doors_width ~height:doors_height ~dt:0.;
+  Matrix_grid.to_ansi (Matrix_screen.next_grid (Renderer.screen renderer))
+
+let no_act _renderer _node = ()
+
+let only_child renderer =
+  match Renderable.children (Renderer.root renderer) with
+  | [ node ] -> node
+  | _ -> Windtrap.fail "expected the widget alone in the root"
+
+let through_element ?before ~act ~observe element =
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+  in
+  let declare view =
+    Mosaic.Reconciler.render reconciler ~viewport_width:doors_width view;
+    Renderer.render_frame renderer ~width:doors_width ~height:doors_height
+      ~dt:0.
+  in
+  Option.iter declare before;
+  declare element;
+  let node = only_child renderer in
+  act renderer node;
+  observe renderer node
+
+let through_create ~act ~observe create =
+  let renderer = Renderer.create () in
+  let node = create (Renderer.root renderer) in
+  Renderer.render_frame renderer ~width:doors_width ~height:doors_height ~dt:0.;
+  act renderer node;
+  observe renderer node
+
+let reaches ?(act = no_act) ?(observe = frame) label ~base ~element ~create_base
+    ~create =
+  let msg what = Printf.sprintf "%s: %s" label what in
+  let without = through_create ~act ~observe create_base in
+  let with_label = through_create ~act ~observe create in
+  Windtrap.equal
+    ~msg:(msg "both doors without the label")
+    Windtrap.string without
+    (through_element ~act ~observe base);
+  Windtrap.not_equal
+    ~msg:(msg "create shows the label")
+    Windtrap.string without with_label;
+  Windtrap.equal
+    ~msg:(msg "the element mounted with the label")
+    Windtrap.string with_label
+    (through_element ~act ~observe element);
+  Windtrap.equal
+    ~msg:(msg "the element updated with the label")
+    Windtrap.string with_label
+    (through_element ~before:base ~act ~observe element)
+
+(* [select_text] drags the pointer over the widget's first five cells, as a
+   user selecting text does. *)
+let select_text renderer node =
+  ignore (Renderer.render ~full:true renderer : string);
+  let x = Renderable.x node and y = Renderable.y node in
+  ignore (dispatch_mouse renderer (mouse_report ~x ~y (Press Left)));
+  ignore
+    (dispatch_mouse renderer (mouse_report ~x:(x + 5) ~y (Motion (Some Left))))
+
+let focus renderer node =
+  Renderable.set_focusable node true;
+  ignore (Renderer.focus renderer node : bool)

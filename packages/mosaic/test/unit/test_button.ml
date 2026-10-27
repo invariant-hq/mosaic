@@ -235,6 +235,148 @@ let visible_states_preserve_label_style () =
   is_false ~msg:"caller style remains immutable" (Attr.mem Inverse base.attrs);
   is_false (Attr.mem Dim base.attrs)
 
+(* ── Both doors ── *)
+
+(* A button has its element only: it is a box holding its label as a text.
+   Each label, given to the button, reaches its live box and text: the
+   button draws as the box {!Mosaic_ui.Box.create} makes with the same
+   label, holding the text {!Mosaic_ui.Text.create} makes
+   ({!Test_harness.reaches}). *)
+
+module Box = Mosaic_ui.Box
+module Text = Mosaic_ui.Text
+
+let size = Mosaic.size ~width:12 ~height:4
+let style = Toffee.Style.make ~size ()
+let red = Ansi.Color.red
+let bold = Ansi.Style.make ~bold:true ()
+
+let labelled ?(text_style = Ansi.Style.default) b =
+  ignore
+    (Text.create ~parent:(Box.node b) ~content:"OK" ~text_style
+       ~selectable:false ()
+      : Text.t);
+  Box.node b
+
+let reaches ?act ?observe ?text_style label ~base ~element ~create_base ~create
+    =
+  Test_harness.reaches ?act ?observe label ~base ~element
+    ~create_base:(fun parent -> labelled (create_base ~parent))
+    ~create:(fun parent -> labelled ?text_style (create ~parent))
+
+let doors_border () =
+  reaches "border"
+    ~base:(Mosaic.button ~size ~on_activate:() "OK")
+    ~element:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
+    ~create:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+
+let doors_border_style () =
+  reaches "border_style"
+    ~base:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
+    ~element:
+      (Mosaic.button ~size ~border:true ~border_style:Matrix_grid.Border.double
+         ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true
+        ~border_style:Matrix_grid.Border.double ())
+
+let doors_border_sides () =
+  reaches "border_sides"
+    ~base:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
+    ~element:
+      (Mosaic.button ~size ~border:true ~border_sides:[ `Top ] ~on_activate:()
+         "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~border_sides:[ `Top ] ())
+
+let doors_border_width () =
+  let two = Toffee.Style.Length_percentage.length 2. in
+  let one = Toffee.Style.Length_percentage.length 1. in
+  let widths =
+    Toffee.Geometry.Rect.make ~left:two ~right:one ~top:one ~bottom:one
+  in
+  reaches "border_width"
+    ~base:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
+    ~element:
+      (Mosaic.button ~size ~border:true ~border_width:widths ~on_activate:()
+         "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~border_width:widths ())
+
+let doors_border_color () =
+  reaches "border_color"
+    ~base:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
+    ~element:
+      (Mosaic.button ~size ~border:true ~border_color:red ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~border_color:red ())
+
+let doors_focused_border_color () =
+  reaches "focused_border_color" ~act:Test_harness.focus
+    ~base:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
+    ~element:
+      (Mosaic.button ~size ~border:true ~focused_border_color:red
+         ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~focused_border_color:red ())
+
+let doors_background () =
+  reaches "background"
+    ~base:(Mosaic.button ~size ~on_activate:() "OK")
+    ~element:(Mosaic.button ~size ~background:red ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
+    ~create:(fun ~parent -> Box.create ~parent ~style ~background:red ())
+
+let doors_fill () =
+  reaches "fill"
+    ~base:(Mosaic.button ~size ~background:red ~on_activate:() "OK")
+    ~element:
+      (Mosaic.button ~size ~background:red ~fill:false ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~background:red ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~background:red ~fill:false ())
+
+let doors_title () =
+  reaches "title"
+    ~base:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
+    ~element:(Mosaic.button ~size ~border:true ~title:"T" ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~title:"T" ())
+
+let doors_title_alignment () =
+  reaches "title_alignment"
+    ~base:(Mosaic.button ~size ~border:true ~title:"T" ~on_activate:() "OK")
+    ~element:
+      (Mosaic.button ~size ~border:true ~title:"T" ~title_alignment:`Right
+         ~on_activate:() "OK")
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~title:"T" ())
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style ~border:true ~title:"T" ~title_alignment:`Right
+        ())
+
+let doors_text_style () =
+  reaches "text_style" ~text_style:bold
+    ~base:(Mosaic.button ~size ~on_activate:() "OK")
+    ~element:(Mosaic.button ~size ~text_style:bold ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
+    ~create:(fun ~parent -> Box.create ~parent ~style ())
+
+let doors_disabled () =
+  reaches "disabled"
+    ~text_style:(Ansi.Style.with_dim true Ansi.Style.default)
+    ~base:(Mosaic.button ~size ~on_activate:() "OK")
+    ~element:(Mosaic.button ~size ~disabled:true ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
+    ~create:(fun ~parent -> Box.create ~parent ~style ())
+
 let () =
   run "Button"
     [
@@ -247,4 +389,16 @@ let () =
       test "MLX labels and deferred mapping" mlx_and_mapping;
       test "visible focus and disabled states preserve label styling"
         visible_states_preserve_label_style;
+      test "border reaches the box" doors_border;
+      test "border_style reaches the box" doors_border_style;
+      test "border_sides reaches the box" doors_border_sides;
+      test "border_width reaches the box" doors_border_width;
+      test "border_color reaches the box" doors_border_color;
+      test "focused_border_color reaches the box" doors_focused_border_color;
+      test "background reaches the box" doors_background;
+      test "fill reaches the box" doors_fill;
+      test "title reaches the box" doors_title;
+      test "title_alignment reaches the box" doors_title_alignment;
+      test "text_style reaches the text" doors_text_style;
+      test "disabled reaches the text" doors_disabled;
     ]

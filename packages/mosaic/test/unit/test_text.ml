@@ -614,6 +614,154 @@ let wide_grapheme_cut_by_clip_leaves_border () =
   equal ~msg:"the last inner cell" string " " (cell 5);
   equal ~msg:"the right border" string "\u{2502}" (cell 6)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.text}, and {!Mosaic.rich_text}
+   for the labels of rich text) or to {!Text.create}, reaches the live text
+   ({!Test_harness.reaches}). Rich text has no label of [create] for its
+   fragments: they are set with {!Text.set_fragments}. *)
+
+let size = Mosaic.size ~width:6 ~height:3
+let style = Toffee.Style.make ~size ()
+let words = "hello world"
+let bold = Ansi.Style.make ~bold:true ()
+let red = Ansi.Color.red
+let fragments = [ Text.Fragment.text words ]
+
+let rich t =
+  Text.set_fragments t fragments;
+  Text.node t
+
+let doors_text_style () =
+  Test_harness.reaches "text_style" ~base:(Mosaic.text ~size words)
+    ~element:(Mosaic.text ~size ~text_style:bold words)
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ()))
+    ~create:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ~text_style:bold ()))
+
+let doors_style () =
+  Test_harness.reaches "style (the element's text_style)"
+    ~base:(Mosaic.text ~size words)
+    ~element:(Mosaic.text ~size ~style:bold words)
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ()))
+    ~create:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ~text_style:bold ()))
+
+let doors_wrap () =
+  Test_harness.reaches "wrap" ~base:(Mosaic.text ~size words)
+    ~element:(Mosaic.text ~size ~wrap:`Word words)
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ()))
+    ~create:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ~wrap:`Word ()))
+
+let doors_selectable () =
+  Test_harness.reaches "selectable" ~act:Test_harness.select_text
+    ~observe:(fun renderer _ ->
+      Option.value ~default:"(none)" (Renderer.selection_text renderer))
+    ~base:(Mosaic.text ~size words)
+    ~element:(Mosaic.text ~size ~selectable:false words)
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ()))
+    ~create:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ~selectable:false ()))
+
+let doors_selection_bg () =
+  Test_harness.reaches "selection_bg" ~act:Test_harness.select_text
+    ~base:(Mosaic.text ~size words)
+    ~element:(Mosaic.text ~size ~selection_bg:red words)
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ()))
+    ~create:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ~selection_bg:red ()))
+
+let doors_selection_fg () =
+  Test_harness.reaches "selection_fg" ~act:Test_harness.select_text
+    ~base:(Mosaic.text ~size words)
+    ~element:(Mosaic.text ~size ~selection_fg:red words)
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ()))
+    ~create:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ~selection_fg:red ()))
+
+let doors_tab_width () =
+  Test_harness.reaches "tab_width" ~base:(Mosaic.text ~size "a\tb")
+    ~element:(Mosaic.text ~size ~tab_width:4 "a\tb")
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:"a\tb" ()))
+    ~create:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:"a\tb" ~tab_width:4 ()))
+
+let doors_truncate () =
+  Test_harness.reaches "truncate" ~base:(Mosaic.text ~size words)
+    ~element:(Mosaic.text ~size ~truncate:true words)
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ()))
+    ~create:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ~truncate:true ()))
+
+let doors_rich_text_style () =
+  Test_harness.reaches "rich text_style"
+    ~base:(Mosaic.rich_text ~size fragments)
+    ~element:(Mosaic.rich_text ~size ~text_style:bold fragments)
+    ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
+    ~create:(fun parent ->
+      rich (Text.create ~parent ~style ~text_style:bold ()))
+
+let doors_rich_wrap () =
+  Test_harness.reaches "rich wrap"
+    ~base:(Mosaic.rich_text ~size fragments)
+    ~element:(Mosaic.rich_text ~size ~wrap:`Word fragments)
+    ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
+    ~create:(fun parent -> rich (Text.create ~parent ~style ~wrap:`Word ()))
+
+let doors_rich_selectable () =
+  Test_harness.reaches "rich selectable" ~act:Test_harness.select_text
+    ~observe:(fun renderer _ ->
+      Option.value ~default:"(none)" (Renderer.selection_text renderer))
+    ~base:(Mosaic.rich_text ~size fragments)
+    ~element:(Mosaic.rich_text ~size ~selectable:false fragments)
+    ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
+    ~create:(fun parent ->
+      rich (Text.create ~parent ~style ~selectable:false ()))
+
+let doors_rich_selection_bg () =
+  Test_harness.reaches "rich selection_bg" ~act:Test_harness.select_text
+    ~base:(Mosaic.rich_text ~size fragments)
+    ~element:(Mosaic.rich_text ~size ~selection_bg:red fragments)
+    ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
+    ~create:(fun parent ->
+      rich (Text.create ~parent ~style ~selection_bg:red ()))
+
+let doors_rich_selection_fg () =
+  Test_harness.reaches "rich selection_fg" ~act:Test_harness.select_text
+    ~base:(Mosaic.rich_text ~size fragments)
+    ~element:(Mosaic.rich_text ~size ~selection_fg:red fragments)
+    ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
+    ~create:(fun parent ->
+      rich (Text.create ~parent ~style ~selection_fg:red ()))
+
+let doors_rich_tab_width () =
+  let fragments = [ Text.Fragment.text "a\tb" ] in
+  let rich t =
+    Text.set_fragments t fragments;
+    Text.node t
+  in
+  Test_harness.reaches "rich tab_width"
+    ~base:(Mosaic.rich_text ~size fragments)
+    ~element:(Mosaic.rich_text ~size ~tab_width:4 fragments)
+    ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
+    ~create:(fun parent -> rich (Text.create ~parent ~style ~tab_width:4 ()))
+
+let doors_rich_truncate () =
+  Test_harness.reaches "rich truncate"
+    ~base:(Mosaic.rich_text ~size fragments)
+    ~element:(Mosaic.rich_text ~size ~truncate:true fragments)
+    ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
+    ~create:(fun parent -> rich (Text.create ~parent ~style ~truncate:true ()))
+
 let () =
   run "mosaic.text"
     [
@@ -737,5 +885,23 @@ let () =
           test "stamps content with text_style"
             apply_props_stamps_content_with_text_style;
           test "restamps on style change" apply_props_restamps_on_style_change;
+        ];
+      group "Both doors"
+        [
+          test "text_style" doors_text_style;
+          test "style" doors_style;
+          test "wrap" doors_wrap;
+          test "selectable" doors_selectable;
+          test "selection_bg" doors_selection_bg;
+          test "selection_fg" doors_selection_fg;
+          test "tab_width" doors_tab_width;
+          test "truncate" doors_truncate;
+          test "rich text_style" doors_rich_text_style;
+          test "rich wrap" doors_rich_wrap;
+          test "rich selectable" doors_rich_selectable;
+          test "rich selection_bg" doors_rich_selection_bg;
+          test "rich selection_fg" doors_rich_selection_fg;
+          test "rich tab_width" doors_rich_tab_width;
+          test "rich truncate" doors_rich_truncate;
         ];
     ]

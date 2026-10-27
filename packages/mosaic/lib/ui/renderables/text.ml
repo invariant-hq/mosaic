@@ -69,10 +69,18 @@ module Props = struct
   let check_tab_width name w =
     if w < 1 then invalid_arg ("Text.Props." ^ name ^ ": tab width below 1")
 
-  let make ?(content = "") ?(text_style = Ansi.Style.default) ?(wrap = `None)
+  (* [make] and [make_rich] take the same labels of presentation, which get
+     their defaults here alone; [k] makes the props of [x] with them. [k] is
+     a function of the module, so passing it allocates nothing. *)
+  let presentation name k x ?(text_style = Ansi.Style.default) ?(wrap = `None)
       ?(selectable = true) ?selection_bg ?selection_fg ?(tab_width = 2)
       ?(truncate = false) () =
-    check_tab_width "make" tab_width;
+    check_tab_width name tab_width;
+    k x ~text_style ~wrap ~selectable ~selection_bg ~selection_fg ~tab_width
+      ~truncate
+
+  let plain content ~text_style ~wrap ~selectable ~selection_bg ~selection_fg
+      ~tab_width ~truncate =
     Plain
       {
         content;
@@ -85,10 +93,8 @@ module Props = struct
         truncate;
       }
 
-  let make_rich ?(text_style = Ansi.Style.default) ?(wrap = `None)
-      ?(selectable = true) ?selection_bg ?selection_fg ?(tab_width = 2)
-      ?(truncate = false) fragments =
-    check_tab_width "make_rich" tab_width;
+  let rich fragments ~text_style ~wrap ~selectable ~selection_bg ~selection_fg
+      ~tab_width ~truncate =
     Rich
       {
         fragments;
@@ -100,6 +106,16 @@ module Props = struct
         tab_width;
         truncate;
       }
+
+  let make ?(content = "") ?text_style ?wrap ?selectable ?selection_bg
+      ?selection_fg ?tab_width ?truncate () =
+    presentation "make" plain content ?text_style ?wrap ?selectable
+      ?selection_bg ?selection_fg ?tab_width ?truncate ()
+
+  let make_rich ?text_style ?wrap ?selectable ?selection_bg ?selection_fg
+      ?tab_width ?truncate fragments =
+    presentation "make_rich" rich fragments ?text_style ?wrap ?selectable
+      ?selection_bg ?selection_fg ?tab_width ?truncate ()
 
   let default = make ()
 

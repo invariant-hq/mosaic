@@ -163,6 +163,15 @@ let annotated_textarea_flows_through_mosaic_and_mlx () =
        (Matrix_screen.next_grid (Renderer.screen renderer))
        0)
 
+(* The MLX box takes the labels {!Mosaic.box} takes, [inert] among them. *)
+let box_takes_inert () =
+  Test_harness.reaches "inert"
+    ~observe:(fun _ node -> string_of_bool (Renderable.inert node))
+    ~base:(Mosaic_mlx.box ())
+    ~element:(Mosaic_mlx.box ~inert:true ())
+    ~create_base:(fun parent -> Box.node (Box.create ~parent ()))
+    ~create:(fun parent -> Box.node (Box.create ~parent ~inert:true ()))
+
 let () =
   run "mosaic.mlx"
     [
@@ -173,4 +182,5 @@ let () =
       test "children and model-owned editor" children_and_editor_state;
       test "children and model-owned scroll" scroll_children_and_state;
       test "line-number children contract" line_number_requires_one_child;
+      test "box takes inert" box_takes_inert;
     ]

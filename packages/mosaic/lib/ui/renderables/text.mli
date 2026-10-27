@@ -118,20 +118,12 @@ val create :
   ?truncate:bool ->
   unit ->
   t
-(** [create ~parent ()] is a text node attached to [parent] with:
-    - [content]: plain text content. Defaults to [""].
-    - [text_style]: base visual style for all content. Defaults to
-      {!Ansi.Style.default}.
-    - [wrap]: wrapping mode. Defaults to [`None].
-    - [selectable]: whether text can be selected. Defaults to [true].
-    - [selection_bg]: background color for selected text. Defaults to [None].
-    - [selection_fg]: foreground color for selected text. Defaults to [None].
-    - [on_selection]: selection-change callback used when [selectable = true].
-    - [tab_width]: tab stop width. Defaults to [2].
-    - [truncate]: whether to truncate with ellipsis when [wrap = `None].
-      Defaults to [false].
+(** [create ~parent ()] is a text node attached to [parent]. The labels after
+    [opacity] are {!Props.make}'s and take its defaults, except [on_selection],
+    the selection-change callback used when [selectable] is [true], which only
+    [create] takes.
 
-    Raises [Invalid_argument] if [tab_width < 1]. *)
+    Raises [Invalid_argument] as {!Props.make} does. *)
 
 (** {1:accessors Accessors} *)
 
@@ -161,7 +153,20 @@ module Props : sig
     ?truncate:bool ->
     unit ->
     t
-  (** [make ()] is a property set with the same defaults as {!val-create}.
+  (** [make ()] is the properties of a text, with:
+      - [content]: plain text content. Defaults to [""].
+      - [text_style]: base visual style for all content. Defaults to
+        {!Ansi.Style.default}.
+      - [wrap]: wrapping mode. Defaults to [`None].
+      - [selectable]: whether text can be selected. Defaults to [true].
+      - [selection_bg]: background color for selected text. Defaults to [None].
+      - [selection_fg]: foreground color for selected text. Defaults to [None].
+      - [tab_width]: tab stop width. Defaults to [2].
+      - [truncate]: whether to truncate with ellipsis when [wrap = `None].
+        Defaults to [false].
+
+      {!val-create}, {!Vnode.text} and {!Vnode.rich_text} take these labels with
+      these defaults.
 
       Raises [Invalid_argument] if [tab_width < 1]. *)
 
