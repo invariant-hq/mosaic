@@ -3478,7 +3478,10 @@ let compute_flexbox_layout (type t)
      parent's known size wins, as the parent resolved the style against the
      containing block, which for an absolutely positioned child is the padding
      box. Taffy floors the two styled sizes alone and relies on parents to
-     floor the known size; the floor stays on all three here, as before. *)
+     floor the known size. The floor stays on the known size too: a parent can
+     give one below the padding and border, as when it stretches an item
+     across a narrower line, and a box is never smaller than its padding and
+     border, as Chromium lays it out. *)
   let styled known ~min ~max ~size ~padding_border =
     let size =
       match known with

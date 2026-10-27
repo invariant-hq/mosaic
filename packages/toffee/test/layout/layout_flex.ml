@@ -8224,6 +8224,52 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 100. |]; [| 0.; 0.; 10.; 10. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 100. |]; [| 0.; 0.; 10.; 10. |] ];
+      case "align_stretch_below_padding_border"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_direction:Column
+               ~size:{ width = Dimension.length 0.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 10. }
+                   ~padding:
+                     {
+                       left = Length_percentage.length 10.;
+                       right = Length_percentage.length 10.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ~border:
+                     {
+                       left = Length_percentage.length 5.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing ~flex_grow:1.
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 5.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 25.; 10. |]; [| 15.; 0.; 0.; 5. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 25.; 10. |]; [| 15.; 0.; 0.; 5. |];
+          ];
       case "align_stretch_should_size_based_on_parent"
         (fun box_sizing ->
           node
