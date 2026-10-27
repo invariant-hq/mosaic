@@ -25,6 +25,7 @@ transcript-20000/type-and-erase	alloc_words	exact	62253
 transcript-20000/wheel-roundtrip-2x8	alloc_words	exact	141700
 transcript-5000/resize-roundtrip-249x69	alloc_words	exact	22609192
 transcript-5000/resize-roundtrip-250x69	alloc_words	exact	76658
+transcript-5000/resize-sweep-25-widths	alloc_words	exact	710845648
 transcript-5000/type-and-erase	alloc_words	exact	62253
 transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	141700
 

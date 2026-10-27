@@ -84,8 +84,9 @@ type model = { editor : Mosaic.Editor.t; scroll : Mosaic.Scroll.t }
 type msg = Edit of Mosaic.Editor.t | Scroll of Mosaic.Scroll.t
 
 (* A resize alternates the terminal between its initial size and the one
-   it carries. *)
-type workload = Keystroke | Wheel_burst | Resize of int * int
+   it carries. A sweep of [n] narrows the terminal by a column a step, through
+   the [n] widths below its initial width, then restores that width. *)
+type workload = Keystroke | Wheel_burst | Resize of int * int | Sweep of int
 
 type driver = {
   terminal : Term.t;
@@ -93,6 +94,7 @@ type driver = {
   wheel_down : string;
   wheel_up : string;
   mutable alternate : bool;
+  mutable width : int;
 }
 
 (* A plain modern terminal: truecolor and Unicode width tables, no kitty
@@ -237,18 +239,30 @@ let step workload driver =
         if driver.alternate then (width, height)
         else (initial_width, initial_height)
       in
-      Term.resize driver.terminal ~width ~height);
+      Term.resize driver.terminal ~width ~height
+  | Sweep widths ->
+      driver.width <-
+        (if driver.width = initial_width - widths then initial_width
+         else driver.width - 1);
+      Term.resize driver.terminal ~width:driver.width ~height:initial_height);
   resume driver;
   if !(driver.continuation) = None then
     failwith "runtime benchmark: loop ended before presentation"
 
 (* Every sample returns to where it started: a key and its erasure, a wheel
-   burst and its reverse, a resize and its restoration. Alternating
-   directions across samples would make each sample's allocation depend on
-   its parity, and thumper could not count it exactly. *)
+   burst and its reverse, a resize and its restoration, a sweep through its
+   widths and back. Alternating directions across samples would make each
+   sample's allocation depend on its parity, and thumper could not count it
+   exactly. *)
 let measure workload driver =
-  step workload driver;
-  step workload driver
+  match workload with
+  | Sweep widths ->
+      for _ = 0 to widths do
+        step workload driver
+      done
+  | Keystroke | Wheel_burst | Resize _ ->
+      step workload driver;
+      step workload driver
 
 let close driver =
   Term.stop driver.terminal;
@@ -355,6 +369,7 @@ let setup_shape (type m) ~mode ~blocks (shape : m shape) workload () =
       wheel_down = wheel ~button:65 ~row:(top + 2);
       wheel_up = wheel ~button:64 ~row:(top + 2);
       alternate = false;
+      width = initial_width;
     }
   in
   (* What the terminal shows, at the size last reported. *)
@@ -362,6 +377,7 @@ let setup_shape (type m) ~mode ~blocks (shape : m shape) workload () =
     let width, height =
       match workload with
       | Resize (width, height) when driver.alternate -> (width, height)
+      | Sweep _ -> (driver.width, initial_height)
       | _ -> (initial_width, initial_height)
     in
     Term.screen terminal ~width ~height
@@ -399,7 +415,7 @@ let setup_shape (type m) ~mode ~blocks (shape : m shape) workload () =
         require
           (y = if driver.alternate then 7508 else 7500)
           (Printf.sprintf "wheel burst resolved to %d" y)
-    | Resize _ -> ()
+    | Resize _ | Sweep _ -> ()
   done;
   driver
 
@@ -923,6 +939,12 @@ let () =
               ("wheel-roundtrip-2x8", Wheel_burst);
               ("resize-roundtrip-249x69", Resize (249, 69));
               ("resize-roundtrip-250x69", Resize (250, 69));
+              (* More widths than a node's layout cache keeps measurements
+                 for, so that every step lays out at a width the caches no
+                 longer hold, as a user dragging a window's edge does. *)
+              ( Printf.sprintf "resize-sweep-%d-widths"
+                  (Toffee.Cache.cache_size + 1),
+                Sweep (Toffee.Cache.cache_size + 1) );
             ] );
           ( `Alt,
             20000,

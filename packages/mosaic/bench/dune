@@ -131,7 +131,7 @@
 (executable
  (name bench_runtime)
  (modules bench_runtime)
- (libraries thumper mosaic matrix matrix.vte unix))
+ (libraries thumper mosaic matrix matrix.vte toffee unix))
 
 (rule
  (alias bench)
