@@ -176,6 +176,10 @@ type 'context tree = {
   mutable layout_changes : int;
       (* The number of layouts stored that differ from the layouts they
          replace. *)
+  mutable last_root : int;
+  mutable last_space : Available_space.t size;
+      (* The index of the root of the last computation and its available
+         space; [last_root] is -1 before any. *)
   config : config;
 }
 (* The main TaffyTree type *)
@@ -193,6 +197,9 @@ let make_arrays capacity config =
     next_index = 0;
     live_node_count = 0;
     layout_changes = 0;
+    last_root = -1;
+    last_space =
+      Size.{ width = Available_space.zero; height = Available_space.zero };
     config;
   }
 
@@ -825,9 +832,37 @@ module View = struct
     then inexact tree.taffy idx
 end
 
+(* Whether [a] and [b] are the same available space, bit for bit *)
+let same_space (a : Available_space.t size) (b : Available_space.t size) =
+  let same (a : Available_space.t) (b : Available_space.t) =
+    match (a, b) with
+    | Definite a, Definite b -> same_float a b
+    | Min_content, Min_content | Max_content, Max_content -> true
+    | _ -> false
+  in
+  same a.width b.width && same a.height b.height
+
+(* Whether a computation of [node_id] in [available_space] would leave every
+   layout as it is: the last computation laid out the same root in the same
+   space, so no other computation stored a layout since, and nothing changed
+   below the root, whose cache still holds its final layout. With rounding,
+   the root is also rounded at the origin, which it is not once a node below
+   it changes its layout or is changed. *)
+let unchanged tree node_id available_space =
+  is_valid tree node_id
+  && Node_id.index node_id = tree.last_root
+  && same_space tree.last_space available_space
+  &&
+  let node_data = tree.nodes.(tree.last_root) in
+  (not (Cache.is_empty node_data.cache))
+  && ((not tree.config.use_rounding)
+     || has flag_rounded node_data
+        && node_data.rounded_at.(0) = 0.
+        && node_data.rounded_at.(1) = 0.)
+
 (* Main layout computation *)
-let compute_layout_with_measure (type ctx) (tree : ctx tree) node_id
-    available_space measure_function =
+let compute_changed_layout (type ctx) (tree : ctx tree) node_id available_space
+    measure_function =
   let view =
     {
       View.taffy = tree;
@@ -898,7 +933,13 @@ let compute_layout_with_measure (type ctx) (tree : ctx tree) node_id
       end)
       view node_id;
 
+  tree.last_root <- Node_id.index node_id;
+  tree.last_space <- available_space;
   Ok ()
+
+let compute_layout_with_measure tree node_id available_space measure_function =
+  if unchanged tree node_id available_space then Ok ()
+  else compute_changed_layout tree node_id available_space measure_function
 
 let compute_layout tree node available_space =
   compute_layout_with_measure tree node available_space (fun _ _ _ _ _ ->

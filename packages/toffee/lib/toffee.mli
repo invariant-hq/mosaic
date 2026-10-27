@@ -137,6 +137,10 @@
     invalidation uses {!mark_dirty}, which marks the node and all ancestors as
     dirty, triggering recomputation on the next {!compute_layout}.
 
+    A computation of the node last computed, in the available space last given,
+    with nothing changed in the tree since, does nothing, as every layout is
+    already the one it would compute.
+
     {1 Rounding}
 
     Layout values are floating-point. Enable rounding via {!enable_rounding}

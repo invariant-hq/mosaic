@@ -1381,6 +1381,78 @@ let every_cache_hit_is_a_computation seed =
       lay height);
   lay height
 
+(* A row of two texts, 20 wide, laid out at a width of [width]. *)
+let two_texts tree =
+  let first = leaf tree (Text 12.) and second = leaf tree (Text 30.) in
+  let root =
+    node tree
+      (Style.make
+         ~size:
+           { width = Style.Dimension.length 20.; height = Style.Dimension.auto }
+         ())
+      [ first; second ]
+  in
+  (root, first, second)
+
+let texts_space =
+  Size.
+    {
+      width = Available_space.of_float 40.;
+      height = Available_space.max_content;
+    }
+
+let lay_texts tree root =
+  compute_layout_with_measure tree root texts_space content_measure
+  |> or_fail "compute"
+
+(* Laying a tree out again at the same root and in the same space, with
+   nothing changed since, does nothing: it allocates nothing and keeps every
+   layout as it was. *)
+let test_layout_asked_again_does_nothing () =
+  let tree = new_tree () in
+  let root, first, second = two_texts tree in
+  lay_texts tree root;
+  let layouts () =
+    List.map
+      (fun node -> layout tree node |> or_fail "layout")
+      [ root; first; second ]
+  in
+  let before = layouts () in
+  let words =
+    let start = Gc.minor_words () in
+    lay_texts tree root;
+    Gc.minor_words () -. start
+  in
+  let nothing =
+    let start = Gc.minor_words () in
+    Gc.minor_words () -. start
+  in
+  equal ~msg:"words" float_exact nothing words;
+  is_true ~msg:"the same layouts" (List.for_all2 ( == ) before (layouts ()))
+
+(* A change between two layouts in the same space is laid out, rounded or
+   not: the text that grows wraps into more lines. *)
+let test_change_between_layouts_is_laid_out () =
+  List.iter
+    (fun rounding ->
+      let tree =
+        if rounding then new_tree () else new_tree () |> disable_rounding
+      in
+      let root, _, second = two_texts tree in
+      lay_texts tree root;
+      set_node_context tree second (Some (Text 60.)) |> or_fail "context";
+      lay_texts tree root;
+      let fresh =
+        if rounding then new_tree () else new_tree () |> disable_rounding
+      in
+      let fresh_root, _, fresh_second = two_texts fresh in
+      set_node_context fresh fresh_second (Some (Text 60.)) |> or_fail "context";
+      lay_texts fresh fresh_root;
+      equal ~msg:"height" float_exact
+        (Layout.size (layout fresh fresh_second |> or_fail "layout")).height
+        (Layout.size (layout tree second |> or_fail "layout")).height)
+    [ true; false ]
+
 (* A chunk of lines, a column 100% wide and of automatic height, ahead of a
    text that grows in a column: the column grows, and the chunk, which
    resolves nothing against the column's height, keeps its final layout. *)
@@ -3020,6 +3092,10 @@ let () =
           prop ~count:1000 "Every cache hit is a computation" Gen.int
             every_cache_hit_is_a_computation;
           test "A chunk keeps its final layout" test_chunk_keeps_final_layout;
+          test "A layout asked again does nothing"
+            test_layout_asked_again_does_nothing;
+          test "A change between layouts is laid out"
+            test_change_between_layouts_is_laid_out;
           prop ~count:2000 "A leaf's measurement is its final layout" Gen.int
             (leaf_measurement_is_its_final_layout ~replaced:false);
           prop ~count:2000 "A replaced leaf's measurement is its final layout"
