@@ -71,7 +71,7 @@ module Props : sig
       - [hidden_line_numbers] is the list of logical line indices whose numbers
         are hidden, leaving a blank gutter. Defaults to [[]].
 
-      {!val-create} and {!Vnode.line_number} take these labels with these
+      {!val-create} and [Mosaic.line_number] take these labels with these
       defaults. *)
 
   val default : t

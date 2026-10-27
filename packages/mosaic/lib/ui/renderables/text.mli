@@ -124,8 +124,8 @@ val create :
 (** [create ~parent ()] is a text node attached to [parent]. The labels after
     [opacity] are {!Props.make}'s and take its defaults, except [on_selection].
     [on_selection] is called with the selected grapheme range, or [None], when
-    the selection of a [selectable] text changes; {!Vnode.text} and
-    {!Vnode.rich_text} take it as a callback that returns a message.
+    the selection of a [selectable] text changes; [Mosaic.text] and
+    [Mosaic.rich_text] take it as a callback that returns a message.
 
     Raises [Invalid_argument] as {!Props.make} does. *)
 
@@ -171,7 +171,7 @@ module Props : sig
       - [truncate]: whether to truncate with ellipsis when [wrap = `None].
         Defaults to [false].
 
-      {!val-create}, {!Vnode.text} and {!Vnode.rich_text} take these labels with
+      {!val-create}, [Mosaic.text] and [Mosaic.rich_text] take these labels with
       these defaults.
 
       Raises [Invalid_argument] if [tab_width < 1]. *)

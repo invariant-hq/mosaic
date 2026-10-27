@@ -249,7 +249,7 @@ module Props : sig
         them to another action; defaults to [[]].
       - [fast_scroll_step]: rows to skip with Shift+Up/Down; defaults to [5].
 
-      {!val-create} and {!Vnode.tree} take these labels with these defaults. *)
+      {!val-create} and [Mosaic.tree] take these labels with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)

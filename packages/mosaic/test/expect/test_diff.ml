@@ -226,7 +226,7 @@ let%expect_test "compute patch from strings with empty old side" =
 
 let%expect_test "unified view simple diff" =
   render ~width:60 ~height:5
-    (Vnode.diff ~layout:Diff.Unified (parse simple_diff));
+    (Mosaic.diff ~view:Diff.Unified (parse simple_diff));
   [%expect_exact
     {|
  1   function hello() {
@@ -236,7 +236,7 @@ let%expect_test "unified view simple diff" =
 |}]
 
 let%expect_test "split view simple diff" =
-  render ~width:80 ~height:5 (Vnode.diff ~layout:Diff.Split (parse simple_diff));
+  render ~width:80 ~height:5 (Mosaic.diff ~view:Diff.Split (parse simple_diff));
   [%expect_exact
     {|
  1   function hello() {                  1   function hello() {
@@ -248,13 +248,13 @@ let%expect_test "split view simple diff" =
 let%expect_test "source line highlights preserve diff text" =
   let line_highlights = [ line_highlight Diff.New 2 2 ] in
   render ~width:60 ~height:5
-    (Vnode.diff ~layout:Diff.Unified ~line_highlights (parse simple_diff));
+    (Mosaic.diff ~view:Diff.Unified ~line_highlights (parse simple_diff));
   render ~width:80 ~height:5
-    (Vnode.diff ~layout:Diff.Split ~line_highlights (parse simple_diff));
+    (Mosaic.diff ~view:Diff.Split ~line_highlights (parse simple_diff));
   let selected = selected_line_color.gutter in
   let unified =
     grid_of_vnode ~width:60 ~height:5
-      (Vnode.diff ~layout:Diff.Unified ~line_highlights (parse simple_diff))
+      (Mosaic.diff ~view:Diff.Unified ~line_highlights (parse simple_diff))
   in
   assert_not_background ~msg:"unified old line is not selected" unified ~x:8
     ~y:1 selected;
@@ -262,7 +262,7 @@ let%expect_test "source line highlights preserve diff text" =
   assert_background ~msg:"unified selected content" unified ~x:8 ~y:2 selected;
   let split =
     grid_of_vnode ~width:80 ~height:5
-      (Vnode.diff ~layout:Diff.Split ~line_highlights (parse simple_diff))
+      (Mosaic.diff ~view:Diff.Split ~line_highlights (parse simple_diff))
   in
   assert_not_background ~msg:"split old side is not selected" split ~x:8 ~y:1
     selected;
@@ -287,8 +287,8 @@ let%expect_test "translucent source line highlights blend with diff color" =
   let line_highlights = [ { Diff.side = New; first = 2; last = 2; color } ] in
   let grid =
     grid_of_vnode ~width:60 ~height:5
-      (Vnode.diff ~layout:Diff.Unified ~theme:Diff.default_theme
-         ~line_highlights (parse simple_diff))
+      (Mosaic.diff ~view:Diff.Unified ~theme:Diff.default_theme ~line_highlights
+         (parse simple_diff))
   in
   let selected = background_at grid ~x:8 ~y:2 in
   let expected = blend_color ~base:Diff.default_theme.added_bg overlay in
@@ -331,7 +331,7 @@ let%expect_test "line spans emphasize a byte range in unified layout" =
   in
   let grid =
     grid_of_vnode ~width:60 ~height:5
-      (Vnode.diff ~layout:Diff.Unified ~line_spans (parse simple_diff))
+      (Mosaic.diff ~view:Diff.Unified ~line_spans (parse simple_diff))
   in
   (* Added line at y=2, content column 5; "World" spans grid x 27..31. *)
   assert_background ~msg:"added emphasis start" grid ~x:27 ~y:2 emphasis_color;
@@ -349,7 +349,7 @@ let%expect_test "line spans emphasize a byte range in split layout" =
   let line_spans = [ line_span Diff.New 2 22 27 ] in
   let grid =
     grid_of_vnode ~width:80 ~height:5
-      (Vnode.diff ~layout:Diff.Split ~line_spans (parse simple_diff))
+      (Mosaic.diff ~view:Diff.Split ~line_spans (parse simple_diff))
   in
   (* Added line on the right at y=1, content column 45; "World" x 67..71. *)
   assert_background ~msg:"split emphasis start" grid ~x:67 ~y:1 emphasis_color;
@@ -444,7 +444,7 @@ let%expect_test "diff line click callback reports hit" =
   let app = make_app () in
   let clicked = ref None in
   reconcile app
-    (Vnode.diff ~layout:Diff.Unified
+    (Mosaic.diff ~view:Diff.Unified
        ~on_line_click:(fun hit -> Some (clicked := Some hit))
        (parse simple_diff));
   set_viewport app.renderer ~width:60 ~height:5;
@@ -460,7 +460,7 @@ let%expect_test "diff line click callback ignores drags" =
   let app = make_app () in
   let clicked = ref false in
   reconcile app
-    (Vnode.diff ~layout:Diff.Unified
+    (Mosaic.diff ~view:Diff.Unified
        ~on_line_click:(fun _ -> Some (clicked := true))
        (parse simple_diff));
   set_viewport app.renderer ~width:60 ~height:5;
@@ -477,7 +477,7 @@ let%expect_test "diff without line click callback lets mouse up bubble" =
   let app = make_app () in
   let parent_ups = ref 0 in
   reconcile app
-    (Vnode.box
+    (Mosaic.box
        ~on_mouse:(fun event ->
          Some
            (match Event.Mouse.kind event with
@@ -485,7 +485,7 @@ let%expect_test "diff without line click callback lets mouse up bubble" =
            | Down _ | Up _ | Move | Drag _ | Drag_end _ | Drop _ | Over _ | Out
            | Scroll _ ->
                ()))
-       [ Vnode.diff ~style:full_style ~layout:Diff.Unified (parse simple_diff) ]);
+       [ Mosaic.diff ~layout:full_style ~view:Diff.Unified (parse simple_diff) ]);
   set_viewport app.renderer ~width:60 ~height:5;
   Renderer.render_frame app.renderer ~width:60 ~height:5 ~dt:0.;
   ignore (Renderer.render app.renderer : string);
@@ -500,7 +500,7 @@ let%expect_test "diff line click callback can be removed" =
   let clicked = ref 0 in
   let parent_ups = ref 0 in
   let parent child =
-    Vnode.box
+    Mosaic.box
       ~on_mouse:(fun event ->
         Some
           (match Event.Mouse.kind event with
@@ -512,7 +512,7 @@ let%expect_test "diff line click callback can be removed" =
   in
   reconcile app
     (parent
-       (Vnode.diff ~style:full_style ~layout:Diff.Unified
+       (Mosaic.diff ~layout:full_style ~view:Diff.Unified
           ~on_line_click:(fun _ -> Some (incr clicked))
           (parse simple_diff)));
   set_viewport app.renderer ~width:60 ~height:5;
@@ -522,7 +522,7 @@ let%expect_test "diff line click callback can be removed" =
   dispatch_mouse app.renderer (mouse_up ~x:8 ~y:2);
   reconcile app
     (parent
-       (Vnode.diff ~style:full_style ~layout:Diff.Unified (parse simple_diff)));
+       (Mosaic.diff ~layout:full_style ~view:Diff.Unified (parse simple_diff)));
   Renderer.render_frame app.renderer ~width:60 ~height:5 ~dt:0.;
   ignore (Renderer.render app.renderer : string);
   dispatch_mouse app.renderer (mouse_down ~x:8 ~y:2);
@@ -534,7 +534,7 @@ let%expect_test "diff line click callback can be removed" =
 let%expect_test "split view aligns asymmetric wrapped lines" =
   let app = make_app () in
   reconcile app
-    (Vnode.diff ~layout:Diff.Split ~wrap:`Char (parse asymmetric_wrap_diff));
+    (Mosaic.diff ~view:Diff.Split ~wrap:`Char (parse asymmetric_wrap_diff));
   set_viewport app.renderer ~width:44 ~height:7;
   Renderer.render_frame app.renderer ~width:44 ~height:7 ~dt:0.;
   ignore (Renderer.render app.renderer : string);
@@ -552,7 +552,7 @@ let%expect_test "split view aligns asymmetric wrapped lines" =
 let%expect_test "split view aligns highlighted asymmetric wrapped lines" =
   let app = make_app () in
   reconcile app
-    (Vnode.diff ~layout:Diff.Split ~wrap:`Char ~highlight:plain_highlight
+    (Mosaic.diff ~view:Diff.Split ~wrap:`Char ~highlight:plain_highlight
        (parse asymmetric_wrap_diff));
   set_viewport app.renderer ~width:44 ~height:7;
   Renderer.render_frame app.renderer ~width:44 ~height:7 ~dt:0.;
@@ -570,7 +570,7 @@ let%expect_test "split view aligns highlighted asymmetric wrapped lines" =
 
 let%expect_test "unified view multi-line diff" =
   render ~width:60 ~height:12
-    (Vnode.diff ~layout:Diff.Unified (parse multi_line_diff));
+    (Mosaic.diff ~view:Diff.Unified (parse multi_line_diff));
   [%expect_exact
     {|
   1   function add(a, b) {
@@ -588,7 +588,7 @@ let%expect_test "unified view multi-line diff" =
 
 let%expect_test "split view multi-line diff" =
   render ~width:80 ~height:12
-    (Vnode.diff ~layout:Diff.Split (parse multi_line_diff));
+    (Mosaic.diff ~view:Diff.Split (parse multi_line_diff));
   [%expect_exact
     {|
   1   function add(a, b) {                1   function add(a, b) {
@@ -606,9 +606,9 @@ let%expect_test "split view multi-line diff" =
 
 let%expect_test "add-only unified and split views" =
   render ~width:60 ~height:4
-    (Vnode.diff ~layout:Diff.Unified (parse add_only_diff));
+    (Mosaic.diff ~view:Diff.Unified (parse add_only_diff));
   render ~width:80 ~height:4
-    (Vnode.diff ~layout:Diff.Split (parse add_only_diff));
+    (Mosaic.diff ~view:Diff.Split (parse add_only_diff));
   [%expect_exact
     {|
  1 + function newFunction() {
@@ -622,9 +622,9 @@ let%expect_test "add-only unified and split views" =
 
 let%expect_test "remove-only unified and split views" =
   render ~width:60 ~height:4
-    (Vnode.diff ~layout:Diff.Unified (parse remove_only_diff));
+    (Mosaic.diff ~view:Diff.Unified (parse remove_only_diff));
   render ~width:80 ~height:4
-    (Vnode.diff ~layout:Diff.Split (parse remove_only_diff));
+    (Mosaic.diff ~view:Diff.Split (parse remove_only_diff));
   [%expect_exact
     {|
  1 - function oldFunction() {
@@ -638,8 +638,7 @@ let%expect_test "remove-only unified and split views" =
 
 let%expect_test "unified view without line numbers" =
   render ~width:60 ~height:5
-    (Vnode.diff ~layout:Diff.Unified ~show_line_numbers:false
-       (parse simple_diff));
+    (Mosaic.diff ~view:Diff.Unified ~show_line_numbers:false (parse simple_diff));
   [%expect_exact
     {|
 function hello() {
@@ -650,10 +649,10 @@ function hello() {
 
 let%expect_test "stable reconciler update from unified to split" =
   let app = make_app () in
-  reconcile app (Vnode.diff ~layout:Diff.Unified (parse simple_diff));
+  reconcile app (Mosaic.diff ~view:Diff.Unified (parse simple_diff));
   frame app ~width:60 ~height:5;
   ignore (Renderer.render app.renderer : string);
-  reconcile app (Vnode.diff ~layout:Diff.Split (parse simple_diff));
+  reconcile app (Mosaic.diff ~view:Diff.Split (parse simple_diff));
   frame app ~width:80 ~height:5;
   [%expect_exact
     {|

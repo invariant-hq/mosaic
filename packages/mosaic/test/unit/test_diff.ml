@@ -408,7 +408,7 @@ let doors_patch_label () =
 let doors_layout () =
   Test_harness.reaches "layout"
     ~base:(Mosaic.diff ~size:doors_size doors_patch)
-    ~element:(Mosaic.diff ~size:doors_size ~layout:Diff.Split doors_patch)
+    ~element:(Mosaic.diff ~size:doors_size ~view:Diff.Split doors_patch)
     ~create_base:(fun parent ->
       Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
     ~create:(fun parent ->

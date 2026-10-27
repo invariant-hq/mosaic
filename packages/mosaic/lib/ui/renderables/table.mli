@@ -278,7 +278,8 @@ module Props : sig
       - [fast_scroll_step] the number of rows to skip on Shift+Up/Down. Defaults
         to [5].
 
-      {!val-create} and {!Vnode.table} take these labels with these defaults. *)
+      {!val-create} takes these labels with these defaults, and so does
+      [Mosaic.table] for the labels it has. *)
 
   val default : t
   (** [default] is [make ()]. *)

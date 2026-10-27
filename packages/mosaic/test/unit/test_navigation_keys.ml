@@ -83,7 +83,7 @@ let fixture build ~mlx =
   let received = ref [] in
   let render ?(mode = Default) ?(selected = "B") ?(prevent = false) () =
     Mosaic.Reconciler.render reconciler ~viewport_width:30
-      (Vnode.map
+      (Mosaic.map
          (fun message -> received := message :: !received)
          (build ~mlx ~mode ~selected ~prevent));
     (match Mosaic.Reconciler.focused reconciler with
@@ -199,7 +199,8 @@ let consumes view ~acts ~passes () =
   let reconciler =
     Mosaic.Reconciler.create ~container:(Renderer.root renderer)
   in
-  Mosaic.Reconciler.render reconciler ~viewport_width:30 (Vnode.map ignore view);
+  Mosaic.Reconciler.render reconciler ~viewport_width:30
+    (Mosaic.map ignore view);
   (match Mosaic.Reconciler.focused reconciler with
   | Some node -> ignore (Renderer.focus renderer node : bool)
   | None -> failwith "consumption fixture has no focused widget");

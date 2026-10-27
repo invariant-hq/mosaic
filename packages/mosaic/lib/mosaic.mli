@@ -836,7 +836,7 @@ module Syntax_highlight = Mosaic_ui.Syntax_highlight
 
 (** {1:views Views} *)
 
-type 'msg t = 'msg Vnode.t
+type 'msg t
 (** The type for view nodes parameterized by message type ['msg]. Semantic
     callbacks produce messages directly. Raw event handlers return
     ['msg option]: [Some msg] dispatches the message; [None] ignores the event.
@@ -849,6 +849,8 @@ val map : ('a -> 'b) -> 'a t -> 'b t
 
     Use [map] to embed a child component whose message type differs from the
     parent's. *)
+
+type 'msg view := 'msg t
 
 (** {1:off_loop Work off the loop} *)
 
@@ -912,7 +914,7 @@ module Cmd : sig
         body : string;  (** [notify]'s [~body]. *)
       }  (** {!val-notify}. *)
     | Clear_selection  (** {!val-clear_selection}. *)
-    | Static_commit of 'msg Vnode.t  (** {!val-static_commit}. *)
+    | Static_commit of 'msg view  (** {!val-static_commit}. *)
     | Static_clear  (** {!val-static_clear}. *)
     | Abort_paste  (** {!val-abort_paste}. *)
     | Keep_frame of bool  (** {!val-keep_frame}. *)
@@ -1015,7 +1017,7 @@ module Cmd : sig
   val clear_selection : 'msg t
   (** [clear_selection] clears the text selected in the view, if any. *)
 
-  val static_commit : 'msg Vnode.t -> 'msg t
+  val static_commit : 'msg view -> 'msg t
   (** [static_commit view] renders [view] at the width of the next frame
       ({!Matrix.effective_size}), as tall as it needs, and writes its rows up to
       the last that holds something to the transcript, with their styles
@@ -1545,10 +1547,45 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     [0], and [buffered] and [live] to [false] unless the widget supplies a
     different default.
 
-    [key] is an optional reconciliation hint. [focused] declares keyboard focus.
-    With no focused element, keys reach subscriptions only. Declaring more than
-    one visible focused element that is not inert raises [Invalid_argument].
-    Hidden subtrees do not participate in focus.
+    Every element also takes [layout], a whole {!Toffee.Style.t} that the layout
+    arguments override. An element given [layout] and no layout argument is laid
+    out by that record itself. A layout argument sets its own field and keeps
+    the other fields of [layout], including those that no argument sets, such as
+    {!Toffee.Style.val-box_generation_mode}. Without [layout], the arguments
+    apply to {!Toffee.Style.default}. A layout built once and shared by many
+    elements, such as one style for every row of a list, therefore costs nothing
+    per element, and reconciling an element whose layout is the record it had
+    before costs one comparison.
+
+    A view is a value, which [view] builds anew for each model. Mosaic
+    {e reconciles} it with the view it drew last. An element of the new view
+    that {e matches} an element of the old one keeps that element's widget, with
+    the state and caches the widget holds, such as a scroll box's scroll or a
+    text's wrapped lines, and takes the new element's arguments. An element that
+    matches nothing gets a new widget, and an old element that nothing matched
+    is removed with its widget. Matching happens among the children of one
+    parent, once {!fragment}, {!themed} and {!empty} are flattened away and each
+    {!viewport_switch} is replaced by its selected branch. An element with a
+    [key] matches the old element of the same kind with that key wherever it was
+    among those children, so keyed children keep their widgets when they move.
+    Of several children with one key, the first matches and the others get new
+    widgets. An element without a [key] matches the old element at the same
+    position among the parent's elements, when that element is of the same kind
+    and has no key. The children are then placed in the order of the new view,
+    whatever that order, in time linear in their number. An embedded node
+    ({!embed}) is placed among them and is otherwise left to its owner. A view
+    under {!map} matches as it would without it.
+
+    A memo ({!memo}) matches the old memo at the same position among the
+    parent's memos. An equal memo does not call its view again, and when the
+    viewport width and the [themed] functions around it are the same it keeps
+    its subtree without visiting it, so it costs one comparison. A memo that is
+    not equal calls its view, and its subtree is reconciled with the old memo's.
+
+    [focused] declares keyboard focus. With no focused element, keys reach
+    subscriptions only. Declaring more than one visible focused element that is
+    not inert raises [Invalid_argument]. Hidden subtrees do not participate in
+    focus.
 
     An {e inert} element takes neither focus nor the pointer, as with HTML's
     [inert] attribute: a [focused] declaration on it does not count, Tab passes
@@ -1666,6 +1703,7 @@ val viewport_switch :
 
 val box :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -1763,6 +1801,7 @@ val themed : (Theme.t -> Theme.t) -> 'msg t -> 'msg t
 
 val button :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -1842,6 +1881,7 @@ val button :
 
 val text :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -1909,6 +1949,7 @@ val text :
 
 val rich_text :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -1976,6 +2017,7 @@ val rich_text :
 
 val slider :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2041,6 +2083,7 @@ val slider :
 
 val input :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2122,6 +2165,7 @@ val input :
 
 val select :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2208,6 +2252,7 @@ val select :
 
 val tab_select :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2286,6 +2331,7 @@ val tab_select :
 
 val canvas :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2344,6 +2390,7 @@ val canvas :
 
 val picture :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2395,12 +2442,24 @@ val picture :
   Matrix.Grid.picture ->
   'msg t
 (** [picture p] shows the picture [p] ({!Matrix.Grid.section-pictures}) fit in
-    its box, which is [p]'s size in cells where the size is left to the content
-    ({!Mosaic_ui.Vnode.picture}); layout and paint use the labelled arguments
-    above. *)
+    its box with its aspect ratio kept and centered
+    ({!Matrix.Grid.draw_picture}). Layout and paint use the labelled arguments.
+
+    The picture is laid out as a replaced element, as an image is in CSS
+    ({!Toffee.Style.item_is_replaced}): a flex container stretches it, a block
+    and a grid's [normal] alignment do not. It keeps [p]'s ratio of columns to
+    rows at the terminal's cell size
+    ({!Mosaic_ui.Renderable.Private.val-cell_size}, 10 by 20 pixels while
+    unknown) through layout, unless its layout sets one. A size given on one
+    axis, by the layout arguments or by the parent's layout, sets the other.
+    Where nothing gives a size, it is [p]'s size in cells,
+    [ceil (width / cell width)] by [ceil (height / cell height)], shrunk to the
+    space available, and it shrinks down to one cell wide. A box of another
+    shape, with both sizes given, shows the picture letterboxed. *)
 
 val spinner :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2459,6 +2518,7 @@ val spinner :
 
 val progress_bar :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2521,6 +2581,7 @@ val progress_bar :
 
 val scroll_bar :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2590,6 +2651,7 @@ val scroll_bar :
 
 val scroll_box :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2658,6 +2720,7 @@ val scroll_box :
 
 val textarea :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2737,6 +2800,7 @@ val textarea :
 
 val code :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2804,6 +2868,7 @@ val code :
 
 val line_number :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2870,6 +2935,7 @@ val line_number :
 
 val diff :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -2918,7 +2984,7 @@ val diff :
   ?on_focus_request:'msg ->
   ?on_size:(w:int -> h:int -> 'msg option) ->
   ?focused:bool ->
-  ?layout:Diff.layout ->
+  ?view:Diff.layout ->
   ?theme:Diff.theme ->
   ?highlight:Diff.highlight ->
   ?line_highlights:Diff.line_highlight list ->
@@ -2931,13 +2997,16 @@ val diff :
   ?on_line_click:(Diff.line_hit -> 'msg option) ->
   Diff.Patch.t ->
   'msg t
-(** [diff patch] is a rendered patch. The labels from [layout] to [text_style]
-    are {!Mosaic_ui.Diff.Props.make}'s and take its defaults. [on_line_click] is
-    called with a semantic diff hit when the user clicks a rendered diff line
-    without dragging. Layout and paint use the other labelled arguments. *)
+(** [diff patch] is a rendered patch. [view] is {!Mosaic_ui.Diff.Props.make}'s
+    [layout], whether the patch shows in one column or in two, and the labels
+    from [theme] to [text_style] are its labels of the same names. All take its
+    defaults. [on_line_click] is called with a semantic diff hit when the user
+    clicks a rendered diff line without dragging. Layout and paint use the other
+    labelled arguments. *)
 
 val markdown :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -3015,6 +3084,7 @@ val markdown :
 
 val table :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -3111,6 +3181,7 @@ val table :
 
 val tree :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -3187,4 +3258,58 @@ val tree :
     its defaults; {!Mosaic_ui.Tree} lists the keys the tree acts on when
     focused. Layout and paint use the other labelled arguments. *)
 
-module Reconciler = Reconciler
+(** {1:reconciler Reconciling without a program} *)
+
+(** Views reconciled into a renderable tree by a runtime of its own.
+
+    {!val-run} reconciles each view itself. A runtime that drives a
+    {!Mosaic_ui.Renderer} without {!val-run} reconciles a view into the children
+    of a {e container} node with {!Reconciler.render}, as
+    {{!elements}UI elements} describes. After each render it gives the renderer
+    the focused element ({!Reconciler.focused}) and the modal node
+    ({!Reconciler.modal}). The reconciler mounts its elements among the
+    container's children and leaves the container's other children as they are.
+*)
+module Reconciler : sig
+  type t
+  (** The type for reconcilers. A reconciler holds the view it rendered last,
+      which the next {!render} reconciles against. *)
+
+  val create : container:Mosaic_ui.Renderable.t -> t
+  (** [create ~container] is a reconciler that mounts views into [container]. It
+      mounts nothing before its first {!render}. *)
+
+  val container : t -> Mosaic_ui.Renderable.t
+  (** [container r] is the container of [r]. *)
+
+  val render : t -> viewport_width:int -> unit view -> unit
+  (** [render r ~viewport_width view] reconciles [view] with the view [r]
+      rendered last, then requests a render of [container r]. [viewport_width]
+      is the terminal's width in cells, which selects the branch of each
+      {!viewport_switch} before its elements are reconciled and laid out.
+
+      Raises [Invalid_argument] if [viewport_width] is not positive. *)
+
+  val unmount : t -> unit
+  (** [unmount r] removes every element [r] mounted and detaches the nodes the
+      view embeds, leaving [container r] as it was before the first {!render},
+      then requests a render of it. [r] may render again afterwards. *)
+
+  val focused : t -> Mosaic_ui.Renderable.t option
+  (** [focused r] is the node of the element the view declares focused that is
+      shown and not inert ({{!elements}UI elements}), if any. Rendering does not
+      move the renderer's focus. The runtime gives this node to
+      {!Mosaic_ui.Renderer.val-focus}, or calls {!Mosaic_ui.Renderer.blur},
+      after {!render}.
+
+      Raises [Invalid_argument] if several such elements declare focus. *)
+
+  val modal : t -> Mosaic_ui.Renderable.t option
+  (** [modal r] is the node of the shown modal ({!val-modal}) that no inert
+      subtree holds, the last in view order, if any. The runtime gives it to
+      {!Mosaic_ui.Renderer.set_modal} after {!render}. *)
+
+  val request_close : t -> bool
+  (** [request_close r] dispatches the [on_close] of the modal {!modal} is, and
+      is [true] iff it has one. *)
+end

@@ -6,14 +6,14 @@ let make () =
   let container = Renderer.root renderer in
   let style =
     Toffee.Style.default
-    |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:8)
+    |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:8)
   in
   Renderable.set_style container style;
   (renderer, Mosaic.Reconciler.create ~container)
 
 let render renderer reconciler view dispatch =
   Mosaic.Reconciler.render reconciler ~viewport_width:20
-    (Vnode.map dispatch view);
+    (Mosaic.map dispatch view);
   Renderer.render_frame renderer ~width:20 ~height:8 ~dt:0.
 
 let children_and_editor_state () =

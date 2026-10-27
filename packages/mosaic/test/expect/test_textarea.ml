@@ -4,7 +4,7 @@ open Expect_harness
 let textarea ?app ?(value = "") ?max_length ?placeholder ?placeholder_color
     ?text_color ?focused_text_color () =
   let rec view state =
-    Vnode.textarea ~state ?placeholder ?placeholder_color ?text_color
+    Mosaic.textarea ~state ?placeholder ?placeholder_color ?text_color
       ?focused_text_color
       ~on_change:(fun state ->
         Option.iter (fun app -> reconcile app (view state)) app)

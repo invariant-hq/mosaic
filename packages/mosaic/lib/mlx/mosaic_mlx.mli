@@ -27,6 +27,7 @@ val fragment : ?children:'msg t list -> unit -> 'msg t
 
 val box :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -92,6 +93,7 @@ val box :
 
 val button :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -156,6 +158,7 @@ val button :
 
 val scroll_box :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -223,6 +226,7 @@ val scroll_box :
 
 val text :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -283,10 +287,11 @@ val text :
   ?children:string list ->
   unit ->
   'msg t
-(** Like {!Mosaic.text}. [children] defaults to [[]]. *)
+(** Like {!Mosaic.val-text}. [children] defaults to [[]]. *)
 
 val rich_text :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -349,10 +354,11 @@ val rich_text :
   'msg t
 (** [rich_text ~children:fragments ()] renders structured text. Children use
     {!Text.Fragment} constructors, retaining nested style inheritance. All
-    labelled options have the same meaning as {!text}. *)
+    labelled options have the same meaning as {!val-text}. *)
 
 val code :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -418,6 +424,7 @@ val code :
 
 val markdown :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -492,6 +499,7 @@ val markdown :
 
 val input :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -565,6 +573,7 @@ val input :
 
 val textarea :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->
@@ -643,6 +652,7 @@ val textarea :
 
 val line_number :
   ?key:string ->
+  ?layout:Toffee.Style.t ->
   ?display:Display.t ->
   ?box_sizing:Box_sizing.t ->
   ?position:Position.t ->

@@ -209,7 +209,7 @@ module Props : sig
       - [key_bindings] adds keys to those {!section-keys} lists or binds one of
         them to another action. Defaults to [[]].
 
-      {!val-create} and {!Vnode.textarea} take these labels with these defaults.
+      {!val-create} and [Mosaic.textarea] take these labels with these defaults.
 
       Two inputs style the text, and [annotations] go over [syntax] (see
       {!Text_buffer.Annotations.merge}).

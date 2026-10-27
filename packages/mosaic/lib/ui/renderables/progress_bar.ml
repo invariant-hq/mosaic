@@ -3,7 +3,7 @@
 type orientation = [ `Horizontal | `Vertical ]
 
 (* [Props.make] is the one place the progress bar's labels get their
-   defaults: [create] and [Vnode.progress_bar] pass their labels on unset. *)
+   defaults: [create] and [Mosaic.progress_bar] pass their labels on unset. *)
 module Props = struct
   type t = {
     value : float;

@@ -11,8 +11,17 @@ let items =
       { label = "Epsilon"; description = Some "Fifth item" };
     ]
 
+(* A select over [options], each reporting its position. *)
+let select ?(selected = 0) ?(on_change = ignore) ?show_description options =
+  Mosaic.select ?show_description ~equal:Int.equal ~selected:(Some selected)
+    ~on_change
+    (List.mapi
+       (fun i { Select.label; description } ->
+         Mosaic.Select.item i ?description label)
+       options)
+
 let%expect_test "basic rendering first selected" =
-  render ~width:30 ~height:10 (Vnode.select ~options:items ~selected_index:0 ());
+  render ~width:30 ~height:10 (select ~selected:0 items);
   [%expect_exact
     {|
  › Alpha
@@ -27,7 +36,7 @@ let%expect_test "basic rendering first selected" =
    Fifth item|}]
 
 let%expect_test "second item selected" =
-  render ~width:30 ~height:10 (Vnode.select ~options:items ~selected_index:1 ());
+  render ~width:30 ~height:10 (select ~selected:1 items);
   [%expect_exact
     {|
    Alpha
@@ -42,8 +51,7 @@ let%expect_test "second item selected" =
    Fifth item|}]
 
 let%expect_test "no descriptions" =
-  render ~width:30 ~height:10
-    (Vnode.select ~options:items ~show_description:false ());
+  render ~width:30 ~height:10 (select ~show_description:false items);
   [%expect_exact {|
  › Alpha
    Beta
@@ -60,9 +68,7 @@ let%expect_test "navigation changes selection" =
   let app = make_app () in
   let selected = ref 0 in
   let view () =
-    Vnode.select ~options:items ~selected_index:!selected
-      ~on_change:(fun index -> selected := index)
-      ()
+    select ~selected:!selected ~on_change:(fun index -> selected := index) items
   in
   reconcile app (view ());
   focus app (mounted app);
@@ -95,7 +101,7 @@ let%expect_test "navigation changes selection" =
 
 let%expect_test "focused vs unfocused" =
   let app = make_app () in
-  reconcile app (Vnode.select ~options:items ());
+  reconcile app (select items);
   frame app ~width:30 ~height:10;
   focus app (mounted app);
   frame app ~width:30 ~height:10;
@@ -129,18 +135,16 @@ let%expect_test "intrinsic select fits between siblings on its first frame" =
     |> Toffee.Style.set_align_items (Some Toffee.Style.Align_items.Start)
   in
   render ~width:12 ~height:4
-    (Vnode.box ~style
+    (Mosaic.box ~layout:style
        [
-         Vnode.text "before";
-         Vnode.select ~show_description:false
-           ~options:
-             Select.
-               [
-                 { label = "A"; description = None };
-                 { label = "B"; description = None };
-               ]
-           ();
-         Vnode.text "after";
+         Mosaic.text "before";
+         select ~show_description:false
+           Select.
+             [
+               { label = "A"; description = None };
+               { label = "B"; description = None };
+             ];
+         Mosaic.text "after";
        ]);
   [%expect_exact {|
 before

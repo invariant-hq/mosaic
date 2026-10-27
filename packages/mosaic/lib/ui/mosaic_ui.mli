@@ -4,9 +4,8 @@
     provides:
 
     - {b Core infrastructure.} {!Event} for input events, {!Selection} for text
-      selections, {!Renderable} for the mutable node tree, {!Renderer} for the
-      layout-render-diff pipeline, and {!Vnode} for declarative virtual-node
-      descriptions.
+      selections, {!Renderable} for the mutable node tree, and {!Renderer} for
+      the layout-render-diff pipeline.
     - {b Text primitives.} {!Text_buffer} for styled text storage,
       {!Text_surface} for viewport-aware text rendering with wrapping, and
       {!Editor} for persistent grapheme-aware editing with undo.
@@ -113,10 +112,7 @@ module Line_number = Line_number
 module Diff = Diff
 (** Unified and split-view diff display. *)
 
-(** {1:vdom Declarative UI} *)
-
-module Vnode = Vnode
-(** Virtual node tree for declarative UI descriptions. *)
+(** {1:values Values} *)
 
 module Editor = Editor
 (** Persistent text, caret, selection, and undo state. *)

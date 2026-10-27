@@ -22,7 +22,7 @@ let default_frame_set = dots
 (* ───── Props ───── *)
 
 (* [Props.make] is the one place the spinner's labels get their defaults:
-   [create] and [Vnode.spinner] pass their labels on unset. *)
+   [create] and [Mosaic.spinner] pass their labels on unset. *)
 module Props = struct
   type t = { frame_set : frame_set; color : Ansi.Color.t option }
 

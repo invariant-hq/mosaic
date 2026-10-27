@@ -90,8 +90,8 @@ module Props : sig
         role.
       - [arrow_bg] — arrow background color. Defaults to none.
 
-      {!val-create} and {!Vnode.scroll_bar} take these labels with these
-      defaults. *)
+      {!val-create} takes these labels with these defaults, and so does
+      [Mosaic.scroll_bar] for the labels it has. *)
 
   val default : t
   (** [default] is [make ()]. *)

@@ -15,6 +15,9 @@ let rows =
     [| Table.cell "Charlie"; Table.cell "35"; Table.cell "Paris" |];
   ]
 
+(* Rows that report their positions. *)
+let positional rows = List.mapi Mosaic.Table.row rows
+
 let paging_rows count =
   List.init count (fun index -> [| Table.cell ("row " ^ string_of_int index) |])
 
@@ -25,7 +28,9 @@ let dispatch_mouse app report =
 (* ── Basic Rendering ── *)
 
 let%expect_test "basic table with border" =
-  render ~width:25 ~height:7 (Vnode.table ~columns:cols ~rows ~border:true ());
+  render ~width:25 ~height:7
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~rows:(positional rows) ~border:true ());
   [%expect_exact
     {|
 ┌───────────────────────┐
@@ -37,7 +42,9 @@ let%expect_test "basic table with border" =
 └───────────────────────┘|}]
 
 let%expect_test "table without border" =
-  render ~width:25 ~height:4 (Vnode.table ~columns:cols ~rows ~border:false ());
+  render ~width:25 ~height:4
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~rows:(positional rows) ~border:false ());
   [%expect_exact
     {|
 Name      Age City
@@ -47,7 +54,8 @@ Charlie    35 Paris|}]
 
 let%expect_test "table without header" =
   render ~width:25 ~height:3
-    (Vnode.table ~columns:cols ~rows ~border:false ~show_header:false ());
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~rows:(positional rows) ~border:false ~show_header:false ());
   [%expect_exact
     {|
 Alice      30 NYC
@@ -65,7 +73,8 @@ let%expect_test "center aligned column" =
     ]
   in
   render ~width:25 ~height:4
-    (Vnode.table ~columns:center_cols ~rows ~border:false ());
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:center_cols ~rows:(positional rows) ~border:false ());
   [%expect_exact
     {|
  Name    Age   City
@@ -82,7 +91,8 @@ let%expect_test "right aligned column" =
     ]
   in
   render ~width:25 ~height:4
-    (Vnode.table ~columns:right_cols ~rows ~border:false ());
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:right_cols ~rows:(positional rows) ~border:false ());
   [%expect_exact
     {|
    Name   Age   City
@@ -94,8 +104,9 @@ Charlie    35  Paris|}]
 
 let%expect_test "column separators" =
   render ~width:25 ~height:4
-    (Vnode.table ~columns:cols ~rows ~border:false ~show_column_separator:true
-       ());
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~rows:(positional rows) ~border:false
+       ~show_column_separator:true ());
   [%expect_exact
     {|
 Name   │  Age│City
@@ -107,7 +118,9 @@ Charlie│   35│Paris|}]
 
 let%expect_test "row separators no border" =
   render ~width:25 ~height:7
-    (Vnode.table ~columns:cols ~rows ~border:false ~show_row_separator:true ());
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~rows:(positional rows) ~border:false
+       ~show_row_separator:true ());
   [%expect_exact
     {|
 Name      Age City
@@ -121,7 +134,9 @@ Charlie    35 Paris
 (* ── Empty Table ── *)
 
 let%expect_test "empty table with border" =
-  render ~width:20 ~height:5 (Vnode.table ~columns:cols ~border:true ());
+  render ~width:20 ~height:5
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~border:true ());
   [%expect_exact
     {|
 ┌──────────────────┐
@@ -131,7 +146,9 @@ let%expect_test "empty table with border" =
 └──────────────────┘|}]
 
 let%expect_test "empty columns empty rows" =
-  render ~width:20 ~height:3 (Vnode.table ~border:false ());
+  render ~width:20 ~height:3
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~border:false ());
   [%expect_exact {|
 
 
@@ -143,7 +160,8 @@ let%expect_test "keyboard navigation changes selection" =
   let app = make_app () in
   let selected = ref 0 in
   let view () =
-    Vnode.table ~columns:cols ~rows ~border:false ~selected_row:!selected
+    Mosaic.table ~equal:Int.equal ~columns:cols ~rows:(positional rows)
+      ~border:false ~selected:(Some !selected)
       ~on_change:(fun index -> selected := index)
       ()
   in
@@ -169,10 +187,11 @@ let%expect_test "page down uses the measured bordered table body" =
   let changes = ref [] in
   let selected = ref 1 in
   let view () =
-    Vnode.table
+    Mosaic.table ~equal:Int.equal
       ~columns:[ Table.column ~width:(`Flex 1.) "Name" ]
-      ~rows:(paging_rows 12) ~selected_row:!selected ~border:true
-      ~show_header:true ~show_scroll_indicator:true
+      ~rows:(positional (paging_rows 12))
+      ~selected:(Some !selected) ~border:true ~show_header:true
+      ~show_scroll_indicator:true
       ~on_change:(fun index ->
         selected := index;
         changes := index :: !changes)
@@ -212,10 +231,11 @@ let%expect_test "page up accounts for measured row separators" =
   let changes = ref [] in
   let selected = ref 8 in
   let view () =
-    Vnode.table
+    Mosaic.table ~equal:Int.equal
       ~columns:[ Table.column ~width:(`Flex 1.) "" ]
-      ~rows:(paging_rows 12) ~selected_row:!selected ~border:false
-      ~show_header:false ~show_row_separator:true ~show_scroll_indicator:true
+      ~rows:(positional (paging_rows 12))
+      ~selected:(Some !selected) ~border:false ~show_header:false
+      ~show_row_separator:true ~show_scroll_indicator:true
       ~on_change:(fun index ->
         selected := index;
         changes := index :: !changes)
@@ -249,7 +269,8 @@ let%expect_test "declarative hover and click callbacks report exact rows" =
   let hovered = ref [] in
   let activated = ref [] in
   reconcile app
-    (Vnode.table ~columns:cols ~rows ~border:false ~show_header:false
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~rows:(positional rows) ~border:false ~show_header:false
        ~activate_on_click:true
        ~on_hover:(fun row -> Some (hovered := row :: !hovered))
        ~on_activate:(fun row -> activated := row :: !activated)
@@ -273,7 +294,9 @@ Charlie    35 Parishover=1,2 activate=2
 
 let%expect_test "props change updates data" =
   let app = make_app () in
-  reconcile app (Vnode.table ~columns:cols ~rows ~border:false ());
+  reconcile app
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~rows:(positional rows) ~border:false ());
   frame app ~width:25 ~height:4;
   let new_rows =
     [
@@ -281,7 +304,9 @@ let%expect_test "props change updates data" =
       [| Table.cell "Yuki"; Table.cell "88"; Table.cell "Moon" |];
     ]
   in
-  reconcile app (Vnode.table ~columns:cols ~rows:new_rows ~border:false ());
+  reconcile app
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:cols ~rows:(positional new_rows) ~border:false ());
   frame app ~width:25 ~height:4;
   [%expect_exact
     {|
@@ -311,7 +336,8 @@ let%expect_test "ellipsis overflow" =
     ]
   in
   render ~width:25 ~height:3
-    (Vnode.table ~columns:overflow_cols ~rows:overflow_rows ~border:false
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:overflow_cols ~rows:(positional overflow_rows) ~border:false
        ~show_header:false ());
   [%expect_exact {|
 Alexa...    30 NYC
@@ -333,7 +359,8 @@ let%expect_test "crop overflow" =
     ]
   in
   render ~width:25 ~height:3
-    (Vnode.table ~columns:crop_cols ~rows:crop_rows ~border:false
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:crop_cols ~rows:(positional crop_rows) ~border:false
        ~show_header:false ());
   [%expect_exact {|
 Alexan    30 NYC
@@ -350,7 +377,8 @@ let%expect_test "cell padding" =
     ]
   in
   render ~width:15 ~height:3
-    (Vnode.table ~columns:pad_cols ~rows:pad_rows ~border:false
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:pad_cols ~rows:(positional pad_rows) ~border:false
        ~show_header:false ~cell_padding:1 ());
   [%expect_exact {|
  1   2
@@ -363,7 +391,8 @@ let%expect_test "column min width" =
   let min_cols = [ Table.column ~min_width:10 "A"; Table.column "B" ] in
   let min_rows = [ [| Table.cell "1"; Table.cell "2" |] ] in
   render ~width:20 ~height:2
-    (Vnode.table ~columns:min_cols ~rows:min_rows ~border:false
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:min_cols ~rows:(positional min_rows) ~border:false
        ~show_header:false ());
   [%expect_exact {|
 1          2
@@ -378,7 +407,8 @@ let%expect_test "column max width" =
     ]
   in
   render ~width:15 ~height:3
-    (Vnode.table ~columns:max_cols ~rows:max_rows ~border:false
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:max_cols ~rows:(positional max_rows) ~border:false
        ~show_header:false ());
   [%expect_exact {|
 Al... NYC
@@ -398,9 +428,9 @@ let%expect_test "alternating row styles (layout)" =
     ]
   in
   render ~width:15 ~height:5
-    (Vnode.table
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
        ~columns:[ Table.column "Name"; Table.column "ID" ]
-       ~rows:alt_rows ~border:false
+       ~rows:(positional alt_rows) ~border:false
        ~row_styles:[ Ansi.Style.default; gray ]
        ());
   [%expect_exact {|
@@ -427,7 +457,8 @@ let%expect_test "flex columns" =
     ]
   in
   render ~width:36 ~height:3
-    (Vnode.table ~columns:flex_cols ~rows:flex_rows ~border:false
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+       ~columns:flex_cols ~rows:(positional flex_rows) ~border:false
        ~show_header:false ());
   [%expect_exact {|
 1    Alpha      First item
@@ -438,7 +469,7 @@ let%expect_test "flex columns" =
 
 let%expect_test "headers only no data" =
   render ~width:20 ~height:4
-    (Vnode.table
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
        ~columns:[ Table.column "A"; Table.column "B" ]
        ~border:true ());
   [%expect_exact
@@ -455,10 +486,10 @@ let%expect_test "scroll indicator follows the actual viewport" =
     List.init 6 (fun index -> [| Table.cell ("row " ^ string_of_int index) |])
   in
   render ~width:12 ~height:3
-    (Vnode.table
+    (Mosaic.table ~equal:Int.equal ~on_change:ignore
        ~columns:[ Table.column ~width:(`Flex 1.) "" ]
-       ~rows ~selected_row:0 ~border:false ~show_header:false
-       ~show_scroll_indicator:true ());
+       ~rows:(positional rows) ~selected:(Some 0) ~border:false
+       ~show_header:false ~show_scroll_indicator:true ());
   [%expect_exact {|
 row 0      │
 row 1      │
@@ -469,10 +500,10 @@ let%expect_test "scroll indicator reports rows above the viewport" =
     List.init 6 (fun index -> [| Table.cell ("row " ^ string_of_int index) |])
   in
   render ~width:12 ~height:3
-    (Vnode.table
+    (Mosaic.table ~equal:Int.equal ~on_change:ignore
        ~columns:[ Table.column ~width:(`Flex 1.) "" ]
-       ~rows ~selected_row:5 ~border:false ~show_header:false
-       ~show_scroll_indicator:true ());
+       ~rows:(positional rows) ~selected:(Some 5) ~border:false
+       ~show_header:false ~show_scroll_indicator:true ());
   [%expect_exact {|
 row 3      ↑
 row 4      │
@@ -483,10 +514,10 @@ let%expect_test "one-row viewport reports overflow in both directions" =
     List.init 6 (fun index -> [| Table.cell ("row " ^ string_of_int index) |])
   in
   render ~width:12 ~height:1
-    (Vnode.table
+    (Mosaic.table ~equal:Int.equal ~on_change:ignore
        ~columns:[ Table.column ~width:(`Flex 1.) "" ]
-       ~rows ~selected_row:3 ~border:false ~show_header:false
-       ~show_scroll_indicator:true ());
+       ~rows:(positional rows) ~selected:(Some 3) ~border:false
+       ~show_header:false ~show_scroll_indicator:true ());
   [%expect_exact {|
 row 3      ↕|}]
 
@@ -499,9 +530,9 @@ let%expect_test "row separators with border" =
     ]
   in
   render ~width:15 ~height:7
-    (Vnode.table
+    (Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
        ~columns:[ Table.column "A"; Table.column "B" ]
-       ~rows:small_rows ~border:true ~show_row_separator:true ());
+       ~rows:(positional small_rows) ~border:true ~show_row_separator:true ());
   [%expect_exact
     {|
 ┌─────────────┐

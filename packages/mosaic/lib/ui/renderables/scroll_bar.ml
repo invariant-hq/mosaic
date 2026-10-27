@@ -110,7 +110,7 @@ let style_equal a b =
      && same a.arrow_fg b.arrow_fg && same a.arrow_bg b.arrow_bg
 
 (* [Props.make] is the one place the scroll bar's labels get their defaults:
-   [create] and [Vnode.scroll_bar] pass their labels on unset. *)
+   [create] and [Mosaic.scroll_bar] pass their labels on unset. *)
 module Props = struct
   type t = {
     position : int;

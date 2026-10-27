@@ -152,8 +152,8 @@ module Props : sig
       - [key_bindings] adds keys to those {!section-keys} lists or binds one of
         them to another action. Defaults to [[]].
 
-      {!val-create} and {!Vnode.tab_select} take these labels with these
-      defaults. *)
+      {!val-create} takes these labels with these defaults, and so does
+      [Mosaic.tab_select] for the labels it has. *)
 
   val default : t
   (** [default] is [make ~options:[] ()]. *)

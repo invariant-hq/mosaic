@@ -43,20 +43,30 @@ let grid_to_ansi grid = Cell_grid.to_ansi grid
 
 (* ── Layout ── *)
 
-(* Force the vnode to fill the render area by setting width:100% height:100%. *)
-let fill vnode =
-  match vnode with
-  | Vnode.Element elem ->
-      let style =
-        elem.attrs.style
-        |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.)
-        |> Toffee.Style.set_height (Toffee.Style.Dimension.percent 1.)
+(* Force a node to fill the render area by setting width:100% height:100%. *)
+let fill_node node =
+  let style =
+    Renderable.style node
+    |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.)
+    |> Toffee.Style.set_height (Toffee.Style.Dimension.percent 1.)
+  in
+  Renderable.set_style node style
+
+(* Force the element a view mounted alone in the root to fill the render
+   area. The reconciler sets the element's own layout again only when it
+   changes, so this runs after each reconciliation. *)
+let fill_mounted renderer =
+  match Renderable.children (Renderer.root renderer) with
+  | [ node ] ->
+      let full = Toffee.Style.Dimension.percent 1. in
+      let { Toffee.Geometry.Size.width; height } =
+        Toffee.Style.size (Renderable.style node)
       in
-      Vnode.Element { elem with attrs = { elem.attrs with style } }
-  | other -> other
+      if not (width = full && height = full) then fill_node node
+  | _ -> ()
 
 (* Set the root node's style to explicit pixel dimensions so that child
-   percentage dimensions (used by [fill]) resolve correctly. *)
+   percentage dimensions (used by [fill_mounted]) resolve correctly. *)
 let set_viewport renderer ~width ~height =
   let root = Renderer.root renderer in
   let style =
@@ -70,11 +80,12 @@ let set_viewport renderer ~width ~height =
 
 (* ── Static Rendering ── *)
 
-let render ~width ~height vnode =
+let render ?(fill = true) ~width ~height vnode =
   let renderer = Renderer.create () in
   set_viewport renderer ~width ~height;
   let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
-  Reconciler.render reconciler ~viewport_width:width (fill vnode);
+  Reconciler.render reconciler ~viewport_width:width vnode;
+  if fill then fill_mounted renderer;
   Renderer.render_frame renderer ~width ~height ~dt:0.;
   let grid = Matrix_screen.next_grid (Renderer.screen renderer) in
   print_newline ();
@@ -84,7 +95,8 @@ let render_ansi ~width ~height vnode =
   let renderer = Renderer.create () in
   set_viewport renderer ~width ~height;
   let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
-  Reconciler.render reconciler ~viewport_width:width (fill vnode);
+  Reconciler.render reconciler ~viewport_width:width vnode;
+  fill_mounted renderer;
   Renderer.render_frame renderer ~width ~height ~dt:0.;
   let grid = Matrix_screen.next_grid (Renderer.screen renderer) in
   print_newline ();
@@ -103,12 +115,13 @@ let make_app () =
   let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
   { renderer; reconciler; viewport_width = 80 }
 
-let reconcile ?viewport_width app vnode =
+let reconcile ?(fill = true) ?viewport_width app vnode =
   let viewport_width =
     Option.value viewport_width ~default:app.viewport_width
   in
   app.viewport_width <- viewport_width;
-  Reconciler.render app.reconciler ~viewport_width (fill vnode)
+  Reconciler.render app.reconciler ~viewport_width vnode;
+  if fill then fill_mounted app.renderer
 
 let frame app ~width ~height =
   app.viewport_width <- width;
@@ -195,14 +208,6 @@ let mouse_report ~x ~y kind : Matrix_input.Mouse_report.t =
   { kind; x; y; shift = false; alt = false; ctrl = false }
 
 (* ── Canvas Helpers ── *)
-
-let fill_node node =
-  let style =
-    Renderable.style node
-    |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.)
-    |> Toffee.Style.set_height (Toffee.Style.Dimension.percent 1.)
-  in
-  Renderable.set_style node style
 
 let print_canvas ?(width = 20) ?(height = 6) draw () =
   let renderer = Renderer.create () in

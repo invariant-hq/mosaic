@@ -260,7 +260,7 @@ val live : t -> bool
 
 val set_theme : t -> (Theme.t -> Theme.t) option -> unit
 (** [set_theme t (Some f)] has [t] and its descendants drawn with [f] applied to
-    the theme in scope around [t], as [Vnode.themed f] does for an element;
+    the theme in scope around [t], as [Mosaic.themed f] does for an element;
     [set_theme t None] removes it. A node a reconciler made, or embeds, is also
     in the scope its place in the view declares, which the reconciler gives it
     apart ({!Private.set_place_theme}): [f] is applied after that scope, as for

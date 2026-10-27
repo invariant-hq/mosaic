@@ -70,7 +70,7 @@ module Props : sig
       - [empty_color] is the color of the unfilled portion. Defaults to none, a
         line in the [Border] role.
 
-      {!val-create} and {!Vnode.progress_bar} take these labels with these
+      {!val-create} and [Mosaic.progress_bar] take these labels with these
       defaults. *)
 
   val default : t

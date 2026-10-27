@@ -2,48 +2,48 @@ open Mosaic_ui
 open Expect_harness
 
 let%expect_test "simple single line" =
-  render ~width:20 ~height:1 (Vnode.text "Hello");
+  render ~width:20 ~height:1 (Mosaic.text "Hello");
   [%expect_exact {|
 Hello|}]
 
 let%expect_test "empty content renders blank" =
-  render ~width:10 ~height:1 (Vnode.text "");
+  render ~width:10 ~height:1 (Mosaic.text "");
   [%expect_exact {|
 |}]
 
 let%expect_test "multiline content" =
-  render ~width:10 ~height:3 (Vnode.text "Line 1\nLine 2\nLine 3");
+  render ~width:10 ~height:3 (Mosaic.text "Line 1\nLine 2\nLine 3");
   [%expect_exact {|
 Line 1
 Line 2
 Line 3|}]
 
 let%expect_test "char wrap splits long words" =
-  render ~width:12 ~height:2 (Vnode.text ~wrap:`Char "Supercalifragilistic");
+  render ~width:12 ~height:2 (Mosaic.text ~wrap:`Char "Supercalifragilistic");
   [%expect_exact {|
 Supercalifra
 gilistic|}]
 
 let%expect_test "word wrap breaks on spaces" =
-  render ~width:12 ~height:2 (Vnode.text ~wrap:`Word "hello world wrap");
+  render ~width:12 ~height:2 (Mosaic.text ~wrap:`Word "hello world wrap");
   [%expect_exact {|
 hello world
 wrap|}]
 
 let%expect_test "no wrap truncates" =
-  render ~width:12 ~height:1 (Vnode.text "1234567890ABCDEF");
+  render ~width:12 ~height:1 (Mosaic.text "1234567890ABCDEF");
   [%expect_exact {|
 1234567890AB|}]
 
 let%expect_test "word wrap preserves words" =
-  render ~width:10 ~height:3 (Vnode.text ~wrap:`Word "hello world foo");
+  render ~width:10 ~height:3 (Mosaic.text ~wrap:`Word "hello world foo");
   [%expect_exact {|
 hello
 world foo
 |}]
 
 let%expect_test "char wrap with multiline" =
-  render ~width:8 ~height:4 (Vnode.text ~wrap:`Char "abcdefghij\nklmnop");
+  render ~width:8 ~height:4 (Mosaic.text ~wrap:`Char "abcdefghij\nklmnop");
   [%expect_exact {|
 abcdefgh
 ij
@@ -51,7 +51,8 @@ klmnop
 |}]
 
 let%expect_test "word wrap with multiline" =
-  render ~width:10 ~height:4 (Vnode.text ~wrap:`Word "hello world\nfoo bar baz");
+  render ~width:10 ~height:4
+    (Mosaic.text ~wrap:`Word "hello world\nfoo bar baz");
   [%expect_exact {|
 hello
 world
@@ -59,7 +60,7 @@ foo bar
 baz|}]
 
 let%expect_test "tab characters expand" =
-  render ~width:20 ~height:1 (Vnode.text ~tab_width:4 "a\tb");
+  render ~width:20 ~height:1 (Mosaic.text ~tab_width:4 "a\tb");
   [%expect_exact {|
 a    b|}]
 
@@ -94,42 +95,42 @@ let%expect_test "styled text multiple spans" =
 [0;38;5;1mRed [38;5;2mGreen[39m           [0m|}]
 
 let%expect_test "content taller than viewport" =
-  render ~width:10 ~height:2 (Vnode.text "Line 1\nLine 2\nLine 3\nLine 4");
+  render ~width:10 ~height:2 (Mosaic.text "Line 1\nLine 2\nLine 3\nLine 4");
   [%expect_exact {|
 Line 1
 Line 2|}]
 
 let%expect_test "content wider than viewport" =
-  render ~width:5 ~height:1 (Vnode.text "Hello World");
+  render ~width:5 ~height:1 (Mosaic.text "Hello World");
   [%expect_exact {|
 Hello|}]
 
 let%expect_test "unicode wide characters" =
-  render ~width:10 ~height:1 (Vnode.text "\xe4\xbd\xa0\xe5\xa5\xbd");
+  render ~width:10 ~height:1 (Mosaic.text "\xe4\xbd\xa0\xe5\xa5\xbd");
   [%expect_exact {|
 你好|}]
 
 let%expect_test "emoji rendering" =
-  render ~width:10 ~height:1 (Vnode.text "\xf0\x9f\x91\x8b");
+  render ~width:10 ~height:1 (Mosaic.text "\xf0\x9f\x91\x8b");
   [%expect_exact {|
 👋|}]
 
 let%expect_test "word wrap long word falls back to char break" =
-  render ~width:5 ~height:3 (Vnode.text ~wrap:`Word "abcdefghij");
+  render ~width:5 ~height:3 (Mosaic.text ~wrap:`Word "abcdefghij");
   [%expect_exact {|
 abcde
 fghij
 |}]
 
 let%expect_test "word wrap preserves empty lines" =
-  render ~width:10 ~height:3 (Vnode.text ~wrap:`Word "aaa\n\nbbb");
+  render ~width:10 ~height:3 (Mosaic.text ~wrap:`Word "aaa\n\nbbb");
   [%expect_exact {|
 aaa
 
 bbb|}]
 
 let%expect_test "word wrap single char words" =
-  render ~width:5 ~height:3 (Vnode.text ~wrap:`Word "a b c d e");
+  render ~width:5 ~height:3 (Mosaic.text ~wrap:`Word "a b c d e");
   [%expect_exact {|
 a b c
 d e
@@ -139,7 +140,7 @@ let%expect_test "word wrap keeps executable suffix together" =
   List.iter
     (fun width ->
       Printf.printf "width %d\n" width;
-      render ~width ~height:2 (Vnode.text ~wrap:`Word "./bin/main.exe");
+      render ~width ~height:2 (Mosaic.text ~wrap:`Word "./bin/main.exe");
       print_newline ())
     [ 11; 12; 13 ];
   [%expect_exact
@@ -158,9 +159,10 @@ main.exe
 |}]
 
 let%expect_test "word wrap keeps URL hosts and decimals together" =
-  render ~width:19 ~height:2 (Vnode.text ~wrap:`Word "https://example.com/path");
+  render ~width:19 ~height:2
+    (Mosaic.text ~wrap:`Word "https://example.com/path");
   print_newline ();
-  render ~width:12 ~height:2 (Vnode.text ~wrap:`Word "value 123.45 units");
+  render ~width:12 ~height:2 (Mosaic.text ~wrap:`Word "value 123.45 units");
   [%expect_exact {|
 https://
 example.com/path
@@ -170,14 +172,14 @@ units|}]
 
 let%expect_test "char wrap with CJK" =
   render ~width:6 ~height:2
-    (Vnode.text ~wrap:`Char "\xe4\xbd\xa0\xe5\xa5\xbd\xe4\xb8\x96\xe7\x95\x8c");
+    (Mosaic.text ~wrap:`Char "\xe4\xbd\xa0\xe5\xa5\xbd\xe4\xb8\x96\xe7\x95\x8c");
   [%expect_exact {|
 你好世
 界|}]
 
 let%expect_test "truncation with ellipsis" =
   render ~width:8 ~height:1
-    (Vnode.text ~wrap:`None ~truncate:true "hello world");
+    (Mosaic.text ~wrap:`None ~truncate:true "hello world");
   [%expect_exact {|
 hello w…|}]
 
@@ -189,10 +191,10 @@ let%expect_test "a following text node clears its allocated leading blank" =
            (Toffee.Style.Dimension.length (Float.of_int left_width))
       |> Toffee.Style.set_flex_shrink 0.
     in
-    Vnode.box
+    Mosaic.box
       [
-        Vnode.text ~key:"left" ~style:left_style ~truncate:true "abcdefgh";
-        Vnode.text ~key:"right" " · next";
+        Mosaic.text ~key:"left" ~layout:left_style ~truncate:true "abcdefgh";
+        Mosaic.text ~key:"right" " · next";
       ]
   in
   let app = make_app () in
@@ -220,11 +222,11 @@ let%expect_test "a fully yielded text node occupies no terminal cell" =
     |> Toffee.Style.set_flex_shrink 100.
   in
   render ~width:11 ~height:1
-    (Vnode.box
+    (Mosaic.box
        [
-         Vnode.text ~style:(fixed 4) "left";
-         Vnode.text ~style:yielding ~truncate:true "hidden";
-         Vnode.text ~style:(fixed 7) " · next";
+         Mosaic.text ~layout:(fixed 4) "left";
+         Mosaic.text ~layout:yielding ~truncate:true "hidden";
+         Mosaic.text ~layout:(fixed 7) " · next";
        ]);
   [%expect_exact {|
 left · next|}]

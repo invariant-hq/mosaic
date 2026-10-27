@@ -165,7 +165,7 @@ module Props : sig
       - [key_bindings] adds keys to those {!section-keys} lists or binds one of
         them to another action. Defaults to [[]].
 
-      {!val-create} and {!Vnode.input} take these labels with these defaults.
+      {!val-create} and [Mosaic.input] take these labels with these defaults.
 
       Raises [Invalid_argument] if [Editor.text state] contains CR or LF.
       Validation uses the editor's cached logical-line index; caret-only changes

@@ -1,6 +1,7 @@
 (library
  (name mosaic)
  (public_name mosaic)
+ (private_modules vnode reconciler)
  (libraries
   toffee
   matrix

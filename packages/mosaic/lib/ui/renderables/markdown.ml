@@ -132,7 +132,7 @@ type render_code =
   Renderable.t
 
 (* [Props.make] is the one place the markdown's labels get their defaults:
-   [create] and [Vnode.markdown] pass their labels on unset. *)
+   [create] and [Mosaic.markdown] pass their labels on unset. *)
 module Props = struct
   type t = {
     content : string;

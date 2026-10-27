@@ -267,7 +267,7 @@ module Props : sig
         selected text is drawn over the [Highlight] surface
         ({!Text_surface.section-paint}).
 
-      {!val-create} and {!Vnode.code} take these labels with these defaults.
+      {!val-create} and [Mosaic.code] take these labels with these defaults.
 
       Raises [Invalid_argument] if [tab_width < 1]. *)
 

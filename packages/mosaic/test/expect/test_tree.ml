@@ -22,7 +22,7 @@ let items =
     ]
 
 let tree ?(items = items) ?(expanded = []) ?(selected = "src") ?show_guides () =
-  Vnode.tree ~items
+  Mosaic.tree ~items
     ~state:(Tree.State.make ~selected ~expanded ())
     ~on_change:ignore ?show_guides ()
 
@@ -30,7 +30,7 @@ let mount_tree app ?(expanded = []) () =
   let state = ref (Tree.State.make ~selected:"src" ~expanded ()) in
   let refresh () =
     reconcile app
-      (Vnode.tree ~items ~state:!state
+      (Mosaic.tree ~items ~state:!state
          ~on_change:(fun next -> state := next)
          ())
   in

@@ -1,8 +1,7 @@
-open Mosaic_ui
 open Expect_harness
 
 let%expect_test "default border renders single-line chars" =
-  render ~width:10 ~height:5 (Vnode.box ~border:true []);
+  render ~width:10 ~height:5 (Mosaic.box ~border:true []);
   [%expect_exact {|
 ┌────────┐
 │        │
@@ -12,7 +11,7 @@ let%expect_test "default border renders single-line chars" =
 
 let%expect_test "double border style" =
   render ~width:10 ~height:5
-    (Vnode.box ~border:true ~border_style:Matrix_grid.Border.double []);
+    (Mosaic.box ~border:true ~border_style:Matrix_grid.Border.double []);
   [%expect_exact {|
 ╔════════╗
 ║        ║
@@ -22,7 +21,7 @@ let%expect_test "double border style" =
 
 let%expect_test "rounded border style" =
   render ~width:10 ~height:5
-    (Vnode.box ~border:true ~border_style:Matrix_grid.Border.rounded []);
+    (Mosaic.box ~border:true ~border_style:Matrix_grid.Border.rounded []);
   [%expect_exact {|
 ╭────────╮
 │        │
@@ -32,7 +31,7 @@ let%expect_test "rounded border style" =
 
 let%expect_test "heavy border style" =
   render ~width:10 ~height:5
-    (Vnode.box ~border:true ~border_style:Matrix_grid.Border.heavy []);
+    (Mosaic.box ~border:true ~border_style:Matrix_grid.Border.heavy []);
   [%expect_exact {|
 ┏━━━━━━━━┓
 ┃        ┃
@@ -42,7 +41,7 @@ let%expect_test "heavy border style" =
 
 let%expect_test "ascii border style" =
   render ~width:10 ~height:5
-    (Vnode.box ~border:true ~border_style:Matrix_grid.Border.ascii []);
+    (Mosaic.box ~border:true ~border_style:Matrix_grid.Border.ascii []);
   [%expect_exact {|
 +--------+
 |        |
@@ -67,7 +66,7 @@ let%expect_test "custom border characters" =
       cross = c '+';
     }
   in
-  render ~width:10 ~height:5 (Vnode.box ~border:true ~border_style:custom []);
+  render ~width:10 ~height:5 (Mosaic.box ~border:true ~border_style:custom []);
   [%expect_exact {|
 /~~~~~~~~\
 !        !
@@ -77,7 +76,7 @@ let%expect_test "custom border characters" =
 
 let%expect_test "border sides top and bottom only" =
   render ~width:10 ~height:5
-    (Vnode.box ~border:true ~border_sides:[ `Top; `Bottom ] []);
+    (Mosaic.box ~border:true ~border_sides:[ `Top; `Bottom ] []);
   [%expect_exact {|
 ──────────
 
@@ -87,7 +86,7 @@ let%expect_test "border sides top and bottom only" =
 
 let%expect_test "border sides left and right only" =
   render ~width:10 ~height:5
-    (Vnode.box ~border:true ~border_sides:[ `Left; `Right ] []);
+    (Mosaic.box ~border:true ~border_sides:[ `Left; `Right ] []);
   [%expect_exact {|
 │        │
 │        │
@@ -96,7 +95,7 @@ let%expect_test "border sides left and right only" =
 │        │|}]
 
 let%expect_test "border disabled renders empty" =
-  render ~width:10 ~height:5 (Vnode.box []);
+  render ~width:10 ~height:5 (Mosaic.box []);
   [%expect_exact {|
 
 
@@ -105,7 +104,7 @@ let%expect_test "border disabled renders empty" =
 |}]
 
 let%expect_test "background fill" =
-  render_ansi ~width:10 ~height:3 (Vnode.box ~background:Ansi.Color.blue []);
+  render_ansi ~width:10 ~height:3 (Mosaic.box ~background:Ansi.Color.blue []);
   [%expect_exact
     {|
 [0;48;5;4m          [0m
@@ -113,7 +112,7 @@ let%expect_test "background fill" =
 [0;48;5;4m          [0m|}]
 
 let%expect_test "title left aligned" =
-  render ~width:16 ~height:4 (Vnode.box ~border:true ~title:"Hello" []);
+  render ~width:16 ~height:4 (Mosaic.box ~border:true ~title:"Hello" []);
   [%expect_exact
     {|
 ┌─Hello────────┐
@@ -123,7 +122,7 @@ let%expect_test "title left aligned" =
 
 let%expect_test "title center aligned" =
   render ~width:16 ~height:4
-    (Vnode.box ~border:true ~title:"Hello" ~title_alignment:`Center []);
+    (Mosaic.box ~border:true ~title:"Hello" ~title_alignment:`Center []);
   [%expect_exact
     {|
 ┌────Hello─────┐
@@ -133,7 +132,7 @@ let%expect_test "title center aligned" =
 
 let%expect_test "title right aligned" =
   render ~width:16 ~height:4
-    (Vnode.box ~border:true ~title:"Hello" ~title_alignment:`Right []);
+    (Mosaic.box ~border:true ~title:"Hello" ~title_alignment:`Right []);
   [%expect_exact
     {|
 ┌────────Hello─┐
@@ -143,7 +142,7 @@ let%expect_test "title right aligned" =
 
 let%expect_test "title omitted without top border" =
   render ~width:16 ~height:4
-    (Vnode.box ~border:true ~title:"Hidden"
+    (Mosaic.box ~border:true ~title:"Hidden"
        ~border_sides:[ `Left; `Right; `Bottom ] []);
   [%expect_exact
     {|
@@ -153,7 +152,7 @@ let%expect_test "title omitted without top border" =
 └──────────────┘|}]
 
 let%expect_test "title omitted when too long" =
-  render ~width:8 ~height:4 (Vnode.box ~border:true ~title:"VeryLongTitle" []);
+  render ~width:8 ~height:4 (Mosaic.box ~border:true ~title:"VeryLongTitle" []);
   [%expect_exact {|
 ┌──────┐
 │      │
@@ -162,12 +161,12 @@ let%expect_test "title omitted when too long" =
 
 let%expect_test "nested box renders correctly" =
   render ~width:12 ~height:6
-    (Vnode.box ~border:true
+    (Mosaic.box ~border:true
        [
-         Vnode.box ~border:true
-           ~style:
+         Mosaic.box ~border:true
+           ~layout:
              (Toffee.Style.default
-             |> Toffee.Style.set_size (Vnode.size ~width:8 ~height:3))
+             |> Toffee.Style.set_size (Mosaic.size ~width:8 ~height:3))
            [];
        ]);
   [%expect_exact
@@ -181,7 +180,7 @@ let%expect_test "nested box renders correctly" =
 
 let%expect_test "colored border" =
   render_ansi ~width:10 ~height:3
-    (Vnode.box ~border:true ~border_color:Ansi.Color.red []);
+    (Mosaic.box ~border:true ~border_color:Ansi.Color.red []);
   [%expect_exact
     {|
 [0;38;5;1m┌────────┐[0m
@@ -189,7 +188,7 @@ let%expect_test "colored border" =
 [0;38;5;1m└────────┘[0m|}]
 
 let%expect_test "box with no content large size" =
-  render ~width:20 ~height:8 (Vnode.box ~border:true []);
+  render ~width:20 ~height:8 (Mosaic.box ~border:true []);
   [%expect_exact
     {|
 ┌──────────────────┐
@@ -202,7 +201,7 @@ let%expect_test "box with no content large size" =
 └──────────────────┘|}]
 
 let%expect_test "minimum size box 3x3" =
-  render ~width:3 ~height:3 (Vnode.box ~border:true []);
+  render ~width:3 ~height:3 (Mosaic.box ~border:true []);
   [%expect_exact {|
 ┌─┐
 │ │
@@ -212,7 +211,7 @@ let%expect_test "minimum size box 3x3" =
 
 let%expect_test "focused box uses focused border color" =
   let app = make_app () in
-  reconcile app (Vnode.box ~border:true ~focusable:true []);
+  reconcile app (Mosaic.box ~border:true ~on_focus_request:() []);
   focus app (mounted app);
   frame_ansi app ~width:10 ~height:3;
   [%expect_exact
@@ -223,7 +222,7 @@ let%expect_test "focused box uses focused border color" =
 
 let%expect_test "unfocused box uses normal border color" =
   let app = make_app () in
-  reconcile app (Vnode.box ~border:true ~focusable:true []);
+  reconcile app (Mosaic.box ~border:true ~on_focus_request:() []);
   frame_ansi app ~width:10 ~height:3;
   [%expect_exact {|
 [0m┌────────┐[0m
@@ -233,7 +232,8 @@ let%expect_test "unfocused box uses normal border color" =
 let%expect_test "focused box with explicit border color" =
   let app = make_app () in
   reconcile app
-    (Vnode.box ~border:true ~focusable:true ~border_color:Ansi.Color.red []);
+    (Mosaic.box ~border:true ~on_focus_request:() ~border_color:Ansi.Color.red
+       []);
   frame_ansi app ~width:10 ~height:3;
   focus app (mounted app);
   frame_ansi app ~width:10 ~height:3;
@@ -250,12 +250,12 @@ let%expect_test "focused box with explicit border color" =
 
 let%expect_test "style change preserves border insets" =
   let app = make_app () in
-  reconcile app (Vnode.box ~border:true []);
+  reconcile app (Mosaic.box ~border:true []);
   frame app ~width:10 ~height:5;
   reconcile app
-    (Vnode.box ~border:true
-       ~style:
-         (Toffee.Style.default |> Toffee.Style.set_padding (Vnode.padding 1))
+    (Mosaic.box ~border:true
+       ~layout:
+         (Toffee.Style.default |> Toffee.Style.set_padding (Mosaic.padding 1))
        []);
   frame app ~width:10 ~height:5;
   [%expect_exact
@@ -273,9 +273,9 @@ let%expect_test "style change preserves border insets" =
 
 let%expect_test "props change adds border" =
   let app = make_app () in
-  reconcile app (Vnode.box []);
+  reconcile app (Mosaic.box []);
   frame app ~width:10 ~height:5;
-  reconcile app (Vnode.box ~border:true []);
+  reconcile app (Mosaic.box ~border:true []);
   frame app ~width:10 ~height:5;
   [%expect_exact
     {|
@@ -294,12 +294,12 @@ let%expect_test "props change adds border" =
 
 let%expect_test "overflow visible allows children beyond bounds" =
   render ~width:10 ~height:5
-    (Vnode.box ~border:true
+    (Mosaic.box ~border:true
        [
-         Vnode.text
-           ~style:
+         Mosaic.text
+           ~layout:
              (Toffee.Style.default
-             |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:1))
+             |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:1))
            "ABCDEFGHIJKLMNOPQRST";
        ]);
   [%expect_exact {|
@@ -311,8 +311,8 @@ let%expect_test "overflow visible allows children beyond bounds" =
 
 let%expect_test "overflow hidden clips children to content area" =
   render ~width:10 ~height:5
-    (Vnode.box ~border:true
-       ~style:
+    (Mosaic.box ~border:true
+       ~layout:
          (Toffee.Style.default
          |> Toffee.Style.set_overflow
               {
@@ -320,10 +320,10 @@ let%expect_test "overflow hidden clips children to content area" =
                 y = Toffee.Style.Overflow.Hidden;
               })
        [
-         Vnode.text
-           ~style:
+         Mosaic.text
+           ~layout:
              (Toffee.Style.default
-             |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:1))
+             |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:1))
            "ABCDEFGHIJKLMNOPQRST";
        ]);
   [%expect_exact {|
@@ -337,7 +337,7 @@ let%expect_test "overflow hidden clips children to content area" =
 
 let%expect_test "background with border" =
   render_ansi ~width:10 ~height:3
-    (Vnode.box ~border:true ~background:Ansi.Color.blue []);
+    (Mosaic.box ~border:true ~background:Ansi.Color.blue []);
   [%expect_exact
     {|
 [0;48;5;4m┌────────┐[0m
@@ -348,7 +348,7 @@ let%expect_test "background with border" =
 
 let%expect_test "fill false does not fill interior" =
   render_ansi ~width:10 ~height:3
-    (Vnode.box ~background:Ansi.Color.blue ~fill:false []);
+    (Mosaic.box ~background:Ansi.Color.blue ~fill:false []);
   [%expect_exact {|
 [0m          [0m
 [0m          [0m
@@ -357,8 +357,8 @@ let%expect_test "fill false does not fill interior" =
 (* ── Absolute positioning ── *)
 
 let abs_box ~styles children =
-  Vnode.box ~border:true
-    ~style:
+  Mosaic.box ~border:true
+    ~layout:
       (List.fold_left
          (fun s f -> f s)
          (Toffee.Style.default
@@ -367,7 +367,7 @@ let abs_box ~styles children =
          styles)
     children
 
-let rows n = List.init n (fun i -> Vnode.text (Printf.sprintf "row%d" i))
+let rows n = List.init n (fun i -> Mosaic.text (Printf.sprintf "row%d" i))
 
 let auto_margins =
   {
@@ -379,7 +379,7 @@ let auto_margins =
 
 let%expect_test "absolute child without inset keeps its content size" =
   render ~width:20 ~height:10
-    (Vnode.box [ Vnode.text "flow"; abs_box ~styles:[] (rows 5) ]);
+    (Mosaic.box [ Mosaic.text "flow"; abs_box ~styles:[] (rows 5) ]);
   [%expect_exact {|
 ┌────┐
 │row0│
@@ -394,14 +394,14 @@ let%expect_test "absolute child without inset keeps its content size" =
 
 let%expect_test "absolute child with inset 0 and auto margins centers" =
   render ~width:20 ~height:11
-    (Vnode.box
+    (Mosaic.box
        [
          abs_box
            ~styles:
              [
-               Toffee.Style.set_inset (Vnode.inset 0);
+               Toffee.Style.set_inset (Mosaic.inset 0);
                Toffee.Style.set_margin auto_margins;
-               Toffee.Style.set_size (Vnode.size ~width:10 ~height:5);
+               Toffee.Style.set_size (Mosaic.size ~width:10 ~height:5);
              ]
            (rows 3);
        ]);
@@ -421,8 +421,8 @@ let%expect_test "absolute child with inset 0 and auto margins centers" =
 
 let%expect_test "absolute child centers via parent justify and align" =
   render ~width:20 ~height:11
-    (Vnode.box
-       ~style:
+    (Mosaic.box
+       ~layout:
          (Toffee.Style.default
          |> Toffee.Style.set_justify_content
               (Some Toffee.Style.Align_content.Center)
@@ -445,23 +445,23 @@ let%expect_test "absolute child centers via parent justify and align" =
 
 let%expect_test "overflow hidden parent clips its absolute child" =
   render ~width:20 ~height:10
-    (Vnode.box
-       ~style:
+    (Mosaic.box
+       ~layout:
          (Toffee.Style.default
          |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column)
        [
-         Vnode.text "above";
-         Vnode.box
-           ~style:
+         Mosaic.text "above";
+         Mosaic.box
+           ~layout:
              (Toffee.Style.default
-             |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:3)
+             |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:3)
              |> Toffee.Style.set_overflow
                   {
                     Toffee.Geometry.Point.x = Toffee.Style.Overflow.Hidden;
                     y = Toffee.Style.Overflow.Hidden;
                   })
            [ abs_box ~styles:[] (rows 5) ];
-         Vnode.text "below";
+         Mosaic.text "below";
        ]);
   [%expect_exact {|
 above

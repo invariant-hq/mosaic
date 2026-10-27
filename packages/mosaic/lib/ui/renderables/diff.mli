@@ -250,7 +250,8 @@ module Props : sig
         Defaults to [true].
       - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
 
-      {!val-create} and {!Vnode.diff} take these labels with these defaults. *)
+      {!val-create} takes these labels with these defaults, and so does
+      [Mosaic.diff] for the labels it has. *)
 
   val default : t
   (** [default] is [make ()]. *)

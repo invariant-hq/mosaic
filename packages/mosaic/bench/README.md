@@ -13,8 +13,9 @@ measured region; the benchmark measures a steady-state frame and screen diff.
 
 The reconciler workload re-renders keyed lists of 500 and 5,000 rows through
 `Reconciler.render`, both unchanged (the per-redraw steady state) and rotated
-(keyed matching plus child moves). Vnode construction happens inside the
-measured region because a TEA view rebuilds its vnodes every frame. Three
+(keyed matching plus child moves). The view is built with `Mosaic`'s
+elements inside the measured region because a TEA view rebuilds its elements
+every frame. Three
 more cases mount 20,000 rows, then unmount them as a program does when it
 quits, render the list empty, or retype every row of an unkeyed list from a
 text to a box before rendering it empty; their time shows a teardown that is

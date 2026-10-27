@@ -71,7 +71,7 @@ module Props : sig
       - [scrollbar_style], [vertical_bar_style] and [horizontal_bar_style] are
         the bars' appearance, as follows. Default to none.
 
-      {!val-create} and {!Vnode.scroll_box} take these labels with these
+      {!val-create} and [Mosaic.scroll_box] take these labels with these
       defaults.
 
       [scrollbar_style] applies to both bars. A [vertical_bar_style] or

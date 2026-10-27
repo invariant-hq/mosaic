@@ -2,7 +2,7 @@ open Mosaic_ui
 open Expect_harness
 
 let%expect_test "renders through reconciler" =
-  render ~width:40 ~height:8 (Vnode.markdown "# Hello\n\nWorld");
+  render ~width:40 ~height:8 (Mosaic.markdown "# Hello\n\nWorld");
   [%expect {|Hello
 
 World|}]
@@ -229,7 +229,7 @@ let x = 1
 
 let%expect_test "highlighter threads through the declarative element" =
   render ~width:40 ~height:4
-    (Vnode.markdown ~highlighter:keyword_highlighter {|```ocaml
+    (Mosaic.markdown ~highlighter:keyword_highlighter {|```ocaml
 let x = 1
 ```|});
   [%expect {|let x = 1|}]
@@ -241,7 +241,7 @@ let%expect_test "highlighting is applied with the syntax style" =
 let x
 ```|} in
   render_ansi ~width:10 ~height:3
-    (Vnode.markdown ~highlighter:keyword_highlighter fence);
+    (Mosaic.markdown ~highlighter:keyword_highlighter fence);
   [%expect
     {|
     [0;1mlet[22m x     [0m
@@ -253,7 +253,7 @@ let x
       [ ("keyword", Ansi.Style.fg Ansi.Color.blue Ansi.Style.default) ]
   in
   render_ansi ~width:10 ~height:3
-    (Vnode.markdown ~highlighter:keyword_highlighter ~syntax_style:blue fence);
+    (Mosaic.markdown ~highlighter:keyword_highlighter ~syntax_style:blue fence);
   [%expect
     {|
     [0;38;5;4mlet[39m x     [0m

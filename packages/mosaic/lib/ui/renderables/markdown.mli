@@ -155,8 +155,8 @@ module Props : sig
         by value, so rebuilding an equal style changes nothing, and a changed
         style restyles the blocks without highlighting them again.
 
-      {!create} and {!Vnode.markdown} take these labels with these defaults,
-      [style] being [md_style] in {!Vnode.markdown}. *)
+      {!create} and [Mosaic.markdown] take these labels with these defaults.
+      [Mosaic.markdown] names [style] [md_style]. *)
 
   val default : t
   (** [default] is the default props value, equivalent to [make ()]. *)

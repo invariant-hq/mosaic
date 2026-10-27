@@ -21,13 +21,13 @@ let show ?cell_size ~width vnode =
     (grid_to_text (Matrix_screen.next_grid (Renderer.screen renderer)))
 
 let column children =
-  Vnode.box
-    ~style:
+  Mosaic.box
+    ~layout:
       (Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Column ())
     children
 
 let%expect_test "a picture takes its size in cells" =
-  show ~cell_size:(10, 20) ~width:10 (column [ Vnode.picture cat ]);
+  show ~cell_size:(10, 20) ~width:10 (column [ Mosaic.picture cat ]);
   [%expect_exact {|
 ￼￼￼￼
 ￼￼￼￼
@@ -35,7 +35,7 @@ let%expect_test "a picture takes its size in cells" =
 |}]
 
 let%expect_test "at 10 by 20 pixels a cell while the size is unknown" =
-  show ~width:10 (column [ Vnode.picture cat ]);
+  show ~width:10 (column [ Mosaic.picture cat ]);
   [%expect_exact {|
 ￼￼￼￼
 ￼￼￼￼
@@ -43,7 +43,7 @@ let%expect_test "at 10 by 20 pixels a cell while the size is unknown" =
 |}]
 
 let%expect_test "smaller cells, more of them" =
-  show ~cell_size:(5, 10) ~width:10 (column [ Vnode.picture cat ]);
+  show ~cell_size:(5, 10) ~width:10 (column [ Mosaic.picture cat ]);
   [%expect_exact {|
 ￼￼￼￼￼￼￼￼
 ￼￼￼￼￼￼￼￼
@@ -51,7 +51,7 @@ let%expect_test "smaller cells, more of them" =
 ￼￼￼￼￼￼￼￼|}]
 
 let%expect_test "narrower than the picture, it shrinks with its ratio" =
-  show ~cell_size:(10, 20) ~width:2 (column [ Vnode.picture cat ]);
+  show ~cell_size:(10, 20) ~width:2 (column [ Mosaic.picture cat ]);
   [%expect_exact {|
 ￼￼
 
@@ -62,8 +62,8 @@ let%expect_test "a width the style gives sets the height" =
   show ~cell_size:(10, 20) ~width:10
     (column
        [
-         Vnode.picture
-           ~style:
+         Mosaic.picture
+           ~layout:
              (Toffee.Style.make
                 ~size:
                   (Toffee.Geometry.Size.make

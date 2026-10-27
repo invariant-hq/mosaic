@@ -12,7 +12,7 @@
     per-frame animation. For one-shot or event-driven drawing, call
     {!request_render} after drawing to schedule a re-render.
 
-    In the declarative Vnode system, use {!Vnode.canvas}. *)
+    In a Mosaic view, use [Mosaic.canvas]. *)
 
 type t
 (** The type for canvases. *)

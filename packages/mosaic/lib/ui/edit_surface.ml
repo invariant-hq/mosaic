@@ -150,7 +150,7 @@ end
 type key_binding = Shortcut.t * action
 
 (* [Props.make] is [Textarea.Props.make], the one place the textarea's labels
-   get their defaults: [Textarea.create] and [Vnode.textarea] pass their labels
+   get their defaults: [Textarea.create] and [Mosaic.textarea] pass their labels
    on unset. [Text_input] makes these props from its own, every field set. *)
 module Props = struct
   type t = {

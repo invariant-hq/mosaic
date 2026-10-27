@@ -81,7 +81,7 @@ module Props : sig
       - [color] is the foreground color for the spinner glyphs. Defaults to
         none, the [Plain] role of the theme in scope.
 
-      {!val-create} and {!Vnode.spinner} take these labels with these defaults.
+      {!val-create} and [Mosaic.spinner] take these labels with these defaults.
   *)
 
   val default : t

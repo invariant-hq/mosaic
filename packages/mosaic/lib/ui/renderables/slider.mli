@@ -77,8 +77,8 @@ module Props : sig
       - [track_color] defaults to none, a line in the [Border] role.
       - [thumb_color] defaults to none, the [Plain] role.
 
-      {!val-create} and {!Vnode.slider} take these labels with these defaults.
-  *)
+      {!val-create} takes these labels with these defaults, and so does
+      [Mosaic.slider] for the labels it has. *)
 
   val default : t
   (** [default] is [make ()]. *)

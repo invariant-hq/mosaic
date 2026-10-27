@@ -53,8 +53,8 @@ let box_t = Testable.(quad int int int int)
 
 (* A container with [style] holding the picture and the line "next". *)
 let holding ?(picture_style = Style.default) style =
-  Vnode.box ~style
-    [ Vnode.picture ~style:picture_style square; Vnode.text "next" ]
+  Mosaic.box ~layout:style
+    [ Mosaic.picture ~layout:picture_style square; Mosaic.text "next" ]
 
 (* The picture and the line after it, in a container with [style]. *)
 let picture_and_next ?width ?height ?picture_style style =
@@ -108,7 +108,8 @@ let size_t =
 let block_parent_measures_as_it_lays_out () =
   let picture =
     only
-      (only (lay_out (Vnode.box ~style:(block 31.) [ Vnode.picture square ])))
+      (only
+         (lay_out (Mosaic.box ~layout:(block 31.) [ Mosaic.picture square ])))
   in
   let measured, laid_out =
     measured_and_laid_out picture
@@ -158,7 +159,9 @@ let measurement_is_final_layout seed =
   let cell = (1 + int 20, 1 + int 40) in
   let pixels = picture (1 + int 400) (1 + int 400) in
   let node =
-    only (only (lay_out ~cell (Vnode.box [ Vnode.picture ~style pixels ])))
+    only
+      (only
+         (lay_out ~cell (Mosaic.box [ Mosaic.picture ~layout:style pixels ])))
   in
   let known () = if chance 0.5 then Some (cells ()) else None in
   let available () =
@@ -219,10 +222,11 @@ let narrow_block () =
    next item follows it. *)
 let row () =
   let row =
-    Vnode.box ~style:Style.default [ Vnode.picture square; Vnode.text "next" ]
+    Mosaic.box ~layout:Style.default
+      [ Mosaic.picture square; Mosaic.text "next" ]
   in
   let picture, next =
-    pair (only (only (lay_out (Vnode.box ~style:(column ()) [ row ]))))
+    pair (only (only (lay_out (Mosaic.box ~layout:(column ()) [ row ]))))
   in
   equal ~msg:"picture" box_t (0, 0, 20, 10) (box picture);
   equal ~msg:"next" int 20 (Renderable.x next)

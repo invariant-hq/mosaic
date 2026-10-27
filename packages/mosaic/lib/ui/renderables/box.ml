@@ -12,8 +12,8 @@ let cells_of_border_width w =
          Lp.pp w)
 
 (* [Props.make] is the one place the box's labels get their defaults.
-   [create] and the element ([Vnode.box], which [Mosaic.box] and the MLX box
-   call) pass their labels on unset, and the reconciler applies the props
+   [create] and the element ([Mosaic.box], which the MLX box calls) pass
+   their labels on unset, and the reconciler applies the props
    the element made with [apply_props]. *)
 module Props = struct
   type t = {

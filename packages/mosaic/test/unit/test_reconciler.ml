@@ -37,9 +37,12 @@ let screen_row renderer row =
             | "" -> " "
             | text -> text)))
 
+(* Rows that report their positions. *)
+let positional rows = List.mapi Mosaic.Table.row rows
+
 let column children =
-  Vnode.box
-    ~style:
+  Mosaic.box
+    ~layout:
       (Toffee.Style.default
       |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column)
     children
@@ -55,48 +58,48 @@ let render_rejects_nonpositive_viewport_width () =
   let _renderer, reconciler = make () in
   raises_match ~msg:"positive viewport width"
     (function Invalid_argument _ -> true | _ -> false)
-    (fun () -> Reconciler.render reconciler ~viewport_width:0 (Vnode.box []))
+    (fun () -> Reconciler.render reconciler ~viewport_width:0 (Mosaic.box []))
 
 (* ── Basic Rendering ── *)
 
 let render_single_box () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box []);
+  render_view reconciler (Mosaic.box []);
   do_frame renderer;
   equal ~msg:"one child" int 1 (child_count renderer)
 
 let render_single_text () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.text "hello");
+  render_view reconciler (Mosaic.text "hello");
   do_frame renderer;
   equal ~msg:"one child" int 1 (child_count renderer)
 
 let render_empty () =
   let renderer, reconciler = make () in
-  render_view reconciler Vnode.empty;
+  render_view reconciler Mosaic.empty;
   do_frame renderer;
   equal ~msg:"no children" int 0 (child_count renderer)
 
 let render_fragment () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.fragment [ Vnode.box []; Vnode.text "hi" ]);
+  render_view reconciler (Mosaic.fragment [ Mosaic.box []; Mosaic.text "hi" ]);
   do_frame renderer;
   equal ~msg:"two children" int 2 (child_count renderer)
 
 let render_nested_fragments () =
   let renderer, reconciler = make () in
   render_view reconciler
-    (Vnode.fragment
-       [ Vnode.fragment [ Vnode.text "a"; Vnode.text "b" ]; Vnode.text "c" ]);
+    (Mosaic.fragment
+       [ Mosaic.fragment [ Mosaic.text "a"; Mosaic.text "b" ]; Mosaic.text "c" ]);
   do_frame renderer;
   equal ~msg:"three children" int 3 (child_count renderer)
 
 let viewport_switch_selects_only_matching_branch () =
   let renderer, reconciler = make () in
   let view =
-    Vnode.viewport_switch ~at_least_width:80 ~wide:(Vnode.spinner ())
+    Mosaic.viewport_switch ~at_least_width:80 ~wide:(Mosaic.spinner ())
       ~narrow:
-        (Vnode.input ~state:Editor.empty ~on_change:ignore ~focused:true ())
+        (Mosaic.input ~state:Editor.empty ~on_change:ignore ~focused:true ())
   in
   render_focused_view ~viewport_width:79 renderer reconciler view;
   do_frame ~width:79 renderer;
@@ -114,20 +117,20 @@ let viewport_switch_reconciles_selected_branch_on_resize () =
   let last_scroll = ref None in
   let scroll_style =
     Toffee.Style.default
-    |> Toffee.Style.set_size (Vnode.size ~width:10 ~height:4)
+    |> Toffee.Style.set_size (Mosaic.size ~width:10 ~height:4)
   in
   let column_style =
     Toffee.Style.default
     |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column
   in
   let content =
-    Vnode.box ~key:"transcript-content"
-      ~style:(column_style |> Toffee.Style.set_flex_shrink 0.)
-      (List.init 20 (fun index -> Vnode.text (string_of_int index)))
+    Mosaic.box ~key:"transcript-content"
+      ~layout:(column_style |> Toffee.Style.set_flex_shrink 0.)
+      (List.init 20 (fun index -> Mosaic.text (string_of_int index)))
   in
   let scroll = ref (Scroll.at 0) in
   let transcript () =
-    Vnode.scroll_box ~key:"transcript" ~style:scroll_style ~focusable:false
+    Mosaic.scroll_box ~key:"transcript" ~layout:scroll_style
       ~show_scrollbars:false ~scroll:!scroll
       ~on_scroll:(fun next ->
         scroll := next;
@@ -139,16 +142,16 @@ let viewport_switch_reconciles_selected_branch_on_resize () =
       [ content ]
   in
   let root children =
-    Vnode.box ~key:"responsive-root" ~style:column_style children
+    Mosaic.box ~key:"responsive-root" ~layout:column_style children
   in
   let view () =
-    Vnode.viewport_switch ~at_least_width:80
-      ~wide:(root [ transcript (); Vnode.spinner () ])
+    Mosaic.viewport_switch ~at_least_width:80
+      ~wide:(root [ transcript (); Mosaic.spinner () ])
       ~narrow:
         (root
            [
              transcript ();
-             Vnode.input ~state:Editor.empty ~on_change:ignore ~focused:true ();
+             Mosaic.input ~state:Editor.empty ~on_change:ignore ~focused:true ();
            ])
   in
   render_focused_view ~viewport_width:79 renderer reconciler (view ());
@@ -207,23 +210,23 @@ let viewport_switch_reconciles_selected_branch_on_resize () =
         (focused == second_narrow)
   | None -> fail "expected remounted narrow branch to be focused"
 
-let non_focusable_scroll_box_still_scrolls_with_wheel () =
+let scroll_box_wheels_without_taking_focus () =
   let renderer, reconciler = make () in
   let last_scroll = ref None in
   let style =
     Toffee.Style.default
-    |> Toffee.Style.set_size (Vnode.size ~width:10 ~height:3)
+    |> Toffee.Style.set_size (Mosaic.size ~width:10 ~height:3)
   in
   let content =
-    Vnode.box
-      ~style:
+    Mosaic.box
+      ~layout:
         (Toffee.Style.default
         |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column
         |> Toffee.Style.set_flex_shrink 0.)
-      (List.init 10 (fun index -> Vnode.text (string_of_int index)))
+      (List.init 10 (fun index -> Mosaic.text (string_of_int index)))
   in
   render_view reconciler
-    (Vnode.scroll_box ~style ~focusable:false ~show_scrollbars:false
+    (Mosaic.scroll_box ~layout:style ~show_scrollbars:false
        ~scroll:(Scroll.at 0)
        ~on_scroll:(fun next ->
          last_scroll :=
@@ -234,8 +237,6 @@ let non_focusable_scroll_box_still_scrolls_with_wheel () =
        [ content ]);
   do_frame renderer;
   ignore (Renderer.render ~full:true renderer : string);
-  let node = List.hd (children_of renderer) in
-  is_false ~msg:"scroll box is not focusable" (Renderable.focusable node);
   let mouse = Test_harness.mouse_report ~x:1 ~y:1 (Scroll `Down) in
   ignore (Test_harness.dispatch_mouse renderer mouse : Event.mouse);
   is_none ~msg:"wheel does not take focus" (Renderer.focused renderer);
@@ -251,18 +252,18 @@ let declared_scroll_survives_rerender_and_remount () =
   let proposals = ref [] in
   let style =
     Toffee.Style.default
-    |> Toffee.Style.set_size (Vnode.size ~width:10 ~height:4)
+    |> Toffee.Style.set_size (Mosaic.size ~width:10 ~height:4)
   in
   let content =
-    Vnode.box
-      ~style:
+    Mosaic.box
+      ~layout:
         (Toffee.Style.default
         |> Toffee.Style.set_flex_direction Column
         |> Toffee.Style.set_flex_shrink 0.)
-      (List.init 20 (fun i -> Vnode.text (string_of_int i)))
+      (List.init 20 (fun i -> Mosaic.text (string_of_int i)))
   in
   let view key scroll =
-    Vnode.scroll_box ~key ~style ~show_scrollbars:false ~scroll
+    Mosaic.scroll_box ~key ~layout:style ~show_scrollbars:false ~scroll
       ~on_scroll:(fun next ->
         proposals :=
           snd
@@ -298,50 +299,50 @@ let declared_scroll_survives_rerender_and_remount () =
 
 let rerender_reuses_box () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box []);
+  render_view reconciler (Mosaic.box []);
   do_frame renderer;
   let node_before = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.box ~border:true []);
+  render_view reconciler (Mosaic.box ~border:true []);
   do_frame renderer;
   let node_after = List.hd (children_of renderer) in
   is_true ~msg:"same node" (node_before == node_after)
 
 let rerender_reuses_text () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.text "hello");
+  render_view reconciler (Mosaic.text "hello");
   do_frame renderer;
   let node_before = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.text "world");
+  render_view reconciler (Mosaic.text "world");
   do_frame renderer;
   let node_after = List.hd (children_of renderer) in
   is_true ~msg:"same node" (node_before == node_after)
 
 let rerender_updates_visibility () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box ~visible:true []);
+  render_view reconciler (Mosaic.box ~visible:true []);
   do_frame renderer;
   let node = List.hd (children_of renderer) in
   is_true ~msg:"visible before" (Renderable.visible node);
-  render_view reconciler (Vnode.box ~visible:false []);
+  render_view reconciler (Mosaic.box ~visible:false []);
   do_frame renderer;
   is_false ~msg:"hidden after" (Renderable.visible node)
 
 let rerender_updates_z_index () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box ~z_index:0 []);
+  render_view reconciler (Mosaic.box ~z_index:0 []);
   do_frame renderer;
   let node = List.hd (children_of renderer) in
   equal ~msg:"z_index before" int 0 (Renderable.z_index node);
-  render_view reconciler (Vnode.box ~z_index:5 []);
+  render_view reconciler (Mosaic.box ~z_index:5 []);
   do_frame renderer;
   equal ~msg:"z_index after" int 5 (Renderable.z_index node)
 
 let rerender_updates_opacity () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box ~opacity:1.0 []);
+  render_view reconciler (Mosaic.box ~opacity:1.0 []);
   do_frame renderer;
   let node = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.box ~opacity:0.5 []);
+  render_view reconciler (Mosaic.box ~opacity:0.5 []);
   do_frame renderer;
   is_true ~msg:"opacity" (Float.equal (Renderable.opacity node) 0.5)
 
@@ -350,7 +351,7 @@ let rejected_input_preserves_accepted_state () =
   let inputs = ref [] in
   let submissions = ref [] in
   let view () =
-    Vnode.input ~key:"controlled-input" ~focused:true ~state:Editor.empty
+    Mosaic.input ~key:"controlled-input" ~focused:true ~state:Editor.empty
       ~on_change:(fun state -> inputs := Editor.text state :: !inputs)
       ~on_submit:(fun value -> submissions := value :: !submissions)
       ()
@@ -372,7 +373,7 @@ let rejected_textarea_preserves_accepted_state () =
   let inputs = ref [] in
   let submissions = ref [] in
   let view () =
-    Vnode.textarea ~key:"controlled-textarea" ~focused:true ~state:Editor.empty
+    Mosaic.textarea ~key:"controlled-textarea" ~focused:true ~state:Editor.empty
       ~on_change:(fun state -> inputs := Editor.text state :: !inputs)
       ~on_submit:(fun value -> submissions := value :: !submissions)
       ()
@@ -396,7 +397,7 @@ let accepted_editor_state_preserves_cursor () =
   let renderer, reconciler = make () in
   let state = ref (Editor.of_string "ab") in
   let view () =
-    Vnode.textarea ~focused:true ~state:!state
+    Mosaic.textarea ~focused:true ~state:!state
       ~on_change:(fun next -> state := next)
       ()
   in
@@ -416,13 +417,13 @@ let accepted_editor_state_preserves_cursor () =
 let keyed_reorder () =
   let renderer, reconciler = make () in
   render_view reconciler
-    (Vnode.fragment [ Vnode.box ~key:"a" []; Vnode.box ~key:"b" [] ]);
+    (Mosaic.fragment [ Mosaic.box ~key:"a" []; Mosaic.box ~key:"b" [] ]);
   do_frame renderer;
   let children_before = children_of renderer in
   let node_a = List.nth children_before 0 in
   let node_b = List.nth children_before 1 in
   render_view reconciler
-    (Vnode.fragment [ Vnode.box ~key:"b" []; Vnode.box ~key:"a" [] ]);
+    (Mosaic.fragment [ Mosaic.box ~key:"b" []; Mosaic.box ~key:"a" [] ]);
   do_frame renderer;
   let children_after = children_of renderer in
   let first = List.nth children_after 0 in
@@ -433,21 +434,21 @@ let keyed_reorder () =
 let keyed_removal () =
   let renderer, reconciler = make () in
   render_view reconciler
-    (Vnode.fragment [ Vnode.box ~key:"a" []; Vnode.box ~key:"b" [] ]);
+    (Mosaic.fragment [ Mosaic.box ~key:"a" []; Mosaic.box ~key:"b" [] ]);
   do_frame renderer;
   let node_b = List.nth (children_of renderer) 1 in
-  render_view reconciler (Vnode.fragment [ Vnode.box ~key:"b" [] ]);
+  render_view reconciler (Mosaic.fragment [ Mosaic.box ~key:"b" [] ]);
   do_frame renderer;
   equal ~msg:"one child" int 1 (child_count renderer);
   is_true ~msg:"b survives" (List.hd (children_of renderer) == node_b)
 
 let keyed_addition () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.fragment [ Vnode.box ~key:"a" [] ]);
+  render_view reconciler (Mosaic.fragment [ Mosaic.box ~key:"a" [] ]);
   do_frame renderer;
   let node_a = List.hd (children_of renderer) in
   render_view reconciler
-    (Vnode.fragment [ Vnode.box ~key:"a" []; Vnode.box ~key:"b" [] ]);
+    (Mosaic.fragment [ Mosaic.box ~key:"a" []; Mosaic.box ~key:"b" [] ]);
   do_frame renderer;
   equal ~msg:"two children" int 2 (child_count renderer);
   is_true ~msg:"a survives" (List.nth (children_of renderer) 0 == node_a)
@@ -455,20 +456,20 @@ let keyed_addition () =
 let keyed_reorder_preserves_focus () =
   let renderer, reconciler = make () in
   render_view reconciler
-    (Vnode.fragment
+    (Mosaic.fragment
        [
-         Vnode.box ~key:"a" ~focusable:true [];
-         Vnode.box ~key:"b" ~focusable:true [];
+         Mosaic.box ~key:"a" ~on_focus_request:() [];
+         Mosaic.box ~key:"b" ~on_focus_request:() [];
        ]);
   do_frame renderer;
   let node_a = List.nth (children_of renderer) 0 in
   let node_b = List.nth (children_of renderer) 1 in
   ignore (Renderer.focus renderer node_b : bool);
   render_view reconciler
-    (Vnode.fragment
+    (Mosaic.fragment
        [
-         Vnode.box ~key:"b" ~focusable:true [];
-         Vnode.box ~key:"a" ~focusable:true [];
+         Mosaic.box ~key:"b" ~on_focus_request:() [];
+         Mosaic.box ~key:"a" ~on_focus_request:() [];
        ]);
   do_frame renderer;
   is_true ~msg:"b remains focused" (Renderable.focused node_b);
@@ -484,7 +485,7 @@ let duplicate_keys_first_occurrence_stays_stable () =
      cannot match a consumed fiber and remount. *)
   let renderer, reconciler = make () in
   let dup () =
-    Vnode.fragment [ Vnode.box ~key:"dup" []; Vnode.box ~key:"dup" [] ]
+    Mosaic.fragment [ Mosaic.box ~key:"dup" []; Mosaic.box ~key:"dup" [] ]
   in
   render_view reconciler (dup ());
   do_frame renderer;
@@ -537,8 +538,8 @@ let keyed_orders ~cull () =
   in
   let element key =
     match List.assoc_opt key embedded with
-    | Some node -> Vnode.embed node
-    | None -> Vnode.text ~key key
+    | Some node -> Mosaic.embed node
+    | None -> Mosaic.text ~key key
   in
   let shuffle keys =
     List.map (fun k -> (Random.State.bits random, k)) keys
@@ -568,7 +569,7 @@ let keyed_orders ~cull () =
   let nodes = ref (Hashtbl.create 0) in
   List.iteri
     (fun step keys ->
-      render_view reconciler (Vnode.fragment (List.map element keys));
+      render_view reconciler (Mosaic.fragment (List.map element keys));
       do_frame renderer;
       (* A culling column lays out the rows a frame does not show only when
          asked. *)
@@ -595,12 +596,12 @@ let keyed_orders ~cull () =
 
 let unkeyed_positional () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.fragment [ Vnode.box []; Vnode.text "x" ]);
+  render_view reconciler (Mosaic.fragment [ Mosaic.box []; Mosaic.text "x" ]);
   do_frame renderer;
   let box_node = List.nth (children_of renderer) 0 in
   let text_node = List.nth (children_of renderer) 1 in
   render_view reconciler
-    (Vnode.fragment [ Vnode.box ~border:true []; Vnode.text "y" ]);
+    (Mosaic.fragment [ Mosaic.box ~border:true []; Mosaic.text "y" ]);
   do_frame renderer;
   is_true ~msg:"box reused" (List.nth (children_of renderer) 0 == box_node);
   is_true ~msg:"text reused" (List.nth (children_of renderer) 1 == text_node)
@@ -609,10 +610,10 @@ let unkeyed_positional () =
 
 let kind_mismatch_destroys_old () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box []);
+  render_view reconciler (Mosaic.box []);
   do_frame renderer;
   let old_node = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.text "replaced");
+  render_view reconciler (Mosaic.text "replaced");
   do_frame renderer;
   equal ~msg:"one child" int 1 (child_count renderer);
   is_true ~msg:"old destroyed" (Renderable.destroyed old_node);
@@ -620,17 +621,17 @@ let kind_mismatch_destroys_old () =
 
 let kind_mismatch_text_to_slider () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.text "hello");
+  render_view reconciler (Mosaic.text "hello");
   do_frame renderer;
   let old_node = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.slider ());
+  render_view reconciler (Mosaic.slider ~state:0. ~on_change:ignore ());
   do_frame renderer;
   is_true ~msg:"old destroyed" (Renderable.destroyed old_node);
   equal ~msg:"one child" int 1 (child_count renderer)
 
 let render_single_spinner () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.spinner ());
+  render_view reconciler (Mosaic.spinner ());
   do_frame renderer;
   equal ~msg:"one child" int 1 (child_count renderer)
 
@@ -640,21 +641,21 @@ let render_single_spinner () =
 let spinner_follows_declared_live () =
   let renderer, reconciler = make () in
   let live () = Renderable.live (List.hd (children_of renderer)) in
-  render_view reconciler (Vnode.spinner ~live:false ());
+  render_view reconciler (Mosaic.spinner ~live:false ());
   do_frame renderer;
   is_false ~msg:"held at mount" (live ());
-  render_view reconciler (Vnode.spinner ~live:false ~color:Ansi.Color.red ());
+  render_view reconciler (Mosaic.spinner ~live:false ~color:Ansi.Color.red ());
   do_frame renderer;
   is_false ~msg:"held across a props change" (live ());
-  render_view reconciler (Vnode.spinner ~color:Ansi.Color.red ());
+  render_view reconciler (Mosaic.spinner ~color:Ansi.Color.red ());
   do_frame renderer;
   is_true ~msg:"released" (live ());
   let still = { Spinner.frames = [| "*" |]; period = 0.1 } in
-  render_view reconciler (Vnode.spinner ~frame_set:still ());
+  render_view reconciler (Mosaic.spinner ~frame_set:still ());
   do_frame renderer;
   is_false ~msg:"a single frame never animates" (live ());
-  render_view reconciler (Vnode.spinner ~live:false ());
-  render_view reconciler (Vnode.spinner ~frame_set:still ());
+  render_view reconciler (Mosaic.spinner ~live:false ());
+  render_view reconciler (Mosaic.spinner ~frame_set:still ());
   do_frame renderer;
   is_false ~msg:"released onto a single frame" (live ())
 
@@ -664,10 +665,13 @@ let unkeyed_table_reports_its_own_hover () =
   let renderer, reconciler = make () in
   let log = ref [] in
   let table name =
-    Vnode.table ~show_header:false
+    Mosaic.table ~equal:Int.equal ~selected:(Some 0) ~on_change:ignore
+      ~show_header:false
       ~columns:[ Table.column "c" ]
       ~rows:
-        (List.init 4 (fun i -> [| Table.cell (Printf.sprintf "%s%d" name i) |]))
+        (positional
+           (List.init 4 (fun i ->
+                [| Table.cell (Printf.sprintf "%s%d" name i) |])))
       ~on_hover:(fun row ->
         log :=
           Option.fold ~none:"none" ~some:(Printf.sprintf "%s%d" name) row
@@ -686,7 +690,7 @@ let unkeyed_table_reports_its_own_hover () =
 
 let render_single_progress_bar () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.progress_bar ());
+  render_view reconciler (Mosaic.progress_bar ());
   do_frame renderer;
   equal ~msg:"one child" int 1 (child_count renderer)
 
@@ -696,7 +700,9 @@ let scroll_bar_orientation_applies_at_mount () =
   (* The reconciler creates the widget with defaults and applies the vnode
      props afterwards, so apply_props must honor orientation. *)
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.scroll_bar ~orientation:`Horizontal ());
+  render_view reconciler
+    (Mosaic.scroll_bar ~state:0 ~scroll_size:0 ~viewport_size:0
+       ~on_change:ignore ~orientation:`Horizontal ());
   do_frame renderer;
   let node = List.hd (children_of renderer) in
   is_true ~msg:"lays out as a row"
@@ -704,10 +710,14 @@ let scroll_bar_orientation_applies_at_mount () =
 
 let scroll_bar_orientation_updates_on_rerender () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.scroll_bar ~orientation:`Horizontal ());
+  render_view reconciler
+    (Mosaic.scroll_bar ~state:0 ~scroll_size:0 ~viewport_size:0
+       ~on_change:ignore ~orientation:`Horizontal ());
   do_frame renderer;
   let node_before = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.scroll_bar ~orientation:`Vertical ());
+  render_view reconciler
+    (Mosaic.scroll_bar ~state:0 ~scroll_size:0 ~viewport_size:0
+       ~on_change:ignore ~orientation:`Vertical ());
   do_frame renderer;
   let node_after = List.hd (children_of renderer) in
   is_true ~msg:"same node" (node_before == node_after);
@@ -716,30 +726,30 @@ let scroll_bar_orientation_updates_on_rerender () =
 
 let rerender_reuses_spinner () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.spinner ());
+  render_view reconciler (Mosaic.spinner ());
   do_frame renderer;
   let node_before = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.spinner ~frame_set:Spinner.line ());
+  render_view reconciler (Mosaic.spinner ~frame_set:Spinner.line ());
   do_frame renderer;
   let node_after = List.hd (children_of renderer) in
   is_true ~msg:"same node" (node_before == node_after)
 
 let rerender_reuses_progress_bar () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.progress_bar ());
+  render_view reconciler (Mosaic.progress_bar ());
   do_frame renderer;
   let node_before = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.progress_bar ~value:0.5 ());
+  render_view reconciler (Mosaic.progress_bar ~value:0.5 ());
   do_frame renderer;
   let node_after = List.hd (children_of renderer) in
   is_true ~msg:"same node" (node_before == node_after)
 
 let kind_mismatch_spinner_to_progress_bar () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.spinner ());
+  render_view reconciler (Mosaic.spinner ());
   do_frame renderer;
   let old_node = List.hd (children_of renderer) in
-  render_view reconciler (Vnode.progress_bar ());
+  render_view reconciler (Mosaic.progress_bar ());
   do_frame renderer;
   is_true ~msg:"old destroyed" (Renderable.destroyed old_node);
   equal ~msg:"one child" int 1 (child_count renderer)
@@ -749,29 +759,29 @@ let kind_mismatch_spinner_to_progress_bar () =
 let fewer_children_destroys_extra () =
   let renderer, reconciler = make () in
   render_view reconciler
-    (Vnode.box [ Vnode.text "a"; Vnode.text "b"; Vnode.text "c" ]);
+    (Mosaic.box [ Mosaic.text "a"; Mosaic.text "b"; Mosaic.text "c" ]);
   do_frame renderer;
   let box_node = List.hd (children_of renderer) in
   equal ~msg:"three kids" int 3 (List.length (Renderable.children box_node));
   let old_c = List.nth (Renderable.children box_node) 2 in
-  render_view reconciler (Vnode.box [ Vnode.text "a" ]);
+  render_view reconciler (Mosaic.box [ Mosaic.text "a" ]);
   do_frame renderer;
   equal ~msg:"one kid" int 1 (List.length (Renderable.children box_node));
   is_true ~msg:"c destroyed" (Renderable.destroyed old_c)
 
 let more_children_creates_new () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box [ Vnode.text "a" ]);
+  render_view reconciler (Mosaic.box [ Mosaic.text "a" ]);
   do_frame renderer;
   let box_node = List.hd (children_of renderer) in
   equal ~msg:"one kid" int 1 (List.length (Renderable.children box_node));
-  render_view reconciler (Vnode.box [ Vnode.text "a"; Vnode.text "b" ]);
+  render_view reconciler (Mosaic.box [ Mosaic.text "a"; Mosaic.text "b" ]);
   do_frame renderer;
   equal ~msg:"two kids" int 2 (List.length (Renderable.children box_node))
 
 let nested_boxes () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box [ Vnode.box [ Vnode.text "inner" ] ]);
+  render_view reconciler (Mosaic.box [ Mosaic.box [ Mosaic.text "inner" ] ]);
   do_frame renderer;
   let outer = List.hd (children_of renderer) in
   equal ~msg:"outer has 1 child" int 1 (List.length (Renderable.children outer));
@@ -784,7 +794,7 @@ let embed_attaches () =
   let renderer, reconciler = make () in
   let embedded = Renderable.create ~parent:(Renderer.root renderer) () in
   Renderable.detach embedded;
-  render_view reconciler (Vnode.embed embedded);
+  render_view reconciler (Mosaic.embed embedded);
   do_frame renderer;
   equal ~msg:"one child" int 1 (child_count renderer)
 
@@ -792,10 +802,10 @@ let embed_removed_detaches () =
   let renderer, reconciler = make () in
   let embedded = Renderable.create ~parent:(Renderer.root renderer) () in
   Renderable.detach embedded;
-  render_view reconciler (Vnode.embed embedded);
+  render_view reconciler (Mosaic.embed embedded);
   do_frame renderer;
   equal ~msg:"attached" int 1 (child_count renderer);
-  render_view reconciler Vnode.empty;
+  render_view reconciler Mosaic.empty;
   do_frame renderer;
   equal ~msg:"detached" int 0 (child_count renderer)
 
@@ -805,7 +815,9 @@ let on_key_handler_fires () =
   let renderer, reconciler = make () in
   let received = ref false in
   render_view reconciler
-    (Vnode.box ~focusable:true ~on_key:(fun _ -> Some (received := true)) []);
+    (Mosaic.box ~on_focus_request:()
+       ~on_key:(fun _ -> Some (received := true))
+       []);
   do_frame renderer;
   let node = List.hd (children_of renderer) in
   ignore (Renderer.focus renderer node : bool);
@@ -817,7 +829,7 @@ let on_key_handler_updates_on_rerender () =
   let renderer, reconciler = make () in
   let log = ref [] in
   render_view reconciler
-    (Vnode.box ~focusable:true
+    (Mosaic.box ~on_focus_request:()
        ~on_key:(fun _ -> Some (log := "first" :: !log))
        []);
   do_frame renderer;
@@ -827,7 +839,7 @@ let on_key_handler_updates_on_rerender () =
     (Test_harness.dispatch_key renderer (Test_harness.char_key 'a') : Event.key);
   equal ~msg:"first handler" (list string) [ "first" ] !log;
   render_view reconciler
-    (Vnode.box ~focusable:true
+    (Mosaic.box ~on_focus_request:()
        ~on_key:(fun _ -> Some (log := "second" :: !log))
        []);
   ignore
@@ -838,7 +850,7 @@ let on_key_handler_updates_on_rerender () =
 
 let unmount_empties_container () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.fragment [ Vnode.box []; Vnode.text "hi" ]);
+  render_view reconciler (Mosaic.fragment [ Mosaic.box []; Mosaic.text "hi" ]);
   do_frame renderer;
   equal ~msg:"two children" int 2 (child_count renderer);
   Reconciler.unmount reconciler;
@@ -847,7 +859,7 @@ let unmount_empties_container () =
 
 let unmount_destroys_nodes () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.box []);
+  render_view reconciler (Mosaic.box []);
   do_frame renderer;
   let node = List.hd (children_of renderer) in
   Reconciler.unmount reconciler;
@@ -855,12 +867,12 @@ let unmount_destroys_nodes () =
 
 let unmount_allows_reuse () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.text "first");
+  render_view reconciler (Mosaic.text "first");
   do_frame renderer;
   Reconciler.unmount reconciler;
   do_frame renderer;
   equal ~msg:"empty after unmount" int 0 (child_count renderer);
-  render_view reconciler (Vnode.text "second");
+  render_view reconciler (Mosaic.text "second");
   do_frame renderer;
   equal ~msg:"one child after reuse" int 1 (child_count renderer)
 
@@ -876,12 +888,12 @@ let unmount_tears_down_wide_view () =
   let key_fired = ref false in
   let n = 2000 in
   render_view reconciler
-    (Vnode.box
+    (Mosaic.box
        (List.init n (fun i ->
-            Vnode.text ~key:(string_of_int i)
+            Mosaic.text ~key:(string_of_int i)
               ~on_key:(fun _ -> Some (key_fired := true))
               (string_of_int i))
-       @ [ Vnode.embed embedded; Vnode.box [ Vnode.embed nested ] ]));
+       @ [ Mosaic.embed embedded; Mosaic.box [ Mosaic.embed nested ] ]));
   do_frame renderer;
   let box = List.hd (children_of renderer) in
   let rows = Renderable.children box in
@@ -917,15 +929,15 @@ let shrink_wide_list () =
         Renderable.detach node;
         node)
   in
-  let row i = Vnode.text ~key:(string_of_int i) (string_of_int i) in
+  let row i = Mosaic.text ~key:(string_of_int i) (string_of_int i) in
   render_view reconciler
-    (Vnode.box (List.init n row @ List.map Vnode.embed embeds));
+    (Mosaic.box (List.init n row @ List.map Mosaic.embed embeds));
   let box = List.hd (children_of renderer) in
   let rows = List.filteri (fun i _ -> i < n) (Renderable.children box) in
   let kept = List.filteri (fun i _ -> i mod 10 = 0) rows in
   let dropped = List.filteri (fun i _ -> i mod 10 <> 0) rows in
   render_view reconciler
-    (Vnode.box
+    (Mosaic.box
        (List.filter_map
           (fun i -> if i mod 10 = 0 then Some (row i) else None)
           (List.init n Fun.id)));
@@ -941,7 +953,7 @@ let shrink_wide_list () =
          && not (Renderable.destroyed node))
        embeds);
   do_frame renderer;
-  render_view reconciler (Vnode.box []);
+  render_view reconciler (Mosaic.box []);
   is_true ~msg:"emptied" (List.is_empty (Renderable.children box));
   is_true ~msg:"all rows destroyed" (List.for_all Renderable.destroyed rows)
 
@@ -956,9 +968,9 @@ let unmount_wide_root () =
         node)
   in
   render_view reconciler
-    (Vnode.fragment
-       (List.init 2000 (fun i -> Vnode.text ~key:(string_of_int i) "row")
-       @ List.map Vnode.embed embeds));
+    (Mosaic.fragment
+       (List.init 2000 (fun i -> Mosaic.text ~key:(string_of_int i) "row")
+       @ List.map Mosaic.embed embeds));
   let rows = children_of renderer in
   Reconciler.unmount reconciler;
   equal ~msg:"container empty" int 0 (child_count renderer);
@@ -979,8 +991,8 @@ let unmount_wide_root () =
 let duplicate_visible_focus_is_rejected () =
   let renderer, reconciler = make () in
   render_view reconciler
-    (Vnode.box
-       [ Vnode.text ~focused:true "first"; Vnode.text ~focused:true "second" ]);
+    (Mosaic.box
+       [ Mosaic.text ~focused:true "first"; Mosaic.text ~focused:true "second" ]);
   equal ~msg:"declarations are mounted" int 1 (child_count renderer);
   raises_match ~msg:"visible focus must be unique"
     (function Invalid_argument _ -> true | _ -> false)
@@ -989,13 +1001,13 @@ let duplicate_visible_focus_is_rejected () =
 let hidden_subtrees_do_not_contribute_focus () =
   let renderer, reconciler = make () in
   let view visible =
-    Vnode.box
+    Mosaic.box
       [
-        Vnode.text ~key:"active" ~focused:true "active";
-        Vnode.box ~key:"hidden" ~visible
+        Mosaic.text ~key:"active" ~focused:true "active";
+        Mosaic.box ~key:"hidden" ~visible
           [
-            Vnode.text ~focused:true "hidden first";
-            Vnode.text ~focused:true "hidden second";
+            Mosaic.text ~focused:true "hidden first";
+            Mosaic.text ~focused:true "hidden second";
           ];
       ]
   in
@@ -1023,37 +1035,37 @@ let hidden_subtrees_do_not_contribute_focus () =
    of two modals the later is the one. *)
 let inert_elements_do_not_contribute_focus () =
   let _renderer, reconciler = make () in
-  let focused_text name = Vnode.text ~key:name ~focused:true name in
+  let focused_text name = Mosaic.text ~key:name ~focused:true name in
   let focused_count view =
     render_view reconciler view;
     Option.is_some (Reconciler.focused reconciler)
   in
   is_true ~msg:"an inert box hides its declaration"
     (focused_count
-       (Vnode.box
+       (Mosaic.box
           [
-            focused_text "outside"; Vnode.box ~inert:true [ focused_text "in" ];
+            focused_text "outside"; Mosaic.box ~inert:true [ focused_text "in" ];
           ]));
   render_view reconciler
-    (Vnode.box
+    (Mosaic.box
        [
          focused_text "outside";
-         Vnode.modal (Vnode.box [ Vnode.text ~key:"inside" "inside" ]);
+         Mosaic.modal (Mosaic.box [ Mosaic.text ~key:"inside" "inside" ]);
        ]);
   is_true ~msg:"a modal leaves the focus outside it undeclared"
     (Option.is_none (Reconciler.focused reconciler));
   is_true ~msg:"and is the modal" (Option.is_some (Reconciler.modal reconciler));
   render_view reconciler
-    (Vnode.box
+    (Mosaic.box
        [
          focused_text "outside";
-         Vnode.modal (Vnode.box [ focused_text "first" ]);
-         Vnode.modal (Vnode.box [ Vnode.text "second" ]);
+         Mosaic.modal (Mosaic.box [ focused_text "first" ]);
+         Mosaic.modal (Mosaic.box [ Mosaic.text "second" ]);
        ]);
   is_true ~msg:"the later modal is the one"
     (Option.is_none (Reconciler.focused reconciler));
   render_view reconciler
-    (Vnode.box [ Vnode.box ~inert:true [ Vnode.modal (focused_text "in") ] ]);
+    (Mosaic.box [ Mosaic.box ~inert:true [ Mosaic.modal (focused_text "in") ] ]);
   is_true ~msg:"a modal in an inert box is none"
     (Option.is_none (Reconciler.modal reconciler))
 
@@ -1062,9 +1074,9 @@ let memo_reuses_equal_value_keys () =
   let builds = ref 0 in
   let build values =
     incr builds;
-    Vnode.text (String.concat "," values)
+    Mosaic.text (String.concat "," values)
   in
-  let view values = Vnode.memo ~key:values build in
+  let view values = Mosaic.memo ~key:values build in
   render_view reconciler (view [ String.make 1 'a' ]);
   render_view reconciler (view [ String.make 1 'a' ]);
   equal ~msg:"fresh structurally equal key skips view" int 1 !builds;
@@ -1077,12 +1089,12 @@ let memo_refreshes_message_mapper () =
   let builds = ref 0 and messages = ref [] in
   let build _ =
     incr builds;
-    Vnode.box ~focusable:true ~on_key:(fun _ -> Some "event") []
+    Mosaic.box ~on_focus_request:"focus" ~on_key:(fun _ -> Some "event") []
   in
-  let view () = Vnode.memo ~key:0 build in
+  let view () = Mosaic.memo ~key:0 build in
   let first text = messages := ("first " ^ text) :: !messages in
   let second text = messages := ("second " ^ text) :: !messages in
-  render_view reconciler (Vnode.map first (view ()));
+  render_view reconciler (Mosaic.map first (view ()));
   ignore (Renderer.focus renderer (List.hd (children_of renderer)) : bool);
   let key () =
     ignore
@@ -1090,7 +1102,7 @@ let memo_refreshes_message_mapper () =
         : Event.key)
   in
   key ();
-  render_view reconciler (Vnode.map second (view ()));
+  render_view reconciler (Mosaic.map second (view ()));
   key ();
   equal ~msg:"new mapper refreshes mounted callback" (list string)
     [ "second event"; "first event" ]
@@ -1102,13 +1114,13 @@ let nested_memo_keeps_independent_keys () =
   let outer_builds = ref 0 and inner_builds = ref 0 in
   let inner value =
     incr inner_builds;
-    Vnode.text value
+    Mosaic.text value
   in
   let outer (_, value) =
     incr outer_builds;
-    Vnode.box [ Vnode.memo ~key:value inner ]
+    Mosaic.box [ Mosaic.memo ~key:value inner ]
   in
-  let view epoch value = Vnode.memo ~key:(epoch, value) outer in
+  let view epoch value = Mosaic.memo ~key:(epoch, value) outer in
   render_view reconciler (view 0 "a");
   render_view reconciler (view 1 "a");
   equal ~msg:"outer rebuilt" int 2 !outer_builds;
@@ -1122,32 +1134,32 @@ let memo_belongs_to_keyed_parent () =
   let builds_a = ref 0 and builds_b = ref 0 in
   let build_a _ =
     incr builds_a;
-    Vnode.text "A"
+    Mosaic.text "A"
   in
   let build_b _ =
     incr builds_b;
-    Vnode.text "B"
+    Mosaic.text "B"
   in
-  let a key = Vnode.box ~key [ Vnode.memo ~key:0 build_a ] in
-  let b () = Vnode.box ~key:"b" [ Vnode.memo ~key:0 build_b ] in
-  render_view reconciler (Vnode.fragment [ a "a"; b () ]);
-  render_view reconciler (Vnode.fragment [ b (); a "a" ]);
+  let a key = Mosaic.box ~key [ Mosaic.memo ~key:0 build_a ] in
+  let b () = Mosaic.box ~key:"b" [ Mosaic.memo ~key:0 build_b ] in
+  render_view reconciler (Mosaic.fragment [ a "a"; b () ]);
+  render_view reconciler (Mosaic.fragment [ b (); a "a" ]);
   equal ~msg:"memo follows its keyed parent" string "BA" (screen_row renderer 0);
   equal ~msg:"reorder retains A memo" int 1 !builds_a;
   equal ~msg:"reorder retains B memo" int 1 !builds_b;
-  render_view reconciler (Vnode.fragment [ b (); a "new-a" ]);
+  render_view reconciler (Mosaic.fragment [ b (); a "new-a" ]);
   equal ~msg:"new parent owns fresh memo" int 2 !builds_a
 
-let a_view () = Vnode.text "AAA"
-let b_view () = Vnode.text "BBB"
+let a_view () = Mosaic.text "AAA"
+let b_view () = Mosaic.text "BBB"
 
 let memos_in_one_slot_keep_their_views () =
   let renderer, reconciler = make () in
   let view show_a =
     column
       [
-        Vnode.memo ~key:() b_view;
-        (if show_a then Vnode.memo ~key:() a_view else Vnode.empty);
+        Mosaic.memo ~key:() b_view;
+        (if show_a then Mosaic.memo ~key:() a_view else Mosaic.empty);
       ]
   in
   render_view reconciler (view true);
@@ -1158,34 +1170,34 @@ let memos_in_one_slot_keep_their_views () =
     (screen_row renderer 0);
   equal ~msg:"removed memo" string "" (screen_row renderer 1)
 
-let show_block id = Vnode.text ("show " ^ id)
-let edit_block id = Vnode.text ("edit " ^ id)
+let show_block id = Mosaic.text ("show " ^ id)
+let edit_block id = Mosaic.text ("edit " ^ id)
 
 let memo_view_function_is_part_of_identity () =
   let renderer, reconciler = make () in
   let view ~editing id =
-    if editing then Vnode.memo ~key:id edit_block
-    else Vnode.memo ~key:id show_block
+    if editing then Mosaic.memo ~key:id edit_block
+    else Mosaic.memo ~key:id show_block
   in
   render_view reconciler (view ~editing:false "b1");
   equal ~msg:"show mode" string "show b1" (screen_row renderer 0);
   render_view reconciler (view ~editing:true "b1");
   equal ~msg:"same key, other view" string "edit b1" (screen_row renderer 0)
 
-let count_view n = Vnode.text (Printf.sprintf "count=%d" n)
+let count_view n = Mosaic.text (Printf.sprintf "count=%d" n)
 
 let option_view = function
-  | None -> Vnode.text "none"
-  | Some () -> Vnode.text "some"
+  | None -> Mosaic.text "none"
+  | Some () -> Mosaic.text "some"
 
 let memo_keys_of_different_types_do_not_alias () =
   let renderer, reconciler = make () in
-  render_view reconciler (Vnode.memo ~key:0 count_view);
+  render_view reconciler (Mosaic.memo ~key:0 count_view);
   equal ~msg:"integer key" string "count=0" (screen_row renderer 0);
-  render_view reconciler (Vnode.memo ~key:None option_view);
+  render_view reconciler (Mosaic.memo ~key:None option_view);
   equal ~msg:"None after 0" string "none" (screen_row renderer 0)
 
-let float_view x = Vnode.text (Printf.sprintf "%g" x)
+let float_view x = Mosaic.text (Printf.sprintf "%g" x)
 
 let memo_compares_float_bits () =
   let renderer, reconciler = make () in
@@ -1194,36 +1206,37 @@ let memo_compares_float_bits () =
     incr builds;
     float_view x
   in
-  render_view reconciler (Vnode.memo ~key:Float.nan counted);
-  render_view reconciler (Vnode.memo ~key:Float.nan counted);
+  render_view reconciler (Mosaic.memo ~key:Float.nan counted);
+  render_view reconciler (Mosaic.memo ~key:Float.nan counted);
   equal ~msg:"nan equals itself" int 1 !builds;
-  render_view reconciler (Vnode.memo ~key:0. float_view);
+  render_view reconciler (Mosaic.memo ~key:0. float_view);
   equal ~msg:"zero" string "0" (screen_row renderer 0);
-  render_view reconciler (Vnode.memo ~key:(-0.) float_view);
+  render_view reconciler (Mosaic.memo ~key:(-0.) float_view);
   equal ~msg:"negative zero is another key" string "-0" (screen_row renderer 0)
 
 let memo_rejects_functions_in_key () =
   let rejects key =
     raises_match ~msg:"rejected at memo"
       (function Invalid_argument _ -> true | _ -> false)
-      (fun () -> ignore (Vnode.memo ~key (fun _ -> Vnode.empty) : unit Vnode.t))
+      (fun () ->
+        ignore (Mosaic.memo ~key (fun _ -> Mosaic.empty) : unit Mosaic.t))
   in
   rejects (1, fun x -> x + 1);
   rejects [ Some succ ];
   rejects object end
 
-let list_view () = column [ Vnode.text "one"; Vnode.text "two" ]
-let rows_view () = Vnode.fragment [ Vnode.text "one"; Vnode.text "two" ]
+let list_view () = column [ Mosaic.text "one"; Mosaic.text "two" ]
+let rows_view () = Mosaic.fragment [ Mosaic.text "one"; Mosaic.text "two" ]
 
 let memo_spans_keep_sibling_order () =
   let renderer, reconciler = make () in
   let view ~top ~bottom =
     column
       [
-        (if top then Vnode.text "top" else Vnode.empty);
-        Vnode.memo ~key:() rows_view;
-        (if bottom then Vnode.text "bottom" else Vnode.empty);
-        Vnode.memo ~key:() list_view;
+        (if top then Mosaic.text "top" else Mosaic.empty);
+        Mosaic.memo ~key:() rows_view;
+        (if bottom then Mosaic.text "bottom" else Mosaic.empty);
+        Mosaic.memo ~key:() list_view;
       ]
   in
   let rows () = List.init 5 (screen_row renderer) in
@@ -1241,8 +1254,8 @@ let memo_spans_keep_sibling_order () =
     (rows ())
 
 let switch_view () =
-  Vnode.viewport_switch ~at_least_width:30 ~wide:(Vnode.text "wide")
-    ~narrow:(Vnode.text "narrow")
+  Mosaic.viewport_switch ~at_least_width:30 ~wide:(Mosaic.text "wide")
+    ~narrow:(Mosaic.text "narrow")
 
 let reused_memo_follows_viewport () =
   let renderer, reconciler = make () in
@@ -1251,9 +1264,9 @@ let reused_memo_follows_viewport () =
     incr builds;
     switch_view ()
   in
-  render_view ~viewport_width:40 reconciler (Vnode.memo ~key:() counted);
+  render_view ~viewport_width:40 reconciler (Mosaic.memo ~key:() counted);
   equal ~msg:"wide" string "wide" (screen_row renderer 0);
-  render_view ~viewport_width:20 reconciler (Vnode.memo ~key:() counted);
+  render_view ~viewport_width:20 reconciler (Mosaic.memo ~key:() counted);
   equal ~msg:"narrow" string "narrow" (screen_row renderer 0);
   equal ~msg:"view built once" int 1 !builds
 
@@ -1264,10 +1277,10 @@ let removed_memo_releases_view () =
     let captured = ref 42 in
     Weak.set weak 0 (Some captured);
     render_view reconciler
-      (Vnode.memo ~key:0 (fun _ -> Vnode.text (string_of_int !captured)))
+      (Mosaic.memo ~key:0 (fun _ -> Mosaic.text (string_of_int !captured)))
   in
   mount ();
-  render_view reconciler Vnode.empty;
+  render_view reconciler Mosaic.empty;
   Gc.full_major ();
   is_false ~msg:"removed memo does not retain captured state"
     (Weak.check weak 0);
@@ -1279,12 +1292,12 @@ let plain_rich_transitions_reuse_text_and_select_wrapped_content () =
     Toffee.Style.default
     |> Toffee.Style.set_width (Toffee.Style.Dimension.length 3.)
   in
-  render_view reconciler (Vnode.text ~key:"text" ~style "before");
+  render_view reconciler (Mosaic.text ~key:"text" ~layout:style "before");
   do_frame renderer;
   let node = List.hd (children_of renderer) in
   let fragments = Mosaic_ui.Text.Fragment.[ text "ab"; bold [ text "cdef" ] ] in
   render_view reconciler
-    (Vnode.rich_text ~key:"text" ~style ~wrap:`Char
+    (Mosaic.rich_text ~key:"text" ~layout:style ~wrap:`Char
        ~text_style:(Ansi.Style.make ~fg:Ansi.Color.red ())
        fragments);
   do_frame renderer;
@@ -1304,7 +1317,7 @@ let plain_rich_transitions_reuse_text_and_select_wrapped_content () =
   equal ~msg:"selection crosses wrapping and fragment boundaries" string
     "abcdef"
     (Renderable.Private.get_selected_text node);
-  render_view reconciler (Vnode.text ~key:"text" ~style "after");
+  render_view reconciler (Mosaic.text ~key:"text" ~layout:style "after");
   do_frame renderer;
   is_true ~msg:"rich to plain retains native node"
     (node == List.hd (children_of renderer));
@@ -1363,8 +1376,8 @@ let () =
             viewport_switch_selects_only_matching_branch;
           test "viewport switch reconciles across resize threshold"
             viewport_switch_reconciles_selected_branch_on_resize;
-          test "non-focusable scroll box still wheels"
-            non_focusable_scroll_box_still_scrolls_with_wheel;
+          test "a scroll box wheels without taking focus"
+            scroll_box_wheels_without_taking_focus;
           test "declared scroll survives rerender and remount"
             declared_scroll_survives_rerender_and_remount;
           test "single spinner" render_single_spinner;

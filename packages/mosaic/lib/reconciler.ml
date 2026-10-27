@@ -325,8 +325,10 @@ let update_instance (inst : instance) ~(old_attrs : Vnode.attrs)
       if old_attrs == new_attrs then false
       else update_common (node_of inst) ~old_attrs ~new_attrs
     in
+    (* A layout shared by many elements is the same record on every render,
+       and comparing it physically first costs nothing per field. *)
     let style_changed =
-      if old_attrs == new_attrs then false
+      if old_attrs == new_attrs || old_attrs.style == new_attrs.style then false
       else if old_attrs.style <> new_attrs.style then (
         set_instance_style inst new_attrs.style;
         true)

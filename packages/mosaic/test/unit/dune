@@ -18,7 +18,7 @@
   test_textarea
   test_renderer
   test_reconciler
-  test_vnode
+  test_elements
   test_markdown
   test_spinner
   test_progress_bar

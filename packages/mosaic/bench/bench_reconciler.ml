@@ -3,8 +3,9 @@ open Mosaic_ui
 (* The reconciler runs once per redraw over the whole view, so its per-frame
    cost on a large keyed list is a contract: a chat/log transcript re-rendered
    per keystroke must not pay quadratic placement work. Both cases build the
-   vnode list inside the measured region — a TEA view rebuilds its vnodes
-   every frame, so that allocation is part of the reconcile cost. *)
+   view inside the measured region with [Mosaic]'s elements, as an
+   application's [view] does every frame, so that allocation is part of the
+   reconcile cost. *)
 
 let viewport_width = 80
 
@@ -25,10 +26,10 @@ let keyed rows =
   }
 
 let view l ~offset =
-  Vnode.box
+  Mosaic.box
     (List.init l.rows (fun i ->
          let j = (i + offset) mod l.rows in
-         Vnode.text ~key:l.keys.(j) l.labels.(j)))
+         Mosaic.text ~key:l.keys.(j) l.labels.(j)))
 
 type state = {
   l : keyed;
@@ -88,7 +89,7 @@ let mount_and_empty rows =
       let reconciler =
         Mosaic.Reconciler.create ~container:(Renderer.root renderer)
       in
-      (reconciler, view (keyed rows) ~offset:0, Vnode.box []))
+      (reconciler, view (keyed rows) ~offset:0, Mosaic.box []))
     (Printf.sprintf "keyed-list-%d" rows)
     (fun (reconciler, full, empty) ->
       Mosaic.Reconciler.render reconciler ~viewport_width full;
@@ -108,10 +109,10 @@ let mount_retype_and_empty rows =
         Mosaic.Reconciler.create ~container:(Renderer.root renderer)
       in
       ( reconciler,
-        Vnode.box (List.init rows (fun i -> Vnode.text labels.(i))),
-        Vnode.box
-          (List.init rows (fun i -> Vnode.box [ Vnode.text labels.(i) ])),
-        Vnode.box [] ))
+        Mosaic.box (List.init rows (fun i -> Mosaic.text labels.(i))),
+        Mosaic.box
+          (List.init rows (fun i -> Mosaic.box [ Mosaic.text labels.(i) ])),
+        Mosaic.box [] ))
     (Printf.sprintf "unkeyed-list-%d" rows)
     (fun (reconciler, texts, boxes, empty) ->
       Mosaic.Reconciler.render reconciler ~viewport_width texts;

@@ -33,7 +33,7 @@
     An element is drawn with the theme {e in scope} where it is. The root's
     theme is the program's: {!default} of the palette the terminal reports, and
     {!plain} until it reports it or when it reports none. An element inside
-    [themed f] ([Mosaic.themed], {!Vnode.themed}), or a node given [f] with
+    [themed f] ([Mosaic.themed]), or a node given [f] with
     {!Renderable.set_theme}, is drawn with [f] applied to the theme in scope
     around it, so the nearest such [f] decides last, and an application can
     change one role of the root's theme without knowing the terminal's colors.

@@ -46,7 +46,7 @@ type action = Textarea.action =
 type key_binding = Shortcut.t * action
 
 (* [Props.make] is the one place the input's labels get their defaults:
-   [create] and [Vnode.input] pass their labels on unset. *)
+   [create] and [Mosaic.input] pass their labels on unset. *)
 module Props = struct
   type t = {
     state : Editor.t;

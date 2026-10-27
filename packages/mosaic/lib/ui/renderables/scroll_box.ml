@@ -62,7 +62,7 @@ end
 (* ───── Props ───── *)
 
 (* [Props.make] is the one place the scroll box's labels get their defaults:
-   [create] and [Vnode.scroll_box] pass their labels on unset. *)
+   [create] and [Mosaic.scroll_box] pass their labels on unset. *)
 module Props = struct
   type t = {
     scroll_x : bool;

@@ -96,7 +96,7 @@ let fixture build =
   let render ?(equal = String.equal) selected values =
     let view = build ~equal ~selected values in
     Mosaic.Reconciler.render reconciler ~viewport_width:24
-      (Vnode.map receive view);
+      (Mosaic.map receive view);
     (match Mosaic.Reconciler.focused reconciler with
     | Some node -> ignore (Renderer.focus renderer node : bool)
     | None -> Renderer.blur renderer);
@@ -138,7 +138,7 @@ let viewport_fixture build =
   let values = List.init 20 (Printf.sprintf "v%02d") in
   let render ~key selected =
     Mosaic.Reconciler.render reconciler ~viewport_width:24
-      (Vnode.map receive
+      (Mosaic.map receive
          (build ?key:(Some key) ~equal:String.equal ~selected:(Some selected)
             values));
     Renderer.render_frame renderer ~width:24 ~height:6 ~dt:0.;
@@ -308,7 +308,7 @@ let table_press_reconciliation ~trigger ~replacement expected =
             ()
     in
     Mosaic.Reconciler.render reconciler ~viewport_width:24
-      (Vnode.map receive view);
+      (Mosaic.map receive view);
     (match Mosaic.Reconciler.focused reconciler with
     | Some node -> ignore (Renderer.focus renderer node : bool)
     | None -> Renderer.blur renderer);

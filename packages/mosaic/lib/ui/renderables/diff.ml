@@ -162,7 +162,7 @@ type highlight = { old : syntax; new_ : syntax }
 let highlight_equal a b = syntax_equal a.old b.old && syntax_equal a.new_ b.new_
 
 (* [Props.make] is the one place the diff's labels get their defaults:
-   [create] and [Vnode.diff] pass their labels on unset. *)
+   [create] and [Mosaic.diff] pass their labels on unset. *)
 module Props = struct
   type t = {
     patch : Patch.t;

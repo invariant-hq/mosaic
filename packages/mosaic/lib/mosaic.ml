@@ -173,9 +173,6 @@ module Diff = Mosaic_ui.Diff
 module Markdown = Mosaic_ui.Markdown
 module Syntax_highlight = Mosaic_ui.Syntax_highlight
 module Syntax_style = Mosaic_ui.Syntax_style
-
-(* Internal modules for tests *)
-
 module Reconciler = Reconciler
 
 (* Semantic callbacks produce messages; raw event handlers may ignore events. *)
@@ -1467,24 +1464,161 @@ let embed = Vnode.embed
 let viewport_switch = Vnode.viewport_switch
 let memo = Vnode.memo
 
-let layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin ?padding
-    ?border_width ?gap ?align_items ?align_self ?align_content ?justify_items
-    ?justify_self ?justify_content ?flex_direction ?flex_wrap ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    () =
-  Toffee.Style.make ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin ?padding
-    ?border:border_width ?gap ?align_items ?align_self ?align_content
+(* [override v set layout] is [layout] with [set v] applied, if [v] is given. *)
+let override v set layout =
+  match v with None -> layout | Some v -> set v layout
+
+(* An element's layout is [layout], or the default, with the fields its
+   layout labels give. Given [layout] and no layout label, the element uses
+   that record itself, so a layout built once costs nothing per element and
+   the reconciler finds it unchanged by comparing it physically. A label
+   applies its field's setter to [layout], which keeps the fields no label
+   sets, such as the box generation mode. *)
+let layout_style ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio
+    ?margin ?padding ?border_width ?gap ?align_items ?align_self ?align_content
     ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
     ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ()
+    ?grid_row ?grid_column () =
+  match layout with
+  | None ->
+      Toffee.Style.make ?display ?box_sizing ?position ?overflow
+        ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+        ?aspect_ratio ?margin ?padding ?border:border_width ?gap ?align_items
+        ?align_self ?align_content ?justify_items ?justify_self ?justify_content
+        ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+        ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+        ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+        ?grid_template_column_names ?grid_template_row_names ?grid_row
+        ?grid_column ()
+  | Some layout -> (
+      match
+        ( display,
+          box_sizing,
+          position,
+          overflow,
+          scrollbar_width,
+          text_align,
+          inset,
+          size,
+          min_size,
+          max_size,
+          aspect_ratio,
+          margin,
+          padding,
+          border_width,
+          gap,
+          align_items,
+          align_self,
+          align_content,
+          justify_items,
+          justify_self,
+          justify_content,
+          flex_direction,
+          flex_wrap,
+          flex_grow,
+          flex_shrink,
+          flex_basis,
+          grid_template_rows,
+          grid_template_columns,
+          grid_auto_rows,
+          grid_auto_columns,
+          grid_auto_flow,
+          grid_template_areas,
+          grid_template_column_names,
+          grid_template_row_names,
+          grid_row,
+          grid_column )
+      with
+      | ( None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None,
+          None ) ->
+          layout
+      | _ ->
+          layout
+          |> override display Toffee.Style.set_display
+          |> override box_sizing Toffee.Style.set_box_sizing
+          |> override position Toffee.Style.set_position
+          |> override overflow Toffee.Style.set_overflow
+          |> override scrollbar_width Toffee.Style.set_scrollbar_width
+          |> override text_align Toffee.Style.set_text_align
+          |> override inset Toffee.Style.set_inset
+          |> override size Toffee.Style.set_size
+          |> override min_size Toffee.Style.set_min_size
+          |> override max_size Toffee.Style.set_max_size
+          |> override aspect_ratio (fun v l ->
+              Toffee.Style.set_aspect_ratio (Some v) l)
+          |> override margin Toffee.Style.set_margin
+          |> override padding Toffee.Style.set_padding
+          |> override border_width Toffee.Style.set_border
+          |> override gap Toffee.Style.set_gap
+          |> override align_items (fun v l ->
+              Toffee.Style.set_align_items (Some v) l)
+          |> override align_self (fun v l ->
+              Toffee.Style.set_align_self (Some v) l)
+          |> override align_content (fun v l ->
+              Toffee.Style.set_align_content (Some v) l)
+          |> override justify_items (fun v l ->
+              Toffee.Style.set_justify_items (Some v) l)
+          |> override justify_self (fun v l ->
+              Toffee.Style.set_justify_self (Some v) l)
+          |> override justify_content (fun v l ->
+              Toffee.Style.set_justify_content (Some v) l)
+          |> override flex_direction Toffee.Style.set_flex_direction
+          |> override flex_wrap Toffee.Style.set_flex_wrap
+          |> override flex_grow Toffee.Style.set_flex_grow
+          |> override flex_shrink Toffee.Style.set_flex_shrink
+          |> override flex_basis Toffee.Style.set_flex_basis
+          |> override grid_template_rows Toffee.Style.set_grid_template_rows
+          |> override grid_template_columns
+               Toffee.Style.set_grid_template_columns
+          |> override grid_auto_rows Toffee.Style.set_grid_auto_rows
+          |> override grid_auto_columns Toffee.Style.set_grid_auto_columns
+          |> override grid_auto_flow Toffee.Style.set_grid_auto_flow
+          |> override grid_template_areas Toffee.Style.set_grid_template_areas
+          |> override grid_template_column_names
+               Toffee.Style.set_grid_template_column_names
+          |> override grid_template_row_names
+               Toffee.Style.set_grid_template_row_names
+          |> override grid_row Toffee.Style.set_grid_row
+          |> override grid_column Toffee.Style.set_grid_column)
 
-let box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
+let box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
     ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
     ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
@@ -1497,24 +1631,53 @@ let box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?fill ?title ?title_alignment children =
   (* The box owns its border widths, so [border_width] goes to the box. *)
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?gap ?align_items ?align_self ?align_content ?justify_items
-      ?justify_self ?justify_content ?flex_direction ?flex_wrap ?flex_grow
-      ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-      ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
       ?grid_template_column_names ?grid_template_row_names ?grid_row
       ?grid_column ()
   in
-  Vnode.box ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?inert
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ?border ?border_style ?border_sides ?border_width ?border_color
-    ?focused_border_color ?background ?fill ?title ?title_alignment children
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size ~callbacks:Vnode.No_callbacks
+    (Vnode.Box
+       (Mosaic_ui.Box.Props.make ?inert ?border ?border_style ?border_sides
+          ?border_width ?border_color ?focused_border_color ?background ?fill
+          ?title ?title_alignment ()))
+    children
 
-let modal = Vnode.modal
+(* In the top layer a modal is laid out against the root, which its size
+   fills, and centres its child, as HTML centres a modal dialog in the
+   viewport. In its parent's layout it is out of flow. *)
+let modal_style =
+  let full = Toffee.Style.Dimension.percent 1. in
+  Toffee.Style.default
+  |> Toffee.Style.set_position Toffee.Style.Position.Absolute
+  |> Toffee.Style.set_size { width = full; height = full }
+  |> Toffee.Style.set_align_items (Some Toffee.Style.Align_items.Center)
+  |> Toffee.Style.set_justify_content (Some Toffee.Style.Align_content.Center)
+
+let modal ?key ?on_close child =
+  Vnode.element ?key ~style:modal_style ~focusable:false
+    ~callbacks:
+      (Vnode.Modal_callbacks
+         { on_close = Option.map (fun message () -> message) on_close })
+    (Vnode.Box (Mosaic_ui.Box.Props.make ()))
+    [ child ]
+
 let themed = Vnode.themed
 
-let text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
+(* A text without [on_selection] shares [No_callbacks], so a view of plain
+   texts allocates no callbacks. *)
+let text_callbacks = function
+  | None -> Vnode.No_callbacks
+  | on_selection -> Vnode.Text_callbacks { on_selection }
+
+let text ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
     ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
     ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
@@ -1526,63 +1689,73 @@ let text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?selectable ?selection_bg ?selection_fg ?tab_width ?truncate ?on_selection
     content =
   let layout_style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
   let text_style =
     match text_style with Some _ -> text_style | None -> style
   in
-  Vnode.text ?key ~style:layout_style ?visible ?z_index ?opacity ?buffered ?live
+  Vnode.element ?key ~style:layout_style ?visible ?z_index ?opacity
+    ~focusable:false ?focused ?buffered ?live ?on_mouse ?on_key ?on_paste
+    ?on_click ?on_focus_request ?on_size
+    ~callbacks:(text_callbacks on_selection)
+    (Vnode.Text
+       (Mosaic_ui.Text.Props.make ~content ?text_style ?wrap ?selectable
+          ?selection_bg ?selection_fg ?tab_width ?truncate ()))
+    []
+
+let rich_text ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?style ?visible ?z_index ?opacity ?buffered ?live
     ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
     ?text_style ?wrap ?selectable ?selection_bg ?selection_fg ?tab_width
-    ?truncate ?on_selection content
-
-let rich_text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key
-    ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?text_style ?wrap
-    ?selectable ?selection_bg ?selection_fg ?tab_width ?truncate ?on_selection
-    content =
+    ?truncate ?on_selection content =
   let layout_style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
   let text_style =
     match text_style with Some _ -> text_style | None -> style
   in
-  Vnode.rich_text ?key ~style:layout_style ?visible ?z_index ?opacity ?buffered
-    ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ?focused ?text_style ?wrap ?selectable ?selection_bg ?selection_fg
-    ?tab_width ?truncate ?on_selection content
+  Vnode.element ?key ~style:layout_style ?visible ?z_index ?opacity
+    ~focusable:false ?focused ?buffered ?live ?on_mouse ?on_key ?on_paste
+    ?on_click ?on_focus_request ?on_size
+    ~callbacks:(text_callbacks on_selection)
+    (Vnode.Text
+       (Mosaic_ui.Text.Props.make_rich ?text_style ?wrap ?selectable
+          ?selection_bg ?selection_fg ?tab_width ?truncate content))
+    []
 
-let button ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_focus_request ?on_size
-    ?(focused = false) ?border ?border_style ?border_sides ?border_color
-    ?focused_border_color ?background ?fill ?title ?title_alignment ?text_style
-    ?(disabled = false) ~on_activate label =
+let button ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?on_focus_request ?on_size ?(focused = false) ?border ?border_style
+    ?border_sides ?border_color ?focused_border_color ?background ?fill ?title
+    ?title_alignment ?text_style ?(disabled = false) ~on_activate label =
   let text_style = Option.value text_style ~default:Ansi.Style.default in
   let text_style =
     if disabled then Ansi.Style.with_dim true text_style
@@ -1611,9 +1784,9 @@ let button ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
       Some on_activate
     end
   in
-  box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width ?text_align
-    ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items ?size
-    ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
+  box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
+    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
+    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
     ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
     ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
@@ -1624,32 +1797,37 @@ let button ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?title_alignment ~on_key ~on_click
     [ text ~text_style ~selectable:false label ]
 
-let slider ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?orientation ?min ?max
-    ?viewport_size ?track_color ?thumb_color ~state ~on_change () =
+let slider ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?orientation
+    ?min ?max ?viewport_size ?track_color ?thumb_color ~state ~on_change () =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.slider ~value:state ~on_value_change:on_change ?key ~style ?visible
-    ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click
-    ?on_focus_request ?on_size ?focused ?orientation ?min ?max ?viewport_size
-    ?track_color ?thumb_color ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:(Vnode.Slider_callbacks { on_value_change = Some on_change })
+    (Vnode.Slider
+       (Mosaic_ui.Slider.Props.make ?orientation ~value:state ?min ?max
+          ?viewport_size ?track_color ?thumb_color ()))
+    []
 
-let input ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
+let input ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
     ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
     ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
@@ -1663,21 +1841,27 @@ let input ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
     ~on_change ?on_submit ~state () =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.input ~state ?key ~style ?visible ?z_index ?opacity ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ?placeholder ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
-    ?key_bindings ~on_change ?on_submit ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:true ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:(Vnode.Input_callbacks { on_change = Some on_change; on_submit })
+    (Vnode.Text_input
+       (Mosaic_ui.Text_input.Props.make ~state ?placeholder ?text_color
+          ?background_color ?focused_text_color ?focused_background_color
+          ?placeholder_color ?selection_color ?selection_fg ?cursor_style
+          ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
+          ()))
+    []
 
 (* The position of the first of [items] whose value is [selected], or [-1]. *)
 let rec position ~equal ~value selected index = function
@@ -1699,36 +1883,30 @@ let select_presentation item = item.Select.presentation
 let tab_presentation item = item.Tab_select.presentation
 let row_cells item = item.Table.cells
 
-(* [with_kind f vnode] is the element [vnode] with its kind [k] replaced by
-   [f k]. *)
-let with_kind props = function
-  | Vnode.Element element ->
-      Vnode.Element { element with kind = props element.kind }
-  | vnode -> vnode
-
-let select ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?background ?text_color
-    ?focused_background ?focused_text_color ?selected_background
+let select ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?background
+    ?text_color ?focused_background ?focused_text_color ?selected_background
     ?selected_text_color ?description_color ?selected_description_color
     ?show_description ?show_scroll_indicator ?wrap_selection ?key_bindings
     ?item_spacing ?fast_scroll_step ~on_change ?on_activate ~equal ~selected
     options =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
   let selected_index =
     selection_index ~equal
@@ -1738,42 +1916,44 @@ let select ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   let value index = (List.nth options index).Select.value in
   let on_change index = on_change (value index) in
   let on_activate = Option.map (fun f index -> f (value index)) on_activate in
-  with_kind (function
-    | Vnode.Select props ->
-        Vnode.Select
-          (Mosaic_ui.Select.Props.with_options_of select_presentation options
-             props)
-    | kind -> kind)
-  @@ Vnode.select ~selected_index ?key ~style ?visible ?z_index ?opacity
-       ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
-       ?on_size ?focused ?background ?text_color ?focused_background
-       ?focused_text_color ?selected_background ?selected_text_color
-       ?description_color ?selected_description_color ?show_description
-       ?show_scroll_indicator ?wrap_selection ?key_bindings ?item_spacing
-       ?fast_scroll_step ~on_change ?on_activate ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:true ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:
+      (Vnode.Select_callbacks { on_change = Some on_change; on_activate })
+    (Vnode.Select
+       (Mosaic_ui.Select.Props.make ~selected_index ?background ?text_color
+          ?focused_background ?focused_text_color ?selected_background
+          ?selected_text_color ?description_color ?selected_description_color
+          ?show_description ?show_scroll_indicator ?wrap_selection ?key_bindings
+          ?item_spacing ?fast_scroll_step ()
+       |> Mosaic_ui.Select.Props.with_options_of select_presentation options))
+    []
 
-let tab_select ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?tab_width ?background
-    ?text_color ?focused_background ?focused_text_color ?selected_background
-    ?selected_text_color ?description_color ?selected_description_color
-    ?show_underline ?show_description ?show_scroll_arrows ?wrap_selection
-    ?key_bindings ~on_change ?on_activate ~equal ~selected options =
+let tab_select ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?tab_width
+    ?background ?text_color ?focused_background ?focused_text_color
+    ?selected_background ?selected_text_color ?description_color
+    ?selected_description_color ?show_underline ?show_description
+    ?show_scroll_arrows ?wrap_selection ?key_bindings ~on_change ?on_activate
+    ~equal ~selected options =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
   let selected =
     selection_index ~equal
@@ -1783,198 +1963,231 @@ let tab_select ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   let value index = (List.nth options index).Tab_select.value in
   let on_change index = on_change (value index) in
   let on_activate = Option.map (fun f index -> f (value index)) on_activate in
-  with_kind (function
-    | Vnode.Tab_select props ->
-        Vnode.Tab_select
-          (Mosaic_ui.Tab_select.Props.with_options_of tab_presentation options
-             props)
-    | kind -> kind)
-  @@ Vnode.tab_select ~selected ?key ~style ?visible ?z_index ?opacity ?buffered
-       ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-       ?focused ~options:[] ?tab_width ?background ?text_color
-       ?focused_background ?focused_text_color ?selected_background
-       ?selected_text_color ?description_color ?selected_description_color
-       ?show_underline ?show_description ?show_scroll_arrows ?wrap_selection
-       ?key_bindings ~on_change ?on_activate ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:true ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:
+      (Vnode.Tab_select_callbacks { on_change = Some on_change; on_activate })
+    (Vnode.Tab_select
+       (Mosaic_ui.Tab_select.Props.make ~options:[] ~selected ?tab_width
+          ?background ?text_color ?focused_background ?focused_text_color
+          ?selected_background ?selected_text_color ?description_color
+          ?selected_description_color ?show_underline ?show_description
+          ?show_scroll_arrows ?wrap_selection ?key_bindings ()
+       |> Mosaic_ui.Tab_select.Props.with_options_of tab_presentation options))
+    []
 
-let canvas ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused draw =
+let canvas ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused draw =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.canvas ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ~on_draw:draw ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:(Vnode.Canvas_callbacks { on_draw = Some draw })
+    Vnode.Canvas []
 
-let picture ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused p =
+let picture ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused p =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.picture ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused p
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size ~callbacks:Vnode.No_callbacks (Vnode.Picture p) []
 
-let spinner ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?frame_set ?color () =
-  let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
-  in
-  Vnode.spinner ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+let spinner ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
     ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?frame_set
-    ?color ()
-
-let progress_bar ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?value ?min ?max ?orientation
-    ?filled_color ?empty_color () =
+    ?color () =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.progress_bar ?key ~style ?visible ?z_index ?opacity ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ?value ?min ?max ?orientation ?filled_color ?empty_color ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered
+    ?live:(match live with None -> Some true | live -> live)
+    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ~callbacks:Vnode.No_callbacks
+    (Vnode.Spinner (Mosaic_ui.Spinner.Props.make ?frame_set ?color ()))
+    []
 
-let scroll_bar ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?orientation ?show_arrows
-    ?track_color ?thumb_color ?arrow_fg ?arrow_bg ~on_change ~state ~scroll_size
-    ~viewport_size () =
+let progress_bar ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?value ?min
+    ?max ?orientation ?filled_color ?empty_color () =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.scroll_bar ~position:state ~scroll_size ~viewport_size ?key ~style
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?orientation ?show_arrows
-    ?track_color ?thumb_color ?arrow_fg ?arrow_bg ~on_change ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size ~callbacks:Vnode.No_callbacks
+    (Vnode.Progress_bar
+       (Mosaic_ui.Progress_bar.Props.make ?value ?min ?max ?orientation
+          ?filled_color ?empty_color ()))
+    []
 
-let scroll_box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?scroll_x ?scroll_y
-    ?background ?scroll_accel ?show_scrollbars ?scrollbar_style
+let scroll_bar ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?orientation
+    ?show_arrows ?track_color ?thumb_color ?arrow_fg ?arrow_bg ~on_change ~state
+    ~scroll_size ~viewport_size () =
+  let style =
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
+  in
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:(Vnode.Scroll_bar_callbacks { on_change = Some on_change })
+    (Vnode.Scroll_bar
+       (Mosaic_ui.Scroll_bar.Props.make ~position:state ~scroll_size
+          ~viewport_size ?orientation ?show_arrows ?track_color ?thumb_color
+          ?arrow_fg ?arrow_bg ()))
+    []
+
+let scroll_box ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?scroll_x
+    ?scroll_y ?background ?scroll_accel ?show_scrollbars ?scrollbar_style
     ?vertical_bar_style ?horizontal_bar_style ~on_scroll ~scroll children =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.scroll_box ~scroll ?key ~style ?visible ?z_index ?opacity ?buffered
-    ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ?focused ?scroll_x ?scroll_y ?background ?scroll_accel ?show_scrollbars
-    ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ~on_scroll
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:true ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:(Vnode.Scroll_box_callbacks { on_scroll = Some on_scroll })
+    (Vnode.Scroll_box
+       (Mosaic_ui.Scroll_box.Props.make ~scroll ?scroll_x ?scroll_y ?background
+          ?scroll_accel ?show_scrollbars ?scrollbar_style ?vertical_bar_style
+          ?horizontal_bar_style ()))
     children
 
-let textarea ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?annotations ?syntax
-    ?ghost_text ?ghost_text_color ?placeholder ?wrap ?text_color
+let textarea ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?annotations
+    ?syntax ?ghost_text ?ghost_text_color ?placeholder ?wrap ?text_color
     ?background_color ?focused_text_color ?focused_background_color
     ?placeholder_color ?selection_color ?selection_fg ?cursor_style
     ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
     ~on_change ?on_submit ~state () =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.textarea ~state ?key ~style ?visible ?z_index ?opacity ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ?annotations ?syntax ?ghost_text ?ghost_text_color ?placeholder ?wrap
-    ?text_color ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ~on_change
-    ?key_bindings ?on_submit ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:true ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:
+      (Vnode.Textarea_callbacks { on_change = Some on_change; on_submit })
+    (Vnode.Textarea
+       (Mosaic_ui.Textarea.Props.make ~state ?annotations ?syntax ?ghost_text
+          ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
+          ?focused_text_color ?focused_background_color ?placeholder_color
+          ?selection_color ?selection_fg ?cursor_style ?cursor_color
+          ?cursor_blinking ?selectable ?show_cursor ?key_bindings ()))
+    []
 
-let code ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
+let code ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
     ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
     ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
@@ -1986,47 +2199,57 @@ let code ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?wrap ?tab_width ?truncate ?selectable ?selection_bg ?selection_fg
     ?on_selection content =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.code ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?syntax
-    ?conceal ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
-    ?selection_fg ?on_selection content
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:(Vnode.Code_callbacks { on_selection })
+    (Vnode.Code
+       (Mosaic_ui.Code.Props.make ~content ?syntax ?conceal ?text_style ?wrap
+          ?tab_width ?truncate ?selectable ?selection_bg ?selection_fg ()))
+    []
 
-let line_number ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?fg ?bg ?min_width
-    ?padding_right ?show_line_numbers ?line_number_offset ?line_colors
-    ?line_signs ?line_numbers ?hidden_line_numbers child =
+let line_number ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?fg ?bg
+    ?min_width ?padding_right ?show_line_numbers ?line_number_offset
+    ?line_colors ?line_signs ?line_numbers ?hidden_line_numbers child =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.line_number ?key ~style ?visible ?z_index ?opacity ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ?fg ?bg ?min_width ?padding_right ?show_line_numbers ?line_number_offset
-    ?line_colors ?line_signs ?line_numbers ?hidden_line_numbers child
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size ~callbacks:Vnode.No_callbacks
+    (Vnode.Line_number
+       (Mosaic_ui.Line_number.Props.make ?fg ?bg ?min_width ?padding_right
+          ?show_line_numbers ?line_number_offset ?line_colors ?line_signs
+          ?line_numbers ?hidden_line_numbers ()))
+    [ child ]
 
-let diff ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
+let diff ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
     ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
     ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
@@ -2034,51 +2257,63 @@ let diff ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?layout ?theme ?highlight
+    ?on_click ?on_focus_request ?on_size ?focused ?view ?theme ?highlight
     ?line_highlights ?line_spans ?line_signs ?show_line_numbers ?wrap
     ?selectable ?text_style ?on_line_click patch =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.diff ?key ~style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?layout
-    ?theme ?highlight ?line_highlights ?line_spans ?line_signs
-    ?show_line_numbers ?wrap ?selectable ?text_style ?on_line_click patch
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:(Vnode.Diff_callbacks { on_line_click })
+    (Vnode.Diff
+       (Mosaic_ui.Diff.Props.make ~patch ?layout:view ?theme ?highlight
+          ?line_highlights ?line_spans ?line_signs ?show_line_numbers ?wrap
+          ?selectable ?text_style ()))
+    []
 
-let markdown ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
-    ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
-    ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
-    ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
-    ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
-    ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
-    ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?md_style ?conceal ?streaming
-    ?selectable ?selection_bg ?selection_fg ?render_node ?render_code
-    ?highlighter ?syntax_style ?on_selection content =
+let markdown ?key ?layout ?display ?box_sizing ?position ?overflow
+    ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
+    ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
+    ?padding ?margin ?border_width ?align_self ?align_content ?justify_items
+    ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
+    ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
+    ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?md_style
+    ?conceal ?streaming ?selectable ?selection_bg ?selection_fg ?render_node
+    ?render_code ?highlighter ?syntax_style ?on_selection content =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.markdown ?key ~style ?visible ?z_index ?opacity ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ?md_style ?conceal ?streaming ?selectable ?selection_bg ?selection_fg
-    ?render_node ?render_code ?highlighter ?syntax_style ?on_selection content
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:false ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:(Vnode.Markdown_callbacks { on_selection })
+    (Vnode.Markdown
+       (Mosaic_ui.Markdown.Props.make ~content ?style:md_style ?conceal
+          ?streaming ?selectable ?selection_bg ?selection_fg ?render_node
+          ?render_code ?highlighter ?syntax_style ()))
+    []
 
-let table ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
+let table ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
     ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
     ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
@@ -2095,14 +2330,15 @@ let table ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?key_bindings ?fast_scroll_step ~on_change ?on_activate ?on_hover ~equal
     ~selected () =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
   let selected_row =
     selection_index ~equal ~value:(fun item -> item.Table.value) selected rows
@@ -2113,21 +2349,24 @@ let table ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   let on_hover =
     Option.map (fun f index -> f (Option.map value index)) on_hover
   in
-  with_kind (function
-    | Vnode.Table props ->
-        Vnode.Table (Mosaic_ui.Table.Props.with_rows_of row_cells rows props)
-    | kind -> kind)
-  @@ Vnode.table ~selected_row ?key ~style ?visible ?z_index ?opacity ?buffered
-       ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-       ?focused ?columns ?border ?border_style ?show_header
-       ?show_column_separator ?show_row_separator ?cell_padding ?header_color
-       ?header_background ?text_color ?background ?selected_text_color
-       ?selected_background ?focused_selected_text_color
-       ?focused_selected_background ?selection_visible ?show_scroll_indicator
-       ?activate_on_click ?wheel_navigation ?row_styles ?wrap_selection
-       ?key_bindings ?fast_scroll_step ~on_change ?on_activate ?on_hover ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:true ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:
+      (Vnode.Table_callbacks
+         { on_change = Some on_change; on_activate; on_hover })
+    (Vnode.Table
+       (Mosaic_ui.Table.Props.make ?columns ~selected_row ?border ?border_style
+          ?show_header ?show_column_separator ?show_row_separator ?cell_padding
+          ?header_color ?header_background ?text_color ?background
+          ?selected_text_color ?selected_background ?focused_selected_text_color
+          ?focused_selected_background ?selection_visible ?show_scroll_indicator
+          ?activate_on_click ?wheel_navigation ?row_styles ?wrap_selection
+          ?key_bindings ?fast_scroll_step ()
+       |> Mosaic_ui.Table.Props.with_rows_of row_cells rows))
+    []
 
-let tree ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
+let tree ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
     ?size ?min_size ?max_size ?aspect_ratio ?gap ?padding ?margin ?border_width
     ?align_self ?align_content ?justify_items ?justify_self ?flex_grow
@@ -2142,31 +2381,50 @@ let tree ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?icon_color ?wrap_selection ?key_bindings ?fast_scroll_step ~on_change
     ?on_activate ~state () =
   let style =
-    layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
-      ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
-      ?padding ?border_width ?gap ?align_items ?align_self ?align_content
-      ?justify_items ?justify_self ?justify_content ?flex_direction ?flex_wrap
-      ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
-      ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
-      ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-      ?grid_row ?grid_column ()
+    layout_style ?layout ?display ?box_sizing ?position ?overflow
+      ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
+      ?aspect_ratio ?margin ?padding ?border_width ?gap ?align_items ?align_self
+      ?align_content ?justify_items ?justify_self ?justify_content
+      ?flex_direction ?flex_wrap ?flex_grow ?flex_shrink ?flex_basis
+      ?grid_template_rows ?grid_template_columns ?grid_auto_rows
+      ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
+      ?grid_template_column_names ?grid_template_row_names ?grid_row
+      ?grid_column ()
   in
-  Vnode.tree ~state ?key ~style ?visible ?z_index ?opacity ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ?items ?indent_size ?show_guides ?guide_style ?expand_icon ?collapse_icon
-    ?leaf_icon ?background ?text_color ?selected_background ?selected_text_color
-    ?focused_selected_background ?focused_selected_text_color ?guide_color
-    ?icon_color ?wrap_selection ?key_bindings ?fast_scroll_step ~on_change
-    ?on_activate ()
+  Vnode.element ?key ~style ?visible ?z_index ?opacity ~focusable:true ?focused
+    ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
+    ?on_size
+    ~callbacks:
+      (Vnode.Tree_callbacks { on_change = Some on_change; on_activate })
+    (Vnode.Tree
+       (Mosaic_ui.Tree.Props.make ~state ?items ?indent_size ?show_guides
+          ?guide_style ?expand_icon ?collapse_icon ?leaf_icon ?background
+          ?text_color ?selected_background ?selected_text_color
+          ?focused_selected_background ?focused_selected_text_color ?guide_color
+          ?icon_color ?wrap_selection ?key_bindings ?fast_scroll_step ()))
+    []
 
-let px = Vnode.px
-let pct = Vnode.pct
-let size = Vnode.size
-let gap = Vnode.gap
-let auto = Vnode.auto
-let padding = Vnode.padding
-let margin = Vnode.margin
-let inset = Vnode.inset
+let px n = Toffee.Style.Dimension.length (Float.of_int n)
+let pct n = Toffee.Style.Dimension.pct (Float.of_int n)
+let auto = Toffee.Style.Dimension.auto
+let size ~width ~height = Toffee.Geometry.Size.make (px width) (px height)
+
+let gap n =
+  let lp = Toffee.Style.Length_percentage.length (Float.of_int n) in
+  Toffee.Geometry.Size.make lp lp
+
+let padding n =
+  let lp = Toffee.Style.Length_percentage.length (Float.of_int n) in
+  Toffee.Geometry.Rect.all lp
+
+let margin n =
+  let lpa = Toffee.Style.Length_percentage_auto.length (Float.of_int n) in
+  Toffee.Geometry.Rect.all lpa
+
+let inset n =
+  let lpa = Toffee.Style.Length_percentage_auto.length (Float.of_int n) in
+  Toffee.Geometry.Rect.all lpa
+
 let size_wh w h : dimension Toffee.Geometry.Size.t = { width = w; height = h }
 
 let gap_xy x y : length_percentage Toffee.Geometry.Size.t =

@@ -104,7 +104,7 @@ let keymap = function
   | custom -> Keymap.make ~defaults:default_bindings ~custom ()
 
 (* [Props.make] is the one place the table's labels get their
-   defaults: [create] and [Vnode.table] pass their labels on unset. *)
+   defaults: [create] and [Mosaic.table] pass their labels on unset. *)
 module Props = struct
   type t = {
     key_bindings : key_binding list;

@@ -3,7 +3,8 @@ open Expect_harness
 
 let scroll_box ?(scroll = Scroll.at 0) ?(on_scroll = ignore) ?style
     ?show_scrollbars ?key children =
-  Vnode.scroll_box ~scroll ~on_scroll ?style ?show_scrollbars ?key children
+  Mosaic.scroll_box ~scroll ~on_scroll ?layout:style ?show_scrollbars ?key
+    children
 
 (* ── Scroll box with vertical scrolling ── *)
 
@@ -12,8 +13,8 @@ let%expect_test "scroll box renders children in viewport" =
     (scroll_box
        ~style:
          (Toffee.Style.default
-         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:8))
-       [ Vnode.text "Line 1"; Vnode.text "Line 2"; Vnode.text "Line 3" ]);
+         |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:8))
+       [ Mosaic.text "Line 1"; Mosaic.text "Line 2"; Mosaic.text "Line 3" ]);
   [%expect {|
     Line 1
     Line 2
@@ -23,14 +24,14 @@ let%expect_test "scroll box renders children in viewport" =
 
 let%expect_test "scroll box inside bordered box" =
   render ~width:22 ~height:8
-    (Vnode.box ~border:true
+    (Mosaic.box ~border:true
        [
          scroll_box
            ~style:
              (Toffee.Style.default
              |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.)
              |> Toffee.Style.set_height (Toffee.Style.Dimension.percent 1.))
-           [ Vnode.text "Hello"; Vnode.text "World" ];
+           [ Mosaic.text "Hello"; Mosaic.text "World" ];
        ]);
   [%expect
     {|
@@ -51,15 +52,15 @@ let%expect_test "scroll box reconciles children" =
     (scroll_box
        ~style:
          (Toffee.Style.default
-         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:5))
-       [ Vnode.text "First" ]);
+         |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:5))
+       [ Mosaic.text "First" ]);
   frame app ~width:20 ~height:5;
   reconcile app
     (scroll_box
        ~style:
          (Toffee.Style.default
-         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:5))
-       [ Vnode.text "Second" ]);
+         |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:5))
+       [ Mosaic.text "Second" ]);
   frame app ~width:20 ~height:5;
   [%expect {|
     First
@@ -71,17 +72,17 @@ let%expect_test "scroll box reconciles children" =
 
 let%expect_test "scroll box stays constrained in column flex layout" =
   render ~width:20 ~height:8
-    (Vnode.box
-       ~style:
+    (Mosaic.box
+       ~layout:
          (Toffee.Style.default
          |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column)
        [
-         Vnode.text "head";
+         Mosaic.text "head";
          scroll_box
            ~style:(Toffee.Style.default |> Toffee.Style.set_flex_grow 1.)
            (List.init 10 (fun i ->
-                Vnode.text (Printf.sprintf "line %d" (i + 1))));
-         Vnode.text "foot";
+                Mosaic.text (Printf.sprintf "line %d" (i + 1))));
+         Mosaic.text "foot";
        ]);
   [%expect
     {|
@@ -96,14 +97,14 @@ let%expect_test "scroll box stays constrained in column flex layout" =
     |}]
 
 let numbered_lines count =
-  List.init count (fun i -> Vnode.text (Printf.sprintf "line %d" (i + 1)))
+  List.init count (fun i -> Mosaic.text (Printf.sprintf "line %d" (i + 1)))
 
 let%expect_test "scroll box reveal scrolls to content coordinate" =
   render ~width:20 ~height:5
     (scroll_box
        ~style:
          (Toffee.Style.default
-         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:5))
+         |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:5))
        ~scroll:(Scroll.reveal ~line:6 (Scroll.at 0))
        (numbered_lines 12));
   [%expect
@@ -121,7 +122,7 @@ let%expect_test "scroll box reveal overrides followed edge" =
     (scroll_box
        ~style:
          (Toffee.Style.default
-         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:5))
+         |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:5))
        ~scroll:(Scroll.reveal ~line:2 (Scroll.follow `Bottom (Scroll.at 0)))
        (numbered_lines 12));
   frame app ~width:20 ~height:5;
@@ -214,7 +215,7 @@ line 20|}]
 
 (* ── Scroll bar visibility ── *)
 
-let ten_lines = List.init 10 (fun i -> Vnode.text (Printf.sprintf "Line %d" i))
+let ten_lines = List.init 10 (fun i -> Mosaic.text (Printf.sprintf "Line %d" i))
 
 let scrollbar_app ?show_scrollbars () =
   let app = make_app () in
@@ -222,7 +223,7 @@ let scrollbar_app ?show_scrollbars () =
     (scroll_box ?show_scrollbars
        ~style:
          (Toffee.Style.default
-         |> Toffee.Style.set_size (Vnode.size ~width:20 ~height:4))
+         |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:4))
        ten_lines);
   app
 
@@ -255,20 +256,20 @@ Line 3|}]
 let squeezed ~height =
   let app = make_app () in
   reconcile app
-    (Vnode.box
-       ~style:
+    (Mosaic.box
+       ~layout:
          (Toffee.Style.default
          |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column)
        [
-         Vnode.text "HEADER";
+         Mosaic.text "HEADER";
          scroll_box ~show_scrollbars:false
            ~style:
              (Toffee.Style.default
              |> Toffee.Style.set_flex_grow 1.
              |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.)
              |> Toffee.Style.set_height (Toffee.Style.Dimension.length 0.))
-           [ Vnode.text "BODY" ];
-         Vnode.text "FOOTER";
+           [ Mosaic.text "BODY" ];
+         Mosaic.text "FOOTER";
        ]);
   settled_frame app ~width:10 ~height
 

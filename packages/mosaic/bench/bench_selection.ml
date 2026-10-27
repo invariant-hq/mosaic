@@ -2,8 +2,10 @@ open Mosaic_ui
 
 (* Declarations reuse 5000 preconstructed rows/options. The selected value is
    last so the value adapter scans the complete collection. Each positional
-   case supplies the same presentation and callbacks without the value lookup
-   or conversion; the difference is the application adapter's actual cost. *)
+   case builds the widget's props with the same presentation, by position,
+   without the value lookup or conversion and without the element around
+   them; the difference is the element's cost, the application adapter's
+   above all. *)
 let count = 5000
 let last = count - 1
 let labels = Array.init count (fun i -> Printf.sprintf "item-%d" i)
@@ -112,20 +114,17 @@ let () =
          ]))
     [
       Thumper.bench "select/positional-5000" (fun () ->
-          Vnode.select ~options:select_options ~selected_index:last
-            ~on_change:Fun.id ~on_activate:Fun.id ());
+          Select.Props.make ~options:select_options ~selected_index:last ());
       Thumper.bench "select/value-5000" (fun () ->
           Mosaic.select ~equal:String.equal ~selected ~on_change:Fun.id
             ~on_activate:Fun.id select_items);
       Thumper.bench "tabs/positional-5000" (fun () ->
-          Vnode.tab_select ~options:tab_options ~selected:last ~on_change:Fun.id
-            ~on_activate:Fun.id ());
+          Tab_select.Props.make ~options:tab_options ~selected:last ());
       Thumper.bench "tabs/value-5000" (fun () ->
           Mosaic.tab_select ~equal:String.equal ~selected ~on_change:Fun.id
             ~on_activate:Fun.id tab_items);
       Thumper.bench "table/positional-5000" (fun () ->
-          Vnode.table ~columns ~rows:positional_rows ~selected_row:last
-            ~on_change:Fun.id ~on_activate:Fun.id ());
+          Table.Props.make ~columns ~rows:positional_rows ~selected_row:last ());
       Thumper.bench "table/value-5000" (fun () ->
           Mosaic.table ~columns ~rows:value_rows ~equal:String.equal ~selected
             ~on_change:Fun.id ~on_activate:Fun.id ());

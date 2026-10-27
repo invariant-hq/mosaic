@@ -168,8 +168,8 @@ module Props : sig
       - [key_bindings] custom shortcut/action pairs, default [[]]. Later
         bindings override equivalent defaults; other defaults remain available.
 
-      {!val-create} and {!Vnode.select} take these labels with these defaults.
-  *)
+      {!val-create} takes these labels with these defaults, and so does
+      [Mosaic.select] for the labels it has. *)
 
   val default : t
   (** [default] is [make ()]. *)

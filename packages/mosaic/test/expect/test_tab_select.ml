@@ -12,10 +12,20 @@ let sample_options =
       { label = "Help"; description = "Documentation" };
     ]
 
+(* A tab select over [sample_options], each reporting its position. *)
+let tab_select ?(selected = 0) ?(on_change = ignore) ?show_description
+    ?show_underline ?tab_width ?wrap_selection () =
+  Mosaic.tab_select ?show_description ?show_underline ?tab_width ?wrap_selection
+    ~equal:Int.equal ~selected:(Some selected) ~on_change
+    (List.mapi
+       (fun i { Tab_select.label; description } ->
+         Mosaic.Tab_select.item i ~description label)
+       sample_options)
+
 (* ── Static rendering ── *)
 
 let%expect_test "default tab_select renders tabs" =
-  render ~width:60 ~height:3 (Vnode.tab_select ~options:sample_options ());
+  render ~width:60 ~height:3 (tab_select ());
   [%expect
     {|
     ›Home        Files       Settings    Help
@@ -23,8 +33,7 @@ let%expect_test "default tab_select renders tabs" =
     |}]
 
 let%expect_test "selected:0 highlights first tab" =
-  render ~width:60 ~height:3
-    (Vnode.tab_select ~options:sample_options ~selected:0 ());
+  render ~width:60 ~height:3 (tab_select ~selected:0 ());
   [%expect
     {|
     ›Home        Files       Settings    Help
@@ -32,8 +41,7 @@ let%expect_test "selected:0 highlights first tab" =
     |}]
 
 let%expect_test "selected:2 highlights third tab" =
-  render ~width:60 ~height:3
-    (Vnode.tab_select ~options:sample_options ~selected:2 ());
+  render ~width:60 ~height:3 (tab_select ~selected:2 ());
   [%expect
     {|
     Home        Files      ›Settings    Help
@@ -41,8 +49,7 @@ let%expect_test "selected:2 highlights third tab" =
     |}]
 
 let%expect_test "show_description shows description line" =
-  render ~width:60 ~height:4
-    (Vnode.tab_select ~options:sample_options ~show_description:true ());
+  render ~width:60 ~height:4 (tab_select ~show_description:true ());
   [%expect
     {|
     ›Home        Files       Settings    Help
@@ -51,13 +58,11 @@ let%expect_test "show_description shows description line" =
     |}]
 
 let%expect_test "show_underline:false hides underline" =
-  render ~width:60 ~height:3
-    (Vnode.tab_select ~options:sample_options ~show_underline:false ());
+  render ~width:60 ~height:3 (tab_select ~show_underline:false ());
   [%expect {| ›Home        Files       Settings    Help |}]
 
 let%expect_test "custom tab_width changes column size" =
-  render ~width:80 ~height:3
-    (Vnode.tab_select ~options:sample_options ~tab_width:20 ());
+  render ~width:80 ~height:3 (tab_select ~tab_width:20 ());
   [%expect
     {|
     ›Home                Files               Settings            Help
@@ -70,7 +75,7 @@ let%expect_test "left arrow at start stays" =
   let app = make_app () in
   let selected = ref 0 in
   let view () =
-    Vnode.tab_select ~options:sample_options ~selected:!selected
+    tab_select ~selected:!selected
       ~on_change:(fun index -> selected := index)
       ()
   in
@@ -89,7 +94,7 @@ let%expect_test "wrap_selection wraps right to first" =
   let app = make_app () in
   let selected = ref 3 in
   let view () =
-    Vnode.tab_select ~options:sample_options ~selected:!selected
+    tab_select ~selected:!selected
       ~on_change:(fun index -> selected := index)
       ~wrap_selection:true ()
   in
@@ -108,7 +113,7 @@ let%expect_test "wrap_selection wraps left to last" =
   let app = make_app () in
   let selected = ref 0 in
   let view () =
-    Vnode.tab_select ~options:sample_options ~selected:!selected
+    tab_select ~selected:!selected
       ~on_change:(fun index -> selected := index)
       ~wrap_selection:true ()
   in
@@ -126,16 +131,14 @@ let%expect_test "wrap_selection wraps left to last" =
 (* ── Scroll arrows ── *)
 
 let%expect_test "scroll arrows appear when tabs overflow" =
-  render ~width:30 ~height:3
-    (Vnode.tab_select ~options:sample_options ~tab_width:12 ());
+  render ~width:30 ~height:3 (tab_select ~tab_width:12 ());
   [%expect {|
     ›Home        Files           ›
     ▬▬▬▬▬▬▬▬▬▬▬▬
     |}]
 
 let%expect_test "narrow width shows scroll arrow" =
-  render ~width:30 ~height:3
-    (Vnode.tab_select ~options:sample_options ~tab_width:12 ~selected:3 ());
+  render ~width:30 ~height:3 (tab_select ~tab_width:12 ~selected:3 ());
   [%expect {|
     ‹Settings   ›Help
                 ▬▬▬▬▬▬▬▬▬▬▬▬
@@ -145,7 +148,7 @@ let%expect_test "narrow width shows scroll arrow" =
 
 let%expect_test "focused tab_select has styled output" =
   let app = make_app () in
-  reconcile app (Vnode.tab_select ~options:sample_options ());
+  reconcile app (tab_select ());
   focus app (mounted app);
   frame_ansi app ~width:60 ~height:3;
   [%expect

@@ -91,7 +91,7 @@ module Props : sig
       - [inert] makes the box and its descendants inert
         ({!Renderable.set_inert}). Defaults to [false].
 
-      {!val-create} and {!Vnode.box} take these labels with these defaults.
+      {!val-create} and [Mosaic.box] take these labels with these defaults.
 
       Raises [Invalid_argument] if a border width is not a length of a whole
       number of cells, [0] or more. *)

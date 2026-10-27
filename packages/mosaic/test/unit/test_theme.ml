@@ -882,15 +882,14 @@ let gen_palette =
 (* ───── Scope ───── *)
 
 let size w h =
-  Toffee.Style.set_size (Vnode.size ~width:w ~height:h) Toffee.Style.default
+  Toffee.Style.set_size (Mosaic.size ~width:w ~height:h) Toffee.Style.default
 
 (* A canvas that records the theme it is drawn with, by name. *)
 let seen = Hashtbl.create 8
 
 let canvas name =
-  Vnode.canvas ~style:(size 2 1)
-    ~on_draw:(fun c ~dt:_ -> Hashtbl.replace seen name (Canvas.theme c))
-    ()
+  Mosaic.canvas ~layout:(size 2 1) (fun c ~dt:_ ->
+      Hashtbl.replace seen name (Canvas.theme c))
 
 let mount () =
   Hashtbl.reset seen;
@@ -909,7 +908,7 @@ let saw name expected =
   | Some t -> equal ~msg:name theme expected t
   | None -> failf "%s was not drawn" name
 
-let column children = Vnode.box ~style:(size 20 10) children
+let column children = Mosaic.box ~layout:(size 20 10) children
 
 (* The nearest [themed] decides last; a sibling outside it keeps the outer
    scope, and an element outside every one the root's. *)
@@ -918,12 +917,12 @@ let nested () =
   render
     (column
        [
-         Vnode.themed ascii
-           (Vnode.box ~style:(size 20 5)
+         Mosaic.themed ascii
+           (Mosaic.box ~layout:(size 20 5)
               [
                 canvas "a";
-                Vnode.themed error_red (canvas "b");
-                Vnode.themed error_blue (Vnode.themed error_red (canvas "c"));
+                Mosaic.themed error_red (canvas "b");
+                Mosaic.themed error_blue (Mosaic.themed error_red (canvas "c"));
               ]);
          canvas "d";
        ]);
@@ -939,12 +938,12 @@ let fragments () =
   render
     (column
        [
-         Vnode.themed ascii
-           (Vnode.fragment
+         Mosaic.themed ascii
+           (Mosaic.fragment
               [
                 canvas "a";
-                Vnode.viewport_switch ~at_least_width:10 ~wide:(canvas "b")
-                  ~narrow:Vnode.empty;
+                Mosaic.viewport_switch ~at_least_width:10 ~wide:(canvas "b")
+                  ~narrow:Mosaic.empty;
               ]);
        ]);
   saw "a" (ascii Theme.plain);
@@ -954,7 +953,7 @@ let fragments () =
    with no view reconciled again. *)
 let root_theme () =
   let renderer, render = mount () in
-  render (column [ Vnode.themed ascii (canvas "a"); canvas "b" ]);
+  render (column [ Mosaic.themed ascii (canvas "a"); canvas "b" ]);
   let root = error_red Theme.plain in
   Renderer.set_theme renderer root;
   Hashtbl.reset seen;
@@ -966,11 +965,11 @@ let root_theme () =
    around a mounted element gives it. *)
 let theme_follows_view () =
   let _, render = mount () in
-  render (column [ Vnode.themed ascii (canvas "a") ]);
+  render (column [ Mosaic.themed ascii (canvas "a") ]);
   saw "a" (ascii Theme.plain);
   render (column [ canvas "a" ]);
   saw "a" Theme.plain;
-  render (column [ Vnode.themed error_red (canvas "a") ]);
+  render (column [ Mosaic.themed error_red (canvas "a") ]);
   saw "a" (error_red Theme.plain)
 
 (* An unchanged memo keeps its subtree, which still takes the theme its
@@ -979,16 +978,16 @@ let memo_view_calls = ref 0
 
 let memo_view () =
   incr memo_view_calls;
-  Vnode.themed error_red (canvas "m")
+  Mosaic.themed error_red (canvas "m")
 
 let memo () =
   memo_view_calls := 0;
   let _, render = mount () in
-  render (column [ Vnode.themed ascii (Vnode.memo ~key:() memo_view) ]);
+  render (column [ Mosaic.themed ascii (Mosaic.memo ~key:() memo_view) ]);
   saw "m" (error_red (ascii Theme.plain));
-  render (column [ Vnode.themed error_blue (Vnode.memo ~key:() memo_view) ]);
+  render (column [ Mosaic.themed error_blue (Mosaic.memo ~key:() memo_view) ]);
   saw "m" (error_red (error_blue Theme.plain));
-  render (column [ Vnode.memo ~key:() memo_view ]);
+  render (column [ Mosaic.memo ~key:() memo_view ]);
   saw "m" (error_red Theme.plain);
   equal ~msg:"the view built once" int 1 !memo_view_calls
 
@@ -997,9 +996,9 @@ let memo () =
 let embed () =
   let renderer, render = mount () in
   let node = Renderable.create ~parent:(Renderer.root renderer) () in
-  render (column [ Vnode.themed ascii (Vnode.embed node) ]);
+  render (column [ Mosaic.themed ascii (Mosaic.embed node) ]);
   equal ~msg:"themed" theme (ascii Theme.plain) (Renderable.theme node);
-  render (column [ Vnode.embed node ]);
+  render (column [ Mosaic.embed node ]);
   equal ~msg:"not themed" theme Theme.plain (Renderable.theme node)
 
 (* An embedded node's own function applies after the scope of its place,
@@ -1009,15 +1008,16 @@ let embed_own_theme () =
   let node = Renderable.create ~parent:(Renderer.root renderer) () in
   Renderable.set_theme node (Some error_red);
   render
-    (column [ Vnode.themed (fun t -> ascii (error_blue t)) (Vnode.embed node) ]);
+    (column
+       [ Mosaic.themed (fun t -> ascii (error_blue t)) (Mosaic.embed node) ]);
   equal ~msg:"its own over its place's" theme
     (error_red (ascii (error_blue Theme.plain)))
     (Renderable.theme node);
-  render (column [ Vnode.embed node ]);
+  render (column [ Mosaic.embed node ]);
   equal ~msg:"its own alone" theme (error_red Theme.plain)
     (Renderable.theme node);
   Renderable.set_theme node None;
-  render (column [ Vnode.themed ascii (Vnode.embed node) ]);
+  render (column [ Mosaic.themed ascii (Mosaic.embed node) ]);
   equal ~msg:"its place's alone" theme (ascii Theme.plain)
     (Renderable.theme node)
 
@@ -1167,19 +1167,19 @@ let scopes =
 
 let syntax_default () =
   legible_everywhere
-    (Vnode.code ~style:(size 40 2)
+    (Mosaic.code ~layout:(size 40 2)
        ~syntax:
          (Code.syntax (Syntax_highlight.of_triples ~content:source scopes))
        source)
 
 let markdown_default () =
   legible_everywhere
-    (Vnode.markdown ~style:(size 30 8)
+    (Mosaic.markdown ~layout:(size 30 8)
        "# Title\n\n**b** `code` [link](u) ~~s~~\n\n> quote\n\n- item\n\n---")
 
 let diff_default () =
   legible_everywhere
-    (Vnode.diff ~style:(size 30 6)
+    (Mosaic.diff ~layout:(size 30 6)
        (Diff.Patch.of_strings ~old:"a\nb\n" ~new_:"a\nc\n" ()))
 
 (* A view given no style follows the theme in scope: the next frame after
@@ -1202,14 +1202,14 @@ let restyle view ~x ~y expected =
 
 let code_follows_theme () =
   restyle
-    (Vnode.code ~style:(size 40 2)
+    (Mosaic.code ~layout:(size 40 2)
        ~syntax:
          (Code.syntax (Syntax_highlight.of_triples ~content:source scopes))
        source)
     ~x:0 ~y:0 13
 
 let markdown_follows_theme () =
-  restyle (Vnode.markdown ~style:(size 30 4) "- item") ~x:0 ~y:0 8
+  restyle (Mosaic.markdown ~layout:(size 30 4) "- item") ~x:0 ~y:0 8
 
 let () =
   run "mosaic.theme"

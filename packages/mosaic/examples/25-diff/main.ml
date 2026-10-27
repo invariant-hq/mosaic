@@ -103,7 +103,7 @@ let diff_theme =
 let diff_view model =
   match patch with
   | Ok patch ->
-      diff ~layout:model.layout ~theme:diff_theme
+      diff ~view:model.layout ~theme:diff_theme
         ~show_line_numbers:model.show_numbers ~wrap:model.wrap
         ~text_style:(Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:18) ())
         ~size:{ width = pct 100; height = pct 100 }

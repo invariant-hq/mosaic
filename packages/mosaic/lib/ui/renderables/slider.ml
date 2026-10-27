@@ -3,7 +3,7 @@
 type orientation = [ `Horizontal | `Vertical ]
 
 (* [Props.make] is the one place the slider's labels get their defaults:
-   [create] and [Vnode.slider] pass their labels on unset. *)
+   [create] and [Mosaic.slider] pass their labels on unset. *)
 module Props = struct
   type t = {
     orientation : orientation;

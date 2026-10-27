@@ -219,6 +219,52 @@ let cursor_keys () =
       same (what ^ ", comparisons") ~small:compared ~large:compared')
     [ (100, 98); (100_000, 50_000); (100_000, 99_998) ]
 
+(* ───── A shared layout ─────
+
+   An element given [~layout] and no layout label uses that record itself,
+   so a layout built once and shared by many elements costs no words per
+   element: a text so declared allocates one layout record fewer than a text
+   whose label overrides one field of the same layout, which costs one copy
+   of the record, as the field's setter does. The node it mounts holds the
+   record itself. The reconciler compares a layout physically before it
+   compares it by value. A layout holding a NaN is unequal to itself by
+   value, so only the physical comparison finds it unchanged when the text
+   is declared again, and the text is not laid out again. *)
+
+let shared_layout () =
+  let layout = Toffee.Style.(default |> set_flex_grow Float.nan) in
+  (* [words] counts what reading the counters allocates too, which the
+     difference of two counts cancels. *)
+  let copy =
+    words (fun () ->
+        ignore (Toffee.Style.set_flex_grow 2. layout : Toffee.Style.t))
+    - words ignore
+  in
+  let text f = words (fun () -> ignore (f () : unit Mosaic.t)) in
+  let shared = text (fun () -> Mosaic.text ~layout "x")
+  and overridden = text (fun () -> Mosaic.text ~layout ~flex_grow:2. "x") in
+  if overridden - shared <> copy then
+    failf
+      "a text given a shared layout allocates %d words, and with one label \
+       overriding a field %d, where a copy of the layout is %d"
+      shared overridden copy;
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+  in
+  let declare () =
+    Mosaic.Reconciler.render reconciler ~viewport_width:80
+      (Mosaic.text ~layout "x")
+  in
+  declare ();
+  let node = List.hd (Renderable.children (Renderer.root renderer)) in
+  is_true ~msg:"the node holds the shared layout"
+    (Renderable.style node == layout);
+  Renderable.Private.clear_layout_dirty node;
+  declare ();
+  is_false ~msg:"declared again, the text is not laid out again"
+    (Renderable.Private.layout_dirty node)
+
 (* ───── Placing reordered children ─────
 
    Rotating a keyed list by one moves every child, so placement must cost
@@ -519,6 +565,8 @@ let () =
         ];
       group "Frames follow the visible area"
         [ test "a scrolled transcript" hidden_transcript_rows ];
+      group "A shared layout costs nothing per element"
+        [ test "a text given ~layout" shared_layout ];
       group "Keys follow the items moved over"
         [ test "a cursor's Down and Up" cursor_keys ];
       group "Placement is linear in the children"
