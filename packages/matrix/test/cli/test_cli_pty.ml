@@ -394,7 +394,10 @@ let test_secret_styled () =
 let test_line_held () =
   spawn "line-held" @@ fun term c ->
   T.Child.wait c ~within:10. (shows "Name?");
-  Unix.sleepf 0.2;
+  (* The thread prints every 50 ms; a host may sleep far longer (macOS
+     coalesces timers by tens of milliseconds), so give it a second to
+     print the two lines the test needs. *)
+  Unix.sleepf 1.0;
   T.Child.send c "Ada\r";
   exited 0 (T.Child.exit c ~within:10.);
   is_true ~msg:"the question whole" (has_line "Name? Ada" term);
