@@ -24,6 +24,7 @@ type event =
   | Focus_out
   | Resize of int * int
   | Color_scheme of [ `Dark | `Light ]
+  | Palette of Ansi.Palette.t option
   | Invalid of string
   | Reply of Input.Reply.t
 
@@ -42,6 +43,8 @@ let pp_event ppf = function
   | Resize (cols, rows) -> Format.fprintf ppf "Resize %dx%d" cols rows
   | Color_scheme `Dark -> Format.pp_print_string ppf "Color_scheme Dark"
   | Color_scheme `Light -> Format.pp_print_string ppf "Color_scheme Light"
+  | Palette None -> Format.pp_print_string ppf "Palette None"
+  | Palette (Some p) -> Format.fprintf ppf "Palette %a" Ansi.Palette.pp p
   | Invalid s -> Format.fprintf ppf "Invalid %S" s
   | Reply r -> Format.fprintf ppf "Reply %a" Input.Reply.pp r
 
@@ -352,16 +355,25 @@ let on_device d config = { config with device = Some d }
 let default_config = config
 
 (* Queries sent together, which the terminal answers in order. A batch of
-   capability queries, of the runtime's other queries or of the
-   application's ends with DA1; a cursor batch is one position report, its
-   own answer, which says on which row of the screen the live region's
-   origin is, in [`Primary] mode, from the cursor left [below] rows below
-   it on a terminal [rows] high. *)
+   capability queries, of the runtime's other queries, of the palette or
+   of the application's ends with DA1; a cursor batch is one position
+   report, its own answer, which says on which row of the screen the live
+   region's origin is, in [`Primary] mode, from the cursor left [below]
+   rows below it on a terminal [rows] high. *)
 type question =
   | Capabilities of Terminal.Caps.batch
   | Cursor of { below : int; rows : int }
   | Own  (** Queries whose replies the runtime takes as they come. *)
+  | Palette  (** The palette's colors, gathered until DA1's reply. *)
   | Application
+
+(* The colors the palette's batch in flight has been told so far. *)
+type heard = {
+  mutable foreground : (int * int * int) option;
+  mutable background : (int * int * int) option;
+  mutable cursor : (int * int * int) option;
+  entries : (int * int * int) option array;
+}
 
 type batch = {
   question : question;
@@ -419,6 +431,8 @@ type 'msg app = {
   (* Batches that end with DA1 and wait for the one in flight, oldest
      first. *)
   mutable waiting : (question * (string * Input.Decoder.owed)) list;
+  (* Made at the first ask of the palette. *)
+  mutable heard : heard option;
   (* Events decoded and not yet returned. *)
   events : event Queue.t;
   config : config;
@@ -853,7 +867,7 @@ let send_batch t question (bytes, owed) =
 
 let ends_with_da1 = function
   | Capabilities Widths | Cursor _ -> false
-  | Capabilities _ | Own | Application -> true
+  | Capabilities _ | Own | Palette | Application -> true
 
 (* A batch that ends with DA1 is sent once no other is in flight. Every DA1
    reply is alike, so a reply is told to answer a batch by the order of the
@@ -862,9 +876,11 @@ let ends_with_da1 = function
 let ask_batch t question bytes_owed =
   if List.exists (fun b -> ends_with_da1 b.question) t.batches then (
     if
-      (* The runtime's own query, already waiting, would be answered the
-       same. *)
-      not (question = Own && List.mem (question, bytes_owed) t.waiting)
+      (* The runtime's own query, or the palette's, already waiting, would
+         be answered the same. *)
+      not
+        ((question = Own || question = Palette)
+        && List.mem (question, bytes_owed) t.waiting)
     then t.waiting <- t.waiting @ [ (question, bytes_owed) ])
   else ignore (send_batch t question bytes_owed : batch)
 
@@ -979,10 +995,40 @@ let close t b =
         ignore (send_batch t question bytes_owed : batch)
     | _ -> ())
 
+(* What the terminal answered of the palette's batch, once its DA1 reply
+   says it has answered all it will: a palette if it reported the pair. The
+   colors heard are forgotten for the next batch, which the terminal
+   answers after this one. *)
+let take_palette t =
+  match t.heard with
+  | None -> None
+  | Some h ->
+      let palette =
+        match (h.foreground, h.background) with
+        | Some foreground, Some background ->
+            Some
+              {
+                Ansi.Palette.foreground;
+                background;
+                cursor = h.cursor;
+                entries = Array.copy h.entries;
+              }
+        | _ -> None
+      in
+      h.foreground <- None;
+      h.background <- None;
+      h.cursor <- None;
+      Array.fill h.entries 0 (Array.length h.entries) None;
+      palette
+
+(* Every ask of the palette is answered: one given up, with nothing. *)
 let give_up t b =
   t.lost_reports <-
     t.lost_reports + b.owed.Input.Decoder.cursor_reports - b.reports;
-  close t b
+  close t b;
+  if b.question = Palette then (
+    ignore (take_palette t : Ansi.Palette.t option);
+    push t (Palette None))
 
 let ask t batch =
   ask_batch t (Capabilities batch) (Terminal.Caps.ask t.evidence batch)
@@ -1038,7 +1084,7 @@ let cursor_report t ~row ~col ~page =
                 owe_frame t
             | _ -> ())
         | Application -> push t (Reply (Cursor { row; col; page }))
-        | Own -> ())
+        | Own | Palette -> ())
 
 (* The batch that ends with DA1 in flight, which the replies that are not
    cursor reports answer. *)
@@ -1064,6 +1110,7 @@ let attributes_report t attributes =
           if q = Probe then t.rtt <- max 0 (t.now - b.sent);
           t.evidence <- Terminal.Caps.answered t.evidence q ~attributes;
           Option.iter (ask t) (Terminal.Caps.next t.evidence q)
+      | Palette -> push t (Palette (take_palette t))
       | Application -> push t (Reply (Primary_attributes attributes))
       | Own | Cursor _ -> ())
 
@@ -1090,8 +1137,18 @@ let reply t (r : Input.Reply.t) =
           t.cell_answer <- Some (width, height);
           update_cell_size t
       | r -> t.evidence <- Terminal.Caps.add t.evidence r);
-      match replying t with
-      | Some { question = Application; _ } -> push t (Reply r)
+      match (replying t, r) with
+      | Some { question = Application; _ }, r -> push t (Reply r)
+      | Some { question = Palette; _ }, Color { target; rgb; _ } -> (
+          match t.heard with
+          | None -> ()
+          | Some h -> (
+              match target with
+              | `Foreground -> h.foreground <- Some rgb
+              | `Background -> h.background <- Some rgb
+              | `Cursor -> h.cursor <- Some rgb
+              | `Entry i when i >= 0 && i < 16 -> h.entries.(i) <- Some rgb
+              | `Entry _ -> ()))
       | _ -> ()));
   update_capabilities t
 
@@ -1182,6 +1239,34 @@ let abort_paste t =
 let query t ~owed bytes =
   check t;
   if can_query t then ask_batch t Application (bytes ^ da1, owed)
+
+(* The pair, the cursor and entries 0 to 15. What a program derives from
+   a palette, a theme's roles and their legible entries, reads no entry
+   past 15, so the batch asks for 19 colors of the 259. *)
+let palette_query =
+  Ansi.(
+    to_string
+      (seq
+         (query Foreground_color :: query Background_color :: query Cursor_color
+         :: List.init 16 (fun i -> query (Palette_entry i)))))
+  ^ da1
+
+let palette_owed = { Input.Decoder.cursor_reports = 0; string_replies = 19 }
+
+let query_palette t =
+  check t;
+  if can_query t then (
+    if t.heard = None then
+      t.heard <-
+        Some
+          {
+            foreground = None;
+            background = None;
+            cursor = None;
+            entries = Array.make 16 None;
+          };
+    ask_batch t Palette (palette_query, palette_owed))
+  else push t (Palette None)
 
 let refresh_render_region t =
   match t.config.mode with
@@ -1771,8 +1856,8 @@ let discrete_event = function
   | Key _ | Key_release _ | Text _ | Paste_end _ | Focus_in | Focus_out -> true
   | Mouse { kind = Press _ | Release _; _ } -> true
   | Mouse { kind = Motion _ | Scroll _; _ }
-  | Paste_start | Paste_data _ | Resize _ | Color_scheme _ | Invalid _ | Reply _
-    ->
+  | Paste_start | Paste_data _ | Resize _ | Color_scheme _ | Palette _
+  | Invalid _ | Reply _ ->
       false
 
 (* A Focus_in after a Focus_out sets the modes again, once: a multiplexer
@@ -1971,10 +2056,18 @@ let settle t =
       ~from:(List.fold_left (fun from b -> max from b.sent) min_int t.batches)
       t.batches;
   let kept = Queue.create () in
-  Queue.iter (function Reply _ as e -> Queue.push e kept | _ -> ()) t.events;
+  Queue.iter
+    (function (Reply _ | Palette _) as e -> Queue.push e kept | _ -> ())
+    t.events;
   Queue.clear t.events;
   Queue.transfer kept t.events;
-  List.iter (fun b -> Input.Decoder.settle t.decoder b.owed) t.batches;
+  List.iter
+    (fun b ->
+      Input.Decoder.settle t.decoder b.owed;
+      if b.question = Palette then (
+        ignore (take_palette t : Ansi.Palette.t option);
+        push t (Palette None)))
+    t.batches;
   t.batches <- [];
   t.lost_reports <- 0;
   (* A paste the application began to receive ends. *)
@@ -2369,6 +2462,7 @@ let make backend ?stop config =
     batches = [];
     lost_reports = 0;
     waiting = [];
+    heard = None;
     events = Queue.create ();
     config;
     backend;

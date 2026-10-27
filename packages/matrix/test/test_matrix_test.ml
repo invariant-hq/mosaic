@@ -648,6 +648,130 @@ let test_colors () =
     ]
     (List.rev !replies)
 
+(* The palette, asked with [Matrix.query_palette]: one [Palette] event
+   answers each ask, with the pair, the cursor and entries 0 to 15 the
+   terminal reports, and no [Reply] comes of it. *)
+module Palette = Matrix.Ansi.Palette
+
+let palette_testable = Testable.make ~pp:Palette.pp ~equal:Palette.equal
+
+(* Runs [body] on a session of [profile] that records the [Palette] events
+   it is given, with the time each came, and every [Reply]. *)
+let palettes ?(profile = T.Profile.vte) body =
+  let given = ref [] and replies = ref [] in
+  let clock = ref (fun () -> 0) in
+  let on _ = function
+    | Matrix.Event (Palette p) ->
+        given := (!clock (), p) :: !given;
+        true
+    | Matrix.Event (Reply r) ->
+        replies := r :: !replies;
+        true
+    | _ -> true
+  in
+  ignore
+    (session ~profile ~on (fun s _ app ->
+         (clock := fun () -> T.now s);
+         body s app));
+  (List.rev !given, List.rev !replies)
+
+let asked (p : Palette.t) = { p with entries = Array.sub p.entries 0 16 }
+
+let test_palette () =
+  let entries = Array.copy Palette.default.entries in
+  entries.(1) <- Some (0xcd, 0, 0);
+  entries.(200) <- Some (1, 2, 3);
+  let palette =
+    {
+      Palette.entries;
+      foreground = (0xe5, 0xe5, 0xe5);
+      background = (0x10, 0x20, 0x30);
+      cursor = Some (0xff, 0, 0xff);
+    }
+  in
+  let given, replies =
+    palettes ~profile:{ T.Profile.vte with palette } @@ fun s app ->
+    Matrix.query_palette app;
+    T.settle s
+  in
+  equal ~msg:"the pair, the cursor and entries 0 to 15, at once"
+    (list (pair int (option palette_testable)))
+    [ (0, Some (asked palette)) ]
+    given;
+  equal ~msg:"no reply" int 0 (List.length replies)
+
+(* A terminal that reports its pair and nothing else gives a palette that
+   knows no cursor and no entry. *)
+let test_palette_pair_only () =
+  let pair_only = { Palette.default with cursor = None; entries = [||] } in
+  let given, _ =
+    palettes ~profile:{ T.Profile.vte with palette = pair_only } @@ fun s app ->
+    Matrix.query_palette app;
+    T.settle s
+  in
+  equal ~msg:"the pair alone"
+    (list (option palette_testable))
+    [ Some pair_only ] (List.map snd given)
+
+(* A terminal that never answers gives [None] once the batch is given up,
+   5 s after it was sent. The batches sent as the run began, the probe and
+   then the pixel size, are given up at 5 s and 10 s, and the palette's,
+   which waited for them, is sent at 10 s. *)
+let test_palette_never_answered () =
+  let given, _ =
+    palettes ~profile:{ T.Profile.vte with answers = false } @@ fun s app ->
+    Matrix.query_palette app;
+    T.advance s (ms 20_000)
+  in
+  equal ~msg:"none, when the bound has passed"
+    (list (pair int (option palette_testable)))
+    [ (ms 15_000, None) ]
+    given
+
+(* An output that is not a terminal cannot answer: [None] at the next
+   step. *)
+let test_palette_pipe () =
+  let given, _ =
+    palettes ~profile:T.Profile.pipe @@ fun s app ->
+    Matrix.query_palette app;
+    T.settle s
+  in
+  equal ~msg:"none, at once"
+    (list (pair int (option palette_testable)))
+    [ (0, None) ]
+    given
+
+(* An ask made while another waits to be sent shares its answer; one in
+   flight does not. The application's own query after them gets its own
+   replies and DA1, and none of the palette's. *)
+let test_palette_shared () =
+  let given, replies =
+    palettes @@ fun s app ->
+    Matrix.query_palette app;
+    Matrix.query_palette app;
+    Matrix.query_palette app;
+    Matrix.query app
+      ~owed:{ cursor_reports = 0; string_replies = 1 }
+      Matrix.Ansi.(to_string (query Foreground_color));
+    T.settle s
+  in
+  equal ~msg:"two answers to three asks"
+    (list (option palette_testable))
+    [ Some (asked Palette.default); Some (asked Palette.default) ]
+    (List.map snd given);
+  equal ~msg:"the application's replies alone"
+    (list (Testable.make ~pp:Matrix.Input.Reply.pp ~equal:( = )))
+    [
+      Matrix.Input.Reply.Color
+        {
+          target = `Foreground;
+          rgb = Palette.default.foreground;
+          terminator = `St;
+        };
+      Primary_attributes Vte.vt100.attributes;
+    ]
+    replies
+
 let () =
   run "matrix.test"
     [
@@ -659,6 +783,11 @@ let () =
           test "a silent terminal costs its wait" test_silent;
           test "a pipe" test_pipe;
           test "the terminal's colors" test_colors;
+          test "the palette" test_palette;
+          test "a palette of the pair alone" test_palette_pair_only;
+          test "a palette never answered" test_palette_never_answered;
+          test "no palette from a pipe" test_palette_pipe;
+          test "asks that wait share an answer" test_palette_shared;
         ];
       group "Input"
         [

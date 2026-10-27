@@ -139,8 +139,8 @@ type mode = [ `Alt | `Primary ]
 (** The type for what the terminal says to the application, decoded by
     {!Input.Decoder}. A reply to one of the runtime's own queries is the
     runtime's. It reaches the application only as the fact it carries
-    ({!Color_scheme}), or when it comes late, among the replies to the
-    application's own query ({!query}). *)
+    ({!Color_scheme}, {!Palette}), or when it comes late, among the replies to
+    the application's own query ({!query}). *)
 type event =
   | Key of Input.Keystroke.t  (** A key pressed or auto-repeated. *)
   | Key_release of Input.Keystroke.release
@@ -178,7 +178,14 @@ type event =
           ({!draw}). That change comes as a [Resize] before the frame after the
           one that made it. *)
   | Color_scheme of [ `Dark | `Light ]
-      (** The terminal's color scheme, in reply to a query or on a change. *)
+      (** The terminal's color scheme, in reply to a query or on a change. A
+          terminal also reports its scheme when its user changes its palette, so
+          a program that follows the palette asks for it again
+          ({!query_palette}). *)
+  | Palette of Ansi.Palette.t option
+      (** The answer to {!query_palette}, the colors the terminal reported, or
+          [None] if it reported no default foreground or no default background.
+      *)
   | Invalid of string
       (** Bytes that are not UTF-8, one ill-formed subsequence. *)
   | Reply of Input.Reply.t
@@ -639,12 +646,13 @@ val release : 'msg app -> (unit -> 'a) -> 'a
     output goes on.
 
     The events decoded and not yet returned, and those decoded while waiting for
-    the replies owed, are dropped, but for {!Reply}, and a paste in progress is
-    cut. A turn decodes all it reads before it returns a step, so this drops the
-    keys read in the turn of the step that called [release], whatever that step
-    was. Those keys were typed after the event that called [release], or at a
-    time that cannot be ordered against the timer or the post that did, so they
-    count as typed for [f].
+    the replies owed, are dropped, but for {!Reply} and {!Palette}, and a paste
+    in progress is cut. An ask of the palette still owed is answered [None]. A
+    turn decodes all it reads before it returns a step, so this drops the keys
+    read in the turn of the step that called [release], whatever that step was.
+    Those keys were typed after the event that called [release], or at a time
+    that cannot be ordered against the timer or the post that did, so they count
+    as typed for [f].
 
     During [f], SIGTSTP, SIGTERM and SIGHUP have their default actions, so the
     terminal's suspend character stops [f]'s program and the runtime with it.
@@ -761,6 +769,20 @@ val query : 'msg app -> owed:Input.Decoder.owed -> string -> unit
 
     Nothing is sent, and no {!Reply} comes, when the input is not a terminal in
     raw mode, or it has ended, since no reply could come. *)
+
+val query_palette : 'msg app -> unit
+(** [query_palette app] asks the terminal for its palette ({!Ansi.Palette}): its
+    default foreground and background, its cursor color and entries 0 to 15 (OSC
+    10, 11, 12 and 4), in one batch that ends with DA1. Entries 16 to 255 are
+    not asked for, and stay unknown, since the colors a program derives from a
+    palette, such as the legible entries of {!Ansi.Palette.legible}, are entries
+    0 to 15. A {!Palette} event answers it once the terminal has answered the
+    batch. It holds the colors the terminal reported, and a color it did not
+    report is unknown. It is [None] when the terminal reported no foreground or
+    no background, when it never answers, and, at the next step, when the input
+    is not a terminal in raw mode or has ended. An ask made while another waits
+    to be sent shares that one's answer. The replies are the runtime's, and
+    never come as {!Reply} events. *)
 
 (** {1:terminal The terminal} *)
 

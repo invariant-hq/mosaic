@@ -1152,7 +1152,7 @@ let handle_input runtime (input : Matrix.event) =
   | Text text -> dispatch_paste runtime text
   | Resize (width, height) -> handle_resize runtime ~width ~height
   | Reply reply -> take_reply runtime reply
-  | Invalid _ -> ());
+  | Palette _ | Invalid _ -> ());
   synchronize runtime;
   Matrix.request_redraw runtime.matrix_app
 
