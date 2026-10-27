@@ -285,3 +285,176 @@ let%expect_test "scroll box squeezed to zero rows paints nothing" =
   [%expect_exact {|
 HEADER
 FOOTER|}]
+
+(* ── Width across placements ── *)
+
+(* A scroll box whose placement gives it no width takes its content's width,
+   and one whose placement gives it a width takes that width; its vertical
+   bar ends the row either way. Each box holds ten lines and is four rows
+   high, so the bar shows, and the column it is drawn in follows the width
+   of the box's content area. *)
+let placed parent box =
+  render ~width:24 ~height:6
+    (Mosaic.box
+       ~layout:
+         (parent |> Toffee.Style.set_size (Mosaic.size ~width:24 ~height:6))
+       [
+         Mosaic.text "head";
+         scroll_box
+           ~style:
+             (Toffee.Style.set_height (Toffee.Style.Dimension.length 4.) box)
+           (numbered_lines 10);
+       ])
+
+let column = Toffee.Style.default |> Toffee.Style.set_flex_direction Column
+
+let%expect_test "scroll box stretched in a column" =
+  placed column Toffee.Style.default;
+  [%expect
+    {|
+    head
+    line 1                 █
+    line 2                 ▀
+    line 3                 │
+    line 4                 │
+    |}]
+
+let%expect_test "scroll box centered in a column" =
+  placed
+    (Toffee.Style.set_align_items (Some Toffee.Style.Align_items.Center) column)
+    Toffee.Style.default;
+  [%expect
+    {|
+      head
+    line 1 █
+    line 2 ▀
+    line 3 │
+    line 4 │
+    |}]
+
+let%expect_test "scroll box in a row" =
+  placed Toffee.Style.default Toffee.Style.default;
+  [%expect
+    {|
+    headline 1 █
+        line 2 ▀
+        line 3 │
+        line 4 │
+    |}]
+
+let%expect_test "scroll box growing in a row" =
+  placed Toffee.Style.default
+    (Toffee.Style.set_flex_grow 1. Toffee.Style.default);
+  [%expect
+    {|
+    headline 1             █
+        line 2             ▀
+        line 3             │
+        line 4             │
+    |}]
+
+let%expect_test "scroll box centered in a grid" =
+  placed
+    (Toffee.Style.default
+    |> Toffee.Style.set_display Toffee.Style.Display.Grid
+    |> Toffee.Style.set_justify_items (Some Toffee.Style.Align_items.Center))
+    Toffee.Style.default;
+  [%expect
+    {|
+      head
+
+    line 1 █
+    line 2 ▀
+    line 3 │
+    line 4 │
+    |}]
+
+let%expect_test "scroll box positioned absolutely" =
+  placed column
+    (Toffee.Style.default
+    |> Toffee.Style.set_position Toffee.Style.Position.Absolute
+    |> Toffee.Style.set_inset
+         {
+           left = Toffee.Style.Length_percentage_auto.length 1.;
+           top = Toffee.Style.Length_percentage_auto.length 1.;
+           right = Toffee.Style.Length_percentage_auto.auto;
+           bottom = Toffee.Style.Length_percentage_auto.auto;
+         });
+  [%expect
+    {|
+    head
+     line 1 █
+     line 2 ▀
+     line 3 │
+     line 4 │
+    |}]
+
+let%expect_test "scroll box with padding and a gap" =
+  placed column
+    (Toffee.Style.default
+    |> Toffee.Style.set_padding
+         (Toffee.Geometry.Rect.all (Toffee.Style.Length_percentage.length 1.))
+    |> Toffee.Style.set_gap
+         (Toffee.Geometry.Size.square
+            (Toffee.Style.Length_percentage.length 2.)));
+  [%expect
+    {|
+    head
+
+     line 1               ▀
+     line 2               │
+    |}]
+
+let%expect_test "scroll box whose row wraps" =
+  placed column
+    (Toffee.Style.set_flex_wrap Toffee.Style.Flex_wrap.Wrap Toffee.Style.default);
+  [%expect
+    {|
+    head
+    line 1
+    line 2
+    line 3
+    line 4
+    line 5
+    |}]
+
+let%expect_test "scroll box whose row starts wrapping" =
+  let app = make_app () in
+  let view wrap =
+    Mosaic.box
+      ~layout:(Toffee.Style.set_size (Mosaic.size ~width:24 ~height:6) column)
+      [
+        Mosaic.text "head";
+        scroll_box
+          ~style:
+            (Toffee.Style.default
+            |> Toffee.Style.set_height (Toffee.Style.Dimension.length 4.)
+            |> Toffee.Style.set_flex_wrap wrap)
+          (numbered_lines 10);
+      ]
+  in
+  List.iter
+    (fun wrap ->
+      reconcile app (view wrap);
+      frame app ~width:24 ~height:6)
+    [ Toffee.Style.Flex_wrap.No_wrap; Wrap; No_wrap ];
+  [%expect
+    {|
+    head
+    line 1                 █
+    line 2                 ▀
+    line 3                 │
+    line 4                 │
+
+    head
+    line 1
+    line 2
+    line 3
+    line 4
+    line 5
+    head
+    line 1                 █
+    line 2                 ▀
+    line 3                 │
+    line 4                 │
+    |}]

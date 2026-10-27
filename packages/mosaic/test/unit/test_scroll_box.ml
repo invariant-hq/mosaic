@@ -485,6 +485,32 @@ let appearance_keeps_scrollbars_hidden () =
   is_false ~msg:"appearance does not release hidden-bar policy"
     (Renderable.visible (Scroll_bar.node (Scroll_box.vertical_bar sb)))
 
+(* ── A row that wraps ── *)
+
+(* The vertical bar of a box whose row wraps, shown while its content fits,
+   stays on the content's line at the end of the row. *)
+let wrapping_row_keeps_bar_beside_content () =
+  let renderer = Renderer.create () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root renderer)
+      ~style:
+        (Toffee.Style.make
+           ~size:(Mosaic.size ~width:20 ~height:4)
+           ~flex_wrap:Toffee.Style.Flex_wrap.Wrap ())
+      (Scroll_box.Props.make ())
+  in
+  ignore
+    (Text.create ~parent:(Scroll_box.node sb)
+       (Text.Props.make ~content:"short" ())
+      : Text.t);
+  Scroll_bar.set_visible_override (Scroll_box.vertical_bar sb) true;
+  Renderer.render_frame renderer ~width:24 ~height:6 ~dt:0.;
+  let bar = Scroll_bar.node (Scroll_box.vertical_bar sb) in
+  equal ~msg:"bar row" int
+    (Renderable.y (Scroll_box.node sb))
+    (Renderable.y bar);
+  equal ~msg:"bar column" int 19 (Renderable.x bar)
+
 (* ── Both doors ── *)
 
 (* Each label, given to the element ({!Mosaic.scroll_box}) or to
@@ -719,6 +745,8 @@ let () =
         create_viewport_has_overflow_hidden;
       test "vertical bar visible when content overflows"
         vertical_bar_visible_when_content_overflows;
+      test "wrapping row keeps the bar beside the content"
+        wrapping_row_keeps_bar_beside_content;
       test "set scroll top clamps" set_scroll_top_clamps;
       test "scroll to sets both" scroll_to_sets_both;
       test "scroll by adjusts relative" scroll_by_adjusts_relative;

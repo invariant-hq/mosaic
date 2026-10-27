@@ -115,6 +115,7 @@ end
 
 type t = {
   node : Renderable.t;
+  wrapper : Renderable.t;
   viewport : Renderable.t;
   content : Renderable.t;
   mutable props : Props.t;
@@ -530,7 +531,28 @@ let root_style style =
   |> Toffee.Style.set_align_items (Some Toffee.Style.Align_items.Stretch)
   |> Toffee.Style.set_min_size min_size
 
-let set_style t style = Renderable.set_style t.node (root_style style)
+(* The wrapper's flex basis: the root's inner width, from which the wrapper
+   shrinks by the vertical bar's width, as the bar does not shrink. A root of
+   indefinite width, which a percentage basis cannot resolve against, sizes
+   the wrapper by its content, as an [auto] basis does. With a definite width
+   the wrapper's size does not depend on its content, and the basis spares
+   measuring the content at its max-content width, a layout of the whole
+   content at a width it is never laid out at. A root that wraps would put
+   the bar on a line of its own under a full-width wrapper, so the wrapper of
+   such a root keeps the [auto] basis. *)
+let wrapper_basis root =
+  if Toffee.Style.flex_wrap root = Toffee.Style.Flex_wrap.No_wrap then
+    Toffee.Style.Dimension.percent 1.0
+  else Toffee.Style.Dimension.auto
+
+let set_style t style =
+  let root = root_style style in
+  Renderable.set_style t.node root;
+  let wrapper = Renderable.style t.wrapper in
+  let basis = wrapper_basis root in
+  if not (Toffee.Style.Dimension.equal (Toffee.Style.flex_basis wrapper) basis)
+  then
+    Renderable.set_style t.wrapper (Toffee.Style.set_flex_basis basis wrapper)
 
 (* ───── Construction ───── *)
 
@@ -551,14 +573,16 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
-  Renderable.set_style node (root_style (Renderable.style node));
+  let root = root_style (Renderable.style node) in
+  Renderable.set_style node root;
   let zero = Toffee.Style.Dimension.length 0. in
-  (* Wrapper: flex-column, flex-grow 1 *)
+  (* Wrapper: flex-column, flex-grow 1, flex-basis 100% *)
   let wrapper = Renderable.create ~parent:node () in
   let wrapper_style =
     Renderable.style wrapper
     |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column
     |> Toffee.Style.set_flex_grow 1.
+    |> Toffee.Style.set_flex_basis (wrapper_basis root)
     |> Toffee.Style.set_min_size (Toffee.Geometry.Size.square zero)
   in
   Renderable.set_style wrapper wrapper_style;
@@ -629,6 +653,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
   let t =
     {
       node;
+      wrapper;
       viewport = viewport_node;
       content = content_node;
       props;
