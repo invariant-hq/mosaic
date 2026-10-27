@@ -66,17 +66,24 @@ let picture_ratio p =
   in
   float pw /. float cw /. (float ph /. float ch)
 
-(* A picture keeps its ratio through layout, as a replaced element does: the
-   style it declares, with that ratio when it sets none. *)
+(* A picture is a replaced element, as an image is in CSS: its parent's layout
+   decides whether it stretches (a flex container's does, a block's and a
+   grid's [normal] alignment do not), and its measure function gives its size
+   where nothing does. It keeps its ratio through layout: the style it
+   declares, with that ratio when it sets none. *)
 let picture_style p =
-  match Toffee.Style.aspect_ratio p.style with
-  | Some _ -> p.style
-  | None -> Toffee.Style.set_aspect_ratio (Some (picture_ratio p)) p.style
+  let style = Toffee.Style.set_item_is_replaced true p.style in
+  match Toffee.Style.aspect_ratio style with
+  | Some _ -> style
+  | None -> Toffee.Style.set_aspect_ratio (Some (picture_ratio p)) style
 
 let apply_picture_style p = Renderable.set_style p.node (picture_style p)
 
 (* Where the layout leaves its size to the content: the picture's size in
-   cells, cut to the space available, its ratio kept. *)
+   cells, cut to the space available, its ratio kept, as Flutter's RenderImage
+   fits an image's size into its constraints. A replaced element is given the
+   same known size when it is measured and when it is laid out, so the two
+   agree. *)
 let picture_measure p ~known_dimensions ~available_space ~style:_ =
   let pw, _ = Matrix_grid.picture_size p.picture in
   let cw =

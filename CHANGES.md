@@ -90,6 +90,7 @@ it.
 - A text selection in a scroll box read each text's position from the last frame that painted it, so a text below a row out of view, or one never painted, could be selected where it no longer is, or missed. A selection reads the positions of the texts under its container from the layout whenever it changes
 - `box ~border_color:Ansi.Color.white` drew no border, since the label was compared with its default; any `border_color` turns the border on, as the documentation says
 - Each element takes every label of its widget's `Props.make`: `Mosaic_mlx.box` takes `?inert`, `code` `?truncate` and `line_number` `?line_numbers` (and their MLX forms)
+- A `picture` is laid out as a replaced element (`Toffee.Style.set_item_is_replaced`), as an image is in CSS. Its measurement and its final layout disagreed: in a block 31 cells wide a picture of 20 by 10 cells was measured 31 by 16 and laid out 31 by 15.5. A block no longer stretches it to its width (a picture of 20 by 10 cells in a block 30 wide was 30 by 15, and is 20 by 10), nor a grid's `normal` alignment (in a grid 30 wide it was 44 by 22, and the line after it 44 wide); a flex container stretches it as before
 - A `scroll_box` element laid its content out for vertical scrolling whatever its axes: with `~scroll_x:true` the content was no wider than the box, so it never scrolled horizontally, and with `~scroll_y:false` it could be taller than the box. It is laid out as `Scroll_box.create` lays it out, and a declaration that changes an axis applies it
 
 #### Removed

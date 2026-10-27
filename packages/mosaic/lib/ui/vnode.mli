@@ -570,15 +570,16 @@ val picture :
   Matrix_grid.picture ->
   'msg t
 (** [picture p] is a leaf element whose box shows [p], fit in it with its aspect
-    ratio kept and centered ({!Matrix_grid.draw_picture}). It keeps [p]'s ratio
-    of columns to rows at the terminal's cell size
+    ratio kept and centered ({!Matrix_grid.draw_picture}). It is laid out as a
+    replaced element, as an image is in CSS ({!Toffee.Style.item_is_replaced}):
+    a flex container stretches it, a block and a grid's [normal] alignment do
+    not. It keeps [p]'s ratio of columns to rows at the terminal's cell size
     ({!Renderable.Private.cell_size}, 10 by 20 pixels while unknown) through
-    layout, as a replaced element keeps its aspect ratio, unless its style sets
-    one: a size given on one axis, by the style or the layout, sets the other.
-    Where nothing gives a size, it is [p]'s size in cells,
-    [ceil (width / cell width)] by [ceil (height / cell height)], shrunk to the
-    space available, and it shrinks down to one cell wide. A box of another
-    shape, with both sizes given, shows the picture letterboxed. *)
+    layout, unless its style sets one: a size given on one axis, by the style or
+    the layout, sets the other. Where nothing gives a size, it is [p]'s size in
+    cells, [ceil (width / cell width)] by [ceil (height / cell height)], shrunk
+    to the space available, and it shrinks down to one cell wide. A box of
+    another shape, with both sizes given, shows the picture letterboxed. *)
 
 val spinner :
   ?key:string ->

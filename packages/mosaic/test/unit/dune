@@ -40,13 +40,16 @@
   test_cursor
   test_column
   test_combobox
-  test_theme)
+  test_theme
+  test_picture)
  (package mosaic)
  (libraries
   windtrap
   mosaic.ui
   matrix.input
   toffee
+  toffee.compute
+  toffee.tree
   matrix.ansi
   test_harness
   matrix.grid
