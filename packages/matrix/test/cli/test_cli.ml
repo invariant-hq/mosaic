@@ -780,11 +780,11 @@ let styling_t =
         | `Ansi256 -> "256"
         | `Truecolor -> "24-bit"))
 
-let decide ?color ~tty vars =
+let decide ?color ?progress ~tty vars =
   let getenv v = List.assoc_opt v vars in
   let caps = Caps.derive (Caps.evidence (Caps.env getenv ~win32:false)) in
   ( Ansi.Styling.decide ?color getenv ~tty ~dumb:caps.dumb caps.colors,
-    Matrix_cli.Policy.live getenv ~tty ~dumb:caps.dumb )
+    Matrix_cli.Progress.decide ?progress getenv ~tty ~dumb:caps.dumb )
 
 let t256 = ("TERM", "xterm-256color")
 
@@ -866,17 +866,38 @@ let styling_rows =
       `Plain );
   ]
 
-let live_rows =
+(* Each row: the program's choice, a terminal or not, the environment, and
+   the mode. *)
+let progress_rows =
   [
-    ("a terminal", true, [ t256 ], true);
-    ("a pipe", false, [ t256 ], false);
-    ("a dumb terminal", true, [ ("TERM", "dumb") ], false);
-    ("TERM unset", true, [], false);
-    ("CI", true, [ t256; ("CI", "true") ], false);
-    ("CI=1", true, [ t256; ("CI", "1") ], false);
-    ("CI=false", true, [ t256; ("CI", "false") ], true);
-    ("NO_COLOR leaves the region", true, [ t256; ("NO_COLOR", "1") ], true);
+    ("a terminal", None, true, [ t256 ], `Tty);
+    ("a pipe", None, false, [ t256 ], `Plain);
+    ("a dumb terminal", None, true, [ ("TERM", "dumb") ], `Plain);
+    ("TERM unset", None, true, [], `Plain);
+    ("CI", None, true, [ t256; ("CI", "true") ], `Plain);
+    ("CI=1", None, true, [ t256; ("CI", "1") ], `Plain);
+    ("CI=false", None, true, [ t256; ("CI", "false") ], `Tty);
+    ("CI=0", None, true, [ t256; ("CI", "0") ], `Tty);
+    ("an empty CI", None, true, [ t256; ("CI", "") ], `Tty);
+    ("NO_COLOR leaves the rows", None, true, [ t256; ("NO_COLOR", "1") ], `Tty);
+    ("tty in CI", Some `Tty, true, [ t256; ("CI", "true") ], `Tty);
+    ("tty on a pipe", Some `Tty, false, [ t256 ], `Plain);
+    ("tty on a dumb terminal", Some `Tty, true, [ ("TERM", "dumb") ], `Plain);
+    ("plain on a terminal", Some `Plain, true, [ t256 ], `Plain);
+    ("quiet", Some `Quiet, true, [ t256 ], `Quiet);
+    ("json on a pipe", Some `Json, false, [ t256 ], `Json);
   ]
+
+let progress_t =
+  Testable.make
+    ~pp:(fun ppf m ->
+      Format.pp_print_string ppf
+        (match m with
+        | `Tty -> "tty"
+        | `Plain -> "plain"
+        | `Quiet -> "quiet"
+        | `Json -> "json"))
+    ~equal:( = )
 
 let policy_tests =
   List.map
@@ -886,10 +907,17 @@ let policy_tests =
             (fst (decide ?color ~tty vars))))
     styling_rows
   @ List.map
-      (fun (name, tty, vars, expected) ->
-        test ("live: " ^ name) (fun () ->
-            equal ~msg:"live" bool expected (snd (decide ~tty vars))))
-      live_rows
+      (fun (name, progress, tty, vars, expected) ->
+        test ("progress: " ^ name) (fun () ->
+            equal ~msg:"mode" progress_t expected
+              (snd (decide ?progress ~tty vars))))
+      progress_rows
+  @ [
+      test "progress: the choices a --progress option names" (fun () ->
+          equal ~msg:"names" (list string)
+            [ "auto"; "tty"; "plain"; "quiet"; "json" ]
+            (List.map fst Matrix_cli.Progress.choices));
+    ]
 
 (* ───── Adapting ───── *)
 

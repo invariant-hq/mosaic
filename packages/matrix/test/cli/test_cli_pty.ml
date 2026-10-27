@@ -39,11 +39,12 @@ let signaled s = function
 let strings = Testable.(list string)
 
 (* What [mode] writes on its standard outputs, both on one pipe. *)
-let piped mode =
+let piped ?(env = []) mode =
   let r, w = Unix.pipe ~cloexec:true () in
   let pid =
     Unix.create_process_env child [| child; mode |]
-      [| "TERM=xterm-256color" |]
+      (Array.of_list
+         ("TERM=xterm-256color" :: List.map (fun (k, v) -> k ^ "=" ^ v) env))
       Unix.stdin w w
   in
   Unix.close w;
@@ -375,16 +376,63 @@ let test_flow_control () =
   is_true ~msg:"ended within 2 s" (Unix.gettimeofday () -. t0 < 2.);
   ignore term
 
-(* Whether a region redraws its rows: on a terminal, outside CI, and not on
-   a pipe. *)
-let test_redraws () =
-  ( spawn "redraws" @@ fun term c ->
+(* How progress shows on an output: rows on a terminal outside CI, lines on
+   a pipe, and rows in CI too when the program asks for them. *)
+let test_progress_of () =
+  let on_terminal msg env expected =
+    spawn ~env "progress-of" @@ fun term c ->
     exited 0 (T.Child.exit c ~within:10.);
-    is_true ~msg:"on a terminal" (has_line "REDRAWS true" term) );
-  ( spawn ~env:[ ("CI", "true") ] "redraws" @@ fun term c ->
-    exited 0 (T.Child.exit c ~within:10.);
-    is_true ~msg:"in CI" (has_line "REDRAWS false" term) );
-  equal ~msg:"on a pipe" Testable.string "REDRAWS false\n" (piped "redraws")
+    is_true ~msg (has_line ("PROGRESS " ^ expected) term)
+  in
+  on_terminal "on a terminal" [] "tty";
+  on_terminal "in CI" [ ("CI", "true") ] "plain";
+  on_terminal "asked for in CI"
+    [ ("CI", "true"); ("CLI_PROGRESS", "tty") ]
+    "tty";
+  on_terminal "quiet" [ ("CLI_PROGRESS", "quiet") ] "quiet";
+  equal ~msg:"on a pipe" Testable.string "PROGRESS plain\n"
+    (piped "progress-of");
+  equal ~msg:"asked for on a pipe" Testable.string "PROGRESS plain\n"
+    (piped ~env:[ ("CLI_PROGRESS", "tty") ] "progress-of")
+
+(* [s] with the value of each "time" member made 0. *)
+let untimed s =
+  let b = Buffer.create (String.length s) in
+  let key = "\"time\":" in
+  let n = String.length key in
+  let rec go i =
+    if i < String.length s then
+      if i + n <= String.length s && String.sub s i n = key then (
+        Buffer.add_string b (key ^ "0");
+        let j = ref (i + n) in
+        while !j < String.length s && s.[!j] <> ',' && s.[!j] <> '}' do
+          incr j
+        done;
+        go !j)
+      else (
+        Buffer.add_char b s.[i];
+        go (i + 1))
+  in
+  go 0;
+  Buffer.contents b
+
+(* Under quiet and json a region draws and prints no frame, and under json
+   what the program prints on the output is output events. *)
+let test_quiet_json () =
+  equal ~msg:"quiet: the lines, no frame" Testable.string
+    "SHELL\nline 1\nline 2\nline 3\nAFTER\n"
+    (piped ~env:[ ("CLI_PROGRESS", "quiet") ] "progress");
+  equal ~msg:"json: the lines as events" Testable.string
+    "SHELL\n\
+     {\"time\":0,\"event\":\"output\",\"text\":\"line 1\"}\n\
+     {\"time\":0,\"event\":\"output\",\"text\":\"line 2\"}\n\
+     {\"time\":0,\"event\":\"output\",\"text\":\"line 3\"}\n\
+     AFTER\n"
+    (untimed (piped ~env:[ ("CLI_PROGRESS", "json") ] "progress"));
+  spawn ~cols:100 ~env:[ ("CLI_PROGRESS", "json") ] "progress" @@ fun term c ->
+  exited 0 (T.Child.exit c ~within:10.);
+  is_false ~msg:"no frame on a terminal" (shows "P done" term);
+  is_true ~msg:"an event" (shows "\"text\":\"line 3\"" term)
 
 (* A grid printed on an output: its rows at the output's styling, each
    ended where it shows nothing more. *)
@@ -443,7 +491,8 @@ let () =
           test "Format's formatters" test_fmt;
           test "Format's buffers keep their order" test_format_order;
           test "a notification" test_notify;
-          test "whether a region redraws" test_redraws;
+          test "how progress shows" test_progress_of;
+          test "quiet and json" test_quiet_json;
         ];
       group "prompts"
         [

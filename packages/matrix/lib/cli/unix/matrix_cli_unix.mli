@@ -1,15 +1,16 @@
 (** Command-line output on Unix: the standard outputs, a region of rows redrawn
     below them, and questions asked at the terminal.
 
-    An {e output} ({!t}) is a descriptor together with what {!Matrix_cli.Policy}
-    decides for it, its styling and whether a region of rows may be redrawn on
-    it. The decision is made once, when the output is made, from the program's
-    choice, the process's environment, the terminal's capabilities (from [TERM]
-    and its terminfo description) and whether the descriptor is a terminal. What
-    a program prints through an output is adapted to its styling
-    ({!Matrix_cli.section-adapting}) and written at once, one write for each
-    call to {!print} and each flush of its {!formatter}, so a pipe gets each
-    record whole and as soon as it is printed. A grid, such as a table that
+    An {e output} ({!t}) is a descriptor together with what is decided for it,
+    its styling ({!Ansi.Styling}) and the mode its progress shows in
+    ({!Matrix_cli.Progress}). The decisions are made once, when the output is
+    made, from the program's choices, the process's environment, the terminal's
+    capabilities (from [TERM] and its terminfo description) and whether the
+    descriptor is a terminal. What a program prints through an output is adapted
+    to its styling ({!Matrix_cli.section-adapting}) and written at once, one
+    write for each call to {!print} and each flush of its {!formatter}, so a
+    pipe gets each record whole and as soon as it is printed. On an output whose
+    mode is [`Json], what it prints is events. A grid, such as a table that
     {!Matrix_cli.Table.grid} lays out, is printed with {!print_grid}. Outputs
     whose descriptors reach one terminal, or one file, share a lock, so their
     writes never interleave. What the program printed through [Stdlib.stdout],
@@ -39,10 +40,11 @@
     shows the last rows of a frame taller than the terminal. When a scope ends,
     its last rows go above the region, which stays for the others, and when the
     last one ends, its last rows stay in the scrollback with the cursor below
-    them. A scope's last rows stay whole, however tall. On an output where no
-    region may be drawn ({!redraws}), such as a pipe or a CI job's log, the
-    lines go out as they are printed and the last frame is printed once, at the
-    end.
+    them. A scope's last rows stay whole, however tall. A region is drawn on an
+    output whose mode ({!progress}) is [`Tty]. Where it is [`Plain], such as on
+    a pipe or in a CI job's log, the lines go out as they are printed and the
+    last frame is printed once, at the end, and where it is [`Quiet] or [`Json]
+    no frame is drawn or printed.
 
     The program's own writes to a terminal that bypass its outputs, such as
     [print_string] or a child process's output, land where the cursor rests, at
@@ -105,16 +107,29 @@
 type t
 (** The type for outputs. *)
 
-val make : ?color:Ansi.Styling.choice -> Unix.file_descr -> t
-(** [make ~color fd] is the output on [fd], with the program's choice [color]
-    ([`Auto] by default). On Windows, a console's VT processing is turned on
-    ({!Tty.enable_vt}) and turned back off when the program exits. *)
+val make :
+  ?color:Ansi.Styling.choice ->
+  ?progress:Matrix_cli.Progress.choice ->
+  Unix.file_descr ->
+  t
+(** [make ~color ~progress fd] is the output on [fd], with the program's choices
+    [color] and [progress] ([`Auto] by default). On Windows, a console's VT
+    processing is turned on ({!Tty.enable_vt}) and turned back off when the
+    program exits. *)
 
-val stdout : ?color:Ansi.Styling.choice -> unit -> t
-(** [stdout ~color ()] is [make ~color Unix.stdout]. *)
+val stdout :
+  ?color:Ansi.Styling.choice ->
+  ?progress:Matrix_cli.Progress.choice ->
+  unit ->
+  t
+(** [stdout ~color ~progress ()] is [make ~color ~progress Unix.stdout]. *)
 
-val stderr : ?color:Ansi.Styling.choice -> unit -> t
-(** [stderr ~color ()] is [make ~color Unix.stderr]. *)
+val stderr :
+  ?color:Ansi.Styling.choice ->
+  ?progress:Matrix_cli.Progress.choice ->
+  unit ->
+  t
+(** [stderr ~color ~progress ()] is [make ~color ~progress Unix.stderr]. *)
 
 val styling : t -> Ansi.Styling.t
 (** [styling o] is [o]'s styling, at which a program writes a grid for it
@@ -126,15 +141,19 @@ val width : t -> int option
     positions"), else the width of [o]'s terminal when [o] is one, read at each
     call, and [None] for a pipe or a file. *)
 
-val redraws : t -> bool
-(** [redraws o] is [true] iff a live region on [o] redraws its rows in place
-    ({!Matrix_cli.Policy.live}). Where it is [false], as on a pipe, a dumb
-    terminal or in a CI job's log, a region shows its last frame once, at its
-    end, so a program prints there what it would otherwise only show in the
-    rows, such as the start of each step. *)
+val progress : t -> Matrix_cli.Progress.t
+(** [progress o] is [o]'s mode ({!Matrix_cli.Progress}). A live region redraws
+    its rows in place where it is [`Tty]. Where it is [`Plain], a program prints
+    what the rows would otherwise show, such as the start of each step, and
+    where it is [`Json], it prints its lines for people on another output. *)
 
 val print : t -> string -> unit
-(** [print o s] writes [s] to [o], adapted to its styling, in one write. *)
+(** [print o s] writes [s] to [o], adapted to its styling, in one write. Where
+    [o]'s mode is [`Json], it writes each line of [s], and the text after its
+    last line end, as {!Ansi.sanitize} leaves them, as an event of its own,
+    [{"time":t,"event":"output","text":line}], where [t] is the seconds since
+    [o] was made. So a program prints its own lines for people on another
+    output. *)
 
 val print_grid : t -> Matrix_grid.t -> unit
 (** [print_grid o g] writes the rows of [g] to [o] in one write, at [o]'s
@@ -179,8 +198,8 @@ type live
 
 val live : ?tick:float -> t -> (live -> 'a) -> 'a
 (** [live ~tick o f] runs [f] with a live region on [o], the region that lives
-    on [o]'s terminal if one does, or with one that draws nothing where none may
-    be drawn ({!Matrix_cli.Policy.live}). With [tick], the region also draws
+    on [o]'s terminal if one does, where [o]'s mode ({!progress}) is [`Tty], or
+    with one that draws nothing elsewhere. With [tick], the region also draws
     every [tick] seconds while [f] runs, calling the frames again, for a frame
     that changes with the time, such as a spinner or an elapsed time, between
     two {!show}s. A region whose scopes give ticks draws at the shortest, and at
@@ -262,7 +281,12 @@ module Prompt : sig
       gives, ends when the terminal's input ends, and must be read once, inside
       [f]. An Escape is told from the start of a key's sequence by 50
       milliseconds of silence. It is [Error `Not_interactive] when the process
-      has no controlling terminal. *)
+      has no controlling terminal.
+
+      A menu that the keys move through is drawn on the terminal they are typed
+      at, in a {!val-live} region on an output made on [/dev/tty] with
+      [~progress:`Tty], which redraws it whatever [CI] or the program's
+      [--progress] choice say. *)
 end
 
 (**/**)

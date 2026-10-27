@@ -1,4 +1,3 @@
-module Policy = Matrix_cli.Policy
 module Caps = Matrix_terminal.Caps
 module Region = Matrix_screen.Region
 module Signal = Tty.Signal
@@ -165,13 +164,14 @@ and part = {
 
 and prompt = { on_stop : unit -> unit; on_continue : unit -> unit }
 
-(* An output: its descriptor and what the policy decided for it. *)
+(* An output: its descriptor and what was decided for it. *)
 and t = {
   fd : Unix.file_descr;
   tty : bool;
   caps : Caps.t;
   styling : Ansi.Styling.t;
-  live_ok : bool;
+  progress : Matrix_cli.Progress.t;
+  made : int;  (** When it was made, the origin of its events' times. *)
   columns : int option;
   lines : int option;
   adapter : Matrix_cli.adapter;
@@ -546,7 +546,7 @@ let leave d =
    exit path turns back off: the console is the shell's too. *)
 let consoles = ref []
 
-let make ?color fd =
+let make ?color ?progress fd =
   let getenv = Sys.getenv_opt in
   let tty = Tty.is_tty fd in
   let win32 = Sys.win32 && tty in
@@ -578,16 +578,17 @@ let make ?color fd =
     tty;
     caps;
     styling;
-    live_ok = Policy.live getenv ~tty ~dumb:caps.dumb;
+    progress = Matrix_cli.Progress.decide ?progress getenv ~tty ~dumb:caps.dumb;
+    made = Tty.now ();
     columns;
     lines;
     adapter = Matrix_cli.adapter styling;
     out_device = device fd;
   }
 
-let redraws t = t.live_ok
-let stdout ?color () = make ?color Unix.stdout
-let stderr ?color () = make ?color Unix.stderr
+let progress t = t.progress
+let stdout ?color ?progress () = make ?color ?progress Unix.stdout
+let stderr ?color ?progress () = make ?color ?progress Unix.stderr
 let styling t = t.styling
 
 let width t =
@@ -603,10 +604,60 @@ let emit t bytes =
   | Some l when l.on_screen && l.suspended = 0 -> above l bytes
   | _ -> write_all t.fd bytes 0 (String.length bytes)
 
+(* JSON events, one object on a line. A string is valid UTF-8, as
+   Ansi.sanitize leaves it, with its C0 controls and DEL escaped. A time is
+   in seconds, rounded to the millisecond, as ocaml-console writes them. *)
+
+let json_string s =
+  let b = Buffer.create (String.length s + 2) in
+  Buffer.add_char b '"';
+  String.iter
+    (function
+      | '"' -> Buffer.add_string b "\\\""
+      | '\\' -> Buffer.add_string b "\\\\"
+      | c when Char.code c < 0x20 || c = '\127' ->
+          Printf.bprintf b "\\u%04x" (Char.code c)
+      | c -> Buffer.add_char b c)
+    s;
+  Buffer.add_char b '"';
+  Buffer.contents b
+
+let json_number f =
+  let f = if Float.is_finite f then Float.round (f *. 1000.) /. 1000. else 0. in
+  Printf.sprintf "%.15g" f
+
+let event members =
+  "{"
+  ^ String.concat "," (List.map (fun (k, v) -> json_string k ^ ":" ^ v) members)
+  ^ "}\n"
+
+(* What a program prints on a [`Json] output: an output event of no task for
+   each of its lines, and for what follows its last line end. *)
+let output_events t s =
+  let time = json_number (Float.of_int (Tty.now () - t.made) *. 1e-9) in
+  let lines = String.split_on_char '\n' (Ansi.sanitize s) in
+  let lines =
+    match List.rev lines with "" :: rest -> List.rev rest | _ -> lines
+  in
+  String.concat ""
+    (List.map
+       (fun l ->
+         event
+           [
+             ("time", time);
+             ("event", json_string "output");
+             ("text", json_string l);
+           ])
+       lines)
+
 let print t s =
   flush_formatters ();
   Mutex.protect t.out_device.lock (fun () ->
-      let bytes = Matrix_cli.adapt t.adapter s in
+      let bytes =
+        match t.progress with
+        | `Json -> output_events t s
+        | _ -> Matrix_cli.adapt t.adapter s
+      in
       if bytes <> "" then emit t bytes)
 
 let out_functions t =
@@ -804,6 +855,22 @@ let print_last t v =
       in
       if lines <> "" then emit t lines)
 
+let live_region t part f =
+  let l = join t part in
+  match f { state = Some l; part; last = no_frame } with
+  | result ->
+      flush_formatters ();
+      finish t l part;
+      reraise l;
+      result
+  | exception e ->
+      let bt = Printexc.get_raw_backtrace () in
+      (try
+         flush_formatters ();
+         finish t l part
+       with _ -> ());
+      Printexc.raise_with_backtrace e bt
+
 let live ?tick t f =
   let tick =
     match tick with
@@ -814,8 +881,10 @@ let live ?tick t f =
   in
   flush_formatters ();
   let part = { frame = no_frame; ended = false; tick } in
-  match if t.live_ok then Some (join t part) else None with
-  | None -> (
+  match t.progress with
+  | `Quiet | `Json -> f { state = None; part; last = no_frame }
+  | `Tty -> live_region t part f
+  | `Plain -> (
       let v = { state = None; part; last = no_frame } in
       register_exit ();
       Mutex.protect plain_lock (fun () ->
@@ -832,20 +901,6 @@ let live ?tick t f =
       | exception e ->
           let bt = Printexc.get_raw_backtrace () in
           (try ended () with _ -> ());
-          Printexc.raise_with_backtrace e bt)
-  | Some l -> (
-      match f { state = Some l; part; last = no_frame } with
-      | result ->
-          flush_formatters ();
-          finish t l part;
-          reraise l;
-          result
-      | exception e ->
-          let bt = Printexc.get_raw_backtrace () in
-          (try
-             flush_formatters ();
-             finish t l part
-           with _ -> ());
           Printexc.raise_with_backtrace e bt)
 
 (* At [exit], each region ends as its last scope's end would end it, with

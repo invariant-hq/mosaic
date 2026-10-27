@@ -25,7 +25,12 @@ let () =
     if Array.length Sys.argv > 1 then Sys.argv.(1)
     else Option.value (Sys.getenv_opt "CLI_CHILD") ~default:""
   in
-  let err = C.stderr () in
+  (* The program's --progress choice, from CLI_PROGRESS. *)
+  let progress =
+    Option.bind (Sys.getenv_opt "CLI_PROGRESS") (fun c ->
+        List.assoc_opt c Matrix_cli.Progress.choices)
+  in
+  let err = C.stderr ?progress () in
   match mode with
   | "progress" ->
       print_string "SHELL\n";
@@ -174,7 +179,12 @@ let () =
       match Atomic.get answer with
       | Some (Ok name) -> Printf.printf "HELLO %s\n" name
       | _ -> print_string "NO ANSWER\n")
-  | "redraws" -> Printf.printf "REDRAWS %b\n" (C.redraws err)
+  | "progress-of" ->
+      Printf.printf "PROGRESS %s\n"
+        (fst
+           (List.find
+              (fun (_, c) -> c = (C.progress err :> Matrix_cli.Progress.choice))
+              Matrix_cli.Progress.choices))
   | "notify" ->
       C.notify err ~title:"Done" ~body:"built";
       C.bell err;

@@ -1,11 +1,33 @@
-module Policy = struct
-  (* An empty CI is unset, as Ansi.Styling reads its variables. *)
-  let live getenv ~tty ~dumb =
-    tty && (not dumb)
-    &&
+module Progress = struct
+  type choice = [ `Auto | `Tty | `Plain | `Quiet | `Json ]
+  type t = [ `Tty | `Plain | `Quiet | `Json ]
+
+  (* BuildKit's names for its --progress modes (docker build --progress),
+     which buildx, compose and ocaml-console use too. *)
+  let choices =
+    [
+      ("auto", `Auto);
+      ("tty", `Tty);
+      ("plain", `Plain);
+      ("quiet", `Quiet);
+      ("json", `Json);
+    ]
+
+  (* A CI job: CI set to anything but "", "0" or "false", the values that
+     say no. cargo counts any value (cargo-util's is_ci, CI or TF_BUILD
+     set); an empty CI is unset here as Ansi.Styling reads its variables,
+     and "0" and "false" are a user turning it off. *)
+  let ci getenv =
     match getenv "CI" with
-    | None | Some ("" | "false") -> true
-    | Some _ -> false
+    | None | Some ("" | "0" | "false") -> false
+    | _ -> true
+
+  let decide ?(progress = `Auto) getenv ~tty ~dumb =
+    let rows = tty && not dumb in
+    match progress with
+    | `Auto -> if rows && not (ci getenv) then `Tty else `Plain
+    | `Tty -> if rows then `Tty else `Plain
+    | (`Plain | `Quiet | `Json) as m -> m
 end
 
 (* Adapting. The adapter reads the program's bytes with Ansi.Parser and

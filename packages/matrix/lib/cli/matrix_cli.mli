@@ -12,7 +12,7 @@
     styles a program writes reach it, in colors of some depth, as attributes
     such as bold without colors, or not at all. {!Ansi.Styling.decide} decides
     it from the program's choice, the user's environment and the terminal, and
-    {!Policy} decides whether a region may be redrawn there. An {e adapter}
+    {!Progress} decides how the program's progress shows there. An {e adapter}
     rewrites what a program prints for a styling ({!section-adapting}), so that
     printers written for any destination, such as Fmt's, obey the decision.
     {!Table} and {!Tree} lay out tables and trees. Each is a function of plain
@@ -33,19 +33,40 @@
     print_string (Matrix_cli.adapt a "\027[1;31mdone\027[0m\n")
     ]} *)
 
-(** Whether rows may be redrawn on a destination.
+(** How a program's progress shows on a destination.
 
-    A destination's styling is {!Ansi.Styling.decide}'s, from the program's
-    choice, the user's environment and whether the terminal is dumb and the
-    depth of its colors, as [Matrix_terminal.Caps.t]'s [dumb] and [colors] give
-    them. Whether rows may be redrawn there is this module's decision. *)
-module Policy : sig
-  val live : (string -> string option) -> tty:bool -> dumb:bool -> bool
-  (** [live getenv ~tty ~dumb] is [true] iff rows may be redrawn on the
-      destination, which is a terminal iff [tty] and a dumb one iff [dumb]. Rows
-      may be redrawn on a terminal that is not dumb, with [CI] unset, empty or
-      [false]. A continuous integration job keeps its output as a log that
-      replays line by line, where redrawn rows pile up. *)
+    A program's {e progress} is what it shows of its work while it works. On a
+    destination it shows in one {e mode} ({!Progress.t}): rows redrawn in place
+    ([`Tty]), lines printed as the work goes ([`Plain]), only what fails
+    ([`Quiet]), or one JSON event a line for another program to read ([`Json]).
+    A [--progress] option chooses a mode or [`Auto], and {!Progress.decide}
+    gives a destination its mode for that choice, as {!Ansi.Styling.decide}
+    gives it a styling for [--color]. *)
+module Progress : sig
+  type choice = [ `Auto | `Tty | `Plain | `Quiet | `Json ]
+  (** The type for a program's choices. *)
+
+  type t = [ `Tty | `Plain | `Quiet | `Json ]
+  (** The type for modes. *)
+
+  val choices : (string * choice) list
+  (** [choices] is the choices as a [--progress] option names them, [auto],
+      [tty], [plain], [quiet] and [json], in that order, as [Cmdliner.Arg.enum]
+      takes them. *)
+
+  val decide :
+    ?progress:choice -> (string -> string option) -> tty:bool -> dumb:bool -> t
+  (** [decide ~progress getenv ~tty ~dumb] is the mode of a destination, which
+      is a terminal iff [tty] and a dumb one iff [dumb], for the program's
+      choice [progress] ([`Auto] by default), reading the environment with
+      [getenv]. [`Auto] is [`Tty] on a terminal that is not dumb outside a
+      continuous integration job, and [`Plain] elsewhere. A job keeps its output
+      as a log that replays line by line, where redrawn rows pile up, and the
+      process is in one when [CI] is set to anything but the empty string, [0]
+      or [false]. cargo counts any value. [`Tty] is [`Tty] on a terminal that is
+      not dumb, in such a job too, and [`Plain] elsewhere, since rows are
+      redrawn with the cursor motions only a terminal performs. The other
+      choices are their modes. *)
 end
 
 (** {1:adapting Adapting what a program prints}
