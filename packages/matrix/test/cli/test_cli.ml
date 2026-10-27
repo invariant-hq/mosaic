@@ -739,7 +739,7 @@ let styling_t =
 let decide ?color ~tty vars =
   let getenv v = List.assoc_opt v vars in
   let caps = Caps.derive (Caps.evidence (Caps.env getenv ~win32:false)) in
-  ( Matrix_cli.Policy.styling ?color getenv ~tty ~dumb:caps.dumb caps.colors,
+  ( Ansi.Styling.decide ?color getenv ~tty ~dumb:caps.dumb caps.colors,
     Matrix_cli.Policy.live getenv ~tty ~dumb:caps.dumb )
 
 let t256 = ("TERM", "xterm-256color")

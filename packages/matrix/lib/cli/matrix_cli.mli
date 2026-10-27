@@ -10,14 +10,14 @@
 
     Each destination has a {e styling} ({!Ansi.Styling.t}), which says how the
     styles a program writes reach it, in colors of some depth, as attributes
-    such as bold without colors, or not at all. {!Policy} decides it from the
-    program's choice, the user's environment and the terminal, and decides
-    whether a region may be redrawn there. An {e adapter} rewrites what a
-    program prints for a styling ({!section-adapting}), so that printers written
-    for any destination, such as Fmt's, obey the decision. {!Table} and {!Tree}
-    lay out tables and trees. Each is a function of plain values that draws into
-    a grid of cells ({!Matrix_grid}), so a program prints the result with
-    {!Matrix_grid.to_ansi} at its destination's styling, or with
+    such as bold without colors, or not at all. {!Ansi.Styling.decide} decides
+    it from the program's choice, the user's environment and the terminal, and
+    {!Policy} decides whether a region may be redrawn there. An {e adapter}
+    rewrites what a program prints for a styling ({!section-adapting}), so that
+    printers written for any destination, such as Fmt's, obey the decision.
+    {!Table} and {!Tree} lay out tables and trees. Each is a function of plain
+    values that draws into a grid of cells ({!Matrix_grid}), so a program prints
+    the result with {!Matrix_grid.to_ansi} at its destination's styling, or with
     [Matrix_cli_unix.print_grid], and a full-screen program can draw the same
     layout into its own frame.
 
@@ -26,36 +26,20 @@
     ([Matrix_terminal.Caps.derive]):
     {[
     let styling =
-      Matrix_cli.Policy.styling Sys.getenv_opt ~tty:(Unix.isatty Unix.stdout)
+      Ansi.Styling.decide Sys.getenv_opt ~tty:(Unix.isatty Unix.stdout)
         ~dumb:caps.dumb caps.colors
     in
     let a = Matrix_cli.adapter styling in
     print_string (Matrix_cli.adapt a "\027[1;31mdone\027[0m\n")
     ]} *)
 
-(** The decision of what a destination receives.
+(** Whether rows may be redrawn on a destination.
 
-    A destination's styling is decided by {!Ansi.Styling}'s rule, from the
-    program's choice, the user's environment and two of the terminal's
-    capabilities, whether it is dumb and the depth of the colors it shows, each
-    destination on its own. A program reads the two from the terminal's
-    capabilities, as [Matrix_terminal.Caps.t]'s [dumb] and [colors] give them.
-    Whether rows may be redrawn there is this module's decision
-    ({!Policy.live}). *)
+    A destination's styling is {!Ansi.Styling.decide}'s, from the program's
+    choice, the user's environment and whether the terminal is dumb and the
+    depth of its colors, as [Matrix_terminal.Caps.t]'s [dumb] and [colors] give
+    them. Whether rows may be redrawn there is this module's decision. *)
 module Policy : sig
-  val styling :
-    ?color:Ansi.Styling.choice ->
-    (string -> string option) ->
-    tty:bool ->
-    dumb:bool ->
-    [< Ansi.Color.depth ] ->
-    Ansi.Styling.t
-  (** [styling ~color getenv ~tty ~dumb colors] is the styling of a destination,
-      which is a terminal iff [tty], a dumb one iff [dumb], that shows colors of
-      depth [colors], for the program's choice [color] ([`Auto] by default) and
-      the environment read through [getenv], such as [Sys.getenv_opt]. It is
-      {!Ansi.Styling.decide}. *)
-
   val live : (string -> string option) -> tty:bool -> dumb:bool -> bool
   (** [live getenv ~tty ~dumb] is [true] iff rows may be redrawn on the
       destination, which is a terminal iff [tty] and a dumb one iff [dumb]. Rows

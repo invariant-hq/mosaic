@@ -507,7 +507,9 @@ let make ?color fd =
     | Some n when n > 0 -> Some (min n Matrix_grid.max_width)
     | _ -> None
   in
-  let styling = Policy.styling ?color getenv ~tty ~dumb:caps.dumb caps.colors in
+  let styling =
+    Ansi.Styling.decide ?color getenv ~tty ~dumb:caps.dumb caps.colors
+  in
   {
     fd;
     tty;

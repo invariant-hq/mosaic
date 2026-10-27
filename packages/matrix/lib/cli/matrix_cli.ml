@@ -1,6 +1,4 @@
 module Policy = struct
-  let styling = Ansi.Styling.decide
-
   (* An empty CI is unset, as Ansi.Styling reads its variables. *)
   let live getenv ~tty ~dumb =
     tty && (not dumb)
