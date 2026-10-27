@@ -32,8 +32,8 @@ function describe() {
       boxSizing: getComputedStyle(e).boxSizing,
       unrounded: [r.x - p.x, r.y - p.y, r.width, r.height],
       rounded: [
-        Math.round(r.x - p.x),
-        Math.round(r.y - p.y),
+        Math.round(r.x) - Math.round(p.x),
+        Math.round(r.y) - Math.round(p.y),
         Math.round(r.right) - Math.round(r.left),
         Math.round(r.bottom) - Math.round(r.top),
       ],

@@ -653,10 +653,10 @@ let set_child_clip t fn =
    so its size depends only on itself and the width it is given, which a
    chunk stretched to the column's width passes on, and its position is the
    sum of the outer heights before it. Children whose own style breaks this
-   are laid out flat. The layout tree rounds each location relative to its
-   parent, so a chunked child's position is the rounded sum of the chunk's
-   and its own unrounded locations, the value the flat column rounds
-   ([location_x], [location_y]).
+   are laid out flat. The layout tree rounds a location as the difference of
+   the rounded positions of the node and its parent in the root's
+   coordinates, so the chunk's location plus the child's is the location the
+   flat column gives the child ([location_x], [location_y]).
 
    [regroup] alone sets the layout tree's children of a culling node. Every
    change to its child list, and every change of a child's style that changes
@@ -839,28 +839,21 @@ let flush_regroups t =
         regroup p)
     nodes
 
-(* The layout tree's rounding. *)
-let[@inline] round_location f =
-  if f >= 0. then Float.floor (f +. 0.5 +. 1e-6)
-  else Float.ceil (f -. 0.5 -. 1e-6)
+(* The rounded layout of a chunk's node, read without a result to allocate. *)
+let chunk_layout c (k : chunk) =
+  Toffee.Print_tree.get_final_layout c.ctx.tree k.chunk_node
 
 (* [location_x c layout] is [c]'s horizontal position relative to its
    parent's layout origin, where [layout] is [c]'s layout. *)
 let[@inline] location_x c (layout : Toffee.Layout.t) =
   match c.chunk with
   | None -> layout.location.x
-  | Some k ->
-      round_location
-        ((Toffee.unrounded_layout c.ctx.tree k.chunk_node).location.x
-       +. (Toffee.unrounded_layout c.ctx.tree c.toffee_node).location.x)
+  | Some k -> (chunk_layout c k).location.x +. layout.location.x
 
 let[@inline] location_y c (layout : Toffee.Layout.t) =
   match c.chunk with
   | None -> layout.location.y
-  | Some k ->
-      round_location
-        ((Toffee.unrounded_layout c.ctx.tree k.chunk_node).location.y
-       +. (Toffee.unrounded_layout c.ctx.tree c.toffee_node).location.y)
+  | Some k -> (chunk_layout c k).location.y +. layout.location.y
 
 (* Turning culling on chunks the children; turning it off lays them out flat
    again. *)

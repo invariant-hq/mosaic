@@ -5,7 +5,7 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-flex-deep-hierarchy	alloc_words	exact	1837
-flex-wide-dashboard	alloc_words	exact	6350
-grid-auto-placement-gallery	alloc_words	exact	175447
-mixed-dashboard	alloc_words	exact	1786
+flex-deep-hierarchy	alloc_words	exact	1725
+flex-wide-dashboard	alloc_words	exact	6238
+grid-auto-placement-gallery	alloc_words	exact	175335
+mixed-dashboard	alloc_words	exact	1674

@@ -214,8 +214,9 @@ val round_layout :
     Algorithm:
 
     - Round based on cumulative coordinates relative to the viewport, not
-      parent-relative coordinates. This ensures consistent rounding across the
-      tree.
+      parent-relative coordinates. A location is the rounded cumulative position
+      of the node minus its parent's, so the sum of the locations from the root
+      is the node's rounded cumulative position.
     - Compute width/height by rounding left/right and top/bottom edges, then
       taking the difference, rather than rounding width/height directly. This
       prevents accumulated rounding errors from creating gaps.

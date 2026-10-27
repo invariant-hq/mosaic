@@ -1756,6 +1756,57 @@ let incremental_rounding_matches_full_rounding seed =
     check step
   done
 
+(* A box is drawn at the sum of the rounded locations from the root, and its
+   far edges there plus its rounded size. The law: these are its edges in the
+   root's coordinates, rounded, whatever the fractions of the boxes above
+   it. *)
+let drawn_edges_are_rounded_edges seed =
+  let rng = Random.State.make [| seed |] in
+  let tree : unit Toffee.tree = new_tree () in
+  let root = new_leaf tree Style.default |> Result.get_ok in
+  let nodes = ref [| root |] in
+  for _ = 1 to 1 + Random.State.int rng 30 do
+    let parent = !nodes.(Random.State.int rng (Array.length !nodes)) in
+    let node = new_leaf tree (random_style rng) |> Result.get_ok in
+    add_child tree parent node |> Result.get_ok;
+    nodes := Array.append !nodes [| node |]
+  done;
+  let space () =
+    Available_space.of_float
+      (50. +. (Float.of_int (Random.State.int rng 60) /. 7.))
+  in
+  compute_layout tree root Size.{ width = space (); height = space () }
+  |> Result.get_ok;
+  let round f =
+    if f >= 0. then Float.floor (f +. 0.5 +. 1e-6)
+    else Float.ceil (f -. 0.5 -. 1e-6)
+  in
+  let rec walk node ~x ~y ~drawn_x ~drawn_y =
+    let unrounded = unrounded_layout tree node in
+    let rounded = layout tree node |> Result.get_ok in
+    let x = x +. (Layout.location unrounded).x
+    and y = y +. (Layout.location unrounded).y in
+    let drawn_x = drawn_x +. (Layout.location rounded).x
+    and drawn_y = drawn_y +. (Layout.location rounded).y in
+    let check what drawn edge =
+      if drawn <> round edge then
+        failf "seed %d, node %d: %s drawn at %g, rounded edge %g" seed
+          (Node_id.to_int node) what drawn (round edge)
+    in
+    check "left" drawn_x x;
+    check "top" drawn_y y;
+    check "right"
+      (drawn_x +. (Layout.size rounded).width)
+      (x +. (Layout.size unrounded).width);
+    check "bottom"
+      (drawn_y +. (Layout.size rounded).height)
+      (y +. (Layout.size unrounded).height);
+    List.iter
+      (fun child -> walk child ~x ~y ~drawn_x ~drawn_y)
+      (children tree node |> Result.get_ok)
+  in
+  walk root ~x:0. ~y:0. ~drawn_x:0. ~drawn_y:0.
+
 (* A column ahead of a sibling that grows is laid out again under its
    parent's new height and stores layouts equal to the stored ones, which keep
    their records: nothing in it is rounded again, and each of its layouts is
@@ -1908,6 +1959,8 @@ let () =
           test "Rounding without gaps" test_rounding_doesnt_leave_gaps;
           prop ~count:300 "Incremental rounding matches full rounding" Gen.int
             incremental_rounding_matches_full_rounding;
+          prop ~count:300 "Drawn edges are the rounded edges" Gen.int
+            drawn_edges_are_rounded_edges;
           test "Equal relayout keeps layouts" test_equal_relayout_keeps_layouts;
           test "Moved child rounded at its new position"
             test_moved_child_rounded_at_new_position;

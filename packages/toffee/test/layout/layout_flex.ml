@@ -2053,14 +2053,14 @@ let () =
             [| 0.; 0.; 100.; 100. |];
             [| 5.; 5.; 40.; 50. |];
             [| 50.; 45.; 50.; 20. |];
-            [| 1.; 1.; 50.; 10. |];
+            [| 1.; 0.; 50.; 10. |];
           ]
         ~content_box:
           [
             [| 0.; 0.; 100.; 100. |];
             [| 5.; 5.; 40.; 50. |];
             [| 50.; 45.; 50.; 20. |];
-            [| 1.; 1.; 50.; 10. |];
+            [| 1.; 0.; 50.; 10. |];
           ];
       case "align_baseline_child_multiline"
         (fun box_sizing ->
@@ -21749,6 +21749,149 @@ let () =
             [| 5.; 0.; 2.; 20. |];
             [| 0.; 0.; 1.; 10. |];
             [| 0.; 10.; 1.; 10. |];
+          ];
+      case "rounding_fractial_input_8"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:
+                 {
+                   width = Dimension.length 100.;
+                   height = Dimension.length 200.;
+                 }
+               ~padding:
+                 {
+                   left = Length_percentage.length 20.625;
+                   right = Length_percentage.length 0.;
+                   top = Length_percentage.length 51.25;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_direction:Column ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 13.9375;
+                           height = Dimension.length 13.9375;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 200. |];
+            [| 21.; 51.; 14.; 149. |];
+            [| 0.; 0.; 14.; 14. |];
+            [| 0.; 14.; 14.; 14. |];
+            [| 0.; 28.; 14.; 14. |];
+            [| 0.; 42.; 14.; 14. |];
+            [| 0.; 56.; 14.; 14. |];
+            [| 0.; 70.; 14.; 14. |];
+            [| 0.; 84.; 14.; 14. |];
+            [| 0.; 98.; 14.; 14. |];
+            [| 0.; 112.; 14.; 14. |];
+            [| 0.; 126.; 14.; 14. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 121.; 251. |];
+            [| 21.; 51.; 14.; 200. |];
+            [| 0.; 0.; 14.; 14. |];
+            [| 0.; 14.; 14.; 14. |];
+            [| 0.; 28.; 14.; 14. |];
+            [| 0.; 42.; 14.; 14. |];
+            [| 0.; 56.; 14.; 14. |];
+            [| 0.; 70.; 14.; 14. |];
+            [| 0.; 84.; 14.; 14. |];
+            [| 0.; 98.; 14.; 14. |];
+            [| 0.; 112.; 14.; 14. |];
+            [| 0.; 126.; 14.; 14. |];
           ];
       case "rounding_inner_node_controversy_combined"
         (fun box_sizing ->

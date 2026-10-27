@@ -145,6 +145,13 @@
     precise measurements (e.g., testing). Query rounded layouts with
     {!val-layout} or unrounded with {!unrounded_layout}.
 
+    Rounding snaps each edge of a box to the nearest pixel in the root's
+    coordinates. A rounded location is the node's rounded position in those
+    coordinates minus its parent's, and a rounded size, border or padding is the
+    difference of the rounded positions of its two edges. Adding up the rounded
+    locations from the root therefore gives each box's snapped edges, and boxes
+    that touch before rounding still touch after it.
+
     {1 Error Handling}
 
     Operations return [('a, Error.t) result]. Errors occur when:

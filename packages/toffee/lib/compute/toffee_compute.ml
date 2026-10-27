@@ -196,7 +196,7 @@ let compute_cached_layout (type t)
 let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
     (tree : t) (node_id : Node_id.t) : unit =
   (* Helper for rounding - matches Rust's round function behavior *)
-  let round f =
+  let[@inline] round f =
     let epsilon = 1e-6 in
     if f >= 0.0 then Float.floor (f +. 0.5 +. epsilon)
     else Float.ceil (f -. 0.5 -. epsilon)
@@ -217,8 +217,8 @@ let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
           ~location:
             Pointf.
               {
-                x = round (Layout.location unrounded_layout).x;
-                y = round (Layout.location unrounded_layout).y;
+                x = round cumulative_x -. round parent_x;
+                y = round cumulative_y -. round parent_y;
               }
           ~size:
             Sizef.
