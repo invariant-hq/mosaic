@@ -307,9 +307,9 @@ module Table = struct
   type align = [ `Left | `Center | `Right ]
   type overflow = [ `Wrap | `Truncate ]
   type text_column = { align : align; overflow : overflow }
-  type cell = { text : string; style : Ansi.Style.t }
+  type cell = Ansi.span list
 
-  let cell ?(style = Ansi.Style.default) text = { text; style }
+  let cell ?style text = [ Ansi.span ?style text ]
 
   type text_row = Cells of cell array | Separator of Lines.weight
 
@@ -357,19 +357,50 @@ module Table = struct
         Matrix_text.Layout.create ~width_method ~tab_width ~truncate:true src
           ~width ~wrap:`None
 
+  (* A cell's text as one text, as Ansi.sanitize_spans leaves it, and the
+     style of the grapheme at each byte offset of it. *)
+  type text = { text : string; starts : int array; styles : Ansi.Style.t array }
+
+  let text spans =
+    let spans = Array.of_list (Ansi.sanitize_spans spans) in
+    let starts = Array.make (Array.length spans) 0 in
+    for i = 1 to Array.length spans - 1 do
+      starts.(i) <- starts.(i - 1) + String.length spans.(i - 1).Ansi.text
+    done;
+    {
+      text =
+        String.concat ""
+          (Array.to_list (Array.map (fun (s : Ansi.span) -> s.text) spans));
+      starts;
+      styles = Array.map (fun (s : Ansi.span) -> s.style) spans;
+    }
+
+  let style_at t off =
+    let i = ref 0 in
+    while !i + 1 < Array.length t.starts && t.starts.(!i + 1) <= off do
+      incr i
+    done;
+    if Array.length t.styles = 0 then Ansi.Style.default else t.styles.(!i)
+
   let grid ?glyphs ?style ?(width_method = `Unicode) f ~room cols rows =
+    let rows =
+      List.map
+        (function
+          | Cells cs -> `Cells (Array.map text cs) | Separator w -> `Rule w)
+        rows
+    in
     let n = Array.length cols in
     let cells =
       List.filter_map
         (function
-          | Cells cs ->
+          | `Cells cs ->
               if Array.length cs <> n then
                 invalid_arg
                   (Printf.sprintf
                      "Matrix_cli.Table.grid: a row of %d cells in %d columns"
                      (Array.length cs) n);
               Some cs
-          | Separator _ -> None)
+          | `Rule _ -> None)
         rows
     in
     let need i c =
@@ -416,7 +447,7 @@ module Table = struct
     in
     let shape =
       List.map
-        (function Cells cs -> Row (rows_of cs) | Separator w -> Rule w)
+        (function `Cells cs -> Row (rows_of cs) | `Rule w -> Rule w)
         rows
     in
     let g =
@@ -429,8 +460,8 @@ module Table = struct
     List.iter2
       (fun r (p : placed) ->
         match r with
-        | Separator _ -> ()
-        | Cells cs ->
+        | `Rule _ -> ()
+        | `Cells cs ->
             Array.iteri
               (fun i (reg : Matrix_grid.region) ->
                 let c = cs.(i) and col = cols.(i) in
@@ -464,7 +495,11 @@ module Table = struct
                         if ellipsis then "…"
                         else Matrix_text.Layout.Source.slice src ~first ~last
                       in
-                      Matrix_grid.draw_text ~style:c.style g ~x:(x + column)
+                      let style =
+                        style_at c
+                          (Matrix_text.Layout.Source.byte_offset src first)
+                      in
+                      Matrix_grid.draw_text ~style g ~x:(x + column)
                         ~y:(reg.y + row) ~text)
                 done)
               p.cells)

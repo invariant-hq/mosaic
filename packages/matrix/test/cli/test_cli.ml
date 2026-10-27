@@ -278,6 +278,50 @@ let text_tests =
             ignore
               (Table.grid light ~room:10 text_cols
                  [ Table.Cells [| Table.cell "a" |] ])));
+    test "a cell of spans keeps each part's style as it wraps and cuts"
+      (fun () ->
+        let red = Ansi.Style.make ~fg:Ansi.Color.red ()
+        and blue = Ansi.Style.make ~fg:Ansi.Color.blue () in
+        (* Each cell as its text and a letter for its color. *)
+        let cells overflow room spans =
+          let g =
+            Table.grid
+              { edge = None; line = None; pad = 0 }
+              ~room
+              [| { align = `Left; overflow } |]
+              [ Cells [| spans |] ]
+          in
+          List.init (Grid.height g) (fun y ->
+              String.concat ""
+                (List.init (Grid.width g) (fun x ->
+                     let i = Grid.idx g ~x ~y in
+                     let c = Grid.get_fg g i in
+                     Grid.get_text g i
+                     ^
+                     if Ansi.Color.equal c Ansi.Color.red then "r"
+                     else if Ansi.Color.equal c Ansi.Color.blue then "b"
+                     else "")))
+        in
+        let line =
+          [ Ansi.span ~style:red "alpha be"; Ansi.span ~style:blue "ta gamma" ]
+        in
+        equal ~msg:"a word that crosses the parts wraps whole" (list string)
+          [ "arlrprhrar"; "brertbab "; "gbabmbmbab" ]
+          (cells `Wrap 5 line);
+        equal ~msg:"cut in the second part" (list string)
+          [ "arlrprhrar rbrer\u{2026}b" ]
+          (cells `Truncate 9 line);
+        equal ~msg:"cut at the boundary" (list string)
+          [ "arlrprhrar rbr\u{2026}r" ]
+          (cells `Truncate 8 line);
+        equal ~msg:"an accent in a part of its own stays on its letter"
+          (list string) [ "cafe\u{0301} rxr" ]
+          (cells `Wrap 6
+             [ Ansi.span "cafe"; Ansi.span ~style:red "\u{0301} x" ]);
+        equal ~msg:"a link in a cell's text shows as text" (list string)
+          [ "click" ]
+          (cells `Wrap 10
+             [ Ansi.span "\027]8;;http://evil\027\\click\027]8;;\027\\" ]));
   ]
 
 (* ───── Trees ───── *)

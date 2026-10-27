@@ -275,9 +275,12 @@ module Table : sig
   type text_column = { align : align; overflow : overflow }
   (** The type for the columns of a table of text. *)
 
-  type cell = { text : string; style : Ansi.Style.t }
-  (** The type for the cells of a table of text: a text, whose line ends start
-      new lines, and its style. *)
+  type cell = Ansi.span list
+  (** The type for the cells of a table of text: a line of styled text
+      ({!Ansi.section-styled}), whose line ends start new lines. A cell wraps
+      and truncates as one text, each grapheme in its span's style, and its
+      ellipsis in the style of the first grapheme it hides. Its text shows as
+      {!Ansi.sanitize_spans} leaves it. *)
 
   val cell : ?style:Ansi.Style.t -> string -> cell
   (** [cell ~style text] is the cell of [text] in [style], {!Ansi.Style.default}
