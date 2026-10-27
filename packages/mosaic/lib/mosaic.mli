@@ -1376,13 +1376,19 @@ val run :
       the loop alone. Work on a thread of the loop's domain shares its lock, and
       work that computes would hold up each key by up to a tick of OCaml's
       thread scheduler (50 ms) at each of its blocking calls. The helper domain
-      starts with the first work and ends when it has none. While it runs,
-      OCaml's systhread tick wakes the process 20 times a second, and
-      [Unix.fork] raises, as OCaml forbids forking a process that runs several
-      domains, while [Unix.create_process] works. An executor given here runs
-      the work where it likes, such as on fibers of the application's own
-      scheduler, and the messages go through the loop ({!Matrix.post}) whatever
-      thread or fiber dispatches them.
+      starts with the first work and ends when it has none. While it runs, every
+      minor collection stops both domains, so each collection of the loop's
+      domain wakes the helper domain, and on a machine with one core the loop
+      waits for the system to schedule it (OCaml's issue 13358). OCaml's
+      systhread tick also wakes the process 20 times a second, and [Unix.fork]
+      raises, as OCaml forbids forking a process that runs several domains,
+      while [Unix.create_process] works. Work that only waits in calls, such as
+      reads of a pipe, may run on threads of the loop's domain instead, with the
+      executor [fun job -> ignore (Thread.create job ())], where a blocked call
+      costs the loop nothing. An executor given here runs the work where it
+      likes, such as on fibers of the application's own scheduler, and the
+      messages go through the loop ({!Matrix.post}) whatever thread or fiber
+      dispatches them.
 
     A test runs a program on an emulated terminal with [Mosaic_test.run]
     (library [mosaic.test]).
