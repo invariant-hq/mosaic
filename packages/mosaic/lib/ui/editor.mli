@@ -166,21 +166,30 @@ val move_line_start : ?select:bool -> t -> t
 val move_line_end : ?select:bool -> t -> t
 (** [move_line_end ?select t] moves to the logical line end. *)
 
-(**/**)
+(** {1:view Viewport and goal column}
 
-(* Widget support: the edit surface derives proposals from the accepted value.
-
-   The viewport is the display position, in columns and display rows, at which
-   an edit surface shows the value. A value from [of_string] shows its start. A
-   value produced by an editing or movement operation follows its caret: the
-   surface moves the viewport as little as needed to show the caret. A wheel
-   proposal sets a position that does not follow the caret. *)
+    Interaction state that an edit surface reads from the value and proposes
+    with it, as it does the caret. *)
 
 val viewport : t -> int * int * bool
+(** [viewport t] is [(x, y, follow)]: the column and display row at which an
+    edit surface shows [t]'s first visible cell, and whether the surface moves
+    them as little as needed to show the caret. A value from {!of_string} is at
+    [(0, 0)] and does not follow; a value from an operation that changes it
+    follows its caret; wheel scrolling proposes a position that does not. *)
+
 val with_viewport : x:int -> y:int -> follow:bool -> t -> t
+(** [with_viewport ~x ~y ~follow t] is [t] shown from column [x] and display row
+    [y], each at least [0], following its caret when [follow]: a program
+    restores a scroll position or scrolls to a line with it. It is [t] itself
+    when the viewport is the same. *)
 
-val select_carets :
-  anchor:Matrix.Text.Layout.caret -> cursor:Matrix.Text.Layout.caret -> t -> t
+val goal_column : t -> int option
+(** [goal_column t] is the display column that vertical motion keeps returning
+    to, if any: moving the caret down through a short line and on to a long one
+    brings it back to the column it left. An edit surface sets it on the first
+    vertical motion, and every operation that changes the value forgets it. *)
 
-val preferred_col : t -> int option
-val propose : base:t -> preferred_col:int option -> t -> t
+val with_goal_column : int option -> t -> t
+(** [with_goal_column col t] is [t] with the goal column [col]. It is [t] itself
+    when the goal column is [col] already. *)

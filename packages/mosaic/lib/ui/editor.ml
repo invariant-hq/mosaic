@@ -590,12 +590,13 @@ let selected_text = Engine.selected_text
 let source = Engine.source
 
 (* An operation that changes nothing returns its argument, so it leaves an open
-   undo step open; one that changes something but records no text change, such
-   as a caret move, ends it. *)
+   undo step open and keeps the goal column; one that changes something but
+   records no text change, such as a caret move, ends it, and any change
+   forgets the goal column. *)
 let transform f t =
   let next = Engine.copy t in
   f next;
-  if Engine.same t next && t.Engine.preferred_col = None then t
+  if Engine.same t next then t
   else begin
     if next.undo_stack == t.undo_stack then next.open_step <- None;
     next.preferred_col <- None;
@@ -667,7 +668,10 @@ let move_line_start ?(select = false) =
 let move_line_end ?(select = false) =
   transform (fun t -> ignore (Engine.move_line_end ~select t : bool))
 
-let preferred_col t = t.Engine.preferred_col
+let goal_column t = t.Engine.preferred_col
+
+let with_goal_column col t =
+  if t.Engine.preferred_col = col then t else { t with preferred_col = col }
 
 let viewport t =
   let { Engine.x; y; follow } = t.Engine.viewport in
@@ -676,16 +680,3 @@ let viewport t =
 let with_viewport ~x ~y ~follow t =
   let viewport = { Engine.x = max 0 x; y = max 0 y; follow } in
   if viewport = t.Engine.viewport then t else { t with viewport }
-
-let select_carets ~anchor ~cursor =
-  transform (fun t ->
-      Engine.set_caret t anchor;
-      Engine.set_caret ~select:true t cursor)
-
-(* A proposal that changes nothing is [base] itself, so the surface sees no
-   change; otherwise it is [next] with the column vertical motion keeps. *)
-let propose ~base ~preferred_col next =
-  if Engine.same base next && base.Engine.preferred_col = preferred_col then
-    base
-  else if next.Engine.preferred_col = preferred_col then next
-  else { next with preferred_col }

@@ -103,6 +103,33 @@ let no_op_identity () =
   is_true (Editor.undo original == original);
   is_true (Editor.delete_forward original == original)
 
+(* An operation that changes nothing is its argument, the goal column
+   included, as CodeMirror keeps a selection that a motion does not move. *)
+let no_op_keeps_the_goal_column () =
+  let e = Editor.with_goal_column (Some 4) (Editor.of_string "ab") in
+  equal ~msg:"set" (option int) (Some 4) (Editor.goal_column e);
+  is_true ~msg:"a motion that does not move" (Editor.move_end e == e);
+  is_true ~msg:"setting the same column"
+    (Editor.with_goal_column (Some 4) e == e);
+  let moved = Editor.move_left e in
+  equal ~msg:"a motion forgets it" (option int) None (Editor.goal_column moved);
+  equal ~msg:"a value from of_string has none" (option int) None
+    (Editor.goal_column (Editor.of_string "ab"))
+
+let viewport () =
+  let e = Editor.of_string "a\nb\nc" in
+  equal ~msg:"of_string shows the start" (triple int int bool) (0, 0, false)
+    (Editor.viewport e);
+  let scrolled = Editor.with_viewport ~x:0 ~y:2 ~follow:false e in
+  equal ~msg:"set" (triple int int bool) (0, 2, false)
+    (Editor.viewport scrolled);
+  is_true ~msg:"the same viewport is the value"
+    (Editor.with_viewport ~x:0 ~y:2 ~follow:false scrolled == scrolled);
+  equal ~msg:"clamped at 0" (triple int int bool) (0, 0, false)
+    (Editor.viewport (Editor.with_viewport ~x:(-3) ~y:(-1) ~follow:false e));
+  let _, _, follow = Editor.viewport (Editor.move_left scrolled) in
+  is_true ~msg:"an operation that moves the caret follows it" follow
+
 (* ── Construction ── *)
 
 let create_empty () =
@@ -1297,6 +1324,8 @@ let () =
           test "values carry no identity" values_carry_no_identity;
           test "combining insertion at limit" combining_insertion_and_limit;
           test "no-op edits preserve identity" no_op_identity;
+          test "a no-op keeps the goal column" no_op_keeps_the_goal_column;
+          test "the viewport" viewport;
         ];
       group "Construction"
         [

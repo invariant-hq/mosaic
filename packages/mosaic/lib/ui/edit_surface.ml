@@ -311,6 +311,19 @@ let set_on_submit t h = t.on_submit <- h
 let fire_on_submit t =
   match t.on_submit with Some f -> f (value t) | None -> ()
 
+(* The selection from [anchor] to [cursor], or [base] itself when it is that
+   selection already, so that a drag selecting nothing new proposes nothing and
+   leaves an open undo step open. *)
+let select_carets ~anchor ~cursor base =
+  let next =
+    Editor.set_caret ~select:true cursor (Editor.set_caret anchor base)
+  in
+  if
+    Editor.caret next = Editor.caret base
+    && Editor.selection next = Editor.selection base
+  then base
+  else next
+
 (* An edit follows its caret from the viewport the surface shows, not from the
    one the accepted value declared. *)
 let propose t ~base next =
@@ -663,7 +676,7 @@ let register_selection t =
                 Text_surface.local_caret t.surface ~x:(focus.x - nx)
                   ~y:(focus.y - ny)
               in
-              propose t ~base (Editor.select_carets ~anchor ~cursor:focus base);
+              propose t ~base (select_carets ~anchor ~cursor:focus base);
               Option.is_some (Editor.selection t.props.state))
       ~clear:(fun () ->
         let base = t.props.state in
@@ -681,12 +694,12 @@ let move_vertical t ~select ~delta =
   if target_line < 0 || target_line >= Layout.row_count layout then base
   else
     let col =
-      match Editor.preferred_col base with
+      match Editor.goal_column base with
       | Some col -> col
       | None -> cursor_visual_col t line
     in
     let next = Editor.set_caret ~select (caret_at_col t target_line col) base in
-    Editor.propose ~base ~preferred_col:(Some col) next
+    Editor.with_goal_column (Some col) next
 
 let move_visual_line_start t ~select =
   let layout = Text_surface.layout t.surface in
@@ -770,7 +783,7 @@ let run_action t action =
   | Newline when t.mode = `Multiline -> Some (Editor.insert "\n" base)
   | Newline | Submit ->
       fire_on_submit t;
-      Some (Editor.propose ~base ~preferred_col:None base)
+      Some (Editor.with_goal_column None base)
   | Undo -> Some (Editor.undo base)
   | Redo -> Some (Editor.redo base)
   | Word_forward -> Some (Editor.move_word_forward base)
@@ -797,9 +810,6 @@ let handle_key t (ev : Event.key) =
     | None -> ()
     | Some next ->
         Event.Key.prevent_default ev;
-        let next =
-          Editor.propose ~base ~preferred_col:(Editor.preferred_col next) next
-        in
         propose t ~base next
 
 (* Mouse handling *)
@@ -823,8 +833,7 @@ let handle_scroll t direction delta =
   if x <> sx || y <> sy then
     let base = t.props.state in
     let next = Editor.with_viewport ~x ~y ~follow:false base in
-    propose t ~base
-      (Editor.propose ~base ~preferred_col:(Editor.preferred_col base) next)
+    propose t ~base next
 
 let handle_mouse t ev =
   if Event.Mouse.default_prevented ev then ()
