@@ -518,6 +518,39 @@ let remove_children_range tree parent (start_idx, end_idx) =
         changed tree parent_idx;
         Ok ())
 
+(* One pass compacts the buffer: each kept child moves down over the removed
+   ones. If [keep] raises, the children it was not applied to move down after
+   the kept ones, so the buffer stays a list of distinct children. *)
+let retain_children tree parent keep =
+  match parent_index tree parent with
+  | Error _ as e -> e
+  | Ok parent_idx ->
+      let children = tree.children.(parent_idx) in
+      let count = children.len in
+      let kept = ref 0 and next = ref 0 in
+      let finish () =
+        let rest = count - !next in
+        Array.blit children.data !next children.data !kept rest;
+        children.len <- !kept + rest;
+        if children.len < count then changed tree parent_idx
+      in
+      (match
+         while !next < count do
+           let child = children.data.(!next) in
+           if keep !next then (
+             children.data.(!kept) <- child;
+             incr kept)
+           else tree.parents.(Node_id.index child) <- None;
+           incr next
+         done
+       with
+      | () -> finish ()
+      | exception e ->
+          let bt = Printexc.get_raw_backtrace () in
+          finish ();
+          Printexc.raise_with_backtrace e bt);
+      Ok ()
+
 let replace_child_at_index tree parent child_position new_child =
   match parent_index tree parent with
   | Error _ as e -> e

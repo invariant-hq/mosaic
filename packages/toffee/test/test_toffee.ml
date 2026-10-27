@@ -2375,6 +2375,142 @@ let incremental_rounding_matches_full_rounding seed =
     check step
   done
 
+(* [retain_children] against [remove_child], a property. Two equal trees are
+   laid out. In one, a node's children are compacted by a random choice in one
+   call; in the other, the children it drops are removed one by one. Both then
+   hold the same children and parents and, laid out again, the same layouts,
+   so the call marks the node changed as the removals do. The choice is
+   applied to each index once, in order. *)
+let retain_children_is_remove_child seed =
+  let rng = Random.State.make [| seed |] in
+  let count = 2 + Random.State.int rng 40 in
+  let shape =
+    List.init count (fun i ->
+        (Random.State.int rng (max 1 (i / 4)), random_style rng))
+  in
+  let build () =
+    let tree : unit Toffee.tree = new_tree () in
+    let root = new_leaf tree Style.default |> Result.get_ok in
+    let nodes = ref [| root |] in
+    List.iter
+      (fun (parent, style) ->
+        let node = new_leaf tree style |> Result.get_ok in
+        add_child tree !nodes.(parent) node |> Result.get_ok;
+        nodes := Array.append !nodes [| node |])
+      shape;
+    (tree, root, !nodes)
+  in
+  let available =
+    Size.
+      {
+        width = Available_space.of_float 80.;
+        height = Available_space.of_float 60.;
+      }
+  in
+  let compacted, root, nodes = build () and removed, _, _ = build () in
+  compute_layout compacted root available |> Result.get_ok;
+  compute_layout removed root available |> Result.get_ok;
+  let parent = nodes.(Random.State.int rng (min 4 (Array.length nodes))) in
+  let before = children removed parent |> Result.get_ok in
+  let kept =
+    match Random.State.int rng 4 with
+    | 0 -> List.map (fun _ -> true) before
+    | 1 -> List.map (fun _ -> false) before
+    | _ -> List.map (fun _ -> Random.State.bool rng) before
+  in
+  let asked = ref [] in
+  retain_children compacted parent (fun i ->
+      asked := i :: !asked;
+      List.nth kept i)
+  |> Result.get_ok;
+  List.iter2
+    (fun child keep ->
+      if not keep then
+        ignore (remove_child removed parent child |> Result.get_ok))
+    before kept;
+  if List.rev !asked <> List.init (List.length before) Fun.id then
+    failf "seed %d: the choice was asked of %s" seed
+      (String.concat ", " (List.rev_map string_of_int !asked));
+  compute_layout compacted root available |> Result.get_ok;
+  compute_layout removed root available |> Result.get_ok;
+  let ints nodes = List.map Node_id.to_int nodes in
+  Array.iter
+    (fun node ->
+      let index = Node_id.to_int node in
+      if
+        ints (children compacted node |> Result.get_ok)
+        <> ints (children removed node |> Result.get_ok)
+      then failf "seed %d, node %d: different children" seed index;
+      if
+        Option.map Node_id.to_int (Toffee.parent compacted node)
+        <> Option.map Node_id.to_int (Toffee.parent removed node)
+      then failf "seed %d, node %d: different parents" seed index;
+      let bits tree =
+        Marshal.to_string
+          (layout tree node |> Result.get_ok)
+          [ Marshal.No_sharing ]
+      in
+      if bits compacted <> bits removed then
+        failf "seed %d, node %d: %s, removed one by one %s" seed index
+          (Layout.to_string (layout compacted node |> Result.get_ok))
+          (Layout.to_string (layout removed node |> Result.get_ok)))
+    nodes
+
+(* A choice that raises leaves the children it was asked about kept or
+   removed by its answers, and the others in place. *)
+let test_retain_children_choice_raises () =
+  let tree : unit Toffee.tree = new_tree () in
+  let parent = new_leaf tree Style.default |> or_fail "parent" in
+  let kids =
+    List.init 5 (fun _ ->
+        let child = new_leaf tree Style.default |> or_fail "child" in
+        add_child tree parent child |> or_fail "add";
+        child)
+  in
+  raises_match ~msg:"the choice's exception"
+    (function Exit -> true | _ -> false)
+    (fun () ->
+      ignore
+        (retain_children tree parent (fun i ->
+             if i = 3 then raise Exit else i <> 1)
+          : unit result));
+  let expected = List.filteri (fun i _ -> i <> 1) kids in
+  is_true ~msg:"children 0, 2, 3 and 4"
+    (List.equal Node_id.equal expected
+       (children tree parent |> or_fail "children"));
+  is_true ~msg:"child 1 has no parent"
+    (Option.is_none (Toffee.parent tree (List.nth kids 1)))
+
+(* Dropping every other child of 1,000 and of 16,000 allocates the same
+   words: nothing per child. *)
+let test_retain_children_allocation () =
+  let words count =
+    let tree : unit Toffee.tree = new_tree () in
+    let parent = new_leaf tree Style.default |> or_fail "parent" in
+    for _ = 1 to count do
+      let child = new_leaf tree Style.default |> or_fail "child" in
+      add_child tree parent child |> or_fail "add"
+    done;
+    let keep i = i land 1 = 0 in
+    let before = Gc.minor_words () in
+    retain_children tree parent keep |> or_fail "retain";
+    let words = Gc.minor_words () -. before in
+    equal ~msg:"children left" int (count / 2)
+      (List.length (children tree parent |> or_fail "children"));
+    words
+  in
+  let small = words 1_000 and large = words 16_000 in
+  equal ~msg:"words at 16,000 children as at 1,000" float_exact small large
+
+let test_retain_children_invalid_parent () =
+  let tree : unit Toffee.tree = new_tree () in
+  let node = new_leaf tree Style.default |> or_fail "node" in
+  ignore (remove tree node : Node_id.t result);
+  is_true ~msg:"an invalid parent"
+    (match retain_children tree node (fun _ -> true) with
+    | Error (Error.Invalid_parent_node _) -> true
+    | Ok () | Error _ -> false)
+
 (* A box is drawn at the sum of the rounded locations from the root, and its
    far edges there plus its rounded size. The law: these are its edges in the
    root's coordinates, rounded, whatever the fractions of the boxes above
@@ -2617,4 +2753,15 @@ let () =
             test_toggle_grid_child_display_none;
         ];
       group "relayout" [ test "Relayout is stable" test_relayout_stable ];
+      group "children"
+        [
+          prop ~count:500 "retain_children is remove_child, one by one" Gen.int
+            retain_children_is_remove_child;
+          test "retain_children when the choice raises"
+            test_retain_children_choice_raises;
+          test "retain_children of an invalid parent"
+            test_retain_children_invalid_parent;
+          test "retain_children allocates nothing per child"
+            test_retain_children_allocation;
+        ];
     ]

@@ -424,6 +424,19 @@ val remove_children_range :
     [Error (Child_index_out_of_bounds { parent; child_index; child_count })] if
     [start > end], [start < 0], or [end >= child_count]. *)
 
+val retain_children : 'context tree -> Node_id.t -> (int -> bool) -> unit result
+(** [retain_children tree parent keep] keeps the children of [parent] at the
+    indices [i] for which [keep i] holds, in their order, and removes the others
+    as {!remove_child} does. It applies [keep] once to each index, in increasing
+    order, and takes time linear in the number of children, where removing them
+    one by one takes time quadratic in it. [keep] must not change [tree].
+
+    Returns [Ok ()] on success, or [Error (Invalid_parent_node parent)] if
+    [parent] does not exist.
+
+    Raises what [keep] raises. The children it was applied to are then kept or
+    removed by its results, and the others are kept. *)
+
 val replace_child_at_index :
   'context tree -> Node_id.t -> int -> Node_id.t -> Node_id.t result
 (** [replace_child_at_index tree parent index new_child] replaces the child at
