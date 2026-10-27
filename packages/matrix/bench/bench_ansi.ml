@@ -32,13 +32,13 @@ let style_context = S.make ~fg:C.cyan ()
 let style_plain = S.default
 
 (* Log line decomposed into styled segments (typical logging use‑case) *)
-let log_segments : (S.t * string) list =
+let log_segments : Ansi.span list =
   [
-    (style_timestamp, "[2024-01-01T00:00:00Z] ");
-    (style_info, "INFO ");
-    (style_plain, "http-server: Listening on ");
-    (style_debug, "http://127.0.0.1:8080 ");
-    (style_context, "(pid=1234, env=prod)");
+    Ansi.span ~style:style_timestamp "[2024-01-01T00:00:00Z] ";
+    Ansi.span ~style:style_info "INFO ";
+    Ansi.span ~style:style_plain "http-server: Listening on ";
+    Ansi.span ~style:style_debug "http://127.0.0.1:8080 ";
+    Ansi.span ~style:style_context "(pid=1234, env=prod)";
   ]
 
 let ansi_log_line = Ansi.render log_segments

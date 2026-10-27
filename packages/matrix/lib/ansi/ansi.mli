@@ -449,16 +449,25 @@ type query =
 val query : query -> t
 (** [query q] is the sequence that asks [q]. *)
 
-(** {1:styled Styled text} *)
+(** {1:styled Styled text}
+
+    A {e span} is a text in a style. A line of styled text is a list of spans,
+    read as one text, so a character cut between two spans, such as a letter and
+    the accent after it, stays whole, in the style of the span its first byte is
+    in. Its text shows as {!sanitize} leaves it ({!sanitize_spans}), so only a
+    span's style colors it and only its style's link links it. *)
+
+type span = { text : string; style : Style.t }
+(** The type for spans. *)
+
+val span : ?style:Style.t -> string -> span
+(** [span ~style text] is [text] in [style], {!Style.default} by default. *)
 
 val render :
-  ?depth:Color.depth ->
-  ?hyperlinks_enabled:bool ->
-  (Style.t * string) list ->
-  string
-(** [render ~depth ~hyperlinks_enabled segs] is the bytes that show each
-    [(style, text)] of [segs] in order, from {!Style.default}. Before each
-    segment it writes an OSC 8 that closes or opens a hyperlink where the link
+  ?depth:Color.depth -> ?hyperlinks_enabled:bool -> span list -> string
+(** [render ~depth ~hyperlinks_enabled spans] is the bytes that show the line
+    [spans], as {!sanitize_spans} leaves it, from {!Style.default}. Before each
+    span it writes an OSC 8 that closes or opens a hyperlink where the link
     changes, and the transition of {!Style.emit} from the style before, at
     [depth], [`Truecolor] by default. It ends by closing an open hyperlink and
     writing {!reset}. With [~hyperlinks_enabled:false] it writes no hyperlink.
@@ -524,6 +533,12 @@ val sanitize : string -> string
 
     The result is valid UTF-8 with no control character other than LF and HT,
     and [sanitize (sanitize s) = sanitize s]. *)
+
+val sanitize_spans : span list -> span list
+(** [sanitize_spans spans] is the line [spans] with its text sanitized as one
+    text. The texts of the result, joined, are {!sanitize} of the texts of
+    [spans], joined, and each grapheme of it is in the style of the span of
+    [spans] that holds its first byte. *)
 
 (** {1:submodules Submodules} *)
 

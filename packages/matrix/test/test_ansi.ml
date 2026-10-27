@@ -1756,51 +1756,51 @@ let sanitize_untrusted_text () =
 
 (* Whatever the input: valid UTF-8, no control but LF and HT, no bidi
    control, and sanitized already. *)
+let pieces =
+  [|
+    "a";
+    " ";
+    "\n";
+    "\r";
+    "\t";
+    "\x08";
+    "\x07";
+    "\x1b";
+    "[";
+    "]";
+    "0";
+    ";";
+    "m";
+    "\x07";
+    "\x1b\\";
+    "\x9b";
+    "\xc2\x9b";
+    "\x7f";
+    "\xff";
+    "\xe4\xb8";
+    "\u{202E}";
+    "\u{2067}";
+    "\u{200E}";
+    "\u{061C}";
+    "\u{200D}";
+    "\u{200C}";
+    "\u{FE0F}";
+    "\u{E0100}";
+    "\u{180B}";
+    "\u{E0067}";
+    "\u{E0062}";
+    "\u{E0073}";
+    "\u{E0063}";
+    "\u{E0074}";
+    "\u{E007F}";
+    "\u{1F3F4}";
+    "\u{2764}";
+    "\u{0301}";
+    "\u{00AD}";
+    "\u{FEFF}";
+  |]
+
 let sanitize_properties () =
-  let pieces =
-    [|
-      "a";
-      " ";
-      "\n";
-      "\r";
-      "\t";
-      "\x08";
-      "\x07";
-      "\x1b";
-      "[";
-      "]";
-      "0";
-      ";";
-      "m";
-      "\x07";
-      "\x1b\\";
-      "\x9b";
-      "\xc2\x9b";
-      "\x7f";
-      "\xff";
-      "\xe4\xb8";
-      "\u{202E}";
-      "\u{2067}";
-      "\u{200E}";
-      "\u{061C}";
-      "\u{200D}";
-      "\u{200C}";
-      "\u{FE0F}";
-      "\u{E0100}";
-      "\u{180B}";
-      "\u{E0067}";
-      "\u{E0062}";
-      "\u{E0073}";
-      "\u{E0063}";
-      "\u{E0074}";
-      "\u{E007F}";
-      "\u{1F3F4}";
-      "\u{2764}";
-      "\u{0301}";
-      "\u{00AD}";
-      "\u{FEFF}";
-    |]
-  in
   let rng = Random.State.make [| 42 |] in
   for _ = 1 to 20_000 do
     let s =
@@ -1820,6 +1820,51 @@ let sanitize_properties () =
       [ "\u{202E}"; "\u{2067}"; "\u{200E}"; "\u{061C}" ];
     let again = Ansi.sanitize t in
     if again <> t then failf "%S: %S then %S" s t again
+  done
+
+(* A list of spans is one text: sanitized and cut into graphemes as a
+   whole, each grapheme in the style of the span its first byte is in. *)
+let spans_as_one_text () =
+  let bold = Style.make ~bold:true () and red = Style.make ~fg:Color.red () in
+  let same msg a b = check_seq msg (Ansi.render b) (Ansi.render a) in
+  same "a ZWJ sequence split"
+    [
+      Ansi.span ~style:bold "\u{1F468}";
+      Ansi.span ~style:red "\u{200D}\u{1F469}";
+    ]
+    [ Ansi.span ~style:bold "\u{1F468}\u{200D}\u{1F469}" ];
+  same "a selector split"
+    [ Ansi.span ~style:bold "\u{2764}"; Ansi.span ~style:red "\u{FE0F}" ]
+    [ Ansi.span ~style:bold "\u{2764}\u{FE0F}" ];
+  same "a CR, then its LF"
+    [ Ansi.span "a\r"; Ansi.span "\nb" ]
+    [ Ansi.span "a\nb" ];
+  same "a combining mark split"
+    [ Ansi.span ~style:bold "e"; Ansi.span ~style:red "\u{0301}x" ]
+    [ Ansi.span ~style:bold "e\u{0301}"; Ansi.span ~style:red "x" ];
+  same "control functions show as nothing"
+    [
+      Ansi.span ~style:red
+        "a\x1b[2J\x1b]8;;http://evil\x1b\\\u{202E}b\x1b]8;;\x1b\\";
+    ]
+    [ Ansi.span ~style:red "ab" ];
+  let rng = Random.State.make [| 7 |] in
+  for _ = 1 to 20_000 do
+    let spans =
+      List.init (Random.State.int rng 5) (fun i ->
+          Ansi.span
+            ~style:(if i mod 2 = 0 then bold else red)
+            (String.concat ""
+               (List.init (Random.State.int rng 4) (fun _ ->
+                    pieces.(Random.State.int rng (Array.length pieces))))))
+    in
+    let text spans =
+      String.concat "" (List.map (fun (s : Ansi.span) -> s.text) spans)
+    in
+    let whole = Ansi.sanitize (text spans)
+    and parts = Ansi.sanitize_spans spans in
+    if text parts <> whole then
+      failf "%S: %S as spans, %S whole" (text spans) (text parts) whole
   done
 
 let parameter_clamping () =
@@ -1850,14 +1895,14 @@ let kitty_keyboard_sequences () =
 
 let hyperlink_lifecycle () =
   let link_style = Style.hyperlink "http://foo" Style.default in
-  let rendered = Ansi.render [ (link_style, "hi") ] in
+  let rendered = Ansi.render [ Ansi.span ~style:link_style "hi" ] in
   (* Minimal SGR: no SGR emitted when only link changes, just OSC 8 + text + end
      + reset *)
   check_seq "osc8 opened/closed with reset"
     "\x1b]8;;http://foo\x1b\\hi\x1b]8;;\x1b\\\x1b[0m" rendered;
   (* Test that hyperlinks are suppressed when disabled *)
   let rendered_no_links =
-    Ansi.render ~hyperlinks_enabled:false [ (link_style, "hi") ]
+    Ansi.render ~hyperlinks_enabled:false [ Ansi.span ~style:link_style "hi" ]
   in
   (* No OSC8 sequences, just text + reset *)
   check_seq "osc8 suppressed when disabled" "hi\x1b[0m" rendered_no_links
@@ -2227,6 +2272,7 @@ let tests =
           strip_keeps_c0_and_follows_the_parser;
         test "sanitize untrusted text" sanitize_untrusted_text;
         test "sanitize properties" sanitize_properties;
+        test "spans as one text" spans_as_one_text;
         test "param clamping" parameter_clamping;
         test "input validation" explicit_error_handling;
         test "cursor & explicit width" cursor_and_explicit_width_sequences;

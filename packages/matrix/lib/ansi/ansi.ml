@@ -8,8 +8,9 @@ module Parser = Parser
 module Sgr_state = Sgr_state
 module Styling = Styling
 
-let render ?depth ?hyperlinks_enabled segments =
-  Segment.render ?depth ?hyperlinks_enabled segments
+type span = Segment.span = { text : string; style : Style.t }
+
+let span ?(style = Style.default) text = { text; style }
 
 (* A string without ESC, DEL or a non-ASCII byte has nothing to remove. *)
 let rec is_plain s i =
@@ -104,10 +105,17 @@ let tag_flag s i =
 type before = Blank | Shows | Selector | Joiner
 
 (* [s] holds no control but LF and HT: keep what shows, and the joiners and
-   selectors that change how what comes before it shows. *)
-let drop_ignorables s =
+   selectors that change how what comes before it shows. [starts] are
+   offsets in [s], in order, and [moved] gets the offset in the result of
+   each, that of the first character kept from it on. *)
+let drop_ignorables s starts moved =
   let b = Buffer.create (String.length s) in
+  let k = ref 0 in
   let rec go i before =
+    while !k < Array.length starts && starts.(!k) <= i do
+      moved.(!k) <- Buffer.length b;
+      incr k
+    done;
     if i < String.length s then
       let d = String.get_utf_8_uchar s i in
       let n = Uchar.utf_decode_length d in
@@ -139,30 +147,74 @@ let rec is_text s i =
   let c = String.unsafe_get s i in
   ((c >= ' ' && c < '\x7f') || c = '\n' || c = '\t') && is_text s (i + 1)
 
-let sanitize s =
-  if is_text s 0 then s
+(* The texts of [texts] read as one text, as [sanitize] leaves it, and
+   where the part of each text starts in it. A control function or a run of
+   CRs that continues in the next text is that next text's. *)
+let sanitize_parts texts =
+  let b = Buffer.create 64 in
+  (* A run of CRs, and the LF, VT, FF or NEL after it, end one line. *)
+  let after_cr = ref false in
+  let line_end ~cr =
+    if not !after_cr then Buffer.add_char b '\n';
+    after_cr := cr
+  in
+  let keep = function
+    | Parser.Text text ->
+        Buffer.add_string b text;
+        after_cr := false
+    | Parser.Control '\t' ->
+        Buffer.add_char b '\t';
+        after_cr := false
+    | Parser.Control '\r' -> line_end ~cr:true
+    | Parser.Control ('\n' | '\x0b' | '\x0c' | '\x85') -> line_end ~cr:false
+    | _ -> ()
+  in
+  let p = Parser.create () in
+  let starts = Array.make (List.length texts) 0 in
+  List.iteri
+    (fun i s ->
+      starts.(i) <- Buffer.length b;
+      ignore
+        (Parser.feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s)
+           keep
+          : int))
+    texts;
+  Parser.finish p keep;
+  let moved = Array.make (Array.length starts) 0 in
+  let text = drop_ignorables (Buffer.contents b) starts moved in
+  (text, moved)
+
+let sanitize s = if is_text s 0 then s else fst (sanitize_parts [ s ])
+
+let sanitize_spans spans =
+  if List.for_all (fun s -> is_text s.text 0) spans then spans
   else
-    let b = Buffer.create (String.length s) in
-    (* A run of CRs, and the LF, VT, FF or NEL after it, end one line. *)
-    let after_cr = ref false in
-    let line_end ~cr =
-      if not !after_cr then Buffer.add_char b '\n';
-      after_cr := cr
+    let text, starts = sanitize_parts (List.map (fun s -> s.text) spans) in
+    let styles = Array.of_list (List.map (fun s -> s.style) spans) in
+    (* Each grapheme goes in the style of the span its first byte is in:
+       [from] is where the run of span [current] starts. *)
+    let runs = ref [] and from = ref 0 and current = ref 0 and k = ref 0 in
+    let close stop =
+      if stop > !from then
+        runs :=
+          {
+            text = String.sub text !from (stop - !from);
+            style = styles.(!current);
+          }
+          :: !runs
     in
-    let keep = function
-      | Parser.Text text ->
-          Buffer.add_string b text;
-          after_cr := false
-      | Parser.Control '\t' ->
-          Buffer.add_char b '\t';
-          after_cr := false
-      | Parser.Control '\r' -> line_end ~cr:true
-      | Parser.Control ('\n' | '\x0b' | '\x0c' | '\x85') -> line_end ~cr:false
-      | _ -> ()
-    in
-    let p = Parser.create () in
-    ignore
-      (Parser.feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s)
-         keep);
-    Parser.finish p keep;
-    drop_ignorables (Buffer.contents b)
+    Matrix_text.iter_graphemes
+      (fun ~offset ~len:_ ->
+        while !k + 1 < Array.length starts && starts.(!k + 1) <= offset do
+          incr k
+        done;
+        if !k <> !current then (
+          close offset;
+          from := offset;
+          current := !k))
+      text;
+    close (String.length text);
+    List.rev !runs
+
+let render ?depth ?hyperlinks_enabled spans =
+  Segment.render ?depth ?hyperlinks_enabled (sanitize_spans spans)

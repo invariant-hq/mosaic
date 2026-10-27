@@ -1,14 +1,14 @@
-(** Styled segments written with the fewest style and hyperlink changes, the
+(** Spans written with the fewest style and hyperlink changes, the
     implementation of {!Ansi.render}.
 
-    A segment is a style and the text it styles. {!emit} writes segments one
-    after the other, with the OSC 8 and the transition ({!Style.emit}) from the
-    segment before. *)
+    A span is a text in a style. {!emit} writes spans one after the other, with
+    the OSC 8 and the transition ({!Style.emit}) from the span before, and
+    writes their texts as they are. *)
 
-(** {1:segments Segments} *)
+(** {1:spans Spans} *)
 
-type segment = Style.t * string
-(** The type for segments. *)
+type span = { text : string; style : Style.t }
+(** The type for spans. *)
 
 (** {1:state Render state} *)
 
@@ -30,9 +30,9 @@ val emit :
   ?state:state ->
   ?hyperlinks_enabled:bool ->
   Writer.t ->
-  segment list ->
+  span list ->
   state
-(** [emit ~depth ~state ~hyperlinks_enabled w segs] writes [segs] to [w] from
+(** [emit ~depth ~state ~hyperlinks_enabled w spans] writes [spans] to [w] from
     [state], with their transitions at [depth] ({!Style.emit}), and is the state
     after them. Where the link changes, it closes the open hyperlink and opens
     the new one, unless [hyperlinks_enabled] is [false]. [state] defaults to
@@ -42,7 +42,8 @@ val render :
   ?depth:Color.depth ->
   ?state:state ->
   ?hyperlinks_enabled:bool ->
-  segment list ->
+  span list ->
   string
-(** [render ~depth ~state ~hyperlinks_enabled segs] is the bytes {!emit} writes,
-    followed by the OSC 8 that closes an open hyperlink and [CSI 0 m]. *)
+(** [render ~depth ~state ~hyperlinks_enabled spans] is the bytes {!emit}
+    writes, followed by the OSC 8 that closes an open hyperlink and [CSI 0 m].
+*)

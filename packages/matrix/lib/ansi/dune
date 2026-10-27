@@ -1,4 +1,5 @@
 (library
  (name ansi)
  (public_name matrix.ansi)
+ (libraries matrix.text)
  (private_modules segment sgr_attrs))
