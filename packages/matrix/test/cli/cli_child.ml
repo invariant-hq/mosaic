@@ -145,6 +145,25 @@ let () =
                 (Printf.sprintf "CALLS %d" (Atomic.fetch_and_add calls 1 + 1))
                 ~width);
           Unix.sleepf 1.5)
+  | "line-thread" -> (
+      (* A prompt asked on a thread of its own, as Eio_unix.run_in_systhread
+         asks it, while this thread keeps printing. *)
+      let answer = Atomic.make None in
+      let asker =
+        Thread.create
+          (fun () -> Atomic.set answer (Some (C.Prompt.line "Name? ")))
+          ()
+      in
+      let i = ref 0 in
+      while Option.is_none (Atomic.get answer) do
+        incr i;
+        Printf.printf "TICK %d\n%!" !i;
+        Thread.delay 0.05
+      done;
+      Thread.join asker;
+      match Atomic.get answer with
+      | Some (Ok name) -> Printf.printf "HELLO %s\n" name
+      | _ -> print_string "NO ANSWER\n")
   | "redraws" -> Printf.printf "REDRAWS %b\n" (C.redraws err)
   | "notify" ->
       C.notify err ~title:"Done" ~body:"built";

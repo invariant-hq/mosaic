@@ -13,7 +13,13 @@
 (executable
  (name cli_child)
  (modules cli_child)
- (libraries matrix.cli matrix.cli.unix matrix.grid matrix.input unix))
+ (libraries
+  matrix.cli
+  matrix.cli.unix
+  matrix.grid
+  matrix.input
+  unix
+  threads.posix))
 
 ; A pseudo-terminal, process groups and the controlling terminal are POSIX.
 

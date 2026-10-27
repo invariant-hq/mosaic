@@ -227,6 +227,24 @@ let test_line () =
   exited 0 (T.Child.exit c ~within:10.);
   is_true ~msg:"the answer" (has_line "HELLO Ada" term)
 
+(* A prompt blocks only the thread that asks: another keeps running, which
+   is what an Eio program relies on when it asks through
+   [Eio_unix.run_in_systhread]. *)
+let test_line_thread () =
+  spawn "line-thread" @@ fun term c ->
+  let contains sub s =
+    let n = String.length sub in
+    let rec go i =
+      i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
+    in
+    go 0
+  in
+  let has sub t = List.exists (contains sub) (lines t) in
+  T.Child.wait c ~within:10. (fun t -> has "Name?" t && has "TICK 3" t);
+  T.Child.send c "Ada\r";
+  exited 0 (T.Child.exit c ~within:10.);
+  is_true ~msg:"the answer" (has_line "HELLO Ada" term)
+
 let test_secret () =
   spawn "secret" @@ fun term c ->
   T.Child.wait c ~within:10. (shows "Password:");
@@ -416,6 +434,7 @@ let () =
       group "prompts"
         [
           test "a line" test_line;
+          test "a line asked on a thread" test_line_thread;
           test "a secret" test_secret;
           test "Ctrl+C in a secret" test_secret_interrupted;
           test "Ctrl+Z in a secret" test_secret_stop;

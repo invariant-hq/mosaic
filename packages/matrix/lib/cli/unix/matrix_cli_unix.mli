@@ -222,7 +222,15 @@ val suspend : live -> (unit -> 'a) -> 'a
     so Ctrl+C ends the job, the quit character quits it and Ctrl+Z stops it as
     at the shell's prompt. A prompt that changed the terminal's settings puts
     them back before the job stops and turns them on again when it continues,
-    asking its question again on a new line. *)
+    asking its question again on a new line.
+
+    A prompt blocks the thread that asks until it has its answer, waiting in
+    system calls that release the runtime lock, so the program's other threads
+    run while the user types. The fibers that share the thread wait with it. So
+    an Eio program, whose fibers share their domain's thread, asks through
+    [Eio_unix.run_in_systhread], as in
+    [Eio_unix.run_in_systhread (fun () -> Prompt.line "Name? ")], and its other
+    fibers keep running. *)
 module Prompt : sig
   type error =
     [ `Not_interactive  (** No terminal to ask on. *)
