@@ -488,13 +488,15 @@ val cancel : 'msg app -> timer -> unit
 
 val request_redraw : 'msg app -> unit
 (** [request_redraw app] asks for a frame. Requests until that frame is drawn
-    are one request. Frames come on a {e grid} a frame interval apart
-    ({!val-config}'s [fps]). A frame asked for once that interval has passed
-    since the last frame on the grid comes in the turn that asked and moves the
-    grid there, and one asked for sooner comes once the interval has passed. A
-    request made from a {!Frame} step until the next step asks for the next
-    frame on the grid, so an animation asks again from each frame, and stops by
-    not asking.
+    are one request. Frames come on a {e grid} of points a frame interval apart
+    ({!val-config}'s [fps]). A frame asked for once the grid's next point has
+    passed comes in the turn that asked, and one asked for sooner comes at that
+    point. A frame drawn less than an interval after its point leaves the next
+    point an interval after this one, so an animation keeps [fps] however late
+    each frame is drawn. A frame drawn an interval or more after its point, as
+    after a pause, starts the grid again from the time it is drawn. A request
+    made from a {!Frame} step until the next step asks for the next frame on the
+    grid, so an animation asks again from each frame, and stops by not asking.
 
     A frame asked for while the run handles {e discrete input}, a key pressed,
     repeated or released, text, a mouse button pressed or released, the end of a

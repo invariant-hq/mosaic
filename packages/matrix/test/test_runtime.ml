@@ -300,6 +300,32 @@ let test_frame_dt () =
         (list (float 1e-9))
         [ 0.; 0.1; 0.1; 1.0 ] (List.rev !dts))
 
+(* An animation at 10 frames a second, stepped at chosen times. A frame
+   drawn late, at 130 ms, leaves the grid's next point at 200 ms, so the
+   animation keeps its rate however late each frame comes; one drawn an
+   interval or more after its point, at 450 ms for the point at 300 ms,
+   starts the grid again from itself. *)
+let test_late_frame_keeps_the_grid () =
+  let f = fake () in
+  let frames = ref [] in
+  run ~config:(quiet ~fps:10. ()) f (fun app ->
+      let at now =
+        f.now <- now;
+        let rec go () =
+          match Matrix.step app ~now with
+          | Some Frame ->
+              frames := now :: !frames;
+              Matrix.draw app ignore;
+              Matrix.request_redraw app;
+              go ()
+          | Some _ -> go ()
+          | None -> ()
+        in
+        go ()
+      in
+      List.iter at [ 0; ms 130; ms 199; ms 200; ms 450; ms 549; ms 550 ]);
+  equal (list int) [ 0; ms 130; ms 200; ms 450; ms 550 ] (List.rev !frames)
+
 (* A turn: one step of each kind that has some, in kind order, then the
    events, the timers and the posts, until all are done or one frame interval
    has passed since the clock was read; then the frame, once its interval
@@ -438,25 +464,30 @@ let test_discrete_flood () =
       in
       if n > 120 then failf "%d frames in the second from %d ns" n t)
     frames;
-  let apart which =
-    let times =
-      List.filter_map
-        (fun (t, g, _) -> if g = which then Some t else None)
-        frames
-    in
-    ignore
-      (List.fold_left
-         (fun previous t ->
-           if t - previous < interval_60 then
-             failf "two frames %d ns apart" (t - previous);
-           t)
-         (min_int / 2) times
-        : int);
-    List.length times
+  let times which =
+    List.filter_map (fun (t, g, _) -> if g = which then Some t else None) frames
   in
-  let grid = apart true and early = apart false in
-  is_true ~msg:"frames on the grid" (grid >= 55);
-  is_true ~msg:"early frames" (early >= 55);
+  let grid = times true and early = times false in
+  (* A frame on the grid comes at its point or later, and takes it when it
+     comes less than an interval after it. *)
+  ignore
+    (List.fold_left
+       (fun point t ->
+         let next = point + interval_60 in
+         if t < next then failf "a frame %d ns before its point" (next - t);
+         if t < next + interval_60 then next else t)
+       (min_int / 2) grid
+      : int);
+  ignore
+    (List.fold_left
+       (fun previous t ->
+         if t - previous < interval_60 then
+           failf "two early frames %d ns apart" (t - previous);
+         t)
+       (min_int / 2) early
+      : int);
+  is_true ~msg:"frames on the grid" (List.length grid >= 55);
+  is_true ~msg:"early frames" (List.length early >= 55);
   equal ~msg:"idle after the last frame, with no deadline" (option int) None
     (List.nth after (List.length after - 1));
   is_true ~msg:"at most the last frame's wakeup" (List.length after <= 2)
@@ -569,24 +600,26 @@ let recording_turns ?(on_turn = ignore) f =
           ready);
     } )
 
-(* Frames under random requests, idle times and resizes: frames are an
-   interval apart; a frame is drawn only when asked for; one asked for is
-   drawn at the end of the first turn whose time is an interval past the
-   previous frame (handlers here take no time, so in that turn: the first
-   frame after a pause is drawn in the turn that asked); a request made
-   while a frame is drawn asks for the next; a resize is reported with the
-   latest size, before the frame drawn at it. *)
+(* Frames under random requests, idle times and resizes: at most one frame
+   per grid interval, and none before its point; a frame is drawn only when
+   asked for; one asked for is drawn at the end of the first turn whose time
+   is past the grid's next point (handlers here take no time, so in that
+   turn: the first frame after a pause is drawn in the turn that asked); a
+   request made while a frame is drawn asks for the next; a resize is
+   reported with the latest size, before the frame drawn at it. A frame
+   drawn less than an interval after its point takes it, and one drawn later
+   starts the grid from itself. *)
 let test_frame_property () =
   let rand = Random.State.make [| 7 |] in
   let interval = 16_666_667 in
   for _ = 1 to 300 do
     let f = fake () in
-    let frames = ref [] and pending = ref true and last = ref (min_int / 2) in
-    (* The turns that began owing a frame whose interval had passed. *)
+    let frames = ref [] and pending = ref true and point = ref (min_int / 2) in
+    (* The turns that began owing a frame whose point had passed. *)
     let due = ref [] in
     let turns, backend =
       recording_turns f ~on_turn:(fun now ->
-          if !pending && now >= !last + interval && not f.eof then
+          if !pending && now >= !point + interval && not f.eof then
             due := now :: !due)
     in
     let waits = ref 0 in
@@ -617,7 +650,10 @@ let test_frame_property () =
           | Frame ->
               if not !pending then fail "a frame no one asked for";
               frames := f.now :: !frames;
-              last := f.now;
+              let next = !point + interval in
+              if f.now < next then
+                failf "a frame %d ns before its grid point" (next - f.now);
+              point := if f.now < next + interval then next else f.now;
               pending := false;
               if Random.State.int rand 3 = 0 then (
                 Matrix.request_redraw app;
@@ -640,15 +676,6 @@ let test_frame_property () =
         if not (List.mem t !frames) then
           failf "a frame due at %d ns was not drawn in that turn" t)
       !due;
-    let frames = List.rev !frames in
-    ignore
-      (List.fold_left
-         (fun previous t ->
-           if t - previous < interval then
-             failf "frames %d ns apart, under the interval" (t - previous);
-           t)
-         (min_int / 2) frames
-        : int);
     is_true ~msg:"a resize reports the latest size" !resizes_ok
   done
 
@@ -4043,6 +4070,7 @@ let () =
           test "frames on demand" test_frames_on_demand;
           test "frame requests" test_frame_requests;
           test "frame_dt" test_frame_dt;
+          test "a late frame keeps the grid" test_late_frame_keeps_the_grid;
           test "turn order" test_turn_order;
           test "discrete input is drawn early" test_discrete_input_early;
           test "a flood of discrete input" test_discrete_flood;

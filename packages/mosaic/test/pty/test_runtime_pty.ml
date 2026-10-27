@@ -377,6 +377,23 @@ let test_ticks_while_typing () =
     ~msg:(Printf.sprintf "%d ticks in %.3f s, at most %d" ticks seconds most)
     (ticks <= most)
 
+(* Ticks with nothing else to do come on the frame grid, which keeps its
+   phase however late each frame is drawn: over 3 s, n ticks span n - 1
+   frame intervals, give or take one. A grid that moved to each frame's
+   draw time would drift by each frame's lateness. *)
+let test_ticks_keep_the_grid () =
+  with_session "tick-typing" @@ fun s ->
+  ignore (await s "N=0" : int);
+  pause s 3.;
+  send s "q";
+  ignore (wait_exit s : Unix.process_status);
+  let ticks = int_of_string (result s "ticks")
+  and seconds = float_of_string (result s "seconds") in
+  let intervals = seconds *. 60. in
+  is_true
+    ~msg:(Printf.sprintf "%d ticks in %.2f intervals" ticks intervals)
+    (Float.abs (Float.of_int (ticks - 1) -. intervals) <= 1.)
+
 (* A timer's fires land on its grid: none comes before the grid point of
    the periods it counts, and the counts reach twelve periods. How late
    they come is the host's doing; "measure" prints it. *)
@@ -580,7 +597,11 @@ let () =
              ]);
         group "Ticks"
           (if not supported then []
-           else [ test "keys typed add no tick" test_ticks_while_typing ]);
+           else
+             [
+               test "keys typed add no tick" test_ticks_while_typing;
+               test "ticks keep the frame grid" test_ticks_keep_the_grid;
+             ]);
         group "Time"
           (if not supported then []
            else [ test "R-T: a timer keeps its grid" test_timer_grid ]);

@@ -530,6 +530,8 @@ type 'msg app = {
   mutable drawing : bool;
   (* The frame being drawn was drawn across a release. *)
   mutable void : bool;
+  (* The grid's point of the latest frame on the grid: the next frame on the
+     grid is due an interval after it. *)
   mutable last_frame : int;
   (* The time between the latest frame and the one before, 0 until the
      second. *)
@@ -2074,8 +2076,8 @@ let take_timer t =
   heap_remove t.heap e;
   Timer e.id
 
-(* A frame is due once its interval has passed by the latest step's time:
-   work that took the turn's budget may have taken the interval with it. One
+(* A frame is due once the grid's next point has passed by the latest step's
+   time: work that took the turn's budget may have taken it past it. One
    asked for by discrete input is due once an interval has passed since the
    last early frame. *)
 let frame_due t =
@@ -2198,8 +2200,11 @@ let begin_turn t ~now =
   t.owe_timer <- has_due_timer t;
   t.owe_post <- not (Queue.is_empty t.posted)
 
-(* Frames are an interval apart from when they are drawn, which a turn's
-   work may delay past the time the turn read. *)
+(* A frame on the grid drawn less than an interval after the grid's next
+   point takes that point, so the grid keeps its phase however late each
+   frame is drawn, as a cell's theoretical arrival time does in the generic
+   cell rate algorithm (ITU-T I.371, Annex A). One drawn later, after a pause
+   or a long turn, starts the grid again from its own time. *)
 let start_frame t =
   t.dirty <- false;
   t.asked_outside <- false;
@@ -2210,8 +2215,10 @@ let start_frame t =
   t.drawn <- t.latest;
   (* A frame drawn before the interval has passed, for discrete input or by
      a device, keeps the grid. *)
-  let on_grid = t.latest >= t.last_frame + t.interval in
-  if on_grid then t.last_frame <- t.latest
+  let point = t.last_frame + t.interval in
+  let on_grid = t.latest >= point in
+  if on_grid then
+    t.last_frame <- (if t.latest < point + t.interval then point else t.latest)
   else if t.asked_discrete then t.last_early <- t.latest;
   t.early <- not on_grid;
   t.asked_discrete <- false;
