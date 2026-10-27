@@ -436,6 +436,36 @@ let compute_or_fail tree node available msg =
   | Ok () -> ()
   | Error e -> failf "%s: %s" msg (Error.to_string e)
 
+(* A content-box size excludes the padding, so a 10-cell box with 2 cells of
+   padding on each side is 14 cells; [set_box_sizing] changes only the box
+   sizing of the style it is given. *)
+let test_box_sizing () =
+  let tree = new_tree () in
+  let style =
+    Style.default
+    |> Style.set_size
+         Size.
+           {
+             width = Style.Dimension.length 10.0;
+             height = Style.Dimension.length 10.0;
+           }
+    |> Style.set_padding (Rect.all (Style.Length_percentage.length 2.0))
+    |> Style.set_box_sizing Style.Box_sizing.Content_box
+  in
+  equal ~msg:"padding kept" (float 0.001) 2.0
+    (Style.Length_percentage.value (Style.padding style).left);
+  let node = or_fail "Failed to create node" (new_leaf tree style) in
+  compute_or_fail tree node
+    Size.
+      {
+        width = Available_space.of_float 100.0;
+        height = Available_space.of_float 100.0;
+      }
+    "Failed to compute layout";
+  let size = Layout.size (or_fail "Failed to get layout" (layout tree node)) in
+  equal ~msg:"width" (float 0.001) 14.0 size.width;
+  equal ~msg:"height" (float 0.001) 14.0 size.height
+
 let test_measure_count_flexbox () =
   let tree = new_tree () in
   let ctx = { count = 0 } in
@@ -2667,7 +2697,11 @@ let () =
           test "Flex grow" test_flex_grow;
         ];
       group "spacing" [ test "Padding" test_padding; test "Margin" test_margin ];
-      group "sizing" [ test "Aspect ratio" test_aspect_ratio ];
+      group "sizing"
+        [
+          test "Aspect ratio" test_aspect_ratio;
+          test "Box sizing" test_box_sizing;
+        ];
       group "caching"
         [
           test "Measure count flexbox" test_measure_count_flexbox;

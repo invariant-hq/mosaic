@@ -395,6 +395,9 @@ val set_display : display -> t -> t
 val set_position : position -> t -> t
 (** [set_position v t] returns a style with updated positioning mode. *)
 
+val set_box_sizing : box_sizing -> t -> t
+(** [set_box_sizing v t] returns a style with updated box sizing mode. *)
+
 val set_overflow : overflow Toffee_geometry.point -> t -> t
 (** [set_overflow v t] returns a style with updated overflow behavior. *)
 

@@ -291,6 +291,7 @@ let grid_column t = t.grid_column
 (* Functional updates *)
 let set_display display t = { t with display }
 let set_position position t = { t with position }
+let set_box_sizing box_sizing t = { t with box_sizing }
 let set_overflow overflow t = { t with overflow }
 let set_scrollbar_width scrollbar_width t = { t with scrollbar_width }
 let set_text_align text_align t = { t with text_align }
