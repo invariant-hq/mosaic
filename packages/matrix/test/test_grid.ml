@@ -2847,6 +2847,45 @@ let picture_tests =
            Grid.draw_picture c ~x:1 ~y:0 ~width:2 ~height:1
              (solid ~width:2 ~height:2 (0, 255, 0));
            Grid.cells_equal b 1 c 1));
+    test "a picture cell reads back its tile" (fun () ->
+        let p = solid ~width:2 ~height:1 (9, 8, 7) in
+        let g = Grid.create ~width:4 ~height:2 () in
+        is_false ~msg:"no picture yet" (Grid.has_pictures g);
+        Grid.draw_picture g ~x:1 ~y:0 ~width:2 ~height:2 p;
+        is_true ~msg:"a picture" (Grid.has_pictures g);
+        (match Grid.picture_at g 6 with
+        | Some { picture; cols; rows; col; row } ->
+            is_true ~msg:"its picture" (picture == p);
+            equal ~msg:"its box and place" (list int) [ 2; 2; 1; 1 ]
+              [ cols; rows; col; row ]
+        | None -> fail "a picture cell has a tile");
+        equal ~msg:"another cell" bool true (Grid.picture_at g 0 = None);
+        raises_match (Exn.invalid_arg ~substring:"Matrix_grid.picture_at")
+          (fun () -> ignore (Grid.picture_at g 8));
+        equal ~msg:"its pixels" string
+          (String.sub (Grid.picture_rgba p) 0 4)
+          "\t\b\007\255";
+        let q = solid ~width:2 ~height:1 (9, 8, 7) in
+        is_true ~msg:"one id a picture"
+          (Grid.picture_id p = Grid.picture_id p
+          && Grid.picture_id p <> Grid.picture_id q);
+        Grid.clear g;
+        is_false ~msg:"no picture once cleared" (Grid.has_pictures g));
+    test "unchecked reads agree with the checked ones" (fun () ->
+        let g = Grid.create ~width:3 ~height:2 () in
+        Grid.draw_text g ~x:0 ~y:0 ~text:"a\u{4E00}";
+        Grid.draw_picture g ~x:0 ~y:1 ~width:1 ~height:1
+          (solid ~width:1 ~height:1 (1, 2, 3));
+        for i = 0 to 5 do
+          equal ~msg:"codepoint" int (Grid.get_codepoint g i)
+            (Grid.Unsafe.get_codepoint g i);
+          equal ~msg:"width" int (Grid.cell_width g i)
+            (Grid.Unsafe.cell_width g i);
+          equal ~msg:"empty" bool (Grid.is_empty g i) (Grid.Unsafe.is_empty g i);
+          equal ~msg:"a picture" bool
+            (Grid.picture_at g i <> None)
+            (Grid.Unsafe.is_picture g i)
+        done);
     test "a picture is let go with its last cell" (fun () ->
         let g = Grid.create ~width:2 ~height:1 () in
         let collected = ref false in

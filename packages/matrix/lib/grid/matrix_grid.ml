@@ -1821,25 +1821,25 @@ let to_ansi ?(styling = `Truecolor) ?(trim = false) ?(complete_rows = false)
    unchecked ones, which these shadow from here on, and [Unsafe] hands them to
    matrix's own libraries. *)
 
+type tile = Grapheme_store.tile = {
+  picture : picture;
+  cols : int;
+  rows : int;
+  col : int;
+  row : int;
+}
+
+let has_pictures t = Grapheme_store.live_tiles t.grapheme_store > 0
+let picture_id (p : picture) = p.id
+let picture_rgba (p : picture) = p.rgba
+
 module Unsafe = struct
-  type tile = Grapheme_store.tile = {
-    picture : picture;
-    cols : int;
-    rows : int;
-    col : int;
-    row : int;
-  }
-
-  let has_pictures t = Grapheme_store.live_tiles t.grapheme_store > 0
-
   let[@inline] is_picture t idx =
     let c = Buf.get_cell t.chars idx in
     Packed_cell.names_slot c
     && (Packed_cell.tile t.grapheme_store c).picture.id <> 0
 
   let tile t idx = Packed_cell.tile t.grapheme_store (Buf.get_cell t.chars idx)
-  let picture_id (p : picture) = p.id
-  let picture_rgba (p : picture) = p.rgba
   let get_codepoint = get_codepoint
   let get_attrs = get_attrs
   let get_link = get_link
@@ -1861,6 +1861,10 @@ let[@inline] check name t idx =
 let[@inline] get_codepoint t idx =
   check "get_codepoint" t idx;
   get_codepoint t idx
+
+let picture_at t idx =
+  check "picture_at" t idx;
+  if Unsafe.is_picture t idx then Some (Unsafe.tile t idx) else None
 
 let[@inline] get_attrs t idx =
   check "get_attrs" t idx;

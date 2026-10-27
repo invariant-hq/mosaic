@@ -588,7 +588,7 @@ let blue c = Ansi.Color.Packed.blue (Ansi.Color.Packed.encode c)
    aspect ratio kept and centered, each the area average of the pixels it
    covers, with what falls outside the picture transparent. *)
 let resample p ~bw ~bh ~w ~h =
-  let pw, ph = Grid.picture_size p and rgba = Grid.Unsafe.picture_rgba p in
+  let pw, ph = Grid.picture_size p and rgba = Grid.picture_rgba p in
   let out = Bytes.make (4 * w * h) '\000' in
   let fpw = float pw and fph = float ph in
   let s = Float.min (float bw /. fpw) (float bh /. fph) in
@@ -630,8 +630,8 @@ let resample p ~bw ~bh ~w ~h =
   done;
   out
 
-let entry (p : pictures) (tile : Grid.Unsafe.tile) =
-  let key = (Grid.Unsafe.picture_id tile.picture, tile.cols, tile.rows) in
+let entry (p : pictures) (tile : Grid.tile) =
+  let key = (Grid.picture_id tile.picture, tile.cols, tile.rows) in
   match Hashtbl.find_opt p.entries key with
   | Some e -> e
   | None ->
@@ -668,7 +668,7 @@ let average e x0 x1 y0 y1 =
     Ansi.Color.of_rgba (!sr / !sa) (!sg / !sa) (!sb / !sa) ((!sa + (n / 2)) / n)
 
 (* The upper and lower halves of the tile, into [p.upper] and [p.lower]. *)
-let halves p e (tile : Grid.Unsafe.tile) =
+let halves p e (tile : Grid.tile) =
   let x0 = tile.col * e.w / tile.cols
   and x1 = (tile.col + 1) * e.w / tile.cols in
   let y0 = tile.row * e.h / tile.rows
@@ -724,7 +724,7 @@ let id_color p id =
    and the high byte's when it is not 0, in the image's id color, on the
    cell's background. A box past the marks' 297 rows or columns is written
    in half blocks there. *)
-let write_placeholder (c : diff_ctx) idx e (tile : Grid.Unsafe.tile) =
+let write_placeholder (c : diff_ctx) idx e (tile : Grid.tile) =
   let n = Array.length diacritics in
   if tile.row >= n || tile.col >= n then (
     halves c.pictures e tile;
@@ -931,15 +931,9 @@ let write_sixel (c : diff_ctx) e ~cw ~ch ~x0 ~x1 ~y0 ~y1 ~col ~row =
 
 (* A rectangle of picture cells of one box, columns [x0] to [x1] and rows
    [y0] to [y1] of the frame, whose first cell shows [tile]. *)
-type rect = {
-  x0 : int;
-  x1 : int;
-  y0 : int;
-  mutable y1 : int;
-  tile : Grid.Unsafe.tile;
-}
+type rect = { x0 : int; x1 : int; y0 : int; mutable y1 : int; tile : Grid.tile }
 
-let same_box (a : Grid.Unsafe.tile) (b : Grid.Unsafe.tile) =
+let same_box (a : Grid.tile) (b : Grid.tile) =
   a.picture == b.picture && a.cols = b.cols && a.rows = b.rows
 
 (* The sixels of the picture cells the frame wrote, as rectangles: runs of
@@ -1232,7 +1226,7 @@ let prepare_diff_baseline (r : t) ~mode ~scroll_hint ~row_offset ~height
 (* Marks the entries of the pictures the next buffer shows. *)
 let scan_pictures r =
   let g = r.next in
-  if Grid.Unsafe.has_pictures g then begin
+  if Grid.has_pictures g then begin
     own r.diff;
     let p = r.diff.pictures in
     for idx = 0 to (Grid.width g * Grid.height g) - 1 do
@@ -1626,7 +1620,7 @@ let static_rows t g ~rows =
   if rows < 0 || rows > Grid.height g then
     invalid_arg "Matrix_screen.static_rows: rows must be within grid height";
   if rows = 0 then ""
-  else if not (Grid.Unsafe.has_pictures g) then
+  else if not (Grid.has_pictures g) then
     Grid.to_ansi ~styling:t.styling ~trim:true ~rows g ^ "\n"
   else begin
     own t.diff;
@@ -1646,10 +1640,10 @@ let static_rows t g ~rows =
     in
     let width = Grid.width g in
     let owned = Hashtbl.create 4 in
-    let tile_entry (tile : Grid.Unsafe.tile) =
+    let tile_entry (tile : Grid.tile) =
       if p.form <> `Kitty then entry p tile
       else
-        let key = (Grid.Unsafe.picture_id tile.picture, tile.cols, tile.rows) in
+        let key = (Grid.picture_id tile.picture, tile.cols, tile.rows) in
         match Hashtbl.find_opt owned key with
         | Some e -> e
         | None ->
@@ -1708,7 +1702,7 @@ let static_sixels t g ~rows ~below ~reach =
   if rows < 0 || rows > Grid.height g then
     invalid_arg "Matrix_screen.static_sixels: rows must be within grid height";
   let p = t.diff.pictures in
-  if p.form <> `Sixel || not (Grid.Unsafe.has_pictures g) then ""
+  if p.form <> `Sixel || not (Grid.has_pictures g) then ""
   else begin
     own t.diff;
     let p = t.diff.pictures in

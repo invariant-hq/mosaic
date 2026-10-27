@@ -722,7 +722,7 @@ let update_cell_size t =
   | None when w = 0 || h = 0 -> ()
   | _ ->
       t.cell_size <- (if w = 0 || h = 0 then None else Some (w, h));
-      if Grid.Unsafe.has_pictures (Screen.current_grid t.screen) then (
+      if Grid.has_pictures (Screen.current_grid t.screen) then (
         t.dirty <- true;
         t.asked_outside <- true)
 
@@ -1349,7 +1349,7 @@ let static_snapshot t ?rows grid =
   if rows < 0 || rows > Grid.height grid then
     invalid_arg "Matrix.static_write: rows must be within the grid's height";
   if rows = 0 then None
-  else if Grid.Unsafe.has_pictures grid then
+  else if Grid.has_pictures grid then
     Some (Pictures { grid = Grid.copy grid; rows })
   else Some (Lines { text = Screen.static_rows t.screen grid ~rows; rows })
 
@@ -1952,7 +1952,7 @@ let give_screen t ~exiting =
   let kept = if exiting then t.final else None in
   (* The live frame's images are deleted, which the terminal would keep; the
      next frame is drawn whole. A frame kept keeps its images. *)
-  if kept = None && Grid.Unsafe.has_pictures (Screen.current_grid t.screen) then (
+  if kept = None && Grid.has_pictures (Screen.current_grid t.screen) then (
     Grid.clear (Screen.next_grid t.screen);
     Screen.invalidate_presented t.screen;
     let w = Ansi.Writer.create 0 in

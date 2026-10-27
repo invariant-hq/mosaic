@@ -605,6 +605,36 @@ val draw_picture :
     cells of [p], each keeping its background. A grapheme it cuts becomes blanks
     on that grapheme's background. *)
 
+val picture_id : picture -> int
+(** [picture_id p] is a number of [p]'s own, from [1], the same for every cell
+    that shows [p]: a screen names the image it sends a terminal by it. *)
+
+val picture_rgba : picture -> string
+(** [picture_rgba p] is the pixels [p] was made from ({!val-picture}). *)
+
+type tile = {
+  picture : picture;  (** The picture the cell shows a part of. *)
+  cols : int;  (** The width of the picture's box, in cells. *)
+  rows : int;  (** The height of the picture's box, in cells. *)
+  col : int;  (** The cell's column in the box, from [0]. *)
+  row : int;  (** The cell's row in the box, from [0]. *)
+}
+(** The type for the part of a picture a picture cell shows: [picture] fit in
+    its box of [cols] by [rows] cells, at column [col] and row [row] of the box.
+*)
+
+val picture_at : t -> int -> tile option
+(** [picture_at g idx] is the tile cell [idx] shows, if it is a picture cell,
+    for a program that writes a grid elsewhere than to a screen, such as an
+    image or a page.
+
+    Raises [Invalid_argument] if [idx] is not in [0] to
+    [width g * height g - 1]. *)
+
+val has_pictures : t -> bool
+(** [has_pictures g] is [true] iff a grid that shares [g]'s storage holds a
+    picture cell, so a writer that finds none skips looking for them. *)
+
 (** {1:set_uchar Writing cells} *)
 
 val set_uchar :
@@ -785,36 +815,16 @@ val to_ansi :
     Raises [Invalid_argument] if [rows] is negative or greater than [height g].
 *)
 
-(**/**)
+(** {1:unsafe Unchecked reads}
 
-(* For matrix's own libraries, such as the screen's diff, which reads every cell
-   of a frame: the cell accessors above without their index check. Each reads
-   memory outside the grid when [idx] is not in [0] to [width g * height g - 1],
-   so a caller must use them only where its loop bounds prove the index in
-   range. *)
+    The cell reads of {!get_codepoint} and the others without their index check,
+    for a loop whose bounds prove each index in [0] to [width g * height g - 1],
+    such as a screen's diff, which reads every cell of every frame, as the
+    Stdlib's [Array.unsafe_get] is [Array.get] without its check. Given an index
+    outside the grid, each reads memory outside it: the program's behaviour is
+    then undefined. *)
 
 module Unsafe : sig
-  (* The tile of a picture cell, [picture] fit in a box of [cols] by [rows]
-     cells, at column [col] and row [row] of the box. *)
-  type tile = {
-    picture : picture;
-    cols : int;
-    rows : int;
-    col : int;
-    row : int;
-  }
-
-  val has_pictures : t -> bool
-  (* [true] iff a grid that shares [t]'s storage holds a picture cell. *)
-
-  val is_picture : t -> int -> bool
-  val tile : t -> int -> tile
-  (* The tile of a picture cell; meaningless for any other cell. *)
-
-  val picture_id : picture -> int
-  (* A number of its own for each picture, from 1. *)
-
-  val picture_rgba : picture -> string
   val get_codepoint : t -> int -> int
   val get_attrs : t -> int -> int
   val get_link : t -> int -> string
@@ -825,6 +835,11 @@ module Unsafe : sig
   val cell_width : t -> int -> int
   val is_empty : t -> int -> bool
   val cells_equal : t -> int -> t -> int -> bool
-end
 
-(**/**)
+  val is_picture : t -> int -> bool
+  (** [is_picture g idx] is [picture_at g idx <> None], unchecked. *)
+
+  val tile : t -> int -> tile
+  (** [tile g idx] is the tile of the picture cell [idx], unchecked; it is
+      meaningless for a cell that is not a picture cell. *)
+end

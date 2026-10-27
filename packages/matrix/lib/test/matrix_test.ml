@@ -636,7 +636,7 @@ let advance s ns =
    image, which reads U+FFFC, under kitty, and a half block otherwise, the
    one the terminal shows when it shows one. *)
 let as_shown grid ~top ~form shown =
-  if form = `Kitty || not (Grid.Unsafe.has_pictures grid) then grid
+  if form = `Kitty || not (Grid.has_pictures grid) then grid
   else
     let grid = Grid.copy grid and w = Grid.width grid in
     for idx = 0 to (w * Grid.height grid) - 1 do
