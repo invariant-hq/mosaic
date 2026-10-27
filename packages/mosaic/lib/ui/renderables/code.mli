@@ -196,8 +196,10 @@ val syntax :
 (** [syntax highlights] is a syntax configuration.
 
     - [language] names the source language when known.
-    - [style] maps highlight scopes to terminal styles. Defaults to
-      {!Syntax_style.default}.
+    - [style] maps highlight scopes to terminal styles. Defaults to none. A view
+      without a style draws with {!Theme.syntax} of the theme in scope, and
+      restyles its captures, without asking for them again, when that theme
+      gives another style.
     - [highlights] are bound to the exact content they describe. Mismatched
       content falls back to plain text, even when byte lengths agree. Omit
       [syntax] to render plain text. *)

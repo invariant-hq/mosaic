@@ -52,4 +52,62 @@ let default =
       ("constructor", Ansi.Style.make ~fg:(Ansi.Color.of_rgb 209 154 102) ());
     ]
 
+(* The scopes [plain] and [of_colors] style, each with the palette entry of
+   its hue and the style it keeps where no entry reaches its target: the
+   attributes a scope keeps change no color. *)
+let hued =
+  [
+    ("keyword", 5, Ansi.Style.make ~bold:true ());
+    ("tag", 5, Ansi.Style.default);
+    ("string", 2, Ansi.Style.default);
+    ("attribute", 2, Ansi.Style.default);
+    ("number", 3, Ansi.Style.default);
+    ("constant", 3, Ansi.Style.default);
+    ("constructor", 3, Ansi.Style.default);
+    ("type", 3, Ansi.Style.default);
+    ("module", 3, Ansi.Style.default);
+    ("function", 4, Ansi.Style.default);
+  ]
+
+let comment = Ansi.Style.make ~italic:true ()
+
+let plain =
+  make ~base:Ansi.Style.default
+    (("comment", comment)
+    :: List.map (fun (scope, _, attributes) -> (scope, attributes)) hued)
+
+let rgb (r, g, b) = Ansi.Color.of_rgb r g b
+
+(* As [Ansi.Theme.default] chooses its text's entries: an entry where the
+   terminal reports it and its contrast against the background reaches the
+   target of text, the lower of 4.5 and the pair's, trying the entry and
+   then its bright variant; a comment takes entry 8 as [Muted] text does. *)
+let of_colors (c : Ansi.Theme.colors) =
+  let entry i =
+    if i < Array.length c.palette && i < 16 then c.palette.(i) else None
+  in
+  let contrast e = Ansi.Color.contrast (rgb e) (rgb c.background) in
+  let pair = Ansi.Color.contrast (rgb c.foreground) (rgb c.background) in
+  let target = Float.min 4.5 pair in
+  let reaching s =
+    List.find_opt
+      (fun i ->
+        match entry i with Some e -> contrast e >= target | None -> false)
+      [ s; s + 8 ]
+  in
+  let comment =
+    match entry 8 with
+    | Some e when contrast e >= target && contrast e < pair ->
+        Ansi.Style.fg (Ansi.Color.indexed 8) comment
+    | _ -> comment
+  in
+  make ~base:Ansi.Style.default
+    (("comment", comment)
+    :: List.map
+         (fun (scope, s, attributes) ->
+           match reaching s with
+           | Some i -> (scope, Ansi.Style.make ~fg:(Ansi.Color.indexed i) ())
+           | None -> (scope, attributes))
+         hued)
+
 let base t = t.base

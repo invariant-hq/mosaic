@@ -287,7 +287,8 @@ let%expect_test "translucent source line highlights blend with diff color" =
   let line_highlights = [ { Diff.side = New; first = 2; last = 2; color } ] in
   let grid =
     grid_of_vnode ~width:60 ~height:5
-      (Vnode.diff ~layout:Diff.Unified ~line_highlights (parse simple_diff))
+      (Vnode.diff ~layout:Diff.Unified ~theme:Diff.default_theme
+         ~line_highlights (parse simple_diff))
   in
   let selected = background_at grid ~x:8 ~y:2 in
   let expected = blend_color ~base:Diff.default_theme.added_bg overlay in

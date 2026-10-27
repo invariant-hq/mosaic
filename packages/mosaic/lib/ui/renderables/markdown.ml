@@ -78,6 +78,41 @@ module Style = struct
 
   let make ?(base = default) bindings = bind base bindings
 
+  (* Each key by its role: text in [Plain], headings in [Emphasis], the
+     first underlined too, code spans in [Accent], links and images in
+     [Link], quotes, list markers, struck text and concealed punctuation in
+     [Muted], rules and table lines in [Border], task markers in [Ok];
+     emphasis, strength and striking are their attributes. *)
+  let of_theme theme =
+    let role = Theme.style theme in
+    let with_ role attrs =
+      Ansi.Style.merge ~base:(Theme.style theme role) ~overlay:attrs
+    in
+    let emphasis = role Emphasis in
+    bind Keys.empty
+      [
+        (Default, role Plain);
+        (Heading 1, with_ Emphasis (Ansi.Style.make ~underline:true ()));
+        (Heading 2, emphasis);
+        (Heading 3, emphasis);
+        (Heading 4, emphasis);
+        (Heading 5, emphasis);
+        (Heading 6, emphasis);
+        (Emphasis, with_ Plain (Ansi.Style.make ~italic:true ()));
+        (Strong, with_ Plain (Ansi.Style.make ~bold:true ()));
+        (Code_span, role Accent);
+        (Code_block, role Plain);
+        (Link, role Link);
+        (Image, role Link);
+        (Blockquote, with_ Muted (Ansi.Style.make ~italic:true ()));
+        (Thematic_break, role Border);
+        (List_marker, role Muted);
+        (Strikethrough, with_ Muted (Ansi.Style.make ~strikethrough:true ()));
+        (Task_marker, role Ok);
+        (Table_border, role Border);
+        (Conceal_punctuation, role Muted);
+      ]
+
   let get t key =
     check key;
     Keys.find key t
@@ -103,20 +138,19 @@ module Props = struct
     content : string;
     conceal : bool;
     streaming : bool;
-    style : Style.t;
+    style : Style.t option;
     selectable : bool;
     selection_bg : Ansi.Color.t option;
     selection_fg : Ansi.Color.t option;
     render_node : render_node option;
     render_code : render_code option;
     highlighter : Code.Highlighter.t option;
-    syntax_style : Syntax_style.t;
+    syntax_style : Syntax_style.t option;
   }
 
-  let make ?(content = "") ?(conceal = true) ?(streaming = false)
-      ?(style = Style.default) ?(selectable = true) ?selection_bg ?selection_fg
-      ?render_node ?render_code ?highlighter
-      ?(syntax_style = Syntax_style.default) () =
+  let make ?(content = "") ?(conceal = true) ?(streaming = false) ?style
+      ?(selectable = true) ?selection_bg ?selection_fg ?render_node ?render_code
+      ?highlighter ?syntax_style () =
     {
       content;
       conceal;
@@ -136,14 +170,14 @@ module Props = struct
   let equal a b =
     String.equal a.content b.content
     && a.conceal = b.conceal && a.streaming = b.streaming
-    && Style.equal a.style b.style
+    && Option.equal Style.equal a.style b.style
     && a.selectable = b.selectable
     && Option.equal Ansi.Color.equal a.selection_bg b.selection_bg
     && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
     && Option.equal ( == ) a.render_node b.render_node
     && Option.equal ( == ) a.render_code b.render_code
     && Option.equal ( == ) a.highlighter b.highlighter
-    && Syntax_style.equal a.syntax_style b.syntax_style
+    && Option.equal Syntax_style.equal a.syntax_style b.syntax_style
 end
 
 (* ───── Hooks ───── *)
@@ -194,7 +228,7 @@ type render_env = {
   render_node : render_node option;
   render_code : render_code option;
   highlighter : Code.Highlighter.t option;
-  syntax_style : Syntax_style.t;
+  syntax_style : Syntax_style.t option;
 }
 
 (* ───── Types ───── *)
@@ -202,7 +236,7 @@ type render_env = {
 type t = {
   node : Renderable.t;
   mutable content : string;
-  mutable style : Style.t;
+  mutable style : Style.t option;
   mutable conceal : bool;
   mutable streaming : bool;
   mutable selectable : bool;
@@ -214,7 +248,10 @@ type t = {
   mutable render_node : render_node option;
   mutable render_code : render_code option;
   mutable highlighter : Code.Highlighter.t option;
-  mutable syntax_style : Syntax_style.t;
+  mutable syntax_style : Syntax_style.t option;
+  mutable themed : (Theme.t * Style.t) option;
+      (* The theme in scope the element styles were last derived from, and
+         the styles, for a markdown given no [style]. *)
 }
 
 let node t = t.node
@@ -501,8 +538,7 @@ let render_code_block_default ~(env : render_env) ~parent ?index ~is_last
   let box =
     Box.create ~parent ?index
       ~style:(bordered_block_style ~is_last)
-      ~border:true ~border_sides:[ `Left ] ~border_color:Ansi.Color.white ?title
-      ()
+      ~border:true ~border_sides:[ `Left ] ?title ()
   in
   let text =
     create_text ~env ~parent:(Box.node box) ~content:code_text
@@ -525,7 +561,7 @@ let render_code_block_default ~(env : render_env) ~parent ?index ~is_last
 let fence_syntax ~(env : render_env) highlighter cb =
   Option.map
     (fun language ->
-      Code.with_highlighter ~language ~style:env.syntax_style highlighter)
+      Code.with_highlighter ~language ?style:env.syntax_style highlighter)
     (code_block_language cb)
 
 (* Render a fenced code block as a borderless {!Code} view highlighted by
@@ -662,10 +698,7 @@ and render_blockquote ~(env : render_env) ~parent ?index ~is_last
   let box =
     Box.create ~parent ?index
       ~style:(bordered_column_block_style ~is_last)
-      ~border:true ~border_sides:[ `Left ]
-      ~border_color:
-        (match bq_style.fg with Some c -> c | None -> Ansi.Color.yellow)
-      ()
+      ~border:true ~border_sides:[ `Left ] ?border_color:bq_style.fg ()
   in
   let inner_block = Cmarkit.Block.Block_quote.block bq in
   let children =
@@ -708,9 +741,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
   end
   else
     let border_style = env.style Table_border in
-    let border_color =
-      match border_style.fg with Some c -> c | None -> Ansi.Color.white
-    in
+    let border_color = border_style.fg in
     let cell_text_style =
       Toffee.Style.make
         ~size:
@@ -745,7 +776,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
           in
           let col_box =
             Box.create ~parent:table_box ~border:true ~border_style:border_chars
-              ~border_sides ~border_color
+              ~border_sides ?border_color
               ~style:
                 (Toffee.Style.make
                    ~flex_direction:Toffee.Style.Flex_direction.Column
@@ -778,7 +809,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                 in
                 let header_box =
                   Box.create ~parent:(Box.node col_box) ~border:true
-                    ~border_sides:[ `Bottom ] ~border_color ()
+                    ~border_sides:[ `Bottom ] ?border_color ()
                 in
                 let text =
                   create_text ~env ~parent:(Box.node header_box)
@@ -813,7 +844,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                 else begin
                   let cell_box =
                     Box.create ~parent:(Box.node col_box) ~border:true
-                      ~border_sides:[ `Bottom ] ~border_color ()
+                      ~border_sides:[ `Bottom ] ?border_color ()
                   in
                   let text =
                     create_text ~env ~parent:(Box.node cell_box)
@@ -994,7 +1025,6 @@ let update_leaf_in_place ~(env : render_env) ~is_last (tb : tagged_block)
       Text.set_content text code_text;
       Text.set_text_style text (env.style Code_block);
       Box.set_title box title;
-      Box.set_border_color box Ansi.Color.white;
       Renderable.set_style (Box.node box) (block_style ~is_last);
       true
   | Code_tag, Cmarkit.Block.Code_block (cb, _), Code_widget code
@@ -1067,9 +1097,24 @@ let renderable_blocks (block : Cmarkit.Block.t) : Cmarkit.Block.t list =
       []
   | other -> [ other ]
 
+(* The element styles: [style] where given, and otherwise those the theme in
+   scope gives ({!Style.of_theme}), derived again only when the theme is
+   another value. *)
+let element_style t =
+  match t.style with
+  | Some style -> style
+  | None -> (
+      let theme = Renderable.theme t.node in
+      match t.themed with
+      | Some (seen, style) when seen == theme -> style
+      | _ ->
+          let style = Style.of_theme theme in
+          t.themed <- Some (theme, style);
+          style)
+
 let render_env t defs =
   {
-    style = Style.get t.style;
+    style = Style.get (element_style t);
     conceal = t.conceal;
     defs;
     streaming = t.streaming;
@@ -1234,6 +1279,21 @@ let rerender_blocks t =
     t.blocks;
   Renderable.request_render t.node
 
+(* A markdown given no [style] follows the theme in scope: another theme
+   that gives other element styles renders the blocks again, before they
+   are laid out. *)
+let follow_theme t =
+  match (t.style, t.themed) with
+  | None, Some (seen, shown) ->
+      let theme = Renderable.theme t.node in
+      if theme != seen then begin
+        let style = Style.of_theme theme in
+        t.themed <- Some (theme, style);
+        if (not (Style.equal style shown)) && t.blocks <> [] then
+          rerender_blocks t
+      end
+  | _ -> ()
+
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
@@ -1286,8 +1346,10 @@ let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
       render_code;
       highlighter;
       syntax_style;
+      themed = None;
     }
   in
+  Renderable.set_on_update node (Some (fun _ ~dt:_ -> follow_theme t));
   if content <> "" then update_blocks t;
   t
 
@@ -1311,8 +1373,8 @@ let set_content t s =
   end
 
 let set_style t style =
-  if not (Style.equal t.style style) then begin
-    t.style <- style;
+  if not (Option.equal Style.equal t.style (Some style)) then begin
+    t.style <- Some style;
     if t.blocks <> [] then rerender_blocks t else update_blocks t
   end
 
@@ -1323,8 +1385,8 @@ let set_highlighter t highlighter =
   end
 
 let set_syntax_style t style =
-  if not (Syntax_style.equal t.syntax_style style) then begin
-    t.syntax_style <- style;
+  if not (Option.equal Syntax_style.equal t.syntax_style (Some style)) then begin
+    t.syntax_style <- Some style;
     if t.blocks <> [] then rerender_blocks t else update_blocks t
   end
 
@@ -1384,9 +1446,9 @@ let apply_props t (props : Props.t) =
     || not (Option.equal ( == ) t.render_code props.render_code)
   in
   let presentation_changed =
-    (not (Style.equal t.style props.style))
+    (not (Option.equal Style.equal t.style props.style))
     || (not (Option.equal ( == ) t.highlighter props.highlighter))
-    || (not (Syntax_style.equal t.syntax_style props.syntax_style))
+    || (not (Option.equal Syntax_style.equal t.syntax_style props.syntax_style))
     || t.conceal <> props.conceal
     || t.streaming <> props.streaming
   in

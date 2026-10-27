@@ -244,7 +244,7 @@ let x
     (Vnode.markdown ~highlighter:keyword_highlighter fence);
   [%expect
     {|
-    [0;38;2;255;151;0;1mlet[39;22m x     [0m
+    [0;1mlet[22m x     [0m
     [0m          [0m
     [0m          [0m
     |}];

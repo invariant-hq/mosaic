@@ -170,7 +170,9 @@ type theme = {
     [added_line_number_bg] and [removed_line_number_bg] to colour them. *)
 
 val default_theme : theme
-(** [default_theme] is the built-in dark-terminal theme. *)
+(** [default_theme] is a theme for dark terminals in fixed RGB colors, with
+    green and red backgrounds for changed lines. A diff given no theme draws
+    with the roles of the theme in scope instead ({!Props.make}). *)
 
 type syntax
 (** The type for diff syntax settings.
@@ -190,8 +192,9 @@ val syntax :
   Code.Highlighter.t ->
   syntax
 (** [syntax ~language highlighter] is a diff syntax configuration. Each side is
-    a {!Code} view configured by {!Code.with_highlighter}, which states what a
-    side shows while a result is pending, and [conceal] is the sides' [conceal]
+    a {!Code} view configured by {!Code.with_highlighter} with [style], which
+    states what a side shows while a result is pending and the style it draws
+    with when [style] is not given, and [conceal] is the sides' [conceal]
     property (see {!Code.Props.make}). Defaults to [true]. Wrapped split views
     align their rows once both sides have their results, since highlighting may
     conceal text. *)
@@ -223,7 +226,11 @@ module Props : sig
   (** [make ()] is a diff props value, with:
       - [patch] is the patch shown. Defaults to an empty patch.
       - [layout] is the view layout. Defaults to [Unified].
-      - [theme] is the colour theme. Defaults to {!default_theme}.
+      - [theme] is the colour theme. Defaults to none. A diff without a theme
+        draws changed lines on no background, the signs [+] and [-] in the
+        [Added] and [Removed] roles and the line numbers in the [Muted] role of
+        the theme in scope, and builds its view again when that theme gives
+        other colors.
       - [highlight] is optional highlighter-backed split-side syntax. Defaults
         to none.
       - [line_highlights] are source-line background highlights, using inclusive

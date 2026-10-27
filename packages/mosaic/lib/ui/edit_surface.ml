@@ -247,6 +247,10 @@ type t = {
   text_buf : Text_buffer.t;
   session : Syntax_session.t;
   mutable styled_content : bool;
+  mutable shown_style : Syntax_style.t;
+  mutable styled : bool;
+      (* Whether captures are shown, and the syntax style they were last shown
+         in, to show them again when the theme in scope gives another. *)
   surface : Text_surface.t;
   mutable props : Props.t;
   mutable on_change : Editor.t -> unit;
@@ -331,11 +335,20 @@ let propose t ~base next =
 (* The paint of the accepted text: the captures the syntax shows for it, without
    concealment as editable text shows every byte, with the given annotations
    merged over them. *)
+let syntax_style t syntax =
+  match Syntax_session.style syntax with
+  | Some style -> style
+  | None -> Theme.syntax (Renderable.theme t.node)
+
 let paint t =
   let syntax =
     Option.bind t.props.syntax (fun syntax ->
+        let style = syntax_style t syntax in
         Option.map
-          (Syntax_highlight.to_annotations ~style:(Syntax_session.style syntax))
+          (fun captures ->
+            t.shown_style <- style;
+            t.styled <- true;
+            Syntax_highlight.to_annotations ~style captures)
           (Syntax_session.shown t.session ~conceal:false))
   in
   match (syntax, t.props.annotations) with
@@ -346,6 +359,7 @@ let paint t =
 
 let sync_content t =
   let source = Editor.source t.props.state in
+  t.styled <- false;
   let paint = paint t in
   t.styled_content <- Option.is_some paint;
   Text_buffer.set_text t.text_buf (Editor.text t.props.state);
@@ -509,7 +523,16 @@ let muted_style theme ?fg ?bg ~italic () =
   if italic then Ansi.Style.with_italic true s else s
 
 let render_before t _self grid ~dt:_ =
-  if Syntax_session.poll t.session then sync_content t;
+  (* A style the theme gives that differs from the one shown restyles the
+     captures, without asking for them again. *)
+  let restyled =
+    match t.props.syntax with
+    | Some syntax when t.styled ->
+        let style = syntax_style t syntax in
+        style != t.shown_style && not (Syntax_style.equal style t.shown_style)
+    | _ -> false
+  in
+  if Syntax_session.poll t.session || restyled then sync_content t;
   show_viewport t;
   if
     Syntax_session.needs_range t.session
@@ -846,6 +869,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       text_buf;
       session;
       styled_content = false;
+      shown_style = Syntax_style.plain;
+      styled = false;
       surface;
       props;
       on_change;

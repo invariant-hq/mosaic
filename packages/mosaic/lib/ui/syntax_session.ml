@@ -230,14 +230,14 @@ type source = Ranges of Syntax_highlight.t | Highlighter of Highlighter.t
 
 type syntax = {
   language : string option;
-  style : Syntax_style.t;
+  style : Syntax_style.t option;
   source : source;
 }
 
-let syntax ?language ?(style = Syntax_style.default) captures =
+let syntax ?language ?style captures =
   { language; style; source = Ranges captures }
 
-let with_highlighter ~language ?(style = Syntax_style.default) highlighter =
+let with_highlighter ~language ?style highlighter =
   { language = Some language; style; source = Highlighter highlighter }
 
 let language syntax = syntax.language
@@ -258,7 +258,8 @@ let same_producer a b =
   Option.equal String.equal a.language b.language
   && source_equal a.source b.source
 
-let equal a b = same_producer a b && Syntax_style.equal a.style b.style
+let equal a b =
+  same_producer a b && Option.equal Syntax_style.equal a.style b.style
 
 (* Sessions *)
 

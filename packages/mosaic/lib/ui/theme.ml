@@ -16,6 +16,7 @@ type t = {
   text : Ansi.Theme.t;
   surfaces : Ansi.Style.t array;
   glyphs : Glyphs.t;
+  syntax : Syntax_style.t;
 }
 
 let plain_surface = function
@@ -28,14 +29,22 @@ let plain =
     text = Ansi.Theme.plain;
     surfaces = Array.of_list (List.map plain_surface surfaces);
     glyphs = Glyphs.unicode;
+    syntax = Syntax_style.plain;
   }
 
-let default colors = { plain with text = Ansi.Theme.default colors }
+let default colors =
+  {
+    plain with
+    text = Ansi.Theme.default colors;
+    syntax = Syntax_style.of_colors colors;
+  }
+
 let text t = t.text
 let style t role = Ansi.Theme.style t.text role
 let mark ?alone t role = Ansi.Theme.mark ?alone t.text role
 let surface t s = t.surfaces.(index s)
 let glyphs t = t.glyphs
+let syntax t = t.syntax
 let with_text text t = { t with text }
 let with_style role s t = { t with text = Ansi.Theme.with_style role s t.text }
 
@@ -45,8 +54,10 @@ let with_surface s style t =
   { t with surfaces }
 
 let with_glyphs glyphs t = { t with glyphs }
+let with_syntax syntax t = { t with syntax }
 
 let equal a b =
   Ansi.Theme.equal a.text b.text
   && Array.for_all2 Ansi.Style.equal a.surfaces b.surfaces
   && Glyphs.equal a.glyphs b.glyphs
+  && Syntax_style.equal a.syntax b.syntax

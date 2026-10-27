@@ -807,7 +807,14 @@ module Syntax_style : sig
   *)
 
   val default : t
-  (** The built-in dark syntax style. *)
+  (** A style for dark terminals in fixed RGB colors; a view given no style
+      draws with [Theme.syntax] of the theme in scope. *)
+
+  val plain : t
+  (** {!Mosaic_ui.Syntax_style.plain}. *)
+
+  val of_colors : Ansi.Theme.colors -> t
+  (** {!Mosaic_ui.Syntax_style.of_colors}. *)
 
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] have equal base styles and equal

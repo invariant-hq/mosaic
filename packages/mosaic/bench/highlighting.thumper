@@ -5,8 +5,8 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-capture-roundtrip-100kb-1000-ranges	alloc_words	exact	258197
-capture-roundtrip-1mb-1000-ranges	alloc_words	exact	258197
+capture-roundtrip-100kb-1000-ranges	alloc_words	exact	258201
+capture-roundtrip-1mb-1000-ranges	alloc_words	exact	258201
 theme-roundtrip-100kb-1000-ranges	alloc_words	exact	59954
 theme-roundtrip-1mb-1000-ranges	alloc_words	exact	59954
 

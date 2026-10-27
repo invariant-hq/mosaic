@@ -247,9 +247,162 @@ let read_allocates_nothing () =
   let below = chain middle 20 in
   equal ~msg:"a theme applied" int 0 (words (fun () -> Renderable.theme below))
 
+(* ───── Default styles ───── *)
+
+(* The default styles of syntax, Markdown and diffs come from the roles of
+   the theme in scope: on a terminal of reported colors, under its
+   Theme.default, no text they draw is below its contrast. The colors are
+   xterm's two defaults, VTE's default and kitty on white. *)
+
+let palette hex =
+  List.map
+    (fun h ->
+      Some
+        ( int_of_string ("0x" ^ String.sub h 0 2),
+          int_of_string ("0x" ^ String.sub h 2 2),
+          int_of_string ("0x" ^ String.sub h 4 2) ))
+    hex
+  |> Array.of_list
+
+let vte : Ansi.Theme.colors =
+  {
+    foreground = (0xc0, 0xc0, 0xc0);
+    background = (0, 0, 0);
+    palette =
+      palette
+        [
+          "000000";
+          "c00000";
+          "00c000";
+          "c0c000";
+          "0000c0";
+          "c000c0";
+          "00c0c0";
+          "c0c0c0";
+          "3f3f3f";
+          "ff3f3f";
+          "3fff3f";
+          "ffff3f";
+          "3f3fff";
+          "ff3fff";
+          "3fffff";
+          "ffffff";
+        ];
+  }
+
+let kitty_white : Ansi.Theme.colors =
+  {
+    foreground = (0, 0, 0);
+    background = (255, 255, 255);
+    palette =
+      palette
+        [
+          "000000";
+          "cc0403";
+          "19cb00";
+          "cecb00";
+          "0d73cc";
+          "cb1ed1";
+          "0dcdcd";
+          "dddddd";
+          "767676";
+          "f2201f";
+          "23fd00";
+          "fffd00";
+          "1a8fff";
+          "fd28ff";
+          "14ffff";
+          "ffffff";
+        ];
+  }
+
+let terminals =
+  [
+    ("xterm light", Test_harness.xterm_light);
+    ("xterm dark", Test_harness.xterm_dark);
+    ("VTE", vte);
+    ("kitty white", kitty_white);
+  ]
+
+let legible_everywhere view =
+  List.iter
+    (fun (name, colors) ->
+      equal ~msg:name (list string) []
+        (Test_harness.illegible colors
+           (Test_harness.painted
+              (Test_harness.paint ~theme:(Theme.default colors) view))))
+    terminals
+
+let source = "let x = \"s\" (* c *) 42 f M T"
+
+let scopes =
+  [
+    (0, 3, "keyword");
+    (8, 11, "string");
+    (12, 19, "comment");
+    (20, 22, "number");
+    (23, 24, "function");
+    (25, 26, "module");
+    (27, 28, "type");
+  ]
+
+let syntax_default () =
+  legible_everywhere
+    (Vnode.code ~style:(size 40 2)
+       ~syntax:
+         (Code.syntax (Syntax_highlight.of_triples ~content:source scopes))
+       source)
+
+let markdown_default () =
+  legible_everywhere
+    (Vnode.markdown ~style:(size 30 8)
+       "# Title\n\n**b** `code` [link](u) ~~s~~\n\n> quote\n\n- item\n\n---")
+
+let diff_default () =
+  legible_everywhere
+    (Vnode.diff ~style:(size 30 6)
+       (Diff.Patch.of_strings ~old:"a\nb\n" ~new_:"a\nc\n" ()))
+
+(* A view given no style follows the theme in scope: the next frame after
+   the root's theme changes draws with the new theme's styles, without a
+   new declaration. On xterm's dark colors, muted text such as a list's
+   marker takes entry 8, and a keyword entry 13. *)
+let restyle view ~x ~y expected =
+  let r = Test_harness.paint view in
+  equal ~msg:"plain: the terminal's color" bool true
+    (match (Test_harness.cell_style r ~x ~y).fg with
+    | None -> true
+    | Some c -> Ansi.Color.intent c = Default);
+  Renderer.set_theme r (Theme.default Test_harness.xterm_dark);
+  Renderer.render_frame r ~width:Test_harness.doors_width
+    ~height:Test_harness.doors_height ~dt:0.;
+  equal ~msg:"after the change" bool true
+    (Test_harness.fg_is
+       (Ansi.Color.indexed expected)
+       (Test_harness.cell_style r ~x ~y))
+
+let code_follows_theme () =
+  restyle
+    (Vnode.code ~style:(size 40 2)
+       ~syntax:
+         (Code.syntax (Syntax_highlight.of_triples ~content:source scopes))
+       source)
+    ~x:0 ~y:0 13
+
+let markdown_follows_theme () =
+  restyle (Vnode.markdown ~style:(size 30 4) "- item") ~x:0 ~y:0 8
+
 let () =
   run "mosaic.theme"
     [
+      group "Default styles"
+        [
+          test "syntax, legible" syntax_default;
+          test "markdown, legible" markdown_default;
+          test "diff, legible" diff_default;
+          test "code follows the theme" code_follows_theme;
+          test "markdown follows the theme" markdown_follows_theme;
+        ];
       group "Values"
         [
           test "plain's surfaces and glyphs" plain_surfaces;

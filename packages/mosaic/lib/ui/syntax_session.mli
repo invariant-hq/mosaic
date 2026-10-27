@@ -52,7 +52,10 @@ val with_highlighter :
   language:string -> ?style:Syntax_style.t -> Highlighter.t -> syntax
 
 val language : syntax -> string option
-val style : syntax -> Syntax_style.t
+
+val style : syntax -> Syntax_style.t option
+(** [style s] is the style [s] was given, if any. A view resolves a style it was
+    not given from the theme in scope ([Theme.syntax]). *)
 
 val equal : syntax -> syntax -> bool
 (** [equal a b] compares by value, except highlighters, by identity. *)

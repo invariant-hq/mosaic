@@ -62,6 +62,10 @@ type t = {
   mutable on_rows_change : (unit -> unit) option;
   mutable lines : int * int;
       (* The logical lines whose captures the view last needed. *)
+  mutable shown_style : Syntax_style.t;
+  mutable styled : bool;
+      (* Whether captures are shown, and the syntax style they were last shown
+         in, to show them again when the theme in scope gives another. *)
 }
 
 (* Accessors *)
@@ -83,6 +87,12 @@ let pending_work t =
 
 let request_render t = Renderable.request_render (Text_renderable.node t.text)
 
+(* The style of [syntax]: the one it was given, or the theme's in scope. *)
+let syntax_style t syntax =
+  match Syntax_session.style syntax with
+  | Some style -> style
+  | None -> Theme.syntax (Renderable.theme (Text_renderable.node t.text))
+
 (* [show t] paints the content with the captures that describe it, or plain. *)
 let show t =
   let content = t.props.content in
@@ -90,11 +100,15 @@ let show t =
     (Syntax_session.shown t.session ~conceal:t.props.conceal, t.props.syntax)
   with
   | Some captures, Some syntax ->
+      let style = syntax_style t syntax in
+      t.shown_style <- style;
+      t.styled <- true;
       Text_renderable.set_annotations t.text
-        (Syntax_highlight.to_annotations ~conceal:t.props.conceal
-           ~style:(Syntax_session.style syntax)
+        (Syntax_highlight.to_annotations ~conceal:t.props.conceal ~style
            captures)
-  | Some _, None | None, _ -> Text_renderable.set_text t.text content
+  | Some _, None | None, _ ->
+      t.styled <- false;
+      Text_renderable.set_text t.text content
 
 (* The bytes of [content] from the start of logical line [first] to the end
    of line [last], found by its line breaks. *)
@@ -157,7 +171,16 @@ let render_before t _node grid ~dt:_ =
     Syntax_session.needs_range t.session
     && Syntax_session.view t.session ~range:(view_range t grid)
   in
-  if polled || viewed then begin
+  (* A style the theme gives that differs from the one shown restyles the
+     captures, without asking for them again. *)
+  let restyled =
+    match t.props.syntax with
+    | Some syntax when t.styled ->
+        let style = syntax_style t syntax in
+        style != t.shown_style && not (Syntax_style.equal style t.shown_style)
+    | _ -> false
+  in
+  if polled || viewed || restyled then begin
     show t;
     if not (Syntax_session.is_highlighting t.session) then notify_rows_change t;
     request_render t
@@ -186,7 +209,15 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?syntax
       ~off_loop:(Renderable.off_loop node)
   in
   let t =
-    { text; props; session; on_rows_change = None; lines = (0, max_int) }
+    {
+      text;
+      props;
+      session;
+      on_rows_change = None;
+      lines = (0, max_int);
+      shown_style = Syntax_style.plain;
+      styled = false;
+    }
   in
   Renderable.set_render_before node (Some (render_before t));
   Renderable.set_pending_provider node (Some (fun () -> pending_work t));

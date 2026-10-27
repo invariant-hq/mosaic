@@ -49,8 +49,19 @@ module Style : sig
       Raises [Invalid_argument] if a key is [Heading n] with [n] outside
       \[[1];[6]\], CommonMark's heading levels. *)
 
+  val of_theme : Theme.t -> t
+  (** [of_theme theme] is the style of each key by the roles of [theme]:
+      [Default] and [Code_block] in [Plain]; [Heading n] in [Emphasis], level 1
+      underlined too; [Emphasis] italic and [Strong] bold in [Plain];
+      [Code_span] in [Accent]; [Link] and [Image] in [Link]; [Blockquote] italic
+      and [Strikethrough] struck through in [Muted]; [List_marker] and
+      [Conceal_punctuation] in [Muted]; [Thematic_break] and [Table_border] in
+      [Border]; [Task_marker] in [Ok]. A block quote's and a code block's lines
+      take their style's color, or the [Border] role without one. *)
+
   val default : t
-  (** [default] is the built-in terminal style:
+  (** [default] is a style for dark terminals in fixed RGB colors, which a
+      markdown given no style no longer draws with ({!of_theme}):
       - [Default]: no decoration.
       - [Heading n]: bold; colored by level, with levels 4 to 6 sharing one
         color.
@@ -111,7 +122,9 @@ module Props : sig
         gracefully; the last table row is skipped to avoid flickering during
         incremental appends. Defaults to [false].
       - [style]: the element style. Styles compare by value, so an equal style
-        rebuilt on every view re-renders nothing. Defaults to {!Style.default}.
+        rebuilt on every view re-renders nothing. Defaults to none. A markdown
+        without a style draws with {!Style.of_theme} of the theme in scope, and
+        renders its blocks again when that theme gives other styles.
       - [selectable]: whether rendered markdown text can be selected. Defaults
         to [true].
       - [selection_bg] and [selection_fg]: selection colors applied to internal
@@ -138,9 +151,9 @@ module Props : sig
         {!Code.Highlighter.t}): create it once and reuse it. Defaults to [None],
         which renders fenced blocks as bordered plain blocks.
       - [syntax_style]: maps the highlighter's scopes to terminal styles.
-        Defaults to {!Syntax_style.default}. Styles compare by value, so
-        rebuilding an equal style changes nothing, and a changed style restyles
-        the blocks without highlighting them again.
+        Defaults to none, {!Theme.syntax} of the theme in scope. Styles compare
+        by value, so rebuilding an equal style changes nothing, and a changed
+        style restyles the blocks without highlighting them again.
 
       {!create} and {!Vnode.markdown} take these labels with these defaults,
       [style] being [md_style] in {!Vnode.markdown}. *)

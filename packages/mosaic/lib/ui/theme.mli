@@ -2,11 +2,12 @@
 
     A theme gives each role of text ({!Ansi.Theme.role}) its styles, as
     {!Ansi.Theme} does for printed output, and adds what only an interface has:
-    the {e surfaces} ({!type-surface}), the areas widgets draw text on, and the
-    glyph set ({!Glyphs}) widgets show state with. A surface's style is a pair,
-    a background and the foreground drawn on it, or neither, so that its text
-    stays legible whatever the terminal's colors. Drawing by role and surface
-    lets the theme choose the styles, so one value restyles a whole interface.
+    the {e surfaces} ({!type-surface}), the areas widgets draw text on, the
+    glyph set ({!Glyphs}) widgets show state with, and the style of highlighted
+    source ({!Syntax_style}). A surface's style is a pair, a background and the
+    foreground drawn on it, or neither, so that its text stays legible whatever
+    the terminal's colors. Drawing by role and surface lets the theme choose the
+    styles, so one value restyles a whole interface.
 
     An element is drawn with the theme {e in scope} where it is. The root's
     theme is the program's: {!default} of the colors the terminal reports, and
@@ -26,10 +27,8 @@
     attributes of both.
 
     The built-in widgets read the theme in scope as they draw, and their
-    documents state the roles, surfaces and glyphs they draw with. The default
-    styles of syntax highlighting ({!Syntax_style}), Markdown and diffs do not
-    read it yet, and are fixed colors. A canvas reads it with {!Canvas.theme}.
-*)
+    documents state the roles, surfaces and glyphs they draw with. A canvas
+    reads it with {!Canvas.theme}. *)
 
 (** {1:surfaces Surfaces} *)
 
@@ -52,12 +51,13 @@ type t
 
 val plain : t
 (** [plain] is the theme of a terminal whose colors are not reported: the text
-    of {!Ansi.Theme.plain}, the glyphs of {!Glyphs.unicode}, and surfaces in the
+    of {!Ansi.Theme.plain}, the glyphs of {!Glyphs.unicode}, surfaces in the
     terminal's own pair, with reverse for [Cursor] and [Highlight] and bold and
-    underline for [Selected]. *)
+    underline for [Selected], and the syntax style {!Syntax_style.plain}. *)
 
 val default : Ansi.Theme.colors -> t
-(** [default c] is {!plain} with the text of {!Ansi.Theme.default}[ c]. *)
+(** [default c] is {!plain} with the text of {!Ansi.Theme.default}[ c] and the
+    syntax style {!Syntax_style.of_colors}[ c]. *)
 
 val text : t -> Ansi.Theme.t
 (** [text t] is the styles [t] gives the roles of text. *)
@@ -74,6 +74,9 @@ val surface : t -> surface -> Ansi.Style.t
 val glyphs : t -> Glyphs.t
 (** [glyphs t] is the glyph set of [t]. *)
 
+val syntax : t -> Syntax_style.t
+(** [syntax t] is the style [t] gives highlighted source. *)
+
 val with_text : Ansi.Theme.t -> t -> t
 (** [with_text text t] is [t] with the roles of text styled by [text]. *)
 
@@ -87,6 +90,9 @@ val with_surface : surface -> Ansi.Style.t -> t -> t
 val with_glyphs : Glyphs.t -> t -> t
 (** [with_glyphs g t] is [t] with the glyph set [g]. *)
 
+val with_syntax : Syntax_style.t -> t -> t
+(** [with_syntax s t] is [t] with highlighted source styled by [s]. *)
+
 val equal : t -> t -> bool
 (** [equal a b] is [true] iff [a] and [b] give every role and every surface the
-    same styles and have equal glyph sets. *)
+    same styles and have equal glyph sets and syntax styles. *)

@@ -96,6 +96,29 @@ let default_theme =
     line_number_bg = None;
   }
 
+(* The colors of a diff given no theme: no backgrounds, the signs in the
+   [Added] and [Removed] roles' text and the line numbers in the [Muted]
+   role's, as the theme in scope gives them. *)
+let theme_of_roles theme =
+  let fg role =
+    Option.value (Theme.style theme role).Ansi.Style.fg
+      ~default:Ansi.Color.default_fg
+  in
+  {
+    added_bg = Ansi.Color.transparent;
+    removed_bg = Ansi.Color.transparent;
+    context_bg = None;
+    added_content_bg = None;
+    removed_content_bg = None;
+    context_content_bg = None;
+    added_sign_color = fg Added;
+    removed_sign_color = fg Removed;
+    added_line_number_bg = None;
+    removed_line_number_bg = None;
+    line_number_fg = fg Muted;
+    line_number_bg = None;
+  }
+
 let theme_equal a b =
   Ansi.Color.equal a.added_bg b.added_bg
   && Ansi.Color.equal a.removed_bg b.removed_bg
@@ -113,23 +136,22 @@ let theme_equal a b =
 
 type syntax = {
   language : string;
-  style : Syntax_style.t;
+  style : Syntax_style.t option;
   highlighter : Code.Highlighter.t;
   conceal : bool;
 }
 
-let syntax ~language ?(style = Syntax_style.default) ?(conceal = true)
-    highlighter =
+let syntax ~language ?style ?(conceal = true) highlighter =
   { language; style; highlighter; conceal }
 
 let syntax_equal a b =
   String.equal a.language b.language
-  && Syntax_style.equal a.style b.style
+  && Option.equal Syntax_style.equal a.style b.style
   && a.highlighter == b.highlighter
   && Bool.equal a.conceal b.conceal
 
 let code_syntax syntax =
-  Code.with_highlighter ~language:syntax.language ~style:syntax.style
+  Code.with_highlighter ~language:syntax.language ?style:syntax.style
     syntax.highlighter
 
 (* A pane without syntax has nothing to conceal. *)
@@ -145,7 +167,7 @@ module Props = struct
   type t = {
     patch : Patch.t;
     layout : layout;
-    theme : theme;
+    theme : theme option;
     highlight : highlight option;
     line_highlights : line_highlight list;
     line_spans : line_span list;
@@ -158,8 +180,8 @@ module Props = struct
 
   let empty_patch = Patch.empty
 
-  let make ?(patch = empty_patch) ?(layout = Unified) ?(theme = default_theme)
-      ?highlight ?(line_highlights = []) ?(line_spans = []) ?(line_signs = [])
+  let make ?(patch = empty_patch) ?(layout = Unified) ?theme ?highlight
+      ?(line_highlights = []) ?(line_spans = []) ?(line_signs = [])
       ?(show_line_numbers = true) ?(wrap = `None) ?(selectable = true)
       ?(text_style = Ansi.Style.default) () =
     {
@@ -181,7 +203,7 @@ module Props = struct
   let equal a b =
     Patch.equal a.patch b.patch
     && a.layout = b.layout
-    && theme_equal a.theme b.theme
+    && Option.equal theme_equal a.theme b.theme
     && Option.equal highlight_equal a.highlight b.highlight
     && List.equal equal_line_highlight a.line_highlights b.line_highlights
     && List.equal equal_line_span a.line_spans b.line_spans
@@ -851,6 +873,12 @@ type t = {
   mutable pending_rebuild : bool;
   mutable waiting_for_highlight : bool;
   mutable alignment : alignment option;
+  mutable colors : theme;
+      (* The colors the view was last built with: [theme], or those the theme
+         in scope gives ([theme_of_roles]). *)
+  mutable scope : Theme.t option;
+      (* The theme in scope [colors] were derived from, when [theme] is
+         unset. *)
 }
 
 let node t = t.node
@@ -1024,11 +1052,11 @@ let code_pane code text =
      else Pane.Source.of_string text)
 
 (* Key [rows]' gutter entries and emphasis to the pane installed as [text]. *)
-let decorate_pane (props : Props.t) side code ~text rows =
+let decorate_pane (props : Props.t) ~theme side code ~text rows =
   let pane = code_pane code text in
   Line_number.apply_props side
-    (View.gutter_props ~theme:props.theme
-       ~show_line_numbers:props.show_line_numbers pane rows);
+    (View.gutter_props ~theme ~show_line_numbers:props.show_line_numbers pane
+       rows);
   set_code_emphasis code (View.emphasis ~line_spans:props.line_spans pane rows);
   pane
 
@@ -1099,13 +1127,13 @@ let build_unified_view t (props : Props.t) =
   set_flex_direction t Toffee.Style.Flex_direction.Column;
   let rows =
     Array.of_list
-      (View.unified ~theme:props.theme ~line_highlights:props.line_highlights
+      (View.unified ~theme:t.colors ~line_highlights:props.line_highlights
          ~line_signs:props.line_signs props.patch)
   in
   let text = View.text rows in
   let side =
     make_or_update_side t.left_side ~parent:t.node ~style:full_style
-      ~theme:props.theme
+      ~theme:t.colors
   in
   let code =
     make_or_update_code t.left_code ~parent:(Line_number.node side) props
@@ -1113,7 +1141,7 @@ let build_unified_view t (props : Props.t) =
       ?syntax:(new_syntax props.highlight)
       ()
   in
-  t.left_pane <- Some (decorate_pane props side code ~text rows);
+  t.left_pane <- Some (decorate_pane props ~theme:t.colors side code ~text rows);
   t.left_side <- Some side;
   t.left_code <- Some code;
   t.left_lines <- [];
@@ -1147,7 +1175,7 @@ let build_split_view t (props : Props.t) =
   set_flex_direction t Toffee.Style.Flex_direction.Row;
   let split_rows lines =
     Array.of_list
-      (View.split_rows ~theme:props.theme ~line_highlights:props.line_highlights
+      (View.split_rows ~theme:t.colors ~line_highlights:props.line_highlights
          ~line_signs:props.line_signs lines)
   in
   let initial = View.split props.patch in
@@ -1168,7 +1196,7 @@ let build_split_view t (props : Props.t) =
   in
   let left_side =
     make_or_update_side t.left_side ~parent:t.node ~style:half_style
-      ~theme:props.theme
+      ~theme:t.colors
   in
   let left_code =
     make_or_update_code t.left_code
@@ -1179,7 +1207,7 @@ let build_split_view t (props : Props.t) =
   in
   let right_side =
     make_or_update_side t.right_side ~parent:t.node ~style:half_style
-      ~theme:props.theme
+      ~theme:t.colors
   in
   let right_code =
     make_or_update_code t.right_code
@@ -1232,9 +1260,13 @@ let build_split_view t (props : Props.t) =
        ?syntax:(new_syntax props.highlight)
        ());
   t.left_pane <-
-    Some (decorate_pane props left_side left_code ~text:left_text left_rows);
+    Some
+      (decorate_pane props ~theme:t.colors left_side left_code ~text:left_text
+         left_rows);
   t.right_pane <-
-    Some (decorate_pane props right_side right_code ~text:right_text right_rows);
+    Some
+      (decorate_pane props ~theme:t.colors right_side right_code
+         ~text:right_text right_rows);
   update_waiting_for_highlight t props left_code right_code;
   t.left_side <- Some left_side;
   t.right_side <- Some right_side;
@@ -1243,7 +1275,22 @@ let build_split_view t (props : Props.t) =
   t.left_lines <- split.View.left;
   t.right_lines <- split.View.right
 
+(* The colors to build with: [theme] where given, and otherwise those the
+   theme in scope gives, derived again only when it is another value. *)
+let resolve_colors t =
+  match t.props.theme with
+  | Some theme ->
+      t.colors <- theme;
+      t.scope <- None
+  | None ->
+      let scope = Renderable.theme t.node in
+      if not (Option.equal ( == ) t.scope (Some scope)) then begin
+        t.colors <- theme_of_roles scope;
+        t.scope <- Some scope
+      end
+
 let rebuild t =
+  resolve_colors t;
   if Patch.is_empty t.props.patch then begin
     destroy_children t;
     set_flex_direction t
@@ -1283,6 +1330,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?layout ?theme
       pending_rebuild = false;
       waiting_for_highlight = false;
       alignment = None;
+      colors = default_theme;
+      scope = None;
     }
   in
   Renderable.on_mouse node (handle_mouse t);
@@ -1298,6 +1347,17 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?layout ?theme
            Renderable.set_live t.node false
          end));
   Renderable.set_pending_provider node (Some (fun () -> pending_work t));
+  (* A diff given no theme follows the theme in scope: another theme that
+     gives other colors builds the view again, before it is laid out. *)
+  Renderable.set_on_update node
+    (Some
+       (fun _ ~dt:_ ->
+         match (t.props.theme, t.scope) with
+         | None, Some scope when scope != Renderable.theme t.node ->
+             let colors = t.colors in
+             resolve_colors t;
+             if not (theme_equal colors t.colors) then rebuild t
+         | _ -> ()));
   rebuild t;
   t
 
@@ -1310,7 +1370,7 @@ let update t props =
 
 let set_patch t patch = update t { t.props with patch }
 let set_layout t layout = update t { t.props with layout }
-let set_theme t theme = update t { t.props with theme }
+let set_theme t theme = update t { t.props with theme = Some theme }
 let set_highlight t highlight = update t { t.props with highlight }
 
 let set_line_highlights t line_highlights =
