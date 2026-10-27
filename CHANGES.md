@@ -71,6 +71,7 @@ it.
 
 - A message dispatched from another thread was applied only at the next event or frame, outside the turn's budget, so a flood of them held the screen; it is applied when the loop takes it
 - A message from `Cmd.perform` could be lost to a race between threads
+- A canvas that clears itself in its draw, as its documentation advises, asked for another frame each time, so an idle canvas woke the program every frame; it asks for none, and a canvas that animates by `dt` takes `~live:true`
 - A focused `scroll_box` took the arrows and h/j/k/l along an axis it does not scroll; those keys pass on to shortcuts
 - The wheel over a part of the screen with no scrollable element reaches the focused scrollable
 - `tree` and `select` read the mouse in the widget's coordinates, and `scroll_bar` applies changes of its orientation and arrow color

@@ -191,7 +191,9 @@ module Canvas : sig
       [link] defaults to no hyperlink. [blend] defaults to [false]. *)
 
   val clear : ?color:Ansi.Color.t -> t -> unit
-  (** [clear t] clears the canvas grid and schedules a re-render.
+  (** [clear t] clears the canvas grid and, outside [t]'s [on_draw], schedules a
+      re-render. A clear inside [on_draw] shows in the frame being drawn, so it
+      schedules nothing.
 
       [color] defaults to the terminal default background. *)
 
@@ -2318,7 +2320,9 @@ val canvas :
   'msg t
 (** [canvas draw] is a custom drawing surface, {!Mosaic_ui.Canvas} with [draw]
     as its {!Mosaic_ui.Canvas.set_on_draw} callback. Layout and paint use the
-    labelled arguments. *)
+    labelled arguments. [draw] runs in each frame that draws the canvas, and
+    with [~live:true] the canvas asks for every frame, as a drawing that moves
+    by [dt] needs. *)
 
 val picture :
   ?key:string ->

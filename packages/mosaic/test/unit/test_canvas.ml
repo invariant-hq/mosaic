@@ -90,6 +90,28 @@ let clear_schedules_render () =
   Canvas.clear canvas;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
+(* A canvas that clears itself in its draw, as a full redraw does, owes no
+   frame: the clear shows in the frame being drawn. *)
+let clear_in_draw_schedules_nothing () =
+  let r = Renderer.create () in
+  let style =
+    Toffee.Style.default
+    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 4.)
+    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 2.)
+  in
+  let canvas = Canvas.create ~parent:(Renderer.root r) ~style () in
+  let draws = ref 0 in
+  Canvas.set_on_draw canvas
+    (Some
+       (fun c ~dt:_ ->
+         incr draws;
+         Canvas.clear c));
+  Renderer.render_frame r ~width:10 ~height:4 ~dt:0.;
+  equal ~msg:"drawn" int 1 !draws;
+  is_false ~msg:"no frame owed" (Renderer.needs_render r);
+  Canvas.clear canvas;
+  is_true ~msg:"a clear outside the draw owes one" (Renderer.needs_render r)
+
 (* ── Properties ── *)
 
 let request_render_schedules () =
@@ -343,7 +365,12 @@ let () =
           test "on_resize sees new dimensions" on_resize_sees_new_dimensions;
           test "skips zero dimensions" no_render_for_zero_dimensions;
         ];
-      group "Clear" [ test "schedules render" clear_schedules_render ];
+      group "Clear"
+        [
+          test "schedules render" clear_schedules_render;
+          test "in the canvas's draw schedules nothing"
+            clear_in_draw_schedules_nothing;
+        ];
       group "request_render"
         [ test "schedules render" request_render_schedules ];
       group "Drawing"

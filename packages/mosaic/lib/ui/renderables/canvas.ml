@@ -5,6 +5,9 @@ type t = {
   grid : Matrix_grid.t;
   mutable on_draw : (t -> dt:float -> unit) option;
   mutable on_resize : (t -> unit) option;
+  (* Whether [on_draw] is running. A clear there shows in the frame being
+     drawn, so it asks for no other. *)
+  mutable drawing : bool;
 }
 
 (* ───── Accessors ───── *)
@@ -36,7 +39,7 @@ let set_uchar t ~x ~y ~uchar ~fg ~bg ~attrs ?link ?blend () =
 
 let clear ?color t =
   Matrix_grid.clear ?color t.grid;
-  Renderable.request_render t.node
+  if not t.drawing then Renderable.request_render t.node
 
 (* ───── Rendering ───── *)
 
@@ -55,7 +58,16 @@ let render t _self parent_grid ~dt =
        they are drawn again. *)
     Matrix_grid.set_width_method t.grid (Renderable.Private.width_method t.node);
     (* on_draw fires after resize so the callback sees up-to-date dimensions. *)
-    Option.iter (fun f -> f t ~dt) t.on_draw;
+    (match t.on_draw with
+    | None -> ()
+    | Some f -> (
+        t.drawing <- true;
+        match f t ~dt with
+        | () -> t.drawing <- false
+        | exception e ->
+            let bt = Printexc.get_raw_backtrace () in
+            t.drawing <- false;
+            Printexc.raise_with_backtrace e bt));
     Matrix_grid.draw_region ~src:t.grid ~dst:parent_grid ~src_x:0 ~src_y:0
       ~width:w ~height:h ~dst_x:(Renderable.x t.node)
       ~dst_y:(Renderable.y t.node)
@@ -75,7 +87,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity () =
       ~width_method:(Renderable.Private.width_method node)
       ()
   in
-  let t = { node; grid; on_draw = None; on_resize = None } in
+  let t = { node; grid; on_draw = None; on_resize = None; drawing = false } in
   Renderable.set_render node (render t);
   t
 

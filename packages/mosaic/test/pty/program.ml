@@ -59,6 +59,25 @@ let idle () = ignore (counter () : int)
 let idle_after_perform () =
   ignore (counter ~init:(M.Cmd.perform ignore) () : int)
 
+(* A canvas that clears itself in its draw, as a full redraw does, and
+   nothing else to do. *)
+let idle_canvas () =
+  M.run
+    {
+      M.init = (fun () -> ((), M.Cmd.none));
+      update = (fun `Quit () -> ((), M.Cmd.quit));
+      view =
+        (fun () ->
+          M.box
+            [
+              M.text "N=0";
+              M.canvas
+                ~size:{ width = M.px 4; height = M.px 1 }
+                (fun c ~dt:_ -> M.Canvas.clear c);
+            ]);
+      subscriptions = (fun () -> on_char 'q' `Quit);
+    }
+
 let idle_every () =
   ignore (counter ~subs:(M.Sub.every ~id:"e" 1.0 (fun _ -> `Other)) () : int)
 
@@ -260,6 +279,7 @@ let () =
       idle ()
   | "idle-after-perform" -> idle_after_perform ()
   | "idle-every" -> idle_every ()
+  | "idle-canvas" -> idle_canvas ()
   | "idle-tick" -> idle_tick ()
   | "tick-typing" -> tick_typing ()
   | "idle-matrix" -> idle_matrix ()

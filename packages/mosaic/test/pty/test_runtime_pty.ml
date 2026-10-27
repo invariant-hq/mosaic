@@ -338,6 +338,11 @@ let test_idle_matrix () =
   let rate = idle_wakeups "idle-matrix" in
   is_true ~msg:(Printf.sprintf "%.1f wakeups/s, at most 1" rate) (rate <= 1.)
 
+(* A canvas that clears itself in each draw idles as a static program. *)
+let test_idle_canvas () =
+  let rate = idle_wakeups "idle-canvas" in
+  is_true ~msg:(Printf.sprintf "%.1f wakeups/s, at most 1" rate) (rate <= 1.)
+
 let test_idle_every () =
   let rate = idle_wakeups "idle-every" in
   is_true ~msg:(Printf.sprintf "%.1f wakeups/s, about 1" rate) (rate <= 3.)
@@ -511,7 +516,14 @@ let measure () =
     (fun name ->
       Printf.printf "idle %-20s %.2f wakeups/s\n%!" name
         (idle_wakeups ~seconds:10. name))
-    [ "idle"; "idle-after-perform"; "idle-every"; "idle-tick"; "idle-matrix" ];
+    [
+      "idle";
+      "idle-after-perform";
+      "idle-canvas";
+      "idle-every";
+      "idle-tick";
+      "idle-matrix";
+    ];
   let offsets = offsets (timer_fires ()) in
   Printf.printf "timer: %d fires, %.2f to %.2f ms from the grid\n%!"
     (List.length offsets)
@@ -560,6 +572,8 @@ let () =
                  (counts_switches test_idle_matrix);
                test "a program that ran a perform does not wake"
                  (counts_switches test_idle_after_perform);
+               test "an idle canvas does not wake"
+                 (counts_switches test_idle_canvas);
                test "a 1 s timer wakes once a second"
                  (counts_switches test_idle_every);
                test "a tick wakes once a frame" (counts_switches test_idle_tick);

@@ -167,7 +167,9 @@ val set_uchar :
 *)
 
 val clear : ?color:Ansi.Color.t -> t -> unit
-(** [clear t] clears the canvas grid and schedules a re-render.
+(** [clear t] clears the canvas grid and, outside [t]'s draw callback
+    ({!set_on_draw}), schedules a re-render. A clear inside the callback shows
+    in the frame being drawn, so it schedules nothing.
 
     [color] is the background color used to fill the cleared grid. Defaults to
     the default background color.
