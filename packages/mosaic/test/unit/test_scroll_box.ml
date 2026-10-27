@@ -141,7 +141,6 @@ let vertical_bar_visible_when_content_overflows () =
   layout_node (Scroll_box.node sb) ~x:0 ~y:0 ~width:20 ~height:8;
   layout_node (Scroll_box.viewport sb) ~x:0 ~y:0 ~width:19 ~height:8;
   layout_node (Scroll_box.content sb) ~x:0 ~y:0 ~width:19 ~height:20;
-  Renderable.Private.pre_render_update (Scroll_box.content sb) ~dt:0.;
   is_true ~msg:"vertical bar visible on overflow"
     (Renderable.visible (Scroll_bar.node (Scroll_box.vertical_bar sb)))
 
@@ -181,23 +180,15 @@ let on_scroll_fires () =
 let render_scroll_box sb ~vh ~ch =
   layout_node (Scroll_box.node sb) ~x:0 ~y:0 ~width:20 ~height:vh;
   layout_node (Scroll_box.viewport sb) ~x:0 ~y:0 ~width:19 ~height:vh;
-  layout_node (Scroll_box.content sb) ~x:0 ~y:0 ~width:19 ~height:ch;
-  Renderable.Private.pre_render_update (Scroll_box.content sb) ~dt:0.
+  layout_node (Scroll_box.content sb) ~x:0 ~y:0 ~width:19 ~height:ch
 
 let wheel ?(shift = false) direction =
   let modifiers = { Event.Mouse.no_modifier with shift } in
   Event.Mouse.make ~x:0 ~y:0 ~modifiers (Scroll { direction; delta = 1 })
 
-(* The wheel goes from the content up through its ancestors until one stops
-   it, as the renderer delivers it. *)
-let emit_wheel sb event =
-  let rec bubble node =
-    if not (Event.Mouse.propagation_stopped event) then begin
-      Renderable.Private.emit_mouse node event;
-      Option.iter bubble (Renderable.parent node)
-    end
-  in
-  bubble (Scroll_box.content sb)
+(* The wheel goes from the node under the pointer, in the content, up through
+   its ancestors until one stops it, as the renderer delivers it. *)
+let emit_wheel sb event = Test_harness.emit_mouse (Scroll_box.content sb) event
 
 let parent_node sb =
   match Renderable.parent (Scroll_box.node sb) with
@@ -207,7 +198,9 @@ let parent_node sb =
 let wheel_consumes_only_when_scroll_position_changes () =
   let _test_context, sb = make_scroll_box () in
   let bubbled = ref 0 in
-  Renderable.on_mouse (parent_node sb) (fun _event -> incr bubbled);
+  (* The wheel events that reach it; a frame can also send it hover. *)
+  Renderable.on_mouse (parent_node sb) (fun event ->
+      match Event.Mouse.kind event with Scroll _ -> incr bubbled | _ -> ());
   render_scroll_box sb ~vh:4 ~ch:12;
   let down = wheel Scroll_down in
   emit_wheel sb down;
@@ -227,7 +220,9 @@ let wheel_consumes_only_when_scroll_position_changes () =
 let wheel_without_usable_axis_bubbles () =
   let _test_context, sb = make_scroll_box ~scroll_x:false ~scroll_y:true () in
   let bubbled = ref 0 in
-  Renderable.on_mouse (parent_node sb) (fun _event -> incr bubbled);
+  (* The wheel events that reach it; a frame can also send it hover. *)
+  Renderable.on_mouse (parent_node sb) (fun event ->
+      match Event.Mouse.kind event with Scroll _ -> incr bubbled | _ -> ());
   render_scroll_box sb ~vh:4 ~ch:12;
   let horizontal = wheel Scroll_right in
   emit_wheel sb horizontal;
@@ -246,7 +241,9 @@ let wheel_without_usable_axis_bubbles () =
 let wheel_without_overflow_bubbles () =
   let _test_context, sb = make_scroll_box () in
   let bubbled = ref 0 in
-  Renderable.on_mouse (parent_node sb) (fun _event -> incr bubbled);
+  (* The wheel events that reach it; a frame can also send it hover. *)
+  Renderable.on_mouse (parent_node sb) (fun event ->
+      match Event.Mouse.kind event with Scroll _ -> incr bubbled | _ -> ());
   render_scroll_box sb ~vh:4 ~ch:4;
   let down = wheel Scroll_down in
   emit_wheel sb down;
@@ -267,7 +264,9 @@ let nested_wheel_bubbles_at_inner_boundary () =
   in
   Scroll_box.set_on_scroll inner (Some (Scroll_box.set_scroll inner));
   let escaped = ref 0 in
-  Renderable.on_mouse root (fun _event -> incr escaped);
+  (* The wheel events that reach it; a frame can also send it hover. *)
+  Renderable.on_mouse root (fun event ->
+      match Event.Mouse.kind event with Scroll _ -> incr escaped | _ -> ());
   render_scroll_box outer ~vh:8 ~ch:24;
   render_scroll_box inner ~vh:4 ~ch:12;
   let handled_by_inner = wheel Scroll_down in
@@ -464,7 +463,7 @@ let axis_styles_replace_shared_and_restore_it () =
     (visible_bar_children (Scroll_box.vertical_bar sb));
   equal ~msg:"other axis inherits shared arrows" int 3
     (visible_bar_children (Scroll_box.horizontal_bar sb));
-  let before = !(ctx.schedule_count) in
+  let before = Test_harness.clean ctx in
   Scroll_box.apply_props sb props;
   equal ~msg:"same appearance schedules nothing" int before
     !(ctx.schedule_count);

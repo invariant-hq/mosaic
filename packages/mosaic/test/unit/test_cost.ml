@@ -23,13 +23,15 @@ let same what ~small ~large =
 (* ───── Repainting a text surface ─────
 
    A 80x20 viewport over text whose rows, columns or overlays mostly lie
-   outside it. Setup builds and paints once; the measured call repaints the
-   unchanged view. Paint allocates per visited row and per entered style run,
-   so a hidden row, column or overlay costs nothing if paint never visits
-   it. *)
+   outside it. Setup builds and draws a frame once; the measured call draws
+   the frame again with the unchanged view asked to repaint, through its
+   renderer. Paint allocates per visited row and per entered style run, and
+   the rest of the frame the same at either size, so a hidden row, column or
+   overlay costs nothing if paint never visits it. *)
 
 let make_surface spans =
   let renderer = Renderer.create () in
+  Test_harness.register renderer;
   let node = Renderable.create ~parent:(Renderer.root renderer) () in
   let buffer = Text_buffer.create () in
   Text_buffer.set_styled_text buffer spans;
@@ -56,16 +58,14 @@ let viewport ?(wrap = `None) ?(rows = 20) ?(scroll = `Top) ?(scroll_x = 0)
   Text_surface.set_wrap surface wrap;
   setup (Text_surface.buffer surface);
   let node = Text_surface.node surface in
-  Renderable.Private.update_layout node ~x:0. ~y:0. ~width:80.
-    ~height:(float_of_int rows);
+  Test_harness.layout_node node ~x:0 ~y:0 ~width:80 ~height:rows;
   (match scroll with
   | `Top -> ()
   | `Middle ->
       Text_surface.set_scroll_y surface (Text_surface.max_scroll_y surface / 2));
   Text_surface.set_scroll_x surface scroll_x;
-  let grid = Matrix_grid.create ~width:80 ~height:rows () in
-  Renderable.Private.render node grid ~dt:0.;
-  (renderer, node, grid)
+  Renderer.render_frame renderer ~width:80 ~height:rows ~dt:0.;
+  (renderer, node, rows)
 
 (* [count] highlights on the first [count] lines of [tall], each with its own
    color, so that none reaches the middle of the text. *)
@@ -93,10 +93,10 @@ let dense_overlays count buffer =
 let visible_lines =
   String.concat "\n" (List.init 20 (fun _ -> String.make 80 'x'))
 
-let repaint (renderer, node, grid) =
+let repaint (renderer, node, rows) =
   words (fun () ->
-      ignore (Sys.opaque_identity renderer : Renderer.t);
-      Renderable.Private.render node grid ~dt:0.)
+      Renderable.request_render node;
+      Renderer.render_frame renderer ~width:80 ~height:rows ~dt:0.)
 
 let hidden_rows () =
   same "repaint grows with hidden rows"
@@ -456,10 +456,15 @@ let shared_layout () =
   let node = List.hd (Renderable.children (Renderer.root renderer)) in
   is_true ~msg:"the node holds the shared layout"
     (Renderable.style node == layout);
-  Renderable.Private.clear_layout_dirty node;
-  declare ();
+  Test_harness.register renderer;
   is_false ~msg:"declared again, the text is not laid out again"
-    (Renderable.Private.layout_dirty node)
+    (Test_harness.measured_again node declare);
+  is_true ~msg:"declared with a layout of its own, the text is laid out again"
+    (Test_harness.measured_again node (fun () ->
+         Mosaic.Reconciler.render reconciler ~viewport_width:80
+           (Mosaic.text
+              ~layout:(Toffee.Style.set_flex_grow Float.nan layout)
+              "x")))
 
 (* ───── Placing reordered children ─────
 

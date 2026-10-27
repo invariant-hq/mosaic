@@ -898,17 +898,18 @@ let unmount_tears_down_wide_view () =
   let box = List.hd (children_of renderer) in
   let rows = Renderable.children box in
   equal ~msg:"mounted" int (n + 2) (List.length rows);
+  (* A row that has focus when the view is unmounted: no key reaches it. *)
+  let focused = List.hd rows in
+  Renderable.set_focusable focused true;
+  ignore (Renderer.focus renderer focused : bool);
   Reconciler.unmount reconciler;
   is_true ~msg:"box destroyed" (Renderable.destroyed box);
   let rows = List.filter (fun node -> not (node == embedded)) rows in
   is_true ~msg:"rows destroyed" (List.for_all Renderable.destroyed rows);
   is_true ~msg:"rows orphaned"
     (List.for_all (fun node -> Option.is_none (Renderable.parent node)) rows);
-  List.iter
-    (fun row ->
-      Renderable.Private.emit_key row
-        (Event.Key.of_input (Test_harness.char_key 'a')))
-    rows;
+  ignore
+    (Test_harness.dispatch_key renderer (Test_harness.char_key 'a') : Event.key);
   is_false ~msg:"handlers dropped" !key_fired;
   is_false ~msg:"embedded kept"
     (Renderable.destroyed embedded || Renderable.destroyed nested);
@@ -1321,13 +1322,16 @@ let plain_rich_transitions_reuse_text_and_select_wrapped_content () =
   is_true ~msg:"nested style rendered"
     (Ansi.Attr.mem Ansi.Attr.Bold (Matrix_grid.get_style grid 2).attrs);
   let x = Renderable.x node and y = Renderable.y node in
-  let selection =
-    Selection.create ~anchor:{ x; y } ~focus:{ x = x + 2; y = y + 1 } ()
-  in
-  ignore (Renderable.Private.emit_selection_changed node (Some selection));
-  equal ~msg:"selection crosses wrapping and fragment boundaries" string
-    "abcdef"
-    (Renderable.Private.get_selected_text node);
+  ignore (Renderer.render ~full:true renderer : string);
+  ignore
+    (Test_harness.dispatch_mouse renderer
+       (Test_harness.mouse_report ~x ~y (Press Left)));
+  ignore
+    (Test_harness.dispatch_mouse renderer
+       (Test_harness.mouse_report ~x:(x + 2) ~y:(y + 1) (Motion (Some Left))));
+  equal ~msg:"selection crosses wrapping and fragment boundaries"
+    (option string) (Some "abcdef")
+    (Renderer.selection_text renderer);
   render_view reconciler (Mosaic.text ~key:"text" ~layout:style "after");
   do_frame renderer;
   is_true ~msg:"rich to plain retains native node"

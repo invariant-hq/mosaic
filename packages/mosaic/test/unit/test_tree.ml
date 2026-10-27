@@ -71,13 +71,13 @@ let make_tree ?(items = []) ?(selected_index = 0) ?(expand_depth = 0)
 
 let emit_key tree key =
   let ev = Event.Key.of_input key in
-  Renderable.Private.emit_key (Tree.node tree) ev;
+  Test_harness.emit_key (Tree.node tree) ev;
   if
     (not (Event.Key.default_prevented ev))
     && not (Event.Key.propagation_stopped ev)
-  then Renderable.Private.run_key_behavior (Tree.node tree) ev
+  then Test_harness.emit_key (Tree.node tree) ev
 
-let emit_mouse tree ev = Renderable.Private.emit_mouse (Tree.node tree) ev
+let emit_mouse tree ev = Test_harness.emit_mouse (Tree.node tree) ev
 
 let with_layout tree ~width ~height =
   layout_node (Tree.node tree) ~x:0 ~y:0 ~width ~height
@@ -533,38 +533,38 @@ let default_background_is_transparent () =
 let set_background_noop () =
   let t, tree = make_tree () in
   Tree.set_background tree (Ansi.Color.of_rgba 0 0 0 0);
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.set_background tree (Ansi.Color.of_rgba 0 0 0 0);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_wrap_noop () =
   let t, tree = make_tree () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.set_wrap_selection tree false;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_indent_size_noop () =
   let t, tree = make_tree () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.set_indent_size tree 2;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_show_guides_noop () =
   let t, tree = make_tree () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.set_show_guides tree false;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_text_color_noop () =
   let t, tree = make_tree () in
   Tree.set_text_color tree (Ansi.Color.of_rgb 255 255 255);
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.set_text_color tree (Ansi.Color.of_rgb 255 255 255);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_fast_scroll_step_noop () =
   let t, tree = make_tree () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.set_fast_scroll_step tree 5;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -572,13 +572,13 @@ let set_fast_scroll_step_noop () =
 
 let set_show_guides_toggle () =
   let t, tree = make_tree () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.set_show_guides tree true;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_indent_size_changes () =
   let t, tree = make_tree () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.set_indent_size tree 4;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -603,7 +603,7 @@ let apply_props_updates () =
       ~state:(state_for_items sample_items 1 0)
       ~wrap_selection:true ()
   in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.apply_props tree props;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
   equal ~msg:"index applied" int 1 (Tree.selected_index tree)
@@ -612,7 +612,7 @@ let apply_props_same_no_extra_render () =
   let t, tree = make_tree ~items:sample_items () in
   let props = Tree.Props.make ~items:sample_items () in
   Tree.apply_props tree props;
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tree.apply_props tree props;
   equal ~msg:"no extra schedule" int before !(t.schedule_count)
 
@@ -671,13 +671,13 @@ let setters_work_without_callbacks () =
   equal ~msg:"toggle needs no callback" int 3 (Tree.visible_count tree);
   Tree.expand_all tree;
   equal ~msg:"expand all needs no callback" int 6 (Tree.visible_count tree);
-  let before = !(ctx.schedule_count) in
+  let before = Test_harness.clean ctx in
   Tree.expand_all tree;
   equal ~msg:"repeated expansion does not render" int before
     !(ctx.schedule_count);
   Tree.collapse_all tree;
   equal ~msg:"collapse all needs no callback" int 3 (Tree.visible_count tree);
-  let before = !(ctx.schedule_count) in
+  let before = Test_harness.clean ctx in
   Tree.collapse_all tree;
   Tree.collapse tree 0;
   Tree.set_selected_index tree 1;

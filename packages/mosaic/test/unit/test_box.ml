@@ -115,7 +115,7 @@ let border_width_sets_insets_and_lines () =
   is_true ~msg:"a side of width 0 takes nothing" (lp zero_lp b.left);
   layout_node node ~x:0 ~y:0 ~width:6 ~height:5;
   let grid = make_grid ~width:6 ~height:5 () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   let cell x y = Matrix_grid.get_text grid ((y * 6) + x) in
   equal ~msg:"a side of width 0 draws no line" string " " (cell 0 2);
   equal ~msg:"a wide side draws its line outermost" string "\u{2502}" (cell 5 2);
@@ -215,10 +215,10 @@ let set_background () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_background box (Some Ansi.Color.blue);
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
-  let before2 = !(t.schedule_count) in
+  let before2 = Test_harness.clean t in
   Box.set_background box None;
   gt ~msg:"scheduled again" ~than:before2 !(t.schedule_count)
 
@@ -226,7 +226,7 @@ let set_fill () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_fill box false;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -236,10 +236,10 @@ let set_title () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_title box (Some "Hello");
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
-  let before2 = !(t.schedule_count) in
+  let before2 = Test_harness.clean t in
   Box.set_title box None;
   gt ~msg:"scheduled again" ~than:before2 !(t.schedule_count)
 
@@ -247,7 +247,7 @@ let set_title_alignment () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_title_alignment box `Center;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -258,7 +258,7 @@ let apply_props_updates () =
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ()) in
   let props = Box.Props.make ~border:true ~title:"Test" () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.apply_props box props;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
   let b = border_of (Box.node box) in
@@ -365,7 +365,7 @@ let set_border_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_border box true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -373,7 +373,7 @@ let set_border_style_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_border_style box Matrix_grid.Border.single;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -384,7 +384,7 @@ let set_border_color_noop_same_value () =
     Box.create ~parent:root
       (Box.Props.make ~border:true ~border_color:Ansi.Color.white ())
   in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_border_color box Ansi.Color.white;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -392,7 +392,7 @@ let set_border_sides_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_border_sides box Matrix_grid.Border.all;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -402,7 +402,7 @@ let set_background_noop_same_value () =
   let box =
     Box.create ~parent:root (Box.Props.make ~background:Ansi.Color.blue ())
   in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_background box (Some Ansi.Color.blue);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -410,7 +410,7 @@ let set_fill_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_fill box true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -418,7 +418,7 @@ let set_title_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ~title:"Hello" ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_title box (Some "Hello");
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -426,7 +426,7 @@ let set_title_alignment_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
   let box = Box.create ~parent:root (Box.Props.make ()) in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Box.set_title_alignment box `Left;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 

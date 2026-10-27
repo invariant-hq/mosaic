@@ -36,68 +36,137 @@ let le ?pos ?msg ~than n =
 
 (* ── Renderer Context ── *)
 
-type ctx = {
-  ctx : Renderable.Private.context;
-  schedule_count : int ref;
-  focus_log : string list ref;
-  blur_log : string list ref;
-  unregister_log : string list ref;
-}
+(* A renderer for a test, with the frames its nodes asked for
+   ([schedule_count]). Everything goes through the renderer's public
+   interface. *)
+type ctx = { renderer : Renderer.t; schedule_count : int ref }
 
-let next_num = ref 0
+(* The renderer of each root, so that the helpers below find a node's
+   renderer from the node. A [uid] is unique within one renderer, so roots
+   are told apart physically. *)
+let renderers : (int, Renderable.t * Renderer.t) Hashtbl.t = Hashtbl.create 16
+
+let rec root_of node =
+  match Renderable.parent node with Some p -> root_of p | None -> node
+
+let renderer_of node =
+  let root = root_of node in
+  match
+    List.find_opt
+      (fun (r, _) -> r == root)
+      (Hashtbl.find_all renderers (Renderable.uid root))
+  with
+  | Some (_, r) -> r
+  | None -> Windtrap.fail "the node is in no test renderer"
+
+(* [register r] lets the helpers below find [r] from its nodes, for a test
+   that makes its renderer itself. *)
+let register r =
+  let root = Renderer.root r in
+  Hashtbl.add renderers (Renderable.uid root) (root, r)
 
 let make_ctx ?(width_method = `Unicode) () =
-  let tree = Toffee.new_tree () in
   let schedule_count = ref 0 in
-  let focus_log = ref [] in
-  let blur_log = ref [] in
-  let unregister_log = ref [] in
-  let ctx : Renderable.Private.context =
-    {
-      tree;
-      schedule = (fun () -> incr schedule_count);
-      off_loop = (fun work -> ignore (Thread.create work () : Thread.t));
-      focus =
-        (fun n ->
-          focus_log := Renderable.id n :: !focus_log;
-          Renderable.Private.focus_direct n);
-      blur =
-        (fun n ->
-          blur_log := Renderable.id n :: !blur_log;
-          Renderable.Private.blur_direct n);
-      get_selection = (fun () -> None);
-      request_selection_update = (fun () -> ());
-      register_lifecycle = (fun _ -> ());
-      unregister_lifecycle = (fun _ -> ());
-      alloc_num =
-        (fun () ->
-          let n = !next_num in
-          incr next_num;
-          n);
-      register = (fun _ -> ());
-      unregister =
-        (fun n -> unregister_log := Renderable.id n :: !unregister_log);
-      width_method = (fun () -> width_method);
-      cell_size = (fun () -> None);
-      report_scroll = (fun _ ~region:_ ~dx:_ ~dy:_ -> ());
-      admit_size_report = (fun _ -> true);
-      regroups = [];
-      top_layer = None;
-      theme = Theme.plain;
-    }
+  let renderer =
+    Renderer.create ~width_method
+      ~request_render:(fun () -> incr schedule_count)
+      ~executor:(fun work -> ignore (Thread.create work () : Thread.t))
+      ()
   in
-  { ctx; schedule_count; focus_log; blur_log; unregister_log }
+  register renderer;
+  { renderer; schedule_count }
+
+(* The size of the frames the helpers draw when the test names none. *)
+let frame_width = 80
+let frame_height = 24
+
+(* The frames that settle [r]: a frame can ask for another, as a widget
+   sized by its first layout does. *)
+let settle_frames r =
+  let rec go n =
+    Renderer.render_frame r ~width:frame_width ~height:frame_height ~dt:0.;
+    ignore (Renderer.render r : string);
+    if n > 1 && Renderer.needs_render r then go (n - 1)
+  in
+  go 8
+
+(* Draws the frames that leave the renderer clean, and is the number of
+   frames asked for so far: a test reads it before an operation and compares
+   after, so that an operation that asks for a frame counts once. *)
+let clean t =
+  settle_frames t.renderer;
+  !(t.schedule_count)
 
 (* ── Root and Layout ── *)
 
 let make_root ?style t =
-  let root = Renderable.Private.create_root t.ctx ?style () in
-  Renderable.Private.set_is_root root true;
+  let root = Renderer.root t.renderer in
+  Option.iter (Renderable.set_style root) style;
   root
 
+(* Places [node] at column [x] and row [y], [width] cells wide and
+   [height] high, as its style says, and lays it out with a frame. *)
+let place node ~x ~y ~width ~height =
+  let open Toffee.Style in
+  let lpa v = Length_percentage_auto.length (Float.of_int v) in
+  Renderable.set_style node
+    (Renderable.style node
+    |> set_position Position.Absolute
+    |> set_inset
+         {
+           left = lpa x;
+           top = lpa y;
+           right = Length_percentage_auto.auto;
+           bottom = Length_percentage_auto.auto;
+         }
+    |> set_size { width = Dimension.length (Float.of_int width); height }
+    |> set_flex_shrink 0.);
+  let r = renderer_of node in
+  Renderer.render_frame r ~width:frame_width ~height:frame_height ~dt:0.;
+  ignore (Renderer.render r : string)
+
+(* Places [node] at column [x] and row [y] of the frame, [width] by [height]
+   cells. *)
 let layout_node node ~x ~y ~width ~height =
-  Renderable.Private.update_layout node ~x:(Float.of_int x) ~y:(Float.of_int y)
-    ~width:(Float.of_int width) ~height:(Float.of_int height)
+  place node ~x ~y ~width
+    ~height:(Toffee.Style.Dimension.length (Float.of_int height))
+
+(* Places [node] as [layout_node] does, at [width] columns, with the height
+   its measure gives. *)
+let layout_width node ~x ~y ~width =
+  place node ~x ~y ~width ~height:Toffee.Style.Dimension.auto
+
+(* [measured_again node f] is whether the frames after [f ()] measure [node]
+   again, as they do when [f] changes what lays it out: the layout tree keeps
+   a node's measurement until the node is marked to be laid out again. *)
+let measured_again node f =
+  match Renderable.measure node with
+  | None -> Windtrap.fail "the node has no measure"
+  | Some measure ->
+      let calls = ref 0 in
+      Renderable.set_measure node
+        (Some
+           (fun ~known_dimensions ~available_space ~style ->
+             incr calls;
+             measure ~known_dimensions ~available_space ~style));
+      let r = renderer_of node in
+      settle_frames r;
+      calls := 0;
+      f ();
+      settle_frames r;
+      !calls > 0
+
+(* ── Drawing ── *)
+
+(* [render node grid ~dt] draws a frame of [node]'s renderer the size of
+   [grid] and copies it into [grid]. *)
+let render node grid ~dt =
+  let r = renderer_of node in
+  Renderer.render_frame r ~width:(Matrix_grid.width grid)
+    ~height:(Matrix_grid.height grid) ~dt;
+  Matrix_grid.blit ~src:(Matrix_screen.next_grid (Renderer.screen r)) ~dst:grid;
+  (* Presenting the frame makes its hit geometry the one events find. *)
+  ignore (Renderer.render r : string)
 
 (* ── Box Helpers ── *)
 
@@ -152,6 +221,73 @@ let dispatch_mouse renderer report =
   let path, event = Renderer.mouse_path renderer report in
   Renderer.dispatch_mouse renderer path event;
   event
+
+(* Events given to a node through its renderer, as a terminal's input
+   reaches it: the renderer draws a frame first if one is due, so that its
+   hit geometry is current. *)
+let settle r =
+  if Renderer.needs_render r then (
+    Renderer.render_frame r ~width:frame_width ~height:frame_height ~dt:0.;
+    ignore (Renderer.render r : string))
+
+let report_button : Event.Mouse.button -> Matrix_input.Mouse_report.button =
+  function
+  | Left -> Left
+  | Middle -> Middle
+  | Right -> Right
+  | Button n -> Extra n
+
+(* [emit_mouse node event] delivers [event] along the path the renderer takes
+   for the pointer at [event]'s cell, which must be over [node]: the report
+   of [event]'s kind routes it, and [event] itself is delivered. *)
+let emit_mouse node (event : Event.mouse) =
+  let r = renderer_of node in
+  settle r;
+  let x = Event.Mouse.x event and y = Event.Mouse.y event in
+  let kind : Matrix_input.Mouse_report.kind =
+    match Event.Mouse.kind event with
+    | Down { button } -> Press (report_button button)
+    | Up { button; _ } -> Release (Some (report_button button))
+    | Drag { button; _ } -> Motion (Some (report_button button))
+    | Scroll { direction = Scroll_up; _ } -> Scroll `Up
+    | Scroll { direction = Scroll_down; _ } -> Scroll `Down
+    | Scroll { direction = Scroll_left; _ } -> Scroll `Left
+    | Scroll { direction = Scroll_right; _ } -> Scroll `Right
+    | Move | Drag_end _ | Drop _ | Over _ | Out -> Motion None
+  in
+  let modifiers = Event.Mouse.modifiers event in
+  let path, _ =
+    Renderer.mouse_path r
+      {
+        kind;
+        x;
+        y;
+        shift = modifiers.shift;
+        alt = modifiers.alt;
+        ctrl = modifiers.ctrl;
+      }
+  in
+  Renderer.dispatch_mouse r path event
+
+(* [focus_node node] focuses [node] through its renderer, making it focusable
+   first if it is not. *)
+let focus_node node =
+  let r = renderer_of node in
+  if not (Renderable.focusable node) then Renderable.set_focusable node true;
+  ignore (Renderer.focus r node : bool);
+  r
+
+let blur_node node = Renderer.blur (renderer_of node)
+
+(* [emit_key node event] focuses [node] and delivers [event] to it: its
+   handlers, its behavior, then its ancestors, as a key typed into it. *)
+let emit_key node event =
+  let r = focus_node node in
+  Renderer.dispatch_key r (Renderer.focus_path r) event
+
+let emit_paste node event =
+  let r = focus_node node in
+  Renderer.dispatch_paste r (Renderer.focus_path r) event
 
 (* UI-layer mouse events (Event.Mouse). Widget tests that work at the input
    layer instead — Matrix_input.Mouse_report — build their own; the two

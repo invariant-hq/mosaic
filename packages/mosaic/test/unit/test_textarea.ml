@@ -90,24 +90,24 @@ let render_textarea ta ~width ~height =
   let node = Textarea.node ta in
   layout_node node ~x:0 ~y:0 ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   grid
 
 let no_mod = Matrix_input.Keystroke.no_mods
 
 let send_key ?keypad ta key =
   let ev = Event.Key.of_input (Matrix_input.Keystroke.make ?keypad key) in
-  Renderable.Private.run_key_behavior (Textarea.node ta) ev
+  Test_harness.emit_key (Textarea.node ta) ev
 
 let send_key_with_mod ta ~modifier key =
   let ev =
     Event.Key.of_input (Matrix_input.Keystroke.make ~mods:modifier key)
   in
-  Renderable.Private.run_key_behavior (Textarea.node ta) ev
+  Test_harness.emit_key (Textarea.node ta) ev
 
 let send_input_event ta data =
   let ev = Event.Key.of_input data in
-  Renderable.Private.run_key_behavior (Textarea.node ta) ev
+  Test_harness.emit_key (Textarea.node ta) ev
 
 let send_char ta c =
   let text = String.make 1 c in
@@ -115,22 +115,21 @@ let send_char ta c =
     Event.Key.of_input
       (Matrix_input.Keystroke.make ~text (Char (Uchar.of_char c)))
   in
-  Renderable.Private.run_key_behavior (Textarea.node ta) ev
+  Test_harness.emit_key (Textarea.node ta) ev
 
 let send_char_with_mod ta ~modifier c =
   let ev =
     Event.Key.of_input
       (Matrix_input.Keystroke.make ~mods:modifier (Char (Uchar.of_char c)))
   in
-  Renderable.Private.run_key_behavior (Textarea.node ta) ev
+  Test_harness.emit_key (Textarea.node ta) ev
 
 let focus_textarea t ta =
   let node = Textarea.node ta in
   Renderable.set_focusable node true;
-  let _focused = t.ctx.focus node in
-  ()
+  ignore (Renderer.focus t.renderer node : bool)
 
-let blur_textarea ta = Renderable.Private.blur_direct (Textarea.node ta)
+let blur_textarea ta = Test_harness.blur_node (Textarea.node ta)
 
 let sized_style ~width ~height =
   Toffee.Style.default
@@ -257,10 +256,11 @@ let focus_repaints_without_changing_geometry () =
   let geometry = Text_surface.layout surface in
   is_true ~msg:"unfocused text is red"
     (Ansi.Color.equal Ansi.Color.red (Matrix_grid.get_fg before 0));
-  Renderable.Private.clear_layout_dirty (Textarea.node ta);
-  focus_textarea ctx ta;
+  (* Laid out by its measured height, so that a frame that lays it out again
+     measures it. *)
+  layout_width (Textarea.node ta) ~x:0 ~y:0 ~width:10;
   is_false ~msg:"focus does not dirty layout"
-    (Renderable.Private.layout_dirty (Textarea.node ta));
+    (measured_again (Textarea.node ta) (fun () -> focus_textarea ctx ta));
   let focused = render_textarea ta ~width:10 ~height:2 in
   is_true ~msg:"focused text is blue"
     (Ansi.Color.equal Ansi.Color.blue (Matrix_grid.get_fg focused 0));
@@ -336,7 +336,7 @@ let set_value_replaces_text () =
 
 let set_value_requests_render () =
   let t, ta = make_textarea () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   update_editor ta (fun _ -> Editor.of_string "something");
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -968,7 +968,7 @@ let mouse_wheel_scrolls_surface () =
     Event.Mouse.make ~x:0 ~y:0 ~modifiers:Event.Mouse.no_modifier
       (Scroll { direction = Scroll_down; delta = 2 })
   in
-  Renderable.Private.emit_mouse (Textarea.node ta) ev;
+  Test_harness.emit_mouse (Textarea.node ta) ev;
   is_true ~msg:"scroll default prevented" (Event.Mouse.default_prevented ev);
   equal ~msg:"scroll_y" int 2 (Text_surface.scroll_y (Textarea.surface ta))
 
@@ -994,7 +994,7 @@ let wheel_down ta delta =
     Event.Mouse.make ~x:0 ~y:0 ~modifiers:Event.Mouse.no_modifier
       (Scroll { direction = Scroll_down; delta })
   in
-  Renderable.Private.emit_mouse (Textarea.node ta) ev
+  Test_harness.emit_mouse (Textarea.node ta) ev
 
 (* The viewport belongs to the accepted value: a surface mounted again from it,
    as after a key change, shows the same lines. *)
@@ -1132,7 +1132,7 @@ let apply_props_selectable_false_clears_selection () =
 
 let apply_props_schedules_render () =
   let t, ta = make_textarea () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Textarea.apply_props ta Textarea.Props.default;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -1143,7 +1143,7 @@ let render_zero_size_no_crash () =
   let node = Textarea.node ta in
   layout_node node ~x:0 ~y:0 ~width:0 ~height:0;
   let grid = make_grid ~width:10 ~height:10 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   is_true ~msg:"render completed" true
 
 (* ── Edge Cases ── *)
@@ -1267,8 +1267,8 @@ let syntax_highlights_and_shows_pending_edits () =
             (3, 0, 1) (start, removed, inserted)
       | None -> fail "expected the latest result")
   | [] -> fail "expected a request");
-  is_some ~msg:"pending work reported"
-    (Renderable.Private.pending_work (Textarea.node ta));
+  is_true ~msg:"pending work reported"
+    (Renderer.pending_work (Test_harness.renderer_of (Textarea.node ta)) <> []);
   let grid = render_textarea ta ~width:12 ~height:1 in
   is_true ~msg:"bytes before the edit keep their style" (red_at grid 2);
   is_false ~msg:"the inserted byte is plain" (red_at grid 3);
@@ -1408,8 +1408,8 @@ let scrolling_asks_for_rows_outside () =
     (pair int int)
     ((45 * 7) + 1, (59 * 7) + 6 + 1)
     (fst (List.hd !requests)).Code.Highlighter.range;
-  is_some ~msg:"pending work reported"
-    (Renderable.Private.pending_work (Textarea.node ta));
+  is_true ~msg:"pending work reported"
+    (Renderer.pending_work (Test_harness.renderer_of (Textarea.node ta)) <> []);
   is_true ~msg:"meanwhile they keep their carried captures" (keyword_at ta 50);
   answer ~keywords:false ();
   render ();

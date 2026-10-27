@@ -330,7 +330,9 @@ let invalidate_clears_cache () =
   equal ~msg:"updated" int 2 (Text_surface.display_line_count s)
 
 let restyling_retains_geometry () =
-  let s = make_surface ~width:4 ~wrap:`Char ~content:"aé\tb\nc" () in
+  let s = make_surface ~width:4 ~wrap:`Char ~content:"a\195\169\tb\nc" () in
+  let node = Text_surface.node s in
+  layout_width node ~x:0 ~y:0 ~width:4;
   let buffer = Text_surface.buffer s in
   let source = Text_buffer.source buffer in
   let geometry = Text_surface.layout s in
@@ -338,41 +340,48 @@ let restyling_retains_geometry () =
   ignore (Text_buffer.style_at buffer 0);
   let red = Ansi.Style.make ~fg:Ansi.Color.red () in
   let blue = Ansi.Style.make ~fg:Ansi.Color.blue () in
-  Renderable.Private.clear_layout_dirty (Text_surface.node s);
-  (* Split a UTF-8 sequence across spans: only concatenated bytes define geometry. *)
-  Text_buffer.set_styled_text buffer
-    [ { text = "a\195"; style = red }; { text = "\169\tb\nc"; style = blue } ];
-  Text_surface.invalidate s;
-  equal ~msg:"paint-only version" int version (Text_buffer.version buffer);
-  is_true ~msg:"indexed source retained" (source == Text_buffer.source buffer);
-  is_true ~msg:"geometry retained" (geometry == Text_surface.layout s);
   is_false ~msg:"layout stays clean"
-    (Renderable.Private.layout_dirty (Text_surface.node s));
+    (measured_again node (fun () ->
+         (* Split a UTF-8 sequence across spans: only concatenated bytes
+            define geometry. *)
+         Text_buffer.set_styled_text buffer
+           [
+             { text = "a\195"; style = red };
+             { text = "\169\tb\nc"; style = blue };
+           ];
+         Text_surface.invalidate s;
+         equal ~msg:"paint-only version" int version
+           (Text_buffer.version buffer);
+         is_true ~msg:"indexed source retained"
+           (source == Text_buffer.source buffer);
+         is_true ~msg:"geometry retained" (geometry == Text_surface.layout s)));
   is_true ~msg:"new style applied"
     (Ansi.Style.equal red (fst (Text_buffer.style_at buffer 0)));
   Text_buffer.set_default_style buffer blue;
-  Text_buffer.set_text buffer "aé\tb\nc";
+  Text_buffer.set_text buffer "a\195\169\tb\nc";
   Text_surface.invalidate s;
   is_true ~msg:"plain restyle retains geometry"
     (geometry == Text_surface.layout s);
   is_true ~msg:"plain style applied"
     (Ansi.Style.equal blue (fst (Text_buffer.style_at buffer 0)));
-  Text_buffer.set_styled_text buffer [ { text = "aé\tb\nd"; style = red } ];
-  Text_surface.invalidate s;
-  is_true ~msg:"different bytes invalidate geometry"
-    (geometry != Text_surface.layout s);
   is_true ~msg:"content marks layout dirty"
-    (Renderable.Private.layout_dirty (Text_surface.node s))
+    (measured_again node (fun () ->
+         Text_buffer.set_styled_text buffer
+           [ { text = "a\195\169\tb\nd"; style = red } ];
+         Text_surface.invalidate s;
+         is_true ~msg:"different bytes invalidate geometry"
+           (geometry != Text_surface.layout s)))
 
 let reading_new_geometry_does_not_skip_layout_invalidation () =
   let s = make_surface ~content:"hello" () in
+  let node = Text_surface.node s in
+  layout_width node ~x:0 ~y:0 ~width:40;
   ignore (Text_surface.layout s);
-  Renderable.Private.clear_layout_dirty (Text_surface.node s);
-  Text_buffer.set_text (Text_surface.buffer s) "hello\nworld";
-  equal int 2 (Text_surface.display_line_count s);
-  Text_surface.invalidate s;
   is_true ~msg:"reading geometry cannot acknowledge intrinsic-size changes"
-    (Renderable.Private.layout_dirty (Text_surface.node s))
+    (measured_again node (fun () ->
+         Text_buffer.set_text (Text_surface.buffer s) "hello\nworld";
+         equal int 2 (Text_surface.display_line_count s);
+         Text_surface.invalidate s))
 
 let buffer_version_triggers_recompute () =
   let s = make_surface ~content:"hello" () in
@@ -702,7 +711,7 @@ let styled_cluster_paints_as_one () =
       { Text_buffer.text = "\204\129👩‍💻x"; style = Ansi.Style.default };
     ];
   let grid = make_grid ~width:8 ~height:2 ~width_method:`Wcwidth () in
-  Renderable.Private.render (Text_surface.node s) grid ~dt:0.;
+  Test_harness.render (Text_surface.node s) grid ~dt:0.;
   equal string "e\204\129" (Matrix_grid.get_text grid 0);
   is_true (Ansi.Color.equal Ansi.Color.red (Matrix_grid.get_fg grid 0));
   equal string "👩‍💻" (Matrix_grid.get_text grid 1);
@@ -722,7 +731,7 @@ let cjk_wrap_across_styles () =
   equal string "AB 测" (row_text layout 0);
   equal string "试文字" (row_text layout 1);
   let grid = make_grid ~width:6 ~height:2 () in
-  Renderable.Private.render (Text_surface.node s) grid ~dt:0.;
+  Test_harness.render (Text_surface.node s) grid ~dt:0.;
   List.iter
     (fun (x, y, text, color) ->
       let cell = Matrix_grid.idx grid ~x ~y in
@@ -738,12 +747,25 @@ let cjk_wrap_across_styles () =
   equal string "测试文字" (Text_surface.selected_text s)
 
 let clipped_text_uses_absolute_source_rows () =
-  let s =
-    make_surface ~width:10 ~height:10000 ~content:"zero\none\ntwo\nthree" ()
-  in
+  (* The surface is drawn under a node that clips its children to the third
+     row's first three cells. *)
+  let t = make_ctx () in
+  let root = make_root t in
+  let clip = Renderable.create ~parent:root () in
+  Renderable.set_style clip
+    (Toffee.Style.set_overflow
+       { x = Toffee.Style.Overflow.Hidden; y = Toffee.Style.Overflow.Hidden }
+       (Renderable.style clip));
+  layout_node clip ~x:0 ~y:0 ~width:10 ~height:4;
+  Renderable.set_child_clip clip
+    (Some (fun _ -> Some { Matrix_grid.x = 0; y = 2; width = 3; height = 1 }));
+  let node = Renderable.create ~parent:clip () in
+  layout_node node ~x:0 ~y:0 ~width:10 ~height:10000;
+  let buffer = Text_buffer.create () in
+  Text_buffer.set_text buffer "zero\none\ntwo\nthree";
+  let s = Text_surface.create node buffer in
   let grid = make_grid ~width:10 ~height:4 () in
-  Matrix_grid.push_clip grid { x = 0; y = 2; width = 3; height = 1 };
-  Renderable.Private.render (Text_surface.node s) grid ~dt:0.;
+  Test_harness.render (Text_surface.node s) grid ~dt:0.;
   equal string "t" (Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:0 ~y:2));
   equal string " " (Matrix_grid.get_text grid 0)
 
@@ -751,9 +773,15 @@ let clipped_wide_start_stays_inside_node () =
   let s = make_surface ~width:2 ~height:1 ~content:"界abc" () in
   layout_node (Text_surface.node s) ~x:2 ~y:0 ~width:2 ~height:1;
   Text_surface.set_scroll_x s 1;
+  (* A node drawn before the surface writes N on the cell left of it. *)
+  let root = Option.get (Renderable.parent (Text_surface.node s)) in
+  let before = Renderable.create ~parent:root ~index:0 () in
+  layout_node before ~x:1 ~y:0 ~width:1 ~height:1;
+  Renderable.set_render before (fun self grid ~dt:_ ->
+      Matrix_grid.draw_text grid ~x:(Renderable.x self) ~y:(Renderable.y self)
+        ~text:"N");
   let grid = make_grid ~width:6 ~height:1 () in
-  Matrix_grid.draw_text grid ~x:1 ~y:0 ~text:"N";
-  Renderable.Private.render (Text_surface.node s) grid ~dt:0.;
+  Test_harness.render (Text_surface.node s) grid ~dt:0.;
   equal string "N" (Matrix_grid.get_text grid 1);
   equal string "a" (Matrix_grid.get_text grid 3)
 

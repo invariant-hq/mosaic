@@ -38,13 +38,13 @@ let auto_resize_on_render () =
   let parent_grid = make_grid ~width:80 ~height:24 () in
   (* First layout *)
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   let g = Canvas.grid canvas in
   equal ~msg:"w1" int 10 (Matrix_grid.width g);
   equal ~msg:"h1" int 5 (Matrix_grid.height g);
   (* Resize layout *)
   layout_node node ~x:0 ~y:0 ~width:20 ~height:10;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"w2" int 20 (Matrix_grid.width g);
   equal ~msg:"h2" int 10 (Matrix_grid.height g)
 
@@ -58,14 +58,14 @@ let auto_resize_fires_callback () =
   Canvas.set_on_resize canvas (Some (fun _ -> incr resize_count));
   (* First render triggers resize from 1x1 → 10x5 *)
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"first resize" int 1 !resize_count;
   (* Same size — no callback *)
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"no resize" int 1 !resize_count;
   (* New size *)
   layout_node node ~x:0 ~y:0 ~width:20 ~height:10;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"second resize" int 2 !resize_count
 
 let no_render_for_zero_dimensions () =
@@ -75,7 +75,7 @@ let no_render_for_zero_dimensions () =
   let node = Canvas.node canvas in
   let parent_grid = make_grid ~width:80 ~height:24 () in
   layout_node node ~x:0 ~y:0 ~width:0 ~height:0;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   (* Grid should remain 1x1 — no resize for zero dims *)
   equal ~msg:"w" int 1 (Matrix_grid.width (Canvas.grid canvas));
   equal ~msg:"h" int 1 (Matrix_grid.height (Canvas.grid canvas))
@@ -86,7 +86,7 @@ let clear_schedules_render () =
   let t = make_ctx () in
   let root = make_root t in
   let canvas = Canvas.create ~parent:root () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Canvas.clear canvas;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -118,7 +118,7 @@ let request_render_schedules () =
   let t = make_ctx () in
   let root = make_root t in
   let canvas = Canvas.create ~parent:root () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Canvas.request_render canvas;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -131,7 +131,7 @@ let draw_text_writes_to_grid () =
   let node = Canvas.node canvas in
   let parent_grid = make_grid ~width:80 ~height:24 () in
   layout_node node ~x:0 ~y:0 ~width:20 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   Canvas.draw_text canvas ~x:0 ~y:0 ~text:"Hi";
   let g = Canvas.grid canvas in
   let text = Matrix_grid.get_text g (Matrix_grid.idx g ~x:0 ~y:0) in
@@ -144,7 +144,7 @@ let fill_rect_fills_cells () =
   let node = Canvas.node canvas in
   let parent_grid = make_grid ~width:80 ~height:24 () in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   Canvas.fill_rect canvas ~x:0 ~y:0 ~width:2 ~height:2 ~color:Ansi.Color.red;
   let g = Canvas.grid canvas in
   let bg = Matrix_grid.get_bg g (Matrix_grid.idx g ~x:0 ~y:0) in
@@ -159,7 +159,7 @@ let width_height_accessors () =
   equal ~msg:"initial w" int 1 (Canvas.width canvas);
   equal ~msg:"initial h" int 1 (Canvas.height canvas);
   layout_node node ~x:0 ~y:0 ~width:15 ~height:8;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"after render w" int 15 (Canvas.width canvas);
   equal ~msg:"after render h" int 8 (Canvas.height canvas)
 
@@ -172,11 +172,11 @@ let on_draw_fires_during_render () =
   let node = Canvas.node canvas in
   let parent_grid = make_grid ~width:80 ~height:24 () in
   let draw_count = ref 0 in
-  Canvas.set_on_draw canvas (Some (fun _ ~dt:_ -> incr draw_count));
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Canvas.set_on_draw canvas (Some (fun _ ~dt:_ -> incr draw_count));
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"drawn once" int 1 !draw_count;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"drawn twice" int 2 !draw_count
 
 let on_draw_has_correct_dimensions () =
@@ -193,7 +193,7 @@ let on_draw_has_correct_dimensions () =
          seen_w := Canvas.width c;
          seen_h := Canvas.height c));
   layout_node node ~x:0 ~y:0 ~width:30 ~height:12;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"width" int 30 !seen_w;
   equal ~msg:"height" int 12 !seen_h
 
@@ -207,8 +207,9 @@ let on_resize_fires_before_on_draw () =
   Canvas.set_on_resize canvas (Some (fun _ -> order := "resize" :: !order));
   Canvas.set_on_draw canvas (Some (fun _ ~dt:_ -> order := "draw" :: !order));
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
-  equal ~msg:"order" (list string) [ "draw"; "resize" ] !order
+  Test_harness.render node parent_grid ~dt:0.;
+  equal ~msg:"order" (list string) [ "resize"; "draw" ]
+    (List.filteri (fun i _ -> i < 2) (List.rev !order))
 
 let on_draw_can_draw () =
   let t = make_ctx () in
@@ -219,7 +220,7 @@ let on_draw_can_draw () =
   Canvas.set_on_draw canvas
     (Some (fun c ~dt:_ -> Canvas.draw_text c ~x:0 ~y:0 ~text:"X"));
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   let g = Canvas.grid canvas in
   equal ~msg:"drawn" string "X"
     (Matrix_grid.get_text g (Matrix_grid.idx g ~x:0 ~y:0))
@@ -233,7 +234,7 @@ let on_draw_forwards_delta () =
   let seen_delta = ref 0. in
   Canvas.set_on_draw canvas (Some (fun _ ~dt -> seen_delta := dt));
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:42.0;
+  Test_harness.render node parent_grid ~dt:42.0;
   equal ~msg:"delta" float_exact 42.0 !seen_delta
 
 let on_draw_none_clears_callback () =
@@ -243,12 +244,12 @@ let on_draw_none_clears_callback () =
   let node = Canvas.node canvas in
   let parent_grid = make_grid ~width:80 ~height:24 () in
   let draw_count = ref 0 in
-  Canvas.set_on_draw canvas (Some (fun _ ~dt:_ -> incr draw_count));
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Canvas.set_on_draw canvas (Some (fun _ ~dt:_ -> incr draw_count));
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"fired once" int 1 !draw_count;
   Canvas.set_on_draw canvas None;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"still one" int 1 !draw_count
 
 (* ── set_uchar ── *)
@@ -260,7 +261,7 @@ let set_uchar_writes_glyph () =
   let node = Canvas.node canvas in
   let parent_grid = make_grid ~width:80 ~height:24 () in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   let cell = Uchar.of_char 'Z' in
   Canvas.set_uchar canvas ~x:1 ~y:2 ~uchar:cell ~fg:Ansi.Color.red
     ~bg:Ansi.Color.blue ~attrs:Ansi.Attr.empty ();
@@ -286,7 +287,7 @@ let on_resize_sees_new_dimensions () =
          seen_w := Canvas.width c;
          seen_h := Canvas.height c));
   layout_node node ~x:0 ~y:0 ~width:25 ~height:15;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   equal ~msg:"width" int 25 !seen_w;
   equal ~msg:"height" int 15 !seen_h
 
@@ -299,10 +300,10 @@ let content_persists_across_frames () =
   let node = Canvas.node canvas in
   let parent_grid = make_grid ~width:80 ~height:24 () in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:5;
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   Canvas.draw_text canvas ~x:0 ~y:0 ~text:"AB";
   (* Re-render without clearing — content should persist *)
-  Renderable.Private.render node parent_grid ~dt:0.;
+  Test_harness.render node parent_grid ~dt:0.;
   let g = Canvas.grid canvas in
   equal ~msg:"first char" string "A"
     (Matrix_grid.get_text g (Matrix_grid.idx g ~x:0 ~y:0));

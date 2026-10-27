@@ -200,7 +200,7 @@ let reset_visibility_restores_auto () =
 
 let show_arrows_default_false () =
   let _t, bar = make_scroll_bar () in
-  let children = Renderable.Private.children_z (Scroll_bar.node bar) in
+  let children = Array.of_list (Renderable.children (Scroll_bar.node bar)) in
   let visible_count =
     Array.fold_left
       (fun n c -> if Renderable.visible c then n + 1 else n)
@@ -211,7 +211,7 @@ let show_arrows_default_false () =
 
 let show_arrows_true () =
   let _t, bar = make_scroll_bar ~show_arrows:true () in
-  let children = Renderable.Private.children_z (Scroll_bar.node bar) in
+  let children = Array.of_list (Renderable.children (Scroll_bar.node bar)) in
   let visible_count =
     Array.fold_left
       (fun n c -> if Renderable.visible c then n + 1 else n)
@@ -223,7 +223,7 @@ let show_arrows_true () =
 let set_show_arrows_toggles () =
   let _t, bar = make_scroll_bar () in
   let count_visible () =
-    let children = Renderable.Private.children_z (Scroll_bar.node bar) in
+    let children = Array.of_list (Renderable.children (Scroll_bar.node bar)) in
     Array.fold_left
       (fun n c -> if Renderable.visible c then n + 1 else n)
       0 children
@@ -243,7 +243,7 @@ let apply_props_updates_appearance () =
       ~thumb_color:Ansi.Color.blue ()
   in
   Scroll_bar.apply_props bar props;
-  let children = Renderable.Private.children_z (Scroll_bar.node bar) in
+  let children = Array.of_list (Renderable.children (Scroll_bar.node bar)) in
   let visible_count =
     Array.fold_left
       (fun n c -> if Renderable.visible c then n + 1 else n)
@@ -392,7 +392,7 @@ let apply_style_preserves_scroll_state () =
   is_false ~msg:"visibility policy retained"
     (Renderable.visible (Scroll_bar.node bar));
   equal ~msg:"appearance never proposes scrolling" int 0 !proposals;
-  let before = !(ctx.schedule_count) in
+  let before = Test_harness.clean ctx in
   Scroll_bar.apply_style bar style;
   equal ~msg:"same appearance schedules nothing" int before
     !(ctx.schedule_count)

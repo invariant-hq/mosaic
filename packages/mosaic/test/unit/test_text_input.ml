@@ -88,24 +88,24 @@ let render_input input ~width ~height =
   let node = Text_input.node input in
   layout_node node ~x:0 ~y:0 ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   grid
 
 let no_mod = Matrix_input.Keystroke.no_mods
 
 let send_key ?keypad input key =
   let ev = Event.Key.of_input (Matrix_input.Keystroke.make ?keypad key) in
-  Renderable.Private.run_key_behavior (Text_input.node input) ev
+  Test_harness.emit_key (Text_input.node input) ev
 
 let send_key_with_mod input ~modifier key =
   let ev =
     Event.Key.of_input (Matrix_input.Keystroke.make ~mods:modifier key)
   in
-  Renderable.Private.run_key_behavior (Text_input.node input) ev
+  Test_harness.emit_key (Text_input.node input) ev
 
 let send_input_event input data =
   let ev = Event.Key.of_input data in
-  Renderable.Private.run_key_behavior (Text_input.node input) ev
+  Test_harness.emit_key (Text_input.node input) ev
 
 let send_char input c =
   let text = String.make 1 c in
@@ -113,22 +113,21 @@ let send_char input c =
     Event.Key.of_input
       (Matrix_input.Keystroke.make ~text (Char (Uchar.of_char c)))
   in
-  Renderable.Private.run_key_behavior (Text_input.node input) ev
+  Test_harness.emit_key (Text_input.node input) ev
 
 let send_char_with_mod input ~modifier c =
   let ev =
     Event.Key.of_input
       (Matrix_input.Keystroke.make ~mods:modifier (Char (Uchar.of_char c)))
   in
-  Renderable.Private.run_key_behavior (Text_input.node input) ev
+  Test_harness.emit_key (Text_input.node input) ev
 
 let focus_input t input =
   let node = Text_input.node input in
   Renderable.set_focusable node true;
-  let _focused = t.ctx.focus node in
-  ()
+  ignore (Renderer.focus t.renderer node : bool)
 
-let blur_input input = Renderable.Private.blur_direct (Text_input.node input)
+let blur_input input = Test_harness.blur_node (Text_input.node input)
 
 let string_contains haystack needle =
   let hlen = String.length haystack in
@@ -247,7 +246,7 @@ let set_value_replaces_text () =
 
 let set_value_requests_render () =
   let t, input = make_input () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   update_editor input (fun _ -> Editor.of_string "something");
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -746,7 +745,7 @@ let render_zero_size_no_crash () =
   let node = Text_input.node input in
   layout_node node ~x:0 ~y:0 ~width:0 ~height:0;
   let grid = make_grid ~width:10 ~height:10 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   is_true ~msg:"render completed" true
 
 (* ── Cursor Provider ── *)
@@ -845,7 +844,7 @@ let apply_props_selection_none_clears_buffer_selection () =
 
 let apply_props_schedules_render () =
   let t, input = make_input () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Text_input.apply_props input Text_input.Props.default;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -905,7 +904,7 @@ let prevent_default_blocks_input () =
       (Matrix_input.Keystroke.make ~text (Char (Uchar.of_char 'a')))
   in
   Event.Key.prevent_default ev;
-  Renderable.Private.run_key_behavior (Text_input.node input) ev;
+  Test_harness.emit_key (Text_input.node input) ev;
   equal ~msg:"value unchanged" string "" (Text_input.value input)
 
 (* ── Pretty-printing ── *)
@@ -1010,7 +1009,7 @@ let multiline_history_is_ignored_by_single_line_input () =
           (Matrix_input.Keystroke.make ~mods:ctrl_mod
              (Char (Uchar.of_char action)))
       in
-      Renderable.Private.run_key_behavior (Textarea.node textarea) event;
+      Test_harness.emit_key (Textarea.node textarea) event;
       equal ~msg:"textarea can still restore the shared multiline history"
         string "a\nb" (Editor.text !restored);
       send_char input 'x';

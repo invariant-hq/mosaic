@@ -106,13 +106,13 @@ let layout_label_overrides_one_field () =
    layouts, so an element declared again under [map] is not laid out again. *)
 let map_keeps_layout () =
   let layout = Toffee.Style.(default |> set_flex_grow Float.nan) in
-  let view = Mosaic.box ~layout [] in
+  let view = Mosaic.text ~layout "x" in
   let renderer, reconciler, node = mount (Mosaic.map ignore view) in
-  Renderer.render_frame renderer ~width:20 ~height:5 ~dt:0.;
-  Renderable.Private.clear_layout_dirty node;
-  Mosaic.Reconciler.render reconciler ~viewport_width:80
-    (Mosaic.map ignore view);
-  is_false ~msg:"not laid out again" (Renderable.Private.layout_dirty node)
+  Test_harness.register renderer;
+  is_false ~msg:"not laid out again"
+    (Test_harness.measured_again node (fun () ->
+         Mosaic.Reconciler.render reconciler ~viewport_width:80
+           (Mosaic.map ignore view)))
 
 (* map must transform handler return values so the runtime can convert user
    messages to unit. Each test mounts a mapped view and drives its widget, and

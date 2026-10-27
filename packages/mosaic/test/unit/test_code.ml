@@ -19,9 +19,13 @@ let make_code ?content ?syntax ?text_style () =
   in
   (t, code)
 
+(* The frame a highlight's notification asks for: the notification comes from
+   the executor's thread, so the frame is asked for here, and a frame paints
+   the code, which takes the results that came. *)
 let render_code code =
+  Renderable.request_render (Code.node code);
   let grid = make_grid ~width:40 ~height:5 () in
-  Renderable.Private.render_full (Code.node code) ~grid ~dt:0.
+  Test_harness.render (Code.node code) grid ~dt:0.
 
 let styled_text code = Text_buffer.styled_text (Code.buffer code)
 let span_text span = (span : Text_buffer.span).text
@@ -533,6 +537,7 @@ let threaded_requests_are_bounded_and_cancelled () =
         Syntax_highlight.of_triples ~content [ (0, 3, "keyword") ])
   in
   let renderer = Renderer.create () in
+  register renderer;
   let syntax =
     Code.with_highlighter ~language:"ocaml" ~style:(syntax_style red)
       highlighter
@@ -591,6 +596,7 @@ let threaded_failure_and_idle_restart () =
         else (Syntax_highlight.of_triples ~content [ (0, 3, "keyword") ], ()))
   in
   let renderer = Renderer.create () in
+  register renderer;
   let syntax =
     Code.with_highlighter ~language:"ocaml" ~style:(syntax_style red)
       highlighter
@@ -635,9 +641,8 @@ let destroy_cancels_job_once () =
   Renderable.destroy (Code.node code);
   equal ~msg:"cleanup is idempotent" int 1 !cancellations;
   is_false ~msg:"destroyed code has no pending job" (Code.is_highlighting code);
-  equal ~msg:"node unregistered" (list string)
-    [ Renderable.id (Code.node code) ]
-    !(ctx.unregister_log)
+  ignore ctx;
+  is_true ~msg:"node destroyed" (Renderable.destroyed (Code.node code))
 
 let theme_changes_reuse_highlighter_captures () =
   let calls = ref 0 in

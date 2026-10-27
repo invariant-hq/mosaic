@@ -24,7 +24,7 @@ let render_slider slider ~width ~height =
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   grid
 
 let full_block = 0x2588
@@ -219,13 +219,13 @@ let set_max_fires_on_change_when_clamping () =
 
 let set_orientation_schedules_render () =
   let t, slider = make_slider () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Slider.set_orientation slider `Vertical;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_orientation_noop_same () =
   let t, slider = make_slider ~orientation:`Horizontal () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Slider.set_orientation slider `Horizontal;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -252,31 +252,31 @@ let set_viewport_size_clamps_high () =
 
 let set_viewport_size_noop_same () =
   let t, slider = make_slider ~viewport_size:10. () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Slider.set_viewport_size slider 10.;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_track_color_schedules_render () =
   let t, slider = make_slider () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Slider.set_track_color slider Ansi.Color.red;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_track_color_noop_same () =
   let t, slider = make_slider ~track_color:Ansi.Color.red () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Slider.set_track_color slider Ansi.Color.red;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_thumb_color_schedules_render () =
   let t, slider = make_slider () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Slider.set_thumb_color slider Ansi.Color.red;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_thumb_color_noop_same () =
   let t, slider = make_slider ~thumb_color:Ansi.Color.red () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Slider.set_thumb_color slider Ansi.Color.red;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -288,10 +288,10 @@ let set_on_change_replaces_callback () =
   in
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width:20 ~height:1;
-  Renderable.Private.emit_mouse node (mouse_down ~x:5 ~y:0);
+  Test_harness.emit_mouse node (mouse_down ~x:5 ~y:0);
   equal ~msg:"first fired" int 1 !first_count;
   Slider.set_on_change slider (Some (fun _ -> incr second_count));
-  Renderable.Private.emit_mouse node (mouse_drag ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:10 ~y:0);
   equal ~msg:"first not fired again" int 1 !first_count;
   equal ~msg:"second fired" int 1 !second_count
 
@@ -311,7 +311,7 @@ let apply_props_clamps_value () =
 
 let apply_props_schedules_render () =
   let t, slider = make_slider () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Slider.apply_props slider Slider.Props.default;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -380,9 +380,9 @@ let click_on_track_jumps_value () =
   layout_node node ~x:0 ~y:0 ~width:20 ~height:1;
   (* Render once so the virtual coordinate system has real dimensions *)
   let grid = make_grid ~width:20 ~height:1 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   (* Click at 75% of the track *)
-  Renderable.Private.emit_mouse node (mouse_down ~x:15 ~y:0);
+  Test_harness.emit_mouse node (mouse_down ~x:15 ~y:0);
   is_true ~msg:"value near 75" (float_close (Slider.value slider) 75.)
 
 (* A click is a press and a release at the same cell, and proposes one value:
@@ -393,8 +393,8 @@ let click_proposes_one_value () =
     make_slider ~value:0. ~on_change:(fun v -> proposals := v :: !proposals) ()
   in
   ignore (render_slider slider ~width:20 ~height:1 : Matrix_grid.t);
-  Renderable.Private.emit_mouse (Slider.node slider) (mouse_down ~x:15 ~y:0);
-  Renderable.Private.emit_mouse (Slider.node slider) (mouse_up ~x:15 ~y:0);
+  Test_harness.emit_mouse (Slider.node slider) (mouse_down ~x:15 ~y:0);
+  Test_harness.emit_mouse (Slider.node slider) (mouse_up ~x:15 ~y:0);
   equal ~msg:"one proposal" (list float_exact) [ 75. ] !proposals
 
 let click_on_track_vertical () =
@@ -402,9 +402,9 @@ let click_on_track_vertical () =
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width:1 ~height:20;
   let grid = make_grid ~width:1 ~height:20 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   (* Click at 50% of the track *)
-  Renderable.Private.emit_mouse node (mouse_down ~x:0 ~y:10);
+  Test_harness.emit_mouse node (mouse_down ~x:0 ~y:10);
   is_true ~msg:"value near 50" (float_close (Slider.value slider) 50.)
 
 let drag_updates_value () =
@@ -412,10 +412,10 @@ let drag_updates_value () =
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width:20 ~height:1;
   let grid = make_grid ~width:20 ~height:1 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   (* Press down then drag to midpoint *)
-  Renderable.Private.emit_mouse node (mouse_down ~x:0 ~y:0);
-  Renderable.Private.emit_mouse node (mouse_drag ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_down ~x:0 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:10 ~y:0);
   (* Drag offset accounts for thumb size, so value won't be exactly 50 *)
   let v = Slider.value slider in
   is_true ~msg:"value moved toward midrange" (v > 30. && v < 70.)
@@ -428,9 +428,9 @@ let drag_fires_on_change () =
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width:20 ~height:1;
   let grid = make_grid ~width:20 ~height:1 () in
-  Renderable.Private.render node grid ~dt:0.;
-  Renderable.Private.emit_mouse node (mouse_down ~x:0 ~y:0);
-  Renderable.Private.emit_mouse node (mouse_drag ~x:10 ~y:0);
+  Test_harness.render node grid ~dt:0.;
+  Test_harness.emit_mouse node (mouse_down ~x:0 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:10 ~y:0);
   gt ~msg:"on_change fired" ~than:0 (List.length !changes)
 
 let drag_beyond_bounds_clamps () =
@@ -438,15 +438,15 @@ let drag_beyond_bounds_clamps () =
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width:20 ~height:1;
   let grid = make_grid ~width:20 ~height:1 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   (* Drag way past the right edge *)
-  Renderable.Private.emit_mouse node (mouse_down ~x:10 ~y:0);
-  Renderable.Private.emit_mouse node (mouse_drag ~x:100 ~y:0);
+  Test_harness.emit_mouse node (mouse_down ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:100 ~y:0);
   satisfies ~claim:"clamped to the max of 100" float_exact
     (fun v -> v <= 100.)
     (Slider.value slider);
   (* Drag way past the left edge *)
-  Renderable.Private.emit_mouse node (mouse_drag ~x:(-50) ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:(-50) ~y:0);
   satisfies ~claim:"clamped to the min of 0" float_exact
     (fun v -> v >= 0.)
     (Slider.value slider)
@@ -456,18 +456,18 @@ let mouse_up_ends_drag () =
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width:20 ~height:1;
   let grid = make_grid ~width:20 ~height:1 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   (* Start drag *)
-  Renderable.Private.emit_mouse node (mouse_down ~x:0 ~y:0);
-  Renderable.Private.emit_mouse node (mouse_drag ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_down ~x:0 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:10 ~y:0);
   let v_during = Slider.value slider in
   satisfies ~claim:"value moved above 0 during drag" float_exact
     (fun v -> v > 0.)
     v_during;
   (* Release *)
-  Renderable.Private.emit_mouse node (mouse_up ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_up ~x:10 ~y:0);
   (* Subsequent drag should not update (not dragging anymore) *)
-  Renderable.Private.emit_mouse node (mouse_drag ~x:0 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:0 ~y:0);
   let v_after = Slider.value slider in
   is_true ~msg:"value unchanged after release"
     (float_eq v_after (Slider.value slider))
@@ -477,9 +477,9 @@ let drag_vertical () =
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width:1 ~height:20;
   let grid = make_grid ~width:1 ~height:20 () in
-  Renderable.Private.render node grid ~dt:0.;
-  Renderable.Private.emit_mouse node (mouse_down ~x:0 ~y:0);
-  Renderable.Private.emit_mouse node (mouse_drag ~x:0 ~y:10);
+  Test_harness.render node grid ~dt:0.;
+  Test_harness.emit_mouse node (mouse_down ~x:0 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:0 ~y:10);
   let v = Slider.value slider in
   is_true ~msg:"value moved toward midrange" (v > 30. && v < 70.)
 
@@ -491,9 +491,9 @@ let mouse_down_stops_propagation () =
   let node = Slider.node slider in
   layout_node node ~x:0 ~y:0 ~width:20 ~height:1;
   let grid = make_grid ~width:20 ~height:1 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   let ev = mouse_down ~x:10 ~y:0 in
-  Renderable.Private.emit_mouse node ev;
+  Test_harness.emit_mouse node ev;
   is_true ~msg:"propagation stopped" (Event.Mouse.propagation_stopped ev)
 
 (* ── Pretty-printing ── *)
@@ -534,11 +534,11 @@ let rejected_drag_proposals () =
   let proposals = ref [] in
   Slider.set_on_change slider
     (Some (fun value -> proposals := value :: !proposals));
-  Renderable.Private.emit_mouse node (mouse_down ~x:10 ~y:0);
-  Renderable.Private.emit_mouse node (mouse_drag ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_down ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:10 ~y:0);
   equal ~msg:"rejected drag never moves accepted thumb" float_exact 0.
     (Slider.value slider);
-  Renderable.Private.emit_mouse node (mouse_drag ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:10 ~y:0);
   (match !proposals with
   | [ second_drag; first_drag; click ] ->
       equal ~msg:"track click proposes midpoint" float_exact 50. click;

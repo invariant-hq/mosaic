@@ -80,7 +80,7 @@
 (executable
  (name bench_text_layout)
  (modules bench_text_layout)
- (libraries thumper mosaic.ui matrix.ansi matrix.text matrix.grid))
+ (libraries thumper mosaic.ui toffee matrix.ansi matrix.text matrix.grid))
 
 (rule
  (alias bench)

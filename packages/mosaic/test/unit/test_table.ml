@@ -41,13 +41,13 @@ let make_table ?columns ?rows ?selected_row ?border ?border_style ?show_header
 
 let emit_key tbl key =
   let ev = Event.Key.of_input key in
-  Renderable.Private.emit_key (Table.node tbl) ev;
+  Test_harness.emit_key (Table.node tbl) ev;
   if
     (not (Event.Key.default_prevented ev))
     && not (Event.Key.propagation_stopped ev)
-  then Renderable.Private.run_key_behavior (Table.node tbl) ev
+  then Test_harness.emit_key (Table.node tbl) ev
 
-let emit_mouse tbl ev = Renderable.Private.emit_mouse (Table.node tbl) ev
+let emit_mouse tbl ev = Test_harness.emit_mouse (Table.node tbl) ev
 
 let with_layout tbl ~width ~height =
   layout_node (Table.node tbl) ~x:0 ~y:0 ~width ~height
@@ -56,7 +56,7 @@ let render_with_layout tbl ~width ~height =
   let node = Table.node tbl in
   with_layout tbl ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render_full node ~grid ~dt:0.
+  Test_harness.render node grid ~dt:0.
 
 (* ── Props ── *)
 
@@ -527,7 +527,7 @@ let selection_can_be_visually_hidden () =
   let node = Table.node tbl in
   with_layout tbl ~width:10 ~height:1;
   let grid = make_grid ~width:10 ~height:1 () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   let background = Matrix_grid.get_bg grid (Matrix_grid.idx grid ~x:0 ~y:0) in
   is_true ~msg:"base background retained"
     (Ansi.Color.equal Ansi.Color.blue background)
@@ -542,9 +542,9 @@ let scroll_indicator_handles_tiny_layouts () =
   let node = Table.node tbl in
   let grid = make_grid ~width:1 ~height:1 () in
   with_layout tbl ~width:0 ~height:0;
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   with_layout tbl ~width:1 ~height:1;
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   equal ~msg:"one-column indicator" string "↓"
     (Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:0 ~y:0))
 
@@ -619,7 +619,7 @@ let rich_cell_span_styles_apply () =
   let node = Table.node tbl in
   with_layout tbl ~width:5 ~height:1;
   let grid = make_grid ~width:5 ~height:1 () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   let idx = Matrix_grid.idx grid ~x:0 ~y:0 in
   equal ~msg:"cell text" string "B" (Matrix_grid.get_text grid idx);
   let style = Matrix_grid.get_style grid idx in
@@ -648,7 +648,7 @@ let auto_widths_follow_screen_width_method () =
   let node = Table.node tbl in
   layout_node node ~x:0 ~y:0 ~width:12 ~height:1;
   let grid = make_grid ~width:12 ~height:1 ~width_method:`Wcwidth () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   equal ~msg:"second column follows wcwidth measurement" string "X"
     (Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:7 ~y:0))
 
@@ -667,12 +667,12 @@ let auto_widths_recompute_after_set_rows () =
   let node = Table.node tbl in
   layout_node node ~x:0 ~y:0 ~width:12 ~height:1;
   let grid = make_grid ~width:12 ~height:1 () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   equal ~msg:"initial column width" string "X"
     (Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:3 ~y:0));
   Table.set_rows tbl [ [| Table.cell "aaaa"; Table.cell "X" |] ];
   let grid = make_grid ~width:12 ~height:1 () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   equal ~msg:"width follows the new data" string "X"
     (Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:5 ~y:0))
 
@@ -680,32 +680,32 @@ let auto_widths_recompute_after_set_rows () =
 
 let set_border_noop () =
   let t, tbl = make_table () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.set_border tbl true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_wrap_noop () =
   let t, tbl = make_table () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.set_wrap_selection tbl false;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_show_header_noop () =
   let t, tbl = make_table () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.set_show_header tbl true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_text_color_noop () =
   let t, tbl = make_table () in
   Table.set_text_color tbl (Ansi.Color.of_rgb 255 255 255);
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.set_text_color tbl (Ansi.Color.of_rgb 255 255 255);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_fast_scroll_step_noop () =
   let t, tbl = make_table () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.set_fast_scroll_step tbl 5;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -721,25 +721,25 @@ let set_cell_padding_pads_each_side () =
   Table.set_cell_padding tbl 2;
   with_layout tbl ~width:12 ~height:1;
   let grid = make_grid ~width:12 ~height:1 () in
-  Renderable.Private.render_full (Table.node tbl) ~grid ~dt:0.;
+  Test_harness.render (Table.node tbl) grid ~dt:0.;
   equal ~msg:"two columns of padding on each side of each cell" string
     "  1     2" (Matrix_grid.to_text grid)
 
 let set_border_toggle () =
   let t, tbl = make_table () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.set_border tbl false;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_show_header_toggle () =
   let t, tbl = make_table () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.set_show_header tbl false;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_show_column_separator_toggle () =
   let t, tbl = make_table () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.set_show_column_separator tbl true;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -765,7 +765,7 @@ let apply_props_updates () =
     Table.Props.make ~columns:sample_columns ~rows:sample_rows ~selected_row:3
       ~wrap_selection:true ()
   in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.apply_props tbl props;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
   equal ~msg:"index applied" int 3 (Table.selected_row tbl)
@@ -774,7 +774,7 @@ let apply_props_same_no_extra_render () =
   let t, tbl = make_table ~columns:sample_columns ~rows:sample_rows () in
   let props = Table.Props.make ~columns:sample_columns ~rows:sample_rows () in
   Table.apply_props tbl props;
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Table.apply_props tbl props;
   equal ~msg:"no extra schedule" int before !(t.schedule_count)
 
@@ -829,7 +829,7 @@ let absent_selection_is_preserved () =
   equal ~msg:"Enter does not activate an absent row" (list int) [] !activations;
   with_layout tbl ~width:30 ~height:5;
   let grid = make_grid ~width:30 ~height:5 () in
-  Renderable.Private.render_full (Table.node tbl) ~grid ~dt:0.;
+  Test_harness.render (Table.node tbl) grid ~dt:0.;
   for i = 0 to 149 do
     match (Matrix_grid.get_style grid i).bg with
     | Some color ->

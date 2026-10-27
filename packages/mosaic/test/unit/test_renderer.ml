@@ -495,9 +495,9 @@ let culled_live_child_does_not_tick () =
 
 (* ── Viewport culling: what the intersection test keeps ──
 
-   [children_in_viewport] decides which children the renderer descends into,
-   so it answers "can anything under this child paint inside the viewport",
-   not "is this child's own box visible". Overflow is visible by default: a
+   Culling decides which children a frame descends into, so it answers "can
+   anything under this child paint inside the viewport", not "is this child's
+   own box visible". Overflow is visible by default: a
    child's subtree is free to paint outside the child's box, and a box with
    zero extent on an axis has no interior at all — every one of its
    descendants paints outside it. *)
@@ -531,9 +531,32 @@ let culling_column t extents =
   do_frame ~width:20 ~height:20 t;
   (parent, Array.of_list children)
 
-let kept_in ~parent ~x ~y ~width ~height =
-  let viewport : Matrix_grid.region = { x; y; width; height } in
-  Renderable.Private.children_in_viewport ~parent ~viewport
+(* The children of the culling [parent] that a frame descends into, in the
+   order it renders them, when the root clips its children to the viewport
+   and the frame holds the viewport, so that the viewport alone decides. A
+   frame does not cull to an empty viewport: it skips the children. *)
+let kept_in t ~parent ~x ~y ~width ~height =
+  assert (x >= 0 && y >= 0 && width > 0 && height > 0);
+  let root = Renderer.root t in
+  let rendered = ref [] in
+  List.iter
+    (fun child ->
+      Renderable.set_render child (fun self _ ~dt:_ ->
+          rendered := self :: !rendered))
+    (Renderable.children parent);
+  Renderable.set_viewport_cull parent true;
+  Renderable.set_style root
+    (Toffee.Style.set_overflow
+       { x = Toffee.Style.Overflow.Hidden; y = Toffee.Style.Overflow.Hidden }
+       (Renderable.style root));
+  Renderable.set_child_clip root
+    (Some (fun _ -> Some { Matrix_grid.x; y; width; height }));
+  Renderer.render_frame t
+    ~width:(max 20 (x + width))
+    ~height:(max 20 (y + height))
+    ~dt:0.;
+  Renderable.set_child_clip root None;
+  List.rev !rendered
 
 let zero_height_child_on_the_viewport_edge_is_kept () =
   (* Rows: a zero-height one at y=0, then a one-cell row also at y=0. The
@@ -542,7 +565,7 @@ let zero_height_child_on_the_viewport_edge_is_kept () =
      descendant that would have painted into the viewport. *)
   let t = make_renderer () in
   let parent, kids = culling_column t [ (10, 0); (10, 1) ] in
-  let kept = kept_in ~parent ~x:0 ~y:0 ~width:10 ~height:20 in
+  let kept = kept_in t ~parent ~x:0 ~y:0 ~width:10 ~height:20 in
   is_true ~msg:"zero-height child on the viewport's top edge is traversed"
     (List.memq kids.(0) kept)
 
@@ -551,7 +574,7 @@ let zero_width_child_on_the_viewport_edge_is_kept () =
      viewport's left edge, which every child of a column does. *)
   let t = make_renderer () in
   let parent, kids = culling_column t [ (10, 1); (0, 1) ] in
-  let kept = kept_in ~parent ~x:0 ~y:0 ~width:10 ~height:20 in
+  let kept = kept_in t ~parent ~x:0 ~y:0 ~width:10 ~height:20 in
   is_true ~msg:"zero-width child on the viewport's left edge is traversed"
     (List.memq kids.(1) kept)
 
@@ -560,7 +583,7 @@ let child_straddling_the_viewport_edge_is_kept () =
      half in. Nonzero extents overlap strictly, so this one is safe. *)
   let t = make_renderer () in
   let parent, kids = culling_column t [ (10, 2); (10, 3) ] in
-  let kept = kept_in ~parent ~x:0 ~y:0 ~width:10 ~height:3 in
+  let kept = kept_in t ~parent ~x:0 ~y:0 ~width:10 ~height:3 in
   is_true ~msg:"partially visible child is traversed" (List.memq kids.(1) kept)
 
 let child_ending_on_the_viewport_edge_is_culled () =
@@ -568,7 +591,7 @@ let child_ending_on_the_viewport_edge_is_culled () =
      under it, can reach the viewport. Culling it is the point. *)
   let t = make_renderer () in
   let parent, kids = culling_column t [ (10, 2); (10, 3) ] in
-  let kept = kept_in ~parent ~x:0 ~y:2 ~width:10 ~height:3 in
+  let kept = kept_in t ~parent ~x:0 ~y:2 ~width:10 ~height:3 in
   is_false ~msg:"child entirely above the viewport is culled"
     (List.memq kids.(0) kept)
 
@@ -581,7 +604,7 @@ let child_far_before_the_viewport_is_kept () =
   let tall = make_child ~parent ~x:0 ~y:0 ~w:10 ~h:300 () in
   do_frame ~width:20 ~height:20 t;
   let kept =
-    kept_in ~parent ~x:0 ~y:(Renderable.y parent + 200) ~width:10 ~height:10
+    kept_in t ~parent ~x:0 ~y:(Renderable.y parent + 200) ~width:10 ~height:10
   in
   is_true ~msg:"tall child reaching the viewport is traversed"
     (List.memq tall kept)
@@ -596,11 +619,19 @@ let culling_matches_a_scan =
          (Gen.quad (Gen.int_range 0 9) (Gen.int_range (-5) 60)
             (Gen.int_range 0 12) (Gen.int_range 0 3)))
       (Gen.quad (Gen.int_range (-5) 15) (Gen.int_range (-5) 65)
-         (Gen.int_range 0 12) (Gen.int_range 0 12))
+         (Gen.int_range 1 12) (Gen.int_range 1 12))
   in
   prop ~count:200 "culling matches a scan of every child" gen
     (fun (children, (vx, vy, vw, vh)) ->
       let t = make_renderer () in
+      (* The column is placed 10 cells in, so that viewports and children
+         reach before it and stay on the frame. *)
+      let ten = Toffee.Style.Length_percentage.length 10. in
+      let zero = Toffee.Style.Length_percentage.length 0. in
+      Renderable.set_style (Renderer.root t)
+        (Toffee.Style.set_padding
+           { left = ten; top = ten; right = zero; bottom = zero }
+           (Renderable.style (Renderer.root t)));
       let parent, _ = culling_column t [] in
       let nodes =
         List.map
@@ -614,9 +645,7 @@ let culling_matches_a_scan =
       let overlaps a0 a1 lo hi =
         if a0 = a1 then a0 >= lo && a0 <= hi else a1 > lo && a0 < hi
       in
-      let viewport : Matrix_grid.region =
-        { x = vx; y = vy; width = vw; height = vh }
-      in
+      let vx = vx + 10 and vy = vy + 10 in
       let expected =
         List.filter
           (fun child ->
@@ -627,7 +656,7 @@ let culling_matches_a_scan =
         |> List.stable_sort (fun a b ->
             Int.compare (Renderable.z_index a) (Renderable.z_index b))
       in
-      let kept = Renderable.Private.children_in_viewport ~parent ~viewport in
+      let kept = kept_in t ~parent ~x:vx ~y:vy ~width:vw ~height:vh in
       is_true ~msg:"same children in the same order"
         (List.length kept = List.length expected
         && List.for_all2 ( == ) kept expected))
@@ -861,9 +890,6 @@ let chunks_keep_every_box =
         (* Culling keeps the rows whose boxes, their text's included, meet a
            viewport. *)
         let top = Renderable.y chunked + Random.State.int rng 400 in
-        let viewport : Matrix_grid.region =
-          { x = 0; y = top; width = 120; height = 20 }
-        in
         let meets node =
           List.exists
             (fun (x, y, w, h) ->
@@ -875,7 +901,7 @@ let chunks_keep_every_box =
         in
         let expected = List.filter meets (Renderable.children chunked) in
         let kept =
-          Renderable.Private.children_in_viewport ~parent:chunked ~viewport
+          kept_in t ~parent:chunked ~x:0 ~y:top ~width:120 ~height:20
         in
         if
           List.sort compare (List.map Renderable.uid kept)
@@ -951,13 +977,15 @@ let chunk_follows_a_grown_member () =
   do_frame ~width:20 ~height:20 t;
   (* Row 4 spans rows 4 to 9 of the column, row 5 starts at 9. *)
   let kept =
-    kept_in ~parent:column ~x:0 ~y:(Renderable.y column + 7) ~width:10 ~height:1
+    kept_in t ~parent:column ~x:0
+      ~y:(Renderable.y column + 7)
+      ~width:10 ~height:1
   in
   is_true ~msg:"the grown member is kept" (List.memq rows.(4) kept);
   is_false ~msg:"the moved member is culled" (List.memq rows.(5) kept);
   is_true ~msg:"the moved member is kept where it is"
     (List.memq rows.(5)
-       (kept_in ~parent:column ~x:0
+       (kept_in t ~parent:column ~x:0
           ~y:(Renderable.y column + 9)
           ~width:10 ~height:1))
 

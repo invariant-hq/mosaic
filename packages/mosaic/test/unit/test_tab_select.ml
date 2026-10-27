@@ -29,11 +29,11 @@ let make_tab_select ?options ?selected ?tab_width ?wrap_selection
 
 let emit_key ts key =
   let ev = Event.Key.of_input key in
-  Renderable.Private.emit_key (Tab_select.node ts) ev;
+  Test_harness.emit_key (Tab_select.node ts) ev;
   if
     (not (Event.Key.default_prevented ev))
     && not (Event.Key.propagation_stopped ev)
-  then Renderable.Private.run_key_behavior (Tab_select.node ts) ev
+  then Test_harness.emit_key (Tab_select.node ts) ev
 
 (* ── Props ── *)
 
@@ -240,25 +240,25 @@ let set_options_empty () =
 let set_background_noop () =
   let t, ts = make_tab_select () in
   Tab_select.set_background ts (Ansi.Color.of_rgba 0 0 0 0);
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tab_select.set_background ts (Ansi.Color.of_rgba 0 0 0 0);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_wrap_noop () =
   let t, ts = make_tab_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tab_select.set_wrap_selection ts false;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_show_underline_noop () =
   let t, ts = make_tab_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tab_select.set_show_underline ts true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_show_description_noop () =
   let t, ts = make_tab_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tab_select.set_show_description ts false;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -270,7 +270,7 @@ let apply_props_updates () =
     Tab_select.Props.make ~options:sample_items ~selected:3 ~wrap_selection:true
       ()
   in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Tab_select.apply_props ts props;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
   equal ~msg:"index applied" int 3 (Tab_select.selected_index ts)
@@ -301,7 +301,7 @@ let render_tab_select ts ~width ~height =
   let node = Tab_select.node ts in
   layout_node node ~x:0 ~y:0 ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   grid
 
 let truncation_keeps_cjk_graphemes_intact () =

@@ -18,7 +18,7 @@ let render_bar bar ~width ~height =
   let node = Progress_bar.node bar in
   layout_node node ~x:0 ~y:0 ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   grid
 
 let left_half = 0x258C
@@ -118,43 +118,43 @@ let set_value_updates () =
 
 let set_value_noop_same () =
   let t, bar = make_bar ~value:0.5 () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Progress_bar.set_value bar 0.5;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_min_schedules_render () =
   let t, bar = make_bar () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Progress_bar.set_min bar 0.1;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_max_schedules_render () =
   let t, bar = make_bar () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Progress_bar.set_max bar 2.0;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_orientation_schedules_render () =
   let t, bar = make_bar () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Progress_bar.set_orientation bar `Vertical;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_orientation_noop_same () =
   let t, bar = make_bar ~orientation:`Horizontal () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Progress_bar.set_orientation bar `Horizontal;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_filled_color_schedules_render () =
   let t, bar = make_bar () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Progress_bar.set_filled_color bar Ansi.Color.red;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_empty_color_schedules_render () =
   let t, bar = make_bar () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Progress_bar.set_empty_color bar Ansi.Color.blue;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -206,7 +206,7 @@ let apply_props_replaces_all () =
 
 let apply_props_schedules_render () =
   let t, bar = make_bar () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Progress_bar.apply_props bar Progress_bar.Props.default;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 

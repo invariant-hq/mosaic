@@ -150,7 +150,7 @@ let table_widths ~padding ~available columns =
   let node = Table.node table in
   layout_node node ~x:0 ~y:0 ~width ~height:8;
   let grid = make_grid ~width ~height:8 () in
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   let separators =
     List.filter
       (fun x ->

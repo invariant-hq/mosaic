@@ -51,22 +51,36 @@ let edit editor =
   let edited = Editor.insert "y" editor in
   Editor.length edited + Editor.length (Editor.undo edited)
 
+(* Places [node] at the top left of the root, [width] by [height]. *)
+let place node ~width ~height =
+  let open Toffee.Style in
+  Renderable.set_style node
+    (Renderable.style node
+    |> set_position Position.Absolute
+    |> set_size
+         {
+           width = Dimension.length (Float.of_int width);
+           height = Dimension.length (Float.of_int height);
+         })
+
+(* A paint workload is a frame of [rows] rows, drawn once by the setup. *)
 let paint_surface content ~height ~scroll_x =
   let renderer, surface =
     make_surface [ { Text_buffer.text = content; style = Ansi.Style.default } ]
   in
   Text_surface.set_wrap surface `None;
   let node = Text_surface.node surface in
-  Renderable.Private.update_layout node ~x:0. ~y:0. ~width:80.
-    ~height:(float_of_int height);
+  place node ~width:80 ~height;
+  Renderer.render_frame renderer ~width:80 ~height:20 ~dt:0.;
   Text_surface.set_scroll_x surface scroll_x;
-  let grid = Matrix_grid.create ~width:80 ~height:20 () in
-  Renderable.Private.render node grid ~dt:0.;
-  (renderer, node, grid)
+  Renderer.render_frame renderer ~width:80 ~height:20 ~dt:0.;
+  (renderer, node, 20)
 
-let paint (renderer, node, grid) =
-  ignore (Sys.opaque_identity renderer : Renderer.t);
-  Renderable.Private.render node grid ~dt:0.
+(* The frame that repaints the unchanged view, asked for as a change of
+   style asks for one. *)
+let paint (renderer, node, rows) =
+  Renderable.request_render node;
+  Renderer.render_frame renderer ~width:80 ~height:rows ~dt:0.
 
 let tall lines = String.concat "" (List.init lines (fun _ -> "one line\n"))
 
@@ -90,7 +104,8 @@ let focus_surface length =
   in
   let node = Textarea.node area in
   Renderable.set_focusable node true;
-  Renderable.Private.update_layout node ~x:0. ~y:0. ~width:80. ~height:20.;
+  place node ~width:80 ~height:20;
+  Renderer.render_frame renderer ~width:80 ~height:20 ~dt:0.;
   ignore (Text_surface.layout (Textarea.surface area) : Matrix_text.Layout.t);
   (renderer, area)
 
@@ -139,7 +154,7 @@ let replace_fragments (renderer, text, first, second) =
 (* ───── Reference paint workloads ─────
 
    A 80x20 viewport over text whose rows, columns or overlays mostly lie
-   outside it. Setup builds and paints once; the measured call repaints the
+   outside it. Setup builds and draws a frame; the measured frame repaints the
    unchanged view. *)
 
 let viewport ?(wrap = `None) ?(rows = 20) ?(scroll = `Top) ?(scroll_x = 0)
@@ -148,16 +163,15 @@ let viewport ?(wrap = `None) ?(rows = 20) ?(scroll = `Top) ?(scroll_x = 0)
   Text_surface.set_wrap surface wrap;
   setup (Text_surface.buffer surface);
   let node = Text_surface.node surface in
-  Renderable.Private.update_layout node ~x:0. ~y:0. ~width:80.
-    ~height:(float_of_int rows);
+  place node ~width:80 ~height:rows;
+  Renderer.render_frame renderer ~width:80 ~height:rows ~dt:0.;
   (match scroll with
   | `Top -> ()
   | `Middle ->
       Text_surface.set_scroll_y surface (Text_surface.max_scroll_y surface / 2));
   Text_surface.set_scroll_x surface scroll_x;
-  let grid = Matrix_grid.create ~width:80 ~height:rows () in
-  Renderable.Private.render node grid ~dt:0.;
-  (renderer, node, grid)
+  Renderer.render_frame renderer ~width:80 ~height:rows ~dt:0.;
+  (renderer, node, rows)
 
 let span text = [ { Text_buffer.text; style = Ansi.Style.default } ]
 

@@ -175,12 +175,12 @@ let add_and_remove_highlight () =
     Text_buffer.Highlight.make ~start_offset:0 ~end_offset:5 ~style:red_style
       ~ref_id:42 ()
   in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Text.add_highlight txt h;
   gt ~msg:"render requested" ~than:before !(t.schedule_count);
   let hl = Text_buffer.highlights_in_range (Text.buffer txt) ~start:0 ~len:5 in
   equal ~msg:"1 highlight" int 1 (List.length hl);
-  let before2 = !(t.schedule_count) in
+  let before2 = Test_harness.clean t in
   Text.remove_highlights_by_ref txt 42;
   gt ~msg:"render requested again" ~than:before2 !(t.schedule_count);
   let hl2 = Text_buffer.highlights_in_range (Text.buffer txt) ~start:0 ~len:5 in
@@ -526,7 +526,7 @@ let fragment_style_changes_repaint_inherited_components () =
   let grid = make_grid ~width:2 ~height:1 () in
   let blue = Ansi.Style.make ~fg:Ansi.Color.blue () in
   Text.set_text_style txt blue;
-  Renderable.Private.render_full node ~grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   is_true ~msg:"inherited foreground repaints"
     (Ansi.Color.equal Ansi.Color.blue (Matrix_grid.get_fg grid 0));
   is_true ~msg:"explicit foreground remains green"

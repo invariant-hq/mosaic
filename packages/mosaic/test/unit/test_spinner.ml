@@ -16,11 +16,12 @@ let render_spinner spinner ~width ~height =
   let node = Spinner.node spinner in
   layout_node node ~x:0 ~y:0 ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   grid
 
+(* A frame [dt] seconds after the last, as the renderer draws it. *)
 let advance_frame spinner ~dt =
-  Renderable.Private.pre_render_update (Spinner.node spinner) ~dt
+  Test_harness.render (Spinner.node spinner) (make_grid ()) ~dt
 
 (* ── Props ── *)
 
@@ -135,13 +136,13 @@ let set_frame_set_clamps_index () =
 
 let set_color_schedules_render () =
   let t, spinner = make_spinner () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Spinner.set_color spinner Ansi.Color.red;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_color_noop_same () =
   let t, spinner = make_spinner ~color:Ansi.Color.white () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Spinner.set_color spinner Ansi.Color.white;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -171,7 +172,7 @@ let apply_props_resets_on_frame_set_change () =
 
 let apply_props_schedules_render () =
   let t, spinner = make_spinner () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Spinner.apply_props spinner Spinner.Props.default;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -183,7 +184,7 @@ let measure_width_is_max_frame_width () =
   let node = Spinner.node spinner in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:1;
   let grid = make_grid ~width:10 ~height:1 () in
-  Renderable.Private.render node grid ~dt:0.;
+  Test_harness.render node grid ~dt:0.;
   (* The spinner should have an intrinsic width of 1 for braille chars *)
   let text = Matrix_grid.get_text grid 0 in
   satisfies ~claim:"renders something (non-empty)" string

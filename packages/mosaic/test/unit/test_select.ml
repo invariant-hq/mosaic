@@ -29,11 +29,11 @@ let make_select ?options ?selected_index ?wrap_selection ?show_description
 
 let emit_key sel key =
   let ev = Event.Key.of_input key in
-  Renderable.Private.emit_key (Select.node sel) ev;
+  Test_harness.emit_key (Select.node sel) ev;
   if not (Event.Key.default_prevented ev) then
-    Renderable.Private.run_key_behavior (Select.node sel) ev
+    Test_harness.emit_key (Select.node sel) ev
 
-let emit_mouse sel ev = Renderable.Private.emit_mouse (Select.node sel) ev
+let emit_mouse sel ev = Test_harness.emit_mouse (Select.node sel) ev
 
 let with_layout sel ~width ~height =
   layout_node (Select.node sel) ~x:0 ~y:0 ~width ~height
@@ -371,52 +371,52 @@ let set_options_does_not_fire_on_change () =
 let set_background_noop () =
   let t, sel = make_select () in
   Select.set_background sel (Ansi.Color.of_rgba 0 0 0 0);
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_background sel (Ansi.Color.of_rgba 0 0 0 0);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_wrap_noop () =
   let t, sel = make_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_wrap_selection sel false;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_show_description_noop () =
   let t, sel = make_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_show_description sel true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_item_spacing_noop () =
   let t, sel = make_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_item_spacing sel 0;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_text_color_noop () =
   let t, sel = make_select () in
   Select.set_text_color sel (Ansi.Color.of_rgb 255 255 255);
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_text_color sel (Ansi.Color.of_rgb 255 255 255);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_focused_background_noop () =
   let t, sel = make_select () in
   Select.set_focused_background sel (Ansi.Color.of_rgb 26 26 26);
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_focused_background sel (Ansi.Color.of_rgb 26 26 26);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_selected_text_color_noop () =
   let t, sel = make_select () in
   Select.set_selected_text_color sel (Ansi.Color.of_rgb 255 255 0);
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_selected_text_color sel (Ansi.Color.of_rgb 255 255 0);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_fast_scroll_step_noop () =
   let t, sel = make_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_fast_scroll_step sel 5;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -424,13 +424,13 @@ let set_fast_scroll_step_noop () =
 
 let set_show_description_toggle () =
   let t, sel = make_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_show_description sel false;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
 let set_show_scroll_indicator_toggle () =
   let t, sel = make_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_show_scroll_indicator sel true;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -442,7 +442,7 @@ let set_wrap_selection_enables_wrapping () =
 
 let set_item_spacing_schedules () =
   let t, sel = make_select () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.set_item_spacing sel 2;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
@@ -460,7 +460,7 @@ let apply_props_updates () =
     Select.Props.make ~options:sample_items ~selected_index:3
       ~wrap_selection:true ()
   in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.apply_props sel props;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
   equal ~msg:"index applied" int 3 (Select.selected_index sel)
@@ -469,7 +469,7 @@ let apply_props_same_options_no_extra_render () =
   let t, sel = make_select ~options:sample_items () in
   let props = Select.Props.make ~options:sample_items () in
   Select.apply_props sel props;
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Select.apply_props sel props;
   equal ~msg:"no extra schedule" int before !(t.schedule_count)
 
@@ -523,7 +523,7 @@ let absent_selection_is_preserved () =
     !activations;
   with_layout sel ~width:30 ~height:10;
   let grid = make_grid ~width:30 ~height:10 () in
-  Renderable.Private.render_full (Select.node sel) ~grid ~dt:0.;
+  Test_harness.render (Select.node sel) grid ~dt:0.;
   is_false ~msg:"no selection marker"
     (String.contains (Matrix_grid.to_text grid) '\226');
   emit_key sel (make_key ~shift:true Down);
@@ -614,14 +614,7 @@ let intrinsic_options_invalidation () =
     (measure_select sel)
 
 let intrinsic_width_policy () =
-  let width_method = ref `Unicode in
   let context = make_ctx () in
-  let context =
-    {
-      context with
-      ctx = { context.ctx with width_method = (fun () -> !width_method) };
-    }
-  in
   let root = make_root context in
   let sel =
     Select.create ~parent:root
@@ -631,7 +624,10 @@ let intrinsic_width_policy () =
   in
   equal ~msg:"Unicode measures the grapheme cluster" (pair int int) (5, 1)
     (measure_select sel);
-  width_method := `Wcwidth;
+  (* The screen's method changes, as when the terminal reports it late; the
+     renderer follows it at the next frame. *)
+  Matrix_screen.set_width_method (Renderer.screen context.renderer) `Wcwidth;
+  ignore (Test_harness.clean context : int);
   equal ~msg:"policy change invalidates cached item width" (pair int int) (9, 1)
     (measure_select sel)
 
@@ -649,7 +645,7 @@ let intrinsic_spacing_paints_last_item () =
   let width, height = measure_select sel in
   with_layout sel ~width ~height;
   let grid = make_grid ~width ~height () in
-  Renderable.Private.render_full (Select.node sel) ~grid ~dt:0.;
+  Test_harness.render (Select.node sel) grid ~dt:0.;
   equal ~msg:"last item does not need a trailing spacing row" string "B"
     (Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:3 ~y:3))
 
@@ -658,7 +654,7 @@ let bindings_use_exact_key_events () =
   List.iter
     (fun key ->
       let event = Event.Key.of_input key in
-      Renderable.Private.run_key_behavior (Select.node sel) event;
+      Test_harness.emit_key (Select.node sel) event;
       is_false ~msg:"unbound modified key remains available"
         (Event.Key.default_prevented event);
       equal ~msg:"unbound event leaves selection unchanged" int 2

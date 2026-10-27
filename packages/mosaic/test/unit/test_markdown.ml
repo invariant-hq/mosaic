@@ -45,7 +45,7 @@ let set_content_updates_accessor () =
 
 let set_content_same_is_noop () =
   let t, md = make_md ~content:"# Hello" () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Markdown.set_content md "# Hello";
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -68,7 +68,7 @@ let set_conceal_toggles () =
 
 let set_conceal_same_is_noop () =
   let t, md = make_md ~content:"**bold**" ~conceal:true () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Markdown.set_conceal md true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -79,7 +79,7 @@ let set_streaming_toggles () =
 
 let set_streaming_same_is_noop () =
   let t, md = make_md ~content:"text" ~streaming:false () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Markdown.set_streaming md false;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
@@ -249,7 +249,7 @@ let element_style_rebuilt_renders_nothing () =
   in
   let t, md = make_md () in
   Markdown.apply_props md (props ());
-  let scheduled = !(t.schedule_count) in
+  let scheduled = Test_harness.clean t in
   for _ = 1 to 4 do
     Markdown.apply_props md (props ())
   done;
@@ -303,7 +303,7 @@ let element_style_values () =
 let apply_props_same_content_no_rerender () =
   let t, md = make_md ~content:"# Hello\n\nWorld" () in
   let props = Markdown.Props.make ~content:"# Hello\n\nWorld" () in
-  let before = !(t.schedule_count) in
+  let before = Test_harness.clean t in
   Markdown.apply_props md props;
   equal ~msg:"no schedule for an unchanged update" int before
     !(t.schedule_count)
