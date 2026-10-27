@@ -2093,6 +2093,32 @@ let test_picture_static_rows () =
   equal ~msg:"no sixel in another form" string ""
     (Screen.static_sixels (picture_screen `Kitty) g ~rows:2 ~below:1 ~reach:2)
 
+(* Under kitty, the pixels a render would send first can be sent before it,
+   as a runtime does outside a synchronized update, and the render then sends
+   none; the images of static rows are deleted with the transcript. *)
+let test_kitty_pixels_apart () =
+  let r = picture_screen `Kitty in
+  let frame () =
+    Screen.build r ~width:8 ~height:3 (fun g _ ->
+        Grid.draw_picture g ~x:1 ~y:0 ~width:2 ~height:1 (tiled ~cols:2 ~rows:1))
+  in
+  frame ();
+  let w = Ansi.Writer.create 0 in
+  Screen.send_pictures r w;
+  contains ~msg:"the pixels" ~sub:"\027_G" (Ansi.Writer.contents w);
+  not_contains ~msg:"the render sends none" ~sub:"\027_G"
+    (Screen.render ~full:true r);
+  let g = Grid.create ~width:4 ~height:1 () in
+  Grid.draw_picture g ~x:0 ~y:0 ~width:2 ~height:1 (tiled ~cols:2 ~rows:1);
+  contains ~msg:"static rows carry their pixels" ~sub:"\027_G"
+    (Screen.static_rows r g ~rows:1);
+  let w = Ansi.Writer.create 0 in
+  Screen.delete_transcript r w;
+  contains ~msg:"their images deleted" ~sub:"a=d" (Ansi.Writer.contents w);
+  let w = Ansi.Writer.create 0 in
+  Screen.delete_transcript r w;
+  equal ~msg:"once" string "" (Ansi.Writer.contents w)
+
 let () =
   run "matrix.screen"
     [
@@ -2220,6 +2246,7 @@ let () =
           test "Kitty placeholders" test_picture_kitty;
           test "Sixel over half blocks" test_picture_sixel;
           test "Static rows" test_picture_static_rows;
+          test "Kitty pixels apart from the render" test_kitty_pixels_apart;
         ];
       group "Relative render"
         [

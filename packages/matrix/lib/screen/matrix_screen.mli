@@ -406,43 +406,46 @@ val active_height : t -> int
     from the top down to the last one that shows anything, such as the height an
     inline frame needs. *)
 
-(**/**)
+(** {1:runtime Writing beside a frame}
 
-(* For matrix's runtime, which writes the frame inside a synchronized update
-   and writes static rows into the transcript. *)
+    What a runtime writes around the frames of a screen: the pixels of kitty
+    pictures before a frame written inside a synchronized update, and rows with
+    their pictures into the scrollback above a live region. [Matrix.run] writes
+    them; a runtime of a program's own on a screen, such as one that serves a
+    session over a socket, writes them as it does. *)
 
 val send_pictures : t -> Ansi.Writer.t -> unit
-(* [send_pictures t w] appends to [w] what the next render would write
-   first under [`Kitty], the deletion of the images [t] no longer needs and
-   the pixels of the boxes the next buffer shows that the terminal does not
-   hold. The render then writes none of it. These bytes show nothing, so a
-   caller that writes a frame inside a synchronized update writes them
-   before it. *)
+(** [send_pictures t w] appends to [w] what the next render would write first
+    under [`Kitty], the deletion of the images [t] no longer needs and the
+    pixels of the boxes the next buffer shows that the terminal does not hold.
+    The render then writes none of it. These bytes show nothing, so a caller
+    that writes a frame inside a synchronized update writes them before it. *)
 
 val delete_transcript : t -> Ansi.Writer.t -> unit
-(* [delete_transcript t w] appends to [w] the deletion of the images of the
-   static rows [t] wrote, for a terminal whose scrollback was erased. *)
+(** [delete_transcript t w] appends to [w] the deletion of the images of the
+    static rows [t] wrote, for a terminal whose scrollback was erased. *)
 
 val static_rows : t -> Matrix_grid.t -> rows:int -> string
-(* [static_rows t g ~rows] is the first [rows] rows of [g] as lines for a
-   region to write above its rows ([Region.start]'s [above]), each ended by
-   LF, at the styling of [t]. A grid without picture cells gives
-   [Matrix_grid.to_ansi ~trim:true ~rows g] and an LF. Picture cells are
-   written in the screen's form. Under [`Kitty] the rows are preceded by the
-   pixels of their boxes, as images [t] deletes only by [delete_transcript].
-   Under [`Sixel] they are half blocks, which [static_sixels] covers once
-   they are on the terminal. Raises [Invalid_argument] if [rows] is negative
-   or greater than the height of [g]. *)
+(** [static_rows t g ~rows] is the first [rows] rows of [g] as lines for a
+    region to write above its rows ([Region.start]'s [above]), each ended by LF,
+    at the styling of [t]. A grid without picture cells gives
+    [Matrix_grid.to_ansi ~trim:true ~rows g] and an LF. Picture cells are
+    written in the screen's form. Under [`Kitty] the rows are preceded by the
+    pixels of their boxes, as images [t] deletes only by [delete_transcript].
+    Under [`Sixel] they are half blocks, which [static_sixels] covers once they
+    are on the terminal.
+
+    Raises [Invalid_argument] if [rows] is negative or greater than the height
+    of [g]. *)
 
 val static_sixels :
   t -> Matrix_grid.t -> rows:int -> below:int -> reach:int -> string
-(* [static_sixels t g ~rows ~below ~reach] is, under [`Sixel], the sixels
-   over the picture cells of the first [rows] rows of [g] written as
-   [static_rows] wrote them, whose last row is [below] rows above the
-   cursor's, at least 1. Only the cells at most [reach] rows above the
-   cursor's row, those still on the screen, are covered. The sixels are
-   reached by relative motions, and the cursor ends on the row it was on. It
-   is [""] in another form, or with no picture cell. Raises
-   [Invalid_argument] as [static_rows] does. *)
+(** [static_sixels t g ~rows ~below ~reach] is, under [`Sixel], the sixels over
+    the picture cells of the first [rows] rows of [g] written as [static_rows]
+    wrote them, whose last row is [below] rows above the cursor's, at least 1.
+    Only the cells at most [reach] rows above the cursor's row, those still on
+    the screen, are covered. The sixels are reached by relative motions, and the
+    cursor ends on the row it was on. It is [""] in another form, or with no
+    picture cell.
 
-(**/**)
+    Raises [Invalid_argument] as [static_rows] does. *)
