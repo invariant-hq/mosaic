@@ -1262,6 +1262,44 @@ let palette_set_query_reset () =
     (fun () ->
       Vte.create ~palette:{ given with cursor = (256, 0, 0) } ~rows:1 ~cols:1 ())
 
+(* The user configures other colors: they replace the palette, programs'
+   changes included, and are what OSC 104 to 112 and RIS reset to. With
+   mode 2031 set the terminal reports its scheme, which says the colors may
+   have changed. *)
+let user_colors () =
+  let vte = Vte.create ~rows:2 ~cols:10 () in
+  let replies =
+    Testable.make ~equal:( = )
+      ~pp:
+        (Format.pp_print_list
+           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
+           Matrix_input.Reply.pp)
+  in
+  let light =
+    {
+      Vte.default_palette with
+      colors = Array.init 256 (fun i -> (i, 0, 0));
+      foreground = (0, 0, 0);
+      background = (255, 255, 255);
+    }
+  in
+  feed vte "\x1b]4;1;#010101\x07";
+  equal ~msg:"mode 2031 off" replies [] (Vte.set_colors vte light);
+  is_true ~msg:"the palette" (Vte.palette vte = light);
+  equal ~msg:"asked" string "\x1b]11;rgb:ffff/ffff/ffff\x07"
+    (answers vte "\x1b]11;?\x07");
+  feed vte "\x1b]4;1;#ffffff\x07\x1b]104\x07";
+  equal ~msg:"OSC 104 resets to them" (triple int int int) (1, 0, 0)
+    (Vte.palette vte).colors.(1);
+  feed vte "\x1b]11;#000000\x07\x1bc";
+  is_true ~msg:"RIS too" (Vte.palette vte = light);
+  feed vte "\x1b[?2031h";
+  equal ~msg:"mode 2031 set: the scheme" replies [ Color_scheme `Dark ]
+    (Vte.set_colors vte Vte.default_palette);
+  is_true ~msg:"the palette again" (Vte.palette vte = Vte.default_palette);
+  raises_match ~msg:"255 colours" (Exn.invalid_arg ~substring:"256") (fun () ->
+      Vte.set_colors vte { light with colors = Array.make 255 (0, 0, 0) })
+
 (* An OSC acts only when it ends with ST or BEL; one cut short does nothing.
    An OSC's text after its number is kept up to 64 KiB. *)
 let osc_acts_only_when_terminated () =
@@ -2523,6 +2561,7 @@ let tests =
     test "OSC set title" osc_set_title;
     test "query replies" query_replies;
     test "palette set, query and reset" palette_set_query_reset;
+    test "the user's colors" user_colors;
     test "a rewritten reply reaches the program"
       rewritten_reply_reaches_the_program;
     test "mode and colour queries" mode_and_colour_queries;

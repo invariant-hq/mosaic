@@ -296,14 +296,14 @@ val reset : t -> unit
 (** {2:resets Resets}
 
     RIS ([ESC c], or {!reset}) returns the terminal to its power-up state. It
-    empties the scrollback, clears the title and restores the whole palette
-    {!val-create} was given, the colors of OSC 10, 11 and 12 included, since RIS
-    "replaces all set-up features with their saved settings" (VT510, RIS). xterm
-    (patch 398) restores the colors of OSC 4 and keeps those of OSC 10, 11 and
-    12. At power-up the screens are blank, the cursor is a visible blinking
-    block at the top left, autowrap is on and the other modes are off, the tab
-    stops are every eight columns, and the pen and the character sets are their
-    defaults.
+    empties the scrollback, clears the title and restores the whole palette its
+    user configured ({!section-palette}), the colors of OSC 10, 11 and 12
+    included, since RIS "replaces all set-up features with their saved settings"
+    (VT510, RIS). xterm (patch 398) restores the colors of OSC 4 and keeps those
+    of OSC 10, 11 and 12. At power-up the screens are blank, the cursor is a
+    visible blinking block at the top left, autowrap is on and the other modes
+    are off, the tab stops are every eight columns, and the pen and the
+    character sets are their defaults.
 
     DECSTR ([CSI ! p]) returns each terminal setting to its power-up value
     (VT510, DECSTR). These are the insert, origin, autowrap, reverse-wrap and
@@ -603,8 +603,8 @@ val set_color_scheme : t -> [ `Dark | `Light ] -> Matrix_input.Reply.t list
     The palette is the colors the emulated terminal's user configured. These are
     the 256 indexed colors SGR selects, the default foreground and background,
     and the cursor's color. {!val-create} is given it, as it is given the size,
-    and programs may change it, as xterm lets them (ctlseqs, "Operating System
-    Commands"):
+    its user may configure others ({!set_colors}), and programs may change it,
+    as xterm lets them (ctlseqs, "Operating System Commands"):
     - OSC 4 [; c ; spec], with any number of pairs, sets indexed color [c], from
       0 to 255;
     - OSC 10, 11 and 12 [; spec] set the default foreground, the default
@@ -614,7 +614,8 @@ val set_color_scheme : t -> [ `Dark | `Light ] -> Matrix_input.Reply.t list
     - a spec [?] asks for the color instead ({!section-replies});
     - OSC 104 [; c] resets the indexed colors listed, all of them when none is,
       and OSC 110, 111 and 112 reset the foreground, the background and the
-      cursor's color, each to the palette {!val-create} was given.
+      cursor's color, each to the palette its user configured: the one
+      {!val-create} was given, or {!set_colors}'.
 
     {!Matrix_input.Reply.rgb_of_spec} reads a spec, such as [rgb:r/g/b],
     [#rrggbb] or an X11 color name such as [ghost white]. OSC 4 and OSC 104 stop
@@ -634,6 +635,18 @@ val set_color_scheme : t -> [ `Dark | `Light ] -> Matrix_input.Reply.t list
 val palette : t -> palette
 (** [palette t] is the palette as programs left it. The caller must not change
     its [colors]. *)
+
+val set_colors : t -> palette -> Matrix_input.Reply.t list
+(** [set_colors t p] is the change by [t]'s user of the colors they configured
+    to [p], as when they pick another theme. [p] replaces the palette, the
+    colors programs set included, and is what OSC 104 to 112 and RIS reset to.
+    It is the report the terminal sends: its [Color_scheme] while mode 2031 is
+    set, which tells the program that the colors may have changed, and [[]]
+    otherwise. The caller writes it to the program's input. [t] keeps a copy of
+    [p].
+
+    Raises [Invalid_argument] if [p] does not have 256 colors or a channel is
+    outside \[[0];[255]\]. *)
 
 (** {1:rows Rows and the scrollback}
 

@@ -202,6 +202,7 @@ let test_mouse_paste_focus () =
   T.input s (T.Terminal.paste term "hi");
   T.input s (T.Terminal.focus term false);
   T.input s (T.Terminal.color_scheme term `Light);
+  T.input s (T.Terminal.set_colors term Vte.default_palette);
   equal ~msg:"events" (list string)
     [
       "Mouse Press Left at 3,1 ctrl";
@@ -209,6 +210,7 @@ let test_mouse_paste_focus () =
       "Paste_data \"hi\"";
       "Paste_end Complete";
       "Focus_out";
+      "Color_scheme Light";
       "Color_scheme Light";
     ]
     (seen ())

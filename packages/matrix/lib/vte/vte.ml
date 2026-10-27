@@ -175,9 +175,10 @@ type t = {
   mutable tabs : bool array;
   mutable title : string;
   cluster : cluster;
-  (* The palette [create] was given, and the one programs set. Neither's
-     colours are ever written: a change makes a new array. *)
-  initial : palette;
+  (* The palette its user configured, [create]'s or [set_colors]', and the
+     one programs set. Neither's colours are ever written: a change makes a
+     new array. *)
+  mutable initial : palette;
   mutable palette : palette;
   parser : Ansi.Parser.t;
   mutable osc : osc;
@@ -1226,16 +1227,16 @@ let default_palette =
     cursor = colors.(7);
   }
 
-let check_palette p =
+let check_palette ?(fn = "create") p =
   let channel v = v >= 0 && v <= 255 in
   let rgb (r, g, b) = channel r && channel g && channel b in
   if Array.length p.colors <> 256 then
-    invalid_arg "Vte.create: the palette does not have 256 colours";
+    invalid_arg ("Vte." ^ fn ^ ": the palette does not have 256 colours");
   if
     not
       (Array.for_all rgb p.colors && rgb p.foreground && rgb p.background
      && rgb p.cursor)
-  then invalid_arg "Vte.create: a palette channel is outside 0..255";
+  then invalid_arg ("Vte." ^ fn ^ ": a palette channel is outside 0..255");
   { p with colors = Array.copy p.colors }
 
 (* The structure, which RIS gives its power-up state. *)
@@ -2076,6 +2077,13 @@ let set_color_scheme t scheme =
   else (
     t.color_scheme <- scheme;
     if t.modes.color_scheme_reports then [ Reply.Color_scheme scheme ] else [])
+
+let set_colors t p =
+  let p = check_palette ~fn:"set_colors" p in
+  t.initial <- p;
+  set_palette t p;
+  if t.modes.color_scheme_reports then [ Reply.Color_scheme t.color_scheme ]
+  else []
 
 let keyboard t : Matrix_input.Keystroke.encoding =
   {

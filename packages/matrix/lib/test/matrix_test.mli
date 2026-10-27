@@ -277,6 +277,12 @@ module Terminal : sig
   (** [color_scheme t c] changes [t]'s color scheme to [c], and is its report
       when the scheme changed and the program has set color scheme reports. *)
 
+  val set_colors : t -> Vte.palette -> string
+  (** [set_colors t p] changes the colors [t]'s user configured to [p], as when
+      they pick another theme ({!Vte.set_colors}), and is the report of the
+      change, the color scheme's, when the program has set color scheme reports.
+  *)
+
   (** {2:reading Reading} *)
 
   val screen : t -> Screen.t

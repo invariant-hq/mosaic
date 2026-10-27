@@ -355,6 +355,7 @@ module Terminal = struct
     if (Vte.modes t.vte).focus_reports then Decoder.encode_focus focused else ""
 
   let color_scheme t scheme = Reply.encode (Vte.set_color_scheme t.vte scheme)
+  let set_colors t palette = Reply.encode (Vte.set_colors t.vte palette)
 
   (* A resize, and the report the terminal sends of it. *)
   let resize t ~cols ~rows = Reply.encode (Vte.resize t.vte ~rows ~cols)
