@@ -105,9 +105,9 @@ module Mouse : sig
 
       Carries cursor coordinates, modifier keys, propagation control, and
       hit-testing metadata. Variant-specific data (button, source, scroll
-      direction) is accessed by pattern-matching on {!kind}. The cursor is given
-      on the screen ({!x}, {!y}) and in the cells of the node whose handler sees
-      the event ({!local}, {!size}).
+      direction) is accessed by pattern-matching on {!type-kind}. The cursor is
+      given on the screen ({!x}, {!y}) and in the cells of the node whose
+      handler sees the event ({!local}, {!size}).
 
       Only {!stop_propagation} and {!prevent_default} mutate the event; all
       other fields are immutable after construction. *)
@@ -138,8 +138,8 @@ module Mouse : sig
     num_lock : bool;  (** Num Lock active. *)
   }
   (** The type for modifier key state, re-exported from
-      {!Matrix_input.Keystroke.mods}. A mouse report carries Shift, Alt and Ctrl
-      only. *)
+      {!Matrix_input.Keystroke.type-mods}. A mouse report carries Shift, Alt and
+      Ctrl only. *)
 
   val no_modifier : modifier
   (** [no_modifier] is the modifier state with every field set to [false]. *)
@@ -199,7 +199,7 @@ module Mouse : sig
       carry equal payloads. *)
 
   val pp_kind : Format.formatter -> kind -> unit
-  (** [pp_kind] formats a {!kind} value. *)
+  (** [pp_kind] formats a {!type-kind} value. *)
 
   (** {2:constructors Construction} *)
 
@@ -209,6 +209,15 @@ module Mouse : sig
       kind [kind]. Propagation and default-prevention flags start as [false].
 
       [target] defaults to [None]. *)
+
+  val at_node : t -> x:int -> y:int -> width:int -> height:int -> t
+  (** [at_node t ~x ~y ~width ~height] is [t] as the node whose top-left cell is
+      [(x, y)] and whose size is [width] by [height] sees it: its {!local} is
+      counted from [(x, y)] and its {!size} is [(width, height)]. It shares
+      [t]'s propagation and default flags, so stopping or preventing one stops
+      or prevents the other. [Renderer.dispatch_mouse] gives each node it
+      reaches the event so made; a handler's test makes one to give the handler.
+  *)
 
   (** {2:accessors Accessors} *)
 
@@ -264,15 +273,6 @@ module Mouse : sig
 
   val pp : Format.formatter -> t -> unit
   (** [pp] formats a mouse event for debugging. *)
-
-  (**/**)
-
-  module Private : sig
-    val at_node : t -> x:int -> y:int -> width:int -> height:int -> t
-    (* [at_node t ~x ~y ~width ~height] is [t] as the node whose top-left cell
-       is [(x, y)] and whose size is [width] by [height] sees it. It shares
-       [t]'s flags. *)
-  end
 end
 
 (** {1:aliases Type aliases} *)

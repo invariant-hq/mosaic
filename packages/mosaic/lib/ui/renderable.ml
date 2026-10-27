@@ -1564,7 +1564,7 @@ let run_handlers t handlers event =
 
 (* A handler reads the event in its node's cells (Event.Mouse.local). *)
 let at_node t event =
-  Event.Mouse.Private.at_node event ~x:(x t) ~y:(y t) ~width:(width t)
+  Event.Mouse.at_node event ~x:(x t) ~y:(y t) ~width:(width t)
     ~height:(height t)
 
 (* Only a node with handlers pays for its copy of the event. *)

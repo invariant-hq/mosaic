@@ -112,6 +112,19 @@ let mouse_dispatch_control () =
 
 (* ── Mouse equality ── *)
 
+(* An event as a node sees it: [local] counts from the node's top-left cell,
+   [size] is the node's, and the node and the event share their flags. *)
+let mouse_at_node () =
+  let ev = mouse_down ~x:12 ~y:7 () in
+  equal ~msg:"before any node" (pair int int) (12, 7) (Event.Mouse.local ev);
+  let seen = Event.Mouse.at_node ev ~x:10 ~y:5 ~width:6 ~height:3 in
+  equal ~msg:"local" (pair int int) (2, 2) (Event.Mouse.local seen);
+  equal ~msg:"size" (pair int int) (6, 3) (Event.Mouse.size seen);
+  equal ~msg:"the screen position" (pair int int) (12, 7)
+    (Event.Mouse.x seen, Event.Mouse.y seen);
+  Event.Mouse.prevent_default seen;
+  is_true ~msg:"one set of flags" (Event.Mouse.default_prevented ev)
+
 let mouse_equal_ignores_dispatch () =
   let a = mouse_down () in
   let b = mouse_down () in
@@ -294,6 +307,7 @@ let () =
           test "target Some when provided" mouse_target_some;
           test "fresh dispatch state" mouse_fresh_dispatch;
           test "dispatch control" mouse_dispatch_control;
+          test "as a node sees it" mouse_at_node;
         ];
       group "Mouse equality"
         [

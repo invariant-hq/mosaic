@@ -205,10 +205,8 @@ module Mouse = struct
 
   let pp ppf t = Format.fprintf ppf "%a(%d, %d)" pp_kind t.kind t.x t.y
 
-  module Private = struct
-    let at_node t ~x ~y ~width ~height =
-      { t with node_x = x; node_y = y; node_w = width; node_h = height }
-  end
+  let at_node t ~x ~y ~width ~height =
+    { t with node_x = x; node_y = y; node_w = width; node_h = height }
 end
 
 (* {1 Type aliases} *)
