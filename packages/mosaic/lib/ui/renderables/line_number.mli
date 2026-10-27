@@ -49,7 +49,8 @@ module Props : sig
     unit ->
     t
   (** [make ()] is a line number props value with:
-      - [fg] is the line number foreground color. Defaults to medium gray.
+      - [fg] is the line number foreground color, and the signs' without one of
+        their own. Defaults to none, the [Muted] role of the theme in scope.
       - [bg] is the gutter background color. Defaults to [None] (transparent).
       - [min_width] is the minimum gutter width in columns. Defaults to [3].
       - [padding_right] is the padding between the number and the content area.

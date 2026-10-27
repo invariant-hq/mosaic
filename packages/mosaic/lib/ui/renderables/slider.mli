@@ -6,7 +6,13 @@
     where the thumb represents the visible portion of content.
 
     The slider handles left-button mouse events: clicking on the track jumps the
-    thumb, clicking on the thumb initiates a drag, and releasing ends it. *)
+    thumb, clicking on the thumb initiates a drag, and releasing ends it.
+
+    The slider draws by the roles of the theme in scope ({!Renderable.theme}):
+    the track as a line in the [Border] role and the thumb as blocks in the
+    [Plain] role, so it shows whatever the output's styling. A [track_color]
+    fills the track as a background instead, and a [thumb_color] colors the
+    thumb. *)
 
 type t
 (** The type for sliders. A slider owns a {!Renderable.t} and manages its own
@@ -68,8 +74,8 @@ module Props : sig
         uncontrolled value.
       - [viewport_size] controls thumb size relative to the range. Defaults to
         [max (max -. min) *. 0.1], minimum [1.0].
-      - [track_color] defaults to dark gray (RGB 37 37 39).
-      - [thumb_color] defaults to medium gray (RGB 154 158 163).
+      - [track_color] defaults to none, a line in the [Border] role.
+      - [thumb_color] defaults to none, the [Plain] role.
 
       {!val-create} and {!Vnode.slider} take these labels with these defaults.
   *)

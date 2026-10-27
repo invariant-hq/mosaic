@@ -1,8 +1,3 @@
-(* Defaults *)
-
-let default_track_color = Ansi.Color.of_rgb 37 37 39
-let default_thumb_color = Ansi.Color.of_rgb 154 158 163
-
 (* Props *)
 
 type orientation = [ `Horizontal | `Vertical ]
@@ -16,13 +11,12 @@ module Props = struct
     min : float;
     max : float;
     viewport_size : float;
-    track_color : Ansi.Color.t;
-    thumb_color : Ansi.Color.t;
+    track_color : Ansi.Color.t option;
+    thumb_color : Ansi.Color.t option;
   }
 
   let make ?(orientation = `Horizontal) ?value ?(min = 0.) ?(max = 100.)
-      ?viewport_size ?(track_color = default_track_color)
-      ?(thumb_color = default_thumb_color) () =
+      ?viewport_size ?track_color ?thumb_color () =
     let viewport_size =
       match viewport_size with
       | Some v -> v
@@ -38,8 +32,8 @@ module Props = struct
     && Float.equal a.value b.value
     && Float.equal a.min b.min && Float.equal a.max b.max
     && Float.equal a.viewport_size b.viewport_size
-    && Ansi.Color.equal a.track_color b.track_color
-    && Ansi.Color.equal a.thumb_color b.thumb_color
+    && Option.equal Ansi.Color.equal a.track_color b.track_color
+    && Option.equal Ansi.Color.equal a.thumb_color b.thumb_color
 end
 
 (* Types *)
@@ -158,6 +152,22 @@ let thumb_cell ~orientation ~vthumb_start ~vthumb_end real_pos =
   in
   Uchar.of_int code
 
+(* [track_line] draws a track of [width] by [height] cells as a line along
+   [orientation] in [style]. *)
+let track_line grid ~(style : Ansi.Style.t) ~orientation ~x ~y ~width ~height =
+  let uchar =
+    Uchar.of_int
+      (match orientation with `Horizontal -> 0x2500 | `Vertical -> 0x2502)
+  in
+  let fg = Option.value style.fg ~default:Ansi.Color.default_fg in
+  let bg = Option.value style.bg ~default:Ansi.Color.transparent in
+  for row = y to y + height - 1 do
+    for col = x to x + width - 1 do
+      Matrix_grid.set_uchar ~blend:true grid ~x:col ~y:row ~uchar ~fg ~bg
+        ~attrs:style.attrs ()
+    done
+  done
+
 let render t _self grid ~dt:_ =
   let w = Renderable.width t.node in
   let h = Renderable.height t.node in
@@ -165,12 +175,29 @@ let render t _self grid ~dt:_ =
   else
     let x = Renderable.x t.node in
     let y = Renderable.y t.node in
-    let track_color = t.props.track_color in
-    let thumb_color = t.props.thumb_color in
-    Matrix_grid.fill_rect grid ~x ~y ~width:w ~height:h ~color:track_color;
+    let orientation = t.props.orientation in
+    (* Labels first, then roles: without [track_color] the track is a line in
+       the [Border] role, and without [thumb_color] the thumb's blocks are in
+       the [Plain] role, so the slider shows whatever the styling. *)
+    let theme = Renderable.theme t.node in
+    let plain = Theme.style theme Plain in
+    let thumb_color =
+      match t.props.thumb_color with
+      | Some c -> c
+      | None -> Option.value plain.fg ~default:Ansi.Color.default_fg
+    in
+    let track_color =
+      match t.props.track_color with
+      | Some c ->
+          Matrix_grid.fill_rect grid ~x ~y ~width:w ~height:h ~color:c;
+          c
+      | None ->
+          track_line grid ~style:(Theme.style theme Border) ~orientation ~x ~y
+            ~width:w ~height:h;
+          Ansi.Color.transparent
+    in
     let vthumb_start = virtual_thumb_start t in
     let vthumb_end = vthumb_start + virtual_thumb_size t in
-    let orientation = t.props.orientation in
     match orientation with
     | `Horizontal ->
         let real_start = Int.max 0 (vthumb_start / 2) in
@@ -179,8 +206,7 @@ let render t _self grid ~dt:_ =
           let cell = thumb_cell ~orientation ~vthumb_start ~vthumb_end real_x in
           for row = 0 to h - 1 do
             Matrix_grid.set_uchar ~blend:true grid ~x:(x + real_x) ~y:(y + row)
-              ~uchar:cell ~fg:thumb_color ~bg:track_color ~attrs:Ansi.Attr.empty
-              ()
+              ~uchar:cell ~fg:thumb_color ~bg:track_color ~attrs:plain.attrs ()
           done
         done
     | `Vertical ->
@@ -190,8 +216,7 @@ let render t _self grid ~dt:_ =
           let cell = thumb_cell ~orientation ~vthumb_start ~vthumb_end real_y in
           for col = 0 to w - 1 do
             Matrix_grid.set_uchar ~blend:true grid ~x:(x + col) ~y:(y + real_y)
-              ~uchar:cell ~fg:thumb_color ~bg:track_color ~attrs:Ansi.Attr.empty
-              ()
+              ~uchar:cell ~fg:thumb_color ~bg:track_color ~attrs:plain.attrs ()
           done
         done
 
@@ -363,13 +388,13 @@ let set_viewport_size t v =
     Renderable.request_render t.node)
 
 let set_track_color t c =
-  if not (Ansi.Color.equal t.props.track_color c) then (
-    t.props <- { t.props with track_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.track_color (Some c)) then (
+    t.props <- { t.props with track_color = Some c };
     Renderable.request_render t.node)
 
 let set_thumb_color t c =
-  if not (Ansi.Color.equal t.props.thumb_color c) then (
-    t.props <- { t.props with thumb_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.thumb_color (Some c)) then (
+    t.props <- { t.props with thumb_color = Some c };
     Renderable.request_render t.node)
 
 let set_on_change t f = t.on_change <- f

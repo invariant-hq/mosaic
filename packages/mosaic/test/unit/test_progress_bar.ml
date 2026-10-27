@@ -305,9 +305,27 @@ let doors_empty_color () =
         (Progress_bar.create ~parent ~style:doors_style ~value:0.5
            ~empty_color:doors_red ()))
 
+(* ── Paint ── *)
+
+(* With no color label, the filled part is blocks in the [Plain] role and the
+   empty part a line in the [Border] role, so the bar shows its value with no
+   styling. *)
+
+let paint_without_styling () =
+  let text =
+    at `Plain
+      (paint
+         (Mosaic.progress_bar
+            ~size:(Mosaic.size ~width:10 ~height:1)
+            ~value:0.5 ()))
+  in
+  is_true ~msg:"the filled part" (includes text "\u{2588}");
+  is_true ~msg:"the empty part" (includes text "\u{2500}")
+
 let () =
   run "mosaic.progress_bar"
     [
+      group "Paint" [ test "shows with no styling" paint_without_styling ];
       group "Props"
         [
           test "default values" props_defaults;

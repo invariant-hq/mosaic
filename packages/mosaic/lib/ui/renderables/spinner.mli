@@ -79,7 +79,7 @@ module Props : sig
   (** [make ()] is a property set, with:
       - [frame_set] is the animation sequence. Defaults to {!default_frame_set}.
       - [color] is the foreground color for the spinner glyphs. Defaults to
-        {!Ansi.Color.white}.
+        none, the [Plain] role of the theme in scope.
 
       {!val-create} and {!Vnode.spinner} take these labels with these defaults.
   *)

@@ -7,7 +7,13 @@
     Rendering uses a double-resolution virtual coordinate system with Unicode
     half-block characters for sub-cell fill precision. Values are clamped to
     \[[min];[max]\] before rendering. When [min = max], the bar renders as fully
-    filled. *)
+    filled.
+
+    The bar draws by the roles of the theme in scope ({!Renderable.theme}): the
+    filled portion as full blocks in the [Plain] role and the unfilled portion
+    as a line in the [Border] role, so it shows its value whatever the output's
+    styling. A [filled_color] or [empty_color] fills its portion as a background
+    instead. *)
 
 type t
 (** The type for progress bar widgets backed by a {!Renderable.t}. *)
@@ -59,10 +65,10 @@ module Props : sig
       - [min] is the lower bound of the range. Defaults to [0.0].
       - [max] is the upper bound of the range. Defaults to [1.0].
       - [orientation] is the track direction. Defaults to [`Horizontal].
-      - [filled_color] is the color of the filled portion. Defaults to medium
-        gray.
-      - [empty_color] is the color of the unfilled portion. Defaults to dark
-        gray.
+      - [filled_color] is the color of the filled portion. Defaults to none,
+        blocks in the [Plain] role.
+      - [empty_color] is the color of the unfilled portion. Defaults to none, a
+        line in the [Border] role.
 
       {!val-create} and {!Vnode.progress_bar} take these labels with these
       defaults. *)

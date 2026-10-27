@@ -8,7 +8,9 @@
     A scroll bar manages a scroll position within a range determined by
     {!scroll_size} and {!viewport_size}. The slider thumb is sized
     proportionally to the visible portion of content. Arrow buttons at each end
-    provide incremental scrolling with hold-to-repeat.
+    provide incremental scrolling with hold-to-repeat. The arrows are the
+    theme's glyphs ({!Glyphs}), and the track and the thumb are drawn as a
+    {!Slider}'s.
 
     {2:coordinates Coordinate system}
 
@@ -46,9 +48,9 @@ val style :
   ?arrow_bg:Ansi.Color.t ->
   unit ->
   style
-(** [style ()] is the default appearance: arrows hidden, dark gray track (RGB 37
-    37 39), gray thumb (RGB 154 158 163), white arrow foreground and transparent
-    arrow background. All optional arguments replace their defaults. *)
+(** [style ()] is the default appearance: arrows hidden, and the track, the
+    thumb and the arrows drawn by the roles of the theme in scope, as
+    {!Props.make} states. Each optional argument replaces its role. *)
 
 val style_equal : style -> style -> bool
 (** [style_equal a b] is [true] iff [a] and [b] specify the same appearance. *)
@@ -80,12 +82,13 @@ module Props : sig
         [0].
       - [orientation] — layout direction. Defaults to [`Vertical].
       - [show_arrows] — display arrow buttons at each end. Defaults to [false].
-      - [track_color] — track background color. Defaults to dark gray (RGB 37 37
-        39).
-      - [thumb_color] — thumb foreground color. Defaults to medium gray (RGB 154
-        158 163).
-      - [arrow_fg] — arrow foreground color. Defaults to white.
-      - [arrow_bg] — arrow background color. Defaults to transparent.
+      - [track_color] — track background color. Defaults to none, a line in the
+        [Border] role ({!Slider}).
+      - [thumb_color] — thumb foreground color. Defaults to none, the [Plain]
+        role.
+      - [arrow_fg] — arrow foreground color. Defaults to none, the [Border]
+        role.
+      - [arrow_bg] — arrow background color. Defaults to none.
 
       {!val-create} and {!Vnode.scroll_bar} take these labels with these
       defaults. *)

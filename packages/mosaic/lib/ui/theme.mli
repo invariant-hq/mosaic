@@ -25,12 +25,11 @@
     ({!Ansi.Style.merge}): the content's colors where it has them, and the
     attributes of both.
 
-    Text ({!Text}, {!Code}), boxes ({!Box}), editors ({!Text_input},
-    {!Textarea}) and lists ({!Select}, {!Tab_select}, {!Table}, {!Tree}) read
-    the theme in scope as they draw, and their documents state the roles and
-    surfaces they draw with. The other built-in widgets do not read it yet, and
-    draw with their own arguments and defaults. A canvas reads it with
-    {!Canvas.theme}. *)
+    The built-in widgets read the theme in scope as they draw, and their
+    documents state the roles, surfaces and glyphs they draw with. The default
+    styles of syntax highlighting ({!Syntax_style}), Markdown and diffs do not
+    read it yet, and are fixed colors. A canvas reads it with {!Canvas.theme}.
+*)
 
 (** {1:surfaces Surfaces} *)
 

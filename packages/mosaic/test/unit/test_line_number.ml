@@ -294,9 +294,32 @@ let doors_hidden_line_numbers () =
         (Line_number.create ~parent ~style:doors_style
            ~hidden_line_numbers:[ 0 ] ()))
 
+(* ── Paint ── *)
+
+(* Line numbers are drawn in the [Muted] role, [fg] first. The first line's
+   number is the first cell of the frame that shows "1". *)
+let paint_role () =
+  let red = Ansi.Color.indexed 1 and blue = Ansi.Color.indexed 4 in
+  let themed = Theme.with_style Muted (Ansi.Style.make ~fg:red ()) in
+  let number view =
+    let r = Test_harness.paint (Mosaic.themed themed view) in
+    let rec find x =
+      if Test_harness.cell_text r ~x ~y:0 = "1" then x else find (x + 1)
+    in
+    Test_harness.cell_style r ~x:(find 0) ~y:0
+  in
+  is_true ~msg:"the Muted role"
+    (Test_harness.fg_is red
+       (number (Mosaic.line_number ~size:doors_size (Mosaic.text "a\nb"))));
+  is_true ~msg:"the label first"
+    (Test_harness.fg_is blue
+       (number
+          (Mosaic.line_number ~size:doors_size ~fg:blue (Mosaic.text "a\nb"))))
+
 let () =
   run "mosaic.line_number"
     [
+      group "Paint" [ test "by role, label first" paint_role ];
       group "Props"
         [
           test "detects line color difference"

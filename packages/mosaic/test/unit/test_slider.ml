@@ -644,9 +644,27 @@ let doors_thumb_color () =
         (Slider.create ~parent ~style:doors_style ~value:20.
            ~thumb_color:doors_red ()))
 
+(* ── Paint ── *)
+
+(* With no color label, the track is a line in the [Border] role and the
+   thumb blocks in the [Plain] role, so a slider shows with no styling. *)
+
+let paint_without_styling () =
+  let r =
+    paint
+      (Mosaic.slider
+         ~size:(Mosaic.size ~width:10 ~height:1)
+         ~state:50. ~on_change:ignore ())
+  in
+  let text = at `Plain r in
+  is_true ~msg:"the track's line" (includes text "\u{2500}");
+  is_true ~msg:"the thumb"
+    (List.exists (includes text) [ "\u{2588}"; "\u{258C}"; "\u{2590}" ])
+
 let () =
   run "mosaic.slider"
     [
+      group "Paint" [ test "shows with no styling" paint_without_styling ];
       test "rejected drag proposals" rejected_drag_proposals;
       group "Props"
         [

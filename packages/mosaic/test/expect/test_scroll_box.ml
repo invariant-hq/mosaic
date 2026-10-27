@@ -89,10 +89,11 @@ let%expect_test "scroll box stays constrained in column flex layout" =
     line 1             █
     line 2             █
     line 3             █
-    line 4
-    line 5
-    line 6
-    foot |}]
+    line 4             │
+    line 5             │
+    line 6             │
+    foot
+    |}]
 
 let numbered_lines count =
   List.init count (fun i -> Vnode.text (Printf.sprintf "line %d" (i + 1)))
@@ -107,11 +108,12 @@ let%expect_test "scroll box reveal scrolls to content coordinate" =
        (numbered_lines 12));
   [%expect
     {|
-    line 3
+    line 3             │
     line 4             █
     line 5             █
-    line 6
-    line 7 |}]
+    line 6             │
+    line 7             │
+    |}]
 
 let%expect_test "scroll box reveal overrides followed edge" =
   let app = make_app () in
@@ -125,16 +127,18 @@ let%expect_test "scroll box reveal overrides followed edge" =
   frame app ~width:20 ~height:5;
   frame app ~width:20 ~height:5;
   [%expect
-    {|line 3
-line 4             █
-line 5             █
-line 6
-line 7
-line 3
-line 4             █
-line 5             █
-line 6
-line 7|}]
+    {|
+    line 3             │
+    line 4             █
+    line 5             █
+    line 6             │
+    line 7             │
+    line 3             │
+    line 4             █
+    line 5             █
+    line 6             │
+    line 7             │
+    |}]
 
 let%expect_test "accepted scrolling leaves follow until the model follows again"
     =
@@ -225,11 +229,12 @@ let scrollbar_app ?show_scrollbars () =
 let%expect_test "overflowing scroll box shows the vertical bar" =
   let app = scrollbar_app () in
   settled_frame app ~width:20 ~height:4;
-  [%expect_exact {|
+  [%expect_exact
+    {|
 Line 0             █
 Line 1             ▀
-Line 2
-Line 3|}]
+Line 2             │
+Line 3             │|}]
 
 let%expect_test "show_scrollbars false hides the bars despite overflow" =
   let app = scrollbar_app ~show_scrollbars:false () in

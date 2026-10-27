@@ -14,10 +14,8 @@ type line_sign = {
 (* [Props.make] is the one place the gutter's labels get their defaults:
    [create] and [Vnode.line_number] pass their labels on unset. *)
 module Props = struct
-  let default_fg = Ansi.Color.grayscale ~level:12
-
   type t = {
-    fg : Ansi.Color.t;
+    fg : Ansi.Color.t option;
     bg : Ansi.Color.t option;
     min_width : int;
     padding_right : int;
@@ -29,7 +27,7 @@ module Props = struct
     hidden_line_numbers : int list;
   }
 
-  let make ?(fg = default_fg) ?bg ?(min_width = 3) ?(padding_right = 1)
+  let make ?fg ?bg ?(min_width = 3) ?(padding_right = 1)
       ?(show_line_numbers = true) ?(line_number_offset = 0) ?(line_colors = [])
       ?(line_signs = []) ?(line_numbers = []) ?(hidden_line_numbers = []) () =
     {
@@ -71,7 +69,7 @@ module Props = struct
     | _ -> false
 
   let equal a b =
-    Ansi.Color.equal a.fg b.fg
+    Option.equal Ansi.Color.equal a.fg b.fg
     && Option.equal Ansi.Color.equal a.bg b.bg
     && a.min_width = b.min_width
     && a.padding_right = b.padding_right
@@ -237,6 +235,16 @@ let render_gutter t _self grid ~dt:_ =
     let width_method = Renderable.Private.width_method t.gutter in
     let lk = lookup t ~width_method in
     let bw = lk.max_before in
+    (* [fg] first, then the [Muted] role; a sign's color first, then the
+       numbers'. *)
+    let number_style =
+      let muted = Theme.style (Renderable.theme t.gutter) Muted in
+      match t.props.fg with Some c -> Ansi.Style.fg c muted | None -> muted
+    in
+    let sign_style = function
+      | Some c -> Ansi.Style.fg c number_style
+      | None -> number_style
+    in
     let num_width =
       if t.props.show_line_numbers then
         let max_line = line_count rows + t.props.line_number_offset in
@@ -265,10 +273,7 @@ let render_gutter t _self grid ~dt:_ =
                       let sw = display_width ~width_method s in
                       let padding = bw - sw in
                       col := !col + padding;
-                      let fg =
-                        Option.value ~default:t.props.fg sign.before_color
-                      in
-                      let style = Ansi.Style.make ~fg () in
+                      let style = sign_style sign.before_color in
                       Matrix_grid.draw_text ~style ~width_method grid
                         ~x:(gx + !col) ~y:(gy + row) ~text:s;
                       col := !col + sw
@@ -285,9 +290,8 @@ let render_gutter t _self grid ~dt:_ =
                 let num_str = string_of_int line_num in
                 let pad = num_width - String.length num_str in
                 col := !col + pad;
-                let style = Ansi.Style.make ~fg:t.props.fg () in
-                Matrix_grid.draw_text ~style ~width_method grid ~x:(gx + !col)
-                  ~y:(gy + row) ~text:num_str;
+                Matrix_grid.draw_text ~style:number_style ~width_method grid
+                  ~x:(gx + !col) ~y:(gy + row) ~text:num_str;
                 col := !col + String.length num_str
               end;
               (* After sign *)
@@ -295,10 +299,7 @@ let render_gutter t _self grid ~dt:_ =
               | Some sign -> (
                   match sign.after with
                   | Some s ->
-                      let fg =
-                        Option.value ~default:t.props.fg sign.after_color
-                      in
-                      let style = Ansi.Style.make ~fg () in
+                      let style = sign_style sign.after_color in
                       Matrix_grid.draw_text ~style ~width_method grid
                         ~x:(gx + !col) ~y:(gy + row) ~text:s
                   | None -> ())

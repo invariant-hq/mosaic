@@ -232,9 +232,28 @@ let doors_color () =
       Spinner.node
         (Spinner.create ~parent ~style:doors_style ~color:doors_red ()))
 
+(* ── Paint ── *)
+
+let paint_role () =
+  let red = Ansi.Color.indexed 1 and blue = Ansi.Color.indexed 4 in
+  let themed = Theme.with_style Plain (Ansi.Style.make ~fg:red ()) in
+  is_true ~msg:"the Plain role"
+    (fg_is red
+       (cell_style
+          (paint (Mosaic.themed themed (Mosaic.spinner ~size:doors_size ())))
+          ~x:0 ~y:0));
+  is_true ~msg:"the label first"
+    (fg_is blue
+       (cell_style
+          (paint
+             (Mosaic.themed themed
+                (Mosaic.spinner ~size:doors_size ~color:blue ())))
+          ~x:0 ~y:0))
+
 let () =
   run "mosaic.spinner"
     [
+      group "Paint" [ test "by role, label first" paint_role ];
       group "Props"
         [
           test "default values" props_defaults;

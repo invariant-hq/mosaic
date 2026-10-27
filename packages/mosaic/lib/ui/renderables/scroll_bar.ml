@@ -8,20 +8,24 @@ type scroll_unit = [ `Absolute | `Viewport | `Content | `Step ]
 module Arrow = struct
   type direction = Up | Down | Left | Right
 
-  let arrow_char = function
-    | Up -> "\xe2\x96\xb2" (* ▲ *)
-    | Down -> "\xe2\x96\xbc" (* ▼ *)
-    | Left -> "\xe2\x97\x80" (* ◀ *)
-    | Right -> "\xe2\x96\xb6" (* ▶ *)
-
   type t = {
     node : Renderable.t;
     mutable direction : direction;
-    mutable fg : Ansi.Color.t;
-    mutable bg : Ansi.Color.t;
+    mutable fg : Ansi.Color.t option;
+    mutable bg : Ansi.Color.t option;
   }
 
   let node t = t.node
+
+  (* The arrow is the theme's glyph in the [Border] role, its colors given by
+     label first. *)
+  let arrow_char t =
+    let glyphs = Theme.glyphs (Renderable.theme t.node) in
+    match t.direction with
+    | Up -> glyphs.arrow_up
+    | Down -> glyphs.arrow_down
+    | Left -> glyphs.arrow_left
+    | Right -> glyphs.arrow_right
 
   let set_direction t d =
     if t.direction <> d then begin
@@ -30,7 +34,8 @@ module Arrow = struct
     end
 
   let set_colors t ~fg ~bg =
-    if not (Ansi.Color.equal t.fg fg && Ansi.Color.equal t.bg bg) then begin
+    let same a b = Option.equal Ansi.Color.equal a b in
+    if not (same t.fg fg && same t.bg bg) then begin
       t.fg <- fg;
       t.bg <- bg;
       Renderable.request_render t.node
@@ -39,20 +44,25 @@ module Arrow = struct
   let render t _self grid ~dt:_ =
     let x = Renderable.x t.node in
     let y = Renderable.y t.node in
-    let text = arrow_char t.direction in
-    let style = Ansi.Style.make ~fg:t.fg ~bg:t.bg () in
+    let text = arrow_char t in
+    let style = Theme.style (Renderable.theme t.node) Border in
+    let style =
+      Option.fold ~none:style ~some:(fun c -> Ansi.Style.fg c style) t.fg
+    in
+    let style =
+      Option.fold ~none:style ~some:(fun c -> Ansi.Style.bg c style) t.bg
+    in
     Matrix_grid.draw_text grid ~x ~y ~text ~style
 
   let measure t ~known_dimensions:_ ~available_space:_ ~style:_ =
-    let text = arrow_char t.direction in
+    let text = arrow_char t in
     let width_method = Renderable.Private.width_method t.node in
     let width =
       float_of_int (max 1 (Matrix.Text.measure ~width_method ~tab_width:2 text))
     in
     Toffee.Geometry.Size.make width 1.
 
-  let create ~parent ~direction ?(fg = Ansi.Color.white)
-      ?(bg = Ansi.Color.transparent) ~on_click () =
+  let create ~parent ~direction ?fg ?bg ~on_click () =
     let node = Renderable.create ~parent () in
     let t = { node; direction; fg; bg } in
     Renderable.set_render node (render t);
@@ -79,29 +89,25 @@ end
 
 (* ───── Props ───── *)
 
-let default_track_color = Ansi.Color.of_rgb 37 37 39
-let default_thumb_color = Ansi.Color.of_rgb 154 158 163
-
 type style = {
   show_arrows : bool;
-  track_color : Ansi.Color.t;
-  thumb_color : Ansi.Color.t;
-  arrow_fg : Ansi.Color.t;
-  arrow_bg : Ansi.Color.t;
+  track_color : Ansi.Color.t option;
+  thumb_color : Ansi.Color.t option;
+  arrow_fg : Ansi.Color.t option;
+  arrow_bg : Ansi.Color.t option;
 }
 
-let style ?(show_arrows = false) ?(track_color = default_track_color)
-    ?(thumb_color = default_thumb_color) ?(arrow_fg = Ansi.Color.white)
-    ?(arrow_bg = Ansi.Color.transparent) () =
+let style ?(show_arrows = false) ?track_color ?thumb_color ?arrow_fg ?arrow_bg
+    () =
   { show_arrows; track_color; thumb_color; arrow_fg; arrow_bg }
 
 let style_equal a b =
+  let same a b = Option.equal Ansi.Color.equal a b in
   a == b
   || a.show_arrows = b.show_arrows
-     && Ansi.Color.equal a.track_color b.track_color
-     && Ansi.Color.equal a.thumb_color b.thumb_color
-     && Ansi.Color.equal a.arrow_fg b.arrow_fg
-     && Ansi.Color.equal a.arrow_bg b.arrow_bg
+     && same a.track_color b.track_color
+     && same a.thumb_color b.thumb_color
+     && same a.arrow_fg b.arrow_fg && same a.arrow_bg b.arrow_bg
 
 (* [Props.make] is the one place the scroll bar's labels get their defaults:
    [create] and [Vnode.scroll_bar] pass their labels on unset. *)
@@ -112,16 +118,15 @@ module Props = struct
     viewport_size : int;
     orientation : orientation;
     show_arrows : bool;
-    track_color : Ansi.Color.t;
-    thumb_color : Ansi.Color.t;
-    arrow_fg : Ansi.Color.t;
-    arrow_bg : Ansi.Color.t;
+    track_color : Ansi.Color.t option;
+    thumb_color : Ansi.Color.t option;
+    arrow_fg : Ansi.Color.t option;
+    arrow_bg : Ansi.Color.t option;
   }
 
   let make ?(position = 0) ?(scroll_size = 0) ?(viewport_size = 0)
-      ?(orientation = `Vertical) ?(show_arrows = false)
-      ?(track_color = default_track_color) ?(thumb_color = default_thumb_color)
-      ?(arrow_fg = Ansi.Color.white) ?(arrow_bg = Ansi.Color.transparent) () =
+      ?(orientation = `Vertical) ?(show_arrows = false) ?track_color
+      ?thumb_color ?arrow_fg ?arrow_bg () =
     {
       position = max 0 position;
       scroll_size = max 0 scroll_size;
@@ -142,10 +147,10 @@ module Props = struct
     && a.viewport_size = b.viewport_size
     && a.orientation = b.orientation
     && a.show_arrows = b.show_arrows
-    && Ansi.Color.equal a.track_color b.track_color
-    && Ansi.Color.equal a.thumb_color b.thumb_color
-    && Ansi.Color.equal a.arrow_fg b.arrow_fg
-    && Ansi.Color.equal a.arrow_bg b.arrow_bg
+    && Option.equal Ansi.Color.equal a.track_color b.track_color
+    && Option.equal Ansi.Color.equal a.thumb_color b.thumb_color
+    && Option.equal Ansi.Color.equal a.arrow_fg b.arrow_fg
+    && Option.equal Ansi.Color.equal a.arrow_bg b.arrow_bg
 end
 
 (* ───── Scroll Bar ───── *)
@@ -384,7 +389,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?position
   let start_arrow =
     Arrow.create ~parent:node
       ~direction:(arrow_direction orientation ~is_end:false)
-      ~fg:arrow_fg ~bg:arrow_bg
+      ?fg:arrow_fg ?bg:arrow_bg
       ~on_click:(fun () ->
         let t = get_t () in
         scroll_by t (-0.5) ~unit:`Viewport;
@@ -395,7 +400,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?position
   (* Create slider *)
   let slider =
     Slider.create ~parent:node ~orientation ~min:0. ~max:0. ~value:0.
-      ~viewport_size:1. ~track_color ~thumb_color ()
+      ~viewport_size:1. ?track_color ?thumb_color ()
   in
   let slider_style =
     let s = Renderable.style (Slider.node slider) in
@@ -408,7 +413,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?position
   let end_arrow =
     Arrow.create ~parent:node
       ~direction:(arrow_direction orientation ~is_end:true)
-      ~fg:arrow_fg ~bg:arrow_bg
+      ?fg:arrow_fg ?bg:arrow_bg
       ~on_click:(fun () ->
         let t = get_t () in
         scroll_by t 0.5 ~unit:`Viewport;
@@ -510,15 +515,28 @@ let set_show_arrows t v =
     Renderable.set_visible (Arrow.node t.end_arrow) v;
     Renderable.request_render t.node)
 
+(* The slider draws the track and the thumb, with the bar's colors, which
+   may be unset: it takes them with the numbers it already has. *)
+let sync_slider_colors t =
+  Slider.apply_props t.slider
+    (Slider.Props.make ~orientation:t.props.orientation
+       ~min:(Slider.min t.slider) ~max:(Slider.max t.slider)
+       ~value:(Slider.value t.slider)
+       ~viewport_size:(float_of_int (max 1 t.viewport_size))
+       ?track_color:t.props.track_color ?thumb_color:t.props.thumb_color ())
+
+let set_slider_colors t ~track ~thumb =
+  let same a b = Option.equal Ansi.Color.equal a b in
+  if not (same t.props.track_color track && same t.props.thumb_color thumb) then begin
+    t.props <- { t.props with track_color = track; thumb_color = thumb };
+    sync_slider_colors t
+  end
+
 let set_track_color t c =
-  if not (Ansi.Color.equal t.props.track_color c) then (
-    t.props <- { t.props with track_color = c };
-    Slider.set_track_color t.slider c)
+  set_slider_colors t ~track:(Some c) ~thumb:t.props.thumb_color
 
 let set_thumb_color t c =
-  if not (Ansi.Color.equal t.props.thumb_color c) then (
-    t.props <- { t.props with thumb_color = c };
-    Slider.set_thumb_color t.slider c)
+  set_slider_colors t ~track:t.props.track_color ~thumb:(Some c)
 
 let set_orientation t orientation =
   if t.props.orientation <> orientation then begin
@@ -534,11 +552,8 @@ let set_orientation t orientation =
   end
 
 let set_arrow_colors t ~fg ~bg =
-  if
-    not
-      (Ansi.Color.equal t.props.arrow_fg fg
-      && Ansi.Color.equal t.props.arrow_bg bg)
-  then begin
+  let same a b = Option.equal Ansi.Color.equal a b in
+  if not (same t.props.arrow_fg fg && same t.props.arrow_bg bg) then begin
     t.props <- { t.props with arrow_fg = fg; arrow_bg = bg };
     Arrow.set_colors t.start_arrow ~fg ~bg;
     Arrow.set_colors t.end_arrow ~fg ~bg
@@ -546,8 +561,7 @@ let set_arrow_colors t ~fg ~bg =
 
 let apply_style t (style : style) =
   set_show_arrows t style.show_arrows;
-  set_track_color t style.track_color;
-  set_thumb_color t style.thumb_color;
+  set_slider_colors t ~track:style.track_color ~thumb:style.thumb_color;
   set_arrow_colors t ~fg:style.arrow_fg ~bg:style.arrow_bg
 
 let set_visible_override t vis =
@@ -567,8 +581,7 @@ let apply_props t (props : Props.t) =
   if not (Props.equal t.props props) then (
     set_orientation t props.orientation;
     set_show_arrows t props.show_arrows;
-    set_track_color t props.track_color;
-    set_thumb_color t props.thumb_color;
+    set_slider_colors t ~track:props.track_color ~thumb:props.thumb_color;
     set_arrow_colors t ~fg:props.arrow_fg ~bg:props.arrow_bg;
     Renderable.request_render t.node);
   t.props <- props

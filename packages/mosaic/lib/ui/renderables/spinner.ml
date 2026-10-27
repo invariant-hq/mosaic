@@ -24,11 +24,9 @@ let default_frame_set = dots
 (* [Props.make] is the one place the spinner's labels get their defaults:
    [create] and [Vnode.spinner] pass their labels on unset. *)
 module Props = struct
-  type t = { frame_set : frame_set; color : Ansi.Color.t }
+  type t = { frame_set : frame_set; color : Ansi.Color.t option }
 
-  let make ?(frame_set = default_frame_set) ?(color = Ansi.Color.white) () =
-    { frame_set; color }
-
+  let make ?(frame_set = default_frame_set) ?color () = { frame_set; color }
   let default = make ()
 
   let frames_equal a b =
@@ -41,7 +39,7 @@ module Props = struct
   let equal a b =
     Float.equal a.frame_set.period b.frame_set.period
     && frames_equal a.frame_set.frames b.frame_set.frames
-    && Ansi.Color.equal a.color b.color
+    && Option.equal Ansi.Color.equal a.color b.color
 end
 
 (* ───── Types ───── *)
@@ -95,7 +93,13 @@ let render t _self grid ~dt:_ =
     let n = Array.length t.props.frame_set.frames in
     if n > 0 then
       let frame = t.props.frame_set.frames.(t.frame_index) in
-      let style = Ansi.Style.make ~fg:t.props.color () in
+      (* [color] first, then the [Plain] role. *)
+      let style =
+        let plain = Theme.style (Renderable.theme t.node) Plain in
+        match t.props.color with
+        | Some c -> Ansi.Style.fg c plain
+        | None -> plain
+      in
       Matrix_grid.draw_text ~style grid ~x:(Renderable.x t.node)
         ~y:(Renderable.y t.node) ~text:frame
 
@@ -156,8 +160,8 @@ let set_frame_set t fs =
   Renderable.request_render t.node
 
 let set_color t c =
-  if not (Ansi.Color.equal t.props.color c) then (
-    t.props <- { t.props with color = c };
+  if not (Option.equal Ansi.Color.equal t.props.color (Some c)) then (
+    t.props <- { t.props with color = Some c };
     Renderable.request_render t.node)
 
 (* ───── Apply Props ───── *)

@@ -562,9 +562,24 @@ let doors_arrow_bg () =
         (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
            ~viewport_size:10 ~show_arrows:true ~arrow_bg:doors_red ()))
 
+(* ── Paint ── *)
+
+(* With no color label, the track is a line in the [Border] role and the
+   arrows the theme's glyphs. *)
+let paint_glyphs () =
+  let view =
+    Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+      ~viewport_size:10 ~show_arrows:true ~on_change:ignore ()
+  in
+  let r = paint (Mosaic.themed (Theme.with_glyphs Glyphs.ascii) view) in
+  equal ~msg:"the up arrow" string "^" (cell_text r ~x:0 ~y:0);
+  equal ~msg:"the down arrow" string "v" (cell_text r ~x:0 ~y:7);
+  is_true ~msg:"the track's line" (includes (at `Plain r) "\u{2502}")
+
 let () =
   run "mosaic.scroll_bar"
     [
+      group "Paint" [ test "track and arrows" paint_glyphs ];
       test "declared state and rejected proposals"
         declared_state_and_rejected_proposals;
       group "Props"

@@ -1,8 +1,3 @@
-(* ───── Defaults ───── *)
-
-let default_filled_color = Ansi.Color.of_rgb 154 158 163
-let default_empty_color = Ansi.Color.of_rgb 37 37 39
-
 (* ───── Props ───── *)
 
 type orientation = [ `Horizontal | `Vertical ]
@@ -15,13 +10,12 @@ module Props = struct
     min : float;
     max : float;
     orientation : orientation;
-    filled_color : Ansi.Color.t;
-    empty_color : Ansi.Color.t;
+    filled_color : Ansi.Color.t option;
+    empty_color : Ansi.Color.t option;
   }
 
   let make ?(value = 0.) ?(min = 0.) ?(max = 1.) ?(orientation = `Horizontal)
-      ?(filled_color = default_filled_color)
-      ?(empty_color = default_empty_color) () =
+      ?filled_color ?empty_color () =
     { value; min; max; orientation; filled_color; empty_color }
 
   let default = make ()
@@ -30,8 +24,8 @@ module Props = struct
     Float.equal a.value b.value
     && Float.equal a.min b.min && Float.equal a.max b.max
     && a.orientation = b.orientation
-    && Ansi.Color.equal a.filled_color b.filled_color
-    && Ansi.Color.equal a.empty_color b.empty_color
+    && Option.equal Ansi.Color.equal a.filled_color b.filled_color
+    && Option.equal Ansi.Color.equal a.empty_color b.empty_color
 end
 
 (* ───── Types ───── *)
@@ -51,6 +45,58 @@ let clamp_ratio props =
 
 (* ───── Rendering ───── *)
 
+(* Labels first, then roles: a given color fills its part, as a background;
+   without [empty_color] the empty part is a line in the [Border] role, and
+   without [filled_color] the filled part is full blocks in the [Plain]
+   role, so the bar shows its value whatever the styling. The cell the value
+   ends in is a half block in the filled color over the empty one. *)
+(* [cells grid style uchar ~x ~y ~width ~height] draws [uchar] in each cell
+   of the rectangle in [style], over the cells' backgrounds. *)
+let cells grid (style : Ansi.Style.t) uchar ~x ~y ~width ~height =
+  let fg = Option.value style.fg ~default:Ansi.Color.default_fg in
+  let bg = Option.value style.bg ~default:Ansi.Color.transparent in
+  for row = y to y + height - 1 do
+    for col = x to x + width - 1 do
+      Matrix_grid.set_uchar ~blend:true grid ~x:col ~y:row ~uchar ~fg ~bg
+        ~attrs:style.attrs ()
+    done
+  done
+
+let paint t grid ~x ~y ~width ~height ~line ~filled ~full ~half ~half_cell =
+  let theme = Renderable.theme t.node in
+  let plain = Theme.style theme Plain in
+  let empty_bg =
+    match t.props.empty_color with
+    | Some color ->
+        Matrix_grid.fill_rect grid ~x ~y ~width ~height ~color;
+        color
+    | None ->
+        cells grid (Theme.style theme Border) line ~x ~y ~width ~height;
+        Ansi.Color.transparent
+  in
+  let filled_fg =
+    match t.props.filled_color with
+    | Some color ->
+        if full then
+          Matrix_grid.fill_rect grid ~x:filled.Matrix_grid.x ~y:filled.y
+            ~width:filled.width ~height:filled.height ~color;
+        color
+    | None ->
+        if full then
+          cells grid plain (Uchar.of_int 0x2588) ~x:filled.x ~y:filled.y
+            ~width:filled.width ~height:filled.height;
+        Option.value plain.fg ~default:Ansi.Color.default_fg
+  in
+  Option.iter
+    (fun (hx, hy, hw, hh) ->
+      for row = hy to hy + hh - 1 do
+        for col = hx to hx + hw - 1 do
+          Matrix_grid.set_uchar ~blend:true grid ~x:col ~y:row ~uchar:half_cell
+            ~fg:filled_fg ~bg:empty_bg ~attrs:plain.attrs ()
+        done
+      done)
+    half
+
 let render_horizontal t grid =
   let x = Renderable.x t.node in
   let y = Renderable.y t.node in
@@ -61,19 +107,15 @@ let render_horizontal t grid =
   let virtual_filled =
     int_of_float (Float.round (ratio *. Float.of_int virtual_track))
   in
-  Matrix_grid.fill_rect grid ~x ~y ~width:w ~height:h ~color:t.props.empty_color;
   let full_cells = virtual_filled / 2 in
   let has_half = virtual_filled mod 2 = 1 in
-  if full_cells > 0 then
-    Matrix_grid.fill_rect grid ~x ~y ~width:full_cells ~height:h
-      ~color:t.props.filled_color;
-  if has_half && full_cells < w then
-    let cell = Uchar.of_int 0x258C in
-    for row = 0 to h - 1 do
-      Matrix_grid.set_uchar ~blend:true grid ~x:(x + full_cells) ~y:(y + row)
-        ~uchar:cell ~fg:t.props.filled_color ~bg:t.props.empty_color
-        ~attrs:Ansi.Attr.empty ()
-    done
+  paint t grid ~x ~y ~width:w ~height:h ~line:(Uchar.of_int 0x2500)
+    ~filled:{ Matrix_grid.x; y; width = full_cells; height = h }
+    ~full:(full_cells > 0)
+    ~half:
+      (if has_half && full_cells < w then Some (x + full_cells, y, 1, h)
+       else None)
+    ~half_cell:(Uchar.of_int 0x258C)
 
 let render_vertical t grid =
   let x = Renderable.x t.node in
@@ -85,21 +127,16 @@ let render_vertical t grid =
   let virtual_filled =
     int_of_float (Float.round (ratio *. Float.of_int virtual_track))
   in
-  Matrix_grid.fill_rect grid ~x ~y ~width:w ~height:h ~color:t.props.empty_color;
   let full_cells = virtual_filled / 2 in
   let has_half = virtual_filled mod 2 = 1 in
-  if full_cells > 0 then
-    Matrix_grid.fill_rect grid ~x
-      ~y:(y + h - full_cells)
-      ~width:w ~height:full_cells ~color:t.props.filled_color;
-  if has_half && full_cells < h then
-    let boundary_y = y + h - full_cells - 1 in
-    let cell = Uchar.of_int 0x2584 in
-    for col = 0 to w - 1 do
-      Matrix_grid.set_uchar ~blend:true grid ~x:(x + col) ~y:boundary_y
-        ~uchar:cell ~fg:t.props.filled_color ~bg:t.props.empty_color
-        ~attrs:Ansi.Attr.empty ()
-    done
+  paint t grid ~x ~y ~width:w ~height:h ~line:(Uchar.of_int 0x2502)
+    ~filled:
+      { Matrix_grid.x; y = y + h - full_cells; width = w; height = full_cells }
+    ~full:(full_cells > 0)
+    ~half:
+      (if has_half && full_cells < h then Some (x, y + h - full_cells - 1, w, 1)
+       else None)
+    ~half_cell:(Uchar.of_int 0x2584)
 
 let render t _self grid ~dt:_ =
   let w = Renderable.width t.node in
@@ -154,13 +191,13 @@ let set_orientation t o =
     request_render t)
 
 let set_filled_color t c =
-  if not (Ansi.Color.equal t.props.filled_color c) then (
-    t.props <- { t.props with filled_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.filled_color (Some c)) then (
+    t.props <- { t.props with filled_color = Some c };
     request_render t)
 
 let set_empty_color t c =
-  if not (Ansi.Color.equal t.props.empty_color c) then (
-    t.props <- { t.props with empty_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.empty_color (Some c)) then (
+    t.props <- { t.props with empty_color = Some c };
     request_render t)
 
 (* ───── Apply Props ───── *)

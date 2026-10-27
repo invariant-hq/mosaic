@@ -203,8 +203,8 @@ let%expect_test "in-frame geometry changes settle without input" =
   [%expect_exact
     {||Line 0             █
 |Line 1             ▀
-|Line 2
-|Line 3
+|Line 2             │
+|Line 3             │
 |}]
 
 let%expect_test "escape sequences decode as single keys" =

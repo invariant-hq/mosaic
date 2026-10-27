@@ -418,3 +418,9 @@ let fg_is color (s : Ansi.Style.t) =
 
 let bg_is color (s : Ansi.Style.t) =
   Option.equal Ansi.Color.equal (Some color) s.bg
+
+(* Whether [text] includes [sub]. *)
+let includes text sub =
+  let n = String.length text and m = String.length sub in
+  let rec at i = i + m <= n && (String.sub text i m = sub || at (i + 1)) in
+  at 0
