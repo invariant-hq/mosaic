@@ -107,6 +107,16 @@ let () =
           Format.printf "out %d@." 1;
           Format.eprintf "err %d@." 2;
           Format.printf "out %d@." 3)
+  | ("fmt-order" | "fmt-order-adapted") as mode ->
+      (* Lines left in Format's buffers, then lines through an output. *)
+      if mode = "fmt-order-adapted" then C.adapt_std_formatters ();
+      Format.printf "result 1\n";
+      C.print err "step a\n";
+      Format.printf "result 2\n";
+      C.live err (fun live ->
+          C.show live (text_frame "FRAME");
+          Format.eprintf "note 3\n";
+          C.print err "step b\n")
   | "notify" ->
       C.notify err ~title:"Done" ~body:"built";
       C.bell err;

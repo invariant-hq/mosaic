@@ -12,9 +12,10 @@
     record whole and as soon as it is printed. A grid, such as a table that
     {!Matrix_cli.Table.grid} lays out, is printed with {!print_grid}. Outputs
     whose descriptors reach one terminal, or one file, share a lock, so their
-    writes never interleave, and what the program printed through
-    [Stdlib.stdout] and [Stdlib.stderr] is flushed before each write, so the two
-    keep their order under [2>&1].
+    writes never interleave. What the program printed through [Stdlib.stdout],
+    [Stdlib.stderr], [Format.std_formatter] and [Format.err_formatter], such as
+    with [Fmt.pr], is flushed before each write, as [Format.pp_print_flush]
+    flushes a formatter, so the standard outputs keep their order under [2>&1].
 
     A {e live} region ({!live}) is a few rows that a program redraws below its
     output while it works, such as a progress bar. It is a

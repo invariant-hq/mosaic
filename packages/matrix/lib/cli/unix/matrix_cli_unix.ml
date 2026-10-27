@@ -54,6 +54,15 @@ let flush_std () =
   (try Stdlib.flush Stdlib.stdout with Sys_error _ -> ());
   try Stdlib.flush Stdlib.stderr with Sys_error _ -> ()
 
+(* And what it printed through the standard formatters, such as with
+   [Fmt.pr], before the standard channels. Formatters are not thread-safe,
+   so this runs on the thread of the program's call only, and before the
+   device's lock is taken, since an adapted formatter writes through an
+   output, which takes it. *)
+let flush_formatters () =
+  (try Format.pp_print_flush Format.std_formatter () with Sys_error _ -> ());
+  try Format.pp_print_flush Format.err_formatter () with Sys_error _ -> ()
+
 (* Devices *)
 
 (* Descriptors that reach one terminal, or one file, share a device: its
@@ -475,6 +484,7 @@ let emit t bytes =
   | _ -> write_all t.fd bytes 0 (String.length bytes)
 
 let print t s =
+  flush_formatters ();
   Mutex.protect t.out_device.lock (fun () ->
       let bytes = Matrix_cli.adapt t.adapter s in
       if bytes <> "" then emit t bytes)
@@ -482,10 +492,13 @@ let print t s =
 let out_functions t =
   let pending = Buffer.create 256 in
   let out_string s off len = Buffer.add_substring pending s off len in
+  (* A flush with nothing to write writes nothing: [print] flushes the
+     standard formatters, which may be this one, flushing. *)
   let out_flush () =
-    let s = Buffer.contents pending in
-    Buffer.clear pending;
-    print t s
+    if Buffer.length pending > 0 then (
+      let s = Buffer.contents pending in
+      Buffer.clear pending;
+      print t s)
   in
   let spaces n = if n > 0 then out_string (String.make n ' ') 0 n in
   {
@@ -518,6 +531,7 @@ let adapt_std_formatters ?color () =
   set_margin Format.err_formatter err
 
 let write_raw t s =
+  flush_formatters ();
   Mutex.protect t.out_device.lock (fun () ->
       flush_std ();
       match t.out_device.live with
@@ -633,11 +647,13 @@ let finish t l p =
   if last then leave d
 
 let live t f =
+  flush_formatters ();
   let part = { frame = no_frame; ended = false } in
   match if t.live_ok then Some (join t part) else None with
   | None ->
       let v = { state = None; part; last = no_frame } in
       let result = f v in
+      flush_formatters ();
       Mutex.protect t.out_device.lock (fun () ->
           let lines = lines t (v.last ~width:(plain_width t)) in
           if lines <> "" then emit t lines);
@@ -645,12 +661,16 @@ let live t f =
   | Some l -> (
       match f { state = Some l; part; last = no_frame } with
       | result ->
+          flush_formatters ();
           finish t l part;
           reraise l;
           result
       | exception e ->
           let bt = Printexc.get_raw_backtrace () in
-          (try finish t l part with _ -> ());
+          (try
+             flush_formatters ();
+             finish t l part
+           with _ -> ());
           Printexc.raise_with_backtrace e bt)
 
 let show v frame =
@@ -670,10 +690,12 @@ let show v frame =
             Option.iter (fun s -> Signal.wake s.holder) l.device.session))
 
 let print_grid t g =
+  flush_formatters ();
   Mutex.protect t.out_device.lock (fun () -> emit t (lines t (Some g)))
 
 (* Runs [f] with the region of [d], if one lives, off the screen. *)
 let off_screen d f =
+  flush_formatters ();
   match Mutex.protect d.lock (fun () -> d.live) with
   | None -> f ()
   | Some l ->

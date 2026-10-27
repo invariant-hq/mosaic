@@ -278,12 +278,11 @@ let test_flow_control () =
   is_true ~msg:"ended within 2 s" (Unix.gettimeofday () -. t0 < 2.);
   ignore term
 
-(* A grid printed on an output: its rows at the output's styling, each
-   ended where it shows nothing more. *)
-let test_print_grid () =
+(* What [mode] writes on its standard outputs, both on one pipe. *)
+let piped mode =
   let r, w = Unix.pipe ~cloexec:true () in
   let pid =
-    Unix.create_process_env child [| child; "table" |]
+    Unix.create_process_env child [| child; mode |]
       [| "TERM=xterm-256color" |]
       Unix.stdin w w
   in
@@ -291,24 +290,31 @@ let test_print_grid () =
   let out = In_channel.input_all (Unix.in_channel_of_descr r) in
   Unix.close r;
   ignore (Unix.waitpid [] pid : int * Unix.process_status);
+  out
+
+(* A grid printed on an output: its rows at the output's styling, each
+   ended where it shows nothing more. *)
+let test_print_grid () =
+  let out = piped "table" in
   equal ~msg:"plain rows, no trailing blanks" Testable.string
     "file \226\148\130 size\na.ml \226\148\130   12\n" out
 
 (* Piped, the output gets no escape, its lines as they are printed and the
    last frame once. *)
 let test_pipe () =
-  let r, w = Unix.pipe ~cloexec:true () in
-  let pid =
-    Unix.create_process_env child [| child; "progress" |]
-      [| "TERM=xterm-256color" |]
-      Unix.stdin w w
-  in
-  Unix.close w;
-  let out = In_channel.input_all (Unix.in_channel_of_descr r) in
-  Unix.close r;
-  ignore (Unix.waitpid [] pid : int * Unix.process_status);
+  let out = piped "progress" in
   equal ~msg:"plain lines, the last frame once" Testable.string
     "SHELL\nline 1\nline 2\nline 3\nP done\nAFTER\n" out
+
+(* Lines printed through Format's standard formatters and left in their
+   buffers go out before an output's next write, whether the formatters are
+   adapted or not. *)
+let test_format_order () =
+  List.iter
+    (fun mode ->
+      equal ~msg:mode Testable.string
+        "result 1\nstep a\nresult 2\nnote 3\nstep b\nFRAME\n" (piped mode))
+    [ "fmt-order"; "fmt-order-adapted" ]
 
 let () =
   run "matrix.cli.pty"
@@ -334,6 +340,7 @@ let () =
           test "colors and NO_COLOR" test_color;
           test "a grid" test_print_grid;
           test "Format's formatters" test_fmt;
+          test "Format's buffers keep their order" test_format_order;
           test "a notification" test_notify;
         ];
       group "prompts"
