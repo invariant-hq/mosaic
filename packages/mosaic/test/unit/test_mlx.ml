@@ -9,7 +9,7 @@ let make () =
     |> Toffee.Style.set_size (Mosaic.size ~width:20 ~height:8)
   in
   Renderable.set_style container style;
-  (renderer, Mosaic.Reconciler.create ~container)
+  (renderer, Mosaic.Reconciler.create ~container ~deliver:ignore)
 
 let render renderer reconciler view dispatch =
   Mosaic.Reconciler.render reconciler ~viewport_width:20

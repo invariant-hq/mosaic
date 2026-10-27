@@ -78,7 +78,7 @@ let widgets =
 let fixture build ~mlx =
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let received = ref [] in
   let render ?(mode = Default) ?(selected = "B") ?(prevent = false) () =
@@ -197,7 +197,7 @@ let subscriptions_and_widgets_agree build ~mlx =
 let consumes view ~acts ~passes () =
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   Mosaic.Reconciler.render reconciler ~viewport_width:30
     (Mosaic.map ignore view);

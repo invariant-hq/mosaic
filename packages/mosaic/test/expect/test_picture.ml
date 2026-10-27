@@ -12,7 +12,7 @@ let show ?cell_size ~width vnode =
     ~colors:`Truecolor ~styling:`Truecolor ~graphics:`Blocks ~cell_size;
   set_viewport renderer ~width ~height:4;
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   Mosaic.Reconciler.render reconciler ~viewport_width:width vnode;
   Renderer.render_frame renderer ~width ~height:4 ~dt:0.;

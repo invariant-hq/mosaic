@@ -33,7 +33,7 @@ let view l ~offset =
 
 type state = {
   l : keyed;
-  reconciler : Mosaic.Reconciler.t;
+  reconciler : unit Mosaic.Reconciler.t;
   mutable offset : int;
 }
 
@@ -41,7 +41,7 @@ let make_state rows () =
   let l = keyed rows in
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   Mosaic.Reconciler.render reconciler ~viewport_width (view l ~offset:0);
   { l; reconciler; offset = 0 }
@@ -71,6 +71,7 @@ let mount_and_unmount rows =
       let renderer = Renderer.create () in
       let reconciler =
         Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+          ~deliver:ignore
       in
       (reconciler, view (keyed rows) ~offset:0))
     (Printf.sprintf "keyed-list-%d" rows)
@@ -88,6 +89,7 @@ let mount_and_empty rows =
       let renderer = Renderer.create () in
       let reconciler =
         Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+          ~deliver:ignore
       in
       (reconciler, view (keyed rows) ~offset:0, Mosaic.box []))
     (Printf.sprintf "keyed-list-%d" rows)
@@ -107,6 +109,7 @@ let mount_retype_and_empty rows =
       let renderer = Renderer.create () in
       let reconciler =
         Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+          ~deliver:ignore
       in
       ( reconciler,
         Mosaic.box (List.init rows (fun i -> Mosaic.text labels.(i))),
@@ -118,6 +121,30 @@ let mount_retype_and_empty rows =
       Mosaic.Reconciler.render reconciler ~viewport_width texts;
       Mosaic.Reconciler.render reconciler ~viewport_width boxes;
       Mosaic.Reconciler.render reconciler ~viewport_width empty)
+
+(* A list of 1,000 texts three components deep, each mapping its child's
+   messages, rebuilt and reconciled as an application's view is on every
+   frame. *)
+let nested_maps rows =
+  let labels = (keyed rows).labels in
+  let view () =
+    Mosaic.map Fun.id
+      (Mosaic.map Fun.id
+         (Mosaic.map Fun.id
+            (Mosaic.box (List.init rows (fun i -> Mosaic.text labels.(i))))))
+  in
+  Thumper.bench_with_setup
+    ~setup:(fun () ->
+      let renderer = Renderer.create () in
+      let reconciler =
+        Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+          ~deliver:ignore
+      in
+      Mosaic.Reconciler.render reconciler ~viewport_width (view ());
+      reconciler)
+    (Printf.sprintf "nested-map-3-over-%d" rows)
+    (fun reconciler ->
+      Mosaic.Reconciler.render reconciler ~viewport_width (view ()))
 
 (* Declaring one element, as a view does for each element of every frame:
    the words an element costs before the reconciler sees it. A label is
@@ -172,6 +199,7 @@ let () =
           reorder_keyed_list 500;
           steady_keyed_list 5000;
           reorder_keyed_list 5000;
+          nested_maps 1000;
         ];
       Thumper.group "mount-and-unmount" [ mount_and_unmount 20_000 ];
       Thumper.group "mount-and-empty" [ mount_and_empty 20_000 ];

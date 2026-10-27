@@ -180,9 +180,6 @@ type 'msg t = 'msg Vnode.t
 
 let map (f : 'a -> 'b) (view : 'a t) : 'b t = Vnode.map f view
 
-let compile ~(dispatch : 'msg -> unit) (view : 'msg t) : unit Vnode.t =
-  Vnode.map dispatch view
-
 type 'msg mailbox = { dispatch : 'msg -> unit; send : 'msg -> unit }
 
 let map_mailbox f mailbox =
@@ -459,7 +456,6 @@ type ('model, 'msg) runtime = {
      frame. *)
   mutable keep : bool;
   mutable closing : bool;
-  mutable map_message : 'msg -> unit;
   app : ('model, 'msg) app;
   matrix_app : 'msg post Matrix.app;
   process_perform : (unit -> unit) -> unit;
@@ -473,7 +469,7 @@ type ('model, 'msg) runtime = {
   taken : Condition.t;
   mutable closed : bool;
   renderer : Renderer.t;
-  reconciler : Reconciler.t;
+  reconciler : 'msg Reconciler.t;
   mutable key_subs : (Sub.phase * (Event.key -> 'msg option)) list;
   mutable key_release_subs :
     (Matrix.Input.Keystroke.release -> 'msg option) list;
@@ -545,9 +541,10 @@ let render_static_view runtime (view : _ t) =
     ~colors:`Truecolor ~styling:`Truecolor ~graphics:`Blocks
     ~cell_size:(Matrix.cell_size runtime.matrix_app);
   Renderer.set_theme renderer (Renderer.theme runtime.renderer);
-  let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
-  let vnode = compile ~dispatch:(fun _ -> ()) view in
-  Reconciler.render reconciler ~viewport_width:width vnode;
+  let reconciler =
+    Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
+  Reconciler.render reconciler ~viewport_width:width view;
   let measure_height = max 1 full_height in
   Renderer.render_frame renderer ~width ~height:measure_height ~dt:0.;
   let required = Renderable.height (Renderer.root renderer) in
@@ -895,9 +892,7 @@ let synchronize runtime =
           if runtime.view_dirty then begin
             runtime.view_dirty <- false;
             let width, height = layout_size runtime in
-            let vnode =
-              Vnode.map runtime.map_message (runtime.app.view runtime.model)
-            in
+            let vnode = runtime.app.view runtime.model in
             Reconciler.render runtime.reconciler ~viewport_width:(max 1 width)
               vnode;
             Renderer.set_modal runtime.renderer
@@ -1141,7 +1136,11 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       ~executor:process_perform ()
   in
   let container = Renderer.root renderer in
-  let reconciler = Reconciler.create ~container in
+  (* The reconciler gives the loop the messages of the view's handlers. *)
+  let deliver_to = ref ignore in
+  let reconciler =
+    Reconciler.create ~container ~deliver:(fun msg -> !deliver_to msg)
+  in
   let runtime =
     {
       model;
@@ -1155,7 +1154,6 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       quit = false;
       keep = true;
       closing = false;
-      map_message = Fun.const ();
       app;
       matrix_app;
       process_perform;
@@ -1189,7 +1187,7 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       focus_moves = Queue.create ();
     }
   in
-  runtime.map_message <- deliver runtime;
+  deliver_to := deliver runtime;
   process_cmd runtime init_cmd;
   update_subscriptions runtime;
 

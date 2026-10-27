@@ -848,7 +848,11 @@ val map : ('a -> 'b) -> 'a t -> 'b t
 (** [map f view] is [view] with every message transformed by [f].
 
     Use [map] to embed a child component whose message type differs from the
-    parent's. *)
+    parent's. A message goes through [f] when its handler gives it, so [map]
+    costs the same whatever the size of [view], and a {!memo} in [view] is
+    reused whatever [f] is: a render that maps the same view again with another
+    function keeps the view's widgets, and their messages go through the newest
+    function. *)
 
 type 'msg view := 'msg t
 
@@ -1573,14 +1577,18 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     position among the parent's elements, when that element is of the same kind
     and has no key. The children are then placed in the order of the new view,
     whatever that order, in time linear in their number. An embedded node
-    ({!embed}) is placed among them and is otherwise left to its owner. A view
-    under {!map} matches as it would without it.
+    ({!embed}) is placed among them and is otherwise left to its owner.
 
     A memo ({!memo}) matches the old memo at the same position among the
     parent's memos. An equal memo does not call its view again, and when the
     viewport width and the [themed] functions around it are the same it keeps
     its subtree without visiting it, so it costs one comparison. A memo that is
     not equal calls its view, and its subtree is reconciled with the old memo's.
+    A map ({!map}) likewise matches the old map at the same position among the
+    parent's maps, whatever its function. Its view is reconciled with the old
+    map's, unless it is the same value, and then its subtree is kept. The
+    children of a memo or a map match only children of the memo or map they
+    match.
 
     [focused] declares keyboard focus. With no focused element, keys reach
     subscriptions only. Declaring more than one visible focused element that is
@@ -1663,11 +1671,10 @@ val memo : key:'key -> ('key -> 'msg t) -> 'msg t
     [view].
 
     Two memos are equal when they have the same [view] function, compared
-    physically, equal keys, and the same message mappers ({!val-map}). Keys are
-    equal when they have the same representation: the same constructors and
-    integers, the same characters, and the same floating-point bits. Since a
-    [view] receives only its key, equal memos build equal subtrees whatever the
-    key's type.
+    physically, and equal keys. Keys are equal when they have the same
+    representation: the same constructors and integers, the same characters, and
+    the same floating-point bits. Since a [view] receives only its key, equal
+    memos build equal subtrees whatever the key's type.
 
     Pass a [view] defined once, for example at top level, and put every value
     the subtree depends on in [key]:
@@ -1679,8 +1686,10 @@ val memo : key:'key -> ('key -> 'msg t) -> 'msg t
           model.messages
     ]}
     A closure allocated by each view call is a new function: it never matches,
-    so its subtree is rebuilt on every render. Keys must be immutable and
-    acyclic.
+    so its subtree is rebuilt on every render. A key must be immutable data and
+    acyclic: a key mutated after the render that mounted it, or one of another
+    type with the same representation, such as [bytes] where the view took a
+    [string], is reused as the key it was.
 
     Raises [Invalid_argument] if [key] contains a function, an object or an
     abstract value, which have no representation to compare. *)
@@ -3271,18 +3280,22 @@ val tree :
     container's children and leaves the container's other children as they are.
 *)
 module Reconciler : sig
-  type t
-  (** The type for reconcilers. A reconciler holds the view it rendered last,
-      which the next {!render} reconciles against. *)
+  type 'msg t
+  (** The type for reconcilers of views of messages ['msg]. A reconciler holds
+      the view it rendered last, which the next {!render} reconciles against. *)
 
-  val create : container:Mosaic_ui.Renderable.t -> t
-  (** [create ~container] is a reconciler that mounts views into [container]. It
-      mounts nothing before its first {!render}. *)
+  val create :
+    container:Mosaic_ui.Renderable.t -> deliver:('msg -> unit) -> 'msg t
+  (** [create ~container ~deliver] is a reconciler that mounts views into
+      [container]. A message a handler of the mounted view gives goes through
+      the functions of the maps ({!val-map}) above the handler, as the last
+      render declared them, then to [deliver]. It mounts nothing before its
+      first {!render}. *)
 
-  val container : t -> Mosaic_ui.Renderable.t
+  val container : 'msg t -> Mosaic_ui.Renderable.t
   (** [container r] is the container of [r]. *)
 
-  val render : t -> viewport_width:int -> unit view -> unit
+  val render : 'msg t -> viewport_width:int -> 'msg view -> unit
   (** [render r ~viewport_width view] reconciles [view] with the view [r]
       rendered last, then requests a render of [container r]. [viewport_width]
       is the terminal's width in cells, which selects the branch of each
@@ -3290,12 +3303,12 @@ module Reconciler : sig
 
       Raises [Invalid_argument] if [viewport_width] is not positive. *)
 
-  val unmount : t -> unit
+  val unmount : 'msg t -> unit
   (** [unmount r] removes every element [r] mounted and detaches the nodes the
       view embeds, leaving [container r] as it was before the first {!render},
       then requests a render of it. [r] may render again afterwards. *)
 
-  val focused : t -> Mosaic_ui.Renderable.t option
+  val focused : 'msg t -> Mosaic_ui.Renderable.t option
   (** [focused r] is the node of the element the view declares focused that is
       shown and not inert ({{!elements}UI elements}), if any. Rendering does not
       move the renderer's focus. The runtime gives this node to
@@ -3304,12 +3317,12 @@ module Reconciler : sig
 
       Raises [Invalid_argument] if several such elements declare focus. *)
 
-  val modal : t -> Mosaic_ui.Renderable.t option
+  val modal : 'msg t -> Mosaic_ui.Renderable.t option
   (** [modal r] is the node of the shown modal ({!val-modal}) that no inert
       subtree holds, the last in view order, if any. The runtime gives it to
       {!Mosaic_ui.Renderer.set_modal} after {!render}. *)
 
-  val request_close : t -> bool
+  val request_close : 'msg t -> bool
   (** [request_close r] dispatches the [on_close] of the modal {!modal} is, and
       is [true] iff it has one. *)
 end

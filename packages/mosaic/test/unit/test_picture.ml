@@ -28,7 +28,7 @@ let lay_out ?(cell = (10, 20)) ?(width = 40) ?(height = 30) view =
     (Renderable.style root
     |> Style.set_width (length (Float.of_int width))
     |> Style.set_height (length (Float.of_int height)));
-  let reconciler = Mosaic.Reconciler.create ~container:root in
+  let reconciler = Mosaic.Reconciler.create ~container:root ~deliver:ignore in
   Mosaic.Reconciler.render reconciler ~viewport_width:width view;
   Renderer.render_frame renderer ~width ~height ~dt:0.;
   root

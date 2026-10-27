@@ -86,7 +86,7 @@ let widgets =
 let fixture build =
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let messages = ref [] in
   let receive = function
@@ -128,7 +128,7 @@ let fixture build =
 let viewport_fixture build =
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let messages = ref [] in
   let receive = function
@@ -283,7 +283,7 @@ let mlx_selection_values () =
 let table_press_reconciliation ~trigger ~replacement expected =
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let messages = ref [] in
   let rec render rows =

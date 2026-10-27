@@ -5,9 +5,10 @@
     section "UI elements"); this module states what they leave unsaid about the
     representation.
 
-    The {!type-attrs} and {!type-kind} of an element are shared by reference
-    across {!val-map}, and the reconciler compares them physically before it
-    compares them by value. *)
+    An element that declares no attribute or handler shares one record of each
+    with every such element, and the reconciler compares an element's
+    {!type-attrs} and {!type-kind} physically before it compares them by value.
+*)
 
 open Mosaic_ui
 
@@ -115,8 +116,8 @@ type attrs = {
   buffered : bool;
   live : bool;
 }
-(** The type for non-handler element attributes. Grouped for zero-copy sharing
-    across {!val-map} and physical-equality fast paths in the reconciler.
+(** The type for non-handler element attributes. Grouped for sharing and
+    physical-equality fast paths in the reconciler.
 
     [focused] declares application-owned focus and implies [focusable]. At most
     one visible element that is not inert may declare focus. The application
@@ -126,8 +127,8 @@ type attrs = {
 (** {1:vnodes Virtual nodes} *)
 
 type 'msg memo
-(** The type for a deferred subtree: a view function, the key it is applied to,
-    and the message mappers applied since. See {!val-memo}. *)
+(** The type for a deferred subtree: a view function and the key it is applied
+    to. See {!val-memo}. *)
 
 type 'msg t =
   | Element of 'msg element
@@ -136,6 +137,7 @@ type 'msg t =
   | Memo of 'msg memo
   | Embed of Renderable.t
   | Themed of (Theme.t -> Theme.t) * 'msg t
+  | Map : ('a -> 'msg) * 'a t -> 'msg t
   | Empty
       (** The type for a virtual node in the UI tree.
 
@@ -147,6 +149,8 @@ type 'msg t =
             but not managed by the reconciler. Use this as an escape hatch for
             imperative code.
           - [Themed] draws a vnode with a theme ({!val-themed}).
+          - [Map] gives the messages of its subtree to its function
+            ({!val-map}).
           - [Empty] renders nothing. *)
 
 and 'msg element = {
@@ -188,8 +192,7 @@ val memo_equal : 'a memo -> 'a memo -> bool
     [Mosaic.memo]: then they build equal subtrees. *)
 
 val memo_view : 'msg memo -> 'msg t
-(** [memo_view m] calls [m]'s view function on its key, through its message
-    mappers. *)
+(** [memo_view m] calls [m]'s view function on its key. *)
 
 val viewport_switch :
   at_least_width:int -> wide:'msg t -> narrow:'msg t -> 'msg t
@@ -225,5 +228,22 @@ val element :
 (** {1:transform Transformation} *)
 
 val map : ('a -> 'b) -> 'a t -> 'b t
-(** [map f vnode] is [Mosaic.map]. It allocates new handlers and callbacks and
-    shares the {!type-attrs} and {!type-kind} of each element. *)
+(** [map f vnode] is [Map (f, vnode)], [Mosaic.map].
+
+    The reconciler keeps a route cell at a map's place and stores the map's
+    function in it on each render. A handler's message goes up the routes of its
+    fiber, through each cell's current function, when the handler fires. It
+    erases message types to do so, and the erasure is sound under the types of
+    [Mosaic]. Kept fibers meet a map function of another inner type in three
+    places only:
+    - under an equal memo, whose view function is physically the one that built
+      them. If the inner type differs, the view is polymorphic in its message
+      type, so by parametricity its messages come from its key. Keys are equal
+      by representation and must be immutable data ([Mosaic.memo]), and
+      evaluation is deterministic and ignores types, so the kept messages are
+      indistinguishable from those the new render would give;
+    - under a physically equal child list, which at two message types must be
+      generalizable, and a list holding a handler cannot be;
+    - under a map whose place is kept while its subtree changes, where the
+      subtree is reconciled again and every fiber takes the new handlers. A
+      fiber never moves to another list, so its route is fixed for its life. *)

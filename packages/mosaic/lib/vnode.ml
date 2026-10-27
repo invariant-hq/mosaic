@@ -101,14 +101,10 @@ type 'msg t =
   | Memo of 'msg memo
   | Embed of Renderable.t
   | Themed of (Theme.t -> Theme.t) * 'msg t
+  | Map : ('a -> 'msg) * 'a t -> 'msg t
   | Empty
 
-and 'msg memo = {
-  key : Obj.t;
-  view : Obj.t;
-  build : unit -> 'msg t;
-  mappings : Obj.t list;
-}
+and 'msg memo = { key : Obj.t; view : Obj.t; build : unit -> 'msg t }
 
 and 'msg element = {
   kind : kind;
@@ -179,25 +175,9 @@ let rec same_memo_key a b =
 let memo ~key view =
   let key = Obj.repr key in
   check_memo_key key;
-  Memo
-    {
-      key;
-      view = Obj.repr view;
-      build = (fun () -> view (Obj.obj key));
-      mappings = [];
-    }
+  Memo { key; view = Obj.repr view; build = (fun () -> view (Obj.obj key)) }
 
-let memo_equal a b =
-  let rec same_mappings xs ys =
-    match (xs, ys) with
-    | [], [] -> true
-    | x :: xs, y :: ys -> x == y && same_mappings xs ys
-    | _ -> false
-  in
-  a.view == b.view
-  && same_mappings a.mappings b.mappings
-  && same_memo_key a.key b.key
-
+let memo_equal a b = a.view == b.view && same_memo_key a.key b.key
 let memo_view m = m.build ()
 
 let viewport_switch ~at_least_width ~wide ~narrow =
@@ -278,116 +258,4 @@ let element ?key ~style ?visible ?z_index ?opacity ~focusable ?focused ?buffered
 
 (* ───── Transformation ───── *)
 
-let map_handlers (f : 'a -> 'b) (h : 'a handlers) : 'b handlers =
-  {
-    on_mouse = Option.map (fun g ev -> Option.map f (g ev)) h.on_mouse;
-    on_key = Option.map (fun g ev -> Option.map f (g ev)) h.on_key;
-    on_paste = Option.map (fun g ev -> Option.map f (g ev)) h.on_paste;
-    on_click = Option.map (fun g ev -> Option.map f (g ev)) h.on_click;
-    on_focus_request = Option.map (fun g () -> f (g ())) h.on_focus_request;
-    on_size = Option.map (fun g ~w ~h -> Option.map f (g ~w ~h)) h.on_size;
-  }
-
-let map_callbacks (f : 'a -> 'b) : 'a widget_callbacks -> 'b widget_callbacks =
-  function
-  | No_callbacks -> No_callbacks
-  | Slider_callbacks { on_value_change } ->
-      Slider_callbacks
-        { on_value_change = Option.map (fun g v -> f (g v)) on_value_change }
-  | Input_callbacks { on_change; on_submit } ->
-      Input_callbacks
-        {
-          on_change = Option.map (fun g value -> f (g value)) on_change;
-          on_submit = Option.map (fun g value -> f (g value)) on_submit;
-        }
-  | Select_callbacks { on_change; on_activate } ->
-      Select_callbacks
-        {
-          on_change = Option.map (fun g i -> f (g i)) on_change;
-          on_activate = Option.map (fun g i -> f (g i)) on_activate;
-        }
-  | Tab_select_callbacks { on_change; on_activate } ->
-      Tab_select_callbacks
-        {
-          on_change = Option.map (fun g i -> f (g i)) on_change;
-          on_activate = Option.map (fun g i -> f (g i)) on_activate;
-        }
-  | Text_callbacks { on_selection } ->
-      Text_callbacks
-        {
-          on_selection =
-            Option.map (fun g sel -> Option.map f (g sel)) on_selection;
-        }
-  | Canvas_callbacks { on_draw } -> Canvas_callbacks { on_draw }
-  | Scroll_bar_callbacks { on_change } ->
-      Scroll_bar_callbacks
-        { on_change = Option.map (fun g i -> f (g i)) on_change }
-  | Scroll_box_callbacks { on_scroll } ->
-      Scroll_box_callbacks
-        { on_scroll = Option.map (fun g value -> f (g value)) on_scroll }
-  | Textarea_callbacks { on_change; on_submit } ->
-      Textarea_callbacks
-        {
-          on_change = Option.map (fun g value -> f (g value)) on_change;
-          on_submit = Option.map (fun g value -> f (g value)) on_submit;
-        }
-  | Code_callbacks { on_selection } ->
-      Code_callbacks
-        {
-          on_selection =
-            Option.map (fun g sel -> Option.map f (g sel)) on_selection;
-        }
-  | Markdown_callbacks { on_selection } ->
-      Markdown_callbacks
-        {
-          on_selection =
-            Option.map (fun g sel -> Option.map f (g sel)) on_selection;
-        }
-  | Diff_callbacks { on_line_click } ->
-      Diff_callbacks
-        {
-          on_line_click =
-            Option.map (fun g hit -> Option.map f (g hit)) on_line_click;
-        }
-  | Table_callbacks { on_change; on_activate; on_hover } ->
-      Table_callbacks
-        {
-          on_change = Option.map (fun g i -> f (g i)) on_change;
-          on_activate = Option.map (fun g i -> f (g i)) on_activate;
-          on_hover = Option.map (fun g i -> Option.map f (g i)) on_hover;
-        }
-  | Tree_callbacks { on_change; on_activate } ->
-      Tree_callbacks
-        {
-          on_change = Option.map (fun g value -> f (g value)) on_change;
-          on_activate = Option.map (fun g value -> f (g value)) on_activate;
-        }
-  | Modal_callbacks { on_close } ->
-      Modal_callbacks { on_close = Option.map (fun g () -> f (g ())) on_close }
-
-let rec map (f : 'a -> 'b) (vnode : 'a t) : 'b t =
-  match vnode with
-  | Empty -> Empty
-  | Memo m ->
-      Memo
-        {
-          m with
-          build = (fun () -> map f (m.build ()));
-          mappings = Obj.repr f :: m.mappings;
-        }
-  | Embed node -> Embed node
-  | Themed (theme, child) -> Themed (theme, map f child)
-  | Fragment children -> Fragment (List.map (map f) children)
-  | Viewport_switch { at_least_width; wide; narrow } ->
-      Viewport_switch
-        { at_least_width; wide = map f wide; narrow = map f narrow }
-  | Element e ->
-      Element
-        {
-          kind = e.kind;
-          key = e.key;
-          attrs = e.attrs;
-          handlers = map_handlers f e.handlers;
-          callbacks = map_callbacks f e.callbacks;
-          children = List.map (map f) e.children;
-        }
+let map f vnode = Map (f, vnode)

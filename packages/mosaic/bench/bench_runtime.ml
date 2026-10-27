@@ -139,7 +139,7 @@ let initial_height = 70
    report, and mouse rows count from the live region. *)
 let primary_viewport_height = 40
 
-let earlier_output =
+let earlier_output () =
   Mosaic.fragment
     (List.init 20 (fun i ->
          Mosaic.text (Printf.sprintf "earlier output %02d" i)))
@@ -194,6 +194,22 @@ let view ~mode blocks model =
         ~on_change:(fun next -> Edit next)
         ();
     ]
+
+(* A dialog that holds the view three components deep, each mapping its
+   child's messages into its own, as mentat's input, permission dialog and
+   dialog do. *)
+type dialog = Inner of msg
+type permission = Dialog of dialog
+type app_msg = Permission of permission
+
+let unwrap (Permission (Dialog (Inner message))) = message
+
+let nested_view ~mode blocks model =
+  Mosaic.map
+    (fun message -> Permission message)
+    (Mosaic.map
+       (fun message -> Dialog message)
+       (Mosaic.map (fun message -> Inner message) (view ~mode blocks model)))
 
 let resume driver =
   match !(driver.continuation) with
@@ -264,7 +280,13 @@ let drive ?(mode = `Alt) ?process_perform ~on_idle (t : Term.t) application =
       in
       loop ())
 
-let setup ~mode ~blocks workload () =
+(* The application's view and how its messages hold the ones [view] gives. *)
+type 'm shape = { view_of : model -> 'm Mosaic.t; unwrap : 'm -> msg }
+
+let plain ~mode blocks = { view_of = view ~mode blocks; unwrap = Fun.id }
+let nested ~mode blocks = { view_of = nested_view ~mode blocks; unwrap }
+
+let setup_shape (type m) ~mode ~blocks (shape : m shape) workload () =
   let continuation : (unit, unit) Effect.Deep.continuation option ref =
     ref None
   in
@@ -277,7 +299,7 @@ let setup ~mode ~blocks workload () =
     | Some until -> Term.advance terminal (max 1 (until - terminal.now))
     | None -> Effect.perform Presented
   in
-  let application =
+  let application : (model, m) Mosaic.app =
     {
       Mosaic.init =
         (fun () ->
@@ -288,18 +310,18 @@ let setup ~mode ~blocks workload () =
                 Mosaic.Cmd.batch
                   [
                     Mosaic.Cmd.static_clear;
-                    Mosaic.Cmd.static_commit earlier_output;
+                    Mosaic.Cmd.static_commit (earlier_output ());
                   ] ));
       update =
         (fun message model ->
           let model =
-            match message with
+            match shape.unwrap message with
             | Edit editor -> { model with editor }
             | Scroll scroll -> { model with scroll }
           in
           accepted := model;
           (model, none));
-      view = view ~mode blocks;
+      view = shape.view_of;
       subscriptions = (fun _ -> Mosaic.Sub.none);
     }
   in
@@ -380,6 +402,9 @@ let setup ~mode ~blocks workload () =
     | Resize _ -> ()
   done;
   driver
+
+let setup ~mode ~blocks workload () =
+  setup_shape ~mode ~blocks (plain ~mode blocks) workload ()
 
 (* The loop's own costs, on a small program: the run suspends whenever
    [pause] says so when the loop goes idle, and a sample resumes it. *)
@@ -765,6 +790,16 @@ let () =
        transcript repeats the input workloads. The primary-mode group runs them
        in an inline region shorter than the terminal. *)
     ((loop_benches :: startup_benches :: (list_benches @ log_benches))
+    @ [
+        Thumper.group "nested-dialog"
+          [
+            Thumper.bench_with_setup
+              ~setup:
+                (setup_shape ~mode:`Alt ~blocks:5000 (nested ~mode:`Alt 5000)
+                   Keystroke)
+              ~teardown:close "type-and-erase" (measure Keystroke);
+          ];
+      ]
     @ List.map
         (fun (mode, blocks, workloads) ->
           Thumper.group

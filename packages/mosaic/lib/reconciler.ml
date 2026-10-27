@@ -472,12 +472,34 @@ let update_instance (inst : instance) ~(old_attrs : Vnode.attrs)
 let commit_update (inst : instance) : unit =
   Renderable.request_render (node_of inst)
 
-(* ───── Fiber Tracking ───── *)
+(* ───── Messages and routes ───── *)
 
-type callback_refs = {
-  callbacks : unit Vnode.widget_callbacks ref;
-  update_presence : unit Vnode.widget_callbacks -> unit;
-}
+(* The reconciler holds the handlers of elements whose message types differ
+   below each [Vnode.Map]. It erases them to [msg] where a view enters it
+   ([render]) and where a map's subtree and function are stored. A handler's
+   message goes up its fiber's route, through each map's current function,
+   to [deliver]. [Vnode.map] states why the erasure is sound. *)
+type msg = Obj.t
+
+type route = Root of (msg -> unit) | Tagged of tagged
+
+(* A map's place keeps its route; each render stores the map's function, so
+   a kept subtree under it sends through the function the view gave last. *)
+and tagged = { mutable tagger : msg -> msg; parent : route }
+
+let rec send route m =
+  match route with
+  | Root deliver -> deliver m
+  | Tagged t -> send t.parent (t.tagger m)
+
+let send_option route = function Some m -> send route m | None -> ()
+
+let focus_request route (handlers : msg Vnode.handlers) =
+  match handlers.on_focus_request with
+  | None -> None
+  | Some g -> Some (fun () -> send route (g ()))
+
+(* ───── Fiber Tracking ───── *)
 
 (* The focus a subtree declares. A shown modal in it makes every element
    outside the modal inert, so its focus is the modal's alone. *)
@@ -489,14 +511,15 @@ type declared_focus =
 
 and modal = {
   modal_node : Renderable.t;
-  modal_callbacks : unit Vnode.widget_callbacks ref;
+  close : unit -> bool;
+      (** Sends the modal's [on_close], and is [true] iff it has one. *)
   inside : declared_focus;  (** Never [Modal]. *)
 }
 
 (* A parent's children: elements, embedded nodes, and memo spans. A span owns
    the children its memo's view produced, so an unchanged memo keeps them
    without visiting them. *)
-type child = Fiber of fiber | Embedded of Renderable.t | Memo_span of span
+type child = Fiber of fiber | Embedded of Renderable.t | Span of span
 
 and fiber = {
   mutable kind : Vnode.kind;
@@ -504,21 +527,29 @@ and fiber = {
   mutable attrs : Vnode.attrs;
   instance : instance;
   mutable children : child list;
-  handlers : unit Vnode.handlers ref;
+  route : route;  (** Fixed for its life: a fiber never changes lists. *)
+  mutable handlers : msg Vnode.handlers;
       (** The handlers the element declared last, which the node's handlers read
           when an event comes. *)
-  mutable declared_children : unit Vnode.t list;
+  mutable declared_children : msg Vnode.t list;
   mutable viewport_width : int;
   mutable declared_focus : declared_focus;
-  callback_refs : callback_refs;
-  mutable pass : int;  (** The last pass that matched it ({!next_pass}). *)
+  mutable callbacks : msg Vnode.widget_callbacks;
+      (** The callbacks the element declared last, which the widget's own
+          callbacks read and send through [route]. *)
+  mutable pass : int;  (** The last matching pass that matched it. *)
 }
 
+(* A span owns the children of a memo's view or of a map's subtree; an
+   unchanged span keeps them without visiting them. *)
 and span = {
-  mutable memo : unit Vnode.memo;
+  tagged : tagged option;  (** A map's span: its route cell. *)
+  span_route : route;  (** The route of its children. *)
+  mutable memo : msg Vnode.memo option;  (** A memo's span: its memo. *)
   mutable span_theme : (Theme.t -> Theme.t) option;
       (** The theme its place declares, given to the nodes it places. *)
-  mutable view : unit Vnode.t;  (** The memo's view, built once. *)
+  mutable view : msg Vnode.t;
+      (** A memo's view, built once, or a map's subtree. *)
   mutable span_viewport_width : int;
   mutable span_children : child list;
   mutable node_count : int;
@@ -558,252 +589,248 @@ let kind_matches (a : Vnode.kind) (b : Vnode.kind) : bool =
       true
   | _ -> false
 
-(* Most widgets use stable callbacks dispatching through a mutable ref.
-   Table instead installs callbacks directly so a press can retain its original
-   row-to-value mapping across synchronous reconciliation. *)
-let create_callback_refs (instance : instance)
-    (initial : unit Vnode.widget_callbacks) : callback_refs =
-  let callbacks = ref initial in
-  let update_presence =
-    match instance with
-    | Slider_instance widget ->
-        Slider.set_on_change widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Slider_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_value_change
-               | _ -> ()));
-        Fun.const ()
-    | Text_input_instance widget ->
-        Text_input.set_on_change widget (fun value ->
-            match !callbacks with
-            | Vnode.Input_callbacks c ->
-                Option.iter (fun f -> f value) c.on_change
-            | _ -> ());
-        Text_input.set_on_submit widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Input_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_submit
-               | _ -> ()));
-        Fun.const ()
-    | Textarea_instance widget ->
-        Textarea.set_on_change widget (fun value ->
-            match !callbacks with
-            | Vnode.Textarea_callbacks c ->
-                Option.iter (fun f -> f value) c.on_change
-            | _ -> ());
-        Textarea.set_on_submit widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Textarea_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_submit
-               | _ -> ()));
-        Fun.const ()
-    | Select_instance widget ->
-        Select.set_on_change widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Select_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_change
-               | _ -> ()));
-        Select.set_on_activate widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Select_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_activate
-               | _ -> ()));
-        Fun.const ()
-    | Tab_select_instance widget ->
-        Tab_select.set_on_change widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Tab_select_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_change
-               | _ -> ()));
-        Tab_select.set_on_activate widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Tab_select_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_activate
-               | _ -> ()));
-        Fun.const ()
-    | Scroll_bar_instance widget ->
-        Scroll_bar.set_on_change widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Scroll_bar_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_change
-               | _ -> ()));
-        Fun.const ()
-    | Scroll_box_instance widget ->
-        Scroll_box.set_on_scroll widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Scroll_box_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_scroll
-               | _ -> ()));
-        Fun.const ()
-    | Code_instance widget ->
-        Code.set_on_selection widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Code_callbacks c ->
-                   Option.iter
-                     (fun f -> ignore (f value : unit option))
-                     c.on_selection
-               | _ -> ()));
-        Fun.const ()
-    | Markdown_instance widget ->
-        Markdown.set_on_selection widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Markdown_callbacks c ->
-                   Option.iter
-                     (fun f -> ignore (f value : unit option))
-                     c.on_selection
-               | _ -> ()));
-        Fun.const ()
-    | Table_instance widget -> (
-        (* A press snapshots these callbacks before user code can reconcile a
-           different domain-to-row mapping. *)
-        function
-        | Vnode.Table_callbacks c ->
-            Table.set_on_change widget c.on_change;
-            Table.set_on_activate widget c.on_activate;
-            Table.set_on_hover widget
-              (Option.map
-                 (fun f value -> ignore (f value : unit option))
-                 c.on_hover)
-        | _ ->
-            Table.set_on_change widget None;
-            Table.set_on_activate widget None;
-            Table.set_on_hover widget None)
-    | Tree_instance widget ->
-        Tree.set_on_change widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Tree_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_change
-               | _ -> ()));
-        Tree.set_on_activate widget
-          (Some
-             (fun value ->
-               match !callbacks with
-               | Vnode.Tree_callbacks c ->
-                   Option.iter (fun f -> f value) c.on_activate
-               | _ -> ()));
-        Fun.const ()
-    | Canvas_instance widget ->
-        Canvas.set_on_draw widget
-          (Some
-             (fun canvas ~dt ->
-               match !callbacks with
-               | Vnode.Canvas_callbacks c ->
-                   Option.iter (fun f -> f canvas ~dt) c.on_draw
-               | _ -> ()));
-        Fun.const ()
-    | Diff_instance widget -> (
-        let dispatch hit =
-          match !callbacks with
-          | Vnode.Diff_callbacks c ->
-              Option.iter
-                (fun f -> ignore (f hit : unit option))
-                c.on_line_click
-          | _ -> ()
-        in
-        fun current ->
-          match current with
-          | Vnode.Diff_callbacks c ->
-              Diff.set_on_line_click widget
-                (Option.map (Fun.const dispatch) c.on_line_click)
-          | _ -> Diff.set_on_line_click widget None)
-    | Text_instance widget -> (
-        function
-        | Vnode.Text_callbacks c ->
-            Text.set_on_selection widget
-              (Option.map
-                 (fun f value -> ignore (f value : unit option))
-                 c.on_selection)
-        | _ -> Text.set_on_selection widget None)
-    | Box_instance _ | Spinner_instance _ | Progress_bar_instance _
-    | Line_number_instance _ | Picture_instance _ ->
-        Fun.const ()
-  in
-  update_presence initial;
-  { callbacks; update_presence }
+(* Most widgets take stable callbacks that read the fiber's current callbacks
+   and send through its route. *)
+let install_callbacks (f : fiber) =
+  match f.instance with
+  | Slider_instance widget ->
+      Slider.set_on_change widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Slider_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_value_change
+             | _ -> ()));
+      ()
+  | Text_input_instance widget ->
+      Text_input.set_on_change widget (fun value ->
+          match f.callbacks with
+          | Vnode.Input_callbacks c ->
+              Option.iter (fun g -> send f.route (g value)) c.on_change
+          | _ -> ());
+      Text_input.set_on_submit widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Input_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_submit
+             | _ -> ()));
+      ()
+  | Textarea_instance widget ->
+      Textarea.set_on_change widget (fun value ->
+          match f.callbacks with
+          | Vnode.Textarea_callbacks c ->
+              Option.iter (fun g -> send f.route (g value)) c.on_change
+          | _ -> ());
+      Textarea.set_on_submit widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Textarea_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_submit
+             | _ -> ()));
+      ()
+  | Select_instance widget ->
+      Select.set_on_change widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Select_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_change
+             | _ -> ()));
+      Select.set_on_activate widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Select_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_activate
+             | _ -> ()));
+      ()
+  | Tab_select_instance widget ->
+      Tab_select.set_on_change widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Tab_select_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_change
+             | _ -> ()));
+      Tab_select.set_on_activate widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Tab_select_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_activate
+             | _ -> ()));
+      ()
+  | Scroll_bar_instance widget ->
+      Scroll_bar.set_on_change widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Scroll_bar_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_change
+             | _ -> ()));
+      ()
+  | Scroll_box_instance widget ->
+      Scroll_box.set_on_scroll widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Scroll_box_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_scroll
+             | _ -> ()));
+      ()
+  | Code_instance widget ->
+      Code.set_on_selection widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Code_callbacks c ->
+                 Option.iter
+                   (fun g -> send_option f.route (g value))
+                   c.on_selection
+             | _ -> ()));
+      ()
+  | Markdown_instance widget ->
+      Markdown.set_on_selection widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Markdown_callbacks c ->
+                 Option.iter
+                   (fun g -> send_option f.route (g value))
+                   c.on_selection
+             | _ -> ()));
+      ()
+  | Tree_instance widget ->
+      Tree.set_on_change widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Tree_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_change
+             | _ -> ()));
+      Tree.set_on_activate widget
+        (Some
+           (fun value ->
+             match f.callbacks with
+             | Vnode.Tree_callbacks c ->
+                 Option.iter (fun g -> send f.route (g value)) c.on_activate
+             | _ -> ()));
+      ()
+  | Canvas_instance widget ->
+      Canvas.set_on_draw widget
+        (Some
+           (fun canvas ~dt ->
+             match f.callbacks with
+             | Vnode.Canvas_callbacks c ->
+                 Option.iter (fun f -> f canvas ~dt) c.on_draw
+             | _ -> ()));
+      ()
+  | Table_instance _ | Diff_instance _ | Text_instance _ | Box_instance _
+  | Spinner_instance _ | Progress_bar_instance _ | Line_number_instance _
+  | Picture_instance _ ->
+      ()
 
-let create_fiber ~(parent : Renderable.t) (elem : unit Vnode.element) : fiber =
+(* A table, a text and a diff take their callbacks when they are declared,
+   present or absent: a press snapshots a table's callbacks before user code
+   can reconcile a different domain-to-row mapping, and a text or a diff
+   without them selects and clicks as a plain one. *)
+let apply_presence (f : fiber) =
+  match (f.instance, f.callbacks) with
+  | Table_instance widget, Vnode.Table_callbacks c ->
+      Table.set_on_change widget
+        (Option.map (fun g value -> send f.route (g value)) c.on_change);
+      Table.set_on_activate widget
+        (Option.map (fun g value -> send f.route (g value)) c.on_activate);
+      Table.set_on_hover widget
+        (Option.map (fun g value -> send_option f.route (g value)) c.on_hover)
+  | Table_instance widget, _ ->
+      Table.set_on_change widget None;
+      Table.set_on_activate widget None;
+      Table.set_on_hover widget None
+  | Text_instance widget, Vnode.Text_callbacks c ->
+      Text.set_on_selection widget
+        (Option.map
+           (fun g value -> send_option f.route (g value))
+           c.on_selection)
+  | Text_instance widget, _ -> Text.set_on_selection widget None
+  | Diff_instance widget, Vnode.Diff_callbacks c ->
+      Diff.set_on_line_click widget
+        (Option.map
+           (fun _ hit ->
+             match f.callbacks with
+             | Vnode.Diff_callbacks c ->
+                 Option.iter
+                   (fun g -> send_option f.route (g hit))
+                   c.on_line_click
+             | _ -> ())
+           c.on_line_click)
+  | Diff_instance widget, _ -> Diff.set_on_line_click widget None
+  | _ -> ()
+
+(* The node's handlers read the fiber's current handlers and route when an
+   event comes, so each closure holds the fiber alone. *)
+let create_fiber ~(parent : Renderable.t) ~route (elem : msg Vnode.element) :
+    fiber =
   let instance = create_instance ~parent elem.kind elem.attrs in
   let node = node_of instance in
-  Renderable.Private.set_focus_request node elem.handlers.on_focus_request;
-  let handlers = ref elem.handlers in
-  let callback_refs = create_callback_refs instance elem.callbacks in
+  Renderable.Private.set_focus_request node (focus_request route elem.handlers);
+  let f =
+    {
+      kind = elem.kind;
+      key = elem.key;
+      attrs = elem.attrs;
+      instance;
+      children = [];
+      route;
+      handlers = elem.handlers;
+      declared_children = [];
+      viewport_width = 0;
+      declared_focus = Focus_none;
+      callbacks = elem.callbacks;
+      pass = 0;
+    }
+  in
   Renderable.on_mouse node (fun ev ->
-      Option.iter (fun f -> ignore (f ev : unit option)) !handlers.on_mouse);
+      Option.iter (fun g -> send_option f.route (g ev)) f.handlers.on_mouse);
   Renderable.Private.set_click_handler node
     (Some
        (fun ev ->
-         Option.iter (fun f -> ignore (f ev : unit option)) !handlers.on_click));
+         Option.iter (fun g -> send_option f.route (g ev)) f.handlers.on_click));
   Renderable.Private.set_size_observer node
     (Some
        (fun node ->
          Option.iter
-           (fun f ->
-             ignore
-               (f ~w:(Renderable.width node) ~h:(Renderable.height node)
-                 : unit option))
-           !handlers.on_size));
+           (fun g ->
+             send_option f.route
+               (g ~w:(Renderable.width node) ~h:(Renderable.height node)))
+           f.handlers.on_size));
   Renderable.on_key node (fun ev ->
-      match !handlers.on_key with
-      | Some h -> ignore (h ev : unit option)
+      match f.handlers.on_key with
+      | Some h -> send_option f.route (h ev)
       | None -> ());
   Renderable.on_paste node (fun ev ->
-      match !handlers.on_paste with
-      | Some h -> ignore (h ev : unit option)
+      match f.handlers.on_paste with
+      | Some h -> send_option f.route (h ev)
       | None -> ());
-  {
-    kind = elem.kind;
-    key = elem.key;
-    attrs = elem.attrs;
-    instance;
-    children = [];
-    handlers;
-    declared_children = [];
-    viewport_width = 0;
-    declared_focus = Focus_none;
-    callback_refs;
-    pass = 0;
-  }
-
-let update_callback_refs refs callbacks =
-  if !(refs.callbacks) != callbacks then begin
-    refs.callbacks := callbacks;
-    refs.update_presence callbacks
-  end
+  install_callbacks f;
+  apply_presence f;
+  f
 
 (* A fiber keeps its records while the element's equal them, so the
    element's fresh records die young and an unchanged element writes
    nothing into the fiber. *)
-let update_fiber (f : fiber) (elem : unit Vnode.element) : bool =
-  if !(f.handlers) != elem.handlers then begin
+let update_fiber (f : fiber) (elem : msg Vnode.element) : bool =
+  if f.handlers != elem.handlers then begin
     Renderable.Private.set_focus_request (fiber_node f)
-      elem.handlers.on_focus_request;
-    f.handlers := elem.handlers
+      (focus_request f.route elem.handlers);
+    f.handlers <- elem.handlers
   end;
-  update_callback_refs f.callback_refs elem.callbacks;
+  if f.callbacks != elem.callbacks then begin
+    f.callbacks <- elem.callbacks;
+    apply_presence f
+  end;
   let changed =
     update_instance f.instance ~old_attrs:f.attrs ~new_attrs:elem.attrs
       ~old_kind:f.kind ~new_kind:elem.kind
@@ -823,7 +850,7 @@ let update_fiber (f : fiber) (elem : unit Vnode.element) : bool =
 let rec embeds_under acc = function
   | Fiber f -> List.fold_left embeds_under acc f.children
   | Embedded n -> n :: acc
-  | Memo_span span -> List.fold_left embeds_under acc span.span_children
+  | Span span -> List.fold_left embeds_under acc span.span_children
 
 (* Destroys [fibers], in order, and detaches [embeds] with them. *)
 let destroy_fibers ?(embeds = []) fibers =
@@ -842,7 +869,7 @@ let fibers_and_embeds children =
   let rec go (fibers, embeds) = function
     | Fiber f -> (f :: fibers, embeds)
     | Embedded n -> (fibers, n :: embeds)
-    | Memo_span span -> List.fold_left go (fibers, embeds) span.span_children
+    | Span span -> List.fold_left go (fibers, embeds) span.span_children
   in
   let fibers, embeds = List.fold_left go ([], []) children in
   (List.rev fibers, List.rev embeds)
@@ -882,6 +909,8 @@ type matcher = {
       (** The old children from the next element position on. *)
   mutable next_memo : child list;
       (** The old children from the next memo position on. *)
+  mutable next_map : child list;
+      (** The old children from the next map position on. *)
   mutable keys : (string, child list) Hashtbl.t option;
 }
 
@@ -892,6 +921,7 @@ let matcher old_children =
     old_children;
     next_element = old_children;
     next_memo = old_children;
+    next_map = old_children;
     keys = None;
   }
 
@@ -903,19 +933,29 @@ let rec take_element m =
   | Fiber _ :: rest as cell ->
       m.next_element <- rest;
       cell
-  | (Embedded _ | Memo_span _) :: rest ->
+  | (Embedded _ | Span _) :: rest ->
       m.next_element <- rest;
       take_element m
 
 let rec take_memo m =
   match m.next_memo with
   | [] -> []
-  | Memo_span _ :: rest as cell ->
+  | Span { memo = Some _; _ } :: rest as cell ->
       m.next_memo <- rest;
       cell
-  | (Embedded _ | Fiber _) :: rest ->
+  | (Embedded _ | Fiber _ | Span _) :: rest ->
       m.next_memo <- rest;
       take_memo m
+
+let rec take_map m =
+  match m.next_map with
+  | [] -> []
+  | Span { tagged = Some _; _ } :: rest as cell ->
+      m.next_map <- rest;
+      cell
+  | (Embedded _ | Fiber _ | Span _) :: rest ->
+      m.next_map <- rest;
+      take_map m
 
 (* First occurrence wins on duplicate keys, so when a view accidentally
    emits duplicate-keyed siblings the first keeps its identity across
@@ -939,7 +979,7 @@ let keys m =
 
 (* The cell of the old fiber [elem] matches, or []. The fiber takes the
    pass's number. *)
-let find_match m (elem : unit Vnode.element) : child list =
+let find_match m (elem : msg Vnode.element) : child list =
   let positional = take_element m in
   let cell =
     match elem.key with
@@ -966,11 +1006,12 @@ type builder = {
   old : child list;
   mutable rest : child list;  (** The old children after those kept. *)
   mutable kept : int;
-  mutable diverged : bool;
-  mutable acc : child list;  (** Reversed, once [diverged]. *)
+  mutable acc : child list;
+      (** Reversed, once a child is not the old one at its index; never empty
+          then. *)
 }
 
-let builder old = { old; rest = old; kept = 0; diverged = false; acc = [] }
+let builder old = { old; rest = old; kept = 0; acc = [] }
 
 let rec rev_prefix list n acc =
   if n = 0 then acc
@@ -980,20 +1021,20 @@ let rec rev_prefix list n acc =
     | child :: rest -> rev_prefix rest (n - 1) (child :: acc)
 
 let emit b child =
-  if b.diverged then b.acc <- child :: b.acc
-  else
-    match b.rest with
-    | c :: rest when c == child ->
-        b.rest <- rest;
-        b.kept <- b.kept + 1
-    | _ ->
-        b.diverged <- true;
-        b.acc <- child :: rev_prefix b.old b.kept []
+  match b.acc with
+  | _ :: _ -> b.acc <- child :: b.acc
+  | [] -> (
+      match b.rest with
+      | c :: rest when c == child ->
+          b.rest <- rest;
+          b.kept <- b.kept + 1
+      | _ -> b.acc <- child :: rev_prefix b.old b.kept [])
 
 let finish b =
-  if b.diverged then List.rev b.acc
-  else
-    match b.rest with [] -> b.old | _ -> List.rev (rev_prefix b.old b.kept [])
+  match (b.acc, b.rest) with
+  | _ :: _, _ -> List.rev b.acc
+  | [], [] -> b.old
+  | [], _ :: _ -> List.rev (rev_prefix b.old b.kept [])
 
 (* ───── Commit Placement ───── *)
 
@@ -1015,7 +1056,7 @@ let finish b =
 let rec iter_embeds f = function
   | Fiber _ -> ()
   | Embedded n -> f n
-  | Memo_span span -> List.iter (iter_embeds f) span.span_children
+  | Span span -> List.iter (iter_embeds f) span.span_children
 
 let detach_stale_embeds ~stale (new_children : child list) =
   if stale <> [] then begin
@@ -1035,7 +1076,7 @@ let rec first_misplaced parent index = function
   | [] -> None
   | Fiber f :: rest -> probe parent index (fiber_node f) rest
   | Embedded n :: rest -> probe parent index n rest
-  | Memo_span span :: rest -> (
+  | Span span :: rest -> (
       let in_place =
         span.reused
         &&
@@ -1073,7 +1114,7 @@ let iter_from from children f =
     | Embedded n :: rest ->
         visit n;
         go rest
-    | Memo_span span :: rest ->
+    | Span span :: rest ->
         if !position + span.node_count <= from then
           position := !position + span.node_count
         else go span.span_children;
@@ -1092,9 +1133,19 @@ let commit_placement parent_node ~stale new_children =
 
 (* ───── Reconciliation ───── *)
 
-type t = { container : Renderable.t; mutable root_children : child list }
+type 'msg t = {
+  container : Renderable.t;
+  root : route;
+  mutable root_children : child list;
+}
 
-let create ~container = { container; root_children = [] }
+let create ~container ~(deliver : 'msg -> unit) =
+  {
+    container;
+    root = Root (Obj.magic deliver : msg -> unit);
+    root_children = [];
+  }
+
 let container t = t.container
 
 (* Of two modals the later in tree order is the one, as the dialog opened
@@ -1111,16 +1162,14 @@ let inert_kind = function
   | _ -> false
 
 let is_modal fiber =
-  match !(fiber.callback_refs.callbacks) with
-  | Vnode.Modal_callbacks _ -> true
-  | _ -> false
+  match fiber.callbacks with Vnode.Modal_callbacks _ -> true | _ -> false
 
 let children_focus children =
   List.fold_left
     (fun focus -> function
       | Embedded _ -> focus
       | Fiber fiber -> combine_focus focus fiber.declared_focus
-      | Memo_span span -> combine_focus focus span.span_focus)
+      | Span span -> combine_focus focus span.span_focus)
     Focus_none children
 
 let update_declared_focus fiber =
@@ -1140,7 +1189,13 @@ let update_declared_focus fiber =
              Modal
                {
                  modal_node = fiber_node fiber;
-                 modal_callbacks = fiber.callback_refs.callbacks;
+                 close =
+                   (fun () ->
+                     match fiber.callbacks with
+                     | Vnode.Modal_callbacks { on_close = Some close } ->
+                         send fiber.route (close ());
+                         true
+                     | _ -> false);
                  inside;
                }
            else focus)
@@ -1148,21 +1203,20 @@ let update_declared_focus fiber =
 let rec node_count children =
   List.fold_left
     (fun count -> function
-      | Fiber _ | Embedded _ -> count + 1
-      | Memo_span span -> count + span.node_count)
+      | Fiber _ | Embedded _ -> count + 1 | Span span -> count + span.node_count)
     0 children
 
 and first_node = function
   | [] -> None
   | Fiber f :: _ -> Some (fiber_node f)
   | Embedded n :: _ -> Some n
-  | Memo_span span :: rest -> (
+  | Span span :: rest -> (
       match span.first_node with
       | Some _ as node -> node
       | None -> first_node rest)
 
-let rec reconcile_element ~(parent_node : Renderable.t) m ~viewport_width
-    (elem : unit Vnode.element) : child =
+let rec reconcile_element ~(parent_node : Renderable.t) ~route m ~viewport_width
+    (elem : msg Vnode.element) : child =
   match find_match m elem with
   | (Fiber f as child) :: _ ->
       let was_modal = is_modal f in
@@ -1185,7 +1239,7 @@ let rec reconcile_element ~(parent_node : Renderable.t) m ~viewport_width
         update_declared_focus f;
       child
   | _ ->
-      let f = create_fiber ~parent:parent_node elem in
+      let f = create_fiber ~parent:parent_node ~route elem in
       f.pass <- m.pass;
       reconcile_children f ~viewport_width elem.children;
       f.declared_children <- elem.children;
@@ -1196,21 +1250,22 @@ let rec reconcile_element ~(parent_node : Renderable.t) m ~viewport_width
 and reconcile_children f ~viewport_width children =
   let stale = ref [] in
   let children =
-    reconcile_list ~stale f.children (fun m b ->
-        walk_list ~parent_node:(fiber_node f) m b ~viewport_width ~stale
-          ~theme:None children)
+    reconcile_list ~parent_node:(fiber_node f) ~route:f.route ~viewport_width
+      ~stale ~theme:None f.children Vnode.Empty children
   in
   if children != f.children then f.children <- children;
   commit_placement (fiber_node f) ~stale:!stale children
 
-(* Reconciles one list of children, a parent's or a memo span's, against
-   [old_children]: [walk] reconciles the new children through a matcher and
-   gives them to a builder. Embedded nodes that leave the list are collected
-   in [stale]. *)
-and reconcile_list ~stale (old_children : child list) walk : child list =
+(* Reconciles one list of children, a parent's or a span's, against
+   [old_children]: [vnode], then [children], are walked through a matcher, and
+   the new children given to a builder. Embedded nodes that leave the list
+   are collected in [stale]. *)
+and reconcile_list ~parent_node ~route ~viewport_width ~stale ~theme
+    (old_children : child list) vnode children : child list =
   let m = matcher old_children in
   let b = builder old_children in
-  walk m b;
+  walk ~parent_node ~route m b ~viewport_width ~stale ~theme vnode;
+  walk_list ~parent_node ~route m b ~viewport_width ~stale ~theme children;
   (* A discarded span's embedded nodes may reappear elsewhere, so they are
      left to placement. *)
   let unused = ref [] and spans = ref [] in
@@ -1218,8 +1273,8 @@ and reconcile_list ~stale (old_children : child list) walk : child list =
     (function
       | Embedded n -> stale := n :: !stale
       | Fiber f -> if f.pass <> m.pass then unused := f :: !unused
-      | Memo_span span ->
-          if span.span_pass <> m.pass then spans := Memo_span span :: !spans)
+      | Span span ->
+          if span.span_pass <> m.pass then spans := Span span :: !spans)
     old_children;
   (match (!unused, !spans) with
   | [], [] -> ()
@@ -1231,19 +1286,21 @@ and reconcile_list ~stale (old_children : child list) walk : child list =
 
 (* Fragments, themed vnodes and Empty nodes are structural: they group
    children but are no widgets. The walk goes through them to the concrete
-   children (elements, embeds, and memos, whose views are built only when
-   they cannot be reused) in order. A child inside [themed] wrappers takes
-   their functions composed, outermost first, as its place's theme
-   ([Renderable.Private.set_place_theme]); a view without [themed] allocates
-   nothing for them. *)
-and walk ~parent_node m b ~viewport_width ~stale ~theme (vnode : unit Vnode.t) =
+   children (elements, embeds, and the spans of memos and maps) in order. A
+   child inside [themed] wrappers takes their functions composed, outermost
+   first, as its place's theme ([Renderable.Private.set_place_theme]); a view
+   without [themed] allocates nothing for them. *)
+and walk ~parent_node ~route m b ~viewport_width ~stale ~theme
+    (vnode : msg Vnode.t) =
   match vnode with
   | Vnode.Empty -> ()
   | Vnode.Element elem ->
-      let child = reconcile_element ~parent_node m ~viewport_width elem in
+      let child =
+        reconcile_element ~parent_node ~route m ~viewport_width elem
+      in
       (match child with
       | Fiber f -> Renderable.Private.set_place_theme (fiber_node f) theme
-      | Embedded _ | Memo_span _ -> ());
+      | Embedded _ | Span _ -> ());
       emit b child
   | Vnode.Embed n ->
       Renderable.Private.set_place_theme n theme;
@@ -1254,84 +1311,123 @@ and walk ~parent_node m b ~viewport_width ~stale ~theme (vnode : unit Vnode.t) =
       in
       emit b child
   | Vnode.Memo memo ->
-      let child =
-        match take_memo m with
-        | (Memo_span span as child) :: _ ->
-            span.span_pass <- m.pass;
-            let span' =
-              reconcile_span ~parent_node ~viewport_width ~stale ~theme
-                (Some span) memo
-            in
-            if span' == span then child else Memo_span span'
-        | _ ->
-            let span =
-              reconcile_span ~parent_node ~viewport_width ~stale ~theme None
-                memo
-            in
-            span.span_pass <- m.pass;
-            Memo_span span
-      in
-      emit b child
+      let previous = take_memo m in
+      emit b
+        (span_child m previous
+           (reconcile_memo ~parent_node ~route ~viewport_width ~stale ~theme
+              previous memo))
+  | Vnode.Map (f, child) ->
+      let previous = take_map m in
+      emit b
+        (span_child m previous
+           (reconcile_map ~parent_node ~route ~viewport_width ~stale ~theme
+              previous
+              (Obj.magic f : msg -> msg)
+              (Obj.magic child : msg Vnode.t)))
   | Vnode.Themed (f, child) ->
-      walk ~parent_node m b ~viewport_width ~stale
+      walk ~parent_node ~route m b ~viewport_width ~stale
         ~theme:(Some (compose theme f))
         child
   | Vnode.Fragment children ->
-      walk_list ~parent_node m b ~viewport_width ~stale ~theme children
+      walk_list ~parent_node ~route m b ~viewport_width ~stale ~theme children
   | Vnode.Viewport_switch { at_least_width; wide; narrow } ->
-      walk ~parent_node m b ~viewport_width ~stale ~theme
+      walk ~parent_node ~route m b ~viewport_width ~stale ~theme
         (if viewport_width >= at_least_width then wide else narrow)
 
-and walk_list ~parent_node m b ~viewport_width ~stale ~theme children =
+and walk_list ~parent_node ~route m b ~viewport_width ~stale ~theme children =
   match children with
   | [] -> ()
   | child :: rest ->
-      walk ~parent_node m b ~viewport_width ~stale ~theme child;
-      walk_list ~parent_node m b ~viewport_width ~stale ~theme rest
+      walk ~parent_node ~route m b ~viewport_width ~stale ~theme child;
+      walk_list ~parent_node ~route m b ~viewport_width ~stale ~theme rest
+
+(* The child of [span]: the old list's value when [span] is the span of the
+   [previous] cell, so a kept span allocates nothing. *)
+and span_child m previous span =
+  span.span_pass <- m.pass;
+  match previous with
+  | (Span old as child) :: _ when old == span -> child
+  | _ -> Span span
+
+and new_span ~tagged ~memo ~route ~theme ~viewport_width view =
+  {
+    tagged;
+    span_route = route;
+    memo;
+    span_theme = theme;
+    view;
+    span_viewport_width = viewport_width;
+    span_children = [];
+    node_count = 0;
+    first_node = None;
+    span_focus = Focus_none;
+    reused = false;
+    span_pass = 0;
+  }
 
 (* Like Elm's lazy nodes, an equal memo stops the diff: its span keeps its
    children untouched. Under another theme its view, kept, is reconciled
    again, so that its nodes take the theme. *)
-and reconcile_span ~parent_node ~viewport_width ~stale ~theme previous memo =
+and reconcile_memo ~parent_node ~route ~viewport_width ~stale ~theme previous
+    memo =
   match previous with
-  | Some span
-    when Vnode.memo_equal span.memo memo
-         && span.span_viewport_width = viewport_width
-         && same_theme span.span_theme theme ->
-      span.memo <- memo;
-      span.reused <- true;
+  | Span ({ memo = Some old; _ } as span) :: _ ->
+      let equal = Vnode.memo_equal old memo in
+      (* An equal memo keeps the one mounted. *)
+      if not equal then span.memo <- Some memo;
+      if
+        equal
+        && span.span_viewport_width = viewport_width
+        && same_theme span.span_theme theme
+      then span.reused <- true
+      else begin
+        if not equal then span.view <- Vnode.memo_view memo;
+        span.span_viewport_width <- viewport_width;
+        span.span_theme <- theme;
+        update_span ~parent_node ~viewport_width ~stale span
+      end;
       span
-  | Some span ->
-      if not (Vnode.memo_equal span.memo memo) then
-        span.view <- Vnode.memo_view memo;
-      span.memo <- memo;
-      span.span_viewport_width <- viewport_width;
-      span.span_theme <- theme;
+  | _ ->
+      let span =
+        new_span ~tagged:None ~memo:(Some memo) ~route ~theme ~viewport_width
+          (Vnode.memo_view memo)
+      in
       update_span ~parent_node ~viewport_width ~stale span;
       span
-  | None ->
+
+(* As Elm patches a tagger in place: the map's function is stored in its
+   span's route cell, and its subtree is reconciled only when it is another
+   value. *)
+and reconcile_map ~parent_node ~route ~viewport_width ~stale ~theme previous f
+    child =
+  match previous with
+  | Span ({ tagged = Some tagged; _ } as span) :: _ ->
+      tagged.tagger <- f;
+      if
+        span.view == child
+        && span.span_viewport_width = viewport_width
+        && same_theme span.span_theme theme
+      then span.reused <- true
+      else begin
+        span.view <- child;
+        span.span_viewport_width <- viewport_width;
+        span.span_theme <- theme;
+        update_span ~parent_node ~viewport_width ~stale span
+      end;
+      span
+  | _ ->
+      let tagged = { tagger = f; parent = route } in
       let span =
-        {
-          memo;
-          span_theme = theme;
-          view = Vnode.memo_view memo;
-          span_viewport_width = viewport_width;
-          span_children = [];
-          node_count = 0;
-          first_node = None;
-          span_focus = Focus_none;
-          reused = false;
-          span_pass = 0;
-        }
+        new_span ~tagged:(Some tagged) ~memo:None ~route:(Tagged tagged) ~theme
+          ~viewport_width child
       in
       update_span ~parent_node ~viewport_width ~stale span;
       span
 
 and update_span ~parent_node ~viewport_width ~stale span =
   let children =
-    reconcile_list ~stale span.span_children (fun m b ->
-        walk ~parent_node m b ~viewport_width ~stale ~theme:span.span_theme
-          span.view)
+    reconcile_list ~parent_node ~route:span.span_route ~viewport_width ~stale
+      ~theme:span.span_theme span.span_children span.view []
   in
   span.span_children <- children;
   span.node_count <- node_count children;
@@ -1341,20 +1437,20 @@ and update_span ~parent_node ~viewport_width ~stale span =
 
 (* ───── Root Reconciliation ───── *)
 
-let render (t : t) ~viewport_width (vnode : unit Vnode.t) : unit =
+let render (t : 'msg t) ~viewport_width (vnode : 'msg Vnode.t) : unit =
   if viewport_width < 1 then
     invalid_arg "Reconciler.render: viewport_width must be positive";
+  let vnode : msg Vnode.t = Obj.magic vnode in
   let stale = ref [] in
   let children =
-    reconcile_list ~stale t.root_children (fun m b ->
-        walk ~parent_node:t.container m b ~viewport_width ~stale ~theme:None
-          vnode)
+    reconcile_list ~parent_node:t.container ~route:t.root ~viewport_width ~stale
+      ~theme:None t.root_children vnode []
   in
   t.root_children <- children;
   commit_placement t.container ~stale:!stale children;
   Renderable.request_render t.container
 
-let unmount (t : t) : unit =
+let unmount (t : _ t) : unit =
   let fibers, embeds = fibers_and_embeds t.root_children in
   destroy_fibers ~embeds fibers;
   t.root_children <- [];
@@ -1378,10 +1474,5 @@ let modal t =
 
 let request_close t =
   match children_focus t.root_children with
-  | Modal { modal_callbacks; _ } -> (
-      match !modal_callbacks with
-      | Vnode.Modal_callbacks { on_close = Some close } ->
-          close ();
-          true
-      | _ -> false)
+  | Modal { close; _ } -> close ()
   | Focus_none | Focus_one _ | Focus_many -> false

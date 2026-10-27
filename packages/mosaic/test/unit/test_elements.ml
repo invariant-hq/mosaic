@@ -7,7 +7,7 @@ open Test_harness
 let mount (view : unit Mosaic.t) =
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   Mosaic.Reconciler.render reconciler ~viewport_width:80 view;
   match Renderable.children (Renderer.root renderer) with
@@ -201,7 +201,7 @@ let map_transforms_markdown_on_selection_callback () =
 let map_embed_identity () =
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let child = Renderable.create ~parent:(Renderer.root renderer) () in
   Mosaic.Reconciler.render reconciler ~viewport_width:80
@@ -224,6 +224,7 @@ let viewport_switch_maps_both_branches () =
     let renderer = Renderer.create () in
     let reconciler =
       Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+        ~deliver:ignore
     in
     Mosaic.Reconciler.render reconciler ~viewport_width mapped;
     match Mosaic.Reconciler.focused reconciler with
@@ -235,6 +236,40 @@ let viewport_switch_maps_both_branches () =
   press 80;
   press 79;
   equal ~msg:"both branch handlers mapped" (list int) [ 2; 1 ] !received
+
+(* A memo under a map whose function captures a value that changes each
+   render: the map is a node whose function is stored at its place, so the
+   memo below it is equal and built once, and its messages go through the
+   map's newest function, as Elm applies its taggers when an event fires. *)
+let memo_under_capturing_map () =
+  let builds = ref 0 and delivered = ref [] in
+  let item key =
+    incr builds;
+    Mosaic.box ~focused:true ~on_key:(fun _ -> Some key) []
+  in
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+      ~deliver:(fun message -> delivered := message :: !delivered)
+  in
+  let render generation =
+    Mosaic.Reconciler.render reconciler ~viewport_width:80
+      (Mosaic.map
+         (fun key -> Printf.sprintf "%s/%d" key generation)
+         (Mosaic.memo ~key:"item" item));
+    match Mosaic.Reconciler.focused reconciler with
+    | Some node ->
+        ignore (Renderer.focus renderer node : bool);
+        ignore (dispatch_key renderer (char_key 'a') : Event.key)
+    | None -> fail "expected the item focused"
+  in
+  render 1;
+  render 2;
+  render 3;
+  equal ~msg:"built once" int 1 !builds;
+  equal ~msg:"delivered through the newest function" (list string)
+    [ "item/3"; "item/2"; "item/1" ]
+    !delivered
 
 (* ── Viewport Switch ── *)
 
@@ -296,6 +331,8 @@ let () =
           test "viewport switch maps both branches"
             viewport_switch_maps_both_branches;
         ];
+      group "Map node"
+        [ test "a memo under a capturing map" memo_under_capturing_map ];
       group "Viewport switch"
         [
           test "rejects nonpositive threshold"

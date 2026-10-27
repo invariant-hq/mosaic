@@ -895,7 +895,7 @@ let mount () =
   Hashtbl.reset seen;
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let render view =
     Mosaic.Reconciler.render reconciler ~viewport_width:20 view;

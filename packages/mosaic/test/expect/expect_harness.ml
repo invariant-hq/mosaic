@@ -83,7 +83,9 @@ let set_viewport renderer ~width ~height =
 let render ?(fill = true) ~width ~height vnode =
   let renderer = Renderer.create () in
   set_viewport renderer ~width ~height;
-  let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
+  let reconciler =
+    Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
   Reconciler.render reconciler ~viewport_width:width vnode;
   if fill then fill_mounted renderer;
   Renderer.render_frame renderer ~width ~height ~dt:0.;
@@ -94,7 +96,9 @@ let render ?(fill = true) ~width ~height vnode =
 let render_ansi ~width ~height vnode =
   let renderer = Renderer.create () in
   set_viewport renderer ~width ~height;
-  let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
+  let reconciler =
+    Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
   Reconciler.render reconciler ~viewport_width:width vnode;
   fill_mounted renderer;
   Renderer.render_frame renderer ~width ~height ~dt:0.;
@@ -106,13 +110,15 @@ let render_ansi ~width ~height vnode =
 
 type app = {
   renderer : Renderer.t;
-  reconciler : Reconciler.t;
+  reconciler : unit Reconciler.t;
   mutable viewport_width : int;
 }
 
 let make_app () =
   let renderer = Renderer.create () in
-  let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
+  let reconciler =
+    Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
   { renderer; reconciler; viewport_width = 80 }
 
 let reconcile ?(fill = true) ?viewport_width app vnode =

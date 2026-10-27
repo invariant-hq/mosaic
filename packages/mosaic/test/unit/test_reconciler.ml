@@ -7,7 +7,7 @@ open Windtrap
 let make () =
   let renderer = Renderer.create () in
   let container = Renderer.root renderer in
-  let reconciler = Reconciler.create ~container in
+  let reconciler = Reconciler.create ~container ~deliver:ignore in
   (renderer, reconciler)
 
 let render_view ?(viewport_width = 40) reconciler vnode =
@@ -526,7 +526,7 @@ let keyed_orders ~cull () =
         in
         (Printf.sprintf "e%d" i, node))
   in
-  let reconciler = Reconciler.create ~container in
+  let reconciler = Reconciler.create ~container ~deliver:ignore in
   let random = Random.State.make [| 17 |] in
   let pool =
     List.init 600 (fun i ->
@@ -1084,7 +1084,7 @@ let memo_reuses_equal_value_keys () =
   equal ~msg:"changed key rebuilds" int 2 !builds;
   equal ~msg:"one retained child" int 1 (child_count renderer)
 
-let memo_refreshes_message_mapper () =
+let memo_follows_message_mapper () =
   let renderer, reconciler = make () in
   let builds = ref 0 and messages = ref [] in
   let build _ =
@@ -1107,7 +1107,7 @@ let memo_refreshes_message_mapper () =
   equal ~msg:"new mapper refreshes mounted callback" (list string)
     [ "second event"; "first event" ]
     !messages;
-  equal ~msg:"mapping invalidates memo" int 2 !builds
+  equal ~msg:"another map keeps the memo" int 1 !builds
 
 let nested_memo_keeps_independent_keys () =
   let renderer, reconciler = make () in
@@ -1343,7 +1343,8 @@ let () =
       group "Memo"
         [
           test "equal value keys" memo_reuses_equal_value_keys;
-          test "message mapper refresh" memo_refreshes_message_mapper;
+          test "message mapper refresh keeps the memo"
+            memo_follows_message_mapper;
           test "nested memo keys" nested_memo_keeps_independent_keys;
           test "keyed parent ownership" memo_belongs_to_keyed_parent;
           test "removed memo releases view" removed_memo_releases_view;

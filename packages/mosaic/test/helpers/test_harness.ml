@@ -210,7 +210,7 @@ let only_child renderer =
 let through_element ?before ~act ~observe element =
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let declare view =
     Mosaic.Reconciler.render reconciler ~viewport_width:doors_width view;
@@ -359,7 +359,7 @@ let paint ?(theme = Theme.plain) ?(focused = false) view =
   let renderer = Renderer.create () in
   Renderer.set_theme renderer theme;
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   Mosaic.Reconciler.render reconciler ~viewport_width:doors_width view;
   Renderer.render_frame renderer ~width:doors_width ~height:doors_height ~dt:0.;

@@ -254,7 +254,7 @@ let reconcile_equal_list n =
   in
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let render view =
     Mosaic.Reconciler.render reconciler ~viewport_width:80 view
@@ -269,6 +269,39 @@ let unchanged_list () =
   same "reconciling a fresh but equal list of texts"
     ~small:(reconcile_equal_list 1_000)
     ~large:(reconcile_equal_list 16_000)
+
+(* ───── Maps ─────
+
+   A map is a node: a render stores its function at its place, and a
+   handler's message goes through the functions of the maps above it when
+   it fires. A render costs each map a few words of its own and nothing per
+   element under it: reconciling a fresh but equal subtree under four maps
+   allocates the same words for 1,000 texts and for 16,000. *)
+
+let under_maps depth n =
+  let rec wrap depth view =
+    if depth = 0 then view else wrap (depth - 1) (Mosaic.map Fun.id view)
+  in
+  let view () =
+    wrap depth
+      (Mosaic.box (List.init n (fun i -> Mosaic.text (string_of_int i))))
+  in
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
+  let render view =
+    Mosaic.Reconciler.render reconciler ~viewport_width:80 view
+  in
+  render (view ());
+  let views = Array.init 3 (fun _ -> view ()) and next = ref 0 in
+  words (fun () ->
+      render views.(!next);
+      incr next)
+
+let nested_maps () =
+  same "reconciling texts under four maps" ~small:(under_maps 4 1_000)
+    ~large:(under_maps 4 16_000)
 
 (* ───── A shared layout ─────
 
@@ -301,7 +334,7 @@ let shared_layout () =
       shared overridden copy;
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let declare () =
     Mosaic.Reconciler.render reconciler ~viewport_width:80
@@ -355,7 +388,7 @@ let rotation_time n =
   in
   let renderer = Renderer.create () in
   let reconciler =
-    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
   in
   let render view = Mosaic.Reconciler.render reconciler ~viewport_width:80 view
   and in_order = view 0
@@ -620,6 +653,8 @@ let () =
         [ test "a text" default_text ];
       group "An unchanged list costs nothing per element"
         [ test "a fresh but equal list of texts" unchanged_list ];
+      group "A map costs nothing per element"
+        [ test "under four maps" nested_maps ];
       group "A shared layout costs nothing per element"
         [ test "a text given ~layout" shared_layout ];
       group "Keys follow the items moved over"
