@@ -876,16 +876,20 @@ let determine_flex_base_size (type t)
        then 0.0
        else Float.nan);
 
-    (* Compute hypothetical sizes. With a maximum, the hypothetical size
-       depends on the minimum only through its padding and border floor, as
-       an automatic minimum is at most the maximum or equal to that floor.
-       Without one, the hypothetical size is the flex base size whenever the
-       bound of an automatic minimum does not exceed it. *)
+    (* Compute hypothetical sizes: the flex base size capped by the maximum,
+       then floored by the minimum (CSS Flexbox 9.2 step 3, Taffy's
+       [flex_basis.maybe_clamp(min, max)]), so a minimum above the maximum
+       wins. A minimum no larger than the capped size leaves it as it is, so
+       an automatic minimum is measured only for a capped size below its
+       bound. *)
     let max_main = if is_row then child.s.max_width else child.s.max_height in
+    let capped =
+      if Float.is_nan max_main then flex_basis
+      else Float.min flex_basis max_main
+    in
     if
       Float.is_nan child.s.resolved_minimum_main_size
-      && Float.is_nan max_main
-      && automatic_minimum_bound constants child > flex_basis
+      && automatic_minimum_bound constants child > capped
     then measure_automatic_minimum (module Tree) tree constants child;
     let hypothetical_inner_min_main =
       let minimum = child.s.resolved_minimum_main_size in
@@ -893,9 +897,7 @@ let determine_flex_base_size (type t)
       else Float.max minimum padding_border_sum
     in
     let hypothetical_inner_size =
-      if Float.is_nan max_main then
-        Float.max flex_basis hypothetical_inner_min_main
-      else Float.min flex_basis (Float.max hypothetical_inner_min_main max_main)
+      Float.max capped hypothetical_inner_min_main
     in
     if is_row then child.s.hypothetical_inner_width <- hypothetical_inner_size
     else child.s.hypothetical_inner_height <- hypothetical_inner_size

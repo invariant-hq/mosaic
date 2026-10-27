@@ -8943,6 +8943,50 @@ let () =
             [| 0.; 0.; 50.; 50. |];
             [| 50.; 0.; 50.; 50. |];
           ];
+      case "basis_below_min_with_max"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_wrap:Wrap ~align_content:Flex_start
+               ~size:
+                 {
+                   width = Dimension.length 100.;
+                   height = Dimension.length 100.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_shrink:0.
+                   ~flex_basis:(Dimension.length 20.)
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 10. }
+                   ~min_size:
+                     { width = Dimension.length 50.; height = Dimension.auto }
+                   ~max_size:
+                     { width = Dimension.length 80.; height = Dimension.auto }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing ~flex_shrink:0.
+                   ~size:
+                     {
+                       width = Dimension.length 60.;
+                       height = Dimension.length 10.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 100. |];
+            [| 0.; 0.; 50.; 10. |];
+            [| 0.; 10.; 60.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 100. |];
+            [| 0.; 0.; 50.; 10. |];
+            [| 0.; 10.; 60.; 10. |];
+          ];
       case "basis_flex_grow_column"
         (fun box_sizing ->
           node
