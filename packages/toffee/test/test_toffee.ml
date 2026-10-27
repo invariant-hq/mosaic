@@ -811,6 +811,37 @@ let text length (known : float option size) (available : Available_space.t size)
           ~default:(Float.ceil (length /. Float.max 1. width));
     }
 
+(* An image of [width] by [height], a replaced element: a known width or height
+   sets the other through its ratio, and the space available changes neither
+   (CSS 2 10.3.2 and 10.6.2). *)
+let image ~width ~height (known : float option size) _available =
+  let ratio = width /. height in
+  match (known.width, known.height) with
+  | Some width, Some height -> Sizef.{ width; height }
+  | Some width, None -> Sizef.{ width; height = width /. ratio }
+  | None, Some height -> Sizef.{ width = height *. ratio; height }
+  | None, None -> Sizef.{ width; height }
+
+(* An image that, where nothing fixes its size, fits into the space available
+   with its ratio kept, and has no width at a min-content constraint, as
+   Flutter's RenderImage does. *)
+let fitted_image ~width ~height (known : float option size)
+    (available : Available_space.t size) =
+  let ratio = width /. height in
+  match (known.width, known.height) with
+  | None, None -> (
+      let width =
+        match available.width with
+        | Definite w -> Float.min width w
+        | Min_content -> 0.
+        | Max_content -> width
+      in
+      let height = width /. ratio in
+      match available.height with
+      | Definite h when height > h -> Sizef.{ width = h *. ratio; height = h }
+      | _ -> Sizef.{ width; height })
+  | _ -> image ~width ~height known available
+
 (* A grid holding a leaf whose style is [leaf_style] is laid out [width] wide
    at the root height [before], then at [after]. The grid measures the leaf
    against its own inner height, unknown while the grid is measured and known
@@ -918,12 +949,16 @@ let test_block_measurement_keeps_child_layouts () =
   equal ~msg:"height after relayout" float_exact 1. (size ()).height
 
 (* The leaves of these trees hold a text or a reader. *)
-type content = Text of float | Reader of float
+type content =
+  | Text of float
+  | Reader of float
+  | Image of float * float  (** An image of a width by a height. *)
 
 let content_measure known available _ content _ =
   match content with
   | Some (Text length) -> text length known available
   | Some (Reader length) -> reader length known available
+  | Some (Image (width, height)) -> image ~width ~height known available
   | None -> Sizef.zero
 
 (* A tree that [build] makes is laid out [width] wide at the root height
@@ -1385,8 +1420,10 @@ let test_percentages_follow_a_resized_root () =
    same inputs give it the same size, for random styles (padding, borders,
    sizes, minimums and maximums in lengths and percentages, aspect ratios,
    both box sizings) and random inputs. The leaf holds a text, which wraps at
-   the width it is given, known or available, or a reader. *)
-let leaf_measurement_is_its_final_layout seed =
+   the width it is given, known or available, or a reader; or, [replaced], it
+   is a replaced element holding an image, which keeps its natural size or
+   fits it into the space available. *)
+let leaf_measurement_is_its_final_layout ~replaced seed =
   let rng = Random.State.make [| seed |] in
   let int n = Random.State.int rng n in
   let chance p = Random.State.float rng 1. < p in
@@ -1410,6 +1447,7 @@ let leaf_measurement_is_its_final_layout seed =
       ~max_size:{ width = sometimes dimension; height = sometimes dimension }
       ?aspect_ratio:(if chance 0.2 then Some (pick [| 0.5; 1.; 2. |]) else None)
       ~padding:(edges ()) ~border:(edges ()) ()
+    |> Style.set_item_is_replaced replaced
   in
   let known () = if chance 0.5 then Some (length ()) else None in
   let available () =
@@ -1419,7 +1457,11 @@ let leaf_measurement_is_its_final_layout seed =
     | _ -> Available_space.max_content
   in
   let content =
-    if chance 0.5 then text (Float.of_int (1 + int 40))
+    if replaced then
+      let width = Float.of_int (1 + int 40)
+      and height = Float.of_int (1 + int 40) in
+      if chance 0.5 then image ~width ~height else fitted_image ~width ~height
+    else if chance 0.5 then text (Float.of_int (1 + int 40))
     else reader (Float.of_int (1 + int 40))
   in
   let known_dimensions = Size.{ width = known (); height = known () } in
@@ -1477,6 +1519,163 @@ let test_padded_text_measured_as_laid_out () =
   equal ~msg:"text height" float_exact 10. (Layout.size l).height;
   equal ~msg:"next line" float_exact 10.
     (Layout.location (layout tree next |> or_fail "next")).y
+
+(* A replaced leaf holding an image of [width] by [height]. *)
+let replaced_leaf tree ?(style = Style.default) width height =
+  leaf tree
+    ~style:(Style.set_item_is_replaced true style)
+    (Image (width, height))
+
+let lay_out tree root ~width ~height =
+  compute_layout_with_measure tree root
+    Size.
+      {
+        width = Available_space.of_float width;
+        height = Available_space.of_float height;
+      }
+    content_measure
+  |> or_fail "layout"
+
+let size_of tree node = Layout.size (layout tree node |> or_fail "layout")
+
+let location_of tree node =
+  Layout.location (layout tree node |> or_fail "layout")
+
+(* A replaced leaf whose style gives one size gets the other through its
+   natural ratio, in a measurement and in a final layout: an image of 100 by
+   50 that is 60 wide is 30 tall, and one of 50 by 100 that is 60 tall is 30
+   wide (CSS 2 10.6.2 and 10.3.2; Taffy #1157). *)
+let test_replaced_leaf_transfers_its_size () =
+  let check ~msg ~style ~width ~height expected =
+    let tree = new_tree () in
+    let image = replaced_leaf tree ~style width height in
+    let available =
+      Size.
+        {
+          width = Available_space.max_content;
+          height = Available_space.max_content;
+        }
+    in
+    compute_layout_with_measure tree image available content_measure
+    |> or_fail "layout";
+    let size = size_of tree image in
+    equal ~msg (pair float_exact float_exact) expected (size.width, size.height)
+  in
+  check ~msg:"width 60" ~width:100. ~height:50.
+    ~style:(Style.default |> Style.set_width (Style.Dimension.length 60.))
+    (60., 30.);
+  check ~msg:"height 60" ~width:50. ~height:100.
+    ~style:(Style.default |> Style.set_height (Style.Dimension.length 60.))
+    (30., 60.)
+
+(* A block 600 wide does not stretch a replaced child to its width: an image of
+   142 by 20 keeps its natural size (CSS 2 10.3.4), and auto margins center it.
+   A leaf that is not replaced takes the block's width. *)
+let test_block_keeps_replaced_natural_size () =
+  let tree = new_tree () in
+  let image = replaced_leaf tree 142. 20. in
+  let auto = Style.Length_percentage_auto.auto in
+  let centered =
+    replaced_leaf tree
+      ~style:
+        (Style.default |> Style.set_margin_left auto
+        |> Style.set_margin_right auto)
+      142. 20.
+  in
+  let stretched = leaf tree (Image (142., 20.)) in
+  let block =
+    node tree
+      (Style.default
+      |> Style.set_display Style.Display.Block
+      |> Style.set_width (Style.Dimension.length 600.))
+      [ image; centered; stretched ]
+  in
+  lay_out tree block ~width:1000. ~height:1000.;
+  equal ~msg:"image width" float_exact 142. (size_of tree image).width;
+  equal ~msg:"image height" float_exact 20. (size_of tree image).height;
+  equal ~msg:"centered x" float_exact 229. (location_of tree centered).x;
+  equal ~msg:"centered y" float_exact 20. (location_of tree centered).y;
+  equal ~msg:"not replaced width" float_exact 600.
+    (size_of tree stretched).width
+
+(* A grid's [normal] alignment sizes a replaced item as [Start] does, at its
+   natural size, in an area 600 by 100 (CSS Grid 6.2), where it stretches a
+   text. *)
+let test_grid_normal_keeps_replaced_natural_size () =
+  let size ~replaced =
+    let tree = new_tree () in
+    let item =
+      if replaced then replaced_leaf tree 142. 20. else leaf tree (Text 5.)
+    in
+    let grid =
+      node tree
+        (Style.make ~display:Style.Display.Grid
+           ~size:
+             Size.
+               {
+                 width = Style.Dimension.length 600.;
+                 height = Style.Dimension.length 100.;
+               }
+           ())
+        [ item ]
+    in
+    lay_out tree grid ~width:1000. ~height:1000.;
+    let size = size_of tree item in
+    (size.width, size.height)
+  in
+  equal ~msg:"replaced"
+    (pair float_exact float_exact)
+    (142., 20.) (size ~replaced:true);
+  equal ~msg:"text"
+    (pair float_exact float_exact)
+    (600., 100.) (size ~replaced:false)
+
+(* A flex container stretches a replaced item as any other: in a single-line
+   container 40 by 40, an image of 16 by 16 with its ratio and no minimum
+   size fills the cross axis and takes its main size from it through the
+   ratio, unless a size is given (WPT css-flexbox
+   image-as-flexitem-size-003 and -004). *)
+let test_flex_stretches_replaced_item () =
+  let check ~direction ~size:(width, height) ~msg expected =
+    let tree = new_tree () in
+    let image =
+      replaced_leaf tree
+        ~style:
+          (Style.make ~aspect_ratio:1.
+             ~size:Size.{ width; height }
+             ~min_size:
+               Size.
+                 {
+                   width = Style.Dimension.length 0.;
+                   height = Style.Dimension.length 0.;
+                 }
+             ())
+        16. 16.
+    in
+    let root =
+      node tree
+        (Style.make ~flex_direction:direction
+           ~size:
+             Size.
+               {
+                 width = Style.Dimension.length 40.;
+                 height = Style.Dimension.length 40.;
+               }
+           ())
+        [ image ]
+    in
+    lay_out tree root ~width:100. ~height:100.;
+    let size = size_of tree image in
+    equal ~msg (pair float_exact float_exact) expected (size.width, size.height)
+  in
+  let auto = Style.Dimension.auto and l = Style.Dimension.length in
+  let row = Style.Flex_direction.Row and column = Style.Flex_direction.Column in
+  check ~direction:row ~size:(auto, auto) ~msg:"row" (40., 40.);
+  check ~direction:row ~size:(l 30., auto) ~msg:"row, width 30" (30., 40.);
+  check ~direction:row ~size:(auto, l 30.) ~msg:"row, height 30" (30., 30.);
+  check ~direction:column ~size:(auto, auto) ~msg:"column" (40., 40.);
+  check ~direction:column ~size:(l 30., auto) ~msg:"column, width 30" (30., 30.);
+  check ~direction:column ~size:(auto, l 30.) ~msg:"column, height 30" (40., 30.)
 
 (* A percent-width item clamped by its own max-width must be measured at the
    clamped width when deriving content-based sizes, so wrapping content
@@ -2361,9 +2560,20 @@ let () =
             every_cache_hit_is_a_computation;
           test "A chunk keeps its final layout" test_chunk_keeps_final_layout;
           prop ~count:2000 "A leaf's measurement is its final layout" Gen.int
-            leaf_measurement_is_its_final_layout;
+            (leaf_measurement_is_its_final_layout ~replaced:false);
+          prop ~count:2000 "A replaced leaf's measurement is its final layout"
+            Gen.int
+            (leaf_measurement_is_its_final_layout ~replaced:true);
           test "A padded text is measured as it is laid out"
             test_padded_text_measured_as_laid_out;
+          test "A replaced leaf transfers its size through its ratio"
+            test_replaced_leaf_transfers_its_size;
+          test "A block keeps a replaced child's natural size"
+            test_block_keeps_replaced_natural_size;
+          test "A grid's normal alignment keeps a replaced item's natural size"
+            test_grid_normal_keeps_replaced_natural_size;
+          test "A flex container stretches a replaced item"
+            test_flex_stretches_replaced_item;
           test "Percentages follow a resized root"
             test_percentages_follow_a_resized_root;
         ];

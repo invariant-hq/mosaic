@@ -305,6 +305,7 @@ let set_max_size max_size t = { t with max_size }
 let set_max_width width t = { t with max_size = { t.max_size with width } }
 let set_max_height height t = { t with max_size = { t.max_size with height } }
 let set_aspect_ratio aspect_ratio t = { t with aspect_ratio }
+let set_item_is_replaced item_is_replaced t = { t with item_is_replaced }
 let set_margin margin t = { t with margin }
 let set_margin_left left t = { t with margin = { t.margin with left } }
 let set_margin_right right t = { t with margin = { t.margin with right } }

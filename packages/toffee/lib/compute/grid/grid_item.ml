@@ -76,6 +76,16 @@ type t = {
       (* Final height. Used to compute baseline alignment for the container *)
 }
 
+(* An item's alignment, its own or else the container's. With neither, the
+   [normal] alignment stretches an item, but sizes a replaced element as
+   [Start] does (CSS Grid 6.2). *)
+let self_alignment style own container =
+  match (own, container) with
+  | Some alignment, _ | None, Some alignment -> alignment
+  | None, None ->
+      if Style.item_is_replaced style then Align_items.Start
+      else Align_items.Stretch
+
 (* Create a new item given a concrete placement in both axes *)
 let new_with_placement_style_and_order ~node ~col_span ~row_span ~style
     ~parent_align_items ~parent_justify_items ~source_order =
@@ -95,9 +105,9 @@ let new_with_placement_style_and_order ~node ~col_span ~row_span ~style
     border = Style.border style;
     margin = Style.margin style;
     align_self =
-      Option.value (Style.align_self style) ~default:parent_align_items;
+      self_alignment style (Style.align_self style) parent_align_items;
     justify_self =
-      Option.value (Style.justify_self style) ~default:parent_justify_items;
+      self_alignment style (Style.justify_self style) parent_justify_items;
     baseline = None;
     baseline_shim = 0.0;
     row_indexes = Line.make 0 0;

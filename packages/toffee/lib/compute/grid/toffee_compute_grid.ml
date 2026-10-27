@@ -272,9 +272,7 @@ let compute_grid_layout (type t)
         (module Tree)
         ~cell_occupancy_matrix ~items ~tree ~parent_node:node
         ~grid_auto_flow:(Style.grid_auto_flow style)
-        ~align_items:(Option.value align_items ~default:Align_items.Stretch)
-        ~justify_items:(Option.value justify_items ~default:Align_items.Stretch)
-        ~named_line_resolver:name_resolver;
+        ~align_items ~justify_items ~named_line_resolver:name_resolver;
 
       (* Extract track counts from previous step (auto-placement can expand the
          number of tracks) *)

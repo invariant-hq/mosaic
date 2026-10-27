@@ -234,8 +234,9 @@ let placement_test_runner ~flow ~explicit_cols ~explicit_rows children
 
   Toffee_compute_grid.Placement.place_grid_items tree
     ~cell_occupancy_matrix:cell_occupancy ~items ~tree:() ~parent_node
-    ~grid_auto_flow:flow ~align_items:Style.Align_items.Start
-    ~justify_items:Style.Align_items.Start ~named_line_resolver:name_resolver;
+    ~grid_auto_flow:flow ~align_items:(Some Style.Align_items.Start)
+    ~justify_items:(Some Style.Align_items.Start)
+    ~named_line_resolver:name_resolver;
 
   (* Compare placements *)
   let sorted_items =

@@ -74,8 +74,8 @@ val new_with_placement_style_and_order :
   col_span:origin_zero_line line ->
   row_span:origin_zero_line line ->
   style:Toffee_style.t ->
-  parent_align_items:align_items ->
-  parent_justify_items:justify_items ->
+  parent_align_items:align_items option ->
+  parent_justify_items:justify_items option ->
   source_order:int ->
   t
 (** [new_with_placement_style_and_order ~node ~col_span ~row_span ~style
@@ -83,9 +83,10 @@ val new_with_placement_style_and_order :
     item with concrete placement.
 
     Initializes style properties from [style] and sets
-    [align_self]/[justify_self] to parent values if not explicitly specified.
-    All index and crossing fields are set to default values and must be
-    initialized later. *)
+    [align_self]/[justify_self] to parent values if not explicitly specified,
+    and, if neither is, to [Stretch], or [Start] for a replaced element. All
+    index and crossing fields are set to default values and must be initialized
+    later. *)
 
 val placement : t -> abstract_axis -> origin_zero_line line
 (** [placement t axis] returns the item's placement in origin-zero coordinates

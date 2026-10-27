@@ -16,8 +16,11 @@ module Helpers = struct
     | None, None -> value
 end
 
-(* Helper to determine if a style represents a table *)
-let is_table (style : Style.t) : bool = Style.item_is_table style
+(* Whether a block container stretches a child with an auto width to its own
+   width: not a table, nor a replaced element, whose auto width is its natural
+   width (CSS 2 10.3.4). *)
+let is_stretched (style : Style.t) : bool =
+  not (Style.item_is_table style || Style.item_is_replaced style)
 
 (* Per-child data that is accumulated and modified over the course of the layout
    algorithm *)
@@ -27,8 +30,9 @@ type block_item = {
       (* The "source order" of the item. This is the index of the item within
          the children iterator, and controls the order in which the nodes are
          placed *)
-  is_table : bool;
-      (* Items that are tables don't have stretch sizing applied to them *)
+  is_stretched : bool;
+      (* Whether an auto width stretches to the container's: not for tables and
+         replaced elements *)
   size : float option size; (* The base size of this item *)
   min_size : float option size; (* The minimum allowable size of this item *)
   max_size : float option size; (* The maximum allowable size of this item *)
@@ -86,7 +90,7 @@ let generate_item_list (type t)
         {
           node_id = child_node_id;
           order = !order;
-          is_table = is_table child_style;
+          is_stretched = is_stretched child_style;
           size =
             (let size_dimensions = Style.size child_style in
              let resolved_size : float option size =
@@ -305,13 +309,10 @@ let perform_final_layout_on_in_flow_children (type t)
         in
 
         let known_dimensions =
-          if item.is_table then Size.none
+          if not item.is_stretched then Size.none
           else
             item.size
             |> Size.map_width (fun width ->
-                (* TODO: Allow stretch-sizing to be conditional, as there are
-                   exceptions. e.g. Table children of blocks do not stretch
-                   fit *)
                 match width with
                 | Some w ->
                     Some

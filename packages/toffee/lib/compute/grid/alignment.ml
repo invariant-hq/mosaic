@@ -264,8 +264,10 @@ let align_and_position_item (type t)
   (* Resolve default alignment styles if they are set on neither the parent or
      the node itself Note: if the child has a preferred aspect ratio but neither
      width or height are set, then the width is stretched and the then height is
-     calculated from the width according the aspect ratio See:
+     calculated from the width according the aspect ratio. A replaced element is
+     not stretched: it is sized as for [Start]. See:
      https://www.w3.org/TR/css-grid-1/#grid-item-sizing *)
+  let is_replaced = Style.item_is_replaced style in
   let alignment_styles =
     In_both_abs_axis.
       {
@@ -274,7 +276,8 @@ let align_and_position_item (type t)
           | Some js, _ -> js
           | None, Some ca -> ca
           | None, None ->
-              if Option.is_some inherent_size.width then Align_items.Start
+              if Option.is_some inherent_size.width || is_replaced then
+                Align_items.Start
               else Align_items.Stretch);
         vertical =
           (match (align_self, container_alignment_styles.vertical) with
@@ -284,6 +287,7 @@ let align_and_position_item (type t)
               if
                 Option.is_some inherent_size.height
                 || Option.is_some aspect_ratio
+                || is_replaced
               then Align_items.Start
               else Align_items.Stretch);
       }

@@ -542,7 +542,13 @@ type 'context measure_function =
     therefore give the same size for a known dimension as for that dimension
     given as definite available space, or a leaf's measurement and its final
     layout disagree. With a known dimension, the result's size on that axis is
-    the known dimension. *)
+    the known dimension.
+
+    A replaced element ({!Style.item_is_replaced}) is measured and laid out with
+    the same known dimensions, those the layout fixes or else its style's, so
+    its function may answer a known dimension and available space apart: a known
+    width sets the height through the element's ratio, and the available space
+    need not change its natural size. *)
 
 val compute_layout_with_measure :
   'context tree ->

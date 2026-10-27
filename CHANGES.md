@@ -201,6 +201,10 @@ it.
 
 ### Toffee
 
+#### Added
+
+- **Replaced elements.** `Style.set_item_is_replaced` makes a leaf a replaced element, such as an image, whose measure function gives its natural size, as Taffy's `item_is_replaced` does. A block container keeps its natural width instead of stretching it to its own (CSS 2 §10.3.4, Taffy #1002), and a grid's `normal` alignment sizes it as `Start` (CSS Grid §6.2, Taffy #1281); a flex container stretches it as any item. Its measure function is given the size the layout fixes, or else its style's, in a measurement and in a final layout alike (Taffy #1157), so a width sets its height through its ratio and the two agree: an image of 100 by 50 that is 60 wide is 30 tall
+
 #### Changed
 
 - The sublibraries' modules are prefixed: `Toffee_style`, `Toffee_tree`, `Toffee_geometry`, `Toffee_compute` and `Toffee_compute_block`, `_flexbox`, `_grid` and `_helpers`. The library names and `Toffee.Style` and `Toffee.Geometry` stay

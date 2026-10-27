@@ -63,7 +63,8 @@ val compute_leaf_layout :
       the content box's known size, clamped by the minimum and maximum sizes; a
       final layout gives it none, with that size as definite available space.
       The leaf gets the same size from both when the closure answers the two
-      alike.
+      alike. A replaced element ({!Toffee_style.item_is_replaced}) is given its
+      known size, or its style's, in both.
 
     The function handles:
 

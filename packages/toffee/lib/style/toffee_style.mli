@@ -258,7 +258,16 @@ val text_align : t -> text_align
 (** [text_align t] returns the text alignment. See {!Text_align}. *)
 
 val item_is_replaced : t -> bool
-(** [item_is_replaced t] returns [true] if the item is a replaced element. *)
+(** [item_is_replaced t] is [true] if the item is a replaced element, such as an
+    image: its content is outside the layout, and its measure function gives its
+    natural size. A block container does not stretch it to its width (CSS 2
+    §10.3.4), and a grid's [normal] alignment, where neither the item nor the
+    container sets one, sizes it as [Start] does (CSS Grid §6.2); a flex
+    container stretches it as any item. Its measure function is given the size
+    the layout fixes, or else its style's, in a measurement and in a final
+    layout alike, so that it can set one dimension from the other through the
+    element's ratio. Its natural ratio belongs in {!aspect_ratio} too, where the
+    layouts read it. Default [false]. *)
 
 val box_sizing : t -> box_sizing
 (** [box_sizing t] returns the box sizing mode. See {!Box_sizing}. *)
@@ -429,6 +438,10 @@ val set_max_height : dimension -> t -> t
 
 val set_aspect_ratio : float option -> t -> t
 (** [set_aspect_ratio v t] returns a style with updated aspect ratio. *)
+
+val set_item_is_replaced : bool -> t -> t
+(** [set_item_is_replaced v t] returns a style with {!item_is_replaced} set to
+    [v]. *)
 
 val set_margin : length_percentage_auto Toffee_geometry.rect -> t -> t
 (** [set_margin v t] returns a style with updated margin values. *)

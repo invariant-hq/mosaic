@@ -213,7 +213,11 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
       (* A measurement gives the measure function the known size of the
          content box, clamped as the available space is. A final layout gives
          it none, and the same size as available space, so that a function
-         that treats the two alike measures the leaf the same in both. *)
+         that treats the two alike measures the leaf the same in both. A
+         replaced element is given its known size, or its style's, in both:
+         its natural size does not depend on the space available, so it needs
+         the size the layout fixes to transfer it through its ratio (CSS 2
+         10.3.2 and 10.6.2). *)
       let measured_size =
         (* The known size itself, allocating nothing, when neither the
            bounds nor the inset change it. *)
@@ -232,26 +236,24 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
               let content = Float.max 0. (clamped -. inset) in
               if Float.equal content size then known else Some content
         in
-        let known_for_measure =
+        let known =
           match run_mode with
-          | Run_mode.Compute_size ->
-              let width =
-                content known_dimensions.width node_min_size.width
-                  node_max_size.width
-                  (Rectf.horizontal_axis_sum content_box_inset)
-              and height =
-                content known_dimensions.height node_min_size.height
-                  node_max_size.height
-                  (Rectf.vertical_axis_sum content_box_inset)
-              in
-              if
-                width == known_dimensions.width
-                && height == known_dimensions.height
-              then known_dimensions
-              else Size.{ width; height }
-          | Run_mode.Perform_layout -> Size.none
           | Run_mode.Perform_hidden_layout ->
               invalid_arg "Leaf node cannot be measured in hidden layout mode"
+          | _ when Style.item_is_replaced style -> node_size
+          | Run_mode.Compute_size -> known_dimensions
+          | Run_mode.Perform_layout -> Size.none
+        in
+        let known_for_measure =
+          let width =
+            content known.width node_min_size.width node_max_size.width
+              (Rectf.horizontal_axis_sum content_box_inset)
+          and height =
+            content known.height node_min_size.height node_max_size.height
+              (Rectf.vertical_axis_sum content_box_inset)
+          in
+          if width == known.width && height == known.height then known
+          else Size.{ width; height }
         in
         measure_function known_for_measure available_space_computed
       in

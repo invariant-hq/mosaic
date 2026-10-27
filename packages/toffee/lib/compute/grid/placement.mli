@@ -44,8 +44,8 @@ val place_grid_items :
   tree:'tree ->
   parent_node:Toffee_tree.Node_id.t ->
   grid_auto_flow:Toffee_style.grid_auto_flow ->
-  align_items:Toffee_style.align_items ->
-  justify_items:Toffee_style.align_items ->
+  align_items:Toffee_style.align_items option ->
+  justify_items:Toffee_style.align_items option ->
   named_line_resolver:Named.t ->
   unit
 (** [place_grid_items (module Tree) ~cell_occupancy_matrix ~items ~tree
