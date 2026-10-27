@@ -22,11 +22,12 @@
 
     This prints a word in bold red on standard output, as the environment
     decides for a terminal, where [caps] are the terminal's capabilities
-    ({!Matrix_terminal.Caps.derive}):
+    ([Matrix_terminal.Caps.derive]):
     {[
     let styling =
       Matrix_cli.Policy.styling Sys.getenv_opt ~tty:(Unix.isatty Unix.stdout)
-        caps
+        ~dumb:caps.dumb
+        (caps.colors :> Ansi.Color.depth)
     in
     let a = Matrix_cli.adapter styling in
     print_string (Matrix_cli.adapt a "\027[1;31mdone\027[0m\n")
@@ -41,9 +42,12 @@ type styling = Ansi.Styling.t
 (** The decision of what a destination receives.
 
     A destination's styling is decided by {!Ansi.Styling}'s rule, from the
-    program's choice, the user's environment and the terminal's capabilities,
-    each destination on its own. Whether rows may be redrawn there is this
-    module's decision ({!live}). *)
+    program's choice, the user's environment and two of the terminal's
+    capabilities, whether it is dumb and the depth of the colors it shows, each
+    destination on its own. A program reads the two from the terminal's
+    capabilities, as [Matrix_terminal.Caps.t]'s [dumb] and [colors] give them.
+    Whether rows may be redrawn there is this module's decision
+    ({!Policy.live}). *)
 module Policy : sig
   type choice = Ansi.Styling.choice
   (** The type for a program's choices ({!Ansi.Styling.type-choice}). *)
@@ -56,20 +60,21 @@ module Policy : sig
     ?color:choice ->
     (string -> string option) ->
     tty:bool ->
-    Matrix_terminal.Caps.t ->
+    dumb:bool ->
+    Ansi.Color.depth ->
     styling
-  (** [styling ~color getenv ~tty caps] is the styling of a destination, which
-      is a terminal iff [tty], whose capabilities are [caps], for the program's
-      choice [color] ([`Auto] by default) and the environment read through
-      [getenv], such as [Sys.getenv_opt]. It is {!Ansi.Styling.decide} with
-      [caps]' [dumb] and [colors]. *)
+  (** [styling ~color getenv ~tty ~dumb colors] is the styling of a destination,
+      which is a terminal iff [tty], a dumb one iff [dumb], that shows colors of
+      depth [colors], for the program's choice [color] ([`Auto] by default) and
+      the environment read through [getenv], such as [Sys.getenv_opt]. It is
+      {!Ansi.Styling.decide}. *)
 
-  val live :
-    (string -> string option) -> tty:bool -> Matrix_terminal.Caps.t -> bool
-  (** [live getenv ~tty caps] is [true] iff rows may be redrawn on the
-      destination, which is then a terminal that is not dumb, with [CI] unset,
-      empty or [false]. A continuous integration job keeps its output as a log
-      that replays line by line, where redrawn rows pile up. *)
+  val live : (string -> string option) -> tty:bool -> dumb:bool -> bool
+  (** [live getenv ~tty ~dumb] is [true] iff rows may be redrawn on the
+      destination, which is a terminal iff [tty] and a dumb one iff [dumb]. Rows
+      may be redrawn on a terminal that is not dumb, with [CI] unset, empty or
+      [false]. A continuous integration job keeps its output as a log that
+      replays line by line, where redrawn rows pile up. *)
 end
 
 (** {1:adapting Adapting what a program prints}

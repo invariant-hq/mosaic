@@ -474,13 +474,16 @@ let make ?color fd =
     | Some n when n > 0 -> Some (min n Matrix_grid.max_width)
     | _ -> None
   in
-  let styling = Policy.styling ?color getenv ~tty caps in
+  let styling =
+    Policy.styling ?color getenv ~tty ~dumb:caps.dumb
+      (caps.colors :> Ansi.Color.depth)
+  in
   {
     fd;
     tty;
     caps;
     styling;
-    live_ok = Policy.live getenv ~tty caps;
+    live_ok = Policy.live getenv ~tty ~dumb:caps.dumb;
     columns;
     adapter = Matrix_cli.adapter styling;
     out_device = device fd;

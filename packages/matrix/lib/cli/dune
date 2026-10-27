@@ -5,4 +5,4 @@
   (backend ppx_windtrap.mutate))
  (name matrix_cli)
  (public_name matrix.cli)
- (libraries matrix.ansi matrix.text matrix.grid matrix.terminal))
+ (libraries matrix.ansi matrix.text matrix.grid))

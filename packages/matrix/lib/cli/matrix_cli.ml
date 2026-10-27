@@ -4,14 +4,11 @@ module Policy = struct
   type choice = Ansi.Styling.choice
 
   let choices = Ansi.Styling.choices
-
-  let styling ?color getenv ~tty (caps : Matrix_terminal.Caps.t) =
-    Ansi.Styling.decide ?color getenv ~tty ~dumb:caps.dumb
-      (caps.colors :> Ansi.Color.depth)
+  let styling = Ansi.Styling.decide
 
   (* An empty CI is unset, as Ansi.Styling reads its variables. *)
-  let live getenv ~tty (caps : Matrix_terminal.Caps.t) =
-    tty && (not caps.dumb)
+  let live getenv ~tty ~dumb =
+    tty && (not dumb)
     &&
     match getenv "CI" with
     | None | Some ("" | "false") -> true
