@@ -54,8 +54,9 @@ let default_config = { use_rounding = true }
 (* Node data stored for each node. [rounded] holds when [final_layout] and
    every final layout below it were rounded from the current unrounded
    layouts, with the node's parent at the position [rounded_at] (x, y).
-   Setting an unrounded layout clears it on the node and its ancestors, so
-   [rounded] on a node implies it on every descendant. *)
+   Storing a different unrounded layout, or changing the node's style,
+   context or children, clears it on the node and its ancestors, so [rounded]
+   on a node implies it on every descendant. *)
 type node_data = {
   style : Style.t;
   mutable unrounded_layout : Layout.t;
@@ -241,6 +242,52 @@ let rec mark_dirty_recursive tree idx =
       | Some parent -> mark_dirty_recursive tree (Node_id.index parent)
       | None -> ())
 
+(* Clears [rounded] on the node at [idx] and its ancestors. A node that is not
+   rounded has no rounded ancestor, so clearing stops there. *)
+let rec unround tree idx =
+  let node_data = tree.nodes.(idx) in
+  if node_data.rounded then begin
+    node_data.rounded <- false;
+    match tree.parents.(idx) with
+    | Some parent -> unround tree (Node_id.index parent)
+    | None -> ()
+  end
+
+(* The node at [idx] changed through this module: its style, its context, its
+   children, or a [mark_dirty]. Its cached layouts and the final layouts
+   rounded at it and above are out of date. *)
+let changed tree idx =
+  mark_dirty_recursive tree idx;
+  unround tree idx
+
+(* [same_float x y] holds when [x] and [y] are equal bit for bit, so equal
+   zeros of opposite signs differ. Inlined, it compares the floats of a
+   layout without boxing them. *)
+let[@inline] same_float (x : float) y =
+  x = y && (x <> 0. || Float.sign_bit x = Float.sign_bit y)
+
+let[@inline] same_size (a : Sizef.t) (b : Sizef.t) =
+  same_float a.width b.width && same_float a.height b.height
+
+let[@inline] same_rect (a : Rectf.t) (b : Rectf.t) =
+  same_float a.left b.left && same_float a.right b.right
+  && same_float a.top b.top
+  && same_float a.bottom b.bottom
+
+(* [same_layout a b] holds when [a] and [b] are equal bit for bit, since a
+   stored layout keeps the sign of its zeros. *)
+let same_layout a b =
+  let open Layout in
+  order a = order b
+  && same_float (location a).x (location b).x
+  && same_float (location a).y (location b).y
+  && same_size (size a) (size b)
+  && same_size (content_size a) (content_size b)
+  && same_size (scrollbar_size a) (scrollbar_size b)
+  && same_rect (border a) (border b)
+  && same_rect (padding a) (padding b)
+  && same_rect (margin a) (margin b)
+
 let allocate_index tree =
   match tree.free_list with
   | idx :: rest ->
@@ -327,7 +374,7 @@ let remove tree node =
       | Some parent ->
           let parent_idx = Node_id.index parent in
           ignore (remove_child_value tree.children.(parent_idx) node);
-          mark_dirty_recursive tree parent_idx
+          changed tree parent_idx
       | None -> ());
 
       let children = tree.children.(idx) in
@@ -348,7 +395,7 @@ let set_node_context tree node context_opt =
       let node_data = tree.nodes.(idx) in
       tree.nodes.(idx) <- { node_data with has_context };
       tree.node_context_data.(idx) <- context_opt;
-      mark_dirty_recursive tree idx;
+      changed tree idx;
       Ok ()
 
 let get_node_context tree node =
@@ -368,7 +415,7 @@ let add_child tree parent child =
       | Ok child_idx ->
           tree.parents.(child_idx) <- Some parent;
           append_child tree.children.(parent_idx) child;
-          mark_dirty_recursive tree parent_idx;
+          changed tree parent_idx;
           Ok ())
 
 let insert_child_at_index tree parent child_position child =
@@ -387,7 +434,7 @@ let insert_child_at_index tree parent child_position child =
           else (
             tree.parents.(child_idx) <- Some parent;
             insert_child children child_position child;
-            mark_dirty_recursive tree parent_idx;
+            changed tree parent_idx;
             Ok ()))
 
 let set_children tree parent new_children =
@@ -411,14 +458,14 @@ let set_children tree parent new_children =
                   let old_parent_idx = Node_id.index old_parent in
                   let old_children = tree.children.(old_parent_idx) in
                   ignore (remove_child_value old_children child);
-                  mark_dirty_recursive tree old_parent_idx
+                  changed tree old_parent_idx
               | _ -> ());
               tree.parents.(child_idx) <- Some parent)
             new_children;
 
           clear_children current_children;
           Array.iter (append_child current_children) new_children;
-          mark_dirty_recursive tree parent_idx;
+          changed tree parent_idx;
           Ok ())
 
 let remove_child tree parent child =
@@ -431,7 +478,7 @@ let remove_child tree parent child =
       | Some idx ->
           let removed_child = remove_child_at children idx in
           tree.parents.(Node_id.index removed_child) <- None;
-          mark_dirty_recursive tree parent_idx;
+          changed tree parent_idx;
           Ok removed_child)
 
 let remove_child_at_index tree parent child_index =
@@ -445,7 +492,7 @@ let remove_child_at_index tree parent child_index =
       else
         let removed_child = remove_child_at children child_index in
         tree.parents.(Node_id.index removed_child) <- None;
-        mark_dirty_recursive tree parent_idx;
+        changed tree parent_idx;
         Ok removed_child
 
 let remove_children_range tree parent (start_idx, end_idx) =
@@ -464,7 +511,7 @@ let remove_children_range tree parent (start_idx, end_idx) =
           tree.parents.(Node_id.index child) <- None
         done;
         remove_children_range_in_buffer children start_idx end_idx;
-        mark_dirty_recursive tree parent_idx;
+        changed tree parent_idx;
         Ok ())
 
 let replace_child_at_index tree parent child_position new_child =
@@ -486,7 +533,7 @@ let replace_child_at_index tree parent child_position new_child =
             in
             tree.parents.(Node_id.index old_child) <- None;
             tree.parents.(new_child_idx) <- Some parent;
-            mark_dirty_recursive tree parent_idx;
+            changed tree parent_idx;
             Ok old_child)
 
 (* Query operations *)
@@ -519,7 +566,7 @@ let set_style tree node style =
   | Ok idx ->
       let node_data = tree.nodes.(idx) in
       tree.nodes.(idx) <- { node_data with style };
-      mark_dirty_recursive tree idx;
+      changed tree idx;
       Ok ()
 
 let style tree node =
@@ -544,7 +591,7 @@ let mark_dirty tree node =
   match node_index tree node with
   | Error _ as e -> e
   | Ok idx ->
-      mark_dirty_recursive tree idx;
+      changed tree idx;
       Ok ()
 
 let dirty tree node =
@@ -591,20 +638,17 @@ module View = struct
   let get_core_container_style tree node_id =
     tree.taffy.nodes.(node_index_exn tree.taffy node_id).style
 
+  (* A layout equal to the stored one keeps the stored record and the final
+     layouts rounded from it, so a relayout that changes nothing rounds
+     nothing again and every layout stays physically the same. *)
   let set_unrounded_layout tree node_id layout =
     let taffy = tree.taffy in
     let idx = node_index_exn taffy node_id in
-    taffy.nodes.(idx).unrounded_layout <- layout;
-    let rec unround idx =
-      let node_data = taffy.nodes.(idx) in
-      if node_data.rounded then begin
-        node_data.rounded <- false;
-        match taffy.parents.(idx) with
-        | Some parent -> unround (Node_id.index parent)
-        | None -> ()
-      end
-    in
-    unround idx
+    let node_data = taffy.nodes.(idx) in
+    if not (same_layout node_data.unrounded_layout layout) then begin
+      node_data.unrounded_layout <- layout;
+      unround taffy idx
+    end
 
   let resolve_calc_value _tree _val _basis = 0.0
 

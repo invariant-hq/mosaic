@@ -799,6 +799,44 @@ let chunks_keep_every_box =
       done;
       is_true ~msg:"every box as in the flat column, culled as a scan" !same)
 
+(* A chunk's member grows while the chunk's first member keeps its layout:
+   culling finds the grown member where it now is, and the member after it
+   where it moved. *)
+let chunk_follows_a_grown_member () =
+  let t = make_renderer () in
+  let column =
+    Renderable.create ~parent:(Renderer.root t)
+      ~style:
+        (Toffee.Style.default
+        |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column
+        |> Toffee.Style.set_width (dim 10))
+      ()
+  in
+  Renderable.Private.set_viewport_cull column true;
+  let row h =
+    Toffee.Style.default
+    |> Toffee.Style.set_width (dim 10)
+    |> Toffee.Style.set_height (dim h)
+    |> Toffee.Style.set_flex_shrink 0.
+  in
+  let rows =
+    Array.init 10 (fun _ -> Renderable.create ~parent:column ~style:(row 1) ())
+  in
+  do_frame ~width:20 ~height:20 t;
+  Renderable.set_style rows.(4) (row 5);
+  do_frame ~width:20 ~height:20 t;
+  (* Row 4 spans rows 4 to 9 of the column, row 5 starts at 9. *)
+  let kept =
+    kept_in ~parent:column ~x:0 ~y:(Renderable.y column + 7) ~width:10 ~height:1
+  in
+  is_true ~msg:"the grown member is kept" (List.memq rows.(4) kept);
+  is_false ~msg:"the moved member is culled" (List.memq rows.(5) kept);
+  is_true ~msg:"the moved member is kept where it is"
+    (List.memq rows.(5)
+       (kept_in ~parent:column ~x:0
+          ~y:(Renderable.y column + 9)
+          ~width:10 ~height:1))
+
 (* ── Viewport culling: frames ── *)
 
 (* One frame's rows. The grid is read before presentation swaps the screen's
@@ -2609,6 +2647,7 @@ let () =
             selection_reads_the_top_layer;
           culling_matches_a_scan;
           chunks_keep_every_box;
+          test "a chunk follows a grown member" chunk_follows_a_grown_member;
         ];
       group "Scroll hints"
         [

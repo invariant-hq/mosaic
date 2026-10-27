@@ -480,9 +480,12 @@ val layout : 'context tree -> Node_id.t -> Layout.t result
 
     With rounding, a node's layout value is replaced whenever a computation
     changes its layout, its position in the tree's coordinates, or the layout of
-    a node below it that no [Style.Display.None] node hides. A value that is
-    physically the same as an earlier one therefore shows that no such layout
-    changed since. *)
+    a node below it that no [Style.Display.None] node hides. It is also replaced
+    by the first computation after a change to the node or a node below it
+    through this module (a style, a context, children, or {!mark_dirty}). A
+    computation that leaves all of these as they were keeps the value. A value
+    that is physically the same as an earlier one therefore shows that no such
+    layout and no such node changed since. *)
 
 val unrounded_layout : 'context tree -> Node_id.t -> Layout.t
 (** [unrounded_layout tree node_id] returns the unrounded computed layout of

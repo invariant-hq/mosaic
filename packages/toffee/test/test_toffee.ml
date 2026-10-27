@@ -1316,7 +1316,7 @@ let incremental_rounding_matches_full_rounding seed =
   in
   check 0;
   for step = 1 to 20 do
-    (match Random.State.int rng 5 with
+    (match Random.State.int rng 6 with
     | 0 -> add_node ()
     | 1 | 2 ->
         let node = !nodes.(Random.State.int rng (Array.length !nodes)) in
@@ -1326,9 +1326,115 @@ let incremental_rounding_matches_full_rounding seed =
         match parent tree node with
         | Some parent -> ignore (remove_child tree parent node |> Result.get_ok)
         | None -> ())
+    | 4 ->
+        (* A move, or the attachment of a removed node, under a node outside
+           its subtree. *)
+        let node = !nodes.(Random.State.int rng (Array.length !nodes)) in
+        let target = !nodes.(Random.State.int rng (Array.length !nodes)) in
+        let rec inside node' =
+          Node_id.equal node' node
+          || match parent tree node' with Some p -> inside p | None -> false
+        in
+        if not (Node_id.equal node root || inside target) then begin
+          (match parent tree node with
+          | Some parent ->
+              ignore (remove_child tree parent node |> Result.get_ok)
+          | None -> ());
+          add_child tree target node |> Result.get_ok
+        end
     | _ -> (* A relayout under new available space only. *) ());
     check step
   done
+
+(* A column ahead of a sibling that grows is laid out again under its
+   parent's new height and stores layouts equal to the stored ones, which keep
+   their records: nothing in it is rounded again, and each of its layouts is
+   physically the layout of the previous pass. The sibling, changed through
+   the tree, and the root get new values. *)
+let test_equal_relayout_keeps_layouts () =
+  let tree = new_tree () in
+  let leaf width height =
+    Style.default
+    |> Style.set_size (make_size width height)
+    |> new_leaf tree |> or_fail "leaf"
+  in
+  let column_style =
+    Style.default |> Style.set_flex_direction Style.Flex_direction.Column
+  in
+  let a = leaf 20.6 10.3 in
+  let b = leaf 30.2 10.3 in
+  let column =
+    new_with_children tree column_style [| a; b |] |> or_fail "column"
+  in
+  let tail = leaf 10.0 5.5 in
+  let root =
+    new_with_children tree column_style [| column; tail |] |> or_fail "root"
+  in
+  let available = Size.{ width = definite 200.0; height = definite 200.0 } in
+  let layouts nodes =
+    List.map
+      (fun node ->
+        (layout tree node |> Result.get_ok, unrounded_layout tree node))
+      nodes
+  in
+  compute_or_fail tree root available "Compute layout";
+  let kept = layouts [ column; a; b ] and replaced = layouts [ root; tail ] in
+  set_style tree tail (Style.default |> Style.set_size (make_size 10.0 7.25))
+  |> or_fail "set style";
+  compute_or_fail tree root available "Recompute layout";
+  List.iter2
+    (fun (final, unrounded) (final', unrounded') ->
+      is_true ~msg:"Final layout kept" (final == final');
+      is_true ~msg:"Unrounded layout kept" (unrounded == unrounded'))
+    kept
+    (layouts [ column; a; b ]);
+  List.iter2
+    (fun (final, _) (final', _) ->
+      is_true ~msg:"Final layout replaced" (final != final'))
+    replaced
+    (layouts [ root; tail ]);
+  (* An equal style still changes the node: it and its ancestors get new
+     values, its sibling keeps its own. *)
+  let kept = layouts [ column ] and replaced = layouts [ root; tail ] in
+  set_style tree tail (Style.default |> Style.set_size (make_size 10.0 7.25))
+  |> or_fail "set equal style";
+  compute_or_fail tree root available "Recompute layout";
+  List.iter2
+    (fun (final, _) (final', _) ->
+      is_true ~msg:"Sibling layout kept" (final == final'))
+    kept (layouts [ column ]);
+  List.iter2
+    (fun (final, _) (final', _) ->
+      is_true ~msg:"Changed node's layout replaced" (final != final'))
+    replaced
+    (layouts [ root; tail ])
+
+(* Two equal children swap parents at different fractional positions. Every
+   unrounded layout stays equal, and each child's rounded height follows its
+   new position. *)
+let test_moved_child_rounded_at_new_position () =
+  let tree = new_tree () in
+  let box = Style.default |> Style.set_size (make_size 10.0 10.4) in
+  let c1 = new_leaf tree box |> or_fail "c1" in
+  let c2 = new_leaf tree box |> or_fail "c2" in
+  let a = new_with_children tree box [| c1 |] |> or_fail "a" in
+  let b = new_with_children tree box [| c2 |] |> or_fail "b" in
+  let root =
+    new_with_children tree
+      (Style.default |> Style.set_flex_direction Style.Flex_direction.Column)
+      [| a; b |]
+    |> or_fail "root"
+  in
+  let available = Size.{ width = definite 100.0; height = definite 100.0 } in
+  let height node = (Layout.size (layout tree node |> Result.get_ok)).height in
+  compute_or_fail tree root available "Compute layout";
+  equal ~msg:"c1 at y 0" float_exact 10.0 (height c1);
+  equal ~msg:"c2 at y 10.4" float_exact 11.0 (height c2);
+  set_children tree a [| c2 |] |> or_fail "set a";
+  set_children tree b [| c1 |] |> or_fail "set b";
+  compute_or_fail tree root available "Recompute layout";
+  equal ~msg:"c1 at y 10.4" float_exact 11.0 (height c1);
+  equal ~msg:"c2 at y 0" float_exact 10.0 (height c2)
 
 let () =
   run "Toffee Tests"
@@ -1378,6 +1484,9 @@ let () =
           test "Rounding without gaps" test_rounding_doesnt_leave_gaps;
           prop ~count:300 "Incremental rounding matches full rounding" Gen.int
             incremental_rounding_matches_full_rounding;
+          test "Equal relayout keeps layouts" test_equal_relayout_keeps_layouts;
+          test "Moved child rounded at its new position"
+            test_moved_child_rounded_at_new_position;
         ];
       group "display_none"
         [

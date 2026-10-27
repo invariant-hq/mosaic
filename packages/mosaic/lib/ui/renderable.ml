@@ -1469,10 +1469,11 @@ let rec refresh_positions t =
    the children that can paint inside the effective clip. Culling works in the
    parent's coordinates, where scrolling moves nothing, from an index of the
    children sorted by where their subtrees may paint. The layout tree replaces
-   a node's layout value whenever the layout of the node or of any node below
-   it changes, so an index, and a subtree's paint region, stay valid while the
-   layout value they were built from is the same value. Rebuilding is linear in
-   the children; a query costs a binary search and the children it keeps. *)
+   a node's layout value whenever the layout, the style or the children of the
+   node or of any node below it change, so an index, and a subtree's paint
+   region, stay valid while the layout value they were built from is the same
+   value. Rebuilding is linear in the children; a query costs a binary search
+   and the children it keeps. *)
 
 let toffee_layout t =
   match Toffee.layout t.ctx.tree t.toffee_node with
@@ -1539,10 +1540,14 @@ let column_entry ?stands_for child ~rank (r : paint_region) =
   { child; stands_for; rank; p0 = r.y0; p1 = r.y1; c0 = r.x0; c1 = r.x1 }
 
 (* The index of [k]'s visible members, ranked from [base]. The layout tree
-   replaces the first member's layout value whenever the chunk is laid out
-   again or moves, and a translation below a member forgets the index. *)
+   replaces the chunk's layout value whenever the chunk moves or a member
+   changes, and a translation below a member forgets the index. *)
 let chunk_index k ~base =
-  let built_from = toffee_layout k.members.(0) in
+  let built_from =
+    match Toffee.layout k.members.(0).ctx.tree k.chunk_node with
+    | Ok layout -> layout
+    | Error _ -> Toffee.Layout.default
+  in
   match k.index with
   | Some index when index.built_from == built_from && k.base = base -> index
   | Some _ | None ->
