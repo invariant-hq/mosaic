@@ -383,22 +383,31 @@ let test_turn_order () =
 (* Discrete input *)
 
 (* A run at 60 frames a second on a scripted terminal. Each of [arrivals],
-   [(time, bytes)], comes while the run waits; a key costs [cost] and asks
-   for a frame, and [animate now] says whether a frame asks for the next. The
-   frames, as [(time, on the grid, keys handled)], the keys, and the
-   deadlines of the waits after the last arrival. *)
-let paced ?(cost = 0) ?(animate = fun _ -> false) arrivals =
+   [(time, bytes)], comes at its time: those that come while the run works
+   are read together by its next read, and one that comes while it waits
+   ends the wait. A key costs [cost] and asks for a frame, a frame costs
+   [frame_cost], and [animate now] says whether a frame asks for the next.
+   The frames, as [(time, on the grid, keys handled)], the keys, the
+   deadlines of the waits after the last arrival, and how many reads
+   returned input. *)
+let paced ?(cost = 0) ?(frame_cost = 0) ?(animate = fun _ -> false) arrivals =
   let f = fake () in
-  let arrivals = ref arrivals in
+  let arrivals = ref arrivals and chunks = ref 0 in
   let frames = ref [] and keys = ref [] and after = ref [] in
+  (* The arrivals due by now, as one chunk. *)
+  let arrive () =
+    let due, later = List.partition (fun (at, _) -> at <= f.now) !arrivals in
+    arrivals := later;
+    if due <> [] then (
+      incr chunks;
+      f.input <- f.input @ [ String.concat "" (List.map snd due) ])
+  in
   f.on_wait <-
     (fun f ~until ->
       match !arrivals with
-      | (at, bytes) :: rest
-        when match until with Some u -> at <= u | None -> true ->
-          arrivals := rest;
+      | (at, _) :: _ when match until with Some u -> at <= u | None -> true ->
           f.now <- max f.now at;
-          f.input <- [ bytes ]
+          arrive ()
       | [] ->
           after := until :: !after;
           if until = None then f.eof <- true
@@ -410,27 +419,27 @@ let paced ?(cost = 0) ?(animate = fun _ -> false) arrivals =
         | Event (Key { key = Char u; _ }) ->
             keys := Uchar.to_char u :: !keys;
             f.now <- f.now + cost;
+            arrive ();
             Matrix.request_redraw app;
             loop ()
         | Frame ->
             frames :=
               (f.now, not (Matrix.early app), List.length !keys) :: !frames;
             Matrix.draw app ignore;
+            f.now <- f.now + frame_cost;
+            arrive ();
             if animate f.now then Matrix.request_redraw app;
             loop ()
         | _ -> loop ()
       in
       loop ());
-  (List.rev !frames, List.rev !keys, List.rev !after)
+  (List.rev !frames, List.rev !keys, List.rev !after, !chunks)
 
-let interval_60 = 16_666_667
-
-(* A key is drawn in the turn that read it, unless a frame came early less
-   than an interval before: then once that interval has passed, or with the
-   grid's frame if it comes first. An early frame leaves the grid. The key
-   at 50 ms comes after a pause, so its frame is on the grid. *)
-let test_discrete_input_early () =
-  let frames, _, _ =
+(* A key is drawn in the turn that read it, after a pause on the grid and
+   otherwise early. An early frame leaves the grid, so the key at 70 ms, past
+   the grid's next point, is on the grid again. *)
+let test_discrete_input_in_its_turn () =
+  let frames, _, _, _ =
     paced [ (ms 50, "a"); (ms 55, "b"); (ms 60, "c"); (ms 70, "d") ]
   in
   equal
@@ -439,58 +448,59 @@ let test_discrete_input_early () =
       (0, true, 0);
       (ms 50, true, 1);
       (ms 55, false, 2);
-      (ms 50 + interval_60, true, 3);
-      (ms 55 + interval_60, false, 4);
+      (ms 60, false, 3);
+      (ms 70, true, 4);
     ]
     frames
 
-(* A flood of keys, one a millisecond for a second: at most twice 60 frames
-   in any second, the keys in order, the last key's frame drawn, and then no
-   wakeup. *)
+(* Two keys read by two turns less than an interval apart, both after the
+   grid's frame: each is drawn early, in the turn that read it. *)
+let test_discrete_twice_in_an_interval () =
+  let frames, _, _, _ = paced [ (ms 5, "a"); (ms 8, "b") ] in
+  equal
+    (list (triple int bool int))
+    [ (0, true, 0); (ms 5, false, 1); (ms 8, false, 2) ]
+    frames
+
+(* A flood of keys, one a millisecond for a second. With frames that cost
+   nothing, each key is read by a turn of its own and drawn in it. With
+   frames that cost 3 ms, the keys that arrive while a frame is drawn are
+   read together by the next turn and shown by its one frame. Either way, a
+   frame for each read at most, each showing new keys, the keys in order,
+   the last key's frame drawn, and then no wakeup. *)
 let test_discrete_flood () =
   let sent = List.init 1000 (fun i -> Char.chr (Char.code 'a' + (i mod 26))) in
-  let frames, keys, after =
-    paced ~cost:200_000
-      (List.mapi (fun i c -> (ms (i + 1), String.make 1 c)) sent)
+  let arrivals = List.mapi (fun i c -> (ms (i + 1), String.make 1 c)) sent in
+  let flood ~frame_cost =
+    let frames, keys, after, reads = paced ~cost:200_000 ~frame_cost arrivals in
+    equal ~msg:"the keys, in order" (list Testable.char) sent keys;
+    let _, _, last = List.nth frames (List.length frames - 1) in
+    equal ~msg:"the last frame shows every key" int 1000 last;
+    is_true ~msg:"a frame for each read at most"
+      (List.length frames - 1 <= reads);
+    ignore
+      (List.fold_left
+         (fun shown (_, _, k) ->
+           if k <= shown then failf "a frame shows no new key (%d)" k;
+           k)
+         (-1) frames
+        : int);
+    equal ~msg:"idle after the last frame, with no deadline" (option int) None
+      (List.nth after (List.length after - 1));
+    is_true ~msg:"at most the last frame's wakeup" (List.length after <= 2);
+    (frames, reads)
   in
-  equal ~msg:"the keys, in order" (list Testable.char) sent keys;
-  let _, _, last = List.nth frames (List.length frames - 1) in
-  equal ~msg:"the last frame shows every key" int 1000 last;
-  List.iter
-    (fun (t, _, _) ->
-      let n =
-        List.length
-          (List.filter (fun (u, _, _) -> u >= t && u < t + ms 1000) frames)
-      in
-      if n > 120 then failf "%d frames in the second from %d ns" n t)
-    frames;
-  let times which =
-    List.filter_map (fun (t, g, _) -> if g = which then Some t else None) frames
-  in
-  let grid = times true and early = times false in
-  (* A frame on the grid comes at its point or later, and takes it when it
-     comes less than an interval after it. *)
-  ignore
-    (List.fold_left
-       (fun point t ->
-         let next = point + interval_60 in
-         if t < next then failf "a frame %d ns before its point" (next - t);
-         if t < next + interval_60 then next else t)
-       (min_int / 2) grid
-      : int);
-  ignore
-    (List.fold_left
-       (fun previous t ->
-         if t - previous < interval_60 then
-           failf "two early frames %d ns apart" (t - previous);
-         t)
-       (min_int / 2) early
-      : int);
-  is_true ~msg:"frames on the grid" (List.length grid >= 55);
-  is_true ~msg:"early frames" (List.length early >= 55);
-  equal ~msg:"idle after the last frame, with no deadline" (option int) None
-    (List.nth after (List.length after - 1));
-  is_true ~msg:"at most the last frame's wakeup" (List.length after <= 2)
+  let cheap, _ = flood ~frame_cost:0 in
+  equal ~msg:"each key drawn in the turn that read it"
+    (list (pair int int))
+    (List.init 1001 (fun k -> ((if k = 0 then 0 else ms k + 200_000), k)))
+    (List.map (fun (t, _, k) -> (t, k)) cheap);
+  let costly, reads = flood ~frame_cost:(ms 3) in
+  is_true
+    ~msg:
+      (Printf.sprintf "%d reads and %d frames for 1000 keys" reads
+         (List.length costly))
+    (reads < 500)
 
 (* An animation that asks for a frame from each frame has the same frames on
    the grid with keys typed 30 times a second as without: early frames add
@@ -501,8 +511,8 @@ let test_discrete_keeps_the_grid () =
   let on_grid frames =
     List.filter_map (fun (t, g, _) -> if g then Some t else None) frames
   in
-  let alone, _, _ = paced ~animate [] in
-  let typing, keys, _ = paced ~animate typed in
+  let alone, _, _, _ = paced ~animate [] in
+  let typing, keys, _, _ = paced ~animate typed in
   equal ~msg:"keys" int 30 (List.length keys);
   equal ~msg:"the frames on the grid" (list int) (on_grid alone)
     (on_grid typing);
@@ -4072,7 +4082,10 @@ let () =
           test "frame_dt" test_frame_dt;
           test "a late frame keeps the grid" test_late_frame_keeps_the_grid;
           test "turn order" test_turn_order;
-          test "discrete input is drawn early" test_discrete_input_early;
+          test "discrete input is drawn in its turn"
+            test_discrete_input_in_its_turn;
+          test "two keys in an interval are drawn in their turns"
+            test_discrete_twice_in_an_interval;
           test "a flood of discrete input" test_discrete_flood;
           test "discrete input keeps the grid" test_discrete_keeps_the_grid;
           test "input read when nothing is queued"

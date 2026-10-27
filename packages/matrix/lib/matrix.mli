@@ -284,8 +284,10 @@ val config :
     {b Frames:}
     - [fps] the frames per second of the frame grid ({!request_redraw}).
       Defaults to [60.]. The {e frame interval} is [1 / fps] seconds. 60 is the
-      refresh rate of most displays. Discrete input adds at most one frame per
-      interval, so a run draws at most [2 * fps] frames a second.
+      refresh rate of most displays. Frames for animations, timers, posted
+      messages and streams of input come on the grid, one per frame interval at
+      most. Frames asked for by discrete input come in the turn that read it,
+      one a turn at most, so the turns bound them and [fps] does not.
 
     {b Input:}
     - [mouse] mouse tracking. Defaults to [`Sgr_any]. [`Off] leaves the mouse to
@@ -500,14 +502,14 @@ val request_redraw : 'msg app -> unit
 
     A frame asked for while the run handles {e discrete input}, a key pressed,
     repeated or released, text, a mouse button pressed or released, the end of a
-    paste or a change of focus, is drawn sooner. It comes in the turn that
-    asked, after the turn's other work, unless a frame came early for discrete
-    input less than a frame interval before; then it comes once that interval
-    has passed, or with the grid's next frame if that comes first. A frame that
-    comes before the grid's is {e early} ({!early}), and leaves the grid where
-    it was. So discrete input adds at most one frame per interval. The mouse's
-    motion and wheel, a paste's data and a resize come in streams, and their
-    frames come on the grid.
+    paste or a change of focus, comes in the turn that asked, after the turn's
+    other work. A turn draws one frame at most and reads the input once, so
+    input that arrives while a frame is drawn is read by the next turn and shown
+    by its frame, however fast it comes. A frame that comes before the grid's
+    next point is {e early} ({!early}), and leaves the grid where it was. The
+    mouse's motion and wheel, a paste's data and a resize come in streams, and
+    their frames come on the grid. So [fps] bounds the frames on the grid, and
+    the turns that read discrete input bound the frames it asks for.
 
     The runtime asks for frames itself: as the run begins, after a resize, a
     {!release} or a SIGCONT, when the terminal's capabilities change, and when
@@ -1023,13 +1025,13 @@ val run_on :
    - a frame asked for outside a frame (by input, a timer, a post or the
      runtime itself, as after a resize) is drawn in the turn that asked, and
      one asked for from a Frame step until the next step, an animation's,
-     waits its interval. A terminal draws early only for discrete input, at
-     most once per interval, and the others on the grid. That bound is in
-     real time, and the device's clock moves only when the test moves it:
-     under it, a second key at the same instant, or a frame a timer asks
-     for, would wait for a grid frame that never comes. The grid is the
-     same on both: a frame drawn before the grid's next one is early
-     ([early]) and does not move it;
+     waits its interval. A terminal draws in the turn that asked only the
+     frames discrete input asks for, and the others on the grid. The grid
+     is in real time, and the device's clock moves only when the test moves
+     it: under it, a frame a timer, a post or the mouse's motion asks for
+     would wait for a grid frame that never comes. The grid is the same on
+     both: a frame drawn before the grid's next one is early ([early]) and
+     does not move it;
    - input is decoded whole once nothing follows it, as the terminal has
      finished writing;
    - the run takes no signal of the process: [resized] is its window signal.

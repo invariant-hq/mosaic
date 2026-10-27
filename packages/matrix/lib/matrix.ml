@@ -511,15 +511,15 @@ type 'msg app = {
   in_process : bool;
   mutable asked_outside : bool;
   mutable in_frame_step : bool;
-  (* Discrete input ([discrete_event]) is drawn early: a frame asked for
-     while the step being done is such an event comes in the turn that asked,
-     once an interval has passed since the last early frame. [discrete] is
-     whether the step being done is one, [asked_discrete] whether a frame was
-     asked for in one since the last frame. An early frame leaves the grid,
-     [last_frame], where it was. *)
+  (* Discrete input ([discrete_event]) is drawn in the turn that read it: a
+     frame asked for while the step being done is such an event comes at the
+     end of that turn. A turn draws one frame at most, and reads the input
+     once, so input that arrives while a frame is drawn is read by the next
+     turn and shown by its frame. [discrete] is whether the step being done is
+     one, [asked_discrete] whether a frame was asked for in one since the last
+     frame. An early frame leaves the grid, [last_frame], where it was. *)
   mutable discrete : bool;
   mutable asked_discrete : bool;
-  mutable last_early : int;
   (* Whether the latest frame is early, drawn before the grid's next frame:
      for discrete input, or by a device. *)
   mutable early : bool;
@@ -2078,13 +2078,12 @@ let take_timer t =
 
 (* A frame is due once the grid's next point has passed by the latest step's
    time: work that took the turn's budget may have taken it past it. One
-   asked for by discrete input is due once an interval has passed since the
-   last early frame. *)
+   asked for by discrete input is due at once. *)
 let frame_due t =
   t.dirty && (not t.released)
   && (t.latest >= t.last_frame + t.interval
      || (t.in_process && t.asked_outside)
-     || (t.asked_discrete && t.latest >= t.last_early + t.interval))
+     || t.asked_discrete)
 
 (* The time the run next needs a step if nothing it waits for comes first:
    now when work is left, otherwise the earliest deadline, if any. *)
@@ -2098,14 +2097,7 @@ let wait_deadline t =
   else
     let deadline = min (heap_min t.heap) (input_deadline t) in
     let deadline =
-      if t.dirty then
-        let frame = t.last_frame + t.interval in
-        let frame =
-          if t.asked_discrete then min frame (t.last_early + t.interval)
-          else frame
-        in
-        min deadline frame
-      else deadline
+      if t.dirty then min deadline (t.last_frame + t.interval) else deadline
     in
     if deadline = max_int then None else Some deadline
 
@@ -2218,8 +2210,7 @@ let start_frame t =
   let point = t.last_frame + t.interval in
   let on_grid = t.latest >= point in
   if on_grid then
-    t.last_frame <- (if t.latest < point + t.interval then point else t.latest)
-  else if t.asked_discrete then t.last_early <- t.latest;
+    t.last_frame <- (if t.latest < point + t.interval then point else t.latest);
   t.early <- not on_grid;
   t.asked_discrete <- false;
   t.on_frame ();
@@ -2430,7 +2421,6 @@ let make backend ?stop config =
     in_frame_step = false;
     discrete = false;
     asked_discrete = false;
-    last_early = no_frame;
     early = false;
     stepped = false;
     on_frame =
