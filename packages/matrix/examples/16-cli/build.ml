@@ -80,7 +80,7 @@ let building ~finished ~running ~width ~height:_ =
     ~text:
       (Printf.sprintf "[%s] %d/%d: %s" bar finished total
          (String.concat ", " running));
-  Some g
+  [ g ]
 
 (* Starts each crate once those it depends on are compiled and a job is
    free, until every crate is compiled. *)
@@ -118,7 +118,7 @@ let () =
           (List.length crates - 1)));
   Out.live err (fun live ->
       compile err live;
-      Out.show live (fun ~width:_ ~height:_ -> None));
+      Out.show live (fun ~width:_ ~height:_ -> []));
   Out.print err
     (status green "Finished"
        (Printf.sprintf

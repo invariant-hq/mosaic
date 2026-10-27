@@ -111,6 +111,17 @@ let test_height () =
     usable term );
   equal ~msg:"on a pipe" Testable.string "IH=24\nH=24\n" (piped "height")
 
+(* A frame's grids show one under another, and a frame of none shows no
+   row. *)
+let test_stack () =
+  ( spawn "stack" @@ fun term c ->
+    exited 0 (T.Child.exit c ~within:10.);
+    equal ~msg:"on a terminal" strings
+      [ "line"; "TITLE"; "ROW 1"; "ROW 2"; "AFTER" ]
+      (lines term) );
+  equal ~msg:"on a pipe" Testable.string "line\nTITLE\nROW 1\nROW 2\nAFTER\n"
+    (piped "stack")
+
 let test_partial () =
   spawn "partial" @@ fun term c ->
   exited 0 (T.Child.exit c ~within:10.);
@@ -471,6 +482,7 @@ let () =
           test "lines above, the last frame stays" test_progress;
           test "a frame taller than the screen" test_tall;
           test "a line waits for its end" test_partial;
+          test "a frame of grids" test_stack;
           test "a tick" test_tick;
           test "the height of a frame" test_height;
           test "SIGINT" test_sigint;

@@ -157,7 +157,7 @@ and state = {
 
 (* The rows of one [live] scope, below those of the scopes before it. *)
 and part = {
-  mutable frame : width:int -> height:int -> Matrix_grid.t option;
+  mutable frame : width:int -> height:int -> Matrix_grid.t list;
   mutable ended : bool;
   tick : int option;  (** The time between two draws it asks for. *)
 }
@@ -239,17 +239,8 @@ let write l bytes =
       Signal.write s.holder l.out.fd b 0 (Bytes.length b)
   | None -> write_all l.out.fd bytes 0 (String.length bytes)
 
-(* A part's rows at [width] and [height], from the program's function, which
-   runs on whichever thread draws: one that raises is dropped, and raised
-   again at the program's next call. *)
-let part_frame l p ~width ~height =
-  match p.frame ~width ~height with
-  | g -> g
-  | exception e ->
-      if l.failed = None then l.failed <- Some (e, Printexc.get_raw_backtrace ());
-      None
-
-(* The parts' rows, each part's below the one before. *)
+(* Grids one under another, as the rows of a frame and the frames of the
+   parts are. *)
 let stack = function
   | [] -> None
   | [ g ] -> Some g
@@ -269,6 +260,16 @@ let stack = function
            0 gs
           : int);
       Some dst
+
+(* A part's rows at [width] and [height], from the program's function, which
+   runs on whichever thread draws: one that raises is dropped, and raised
+   again at the program's next call. *)
+let part_frame l p ~width ~height =
+  match p.frame ~width ~height with
+  | gs -> stack gs
+  | exception e ->
+      if l.failed = None then l.failed <- Some (e, Printexc.get_raw_backtrace ());
+      None
 
 (* The region's rows, [height] of which show: each part is given the rows
    left below the parts before it, at least one. *)
@@ -731,10 +732,10 @@ let bell t = control t Matrix_terminal.bell
 type live = {
   state : state option;  (** [None] where no region may be drawn. *)
   part : part;
-  mutable last : width:int -> height:int -> Matrix_grid.t option;
+  mutable last : width:int -> height:int -> Matrix_grid.t list;
 }
 
-let no_frame ~width:_ ~height:_ = None
+let no_frame ~width:_ ~height:_ = []
 
 (* A scope's rows join the region that lives on the terminal, or begin
    one. *)
@@ -851,7 +852,7 @@ let print_last t v =
   flush_formatters ();
   Mutex.protect t.out_device.lock (fun () ->
       let lines =
-        lines t (v.last ~width:(plain_width t) ~height:(plain_height t))
+        lines t (stack (v.last ~width:(plain_width t) ~height:(plain_height t)))
       in
       if lines <> "" then emit t lines)
 

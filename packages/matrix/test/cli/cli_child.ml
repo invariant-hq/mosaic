@@ -7,14 +7,14 @@ module C = Matrix_cli_unix
 let text_frame text ~width ~height:_ =
   let g = Matrix_grid.create ~width:(max 1 width) ~height:1 () in
   Matrix_grid.draw_text g ~x:0 ~y:0 ~text;
-  Some g
+  [ g ]
 
 let rows_frame rows ~width ~height:_ =
   let g =
     Matrix_grid.create ~width:(max 1 width) ~height:(List.length rows) ()
   in
   List.iteri (fun y text -> Matrix_grid.draw_text g ~x:0 ~y ~text) rows;
-  Some g
+  [ g ]
 
 let rec forever () =
   Unix.sleepf 3600.;
@@ -53,6 +53,16 @@ let () =
       C.live err (fun live ->
           C.show live (rows_frame [ "WAITING"; "TWO" ]);
           forever ())
+  | "stack" ->
+      (* A frame of two grids, one under the other, then of none. *)
+      C.live err (fun live ->
+          C.show live (fun ~width ~height ->
+              rows_frame [ "TITLE" ] ~width ~height
+              @ rows_frame [ "ROW 1"; "ROW 2" ] ~width ~height);
+          Unix.sleepf 0.15;
+          C.print err "line\n");
+      C.live err (fun live -> C.show live (fun ~width:_ ~height:_ -> []));
+      print_string "AFTER\n"
   | "tall" ->
       C.live err (fun live ->
           C.show live (rows_frame (List.init 12 (Printf.sprintf "row %d")));

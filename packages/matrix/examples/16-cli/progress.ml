@@ -90,7 +90,7 @@ let rows slots ~started ~width ~height:_ =
   in
   let g = Grid.create ~width ~height:(List.length tasks) () in
   List.iteri (fun y t -> row g ~y ~name_width ~turn t) tasks;
-  Some g
+  [ g ]
 
 let () =
   let err = Out.stderr () in

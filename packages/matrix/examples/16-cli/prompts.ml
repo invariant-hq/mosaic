@@ -32,14 +32,14 @@ let menu selected ~width ~height:_ =
         Grid.draw_text g ~x:0 ~y:(i + 1) ~style:accent ~text:("❯ " ^ l)
       else Grid.draw_text g ~x:2 ~y:(i + 1) ~text:l)
     licenses;
-  Some g
+  [ g ]
 
 (* The question once answered, which stays in the scrollback. *)
 let picked i ~width ~height:_ =
   let g = Grid.create ~width ~height:1 () in
   Grid.draw_text g ~x:0 ~y:0 ~text:"? License";
   Grid.draw_text g ~x:10 ~y:0 ~style:accent ~text:licenses.(i);
-  Some g
+  [ g ]
 
 let choose_license err =
   let last = Array.length licenses - 1 in

@@ -78,7 +78,7 @@
         let g = Matrix_grid.create ~width ~height:1 () in
         Matrix_grid.draw_text g ~x:0 ~y:0
           ~text:(Printf.sprintf "%d/%d compiled" i n);
-        Some g
+        [ g ]
       in
       Matrix_cli_unix.live err @@ fun live ->
       List.iteri
@@ -210,17 +210,19 @@ val live : ?tick:float -> t -> (live -> 'a) -> 'a
     Raises [Invalid_argument] if [tick] is not positive, and what a frame given
     to {!show} raised, if [f] returned. *)
 
-val show : live -> (width:int -> height:int -> Matrix_grid.t option) -> unit
+val show : live -> (width:int -> height:int -> Matrix_grid.t list) -> unit
 (** [show l frame] makes [frame] [l]'s rows and draws them, now or at most a
-    tenth of a second later. The region calls [frame ~width ~height] whenever it
-    draws, from any thread, so [frame] must only read values that do not change
-    while it runs, and must not print. [width] is the width its rows take and
-    [height] the number of rows the region shows below the rows of the scopes
-    that began before, both at least 1, so a frame can give way on a small
-    terminal. Where no region is drawn, [width] is that of the last rows printed
-    and [height] is [LINES] when it is set to a positive number, else the
-    terminal's height, else 24. Rows wider than [width] are cut, the region
-    shows the last [height] rows of a taller frame, and [None] shows no row.
+    tenth of a second later. [frame ~width ~height] is the grids the rows show,
+    one under another, [[]] for none. The region calls it whenever it draws,
+    from any thread, so [frame] must only read values that do not change while
+    it runs, and must not print. A grid costs its making, so a frame gives few.
+    [width] is the width its rows take and [height] the number of rows the
+    region shows below the rows of the scopes that began before, both at least
+    1, so a frame can give way on a small terminal. Where no region is drawn,
+    [width] is that of the last rows printed and [height] is [LINES] when it is
+    set to a positive number, else the terminal's height, else 24. Rows wider
+    than [width] are cut, and the region shows the last [height] rows of a
+    taller frame, so its first grids give way first.
 
     Raises what an earlier frame of [l] raised, which was dropped, and
     [Invalid_argument] if [l]'s scope has ended. *)
