@@ -261,7 +261,9 @@ module Props : sig
         Defaults to [false].
       - [selectable] controls whether text can be selected. Defaults to [true].
       - [selection_bg] is the selection background color.
-      - [selection_fg] is the selection foreground color.
+      - [selection_fg] is the selection foreground color. Without either,
+        selected text is drawn over the [Highlight] surface
+        ({!Text_surface.section-paint}).
 
       {!val-create} and {!Vnode.code} take these labels with these defaults.
 

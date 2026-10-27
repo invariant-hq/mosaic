@@ -2,16 +2,8 @@ module Layout = Matrix.Text.Layout
 
 (* Defaults *)
 
-let default_text_color = Ansi.Color.white
-let default_background_color = Ansi.Color.transparent
-let default_focused_text_color = Ansi.Color.white
-let default_focused_background_color = Ansi.Color.transparent
-let default_placeholder_color = Ansi.Color.bright_black
-let default_selection_color = Ansi.Color.blue
 let default_cursor_style = `Block
-let default_cursor_color = Ansi.Color.white
 let default_cursor_blinking = true
-let default_ghost_text_color = Ansi.Color.grayscale ~level:12
 
 (* Props *)
 
@@ -166,15 +158,15 @@ module Props = struct
     annotations : Text_buffer.Annotations.t option;
     syntax : Syntax_session.syntax option;
     ghost_text : string option;
-    ghost_text_color : Ansi.Color.t;
+    ghost_text_color : Ansi.Color.t option;
     placeholder : string;
     wrap : Text_surface.wrap;
-    text_color : Ansi.Color.t;
-    background_color : Ansi.Color.t;
-    focused_text_color : Ansi.Color.t;
-    focused_background_color : Ansi.Color.t;
-    placeholder_color : Ansi.Color.t;
-    selection_color : Ansi.Color.t;
+    text_color : Ansi.Color.t option;
+    background_color : Ansi.Color.t option;
+    focused_text_color : Ansi.Color.t option;
+    focused_background_color : Ansi.Color.t option;
+    placeholder_color : Ansi.Color.t option;
+    selection_color : Ansi.Color.t option;
     selection_fg : Ansi.Color.t option;
     cursor_style : [ `Block | `Line | `Underline ];
     cursor_color : Ansi.Color.t;
@@ -184,16 +176,11 @@ module Props = struct
     key_bindings : key_binding list;
   }
 
-  let make ~state ?annotations ?syntax ?ghost_text
-      ?(ghost_text_color = default_ghost_text_color) ?(placeholder = "")
-      ?(wrap = `Word) ?(text_color = default_text_color)
-      ?(background_color = default_background_color)
-      ?(focused_text_color = default_focused_text_color)
-      ?(focused_background_color = default_focused_background_color)
-      ?(placeholder_color = default_placeholder_color)
-      ?(selection_color = default_selection_color) ?selection_fg
-      ?(cursor_style = default_cursor_style)
-      ?(cursor_color = default_cursor_color)
+  let make ~state ?annotations ?syntax ?ghost_text ?ghost_text_color
+      ?(placeholder = "") ?(wrap = `Word) ?text_color ?background_color
+      ?focused_text_color ?focused_background_color ?placeholder_color
+      ?selection_color ?selection_fg ?(cursor_style = default_cursor_style)
+      ?(cursor_color = Ansi.Color.default_fg)
       ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
       ?(show_cursor = true) ?(key_bindings = []) () =
     (match annotations with
@@ -234,15 +221,16 @@ module Props = struct
     && Option.equal ( == ) a.annotations b.annotations
     && Option.equal Syntax_session.equal a.syntax b.syntax
     && Option.equal String.equal a.ghost_text b.ghost_text
-    && Ansi.Color.equal a.ghost_text_color b.ghost_text_color
+    && Option.equal Ansi.Color.equal a.ghost_text_color b.ghost_text_color
     && String.equal a.placeholder b.placeholder
     && a.wrap = b.wrap
-    && Ansi.Color.equal a.text_color b.text_color
-    && Ansi.Color.equal a.background_color b.background_color
-    && Ansi.Color.equal a.focused_text_color b.focused_text_color
-    && Ansi.Color.equal a.focused_background_color b.focused_background_color
-    && Ansi.Color.equal a.placeholder_color b.placeholder_color
-    && Ansi.Color.equal a.selection_color b.selection_color
+    && Option.equal Ansi.Color.equal a.text_color b.text_color
+    && Option.equal Ansi.Color.equal a.background_color b.background_color
+    && Option.equal Ansi.Color.equal a.focused_text_color b.focused_text_color
+    && Option.equal Ansi.Color.equal a.focused_background_color
+         b.focused_background_color
+    && Option.equal Ansi.Color.equal a.placeholder_color b.placeholder_color
+    && Option.equal Ansi.Color.equal a.selection_color b.selection_color
     && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
     && a.cursor_style = b.cursor_style
     && Ansi.Color.equal a.cursor_color b.cursor_color
@@ -368,13 +356,22 @@ let sync t =
   sync_content t;
   Text_surface.invalidate t.surface
 
+(* The colors the labels give, the focused ones falling back to the others.
+   A color no label gives is the [Field] surface's, which the text surface
+   and [render_before] resolve at paint. *)
+let label_fg t ~focused =
+  match t.props.focused_text_color with
+  | Some _ as c when focused -> c
+  | _ -> t.props.text_color
+
+let label_bg t ~focused =
+  match t.props.focused_background_color with
+  | Some _ as c when focused -> c
+  | _ -> t.props.background_color
+
 let sync_style t ~focused =
-  let fg = if focused then t.props.focused_text_color else t.props.text_color in
-  let bg =
-    if focused then t.props.focused_background_color
-    else t.props.background_color
-  in
-  Text_buffer.set_default_style t.text_buf (Ansi.Style.make ~fg ~bg ());
+  let fg = label_fg t ~focused and bg = label_bg t ~focused in
+  Text_buffer.set_default_style t.text_buf (Ansi.Style.make ?fg ?bg ());
   if not t.styled_content then
     Text_buffer.set_text t.text_buf (Editor.text t.props.state);
   Renderable.request_render t.node
@@ -498,6 +495,19 @@ let view_range t source =
   ( Layout.Source.byte_offset source (Layout.Source.line_start source first),
     Layout.Source.byte_offset source (Layout.Source.line_end source last) )
 
+(* The style of text that is not the editor's own, the placeholder and the
+   ghost text: the [Muted] role over the [Field] surface, a label's colors
+   over both. *)
+let muted_style theme ?fg ?bg ~italic () =
+  let s =
+    Ansi.Style.merge
+      ~base:(Theme.surface theme Field)
+      ~overlay:(Theme.style theme Muted)
+  in
+  let s = Option.fold ~none:s ~some:(fun c -> Ansi.Style.fg c s) fg in
+  let s = Option.fold ~none:s ~some:(fun c -> Ansi.Style.bg c s) bg in
+  if italic then Ansi.Style.with_italic true s else s
+
 let render_before t _self grid ~dt:_ =
   if Syntax_session.poll t.session then sync_content t;
   show_viewport t;
@@ -513,21 +523,28 @@ let render_before t _self grid ~dt:_ =
     let x0 = Renderable.x t.node in
     let y0 = Renderable.y t.node in
     let focused = Renderable.focused t.node in
-    let bg =
-      if focused then t.props.focused_background_color
-      else t.props.background_color
+    let theme = Renderable.theme t.node in
+    let bg = label_bg t ~focused in
+    let color =
+      match bg with
+      | Some c -> c
+      | None ->
+          Option.value (Theme.surface theme Field).bg
+            ~default:Ansi.Color.transparent
     in
-    Matrix_grid.clear_rect ~color:bg grid ~x:x0 ~y:y0 ~width:w ~height:h;
+    Matrix_grid.clear_rect ~color grid ~x:x0 ~y:y0 ~width:w ~height:h;
     if Editor.length t.props.state = 0 && String.length t.props.placeholder > 0
     then begin
-      let style = Ansi.Style.make ~fg:t.props.placeholder_color ~bg () in
+      let style =
+        muted_style theme ?fg:t.props.placeholder_color ?bg ~italic:false ()
+      in
       Matrix_grid.clip grid { x = x0; y = y0; width = w; height = h } (fun () ->
           Matrix_grid.draw_text ~style grid ~x:x0 ~y:y0
             ~text:t.props.placeholder)
     end;
     match Editor.selection t.props.state with
     | Some (lo, hi) ->
-        Text_surface.set_selection_bg t.surface (Some t.props.selection_color);
+        Text_surface.set_selection_bg t.surface t.props.selection_color;
         Text_surface.set_selection_fg t.surface t.props.selection_fg;
         ignore (Text_surface.set_selection t.surface ~start:lo ~end_:hi : bool)
     | None -> Text_surface.reset_selection t.surface
@@ -553,12 +570,10 @@ let render_after t _self grid ~dt:_ =
         let w = Renderable.width t.node in
         let h = Renderable.height t.node in
         if row >= 0 && row < h && col >= 0 && col < w then
-          let bg =
-            if Renderable.focused t.node then t.props.focused_background_color
-            else t.props.background_color
-          in
+          let bg = label_bg t ~focused:(Renderable.focused t.node) in
           let style =
-            Ansi.Style.make ~fg:t.props.ghost_text_color ~bg ~italic:true ()
+            muted_style (Renderable.theme t.node) ?fg:t.props.ghost_text_color
+              ?bg ~italic:true ()
           in
           Matrix_grid.clip grid { x = x0; y = y0; width = w; height = h }
             (fun () ->
@@ -815,6 +830,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   in
   let text_buf = Text_buffer.create () in
   let surface = Text_surface.create node text_buf in
+  Text_surface.set_ground surface (Some Field);
   Text_surface.set_wrap surface props.wrap;
   let session =
     Syntax_session.create
@@ -888,13 +904,12 @@ let apply_props t (props : Props.t) =
          t.props.key_bindings props.key_bindings)
   in
   let style_changed =
-    (not (Ansi.Color.equal t.props.text_color props.text_color))
-    || (not (Ansi.Color.equal t.props.background_color props.background_color))
-    || (not
-          (Ansi.Color.equal t.props.focused_text_color props.focused_text_color))
+    let same = Option.equal Ansi.Color.equal in
+    (not (same t.props.text_color props.text_color))
+    || (not (same t.props.background_color props.background_color))
+    || (not (same t.props.focused_text_color props.focused_text_color))
     || not
-         (Ansi.Color.equal t.props.focused_background_color
-            props.focused_background_color)
+         (same t.props.focused_background_color props.focused_background_color)
   in
   let state_changed = t.props.state != props.state in
   let source_changed =

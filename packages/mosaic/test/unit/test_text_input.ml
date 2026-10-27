@@ -1329,9 +1329,71 @@ let doors_key_bindings () =
            ~key_bindings:[ (Shortcut.char 'x', Text_input.Move_left) ]
            ~on_change:propose ()))
 
+(* ── Paint ── *)
+
+(* An input draws on the [Field] surface, its text by the [Plain] role and
+   its placeholder by the [Muted] role, each label overriding its role, and
+   leaves the caret's color the terminal's unless [cursor_color] is given. *)
+
+let paint_size = Mosaic.size ~width:12 ~height:1
+let paint_red = Ansi.Color.indexed 1
+let paint_blue = Ansi.Color.indexed 4
+
+let paint_input ?background_color ?cursor_color ?(value = "hello")
+    ?(placeholder = "") () =
+  Mosaic.input ~size:paint_size ?background_color ?cursor_color ~placeholder
+    ~state:(Editor.of_string value) ~on_change:ignore ()
+
+let paint_legible_on_light () =
+  let theme = Theme.default xterm_light in
+  List.iter
+    (fun (name, view) ->
+      List.iter
+        (fun focused ->
+          equal ~msg:name (list string) []
+            (illegible xterm_light (painted (paint ~theme ~focused view))))
+        [ false; true ])
+    [
+      ("text", paint_input ());
+      ("placeholder", paint_input ~value:"" ~placeholder:"type here" ());
+    ]
+
+let paint_field_surface () =
+  let field =
+    Theme.with_surface Field (Ansi.Style.make ~fg:paint_blue ~bg:paint_red ())
+  in
+  let s = cell_style (paint (Mosaic.themed field (paint_input ()))) ~x:0 ~y:0 in
+  is_true ~msg:"the surface's pair" (fg_is paint_blue s && bg_is paint_red s);
+  let s =
+    cell_style
+      (paint
+         (Mosaic.themed field (paint_input ~background_color:paint_blue ())))
+      ~x:0 ~y:0
+  in
+  is_true ~msg:"the label's background" (bg_is paint_blue s)
+
+let paint_caret_color () =
+  let caret view =
+    (Matrix_screen.cursor (Renderer.screen (paint ~focused:true view))).color
+  in
+  equal ~msg:"the terminal's by default"
+    (option (triple int int int))
+    None
+    (caret (paint_input ()));
+  equal ~msg:"the label's"
+    (option (triple int int int))
+    (Some (Ansi.Color.to_rgb paint_red))
+    (caret (paint_input ~cursor_color:paint_red ()))
+
 let () =
   run "mosaic.text-input"
     [
+      group "Paint"
+        [
+          test "legible on a light terminal" paint_legible_on_light;
+          test "the Field surface, label first" paint_field_surface;
+          test "caret color" paint_caret_color;
+        ];
       test "typed bindings override defaults and recompile"
         typed_bindings_override_defaults_and_recompile;
       group "Single-line declarations"

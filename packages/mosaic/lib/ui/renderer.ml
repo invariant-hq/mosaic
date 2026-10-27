@@ -1021,13 +1021,17 @@ let paint_frame t ~height =
   | Some node when Renderable.focused node -> (
       match Renderable.cursor node with
       | Some c ->
-          let r, g, b = Ansi.Color.to_rgb c.color in
+          let color =
+            match Ansi.Color.intent c.color with
+            | Default -> None
+            | Indexed _ | Rgb -> Some (Ansi.Color.to_rgb c.color)
+          in
           Screen.set_cursor t.screen
             {
               position = Some (c.x, c.y);
               style = c.style;
               blinking = c.blinking;
-              color = Some (r, g, b);
+              color;
               visible = true;
             }
       | None ->

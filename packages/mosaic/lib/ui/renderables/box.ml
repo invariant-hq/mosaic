@@ -21,7 +21,7 @@ module Props = struct
     border_style : Matrix_grid.Border.t;
     border_sides : Matrix_grid.Border.side list;
     border_width : int Toffee.Geometry.Rect.t option;
-    border_color : Ansi.Color.t;
+    border_color : Ansi.Color.t option;
     focused_border_color : Ansi.Color.t option;
     background : Ansi.Color.t option;
     fill : bool;
@@ -30,26 +30,19 @@ module Props = struct
     inert : bool;
   }
 
-  let default_focused_border_color = Ansi.Color.bright_cyan
-
   let make ?(border = false) ?(border_style = Matrix_grid.Border.single)
-      ?(border_sides = Matrix_grid.Border.all) ?border_width
-      ?(border_color = Ansi.Color.white) ?focused_border_color ?background
-      ?(fill = true) ?title ?(title_alignment = `Left) ?(inert = false) () =
+      ?(border_sides = Matrix_grid.Border.all) ?border_width ?border_color
+      ?focused_border_color ?background ?(fill = true) ?title
+      ?(title_alignment = `Left) ?(inert = false) () =
     let border_width =
       Option.map (Toffee.Geometry.Rect.map cells_of_border_width) border_width
     in
     let has_border_opts =
       Option.is_some focused_border_color
       || border_style <> Matrix_grid.Border.single
-      || border_color <> Ansi.Color.white
+      || Option.is_some border_color
     in
     let border = border || has_border_opts in
-    let focused_border_color =
-      match focused_border_color with
-      | Some _ -> focused_border_color
-      | None -> Some default_focused_border_color
-    in
     {
       border;
       border_style;
@@ -72,7 +65,7 @@ module Props = struct
     && a.border_style = b.border_style
     && a.border_sides = b.border_sides
     && a.border_width = b.border_width
-    && Ansi.Color.equal a.border_color b.border_color
+    && Option.equal Ansi.Color.equal a.border_color b.border_color
     && Option.equal Ansi.Color.equal a.focused_border_color
          b.focused_border_color
     && Option.equal Ansi.Color.equal a.background b.background
@@ -143,10 +136,29 @@ let apply_border_style t =
 
 let transparent = Ansi.Color.of_rgba 0 0 0 0
 
-let resolve_border_color t =
-  match (Renderable.focused t.node, t.props.focused_border_color) with
-  | true, Some c -> c
-  | _ -> t.props.border_color
+(* The border's style: the [Border] role, or [border_color] over it. While
+   focused, [focused_border_color] where given, and otherwise the role in
+   bold, drawn in heavy lines ([border_lines]), so focus shows as a glyph
+   with no styling and also as an attribute that changes no color. A style
+   without a background leaves the border's cells transparent, as the
+   unfilled inside. The unfocused border without a label allocates nothing. *)
+let border_style t =
+  let role = Theme.style (Renderable.theme t.node) Border in
+  let style =
+    match t.props.border_color with
+    | Some c -> Ansi.Style.fg c role
+    | None -> role
+  in
+  if not (Renderable.focused t.node) then style
+  else
+    match t.props.focused_border_color with
+    | Some c -> Ansi.Style.fg c style
+    | None -> Ansi.Style.with_bold true style
+
+let border_lines t =
+  if Renderable.focused t.node && Option.is_none t.props.focused_border_color
+  then Matrix_grid.Border.heavy
+  else t.props.border_style
 
 let render t _self grid ~dt:_ =
   let w = Renderable.width t.node in
@@ -154,12 +166,9 @@ let render t _self grid ~dt:_ =
   if w > 0 && h > 0 then
     let bg_color = Option.value t.props.background ~default:transparent in
     let fill = if t.props.fill then Some bg_color else None in
-    let border_style =
-      Ansi.Style.make ~fg:(resolve_border_color t) ~bg:transparent ()
-    in
     Matrix_grid.draw_box grid ~x:(Renderable.x t.node) ~y:(Renderable.y t.node)
-      ~width:w ~height:h ~border:t.props.border_style ~sides:(drawn_sides t)
-      ~style:border_style ?fill ?title:t.props.title
+      ~width:w ~height:h ~border:(border_lines t) ~sides:(drawn_sides t)
+      ~style:(border_style t) ?fill ?title:t.props.title
       ~title_alignment:t.props.title_alignment ()
 
 (* Construction *)
@@ -209,8 +218,8 @@ let set_border_sides t sides =
     request_render t)
 
 let set_border_color t color =
-  if not (Ansi.Color.equal t.props.border_color color) then (
-    t.props <- { t.props with border_color = color };
+  if not (Option.equal Ansi.Color.equal t.props.border_color (Some color)) then (
+    t.props <- { t.props with border_color = Some color };
     ensure_border_enabled t;
     request_render t)
 

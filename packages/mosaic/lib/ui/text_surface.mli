@@ -113,13 +113,28 @@ val local_caret : t -> x:int -> y:int -> Matrix.Text.Layout.caret
 (** [local_caret t ~x ~y] maps viewport-local cells to insertion boundaries,
     accounting for scrolling and soft-wrap affinity. *)
 
-(** {1:selection Selection} *)
+(** {1:paint Paint}
+
+    A surface draws its text by roles of the theme in scope
+    ({!Renderable.theme}): each run's style, the content's, is merged over the
+    [Plain] role ({!Ansi.Style.merge}), and that over the surface the text lies
+    on ({!set_ground}), so the content's colors and attributes come first and
+    the roles fill in the rest. Selected text is drawn over the [Highlight]
+    surface instead, unless a selection color is given, which then replaces that
+    color of the text's style. *)
+
+val set_ground : t -> Theme.surface option -> unit
+(** [set_ground t s] makes [s] the surface [t]'s text lies on, such as [Field]
+    for an editor's. [None], the default, draws the text over what is beneath
+    it. *)
 
 val set_selection_bg : t -> Ansi.Color.t option -> unit
 (** [set_selection_bg t color] sets the selection background color. *)
 
 val set_selection_fg : t -> Ansi.Color.t option -> unit
 (** [set_selection_fg t color] sets the selection foreground color. *)
+
+(** {1:selection Selection} *)
 
 val set_selection : t -> start:int -> end_:int -> bool
 (** [set_selection t ~start ~end_] sets the selection range by grapheme offsets

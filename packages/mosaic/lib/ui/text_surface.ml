@@ -11,6 +11,13 @@ type t = {
   mutable truncate : bool;
   mutable scroll_x : int;
   mutable scroll_y : int;
+  mutable ground : Theme.surface option;
+  (* The styles of the render in progress, resolved from the theme in scope
+     as it starts ([render]), and the content's style of the run at hand. *)
+  mutable role : Ansi.Style.t;
+  mutable ground_style : Ansi.Style.t;
+  mutable highlight : Ansi.Style.t;
+  mutable run_style : Ansi.Style.t;
   mutable selection_bg : Ansi.Color.t option;
   mutable selection_fg : Ansi.Color.t option;
   mutable selection : (int * int) option;
@@ -196,6 +203,14 @@ let invalidate t =
   end;
   Renderable.request_render t.node
 
+(* ───── Roles ───── *)
+
+let set_ground t ground =
+  if t.ground <> ground then begin
+    t.ground <- ground;
+    Renderable.request_render t.node
+  end
+
 (* ───── Selection ───── *)
 
 let set_selection_bg t bg =
@@ -257,6 +272,12 @@ let selected_text t =
 
 (* ───── Rendering ───── *)
 
+(* [over base style] is [style] merged over [base], and [style] itself when
+   [base] is the default style, which merges as nothing. *)
+let over base style =
+  if Ansi.Style.equal base Ansi.Style.default then style
+  else Ansi.Style.merge ~base ~overlay:style
+
 let render t _self grid ~dt:_ =
   let w = Renderable.width t.node and h = Renderable.height t.node in
   let ox = Renderable.x t.node and oy = Renderable.y t.node in
@@ -271,6 +292,19 @@ let render t _self grid ~dt:_ =
     let tab_width = Text_buffer.tab_width t.buffer in
     let width_method = Renderable.Private.width_method t.node in
     let sel_start, sel_end = Option.value ~default:(0, 0) t.selection in
+    (* The text's paint, resolved against the theme in scope: the content's
+       style merged over the [Plain] role, then that over the surface the
+       text lies on, or over [Highlight] where it is selected and no
+       selection color is given. A default style merges as nothing, so the
+       default themes paint without allocating, and the styles are kept in
+       [t] so that a row's function captures nothing more. *)
+    let theme = Renderable.theme t.node in
+    t.role <- Theme.style theme Plain;
+    t.ground_style <-
+      (match t.ground with
+      | None -> Ansi.Style.default
+      | Some s -> Theme.surface theme s);
+    t.highlight <- Theme.surface theme Highlight;
     for y = y0 to y1 - 1 do
       let row = t.scroll_y + y - oy in
       let first_byte = ref 0 and last_byte = ref 0 and batch_x = ref 0 in
@@ -290,19 +324,22 @@ let render t _self grid ~dt:_ =
         (fun ~first ~last ~column ~width ~ellipsis ->
           if first >= !style_end then begin
             let style, stop = Text_buffer.style_at t.buffer first in
-            base_style := style;
+            t.run_style <- over t.role style;
+            base_style := over t.ground_style t.run_style;
             style_end := stop
           end;
           let style =
             if first < sel_end && last > sel_start then
-              let s =
-                match t.selection_bg with
-                | None -> !base_style
-                | Some bg -> Ansi.Style.bg bg !base_style
-              in
-              match t.selection_fg with
-              | None -> s
-              | Some fg -> Ansi.Style.fg fg s
+              match (t.selection_bg, t.selection_fg) with
+              | None, None ->
+                  Ansi.Style.merge ~base:t.highlight ~overlay:t.run_style
+              | bg, fg -> (
+                  let s =
+                    match bg with
+                    | None -> !base_style
+                    | Some bg -> Ansi.Style.bg bg !base_style
+                  in
+                  match fg with None -> s | Some fg -> Ansi.Style.fg fg s)
             else !base_style
           in
           let x = ox + column - t.scroll_x in
@@ -398,6 +435,11 @@ let create node buffer =
       truncate = false;
       scroll_x = 0;
       scroll_y = 0;
+      ground = None;
+      role = Ansi.Style.default;
+      ground_style = Ansi.Style.default;
+      highlight = Ansi.Style.default;
+      run_style = Ansi.Style.default;
       selection_bg = None;
       selection_fg = None;
       selection = None;

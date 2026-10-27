@@ -23,7 +23,10 @@
     Styles merge hierarchically: parent styles provide the base and child
     overrides apply on top, preserving unspecified parent attributes. The
     [text_style] parameter provides the base style for plain text and fragments.
-    Concrete styled text keeps its supplied styles.
+    Concrete styled text keeps its supplied styles. Each resulting style is
+    merged over the [Plain] role of the theme in scope as the text is drawn
+    ({!Text_surface.section-paint}), so a color the content does not give is the
+    role's.
 
     See {!Text_input} for single-line editing and {!Textarea} for multi-line
     editing. *)
@@ -162,6 +165,8 @@ module Props : sig
       - [selectable]: whether text can be selected. Defaults to [true].
       - [selection_bg]: background color for selected text. Defaults to [None].
       - [selection_fg]: foreground color for selected text. Defaults to [None].
+        Without either, selected text is drawn over the [Highlight] surface
+        ({!Text_surface.section-paint}).
       - [tab_width]: tab stop width. Defaults to [2].
       - [truncate]: whether to truncate with ellipsis when [wrap = `None].
         Defaults to [false].

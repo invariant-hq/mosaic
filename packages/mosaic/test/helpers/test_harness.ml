@@ -269,3 +269,152 @@ let focus renderer node =
 let press_key key renderer node =
   focus renderer node;
   ignore (dispatch_key renderer key : Event.key)
+
+(* ── Paint by roles ── *)
+
+(* The colors two terminals reported: xterm's default, black on white, and
+   xterm with its XTerm-color resources, light gray on black. *)
+let xterm_palette =
+  [|
+    (0x00, 0x00, 0x00);
+    (0xcd, 0x00, 0x00);
+    (0x00, 0xcd, 0x00);
+    (0xcd, 0xcd, 0x00);
+    (0x00, 0x00, 0xee);
+    (0xcd, 0x00, 0xcd);
+    (0x00, 0xcd, 0xcd);
+    (0xe5, 0xe5, 0xe5);
+    (0x7f, 0x7f, 0x7f);
+    (0xff, 0x00, 0x00);
+    (0x00, 0xff, 0x00);
+    (0xff, 0xff, 0x00);
+    (0x5c, 0x5c, 0xff);
+    (0xff, 0x00, 0xff);
+    (0x00, 0xff, 0xff);
+    (0xff, 0xff, 0xff);
+  |]
+
+let xterm_light : Ansi.Theme.colors =
+  {
+    foreground = (0, 0, 0);
+    background = (255, 255, 255);
+    palette = Array.map Option.some xterm_palette;
+  }
+
+let xterm_dark : Ansi.Theme.colors =
+  {
+    foreground = (0xe5, 0xe5, 0xe5);
+    background = (0, 0, 0);
+    palette = Array.map Option.some xterm_palette;
+  }
+
+(* The RGB a cell's color shows on a terminal of colors [c]: the default
+   color, and a transparent background, are the terminal's own, and an
+   entry of 0 to 15 its palette's. *)
+let shown (c : Ansi.Theme.colors) ~default color =
+  if Ansi.Color.alpha color = 0. then default
+  else
+    match Ansi.Color.intent color with
+    | Default -> default
+    | Indexed i when i < 16 -> Option.get c.palette.(i)
+    | Indexed _ | Rgb -> Ansi.Color.to_rgb color
+
+let rgb (r, g, b) = Ansi.Color.of_rgb r g b
+
+(* The cells of [grid] that hold text below the contrast of text, the lower
+   of 4.5 and the pair's, on a terminal of colors [c], as "x,y". *)
+let illegible (c : Ansi.Theme.colors) grid =
+  let pair = Ansi.Color.contrast (rgb c.foreground) (rgb c.background) in
+  let target = Float.min 4.5 pair in
+  let bad = ref [] in
+  for y = Matrix_grid.height grid - 1 downto 0 do
+    for x = Matrix_grid.width grid - 1 downto 0 do
+      let i = Matrix_grid.idx grid ~x ~y in
+      let text = Matrix_grid.get_text grid i in
+      if text <> "" && String.trim text <> "" then begin
+        let style = Matrix_grid.get_style grid i in
+        let fg = shown c ~default:c.foreground (Matrix_grid.get_fg grid i) in
+        let bg = shown c ~default:c.background (Matrix_grid.get_bg grid i) in
+        let fg, bg =
+          if Ansi.Attr.mem Inverse style.Ansi.Style.attrs then (bg, fg)
+          else (fg, bg)
+        in
+        if Ansi.Color.contrast (rgb fg) (rgb bg) < target then
+          bad := Printf.sprintf "%d,%d" x y :: !bad
+      end
+    done
+  done;
+  !bad
+
+(* [paint ?theme ?focused view] mounts [view] alone in a renderer whose root
+   theme is [theme] ({!Theme.plain} by default), focuses its node when
+   [focused] is [true], and draws a frame. *)
+let paint ?(theme = Theme.plain) ?(focused = false) view =
+  let renderer = Renderer.create () in
+  Renderer.set_theme renderer theme;
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+  in
+  Mosaic.Reconciler.render reconciler ~viewport_width:doors_width view;
+  Renderer.render_frame renderer ~width:doors_width ~height:doors_height ~dt:0.;
+  if focused then begin
+    focus renderer (only_child renderer);
+    Renderer.render_frame renderer ~width:doors_width ~height:doors_height
+      ~dt:0.
+  end;
+  renderer
+
+let painted renderer = Matrix_screen.next_grid (Renderer.screen renderer)
+
+(* The frame at each of the four stylings an output may receive. *)
+let stylings : (string * Ansi.Styling.t) list =
+  [
+    ("truecolor", `Truecolor);
+    ("16 colors", `Ansi16);
+    ("attributes only", `Mono);
+    ("no styling", `Plain);
+  ]
+
+let at styling renderer = Matrix_grid.to_ansi ~styling (painted renderer)
+
+(* Whether some cell of [a] and the same cell of [b] have other attributes,
+   such as reverse or bold. *)
+let attributes_differ a b =
+  let differ = ref false in
+  for i = 0 to (Matrix_grid.width a * Matrix_grid.height a) - 1 do
+    if Matrix_grid.get_attrs a i <> Matrix_grid.get_attrs b i then
+      differ := true
+  done;
+  !differ
+
+(* The focus rule: at every styling the focused frame differs from the
+   unfocused one, at no styling by a glyph, so in the text it shows, and
+   also by an attribute that changes no color. *)
+let focus_shows ?theme view =
+  let unfocused = paint ?theme view in
+  let focused = paint ?theme ~focused:true view in
+  List.iter
+    (fun (name, styling) ->
+      Windtrap.not_equal ~msg:("focus shows, " ^ name) Windtrap.string
+        (at styling unfocused) (at styling focused))
+    stylings;
+  Windtrap.equal ~msg:"focus shows by an attribute" Windtrap.bool true
+    (attributes_differ (painted unfocused) (painted focused))
+
+(* The style and the text of the cell at [x], [y] of the frame [renderer]
+   drew last. *)
+let cell_style renderer ~x ~y =
+  let grid = painted renderer in
+  Matrix_grid.get_style grid (Matrix_grid.idx grid ~x ~y)
+
+let cell_text renderer ~x ~y =
+  let grid = painted renderer in
+  Matrix_grid.get_text grid (Matrix_grid.idx grid ~x ~y)
+
+let has attr (s : Ansi.Style.t) = Ansi.Attr.mem attr s.attrs
+
+let fg_is color (s : Ansi.Style.t) =
+  Option.equal Ansi.Color.equal (Some color) s.fg
+
+let bg_is color (s : Ansi.Style.t) =
+  Option.equal Ansi.Color.equal (Some color) s.bg

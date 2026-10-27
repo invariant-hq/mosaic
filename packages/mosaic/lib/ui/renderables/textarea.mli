@@ -4,6 +4,12 @@
     text, caret, selection and undo history change only when the owner applies
     accepted state. Paste strips ANSI escapes.
 
+    The editor is drawn on the [Field] surface of the theme in scope
+    ({!Renderable.theme}), its text as {!Text_surface.section-paint} states, and
+    its placeholder in the [Muted] role; a color label replaces the role or
+    surface it names. Focus shows as the caret, which is drawn at the focus
+    point whatever the output's styling.
+
     {1:keys Keys}
 
     When focused, the textarea's behavior (see {!Renderable.set_key_behavior})
@@ -172,28 +178,30 @@ module Props : sig
       - [ghost_text] is text drawn in italics at the caret of the focused
         textarea when nothing is selected, such as a suggested completion. It is
         not part of the text. Defaults to none.
-      - [ghost_text_color] is the ghost text's color. Defaults to
-        [Ansi.Color.grayscale ~level:12].
+      - [ghost_text_color] is the ghost text's color. Defaults to none, the
+        [Muted] role over the [Field] surface.
       - [placeholder] is the text shown when the textarea is empty. Defaults to
         [""].
       - [wrap] is the wrapping mode. Defaults to [`Word].
-      - [text_color] is the text color when unfocused. Defaults to
-        {!Ansi.Color.white}.
-      - [background_color] is the background color when unfocused. Defaults to
-        {!Ansi.Color.transparent}.
+      - [text_color] is the text color. Defaults to none, the [Field] surface's
+        foreground under the [Plain] role.
+      - [background_color] is the background color. Defaults to none, the
+        [Field] surface's background.
       - [focused_text_color] is the text color when focused. Defaults to
-        {!Ansi.Color.white}.
+        [text_color].
       - [focused_background_color] is the background color when focused.
-        Defaults to {!Ansi.Color.transparent}.
-      - [placeholder_color] is the placeholder's color. Defaults to
-        {!Ansi.Color.bright_black}.
-      - [selection_color] is the selection's background color. Defaults to
-        {!Ansi.Color.blue}.
+        Defaults to [background_color].
+      - [placeholder_color] is the placeholder's color. Defaults to none, the
+        [Muted] role over the [Field] surface.
+      - [selection_color] is the selection's background color. Defaults to none.
+        Without it and [selection_fg], the selection is drawn over the
+        [Highlight] surface ({!Text_surface.section-paint}).
       - [selection_fg] is the selection's foreground color. Defaults to the text
         color.
       - [cursor_style] is the caret's shape when focused. Defaults to [`Block].
       - [cursor_color] is the caret's color when focused. Defaults to
-        {!Ansi.Color.white}.
+        {!Ansi.Color.default_fg}, which leaves the caret in the terminal's own
+        color.
       - [cursor_blinking] is [true] iff the caret blinks. Defaults to [true].
       - [selectable] is [true] iff the pointer selects text. Defaults to [true].
       - [show_cursor] is [true] iff the focused textarea shows its caret.

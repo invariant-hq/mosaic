@@ -1,13 +1,6 @@
 (* Defaults *)
 
-let default_text_color = Ansi.Color.white
-let default_background_color = Ansi.Color.transparent
-let default_focused_text_color = Ansi.Color.white
-let default_focused_background_color = Ansi.Color.transparent
-let default_placeholder_color = Ansi.Color.bright_black
-let default_selection_color = Ansi.Color.blue
 let default_cursor_style = `Block
-let default_cursor_color = Ansi.Color.white
 let default_cursor_blinking = true
 
 (* Props *)
@@ -58,12 +51,12 @@ module Props = struct
   type t = {
     state : Editor.t;
     placeholder : string;
-    text_color : Ansi.Color.t;
-    background_color : Ansi.Color.t;
-    focused_text_color : Ansi.Color.t;
-    focused_background_color : Ansi.Color.t;
-    placeholder_color : Ansi.Color.t;
-    selection_color : Ansi.Color.t;
+    text_color : Ansi.Color.t option;
+    background_color : Ansi.Color.t option;
+    focused_text_color : Ansi.Color.t option;
+    focused_background_color : Ansi.Color.t option;
+    placeholder_color : Ansi.Color.t option;
+    selection_color : Ansi.Color.t option;
     selection_fg : Ansi.Color.t option;
     cursor_style : [ `Block | `Line | `Underline ];
     cursor_color : Ansi.Color.t;
@@ -73,14 +66,10 @@ module Props = struct
     key_bindings : key_binding list;
   }
 
-  let make ~state ?(placeholder = "") ?(text_color = default_text_color)
-      ?(background_color = default_background_color)
-      ?(focused_text_color = default_focused_text_color)
-      ?(focused_background_color = default_focused_background_color)
-      ?(placeholder_color = default_placeholder_color)
-      ?(selection_color = default_selection_color) ?selection_fg
-      ?(cursor_style = default_cursor_style)
-      ?(cursor_color = default_cursor_color)
+  let make ~state ?(placeholder = "") ?text_color ?background_color
+      ?focused_text_color ?focused_background_color ?placeholder_color
+      ?selection_color ?selection_fg ?(cursor_style = default_cursor_style)
+      ?(cursor_color = Ansi.Color.default_fg)
       ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
       ?(show_cursor = true) ?(key_bindings = []) () =
     if Matrix.Text.Layout.Source.line_count (Editor.source state) <> 1 then
@@ -108,12 +97,13 @@ module Props = struct
   let equal a b =
     a.state == b.state
     && String.equal a.placeholder b.placeholder
-    && Ansi.Color.equal a.text_color b.text_color
-    && Ansi.Color.equal a.background_color b.background_color
-    && Ansi.Color.equal a.focused_text_color b.focused_text_color
-    && Ansi.Color.equal a.focused_background_color b.focused_background_color
-    && Ansi.Color.equal a.placeholder_color b.placeholder_color
-    && Ansi.Color.equal a.selection_color b.selection_color
+    && Option.equal Ansi.Color.equal a.text_color b.text_color
+    && Option.equal Ansi.Color.equal a.background_color b.background_color
+    && Option.equal Ansi.Color.equal a.focused_text_color b.focused_text_color
+    && Option.equal Ansi.Color.equal a.focused_background_color
+         b.focused_background_color
+    && Option.equal Ansi.Color.equal a.placeholder_color b.placeholder_color
+    && Option.equal Ansi.Color.equal a.selection_color b.selection_color
     && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
     && a.cursor_style = b.cursor_style
     && Ansi.Color.equal a.cursor_color b.cursor_color
@@ -127,12 +117,12 @@ type t = { surface : Edit_surface.t; mutable props : Props.t }
 
 let surface_props (props : Props.t) =
   Edit_surface.Props.make ~state:props.state ~placeholder:props.placeholder
-    ~wrap:`None ~text_color:props.text_color
-    ~background_color:props.background_color
-    ~focused_text_color:props.focused_text_color
-    ~focused_background_color:props.focused_background_color
-    ~placeholder_color:props.placeholder_color
-    ~selection_color:props.selection_color ?selection_fg:props.selection_fg
+    ~wrap:`None ?text_color:props.text_color
+    ?background_color:props.background_color
+    ?focused_text_color:props.focused_text_color
+    ?focused_background_color:props.focused_background_color
+    ?placeholder_color:props.placeholder_color
+    ?selection_color:props.selection_color ?selection_fg:props.selection_fg
     ~cursor_style:props.cursor_style ~cursor_color:props.cursor_color
     ~cursor_blinking:props.cursor_blinking ~selectable:props.selectable
     ~show_cursor:props.show_cursor ~key_bindings:props.key_bindings ()

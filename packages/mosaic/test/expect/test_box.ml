@@ -217,19 +217,18 @@ let%expect_test "focused box uses focused border color" =
   frame_ansi app ~width:10 ~height:3;
   [%expect_exact
     {|
-[0;38;5;14m┌────────┐[0m
-[0;38;5;14m│[39m        [38;5;14m│[0m
-[0;38;5;14m└────────┘[0m|}]
+[0;1m┏━━━━━━━━┓[0m
+[0;1m┃[22m        [1m┃[0m
+[0;1m┗━━━━━━━━┛[0m|}]
 
 let%expect_test "unfocused box uses normal border color" =
   let app = make_app () in
   reconcile app (Vnode.box ~border:true ~focusable:true []);
   frame_ansi app ~width:10 ~height:3;
-  [%expect_exact
-    {|
-[0;38;5;7m┌────────┐[0m
-[0;38;5;7m│[39m        [38;5;7m│[0m
-[0;38;5;7m└────────┘[0m|}]
+  [%expect_exact {|
+[0m┌────────┐[0m
+[0m│        │[0m
+[0m└────────┘[0m|}]
 
 let%expect_test "focused box with explicit border color" =
   let app = make_app () in
@@ -243,9 +242,9 @@ let%expect_test "focused box with explicit border color" =
 [0;38;5;1m┌────────┐[0m
 [0;38;5;1m│[39m        [38;5;1m│[0m
 [0;38;5;1m└────────┘[0m
-[0;38;5;14m┌────────┐[0m
-[0;38;5;14m│[39m        [38;5;14m│[0m
-[0;38;5;14m└────────┘[0m|}]
+[0;38;5;1;1m┏━━━━━━━━┓[0m
+[0;38;5;1;1m┃[39;22m        [38;5;1;1m┃[0m
+[0;38;5;1;1m┗━━━━━━━━┛[0m|}]
 
 (* ── Reconciliation ── *)
 
@@ -341,9 +340,9 @@ let%expect_test "background with border" =
     (Vnode.box ~border:true ~background:Ansi.Color.blue []);
   [%expect_exact
     {|
-[0;38;5;7;48;5;4m┌────────┐[0m
-[0;38;5;7;48;5;4m│[39m        [38;5;7m│[0m
-[0;38;5;7;48;5;4m└────────┘[0m|}]
+[0;48;5;4m┌────────┐[0m
+[0;48;5;4m│        │[0m
+[0;48;5;4m└────────┘[0m|}]
 
 (* ── Fill ── *)
 

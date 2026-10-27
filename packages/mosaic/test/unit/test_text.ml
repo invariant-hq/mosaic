@@ -806,9 +806,58 @@ let doors_rich_on_selection () =
     ~create:(fun parent ->
       rich (Text.create ~parent ~style ~on_selection:record_selection ()))
 
+(* ── Paint ── *)
+
+(* Text is drawn by the [Plain] role with its content's style merged over
+   it, one rule for plain and rich text, and its selection by the
+   [Highlight] surface unless a selection color is given. *)
+
+let paint_red = Ansi.Color.indexed 1
+let paint_blue = Ansi.Color.indexed 4
+let plain_red = Theme.with_style Plain (Ansi.Style.make ~fg:paint_red ())
+
+let paint_content_over_role () =
+  let r =
+    paint (Mosaic.themed plain_red (Mosaic.text ~text_style:bold words))
+  in
+  let s = cell_style r ~x:0 ~y:0 in
+  is_true ~msg:"the role's color" (fg_is paint_red s);
+  is_true ~msg:"the content's attribute" (has Bold s);
+  let r =
+    paint
+      (Mosaic.themed plain_red
+         (Mosaic.rich_text ~text_style:bold
+            [
+              Text.Fragment.text "a";
+              Text.Fragment.fg paint_blue [ Text.Fragment.text "b" ];
+            ]))
+  in
+  let a = cell_style r ~x:0 ~y:0 and b = cell_style r ~x:1 ~y:0 in
+  is_true ~msg:"plain fragment, the role's color" (fg_is paint_red a);
+  is_true ~msg:"colored fragment, its own color" (fg_is paint_blue b);
+  is_true ~msg:"both bold" (has Bold a && has Bold b)
+
+let paint_selection_highlight () =
+  let selected view =
+    let r = paint view in
+    Test_harness.select_text r (only_child r);
+    Renderer.render_frame r ~width:doors_width ~height:doors_height ~dt:0.;
+    cell_style r ~x:0 ~y:0
+  in
+  is_true ~msg:"the Highlight surface"
+    (has Inverse (selected (Mosaic.text words)));
+  let s = selected (Mosaic.text ~selection_bg:paint_blue words) in
+  is_true ~msg:"a selection color replaces it"
+    (bg_is paint_blue s && not (has Inverse s))
+
 let () =
   run "mosaic.text"
     [
+      group "Paint"
+        [
+          test "content merges over the role" paint_content_over_role;
+          test "selection by Highlight, label first" paint_selection_highlight;
+        ];
       group "Content ownership"
         [
           test "rich props retain geometry and accept plain transitions"

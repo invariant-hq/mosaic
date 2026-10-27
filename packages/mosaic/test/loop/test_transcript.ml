@@ -161,11 +161,11 @@ let%expect_test "bytes each input writes" =
       step "a second idle" (fun () -> Matrix_test.advance s 1_000_000_000));
   [%expect
     {|
-    type a key                   49 bytes
+    type a key                   42 bytes
     erase it                     42 bytes
     wheel down 8 lines          651 bytes
     wheel up 8 lines            606 bytes
-    resize to 249x69          17703 bytes
-    resize back to 250x70     18029 bytes
+    resize to 249x69          17689 bytes
+    resize back to 250x70     18015 bytes
     a second idle                 0 bytes
     |}]

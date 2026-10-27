@@ -33,7 +33,8 @@ type cursor = {
   blinking : bool;
 }
 (** The type for hardware cursor descriptions. Coordinates are absolute terminal
-    cell positions. *)
+    cell positions. A [color] of the terminal's default
+    ({!Ansi.Color.default_fg}) leaves the cursor in the terminal's own color. *)
 
 val equal_cursor : cursor -> cursor -> bool
 (** [equal_cursor a b] is [true] iff all fields of [a] and [b] match. *)

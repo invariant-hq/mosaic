@@ -11,6 +11,13 @@
     border of its layout style from these widths, replacing the one the style
     gives.
 
+    The border is drawn in the [Border] role of the theme in scope
+    ({!Renderable.theme}), or in [border_color] where it is given. While the box
+    is focused, its border is drawn in [focused_border_color] where it is given,
+    and otherwise in {!Matrix_grid.Border.heavy} lines in bold, so focus shows
+    by a glyph whatever the output's styling, and by an attribute where it has
+    styling. The title is drawn in the border's style.
+
     Setting a border-related property ({!set_border_style}, {!set_border_color},
     {!set_focused_border_color}) auto-enables borders. *)
 
@@ -75,8 +82,8 @@ module Props : sig
       - [border_sides] defaults to {!Matrix_grid.Border.all} (all four sides).
       - [border_width] is the border width of each side, in whole cells.
         Defaults to one cell on each side.
-      - [border_color] defaults to {!Ansi.Color.white}.
-      - [focused_border_color] defaults to {!Ansi.Color.bright_cyan}.
+      - [border_color] defaults to none, the [Border] role.
+      - [focused_border_color] defaults to none, heavy lines in bold.
       - [background] defaults to [None] (transparent).
       - [fill] defaults to [true].
       - [title] defaults to [None].
@@ -123,8 +130,8 @@ val set_border_color : t -> Ansi.Color.t -> unit
 
 val set_focused_border_color : t -> Ansi.Color.t option -> unit
 (** [set_focused_border_color t color] sets the border color used when [t] has
-    focus. [None] falls back to the unfocused color. [Some _] auto-enables
-    borders. Only triggers a re-render when [t] is focused. *)
+    focus. [None] draws a focused border in heavy lines in bold. [Some _]
+    auto-enables borders. Only triggers a re-render when [t] is focused. *)
 
 (** {1:background Background} *)
 

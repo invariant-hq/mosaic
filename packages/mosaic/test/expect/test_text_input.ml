@@ -74,7 +74,7 @@ let%expect_test "selection highlight" =
   frame_ansi app ~width:20 ~height:1;
   [%expect_exact {|
 hello
-[0;38;5;7mhello[39m               [0m|}]
+[0mhello               [0m|}]
 
 let%expect_test "narrow width shows start of content" =
   render ~width:5 ~height:1 (input ~value:"hello world" ());

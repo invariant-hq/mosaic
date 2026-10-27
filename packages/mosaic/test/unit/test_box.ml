@@ -44,10 +44,12 @@ let props_focused_border_color_auto_enables () =
   in
   is_true ~msg:"auto-enabled" (Box.Props.equal p p_expected)
 
-let props_white_does_not_auto_enable () =
+(* A color equal to the old default enables the border as any other: the
+   label is compared as given, not by value. *)
+let props_white_auto_enables () =
   let p = Box.Props.make ~border_color:Ansi.Color.white () in
-  let p_default = Box.Props.make () in
-  is_true ~msg:"not auto-enabled" (Box.Props.equal p p_default)
+  let q = Box.Props.make ~border:true ~border_color:Ansi.Color.white () in
+  is_true ~msg:"auto-enabled" (Box.Props.equal p q)
 
 (* ── Construction ── *)
 
@@ -344,7 +346,7 @@ let focused_border_color_default () =
   let b =
     Box.Props.make ~border:true ~focused_border_color:Ansi.Color.bright_cyan ()
   in
-  is_true ~msg:"default is Bright_cyan" (Box.Props.equal a b)
+  is_false ~msg:"default is none" (Box.Props.equal a b)
 
 let focused_border_color_explicit () =
   let a =
@@ -374,7 +376,9 @@ let set_border_style_noop_same_value () =
 let set_border_color_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box =
+    Box.create ~parent:root ~border:true ~border_color:Ansi.Color.white ()
+  in
   let before = !(t.schedule_count) in
   Box.set_border_color box Ansi.Color.white;
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -535,9 +539,58 @@ let doors_inert () =
     ~create_base:(fun ~parent -> Box.create ~parent ~style ())
     ~create:(fun ~parent -> Box.create ~parent ~style ~inert:true ())
 
+(* ── Paint ── *)
+
+(* A box draws its border by the [Border] role, a label overriding it, and
+   shows its focus by heavy lines in bold. *)
+
+let paint_size = Mosaic.size ~width:10 ~height:3
+let red = Ansi.Color.indexed 1
+let blue = Ansi.Color.indexed 4
+
+let paint_legible_on_light () =
+  let view =
+    Mosaic.box ~border:true ~title:"Title" ~size:paint_size
+      [ Mosaic.text "hello" ]
+  in
+  equal ~msg:"no cell below its contrast" (list string) []
+    (illegible xterm_light
+       (painted (paint ~theme:(Theme.default xterm_light) view)))
+
+let paint_border_role () =
+  let themed = Theme.with_style Border (Ansi.Style.make ~fg:red ()) in
+  let r =
+    paint (Mosaic.themed themed (Mosaic.box ~border:true ~size:paint_size []))
+  in
+  is_true ~msg:"the role's color" (fg_is red (cell_style r ~x:0 ~y:0));
+  let r =
+    paint
+      (Mosaic.themed themed
+         (Mosaic.box ~border:true ~border_color:blue ~size:paint_size []))
+  in
+  is_true ~msg:"the label's color" (fg_is blue (cell_style r ~x:0 ~y:0))
+
+let paint_focus_shows () =
+  focus_shows (Mosaic.box ~border:true ~size:paint_size [])
+
+let paint_focused_border_color () =
+  let r =
+    paint ~focused:true
+      (Mosaic.box ~border:true ~focused_border_color:red ~size:paint_size [])
+  in
+  is_true ~msg:"the label's color" (fg_is red (cell_style r ~x:0 ~y:0));
+  equal ~msg:"its own lines" string "\u{250C}" (cell_text r ~x:0 ~y:0)
+
 let () =
   run "mosaic.box"
     [
+      group "Paint"
+        [
+          test "legible on a light terminal" paint_legible_on_light;
+          test "border by role, label first" paint_border_role;
+          test "focus shows at every styling" paint_focus_shows;
+          test "focused_border_color" paint_focused_border_color;
+        ];
       group "Props"
         [
           test "default values" props_defaults;
@@ -549,8 +602,7 @@ let () =
             props_border_color_auto_enables;
           test "focused_border_color auto-enables"
             props_focused_border_color_auto_enables;
-          test "White border_color does not auto-enable"
-            props_white_does_not_auto_enable;
+          test "White border_color auto-enables" props_white_auto_enables;
         ];
       group "Construction"
         [
@@ -599,7 +651,7 @@ let () =
         ];
       group "Focused border color"
         [
-          test "default is Bright_cyan" focused_border_color_default;
+          test "default is none" focused_border_color_default;
           test "explicit color differs from default"
             focused_border_color_explicit;
         ];
