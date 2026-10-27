@@ -10,11 +10,13 @@ let make_line_number ?line_colors ?line_signs ?line_numbers ?hidden_line_numbers
     ?show_line_numbers () =
   let renderer = Renderer.create () in
   let ln =
-    Line_number.create ~parent:(Renderer.root renderer) ?line_colors ?line_signs
-      ?line_numbers ?hidden_line_numbers ?show_line_numbers ()
+    Line_number.create ~parent:(Renderer.root renderer)
+      (Line_number.Props.make ?line_colors ?line_signs ?line_numbers
+         ?hidden_line_numbers ?show_line_numbers ())
   in
   let (_ : Text.t) =
-    Text.create ~parent:(Line_number.node ln) ~content:"alpha\nbeta\ngamma" ()
+    Text.create ~parent:(Line_number.node ln)
+      (Text.Props.make ~content:"alpha\nbeta\ngamma" ())
   in
   (renderer, ln)
 
@@ -103,7 +105,10 @@ let gutter_numbers_follow_scrolled_rows () =
   (* The gutter reads the content's rows from its scroll origin, so the first
      visible row of a scrolled editor is numbered by its own logical line. *)
   let renderer = Renderer.create () in
-  let ln = Line_number.create ~parent:(Renderer.root renderer) () in
+  let ln =
+    Line_number.create ~parent:(Renderer.root renderer)
+      (Line_number.Props.make ())
+  in
   let state =
     Editor.of_string "a\nb\nc\nd\ne"
     |> Editor.with_viewport ~x:0 ~y:2 ~follow:false
@@ -116,9 +121,8 @@ let gutter_numbers_follow_scrolled_rows () =
              (Toffee.Geometry.Size.make Toffee.Style.Dimension.auto
                 (Toffee.Style.Dimension.length 3.))
            ())
-      ~state
       ~on_change:(fun _ -> ())
-      ()
+      (Textarea.Props.make ~state ())
   in
   let grid = render renderer in
   equal ~msg:"first visible row" string " 3 " (gutter_text grid ~y:0);
@@ -128,11 +132,13 @@ let gutter_numbers_only_first_rows () =
   (* A wrapped continuation shows no number; the next logical line keeps its
      own. *)
   let renderer = Renderer.create () in
-  let ln = Line_number.create ~parent:(Renderer.root renderer) () in
+  let ln =
+    Line_number.create ~parent:(Renderer.root renderer)
+      (Line_number.Props.make ())
+  in
   let (_ : Text.t) =
-    Text.create ~parent:(Line_number.node ln) ~wrap:`Char
-      ~content:(String.make 30 'x' ^ "\ny")
-      ()
+    Text.create ~parent:(Line_number.node ln)
+      (Text.Props.make ~wrap:`Char ~content:(String.make 30 'x' ^ "\ny") ())
   in
   let grid = render renderer in
   equal ~msg:"wrapped line numbered once" string " 1 " (gutter_text grid ~y:0);
@@ -143,8 +149,9 @@ let gutter_numbers_only_first_rows () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.line_number}) or to {!Line_number.create},
-   reaches the live gutter ({!Test_harness.reaches}). *)
+(* Each label, given to the element ({!Mosaic.line_number}) or to
+   {!Line_number.Props.make} for {!Line_number.create}, reaches the live
+   gutter ({!Test_harness.reaches}). *)
 
 let doors_size = Mosaic.size ~width:12 ~height:3
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -160,7 +167,8 @@ let doors_sign =
 
 let doors_gutter gutter =
   ignore
-    (Text.create ~parent:(Line_number.node gutter) ~content:"a\nb\nc" ()
+    (Text.create ~parent:(Line_number.node gutter)
+       (Text.Props.make ~content:"a\nb\nc" ())
       : Text.t);
   Line_number.node gutter
 
@@ -170,10 +178,13 @@ let doors_fg () =
     ~element:
       (Mosaic.line_number ~size:doors_size ~fg:doors_red (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
-        (Line_number.create ~parent ~style:doors_style ~fg:doors_red ()))
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ~fg:doors_red ())))
 
 let doors_bg () =
   Test_harness.reaches "bg"
@@ -181,10 +192,13 @@ let doors_bg () =
     ~element:
       (Mosaic.line_number ~size:doors_size ~bg:doors_red (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
-        (Line_number.create ~parent ~style:doors_style ~bg:doors_red ()))
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ~bg:doors_red ())))
 
 let doors_min_width () =
   Test_harness.reaches "min_width"
@@ -192,10 +206,13 @@ let doors_min_width () =
     ~element:
       (Mosaic.line_number ~size:doors_size ~min_width:5 (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
-        (Line_number.create ~parent ~style:doors_style ~min_width:5 ()))
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ~min_width:5 ())))
 
 let doors_padding_right () =
   Test_harness.reaches "padding_right"
@@ -204,10 +221,13 @@ let doors_padding_right () =
       (Mosaic.line_number ~size:doors_size ~padding_right:3
          (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
-        (Line_number.create ~parent ~style:doors_style ~padding_right:3 ()))
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ~padding_right:3 ())))
 
 let doors_show_line_numbers () =
   Test_harness.reaches "show_line_numbers"
@@ -216,11 +236,13 @@ let doors_show_line_numbers () =
       (Mosaic.line_number ~size:doors_size ~show_line_numbers:false
          (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
-        (Line_number.create ~parent ~style:doors_style ~show_line_numbers:false
-           ()))
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ~show_line_numbers:false ())))
 
 let doors_line_number_offset () =
   Test_harness.reaches "line_number_offset"
@@ -229,10 +251,13 @@ let doors_line_number_offset () =
       (Mosaic.line_number ~size:doors_size ~line_number_offset:10
          (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
-        (Line_number.create ~parent ~style:doors_style ~line_number_offset:10 ()))
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ~line_number_offset:10 ())))
 
 let doors_line_colors () =
   Test_harness.reaches "line_colors"
@@ -243,13 +268,16 @@ let doors_line_colors () =
            [ (0, { Line_number.gutter = doors_red; content = None }) ]
          (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
         (Line_number.create ~parent ~style:doors_style
-           ~line_colors:
-             [ (0, { Line_number.gutter = doors_red; content = None }) ]
-           ()))
+           (Line_number.Props.make
+              ~line_colors:
+                [ (0, { Line_number.gutter = doors_red; content = None }) ]
+              ())))
 
 let doors_line_signs () =
   Test_harness.reaches "line_signs"
@@ -259,12 +287,13 @@ let doors_line_signs () =
          ~line_signs:[ (0, doors_sign) ]
          (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
         (Line_number.create ~parent ~style:doors_style
-           ~line_signs:[ (0, doors_sign) ]
-           ()))
+           (Line_number.Props.make ~line_signs:[ (0, doors_sign) ] ())))
 
 let doors_line_numbers () =
   Test_harness.reaches "line_numbers"
@@ -274,12 +303,13 @@ let doors_line_numbers () =
          ~line_numbers:[ (0, 42) ]
          (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
         (Line_number.create ~parent ~style:doors_style
-           ~line_numbers:[ (0, 42) ]
-           ()))
+           (Line_number.Props.make ~line_numbers:[ (0, 42) ] ())))
 
 let doors_hidden_line_numbers () =
   Test_harness.reaches "hidden_line_numbers"
@@ -288,11 +318,13 @@ let doors_hidden_line_numbers () =
       (Mosaic.line_number ~size:doors_size ~hidden_line_numbers:[ 0 ]
          (Mosaic.text "a\nb\nc"))
     ~create_base:(fun parent ->
-      doors_gutter (Line_number.create ~parent ~style:doors_style ()))
+      doors_gutter
+        (Line_number.create ~parent ~style:doors_style
+           (Line_number.Props.make ())))
     ~create:(fun parent ->
       doors_gutter
         (Line_number.create ~parent ~style:doors_style
-           ~hidden_line_numbers:[ 0 ] ()))
+           (Line_number.Props.make ~hidden_line_numbers:[ 0 ] ())))
 
 (* ── Paint ── *)
 

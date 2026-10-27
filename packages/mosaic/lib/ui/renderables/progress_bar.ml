@@ -3,7 +3,7 @@
 type orientation = [ `Horizontal | `Vertical ]
 
 (* [Props.make] is the one place the progress bar's labels get their
-   defaults: [create] and [Mosaic.progress_bar] pass their labels on unset. *)
+   defaults: [Mosaic.progress_bar] passes its labels on unset. *)
 module Props = struct
   type t = {
     value : float;
@@ -17,9 +17,6 @@ module Props = struct
   let make ?(value = 0.) ?(min = 0.) ?(max = 1.) ?(orientation = `Horizontal)
       ?filled_color ?empty_color () =
     { value; min; max; orientation; filled_color; empty_color }
-
-  let make_k k ?value ?min ?max ?orientation ?filled_color ?empty_color () =
-    k (make ?value ?min ?max ?orientation ?filled_color ?empty_color ())
 
   let default = make ()
 
@@ -151,7 +148,7 @@ let render t _self grid ~dt:_ =
 
 (* ───── Construction ───── *)
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
@@ -159,10 +156,6 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
   let t = { node; props } in
   Renderable.set_render node (render t);
   t
-
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
 
 (* ───── Accessors ───── *)
 
@@ -218,7 +211,3 @@ let pp ppf t =
   in
   Format.fprintf ppf "Progress_bar(%s, %s, %.1f/[%.1f..%.1f])"
     (Renderable.id t.node) orient t.props.value t.props.min t.props.max
-
-module Private = struct
-  let of_props = of_props
-end

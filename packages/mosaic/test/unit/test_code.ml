@@ -14,7 +14,9 @@ let highlights =
 let make_code ?content ?syntax ?text_style () =
   let t = make_ctx () in
   let root = make_root t in
-  let code = Code.create ~parent:root ?content ?syntax ?text_style () in
+  let code =
+    Code.create ~parent:root (Code.Props.make ?content ?syntax ?text_style ())
+  in
   (t, code)
 
 let render_code code =
@@ -536,7 +538,8 @@ let threaded_requests_are_bounded_and_cancelled () =
       highlighter
   in
   let code =
-    Code.create ~parent:(Renderer.root renderer) ~content:"let old" ~syntax ()
+    Code.create ~parent:(Renderer.root renderer)
+      (Code.Props.make ~content:"let old" ~syntax ())
   in
   Fun.protect ~finally:release (fun () ->
       await "first request started" (fun () -> Atomic.get calls <> []);
@@ -552,13 +555,13 @@ let threaded_requests_are_bounded_and_cancelled () =
       done;
       Code.set_content code "let final";
       let discarded =
-        Code.create ~parent:(Renderer.root renderer) ~content:"let discarded"
-          ~syntax ()
+        Code.create ~parent:(Renderer.root renderer)
+          (Code.Props.make ~content:"let discarded" ~syntax ())
       in
       Renderable.destroy (Code.node discarded);
       let other =
-        Code.create ~parent:(Renderer.root renderer) ~content:"let other"
-          ~syntax ()
+        Code.create ~parent:(Renderer.root renderer)
+          (Code.Props.make ~content:"let other" ~syntax ())
       in
       Thread.delay 0.01;
       equal ~msg:"one executing request, no worker per edit" (list string)
@@ -593,7 +596,8 @@ let threaded_failure_and_idle_restart () =
       highlighter
   in
   let code =
-    Code.create ~parent:(Renderer.root renderer) ~content:"bad" ~syntax ()
+    Code.create ~parent:(Renderer.root renderer)
+      (Code.Props.make ~content:"bad" ~syntax ())
   in
   await "failure delivered" (fun () ->
       render_code code;
@@ -993,8 +997,8 @@ let incremental_requests_hold_on_random_scripts () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.code}) or to {!Code.create},
-   reaches the live code ({!Test_harness.reaches}). *)
+(* Each label, given to the element ({!Mosaic.code}) or to {!Code.Props.make}
+   for {!Code.create}, reaches the live code ({!Test_harness.reaches}). *)
 
 let doors_size = Mosaic.size ~width:8 ~height:3
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -1018,20 +1022,26 @@ let doors_content () =
     ~base:(Mosaic.code ~size:doors_size "abc")
     ~element:(Mosaic.code ~size:doors_size "xyz")
     ~create_base:(fun parent ->
-      Code.node (Code.create ~parent ~style:doors_style ~content:"abc" ()))
+      Code.node
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"abc" ())))
     ~create:(fun parent ->
-      Code.node (Code.create ~parent ~style:doors_style ~content:"xyz" ()))
+      Code.node
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"xyz" ())))
 
 let doors_syntax () =
   Test_harness.reaches "syntax"
     ~base:(Mosaic.code ~size:doors_size "let x")
     ~element:(Mosaic.code ~size:doors_size ~syntax:let_x_syntax "let x")
     ~create_base:(fun parent ->
-      Code.node (Code.create ~parent ~style:doors_style ~content:"let x" ()))
+      Code.node
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"let x" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"let x"
-           ~syntax:let_x_syntax ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"let x" ~syntax:let_x_syntax ())))
 
 let doors_conceal () =
   Test_harness.reaches "conceal"
@@ -1040,12 +1050,13 @@ let doors_conceal () =
       (Mosaic.code ~size:doors_size ~syntax:concealing ~conceal:false "abcd e")
     ~create_base:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"abcd e"
-           ~syntax:concealing ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"abcd e" ~syntax:concealing ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"abcd e"
-           ~syntax:concealing ~conceal:false ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"abcd e" ~syntax:concealing ~conceal:false
+              ())))
 
 let doors_text_style () =
   Test_harness.reaches "text_style"
@@ -1053,11 +1064,12 @@ let doors_text_style () =
     ~element:(Mosaic.code ~size:doors_size ~text_style:doors_bold "hello world")
     ~create_base:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world"
-           ~text_style:doors_bold ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ~text_style:doors_bold ())))
 
 let doors_wrap () =
   Test_harness.reaches "wrap"
@@ -1065,21 +1077,25 @@ let doors_wrap () =
     ~element:(Mosaic.code ~size:doors_size ~wrap:`Word "hello world")
     ~create_base:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world"
-           ~wrap:`Word ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ~wrap:`Word ())))
 
 let doors_tab_width () =
   Test_harness.reaches "tab_width"
     ~base:(Mosaic.code ~size:doors_size "a\tb")
     ~element:(Mosaic.code ~size:doors_size ~tab_width:2 "a\tb")
     ~create_base:(fun parent ->
-      Code.node (Code.create ~parent ~style:doors_style ~content:"a\tb" ()))
+      Code.node
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"a\tb" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"a\tb" ~tab_width:2 ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"a\tb" ~tab_width:2 ())))
 
 let doors_truncate () =
   Test_harness.reaches "truncate"
@@ -1087,11 +1103,12 @@ let doors_truncate () =
     ~element:(Mosaic.code ~size:doors_size ~truncate:true "hello world")
     ~create_base:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world"
-           ~truncate:true ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ~truncate:true ())))
 
 let doors_selectable () =
   Test_harness.reaches ~act:Test_harness.select_text ~observe:selected
@@ -1100,11 +1117,12 @@ let doors_selectable () =
     ~element:(Mosaic.code ~size:doors_size ~selectable:false "hello world")
     ~create_base:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world"
-           ~selectable:false ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ~selectable:false ())))
 
 let doors_selection_bg () =
   Test_harness.reaches ~act:Test_harness.select_text "selection_bg"
@@ -1113,11 +1131,13 @@ let doors_selection_bg () =
       (Mosaic.code ~size:doors_size ~selection_bg:Ansi.Color.red "hello world")
     ~create_base:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world"
-           ~selection_bg:Ansi.Color.red ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ~selection_bg:Ansi.Color.red
+              ())))
 
 let doors_selection_fg () =
   Test_harness.reaches ~act:Test_harness.select_text "selection_fg"
@@ -1126,11 +1146,13 @@ let doors_selection_fg () =
       (Mosaic.code ~size:doors_size ~selection_fg:Ansi.Color.red "hello world")
     ~create_base:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style:doors_style ~content:"hello world"
-           ~selection_fg:Ansi.Color.red ()))
+        (Code.create ~parent ~style:doors_style
+           (Code.Props.make ~content:"hello world" ~selection_fg:Ansi.Color.red
+              ())))
 
 let () =
   run "mosaic.code"

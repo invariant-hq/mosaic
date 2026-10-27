@@ -9,8 +9,9 @@ let make_slider ?orientation ?value ?min ?max ?viewport_size ?track_color
   let t = make_ctx () in
   let root = make_root t in
   let slider =
-    Slider.create ~parent:root ?orientation ?value ?min ?max ?viewport_size
-      ?track_color ?thumb_color ?on_change ()
+    Slider.create ~parent:root ?on_change
+      (Slider.Props.make ?orientation ?value ?min ?max ?viewport_size
+         ?track_color ?thumb_color ())
   in
   Slider.set_on_change slider
     (Some
@@ -553,9 +554,9 @@ let rejected_drag_proposals () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.slider}) or to {!Slider.create},
-   reaches the live slider ({!Test_harness.reaches}). The element's [state]
-   is the slider's [value]. *)
+(* Each label, given to the element ({!Mosaic.slider}) or to
+   {!Slider.Props.make} for {!Slider.create}, reaches the live slider
+   ({!Test_harness.reaches}). The element's [state] is the slider's [value]. *)
 
 let doors_size = Mosaic.size ~width:12 ~height:3
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -566,9 +567,13 @@ let doors_value () =
     ~base:(Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ())
     ~element:(Mosaic.slider ~size:doors_size ~state:70. ~on_change:ignore ())
     ~create_base:(fun parent ->
-      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+      Slider.node
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ())))
     ~create:(fun parent ->
-      Slider.node (Slider.create ~parent ~style:doors_style ~value:70. ()))
+      Slider.node
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:70. ())))
 
 let doors_orientation () =
   Test_harness.reaches "orientation"
@@ -577,11 +582,13 @@ let doors_orientation () =
       (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore
          ~orientation:`Vertical ())
     ~create_base:(fun parent ->
-      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+      Slider.node
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ())))
     ~create:(fun parent ->
       Slider.node
-        (Slider.create ~parent ~style:doors_style ~value:20.
-           ~orientation:`Vertical ()))
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ~orientation:`Vertical ())))
 
 let doors_min () =
   Test_harness.reaches "min"
@@ -589,10 +596,13 @@ let doors_min () =
     ~element:
       (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ~min:10. ())
     ~create_base:(fun parent ->
-      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+      Slider.node
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ())))
     ~create:(fun parent ->
       Slider.node
-        (Slider.create ~parent ~style:doors_style ~value:20. ~min:10. ()))
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ~min:10. ())))
 
 let doors_max () =
   Test_harness.reaches "max"
@@ -600,10 +610,13 @@ let doors_max () =
     ~element:
       (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ~max:40. ())
     ~create_base:(fun parent ->
-      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+      Slider.node
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ())))
     ~create:(fun parent ->
       Slider.node
-        (Slider.create ~parent ~style:doors_style ~value:20. ~max:40. ()))
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ~max:40. ())))
 
 let doors_viewport_size () =
   Test_harness.reaches "viewport_size"
@@ -612,11 +625,13 @@ let doors_viewport_size () =
       (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore
          ~viewport_size:50. ())
     ~create_base:(fun parent ->
-      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+      Slider.node
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ())))
     ~create:(fun parent ->
       Slider.node
-        (Slider.create ~parent ~style:doors_style ~value:20. ~viewport_size:50.
-           ()))
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ~viewport_size:50. ())))
 
 let doors_track_color () =
   Test_harness.reaches "track_color"
@@ -625,11 +640,13 @@ let doors_track_color () =
       (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore
          ~track_color:doors_red ())
     ~create_base:(fun parent ->
-      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+      Slider.node
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ())))
     ~create:(fun parent ->
       Slider.node
-        (Slider.create ~parent ~style:doors_style ~value:20.
-           ~track_color:doors_red ()))
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ~track_color:doors_red ())))
 
 let doors_thumb_color () =
   Test_harness.reaches "thumb_color"
@@ -638,11 +655,13 @@ let doors_thumb_color () =
       (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore
          ~thumb_color:doors_red ())
     ~create_base:(fun parent ->
-      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+      Slider.node
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ())))
     ~create:(fun parent ->
       Slider.node
-        (Slider.create ~parent ~style:doors_style ~value:20.
-           ~thumb_color:doors_red ()))
+        (Slider.create ~parent ~style:doors_style
+           (Slider.Props.make ~value:20. ~thumb_color:doors_red ())))
 
 (* ── Paint ── *)
 

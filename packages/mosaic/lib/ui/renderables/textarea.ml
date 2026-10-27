@@ -42,16 +42,10 @@ type key_binding = Shortcut.t * action
 
 module Props = Edit_surface.Props
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ~on_change
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~on_change
     ?on_submit (props : Props.t) =
   Edit_surface.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     ~on_change ?on_submit props
-
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~on_change
-    ?on_submit =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ~on_change
-        ?on_submit props)
 
 let node = Edit_surface.node
 let state = Edit_surface.state
@@ -74,7 +68,3 @@ let pp ppf t =
     Format.fprintf ppf ", %S" display
   end;
   Format.pp_print_char ppf ')'
-
-module Private = struct
-  let of_props = of_props
-end

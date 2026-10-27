@@ -62,42 +62,6 @@ type key_binding = Shortcut.t * action
 
 (** {1:construction Construction} *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  ?on_change:(int -> unit) ->
-  ?on_activate:(int -> unit) ->
-  options:item list ->
-  ?selected:int ->
-  ?tab_width:int ->
-  ?background:Ansi.Color.t ->
-  ?text_color:Ansi.Color.t ->
-  ?focused_background:Ansi.Color.t ->
-  ?focused_text_color:Ansi.Color.t ->
-  ?selected_background:Ansi.Color.t ->
-  ?selected_text_color:Ansi.Color.t ->
-  ?description_color:Ansi.Color.t ->
-  ?selected_description_color:Ansi.Color.t ->
-  ?show_underline:bool ->
-  ?show_description:bool ->
-  ?show_scroll_arrows:bool ->
-  ?wrap_selection:bool ->
-  ?key_bindings:key_binding list ->
-  unit ->
-  t
-(** [create ~parent ~options ()] is a tab selector attached to [parent]. The
-    node is focusable and uses buffered rendering. The labels from [options] to
-    [key_bindings] are {!Props.make}'s and take its defaults.
-    - [on_change] fires when the selected index changes via navigation or
-      {!set_selected}.
-    - [on_activate] fires when a tab is activated (Enter key or
-      {!select_current}). *)
-
 val node : t -> Renderable.t
 (** [node t] is the underlying renderable. *)
 
@@ -152,33 +116,8 @@ module Props : sig
       - [key_bindings] adds keys to those {!section-keys} lists or binds one of
         them to another action. Defaults to [[]].
 
-      {!val-create} takes these labels with these defaults, and so does
-      [Mosaic.tab_select] for the labels it has. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    options:item list ->
-    ?selected:int ->
-    ?tab_width:int ->
-    ?background:Ansi.Color.t ->
-    ?text_color:Ansi.Color.t ->
-    ?focused_background:Ansi.Color.t ->
-    ?focused_text_color:Ansi.Color.t ->
-    ?selected_background:Ansi.Color.t ->
-    ?selected_text_color:Ansi.Color.t ->
-    ?description_color:Ansi.Color.t ->
-    ?selected_description_color:Ansi.Color.t ->
-    ?show_underline:bool ->
-    ?show_description:bool ->
-    ?show_scroll_arrows:bool ->
-    ?wrap_selection:bool ->
-    ?key_bindings:key_binding list ->
-    unit ->
-    'a
-
-  (**/**)
+      [Mosaic.tab_select] takes those of these labels it has, with these
+      defaults. *)
 
   val default : t
   (** [default] is [make ~options:[] ()]. *)
@@ -193,6 +132,25 @@ module Props : sig
   (** [equal a b] is [true] iff [a] and [b] describe identical visual
       properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?on_change:(int -> unit) ->
+  ?on_activate:(int -> unit) ->
+  Props.t ->
+  t
+(** [create ~parent props] is a tab selector attached to [parent]. The node is
+    focusable and uses buffered rendering. It shows [props].
+    - [on_change] fires when the selected index changes via navigation or
+      {!set_selected}.
+    - [on_activate] fires when a tab is activated (Enter key or
+      {!select_current}). *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t]. Individual property changes
@@ -309,22 +267,3 @@ val select_current : t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a tab selector for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    ?on_change:(int -> unit) ->
-    ?on_activate:(int -> unit) ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

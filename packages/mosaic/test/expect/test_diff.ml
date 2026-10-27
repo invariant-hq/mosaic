@@ -305,8 +305,8 @@ let%expect_test "set source line highlights rebuilds colors" =
   let renderer = Renderer.create () in
   set_viewport renderer ~width:60 ~height:5;
   let diff =
-    Diff.create ~parent:(Renderer.root renderer) ~layout:Diff.Unified
-      (parse simple_diff)
+    Diff.create ~parent:(Renderer.root renderer)
+      (Diff.Props.make ~patch:(parse simple_diff) ~layout:Diff.Unified ())
   in
   fill_node (Diff.node diff);
   Renderer.render_frame renderer ~width:60 ~height:5 ~dt:0.;
@@ -362,9 +362,10 @@ let%expect_test "line spans follow wrapped rows and clamp byte ranges" =
   set_viewport renderer ~width:44 ~height:7;
   let line_spans = [ line_span Diff.New 2 0 100 ] in
   let diff =
-    Diff.create ~parent:(Renderer.root renderer) ~layout:Diff.Split ~wrap:`Char
-      ~line_spans
-      (parse asymmetric_wrap_diff)
+    Diff.create ~parent:(Renderer.root renderer)
+      (Diff.Props.make
+         ~patch:(parse asymmetric_wrap_diff)
+         ~layout:Diff.Split ~wrap:`Char ~line_spans ())
   in
   fill_node (Diff.node diff);
   Renderer.render_frame renderer ~width:44 ~height:7 ~dt:0.;
@@ -398,8 +399,8 @@ let%expect_test "hit test rendered diff rows" =
   let renderer = Renderer.create () in
   set_viewport renderer ~width:80 ~height:5;
   let diff =
-    Diff.create ~parent:(Renderer.root renderer) ~layout:Diff.Split
-      (parse simple_diff)
+    Diff.create ~parent:(Renderer.root renderer)
+      (Diff.Props.make ~patch:(parse simple_diff) ~layout:Diff.Split ())
   in
   fill_node (Diff.node diff);
   Renderer.render_frame renderer ~width:80 ~height:5 ~dt:0.;
@@ -424,8 +425,10 @@ let%expect_test "hit test uses aligned split rows after wrapping" =
   let renderer = Renderer.create () in
   set_viewport renderer ~width:44 ~height:7;
   let diff =
-    Diff.create ~parent:(Renderer.root renderer) ~layout:Diff.Split ~wrap:`Char
-      (parse asymmetric_wrap_diff)
+    Diff.create ~parent:(Renderer.root renderer)
+      (Diff.Props.make
+         ~patch:(parse asymmetric_wrap_diff)
+         ~layout:Diff.Split ~wrap:`Char ())
   in
   fill_node (Diff.node diff);
   Renderer.render_frame renderer ~width:44 ~height:7 ~dt:0.;

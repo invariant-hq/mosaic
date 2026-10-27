@@ -162,7 +162,7 @@ type highlight = { old : syntax; new_ : syntax }
 let highlight_equal a b = syntax_equal a.old b.old && syntax_equal a.new_ b.new_
 
 (* [Props.make] is the one place the diff's labels get their defaults:
-   [create] and [Mosaic.diff] pass their labels on unset. *)
+   [Mosaic.diff] passes its labels on unset. *)
 module Props = struct
   type t = {
     patch : Patch.t;
@@ -1067,7 +1067,7 @@ let code_props (props : Props.t) ~content ?syntax () =
     ~selectable:props.selectable ()
 
 let make_code ~parent (props : Props.t) ~content ?syntax () =
-  Code.Private.of_props ~parent ~style:full_style
+  Code.create ~parent ~style:full_style
     (Code.Props.make ~content
        ?syntax:(Option.map code_syntax syntax)
        ~conceal:(code_conceal syntax) ~text_style:props.text_style
@@ -1087,7 +1087,7 @@ let new_syntax = function Some { new_; _ } -> Some new_ | None -> None
 let make_or_update_side existing ~parent ~style ~theme =
   match existing with
   | None ->
-      Line_number.Private.of_props ~parent ~style
+      Line_number.create ~parent ~style
         (Line_number.Props.make ~fg:theme.line_number_fg
            ?bg:theme.line_number_bg ())
   | Some side ->
@@ -1305,15 +1305,10 @@ let rebuild t =
     | Unified -> build_unified_view t t.props
     | Split -> build_split_view t t.props
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?layout ?theme
-    ?highlight ?line_highlights ?line_spans ?line_signs ?show_line_numbers ?wrap
-    ?selectable ?text_style patch =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
+    (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
-  in
-  let props =
-    Props.make ~patch ?layout ?theme ?highlight ?line_highlights ?line_spans
-      ?line_signs ?show_line_numbers ?wrap ?selectable ?text_style ()
   in
   let t =
     {

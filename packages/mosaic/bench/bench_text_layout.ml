@@ -83,10 +83,10 @@ let overlay_revision buffer =
 let focus_surface length =
   let renderer = Renderer.create () in
   let area =
-    Textarea.create ~parent:(Renderer.root renderer)
-      ~focused_text_color:Ansi.Color.cyan
-      ~state:(Editor.of_string (String.make length 'x'))
-      ~on_change:ignore ()
+    Textarea.create ~parent:(Renderer.root renderer) ~on_change:ignore
+      (Textarea.Props.make ~focused_text_color:Ansi.Color.cyan
+         ~state:(Editor.of_string (String.make length 'x'))
+         ())
   in
   let node = Textarea.node area in
   Renderable.set_focusable node true;
@@ -124,7 +124,9 @@ let restyle_layout (renderer, surface, alternate) =
 
 let fragment_text count =
   let renderer = Renderer.create () in
-  let text = Text.create ~parent:(Renderer.root renderer) () in
+  let text =
+    Text.create ~parent:(Renderer.root renderer) (Text.Props.make ())
+  in
   let first = List.init count (fun _ -> Text.Fragment.text "word ") in
   let second = List.init count (fun _ -> Text.Fragment.text "text ") in
   (renderer, text, first, second)

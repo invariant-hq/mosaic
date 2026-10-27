@@ -61,8 +61,9 @@ let make_tree ?(items = []) ?(selected_index = 0) ?(expand_depth = 0)
       ?wrap_selection ?fast_scroll_step ()
   in
   let tree =
-    Tree.create ~parent:root ~items ~state ?indent_size ?show_guides
-      ?guide_style ?wrap_selection ?fast_scroll_step ()
+    Tree.create ~parent:root
+      (Tree.Props.make ~items ~state ?indent_size ?show_guides ?guide_style
+         ?wrap_selection ?fast_scroll_step ())
   in
   Tree.set_on_change tree
     (Some (fun state -> Tree.apply_props tree (props state (Tree.items tree))));
@@ -522,8 +523,7 @@ let default_background_is_transparent () =
         (Toffee.Style.default
         |> Toffee.Style.set_width (Toffee.Style.Dimension.length 10.)
         |> Toffee.Style.set_height (Toffee.Style.Dimension.length 3.))
-      ~items:[ Tree.item ~id:"a" "a" ]
-      ()
+      (Tree.Props.make ~items:[ Tree.item ~id:"a" "a" ] ())
   in
   Renderer.render_frame r ~width:10 ~height:3 ~dt:0.;
   let grid = Matrix_screen.next_grid (Renderer.screen r) in
@@ -864,9 +864,9 @@ let step_hidden_cursor () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.tree}) or to {!Tree.create},
-   reaches the live tree ({!Test_harness.reaches}). Keys propose a state
-   through [on_change], which both doors record. *)
+(* Each label, given to the element ({!Mosaic.tree}) or to {!Tree.Props.make}
+   for {!Tree.create}, reaches the live tree ({!Test_harness.reaches}). Keys
+   propose a state through [on_change], which both doors record. *)
 
 let doors_size = Mosaic.size ~width:20 ~height:6
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -914,12 +914,12 @@ let doors_items_label () =
          ~on_change:doors_record ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:many_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:many_items ~state:doors_state ())))
 
 let doors_state_label () =
   Test_harness.reaches "state"
@@ -932,13 +932,14 @@ let doors_state_label () =
          ~on_change:doors_record ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:(Tree.State.make ~selected:"b" ())
-           ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items
+              ~state:(Tree.State.make ~selected:"b" ())
+              ())))
 
 let doors_indent_size () =
   Test_harness.reaches "indent_size"
@@ -950,12 +951,13 @@ let doors_indent_size () =
          ~on_change:doors_record ~indent_size:4 ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~indent_size:4 ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ~indent_size:4
+              ())))
 
 let doors_show_guides () =
   Test_harness.reaches "show_guides"
@@ -967,12 +969,13 @@ let doors_show_guides () =
          ~on_change:doors_record ~show_guides:true ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~show_guides:true ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~show_guides:true ())))
 
 let doors_guide_style () =
   Test_harness.reaches "guide_style"
@@ -985,13 +988,14 @@ let doors_guide_style () =
          ~guide_style:Matrix_grid.Border.double ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~show_guides:true ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~show_guides:true ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~show_guides:true
-           ~guide_style:Matrix_grid.Border.double ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~show_guides:true ~guide_style:Matrix_grid.Border.double ())))
 
 let doors_expand_icon () =
   Test_harness.reaches "expand_icon"
@@ -1003,12 +1007,13 @@ let doors_expand_icon () =
          ~on_change:doors_record ~expand_icon:"+" ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~expand_icon:"+" ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~expand_icon:"+" ())))
 
 let doors_collapse_icon () =
   Test_harness.reaches "collapse_icon"
@@ -1020,12 +1025,13 @@ let doors_collapse_icon () =
          ~on_change:doors_record ~collapse_icon:"-" ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~collapse_icon:"-" ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~collapse_icon:"-" ())))
 
 let doors_leaf_icon () =
   Test_harness.reaches "leaf_icon"
@@ -1037,12 +1043,13 @@ let doors_leaf_icon () =
          ~on_change:doors_record ~leaf_icon:"*" ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~leaf_icon:"*" ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ~leaf_icon:"*"
+              ())))
 
 let doors_background () =
   Test_harness.reaches "background"
@@ -1054,12 +1061,13 @@ let doors_background () =
          ~on_change:doors_record ~background:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~background:doors_red ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~background:doors_red ())))
 
 let doors_text_color () =
   Test_harness.reaches "text_color"
@@ -1071,12 +1079,13 @@ let doors_text_color () =
          ~on_change:doors_record ~text_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~text_color:doors_red ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~text_color:doors_red ())))
 
 let doors_selected_background () =
   Test_harness.reaches "selected_background"
@@ -1088,12 +1097,13 @@ let doors_selected_background () =
          ~on_change:doors_record ~selected_background:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~selected_background:doors_red ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~selected_background:doors_red ())))
 
 let doors_selected_text_color () =
   Test_harness.reaches "selected_text_color"
@@ -1105,12 +1115,13 @@ let doors_selected_text_color () =
          ~on_change:doors_record ~selected_text_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~selected_text_color:doors_red ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~selected_text_color:doors_red ())))
 
 let doors_focused_selected_background () =
   Test_harness.reaches ~act:Test_harness.focus "focused_selected_background"
@@ -1122,12 +1133,13 @@ let doors_focused_selected_background () =
          ~on_change:doors_record ~focused_selected_background:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~focused_selected_background:doors_red ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~focused_selected_background:doors_red ())))
 
 let doors_focused_selected_text_color () =
   Test_harness.reaches ~act:Test_harness.focus "focused_selected_text_color"
@@ -1139,12 +1151,13 @@ let doors_focused_selected_text_color () =
          ~on_change:doors_record ~focused_selected_text_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~focused_selected_text_color:doors_red ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~focused_selected_text_color:doors_red ())))
 
 let doors_guide_color () =
   Test_harness.reaches "guide_color"
@@ -1156,12 +1169,14 @@ let doors_guide_color () =
          ~on_change:doors_record ~show_guides:true ~guide_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~show_guides:true ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~show_guides:true ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~show_guides:true ~guide_color:doors_red ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~show_guides:true ~guide_color:doors_red ())))
 
 let doors_icon_color () =
   Test_harness.reaches "icon_color"
@@ -1173,12 +1188,13 @@ let doors_icon_color () =
          ~on_change:doors_record ~icon_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~icon_color:doors_red ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~icon_color:doors_red ())))
 
 let doors_wrap_selection () =
   Test_harness.reaches
@@ -1192,12 +1208,13 @@ let doors_wrap_selection () =
          ~on_change:doors_record ~wrap_selection:true ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ~wrap_selection:true ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~wrap_selection:true ())))
 
 let doors_key_bindings () =
   Test_harness.reaches
@@ -1213,14 +1230,14 @@ let doors_key_bindings () =
          ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:doors_items
-           ~state:doors_state
-           ~key_bindings:[ (Shortcut.char 'x', Tree.Move_down) ]
-           ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:doors_items ~state:doors_state
+              ~key_bindings:[ (Shortcut.char 'x', Tree.Move_down) ]
+              ())))
 
 let doors_fast_scroll_step () =
   Test_harness.reaches
@@ -1234,12 +1251,13 @@ let doors_fast_scroll_step () =
          ~on_change:doors_record ~fast_scroll_step:2 ())
     ~create_base:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:many_items
-           ~state:many_state ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:many_items ~state:many_state ())))
     ~create:(fun parent ->
       doors_recording
-        (Tree.create ~parent ~style:doors_style ~items:many_items
-           ~state:many_state ~fast_scroll_step:2 ()))
+        (Tree.create ~parent ~style:doors_style
+           (Tree.Props.make ~items:many_items ~state:many_state
+              ~fast_scroll_step:2 ())))
 
 (* ── Paint ── *)
 

@@ -95,8 +95,8 @@ let added lines =
 let unified ?(width = 20) ?(height = 4) ?wrap ?(line_spans = []) patch =
   let renderer = Renderer.create () in
   let diff =
-    Diff.create ~parent:(Renderer.root renderer) ~style:full_style ?wrap
-      ~line_spans (parse patch)
+    Diff.create ~parent:(Renderer.root renderer) ~style:full_style
+      (Diff.Props.make ~patch:(parse patch) ?wrap ~line_spans ())
   in
   (diff, render renderer ~width ~height)
 
@@ -108,7 +108,10 @@ let unified_update_reuses_children () =
      and recreating them, so highlight jobs and streaming anti-flash state
      survive each chunk. *)
   let renderer = Renderer.create () in
-  let d = Diff.create ~parent:(Renderer.root renderer) (parse base_diff) in
+  let d =
+    Diff.create ~parent:(Renderer.root renderer)
+      (Diff.Props.make ~patch:(parse base_diff) ())
+  in
   Renderer.render_frame renderer ~width:60 ~height:10 ~dt:0.;
   ignore (Renderer.render ~full:true renderer : string);
   let before = collect_nodes (Diff.node d) in
@@ -119,7 +122,10 @@ let unified_update_reuses_children () =
 
 let empty_patch_drops_children () =
   let renderer = Renderer.create () in
-  let d = Diff.create ~parent:(Renderer.root renderer) (parse base_diff) in
+  let d =
+    Diff.create ~parent:(Renderer.root renderer)
+      (Diff.Props.make ~patch:(parse base_diff) ())
+  in
   Diff.set_patch d (Patch.make []);
   equal ~msg:"no children" int 0
     (List.length (Renderable.children (Diff.node d)))
@@ -141,8 +147,8 @@ let span_counts_surface_graphemes () =
     }
   in
   ignore
-    (Diff.create ~parent:(Renderer.root renderer) ~show_line_numbers:false
-       ~line_spans:[ span ] patch
+    (Diff.create ~parent:(Renderer.root renderer)
+       (Diff.Props.make ~patch ~show_line_numbers:false ~line_spans:[ span ] ())
       : Diff.t);
   Renderer.render_frame renderer ~width:20 ~height:3 ~dt:0.;
   let grid = Matrix_screen.next_grid (Renderer.screen renderer) in
@@ -250,9 +256,11 @@ let asymmetric_resize_realigns () =
   let renderer = Renderer.create () in
   ignore
     (Diff.create ~parent:(Renderer.root renderer) ~style:full_style
-       ~layout:Split ~wrap:`Char
-       ~line_spans:[ span 2 0 100 ]
-       (parse asymmetric_wrap_diff)
+       (Diff.Props.make
+          ~patch:(parse asymmetric_wrap_diff)
+          ~layout:Split ~wrap:`Char
+          ~line_spans:[ span 2 0 100 ]
+          ())
       : Diff.t);
   List.iter
     (fun width ->
@@ -267,8 +275,9 @@ let split_aligns_lone_cr_row () =
   let renderer = Renderer.create () in
   ignore
     (Diff.create ~parent:(Renderer.root renderer) ~style:full_style
-       ~layout:Split ~wrap:`Char
-       (parse "--- a/t\n+++ b/t\n@@ -1,2 +1,2 @@\n-a\rb\n+c\n end\n")
+       (Diff.Props.make
+          ~patch:(parse "--- a/t\n+++ b/t\n@@ -1,2 +1,2 @@\n-a\rb\n+c\n end\n")
+          ~layout:Split ~wrap:`Char ())
       : Diff.t);
   List.iter
     (fun width -> end_is_aligned (render renderer ~width ~height:6))
@@ -313,9 +322,11 @@ let async_wrapped_split_settles () =
   let renderer = Renderer.create () in
   ignore
     (Diff.create ~parent:(Renderer.root renderer) ~style:full_style
-       ~layout:Split ~wrap:`Char
-       ~highlight:{ Diff.old = syntax; new_ = syntax }
-       (parse asymmetric_wrap_diff)
+       (Diff.Props.make
+          ~patch:(parse asymmetric_wrap_diff)
+          ~layout:Split ~wrap:`Char
+          ~highlight:{ Diff.old = syntax; new_ = syntax }
+          ())
       : Diff.t);
   let frame () =
     Renderer.render_frame renderer ~width:30 ~height:8 ~dt:0.;
@@ -355,8 +366,8 @@ let syntax_compares_styles_by_value () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.diff}) or to {!Diff.create},
-   reaches the live diff ({!Test_harness.reaches}). *)
+(* Each label, given to the element ({!Mosaic.diff}) or to {!Diff.Props.make}
+   for {!Diff.create}, reaches the live diff ({!Test_harness.reaches}). *)
 
 let doors_size = Mosaic.size ~width:24 ~height:6
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -401,19 +412,26 @@ let doors_patch_label () =
     ~base:(Mosaic.diff ~size:doors_size doors_patch)
     ~element:(Mosaic.diff ~size:doors_size doors_other_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_other_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_other_patch ())))
 
 let doors_layout () =
   Test_harness.reaches "layout"
     ~base:(Mosaic.diff ~size:doors_size doors_patch)
     ~element:(Mosaic.diff ~size:doors_size ~view:Diff.Split doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
-        (Diff.create ~parent ~style:doors_style ~layout:Diff.Split doors_patch))
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ~layout:Diff.Split ())))
 
 let doors_theme () =
   Test_harness.reaches "theme"
@@ -423,12 +441,15 @@ let doors_theme () =
          ~theme:{ Diff.default_theme with added_bg = doors_red }
          doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
         (Diff.create ~parent ~style:doors_style
-           ~theme:{ Diff.default_theme with added_bg = doors_red }
-           doors_patch))
+           (Diff.Props.make ~patch:doors_patch
+              ~theme:{ Diff.default_theme with added_bg = doors_red }
+              ())))
 
 let doors_highlight () =
   Test_harness.reaches "highlight"
@@ -436,11 +457,13 @@ let doors_highlight () =
     ~element:
       (Mosaic.diff ~size:doors_size ~highlight:doors_highlight doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
-        (Diff.create ~parent ~style:doors_style ~highlight:doors_highlight
-           doors_patch))
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ~highlight:doors_highlight ())))
 
 let doors_line_highlights () =
   Test_harness.reaches "line_highlights"
@@ -458,20 +481,23 @@ let doors_line_highlights () =
            ]
          doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
         (Diff.create ~parent ~style:doors_style
-           ~line_highlights:
-             [
-               {
-                 Diff.side = New;
-                 first = 2;
-                 last = 2;
-                 color = { Line_number.gutter = doors_red; content = None };
-               };
-             ]
-           doors_patch))
+           (Diff.Props.make ~patch:doors_patch
+              ~line_highlights:
+                [
+                  {
+                    Diff.side = New;
+                    first = 2;
+                    last = 2;
+                    color = { Line_number.gutter = doors_red; content = None };
+                  };
+                ]
+              ())))
 
 let doors_line_spans () =
   Test_harness.reaches "line_spans"
@@ -490,21 +516,24 @@ let doors_line_spans () =
            ]
          doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
         (Diff.create ~parent ~style:doors_style
-           ~line_spans:
-             [
-               {
-                 Diff.side = New;
-                 line = 2;
-                 start_byte = 0;
-                 end_byte = 1;
-                 color = doors_red;
-               };
-             ]
-           doors_patch))
+           (Diff.Props.make ~patch:doors_patch
+              ~line_spans:
+                [
+                  {
+                    Diff.side = New;
+                    line = 2;
+                    start_byte = 0;
+                    end_byte = 1;
+                    color = doors_red;
+                  };
+                ]
+              ())))
 
 let doors_line_signs () =
   Test_harness.reaches "line_signs"
@@ -528,56 +557,68 @@ let doors_line_signs () =
            ]
          doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
         (Diff.create ~parent ~style:doors_style
-           ~line_signs:
-             [
-               {
-                 Diff.side = New;
-                 first = 2;
-                 last = 2;
-                 sign =
-                   {
-                     Line_number.before = Some "!";
-                     after = None;
-                     before_color = None;
-                     after_color = None;
-                   };
-               };
-             ]
-           doors_patch))
+           (Diff.Props.make ~patch:doors_patch
+              ~line_signs:
+                [
+                  {
+                    Diff.side = New;
+                    first = 2;
+                    last = 2;
+                    sign =
+                      {
+                        Line_number.before = Some "!";
+                        after = None;
+                        before_color = None;
+                        after_color = None;
+                      };
+                  };
+                ]
+              ())))
 
 let doors_show_line_numbers () =
   Test_harness.reaches "show_line_numbers"
     ~base:(Mosaic.diff ~size:doors_size doors_patch)
     ~element:(Mosaic.diff ~size:doors_size ~show_line_numbers:false doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
-        (Diff.create ~parent ~style:doors_style ~show_line_numbers:false
-           doors_patch))
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ~show_line_numbers:false ())))
 
 let doors_wrap () =
   Test_harness.reaches "wrap"
     ~base:(Mosaic.diff ~size:doors_size doors_patch)
     ~element:(Mosaic.diff ~size:doors_size ~wrap:`Word doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style ~wrap:`Word doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ~wrap:`Word ())))
 
 let doors_selectable () =
   Test_harness.reaches ~act:doors_select ~observe:doors_selected "selectable"
     ~base:(Mosaic.diff ~size:doors_size doors_patch)
     ~element:(Mosaic.diff ~size:doors_size ~selectable:false doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
-        (Diff.create ~parent ~style:doors_style ~selectable:false doors_patch))
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ~selectable:false ())))
 
 let doors_text_style () =
   Test_harness.reaches "text_style"
@@ -587,12 +628,15 @@ let doors_text_style () =
          ~text_style:(Ansi.Style.make ~bold:true ())
          doors_patch)
     ~create_base:(fun parent ->
-      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           (Diff.Props.make ~patch:doors_patch ())))
     ~create:(fun parent ->
       Diff.node
         (Diff.create ~parent ~style:doors_style
-           ~text_style:(Ansi.Style.make ~bold:true ())
-           doors_patch))
+           (Diff.Props.make ~patch:doors_patch
+              ~text_style:(Ansi.Style.make ~bold:true ())
+              ())))
 
 let () =
   run "mosaic.diff"

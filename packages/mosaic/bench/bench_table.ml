@@ -36,8 +36,8 @@ let make_table () =
             else Table.cell (cell_text r c)))
   in
   let table =
-    Table.create ~parent:(Renderer.root renderer) ~style:table_style ~columns
-      ~rows ()
+    Table.create ~parent:(Renderer.root renderer) ~style:table_style
+      (Table.Props.make ~columns ~rows ())
   in
   render_frame renderer;
   (renderer, table)

@@ -66,7 +66,7 @@ a    b|}]
 
 let%expect_test "styled text single color" =
   let renderer = Renderer.create () in
-  let txt = Text.create ~parent:(Renderer.root renderer) () in
+  let txt = Text.create ~parent:(Renderer.root renderer) (Text.Props.make ()) in
   let red_style = Ansi.Style.fg Ansi.Color.red Ansi.Style.default in
   Text.set_styled_text txt
     [ { Text_buffer.text = "Red text"; style = red_style } ];
@@ -79,7 +79,7 @@ let%expect_test "styled text single color" =
 
 let%expect_test "styled text multiple spans" =
   let renderer = Renderer.create () in
-  let txt = Text.create ~parent:(Renderer.root renderer) () in
+  let txt = Text.create ~parent:(Renderer.root renderer) (Text.Props.make ()) in
   let red_style = Ansi.Style.fg Ansi.Color.red Ansi.Style.default in
   let green_style = Ansi.Style.fg Ansi.Color.green Ansi.Style.default in
   Text.set_styled_text txt

@@ -46,26 +46,6 @@ val default_frame_set : frame_set
 
 (** {1:constructors Constructors} *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  ?frame_set:frame_set ->
-  ?color:Ansi.Color.t ->
-  unit ->
-  t
-(** [create ~parent ()] is a spinner attached to [parent]. [frame_set] and
-    [color] are {!Props.make}'s and take its defaults.
-
-    The spinner manages its own liveness: the node is made live while the frame
-    set animates (more than one frame and a positive period), so the animation
-    runs without further wiring, and is taken out of the live set when a static
-    frame set makes per-frame ticks pointless. *)
-
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} of [t]. *)
 
@@ -81,15 +61,7 @@ module Props : sig
       - [color] is the foreground color for the spinner glyphs. Defaults to
         none, the [Plain] role of the theme in scope.
 
-      {!val-create} and [Mosaic.spinner] take these labels with these defaults.
-  *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) -> ?frame_set:frame_set -> ?color:Ansi.Color.t -> unit -> 'a
-
-  (**/**)
+      [Mosaic.spinner] takes these labels with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -98,6 +70,23 @@ module Props : sig
   (** [equal a b] is [true] iff [a] and [b] describe identical visual
       properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  Props.t ->
+  t
+(** [create ~parent props] is a spinner attached to [parent], showing [props].
+
+    The spinner manages its own liveness: the node is made live while the frame
+    set animates (more than one frame and a positive period), so the animation
+    runs without further wiring, and is taken out of the live set when a static
+    frame set makes per-frame ticks pointless. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] replaces all properties of [t] with [props]. Wraps the
@@ -130,20 +119,3 @@ val set_color : t -> Ansi.Color.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

@@ -90,35 +90,6 @@ module Props : sig
     t
   (** [make ~state ()] describes [state] with textarea visual defaults. *)
 
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    state:Editor.t ->
-    ?annotations:Text_buffer.Annotations.t ->
-    ?syntax:Syntax_session.syntax ->
-    ?ghost_text:string ->
-    ?ghost_text_color:Ansi.Color.t ->
-    ?placeholder:string ->
-    ?wrap:Text_surface.wrap ->
-    ?text_color:Ansi.Color.t ->
-    ?background_color:Ansi.Color.t ->
-    ?focused_text_color:Ansi.Color.t ->
-    ?focused_background_color:Ansi.Color.t ->
-    ?placeholder_color:Ansi.Color.t ->
-    ?selection_color:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
-    ?cursor_style:[ `Block | `Line | `Underline ] ->
-    ?cursor_color:Ansi.Color.t ->
-    ?cursor_blinking:bool ->
-    ?selectable:bool ->
-    ?show_cursor:bool ->
-    ?key_bindings:key_binding list ->
-    unit ->
-    'a
-
-  (**/**)
-
   val default : t
   (** [default] is [make ~state:Editor.empty ()]. *)
 

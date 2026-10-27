@@ -31,13 +31,13 @@ let make_transcript_pair () =
   let renderer = Renderer.create () in
   let scroll =
     Scroll_box.create ~parent:(Renderer.root renderer) ~style:viewport_style
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll scroll (Some (Scroll_box.set_scroll scroll));
   for _ = 1 to transcript_rows do
     ignore
       (Text.create ~parent:(Scroll_box.node scroll) ~style:row_style
-         ~content:row_text ~selectable:false ()
+         (Text.Props.make ~content:row_text ~selectable:false ())
         : Text.t)
   done;
   render_frame renderer;
@@ -72,7 +72,7 @@ let make_scroll_by_one () =
   let renderer = Renderer.create () in
   let scroll =
     Scroll_box.create ~parent:(Renderer.root renderer) ~style:viewport_style
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll scroll (Some (Scroll_box.set_scroll scroll));
   for i = 1 to transcript_rows do
@@ -81,8 +81,8 @@ let make_scroll_by_one () =
         scroll_phrases.(i mod Array.length scroll_phrases)
     in
     ignore
-      (Text.create ~parent:(Scroll_box.node scroll) ~style:row_style ~content
-         ~selectable:false ()
+      (Text.create ~parent:(Scroll_box.node scroll) ~style:row_style
+         (Text.Props.make ~content ~selectable:false ())
         : Text.t)
   done;
   render_frame renderer;
@@ -131,7 +131,7 @@ let make_idle_screen () =
   for _ = 1 to idle_height do
     ignore
       (Text.create ~parent:(Renderer.root renderer) ~style:idle_row_style
-         ~content:idle_text ~selectable:false ()
+         (Text.Props.make ~content:idle_text ~selectable:false ())
         : Text.t)
   done;
   render_idle_frame renderer;
@@ -176,8 +176,8 @@ let typing_frame st =
 let make_typing () =
   let renderer = Renderer.create ~style:idle_root_style () in
   let text =
-    Text.create ~parent:(Renderer.root renderer) ~content:typing_a ~wrap:`Word
-      ~selectable:false ()
+    Text.create ~parent:(Renderer.root renderer)
+      (Text.Props.make ~content:typing_a ~wrap:`Word ~selectable:false ())
   in
   let st = { renderer; text; flip = false } in
   typing_frame st;
@@ -219,18 +219,18 @@ let make_primary () =
   let renderer = Renderer.create ~style:primary_root_style () in
   let scroll =
     Scroll_box.create ~parent:(Renderer.root renderer) ~style:viewport_style
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll scroll (Some (Scroll_box.set_scroll scroll));
   for _ = 1 to transcript_rows do
     ignore
       (Text.create ~parent:(Scroll_box.node scroll) ~style:row_style
-         ~content:row_text ~selectable:false ()
+         (Text.Props.make ~content:row_text ~selectable:false ())
         : Text.t)
   done;
   let prompt =
-    Text.create ~parent:(Renderer.root renderer) ~content:"> a"
-      ~selectable:false ()
+    Text.create ~parent:(Renderer.root renderer)
+      (Text.Props.make ~content:"> a" ~selectable:false ())
   in
   let st = { primary_renderer = renderer; prompt; typed = false } in
   primary_frame st;

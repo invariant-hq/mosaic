@@ -110,7 +110,7 @@ let style_equal a b =
      && same a.arrow_fg b.arrow_fg && same a.arrow_bg b.arrow_bg
 
 (* [Props.make] is the one place the scroll bar's labels get their defaults:
-   [create] and [Mosaic.scroll_bar] pass their labels on unset. *)
+   [Mosaic.scroll_bar] passes its labels on unset. *)
 module Props = struct
   type t = {
     position : int;
@@ -138,12 +138,6 @@ module Props = struct
       arrow_fg;
       arrow_bg;
     }
-
-  let make_k k ?position ?scroll_size ?viewport_size ?orientation ?show_arrows
-      ?track_color ?thumb_color ?arrow_fg ?arrow_bg () =
-    k
-      (make ?position ?scroll_size ?viewport_size ?orientation ?show_arrows
-         ?track_color ?thumb_color ?arrow_fg ?arrow_bg ())
 
   let default = make ()
 
@@ -342,7 +336,7 @@ let orientation_style style orientation ~auto_width ~auto_height =
   in
   Toffee.Style.set_size size style
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
     (props : Props.t) =
   let ({
          position;
@@ -400,7 +394,7 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
   Renderable.set_visible (Arrow.node start_arrow) show_arrows;
   (* Create slider *)
   let slider =
-    Slider.Private.of_props ~parent:node
+    Slider.create ~parent:node
       (Slider.Props.make ~orientation ~min:0. ~max:0. ~value:0.
          ~viewport_size:1. ?track_color ?thumb_color ())
   in
@@ -485,11 +479,6 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
   sync_slider t;
   recalc_visibility t;
   t
-
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
-        props)
 
 (* ───── Accessors & Setters ───── *)
 
@@ -602,7 +591,3 @@ let pp ppf t =
   Format.fprintf ppf "ScrollBar(%s, %s, pos=%d, size=%d, vp=%d)"
     (Renderable.id t.node) orient t.scroll_position t.scroll_size
     t.viewport_size
-
-module Private = struct
-  let of_props = of_props
-end

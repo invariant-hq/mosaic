@@ -7,7 +7,9 @@ open Test_harness
 let make_spinner ?frame_set ?color () =
   let t = make_ctx () in
   let root = make_root t in
-  let spinner = Spinner.create ~parent:root ?frame_set ?color () in
+  let spinner =
+    Spinner.create ~parent:root (Spinner.Props.make ?frame_set ?color ())
+  in
   (t, spinner)
 
 let render_spinner spinner ~width ~height =
@@ -205,8 +207,9 @@ let pp_contains_spinner () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.spinner}) or to {!Spinner.create},
-   reaches the live spinner ({!Test_harness.reaches}). *)
+(* Each label, given to the element ({!Mosaic.spinner}) or to
+   {!Spinner.Props.make} for {!Spinner.create}, reaches the live spinner
+   ({!Test_harness.reaches}). *)
 
 let doors_size = Mosaic.size ~width:4 ~height:1
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -217,20 +220,24 @@ let doors_frame_set () =
     ~base:(Mosaic.spinner ~size:doors_size ())
     ~element:(Mosaic.spinner ~size:doors_size ~frame_set:Spinner.line ())
     ~create_base:(fun parent ->
-      Spinner.node (Spinner.create ~parent ~style:doors_style ()))
+      Spinner.node
+        (Spinner.create ~parent ~style:doors_style (Spinner.Props.make ())))
     ~create:(fun parent ->
       Spinner.node
-        (Spinner.create ~parent ~style:doors_style ~frame_set:Spinner.line ()))
+        (Spinner.create ~parent ~style:doors_style
+           (Spinner.Props.make ~frame_set:Spinner.line ())))
 
 let doors_color () =
   Test_harness.reaches "color"
     ~base:(Mosaic.spinner ~size:doors_size ())
     ~element:(Mosaic.spinner ~size:doors_size ~color:doors_red ())
     ~create_base:(fun parent ->
-      Spinner.node (Spinner.create ~parent ~style:doors_style ()))
+      Spinner.node
+        (Spinner.create ~parent ~style:doors_style (Spinner.Props.make ())))
     ~create:(fun parent ->
       Spinner.node
-        (Spinner.create ~parent ~style:doors_style ~color:doors_red ()))
+        (Spinner.create ~parent ~style:doors_style
+           (Spinner.Props.make ~color:doors_red ())))
 
 (* ── Paint ── *)
 

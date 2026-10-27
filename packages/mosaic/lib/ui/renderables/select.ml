@@ -30,7 +30,7 @@ let keymap = function
 (* ───── Props ───── *)
 
 (* [Props.make] is the one place the select's labels get their
-   defaults: [create] and [Mosaic.select] pass their labels on unset. *)
+   defaults: [Mosaic.select] passes its labels on unset. *)
 module Props = struct
   type t = {
     options : item Items.t;
@@ -75,18 +75,6 @@ module Props = struct
       fast_scroll_step = max 1 fast_scroll_step;
       key_bindings;
     }
-
-  let make_k k ?options ?selected_index ?background ?text_color
-      ?focused_background ?focused_text_color ?selected_background
-      ?selected_text_color ?description_color ?selected_description_color
-      ?show_description ?show_scroll_indicator ?wrap_selection ?item_spacing
-      ?fast_scroll_step ?key_bindings () =
-    k
-      (make ?options ?selected_index ?background ?text_color ?focused_background
-         ?focused_text_color ?selected_background ?selected_text_color
-         ?description_color ?selected_description_color ?show_description
-         ?show_scroll_indicator ?wrap_selection ?item_spacing ?fast_scroll_step
-         ?key_bindings ())
 
   let default = make ()
   let with_options_of f l props = { props with options = Items.map_list f l }
@@ -507,7 +495,7 @@ let measure t ~known_dimensions ~available_space ~style:_ =
 
 (* ───── Construction ───── *)
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
@@ -537,10 +525,6 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
   Renderable.set_on_resize node (Some (on_resize t));
   request t;
   t
-
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
 
 (* ───── Layout ───── *)
 
@@ -612,7 +596,3 @@ let pp ppf t =
     (option_count t);
   if t.props.wrap_selection then Format.pp_print_string ppf ", wrap";
   Format.pp_print_char ppf ')'
-
-module Private = struct
-  let of_props = of_props
-end

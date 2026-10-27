@@ -280,7 +280,7 @@ let keymap = function
   | custom -> Keymap.make ~defaults:default_bindings ~custom ()
 
 (* [Props.make] is the one place the tree's labels get their
-   defaults: [create] and [Mosaic.tree] pass their labels on unset. *)
+   defaults: [Mosaic.tree] passes its labels on unset. *)
 module Props = struct
   type t = {
     key_bindings : key_binding list;
@@ -332,18 +332,6 @@ module Props = struct
       wrap_selection;
       fast_scroll_step = max 1 fast_scroll_step;
     }
-
-  let make_k k ?items ?state ?indent_size ?show_guides ?guide_style ?expand_icon
-      ?collapse_icon ?leaf_icon ?background ?text_color ?selected_background
-      ?selected_text_color ?focused_selected_background
-      ?focused_selected_text_color ?guide_color ?icon_color ?wrap_selection
-      ?key_bindings ?fast_scroll_step () =
-    k
-      (make ?items ?state ?indent_size ?show_guides ?guide_style ?expand_icon
-         ?collapse_icon ?leaf_icon ?background ?text_color ?selected_background
-         ?selected_text_color ?focused_selected_background
-         ?focused_selected_text_color ?guide_color ?icon_color ?wrap_selection
-         ?key_bindings ?fast_scroll_step ())
 
   let default = make ()
 
@@ -898,7 +886,7 @@ let on_resize t _node = request t
 
 (* ───── Construction ───── *)
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity props =
   let rnode =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -922,10 +910,6 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props =
   Renderable.set_on_resize rnode (Some (on_resize t));
   request t;
   t
-
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
 
 (* ───── Layout ───── *)
 
@@ -993,7 +977,3 @@ let pp ppf t =
   if t.props.show_guides then Format.pp_print_string ppf ", guides";
   if t.props.wrap_selection then Format.pp_print_string ppf ", wrap";
   Format.pp_print_char ppf ')'
-
-module Private = struct
-  let of_props = of_props
-end

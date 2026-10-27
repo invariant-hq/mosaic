@@ -56,7 +56,7 @@ let props_white_auto_enables () =
 let create_attaches () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let node = Box.node box in
   match Renderable.parent node with
   | Some p -> equal ~msg:"parent" string (Renderable.id root) (Renderable.id p)
@@ -65,7 +65,7 @@ let create_attaches () =
 let create_with_border_has_insets () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   let b = border_of (Box.node box) in
   is_true ~msg:"top" (lp one b.top);
   is_true ~msg:"right" (lp one b.right);
@@ -75,7 +75,7 @@ let create_with_border_has_insets () =
 let create_without_border_no_insets () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let b = border_of (Box.node box) in
   is_true ~msg:"top" (lp zero_lp b.top);
   is_true ~msg:"right" (lp zero_lp b.right);
@@ -86,7 +86,8 @@ let create_border_sides_subset () =
   let t = make_ctx () in
   let root = make_root t in
   let box =
-    Box.create ~parent:root ~border:true ~border_sides:[ `Top; `Bottom ] ()
+    Box.create ~parent:root
+      (Box.Props.make ~border:true ~border_sides:[ `Top; `Bottom ] ())
   in
   let b = border_of (Box.node box) in
   is_true ~msg:"top" (lp one b.top);
@@ -105,7 +106,8 @@ let border_width_sets_insets_and_lines () =
     { (Toffee.Geometry.Rect.all (cells 2)) with left = cells left }
   in
   let box =
-    Box.create ~parent:root ~border:true ~border_width:(width ~left:0) ()
+    Box.create ~parent:root
+      (Box.Props.make ~border:true ~border_width:(width ~left:0) ())
   in
   let node = Box.node box in
   let b = border_of node in
@@ -135,10 +137,11 @@ let child_clip_inside_border_width () =
   let t = make_ctx () in
   let root = make_root t in
   let box =
-    Box.create ~parent:root ~border:true
-      ~border_width:
-        (Toffee.Geometry.Rect.all (Toffee.Style.Length_percentage.length 2.))
-      ()
+    Box.create ~parent:root
+      (Box.Props.make ~border:true
+         ~border_width:
+           (Toffee.Geometry.Rect.all (Toffee.Style.Length_percentage.length 2.))
+         ())
   in
   let node = Box.node box in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:8;
@@ -155,7 +158,7 @@ let child_clip_inside_border_width () =
 let set_border_enables_disables () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   Box.set_border box true;
   let b1 = border_of (Box.node box) in
   is_true ~msg:"enabled top" (lp one b1.top);
@@ -166,7 +169,7 @@ let set_border_enables_disables () =
 let set_border_style_auto_enables () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   Box.set_border_style box Matrix_grid.Border.double;
   let b = border_of (Box.node box) in
   is_true ~msg:"auto-enabled" (lp one b.top)
@@ -174,7 +177,7 @@ let set_border_style_auto_enables () =
 let set_border_color_auto_enables () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   Box.set_border_color box Ansi.Color.red;
   let b = border_of (Box.node box) in
   is_true ~msg:"auto-enabled" (lp one b.top)
@@ -182,7 +185,7 @@ let set_border_color_auto_enables () =
 let set_focused_border_color_some_auto_enables () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   Box.set_focused_border_color box (Some Ansi.Color.green);
   let b = border_of (Box.node box) in
   is_true ~msg:"auto-enabled" (lp one b.top)
@@ -190,7 +193,7 @@ let set_focused_border_color_some_auto_enables () =
 let set_focused_border_color_none_no_enable () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   Box.set_focused_border_color box None;
   let b = border_of (Box.node box) in
   is_true ~msg:"still zero" (lp zero_lp b.top)
@@ -198,7 +201,7 @@ let set_focused_border_color_none_no_enable () =
 let set_border_sides_updates () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   Box.set_border_sides box [ `Left; `Right ];
   let b = border_of (Box.node box) in
   is_true ~msg:"top zero" (lp zero_lp b.top);
@@ -211,7 +214,7 @@ let set_border_sides_updates () =
 let set_background () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let before = !(t.schedule_count) in
   Box.set_background box (Some Ansi.Color.blue);
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
@@ -222,7 +225,7 @@ let set_background () =
 let set_fill () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let before = !(t.schedule_count) in
   Box.set_fill box false;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
@@ -232,7 +235,7 @@ let set_fill () =
 let set_title () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let before = !(t.schedule_count) in
   Box.set_title box (Some "Hello");
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
@@ -243,7 +246,7 @@ let set_title () =
 let set_title_alignment () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let before = !(t.schedule_count) in
   Box.set_title_alignment box `Center;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
@@ -253,7 +256,7 @@ let set_title_alignment () =
 let apply_props_updates () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let props = Box.Props.make ~border:true ~title:"Test" () in
   let before = !(t.schedule_count) in
   Box.apply_props box props;
@@ -266,7 +269,7 @@ let apply_props_updates () =
 let set_style_with_border_adds_insets () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   Box.set_style box Toffee.Style.default;
   let b = border_of (Box.node box) in
   is_true ~msg:"top inset" (lp one b.top);
@@ -275,7 +278,7 @@ let set_style_with_border_adds_insets () =
 let set_style_without_border_passthrough () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   Box.set_style box Toffee.Style.default;
   let b = border_of (Box.node box) in
   is_true ~msg:"top zero" (lp zero_lp b.top);
@@ -286,7 +289,7 @@ let set_style_without_border_passthrough () =
 let child_clip_all_borders () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   let node = Box.node box in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:8;
   match Renderable.Private.child_clip node with
@@ -301,7 +304,8 @@ let child_clip_partial_borders () =
   let t = make_ctx () in
   let root = make_root t in
   let box =
-    Box.create ~parent:root ~border:true ~border_sides:[ `Top; `Left ] ()
+    Box.create ~parent:root
+      (Box.Props.make ~border:true ~border_sides:[ `Top; `Left ] ())
   in
   let node = Box.node box in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:8;
@@ -316,7 +320,7 @@ let child_clip_partial_borders () =
 let child_clip_no_borders () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let node = Box.node box in
   layout_node node ~x:5 ~y:3 ~width:10 ~height:8;
   match Renderable.Private.child_clip node with
@@ -330,7 +334,7 @@ let child_clip_no_borders () =
 let child_clip_clamps_zero () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   let node = Box.node box in
   layout_node node ~x:0 ~y:0 ~width:1 ~height:1;
   match Renderable.Private.child_clip node with
@@ -360,7 +364,7 @@ let focused_border_color_explicit () =
 let set_border_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   let before = !(t.schedule_count) in
   Box.set_border box true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -368,7 +372,7 @@ let set_border_noop_same_value () =
 let set_border_style_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   let before = !(t.schedule_count) in
   Box.set_border_style box Matrix_grid.Border.single;
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -377,7 +381,8 @@ let set_border_color_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
   let box =
-    Box.create ~parent:root ~border:true ~border_color:Ansi.Color.white ()
+    Box.create ~parent:root
+      (Box.Props.make ~border:true ~border_color:Ansi.Color.white ())
   in
   let before = !(t.schedule_count) in
   Box.set_border_color box Ansi.Color.white;
@@ -386,7 +391,7 @@ let set_border_color_noop_same_value () =
 let set_border_sides_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~border:true () in
+  let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   let before = !(t.schedule_count) in
   Box.set_border_sides box Matrix_grid.Border.all;
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -394,7 +399,9 @@ let set_border_sides_noop_same_value () =
 let set_background_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~background:Ansi.Color.blue () in
+  let box =
+    Box.create ~parent:root (Box.Props.make ~background:Ansi.Color.blue ())
+  in
   let before = !(t.schedule_count) in
   Box.set_background box (Some Ansi.Color.blue);
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -402,7 +409,7 @@ let set_background_noop_same_value () =
 let set_fill_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let before = !(t.schedule_count) in
   Box.set_fill box true;
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -410,7 +417,7 @@ let set_fill_noop_same_value () =
 let set_title_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root ~title:"Hello" () in
+  let box = Box.create ~parent:root (Box.Props.make ~title:"Hello" ()) in
   let before = !(t.schedule_count) in
   Box.set_title box (Some "Hello");
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -418,7 +425,7 @@ let set_title_noop_same_value () =
 let set_title_alignment_noop_same_value () =
   let t = make_ctx () in
   let root = make_root t in
-  let box = Box.create ~parent:root () in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
   let before = !(t.schedule_count) in
   Box.set_title_alignment box `Left;
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -427,16 +434,18 @@ let set_title_alignment_noop_same_value () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.box}) or to {!Box.create},
-   reaches the live box ({!Test_harness.reaches}). The box holds a text, so
-   its border widths show where the text goes. *)
+(* Each label, given to the element ({!Mosaic.box}) or to {!Box.Props.make}
+   for {!Box.create}, reaches the live box ({!Test_harness.reaches}). The box
+   holds a text, so its border widths show where the text goes. *)
 
 let size = Mosaic.size ~width:12 ~height:4
 let style = Toffee.Style.make ~size ()
 let red = Ansi.Color.red
 
 let boxed b =
-  ignore (Text.create ~parent:(Box.node b) ~content:"x" () : Text.t);
+  ignore
+    (Text.create ~parent:(Box.node b) (Text.Props.make ~content:"x" ())
+      : Text.t);
   Box.node b
 
 let reaches ?act ?observe label ~base ~element ~create_base ~create =
@@ -449,26 +458,30 @@ let reaches ?act ?observe label ~base ~element ~create_base ~create =
 let doors_border () =
   reaches "border" ~base:(Mosaic.box ~size)
     ~element:(Mosaic.box ~size ~border:true)
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
-    ~create:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
 
 let doors_border_style () =
   reaches "border_style"
     ~base:(Mosaic.box ~size ~border:true)
     ~element:
       (Mosaic.box ~size ~border:true ~border_style:Matrix_grid.Border.double)
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true
-        ~border_style:Matrix_grid.Border.double ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~border_style:Matrix_grid.Border.double ()))
 
 let doors_border_sides () =
   reaches "border_sides"
     ~base:(Mosaic.box ~size ~border:true)
     ~element:(Mosaic.box ~size ~border:true ~border_sides:[ `Top ])
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~border_sides:[ `Top ] ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~border_sides:[ `Top ] ()))
 
 let doors_border_width () =
   let two = Toffee.Style.Length_percentage.length 2. in
@@ -479,65 +492,75 @@ let doors_border_width () =
   reaches "border_width"
     ~base:(Mosaic.box ~size ~border:true)
     ~element:(Mosaic.box ~size ~border:true ~border_width:widths)
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~border_width:widths ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~border_width:widths ()))
 
 let doors_border_color () =
   reaches "border_color"
     ~base:(Mosaic.box ~size ~border:true)
     ~element:(Mosaic.box ~size ~border:true ~border_color:red)
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~border_color:red ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~border_color:red ()))
 
 let doors_focused_border_color () =
   reaches "focused_border_color" ~act:Test_harness.focus
     ~base:(Mosaic.box ~size ~border:true)
     ~element:(Mosaic.box ~size ~border:true ~focused_border_color:red)
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~focused_border_color:red ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~focused_border_color:red ()))
 
 let doors_background () =
   reaches "background" ~base:(Mosaic.box ~size)
     ~element:(Mosaic.box ~size ~background:red)
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
-    ~create:(fun ~parent -> Box.create ~parent ~style ~background:red ())
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~background:red ()))
 
 let doors_fill () =
   reaches "fill"
     ~base:(Mosaic.box ~size ~background:red)
     ~element:(Mosaic.box ~size ~background:red ~fill:false)
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~background:red ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~background:red ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~background:red ~fill:false ())
+      Box.create ~parent ~style (Box.Props.make ~background:red ~fill:false ()))
 
 let doors_title () =
   reaches "title"
     ~base:(Mosaic.box ~size ~border:true)
     ~element:(Mosaic.box ~size ~border:true ~title:"T")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~title:"T" ())
+      Box.create ~parent ~style (Box.Props.make ~border:true ~title:"T" ()))
 
 let doors_title_alignment () =
   reaches "title_alignment"
     ~base:(Mosaic.box ~size ~border:true ~title:"T")
     ~element:(Mosaic.box ~size ~border:true ~title:"T" ~title_alignment:`Right)
     ~create_base:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~title:"T" ())
+      Box.create ~parent ~style (Box.Props.make ~border:true ~title:"T" ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~title:"T" ~title_alignment:`Right
-        ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~title:"T" ~title_alignment:`Right ()))
 
 let doors_inert () =
   reaches "inert"
     ~observe:(fun _ node -> string_of_bool (Renderable.inert node))
     ~base:(Mosaic.box ~size)
     ~element:(Mosaic.box ~size ~inert:true)
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
-    ~create:(fun ~parent -> Box.create ~parent ~style ~inert:true ())
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~inert:true ()))
 
 (* ── Paint ── *)
 

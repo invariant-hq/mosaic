@@ -8,8 +8,9 @@ let make_bar ?value ?min ?max ?orientation ?filled_color ?empty_color () =
   let t = make_ctx () in
   let root = make_root t in
   let bar =
-    Progress_bar.create ~parent:root ?value ?min ?max ?orientation ?filled_color
-      ?empty_color ()
+    Progress_bar.create ~parent:root
+      (Progress_bar.Props.make ?value ?min ?max ?orientation ?filled_color
+         ?empty_color ())
   in
   (t, bar)
 
@@ -226,8 +227,9 @@ let pp_contains_progress_bar () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.progress_bar}) or to {!Progress_bar.create},
-   reaches the live progress bar ({!Test_harness.reaches}). *)
+(* Each label, given to the element ({!Mosaic.progress_bar}) or to
+   {!Progress_bar.Props.make} for {!Progress_bar.create}, reaches the live
+   progress bar ({!Test_harness.reaches}). *)
 
 let doors_size = Mosaic.size ~width:10 ~height:3
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -238,10 +240,13 @@ let doors_value () =
     ~base:(Mosaic.progress_bar ~size:doors_size ())
     ~element:(Mosaic.progress_bar ~size:doors_size ~value:0.5 ())
     ~create_base:(fun parent ->
-      Progress_bar.node (Progress_bar.create ~parent ~style:doors_style ()))
+      Progress_bar.node
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ())))
     ~create:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5 ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ())))
 
 let doors_min () =
   Test_harness.reaches "min"
@@ -249,10 +254,12 @@ let doors_min () =
     ~element:(Mosaic.progress_bar ~size:doors_size ~value:0.5 ~min:0.25 ())
     ~create_base:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5 ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ())))
     ~create:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5 ~min:0.25 ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ~min:0.25 ())))
 
 let doors_max () =
   Test_harness.reaches "max"
@@ -260,10 +267,12 @@ let doors_max () =
     ~element:(Mosaic.progress_bar ~size:doors_size ~value:0.5 ~max:2. ())
     ~create_base:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5 ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ())))
     ~create:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5 ~max:2. ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ~max:2. ())))
 
 let doors_orientation () =
   Test_harness.reaches "orientation"
@@ -272,11 +281,12 @@ let doors_orientation () =
       (Mosaic.progress_bar ~size:doors_size ~value:0.5 ~orientation:`Vertical ())
     ~create_base:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5 ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ())))
     ~create:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5
-           ~orientation:`Vertical ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ~orientation:`Vertical ())))
 
 let doors_filled_color () =
   Test_harness.reaches "filled_color"
@@ -286,11 +296,12 @@ let doors_filled_color () =
          ())
     ~create_base:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5 ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ())))
     ~create:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5
-           ~filled_color:doors_red ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ~filled_color:doors_red ())))
 
 let doors_empty_color () =
   Test_harness.reaches "empty_color"
@@ -299,11 +310,12 @@ let doors_empty_color () =
       (Mosaic.progress_bar ~size:doors_size ~value:0.5 ~empty_color:doors_red ())
     ~create_base:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5 ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ())))
     ~create:(fun parent ->
       Progress_bar.node
-        (Progress_bar.create ~parent ~style:doors_style ~value:0.5
-           ~empty_color:doors_red ()))
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ~empty_color:doors_red ())))
 
 (* ── Paint ── *)
 

@@ -22,12 +22,11 @@ let default_frame_set = dots
 (* ───── Props ───── *)
 
 (* [Props.make] is the one place the spinner's labels get their defaults:
-   [create] and [Mosaic.spinner] pass their labels on unset. *)
+   [Mosaic.spinner] passes its labels on unset. *)
 module Props = struct
   type t = { frame_set : frame_set; color : Ansi.Color.t option }
 
   let make ?(frame_set = default_frame_set) ?color () = { frame_set; color }
-  let make_k k ?frame_set ?color () = k (make ?frame_set ?color ())
   let default = make ()
 
   let frames_equal a b =
@@ -130,7 +129,7 @@ let on_frame t _node ~dt =
 
 (* ───── Construction ───── *)
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity props =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -140,10 +139,6 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props =
   Renderable.set_on_frame node (Some (on_frame t));
   update_live t;
   t
-
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
 
 (* ───── Accessors ───── *)
 
@@ -190,7 +185,3 @@ let pp ppf t =
   Format.fprintf ppf "Spinner(%s, frame=%d/%d)" (Renderable.id t.node)
     t.frame_index
     (Array.length t.props.frame_set.frames)
-
-module Private = struct
-  let of_props = of_props
-end

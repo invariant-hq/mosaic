@@ -46,7 +46,7 @@ type action = Textarea.action =
 type key_binding = Shortcut.t * action
 
 (* [Props.make] is the one place the input's labels get their defaults:
-   [create] and [Mosaic.input] pass their labels on unset. *)
+   [Mosaic.input] passes its labels on unset. *)
 module Props = struct
   type t = {
     state : Editor.t;
@@ -92,16 +92,6 @@ module Props = struct
       key_bindings;
     }
 
-  let make_k k ~state ?placeholder ?text_color ?background_color
-      ?focused_text_color ?focused_background_color ?placeholder_color
-      ?selection_color ?selection_fg ?cursor_style ?cursor_color
-      ?cursor_blinking ?selectable ?show_cursor ?key_bindings () =
-    k
-      (make ~state ?placeholder ?text_color ?background_color
-         ?focused_text_color ?focused_background_color ?placeholder_color
-         ?selection_color ?selection_fg ?cursor_style ?cursor_color
-         ?cursor_blinking ?selectable ?show_cursor ?key_bindings ())
-
   let default = make ~state:Editor.empty ()
 
   let equal a b =
@@ -146,19 +136,13 @@ let set_on_change t h = Edit_surface.set_on_change t.surface h
 let set_on_submit t h = Edit_surface.set_on_submit t.surface h
 let handle_paste t text = Edit_surface.handle_paste t.surface text
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ~on_change
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~on_change
     ?on_submit (props : Props.t) =
   let surface =
     Edit_surface.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       ~mode:`Single_line ~on_change ?on_submit (surface_props props)
   in
   { surface; props }
-
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~on_change
-    ?on_submit =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ~on_change
-        ?on_submit props)
 
 let apply_props t (props : Props.t) =
   Edit_surface.apply_props t.surface (surface_props props);
@@ -176,7 +160,3 @@ let pp ppf t =
   if String.length t.props.placeholder > 0 then
     Format.fprintf ppf ", placeholder=%S" t.props.placeholder;
   Format.pp_print_char ppf ')'
-
-module Private = struct
-  let of_props = of_props
-end

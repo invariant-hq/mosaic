@@ -19,9 +19,10 @@ let make_select ?options ?selected_index ?wrap_selection ?show_description
   let t = make_ctx () in
   let root = make_root t in
   let sel =
-    Select.create ~parent:root ?options ?selected_index ?wrap_selection
-      ?show_description ?show_scroll_indicator ?item_spacing ?fast_scroll_step
-      ?key_bindings ()
+    Select.create ~parent:root
+      (Select.Props.make ?options ?selected_index ?wrap_selection
+         ?show_description ?show_scroll_indicator ?item_spacing
+         ?fast_scroll_step ?key_bindings ())
   in
   Select.set_on_change sel (Some (Select.set_selected_index sel));
   (t, sel)
@@ -623,9 +624,10 @@ let intrinsic_width_policy () =
   in
   let root = make_root context in
   let sel =
-    Select.create ~parent:root ~show_description:false
-      ~options:Select.[ { label = "👩‍👩‍👦"; description = None } ]
-      ()
+    Select.create ~parent:root
+      (Select.Props.make ~show_description:false
+         ~options:Select.[ { label = "👩‍👩‍👦"; description = None } ]
+         ())
   in
   equal ~msg:"Unicode measures the grapheme cluster" (pair int int) (5, 1)
     (measure_select sel);
@@ -715,9 +717,10 @@ let raw_handler_can_prevent_navigation () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.select}) or to {!Select.create},
-   reaches the live select ({!Test_harness.reaches}). The element's
-   [selected] gives the select's [selected_index]. *)
+(* Each label, given to the element ({!Mosaic.select}) or to
+   {!Select.Props.make} for {!Select.create}, reaches the live select
+   ({!Test_harness.reaches}). The element's [selected] gives the select's
+   [selected_index]. *)
 
 let doors_size = Mosaic.size ~width:16 ~height:4
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -768,10 +771,12 @@ let doors_options () =
          ~on_change:ignore many_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:many_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:many_items ())))
 
 let doors_selected_index () =
   Test_harness.reaches "selected_index (the element's selected)"
@@ -783,11 +788,12 @@ let doors_selected_index () =
          ~on_change:ignore few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~selected_index:1 ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~selected_index:1 ())))
 
 let doors_background () =
   Test_harness.reaches "background"
@@ -799,11 +805,12 @@ let doors_background () =
          ~on_change:ignore ~background:doors_red few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~background:doors_red ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~background:doors_red ())))
 
 let doors_text_color () =
   Test_harness.reaches "text_color"
@@ -815,11 +822,12 @@ let doors_text_color () =
          ~on_change:ignore ~text_color:doors_red few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~text_color:doors_red ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~text_color:doors_red ())))
 
 let doors_focused_background () =
   Test_harness.reaches ~act:Test_harness.focus "focused_background"
@@ -831,11 +839,13 @@ let doors_focused_background () =
          ~on_change:ignore ~focused_background:doors_red few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~focused_background:doors_red ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~focused_background:doors_red
+              ())))
 
 let doors_focused_text_color () =
   Test_harness.reaches ~act:Test_harness.focus "focused_text_color"
@@ -847,11 +857,13 @@ let doors_focused_text_color () =
          ~on_change:ignore ~focused_text_color:doors_red few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~focused_text_color:doors_red ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~focused_text_color:doors_red
+              ())))
 
 let doors_selected_background () =
   Test_harness.reaches "selected_background"
@@ -863,11 +875,13 @@ let doors_selected_background () =
          ~on_change:ignore ~selected_background:doors_red few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~selected_background:doors_red ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~selected_background:doors_red
+              ())))
 
 let doors_selected_text_color () =
   Test_harness.reaches "selected_text_color"
@@ -879,11 +893,13 @@ let doors_selected_text_color () =
          ~on_change:ignore ~selected_text_color:doors_red few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~selected_text_color:doors_red ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~selected_text_color:doors_red
+              ())))
 
 let doors_description_color () =
   Test_harness.reaches "description_color"
@@ -895,11 +911,12 @@ let doors_description_color () =
          ~on_change:ignore ~description_color:doors_red few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~description_color:doors_red ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~description_color:doors_red ())))
 
 let doors_selected_description_color () =
   Test_harness.reaches "selected_description_color"
@@ -911,11 +928,13 @@ let doors_selected_description_color () =
          ~on_change:ignore ~selected_description_color:doors_red few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~selected_description_color:doors_red ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items
+              ~selected_description_color:doors_red ())))
 
 let doors_show_description () =
   Test_harness.reaches "show_description"
@@ -927,11 +946,12 @@ let doors_show_description () =
          ~on_change:ignore ~show_description:false few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~show_description:false ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~show_description:false ())))
 
 let doors_show_scroll_indicator () =
   Test_harness.reaches "show_scroll_indicator"
@@ -943,11 +963,12 @@ let doors_show_scroll_indicator () =
          ~on_change:ignore ~show_scroll_indicator:true many_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:many_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:many_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:many_items
-           ~show_scroll_indicator:true ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:many_items ~show_scroll_indicator:true ())))
 
 let doors_wrap_selection () =
   Test_harness.reaches
@@ -961,11 +982,12 @@ let doors_wrap_selection () =
          ~on_change:doors_record ~wrap_selection:true few_options)
     ~create_base:(fun parent ->
       doors_recording
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       doors_recording
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~wrap_selection:true ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~wrap_selection:true ())))
 
 let doors_item_spacing () =
   Test_harness.reaches "item_spacing"
@@ -977,11 +999,12 @@ let doors_item_spacing () =
          ~on_change:ignore ~item_spacing:1 few_options)
     ~create_base:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       Select.node
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~item_spacing:1 ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ~item_spacing:1 ())))
 
 let doors_fast_scroll_step () =
   Test_harness.reaches
@@ -996,12 +1019,13 @@ let doors_fast_scroll_step () =
          many_options)
     ~create_base:(fun parent ->
       doors_recording
-        (Select.create ~parent ~style:doors_style ~options:many_items
-           ~show_description:false ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:many_items ~show_description:false ())))
     ~create:(fun parent ->
       doors_recording
-        (Select.create ~parent ~style:doors_style ~options:many_items
-           ~show_description:false ~fast_scroll_step:2 ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:many_items ~show_description:false
+              ~fast_scroll_step:2 ())))
 
 let doors_key_bindings () =
   Test_harness.reaches
@@ -1017,12 +1041,14 @@ let doors_key_bindings () =
          few_options)
     ~create_base:(fun parent ->
       doors_recording
-        (Select.create ~parent ~style:doors_style ~options:few_items ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items ())))
     ~create:(fun parent ->
       doors_recording
-        (Select.create ~parent ~style:doors_style ~options:few_items
-           ~key_bindings:[ (Shortcut.char 'x', Select.Move_down) ]
-           ()))
+        (Select.create ~parent ~style:doors_style
+           (Select.Props.make ~options:few_items
+              ~key_bindings:[ (Shortcut.char 'x', Select.Move_down) ]
+              ())))
 
 (* ── Paint ── *)
 

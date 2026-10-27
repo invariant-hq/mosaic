@@ -45,8 +45,8 @@ let make_stream sections () =
   let renderer = Renderer.create () in
   let base = transcript (Thumper.black_box sections) in
   let md =
-    Markdown.create ~parent:(Renderer.root renderer) ~content:base
-      ~streaming:true ~highlighter ()
+    Markdown.create ~parent:(Renderer.root renderer)
+      (Markdown.Props.make ~content:base ~streaming:true ~highlighter ())
   in
   render_frame renderer;
   { renderer; md; base; appended = base ^ "\n\nstreamed tail paragraph" }

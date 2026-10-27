@@ -150,7 +150,7 @@ end
 type key_binding = Shortcut.t * action
 
 (* [Props.make] is [Textarea.Props.make], the one place the textarea's labels
-   get their defaults: [Textarea.create] and [Mosaic.textarea] pass their labels
+   get their defaults: [Mosaic.textarea] passes its labels
    on unset. [Text_input] makes these props from its own, every field set. *)
 module Props = struct
   type t = {
@@ -213,18 +213,6 @@ module Props = struct
       show_cursor;
       key_bindings;
     }
-
-  let make_k k ~state ?annotations ?syntax ?ghost_text ?ghost_text_color
-      ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
-      ?focused_background_color ?placeholder_color ?selection_color
-      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
-      ?show_cursor ?key_bindings () =
-    k
-      (make ~state ?annotations ?syntax ?ghost_text ?ghost_text_color
-         ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
-         ?focused_background_color ?placeholder_color ?selection_color
-         ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
-         ?show_cursor ?key_bindings ())
 
   let default = make ~state:Editor.empty ()
 

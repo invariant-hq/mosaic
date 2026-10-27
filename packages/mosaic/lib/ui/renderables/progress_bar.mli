@@ -23,25 +23,6 @@ type orientation = [ `Horizontal | `Vertical ]
 
 (** {1:constructors Constructors} *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  ?value:float ->
-  ?min:float ->
-  ?max:float ->
-  ?orientation:orientation ->
-  ?filled_color:Ansi.Color.t ->
-  ?empty_color:Ansi.Color.t ->
-  unit ->
-  t
-(** [create ~parent ()] is a progress bar attached to [parent]. The labels after
-    [opacity] are {!Props.make}'s and take its defaults. *)
-
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
 
@@ -70,23 +51,7 @@ module Props : sig
       - [empty_color] is the color of the unfilled portion. Defaults to none, a
         line in the [Border] role.
 
-      {!val-create} and [Mosaic.progress_bar] take these labels with these
-      defaults. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?value:float ->
-    ?min:float ->
-    ?max:float ->
-    ?orientation:orientation ->
-    ?filled_color:Ansi.Color.t ->
-    ?empty_color:Ansi.Color.t ->
-    unit ->
-    'a
-
-  (**/**)
+      [Mosaic.progress_bar] takes these labels with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -95,6 +60,19 @@ module Props : sig
   (** [equal a b] is [true] iff [a] and [b] describe identical visual
       properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  Props.t ->
+  t
+(** [create ~parent props] is a progress bar attached to [parent], showing
+    [props]. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] replaces all properties of [t] with [props]. Always
@@ -142,20 +120,3 @@ val set_empty_color : t -> Ansi.Color.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a progress bar for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

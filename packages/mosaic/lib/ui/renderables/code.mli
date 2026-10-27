@@ -267,28 +267,9 @@ module Props : sig
         selected text is drawn over the [Highlight] surface
         ({!Text_surface.section-paint}).
 
-      {!val-create} and [Mosaic.code] take these labels with these defaults.
+      [Mosaic.code] takes these labels with these defaults.
 
       Raises [Invalid_argument] if [tab_width < 1]. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?content:string ->
-    ?syntax:syntax ->
-    ?conceal:bool ->
-    ?text_style:Ansi.Style.t ->
-    ?wrap:Text_surface.wrap ->
-    ?tab_width:int ->
-    ?truncate:bool ->
-    ?selectable:bool ->
-    ?selection_bg:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
-    unit ->
-    'a
-
-  (**/**)
 
   val default : t
   (** [default] is the default props value. *)
@@ -308,23 +289,11 @@ val create :
   ?z_index:int ->
   ?opacity:float ->
   ?on_selection:((int * int) option -> unit) ->
-  ?content:string ->
-  ?syntax:syntax ->
-  ?conceal:bool ->
-  ?text_style:Ansi.Style.t ->
-  ?wrap:Text_surface.wrap ->
-  ?tab_width:int ->
-  ?truncate:bool ->
-  ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
-  unit ->
+  Props.t ->
   t
-(** [create ~parent ()] is a new code display renderable attached to [parent].
-    The labels from [content] to [selection_fg] are {!Props.make}'s and take its
-    defaults. [on_selection] is called when the selection changes.
-
-    Raises [Invalid_argument] as {!Props.make} does. *)
+(** [create ~parent props] is a new code display renderable attached to
+    [parent], showing [props]. [on_selection] is called when the selection
+    changes. *)
 
 (** {1:accessors Accessors} *)
 
@@ -377,21 +346,3 @@ val is_highlighting : t -> bool
 val display_line_count : t -> int
 (** [display_line_count t] is the number of display lines in [t] after wrapping.
 *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    ?on_selection:((int * int) option -> unit) ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

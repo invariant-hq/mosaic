@@ -250,8 +250,7 @@ module Props : sig
         Defaults to [true].
       - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
 
-      {!val-create} takes these labels with these defaults, and so does
-      [Mosaic.diff] for the labels it has. *)
+      [Mosaic.diff] takes those of these labels it has, with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -268,20 +267,10 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
-  ?layout:layout ->
-  ?theme:theme ->
-  ?highlight:highlight ->
-  ?line_highlights:line_highlight list ->
-  ?line_spans:line_span list ->
-  ?line_signs:line_sign list ->
-  ?show_line_numbers:bool ->
-  ?wrap:Text_surface.wrap ->
-  ?selectable:bool ->
-  ?text_style:Ansi.Style.t ->
-  Patch.t ->
+  Props.t ->
   t
-(** [create ~parent patch] creates a diff renderable attached to [parent]. The
-    labels after [opacity] are {!Props.make}'s and take its defaults. *)
+(** [create ~parent props] is a diff renderable attached to [parent], showing
+    [props]. *)
 
 val node : t -> Renderable.t
 (** [node t] is [t]'s underlying renderable. *)

@@ -90,26 +90,8 @@ module Props : sig
         role.
       - [arrow_bg] — arrow background color. Defaults to none.
 
-      {!val-create} takes these labels with these defaults, and so does
-      [Mosaic.scroll_bar] for the labels it has. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?position:int ->
-    ?scroll_size:int ->
-    ?viewport_size:int ->
-    ?orientation:orientation ->
-    ?show_arrows:bool ->
-    ?track_color:Ansi.Color.t ->
-    ?thumb_color:Ansi.Color.t ->
-    ?arrow_fg:Ansi.Color.t ->
-    ?arrow_bg:Ansi.Color.t ->
-    unit ->
-    'a
-
-  (**/**)
+      [Mosaic.scroll_bar] takes those of these labels it has, with these
+      defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -135,20 +117,11 @@ val create :
   ?z_index:int ->
   ?opacity:float ->
   ?on_change:(int -> unit) ->
-  ?position:int ->
-  ?scroll_size:int ->
-  ?viewport_size:int ->
-  ?orientation:orientation ->
-  ?show_arrows:bool ->
-  ?track_color:Ansi.Color.t ->
-  ?thumb_color:Ansi.Color.t ->
-  ?arrow_fg:Ansi.Color.t ->
-  ?arrow_bg:Ansi.Color.t ->
-  unit ->
+  Props.t ->
   t
-(** [create ~parent ()] is a scroll bar attached to [parent]. The labels from
-    [position] to [arrow_bg] are {!Props.make}'s and take its defaults.
-    [on_change] is invoked with the new scroll position whenever it changes. *)
+(** [create ~parent props] is a scroll bar attached to [parent], showing
+    [props]. [on_change] is invoked with the new scroll position whenever it
+    changes. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
@@ -266,21 +239,3 @@ val handle_key : t -> Event.key -> bool
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a scroll bar value for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    ?on_change:(int -> unit) ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

@@ -326,9 +326,10 @@ let pp_output () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.canvas}) or to {!Canvas.create},
-   reaches the live canvas ({!Test_harness.reaches}). A canvas has no labels of
-   its own: its [draw] is the callback {!Canvas.set_on_draw} sets. *)
+(* Each label, given to the element ({!Mosaic.canvas}) or to
+   {!Canvas.Props.make} for {!Canvas.create}, reaches the live canvas
+   ({!Test_harness.reaches}). A canvas has no labels of its own: its [draw]
+   is the callback {!Canvas.set_on_draw} sets. *)
 
 let doors_size = Mosaic.size ~width:6 ~height:2
 let doors_style = Toffee.Style.make ~size:doors_size ()

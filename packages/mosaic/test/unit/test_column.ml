@@ -142,9 +142,10 @@ let table_widths ~padding ~available columns =
   let width = available + 2 in
   let table =
     Table.create ~parent:root
-      ~columns:(List.map table_column columns)
-      ~rows:(List.map cells rows) ~cell_padding:padding
-      ~show_column_separator:true ()
+      (Table.Props.make
+         ~columns:(List.map table_column columns)
+         ~rows:(List.map cells rows) ~cell_padding:padding
+         ~show_column_separator:true ())
   in
   let node = Table.node table in
   layout_node node ~x:0 ~y:0 ~width ~height:8;

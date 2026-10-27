@@ -204,7 +204,10 @@ let%expect_test "code block with custom render_code" =
   render_markdown
     ~render_code:(fun ~parent ~language:_ ~content ->
       let node = Renderable.create ~parent () in
-      let _text = Text.create ~parent:node ~content:("CUSTOM: " ^ content) () in
+      let _text =
+        Text.create ~parent:node
+          (Text.Props.make ~content:("CUSTOM: " ^ content) ())
+      in
       node)
     {|```js
 hello
@@ -494,7 +497,10 @@ let%expect_test "custom render_node overrides heading" =
       match block with
       | Cmarkit.Block.Heading _ ->
           let node = Renderable.create ~parent () in
-          let _text = Text.create ~parent:node ~content:"[CUSTOM] Heading" () in
+          let _text =
+            Text.create ~parent:node
+              (Text.Props.make ~content:"[CUSTOM] Heading" ())
+          in
           Some node
       | _ -> None)
     {|# Original Heading

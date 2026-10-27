@@ -66,43 +66,6 @@ type key_binding = Shortcut.t * action
 
 (** {1:construction Construction} *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  on_change:(Editor.t -> unit) ->
-  ?on_submit:(string -> unit) ->
-  state:Editor.t ->
-  ?placeholder:string ->
-  ?text_color:Ansi.Color.t ->
-  ?background_color:Ansi.Color.t ->
-  ?focused_text_color:Ansi.Color.t ->
-  ?focused_background_color:Ansi.Color.t ->
-  ?placeholder_color:Ansi.Color.t ->
-  ?selection_color:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
-  ?cursor_style:[ `Block | `Line | `Underline ] ->
-  ?cursor_color:Ansi.Color.t ->
-  ?cursor_blinking:bool ->
-  ?selectable:bool ->
-  ?show_cursor:bool ->
-  ?key_bindings:key_binding list ->
-  unit ->
-  t
-(** [create ~parent ~state ~on_change ()] renders the accepted [state]. Default
-    editing events propose a complete next state through [on_change]; they do
-    not mutate the accepted editor. Apply new properties to accept a proposal.
-    [on_submit] reports accepted text. Focus and blur do not commit edits. The
-    labels from [state] to [key_bindings] are {!Props.make}'s and take its
-    defaults.
-
-    Raises [Invalid_argument] as {!Props.make} does, before attaching a
-    renderable to [parent]. *)
-
 (** {1:accessors Accessors} *)
 
 val state : t -> Editor.t
@@ -165,35 +128,11 @@ module Props : sig
       - [key_bindings] adds keys to those {!section-keys} lists or binds one of
         them to another action. Defaults to [[]].
 
-      {!val-create} and [Mosaic.input] take these labels with these defaults.
+      [Mosaic.input] takes these labels with these defaults.
 
       Raises [Invalid_argument] if [Editor.text state] contains CR or LF.
       Validation uses the editor's cached logical-line index; caret-only changes
       do not rescan the text. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    state:Editor.t ->
-    ?placeholder:string ->
-    ?text_color:Ansi.Color.t ->
-    ?background_color:Ansi.Color.t ->
-    ?focused_text_color:Ansi.Color.t ->
-    ?focused_background_color:Ansi.Color.t ->
-    ?placeholder_color:Ansi.Color.t ->
-    ?selection_color:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
-    ?cursor_style:[ `Block | `Line | `Underline ] ->
-    ?cursor_color:Ansi.Color.t ->
-    ?cursor_blinking:bool ->
-    ?selectable:bool ->
-    ?show_cursor:bool ->
-    ?key_bindings:key_binding list ->
-    unit ->
-    'a
-
-  (**/**)
 
   val default : t
   (** [default] is [make ~state:Editor.empty ()]. *)
@@ -202,6 +141,24 @@ module Props : sig
   (** [equal a b] is [true] iff [a] and [b] refer to the same editor value and
       have equal visual properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  on_change:(Editor.t -> unit) ->
+  ?on_submit:(string -> unit) ->
+  Props.t ->
+  t
+(** [create ~parent ~on_change props] renders the accepted state of [props]
+    ({!Props.make}'s [state]). Default editing events propose a complete next
+    state through [on_change]; they do not mutate the accepted editor. Apply new
+    properties to accept a proposal. [on_submit] reports accepted text. Focus
+    and blur do not commit edits. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] installs the complete accepted editor and visual
@@ -238,22 +195,3 @@ val handle_paste : t -> string -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    on_change:(Editor.t -> unit) ->
-    ?on_submit:(string -> unit) ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

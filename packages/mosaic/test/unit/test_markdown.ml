@@ -12,8 +12,9 @@ let make_md ?content ?conceal ?streaming ?render_node ?render_code ?highlighter
   let t = make_ctx () in
   let root = make_root t in
   let md =
-    Markdown.create ~parent:root ?content ?conceal ?streaming ?render_node
-      ?render_code ?highlighter ?syntax_style ()
+    Markdown.create ~parent:root
+      (Markdown.Props.make ?content ?conceal ?streaming ?render_node
+         ?render_code ?highlighter ?syntax_style ())
   in
   (t, md)
 
@@ -111,9 +112,9 @@ let selection_callback_reports_rendered_text () =
   let renderer = Renderer.create () in
   let selected = ref None in
   let _md =
-    Markdown.create ~parent:(Renderer.root renderer) ~content:"Hello **world**"
+    Markdown.create ~parent:(Renderer.root renderer)
       ~on_selection:(fun text -> selected := text)
-      ()
+      (Markdown.Props.make ~content:"Hello **world**" ())
   in
   Renderer.render_frame renderer ~width:40 ~height:5 ~dt:0.;
   ignore (Renderer.render ~full:true renderer : string);
@@ -127,9 +128,9 @@ let selection_callback_clears () =
   let renderer = Renderer.create () in
   let selected = ref (Some "stale") in
   let md =
-    Markdown.create ~parent:(Renderer.root renderer) ~content:"Hello"
+    Markdown.create ~parent:(Renderer.root renderer)
       ~on_selection:(fun text -> selected := text)
-      ()
+      (Markdown.Props.make ~content:"Hello" ())
   in
   Renderer.render_frame renderer ~width:40 ~height:5 ~dt:0.;
   ignore (Renderer.render ~full:true renderer : string);
@@ -263,8 +264,8 @@ let element_style_change_rerenders () =
       [ (Markdown.Heading 1, Ansi.Style.fg color Ansi.Style.default) ]
   in
   let md =
-    Markdown.create ~parent:(Renderer.root renderer) ~content:"# Title"
-      ~style:(heading Ansi.Color.red) ()
+    Markdown.create ~parent:(Renderer.root renderer)
+      (Markdown.Props.make ~content:"# Title" ~style:(heading Ansi.Color.red) ())
   in
   let fg () =
     Renderer.render_frame renderer ~width:20 ~height:2 ~dt:0.;
@@ -343,9 +344,10 @@ let pp_does_not_crash () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.markdown}) or to {!Markdown.create},
-   reaches the live markdown ({!Test_harness.reaches}). The element's
-   [md_style] is the widget's [style]. *)
+(* Each label, given to the element ({!Mosaic.markdown}) or to
+   {!Markdown.Props.make} for {!Markdown.create}, reaches the live markdown
+   ({!Test_harness.reaches}). The element's [md_style] is the widget's
+   [style]. *)
 
 let doors_size = Mosaic.size ~width:24 ~height:6
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -374,10 +376,12 @@ let doors_content () =
     ~element:(Mosaic.markdown ~size:doors_size "# Title")
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:"# Title" ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:"# Title" ())))
 
 let doors_style_label () =
   Test_harness.reaches "style (the element's md_style)"
@@ -386,11 +390,12 @@ let doors_style_label () =
       (Mosaic.markdown ~size:doors_size ~md_style:doors_md_style doors_md)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
-           ~style:doors_md_style ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ~style:doors_md_style ())))
 
 let doors_conceal () =
   Test_harness.reaches "conceal"
@@ -398,11 +403,12 @@ let doors_conceal () =
     ~element:(Mosaic.markdown ~size:doors_size ~conceal:false doors_md)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
-           ~conceal:false ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ~conceal:false ())))
 
 let doors_streaming () =
   Test_harness.reaches "streaming"
@@ -410,12 +416,12 @@ let doors_streaming () =
     ~element:(Mosaic.markdown ~size:doors_size ~streaming:true doors_table)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_table
-           ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_table ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_table
-           ~streaming:true ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_table ~streaming:true ())))
 
 let doors_selectable () =
   Test_harness.reaches ~act:Test_harness.select_text ~observe:doors_selected
@@ -424,11 +430,12 @@ let doors_selectable () =
     ~element:(Mosaic.markdown ~size:doors_size ~selectable:false doors_md)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
-           ~selectable:false ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ~selectable:false ())))
 
 let doors_selection_bg () =
   Test_harness.reaches ~act:Test_harness.select_text "selection_bg"
@@ -436,11 +443,12 @@ let doors_selection_bg () =
     ~element:(Mosaic.markdown ~size:doors_size ~selection_bg:doors_red doors_md)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
-           ~selection_bg:doors_red ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ~selection_bg:doors_red ())))
 
 let doors_selection_fg () =
   Test_harness.reaches ~act:Test_harness.select_text "selection_fg"
@@ -448,11 +456,12 @@ let doors_selection_fg () =
     ~element:(Mosaic.markdown ~size:doors_size ~selection_fg:doors_red doors_md)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
-           ~selection_fg:doors_red ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ~selection_fg:doors_red ())))
 
 let doors_highlighter () =
   Test_harness.reaches "highlighter"
@@ -461,12 +470,12 @@ let doors_highlighter () =
       (Mosaic.markdown ~size:doors_size ~highlighter:doors_hl doors_fenced)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
-           ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_fenced ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
-           ~highlighter:doors_hl ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_fenced ~highlighter:doors_hl ())))
 
 let doors_syntax_style () =
   Test_harness.reaches "syntax_style"
@@ -476,17 +485,19 @@ let doors_syntax_style () =
          ~syntax_style:doors_syntax_style doors_fenced)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
-           ~highlighter:doors_hl ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_fenced ~highlighter:doors_hl ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
-           ~highlighter:doors_hl ~syntax_style:doors_syntax_style ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_fenced ~highlighter:doors_hl
+              ~syntax_style:doors_syntax_style ())))
 
 (* A renderer of the doors' tests draws a paragraph, or a code block, as a
    text of its own. The same function is given on every declaration, as
    props compare it physically. *)
-let doors_custom parent text = Text.node (Text.create ~parent ~content:text ())
+let doors_custom parent text =
+  Text.node (Text.create ~parent (Text.Props.make ~content:text ()))
 
 let doors_render_node block ~parent ~is_last:_ =
   match block with
@@ -503,11 +514,13 @@ let doors_render_node_label () =
       (Mosaic.markdown ~size:doors_size ~render_node:doors_render_node doors_md)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
-           ~render_node:doors_render_node ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_md ~render_node:doors_render_node
+              ())))
 
 let doors_render_code_label () =
   Test_harness.reaches "render_code"
@@ -517,12 +530,13 @@ let doors_render_code_label () =
          doors_fenced)
     ~create_base:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
-           ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_fenced ())))
     ~create:(fun parent ->
       Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
-           ~render_code:doors_render_code ()))
+        (Markdown.create ~parent ~layout_style:doors_style
+           (Markdown.Props.make ~content:doors_fenced
+              ~render_code:doors_render_code ())))
 
 let () =
   run "mosaic.markdown"

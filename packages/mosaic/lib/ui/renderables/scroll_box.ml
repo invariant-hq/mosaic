@@ -62,7 +62,7 @@ end
 (* ───── Props ───── *)
 
 (* [Props.make] is the one place the scroll box's labels get their defaults:
-   [create] and [Mosaic.scroll_box] pass their labels on unset. *)
+   [Mosaic.scroll_box] passes its labels on unset. *)
 module Props = struct
   type t = {
     scroll_x : bool;
@@ -95,14 +95,6 @@ module Props = struct
       vertical_bar_style;
       horizontal_bar_style;
     }
-
-  let make_k k ?scroll_x ?scroll_y ?scroll ?background ?scroll_accel
-      ?show_scrollbars ?scrollbar_style ?vertical_bar_style
-      ?horizontal_bar_style () =
-    k
-      (make ?scroll_x ?scroll_y ?scroll ?background ?scroll_accel
-         ?show_scrollbars ?scrollbar_style ?vertical_bar_style
-         ?horizontal_bar_style ())
 
   let default = make ()
 
@@ -542,7 +534,7 @@ let set_style t style = Renderable.set_style t.node (root_style style)
 
 (* ───── Construction ───── *)
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
     (props : Props.t) =
   let ({
          scroll_x;
@@ -611,7 +603,7 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
   (* Horizontal scroll bar: inside wrapper, below viewport *)
   let horizontal_bar =
     let bar =
-      Scroll_bar.Private.of_props ~parent:wrapper
+      Scroll_bar.create ~parent:wrapper
         (Scroll_bar.Props.make ~orientation:`Horizontal ())
     in
     Scroll_bar.apply_style bar
@@ -621,7 +613,7 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
   (* Vertical scroll bar: inside root, right of wrapper *)
   let vertical_bar =
     let bar =
-      Scroll_bar.Private.of_props ~parent:node
+      Scroll_bar.create ~parent:node
         (Scroll_bar.Props.make ~orientation:`Vertical ())
     in
     Scroll_bar.apply_style bar
@@ -686,18 +678,9 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
   Renderable.request_render node;
   t
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
-        props)
-
 (* ───── Pretty-printing ───── *)
 
 let pp ppf t =
   Format.fprintf ppf "ScrollBox(%s, x=%d, y=%d, cw=%d, ch=%d, vw=%d, vh=%d)"
     (Renderable.id t.node) t.scroll_x t.scroll_y t.content_w t.content_h
     (viewport_width t) (viewport_height t)
-
-module Private = struct
-  let of_props = of_props
-end

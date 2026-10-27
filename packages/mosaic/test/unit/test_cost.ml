@@ -157,13 +157,14 @@ let transcript rows =
   let scroll =
     Scroll_box.create ~parent:(Renderer.root renderer)
       ~style:Toffee.Style.(default |> set_width (px 80) |> set_height (px 24))
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   for _ = 1 to rows do
     ignore
       (Text.create ~parent:(Scroll_box.node scroll)
          ~style:Toffee.Style.(default |> set_width (px 80) |> set_height (px 1))
-         ~content:"A representative transcript row." ~selectable:false ()
+         (Text.Props.make ~content:"A representative transcript row."
+            ~selectable:false ())
         : Text.t)
   done;
   render_frame renderer;

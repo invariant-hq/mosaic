@@ -5,7 +5,7 @@
     blockquotes, tables, thematic breaks, and inline formatting (emphasis,
     strong, code spans, links, strikethrough, and task lists). Fenced code is
     highlighted by a {!Code.Highlighter.t} (see the [highlighter] argument of
-    {!create}). *)
+    {!Props.make}). *)
 
 type t
 (** The type for markdown display widgets. *)
@@ -155,36 +155,8 @@ module Props : sig
         by value, so rebuilding an equal style changes nothing, and a changed
         style restyles the blocks without highlighting them again.
 
-      {!create} and [Mosaic.markdown] take these labels with these defaults.
+      [Mosaic.markdown] takes these labels with these defaults.
       [Mosaic.markdown] names [style] [md_style]. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?content:string ->
-    ?conceal:bool ->
-    ?streaming:bool ->
-    ?style:Style.t ->
-    ?selectable:bool ->
-    ?selection_bg:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
-    ?render_node:
-      (Cmarkit.Block.t ->
-      parent:Renderable.t ->
-      is_last:bool ->
-      Renderable.t option) ->
-    ?render_code:
-      (parent:Renderable.t ->
-      language:string option ->
-      content:string ->
-      Renderable.t) ->
-    ?highlighter:Code.Highlighter.t ->
-    ?syntax_style:Syntax_style.t ->
-    unit ->
-    'a
-
-  (**/**)
 
   val default : t
   (** [default] is the default props value, equivalent to [make ()]. *)
@@ -204,33 +176,13 @@ val create :
   ?z_index:int ->
   ?opacity:float ->
   ?on_selection:(string option -> unit) ->
-  ?content:string ->
-  ?conceal:bool ->
-  ?streaming:bool ->
-  ?style:Style.t ->
-  ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
-  ?render_node:
-    (Cmarkit.Block.t ->
-    parent:Renderable.t ->
-    is_last:bool ->
-    Renderable.t option) ->
-  ?render_code:
-    (parent:Renderable.t ->
-    language:string option ->
-    content:string ->
-    Renderable.t) ->
-  ?highlighter:Code.Highlighter.t ->
-  ?syntax_style:Syntax_style.t ->
-  unit ->
+  Props.t ->
   t
-(** [create ~parent ()] is a markdown display widget attached to [parent]. The
-    labels after [opacity], but [on_selection], are {!Props.make}'s and take its
-    defaults. [layout_style] is the node's layout style, the [style] of other
-    widgets' [create], laid out as a column of the full width whatever it gives.
-    [on_selection] is called with the selected rendered text when the selection
-    changes, [None] when no text is selected. *)
+(** [create ~parent props] is a markdown display widget attached to [parent],
+    showing [props]. [layout_style] is the node's layout style, the [style] of
+    other widgets' [create], laid out as a column of the full width whatever it
+    gives. [on_selection] is called with the selected rendered text when the
+    selection changes, [None] when no text is selected. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
@@ -264,8 +216,8 @@ val set_style : t -> Style.t -> unit
 
 val set_highlighter : t -> Code.Highlighter.t option -> unit
 (** [set_highlighter t h] changes the fenced-code highlighter of [t] to [h] (see
-    the [highlighter] argument of {!create}) and re-renders. [None] falls back
-    to the default bordered code block. Re-parsing is skipped when blocks
+    the [highlighter] argument of {!Props.make}) and re-renders. [None] falls
+    back to the default bordered code block. Re-parsing is skipped when blocks
     already exist. No-op when [h] is physically equal to the current
     highlighter. *)
 
@@ -314,21 +266,3 @@ val apply_props : t -> Props.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a markdown widget for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?layout_style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    ?on_selection:(string option -> unit) ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

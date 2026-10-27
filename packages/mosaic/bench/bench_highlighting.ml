@@ -19,7 +19,8 @@ let highlighted_code size =
   let second = Some (syntax Ansi.Color.blue) in
   let renderer = Renderer.create () in
   let code =
-    Code.create ~parent:(Renderer.root renderer) ~content ?syntax:first ()
+    Code.create ~parent:(Renderer.root renderer)
+      (Code.Props.make ~content ?syntax:first ())
   in
   ignore (Text_surface.layout (Code.surface code) : Matrix_text.Layout.t);
   ignore (Text_buffer.style_at (Code.buffer code) 0 : Ansi.Style.t * int);
@@ -35,7 +36,9 @@ let repaint (renderer, code, first, second) =
 let plain_code size =
   let content = String.make size 'x' in
   let renderer = Renderer.create () in
-  let code = Code.create ~parent:(Renderer.root renderer) ~content () in
+  let code =
+    Code.create ~parent:(Renderer.root renderer) (Code.Props.make ~content ())
+  in
   ignore (Text_surface.layout (Code.surface code) : Matrix_text.Layout.t);
   let style =
     Syntax_style.make ~base:Ansi.Style.default

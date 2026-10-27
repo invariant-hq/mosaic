@@ -248,8 +248,9 @@ let render_markdown ?(width = 60) ?(height = 20) ?style ?conceal ?streaming
   let renderer = Renderer.create () in
   set_viewport renderer ~width ~height;
   let md =
-    Markdown.create ~parent:(Renderer.root renderer) ?style ?conceal ?streaming
-      ?render_node ?render_code ?highlighter ?syntax_style ~content ()
+    Markdown.create ~parent:(Renderer.root renderer)
+      (Markdown.Props.make ?style ?conceal ?streaming ?render_node ?render_code
+         ?highlighter ?syntax_style ~content ())
   in
   fill_node (Markdown.node md);
   Renderer.render_frame renderer ~width ~height ~dt:0.;
@@ -262,8 +263,9 @@ let make_markdown_app ?(width = 60) ?(height = 20) ?style ?conceal ?streaming
   let renderer = Renderer.create () in
   set_viewport renderer ~width ~height;
   let md =
-    Markdown.create ~parent:(Renderer.root renderer) ?style ?conceal ?streaming
-      ?render_node ?render_code ?highlighter ?syntax_style ~content ()
+    Markdown.create ~parent:(Renderer.root renderer)
+      (Markdown.Props.make ?style ?conceal ?streaming ?render_node ?render_code
+         ?highlighter ?syntax_style ~content ())
   in
   fill_node (Markdown.node md);
   { md_renderer = renderer; md }

@@ -30,10 +30,11 @@ let make_table ?columns ?rows ?selected_row ?border ?border_style ?show_header
   let t = make_ctx () in
   let root = make_root t in
   let tbl =
-    Table.create ~parent:root ?columns ?rows ?selected_row ?border ?border_style
-      ?show_header ?show_column_separator ?show_row_separator ?wrap_selection
-      ?selection_visible ?show_scroll_indicator ?activate_on_click
-      ?wheel_navigation ?fast_scroll_step ?background ?selected_background ()
+    Table.create ~parent:root
+      (Table.Props.make ?columns ?rows ?selected_row ?border ?border_style
+         ?show_header ?show_column_separator ?show_row_separator ?wrap_selection
+         ?selection_visible ?show_scroll_indicator ?activate_on_click
+         ?wheel_navigation ?fast_scroll_step ?background ?selected_background ())
   in
   Table.set_on_change tbl (Some (Table.set_selected_row tbl));
   (t, tbl)
@@ -632,16 +633,17 @@ let auto_widths_follow_screen_width_method () =
   let root = make_root t in
   let tbl =
     Table.create ~parent:root
-      ~columns:[ Table.column "A"; Table.column "B" ]
-      ~rows:
-        [
-          [|
-            Table.cell
-              "\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA6";
-            Table.cell "X";
-          |];
-        ]
-      ~border:false ~show_header:false ()
+      (Table.Props.make
+         ~columns:[ Table.column "A"; Table.column "B" ]
+         ~rows:
+           [
+             [|
+               Table.cell
+                 "\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA6";
+               Table.cell "X";
+             |];
+           ]
+         ~border:false ~show_header:false ())
   in
   let node = Table.node tbl in
   layout_node node ~x:0 ~y:0 ~width:12 ~height:1;
@@ -657,9 +659,10 @@ let auto_widths_recompute_after_set_rows () =
   let root = make_root t in
   let tbl =
     Table.create ~parent:root
-      ~columns:[ Table.column "A"; Table.column "B" ]
-      ~rows:[ [| Table.cell "aa"; Table.cell "X" |] ]
-      ~border:false ~show_header:false ()
+      (Table.Props.make
+         ~columns:[ Table.column "A"; Table.column "B" ]
+         ~rows:[ [| Table.cell "aa"; Table.cell "X" |] ]
+         ~border:false ~show_header:false ())
   in
   let node = Table.node tbl in
   layout_node node ~x:0 ~y:0 ~width:12 ~height:1;
@@ -850,12 +853,13 @@ let absent_selection_is_preserved () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.table}) or to {!Table.create},
-   reaches the live table ({!Test_harness.reaches}). The element's rows are
-   rows of values and its [selected] a value, which give the table's rows of
-   cells and [selected_row]. Keys, clicks and the wheel propose a selection
-   through [on_change] and an activation through [on_activate], which both
-   doors record. *)
+(* Each label, given to the element ({!Mosaic.table}) or to
+   {!Table.Props.make} for {!Table.create}, reaches the live table
+   ({!Test_harness.reaches}). The element's rows are rows of values and its
+   [selected] a value, which give the table's rows of cells and
+   [selected_row]. Keys, clicks and the wheel propose a selection through
+   [on_change] and an activation through [on_activate], which both doors
+   record. *)
 
 let doors_size = Mosaic.size ~width:24 ~height:6
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -915,12 +919,12 @@ let doors_columns_label () =
          ~on_change:ignore ~columns:other ~rows:few_rows ())
     ~create_base:(fun parent ->
       Table.node
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       Table.node
-        (Table.create ~parent ~style:doors_style ~columns:other ~rows:few_cells
-           ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:other ~rows:few_cells ())))
 
 let doors_rows () =
   Test_harness.reaches "rows"
@@ -932,12 +936,12 @@ let doors_rows () =
          ~on_change:ignore ~columns:doors_columns ~rows:many_rows ())
     ~create_base:(fun parent ->
       Table.node
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       Table.node
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:many_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:many_cells ())))
 
 let doors_selected_row () =
   Test_harness.reaches "selected_row (the element's selected)"
@@ -949,12 +953,13 @@ let doors_selected_row () =
          ~on_change:ignore ~columns:doors_columns ~rows:few_rows ())
     ~create_base:(fun parent ->
       Table.node
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       Table.node
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~selected_row:1 ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~selected_row:1 ())))
 
 let doors_border () =
   Test_harness.reaches "border"
@@ -968,12 +973,13 @@ let doors_border () =
          ~columns:doors_columns ~rows:few_rows ~border:false ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~border:false ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~border:false ())))
 
 let doors_border_style () =
   Test_harness.reaches "border_style"
@@ -988,12 +994,13 @@ let doors_border_style () =
          ~border_style:Matrix_grid.Border.double ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~border_style:Matrix_grid.Border.double ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~border_style:Matrix_grid.Border.double ())))
 
 let doors_show_header () =
   Test_harness.reaches "show_header"
@@ -1007,12 +1014,13 @@ let doors_show_header () =
          ~columns:doors_columns ~rows:few_rows ~show_header:false ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~show_header:false ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~show_header:false ())))
 
 let doors_show_column_separator () =
   Test_harness.reaches "show_column_separator"
@@ -1026,12 +1034,13 @@ let doors_show_column_separator () =
          ~columns:doors_columns ~rows:few_rows ~show_column_separator:true ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~show_column_separator:true ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~show_column_separator:true ())))
 
 let doors_show_row_separator () =
   Test_harness.reaches "show_row_separator"
@@ -1045,12 +1054,13 @@ let doors_show_row_separator () =
          ~columns:doors_columns ~rows:few_rows ~show_row_separator:true ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~show_row_separator:true ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~show_row_separator:true ())))
 
 let doors_cell_padding () =
   Test_harness.reaches "cell_padding"
@@ -1064,12 +1074,13 @@ let doors_cell_padding () =
          ~columns:doors_columns ~rows:few_rows ~cell_padding:1 ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~cell_padding:1 ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~cell_padding:1 ())))
 
 let doors_header_color () =
   Test_harness.reaches "header_color"
@@ -1083,12 +1094,13 @@ let doors_header_color () =
          ~columns:doors_columns ~rows:few_rows ~header_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~header_color:doors_red ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~header_color:doors_red ())))
 
 let doors_header_background () =
   Test_harness.reaches "header_background"
@@ -1102,12 +1114,13 @@ let doors_header_background () =
          ~columns:doors_columns ~rows:few_rows ~header_background:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~header_background:doors_red ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~header_background:doors_red ())))
 
 let doors_text_color () =
   Test_harness.reaches "text_color"
@@ -1121,12 +1134,13 @@ let doors_text_color () =
          ~columns:doors_columns ~rows:few_rows ~text_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~text_color:doors_red ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~text_color:doors_red ())))
 
 let doors_background () =
   Test_harness.reaches "background"
@@ -1140,12 +1154,13 @@ let doors_background () =
          ~columns:doors_columns ~rows:few_rows ~background:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~background:doors_red ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~background:doors_red ())))
 
 let doors_selected_text_color () =
   Test_harness.reaches "selected_text_color"
@@ -1159,12 +1174,13 @@ let doors_selected_text_color () =
          ~columns:doors_columns ~rows:few_rows ~selected_text_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~selected_text_color:doors_red ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~selected_text_color:doors_red ())))
 
 let doors_selected_background () =
   Test_harness.reaches "selected_background"
@@ -1178,12 +1194,13 @@ let doors_selected_background () =
          ~columns:doors_columns ~rows:few_rows ~selected_background:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~selected_background:doors_red ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~selected_background:doors_red ())))
 
 let doors_focused_selected_text_color () =
   Test_harness.reaches ~act:Test_harness.focus "focused_selected_text_color"
@@ -1198,12 +1215,13 @@ let doors_focused_selected_text_color () =
          ~focused_selected_text_color:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~focused_selected_text_color:doors_red ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~focused_selected_text_color:doors_red ())))
 
 let doors_focused_selected_background () =
   Test_harness.reaches ~act:Test_harness.focus "focused_selected_background"
@@ -1218,12 +1236,13 @@ let doors_focused_selected_background () =
          ~focused_selected_background:doors_red ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~focused_selected_background:doors_red ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~focused_selected_background:doors_red ())))
 
 let doors_selection_visible () =
   Test_harness.reaches "selection_visible"
@@ -1237,12 +1256,13 @@ let doors_selection_visible () =
          ~columns:doors_columns ~rows:few_rows ~selection_visible:false ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~selection_visible:false ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~selection_visible:false ())))
 
 let doors_show_scroll_indicator () =
   Test_harness.reaches "show_scroll_indicator"
@@ -1256,12 +1276,13 @@ let doors_show_scroll_indicator () =
          ~columns:doors_columns ~rows:many_rows ~show_scroll_indicator:true ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:many_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:many_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:many_cells ~show_scroll_indicator:true ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:many_cells
+              ~show_scroll_indicator:true ())))
 
 let doors_activate_on_click () =
   Test_harness.reaches ~act:doors_click ~observe:doors_proposed
@@ -1276,12 +1297,13 @@ let doors_activate_on_click () =
          ~columns:doors_columns ~rows:few_rows ~activate_on_click:true ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~activate_on_click:true ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~activate_on_click:true ())))
 
 let doors_wheel_navigation () =
   Test_harness.reaches ~act:doors_wheel ~observe:doors_proposed
@@ -1296,12 +1318,13 @@ let doors_wheel_navigation () =
          ~columns:doors_columns ~rows:few_rows ~wheel_navigation:false ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~wheel_navigation:false ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~wheel_navigation:false ())))
 
 let doors_row_styles () =
   Test_harness.reaches "row_styles"
@@ -1317,14 +1340,15 @@ let doors_row_styles () =
          ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells
-           ~row_styles:[ Ansi.Style.default; Ansi.Style.make ~bg:doors_red () ]
-           ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~row_styles:
+                [ Ansi.Style.default; Ansi.Style.make ~bg:doors_red () ]
+              ())))
 
 let doors_wrap_selection () =
   Test_harness.reaches
@@ -1340,12 +1364,13 @@ let doors_wrap_selection () =
          ~columns:doors_columns ~rows:few_rows ~wrap_selection:true ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ~wrap_selection:true ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~wrap_selection:true ())))
 
 let doors_key_bindings () =
   Test_harness.reaches
@@ -1363,14 +1388,14 @@ let doors_key_bindings () =
          ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:few_cells
-           ~key_bindings:[ (Shortcut.char 'x', Table.Move_down) ]
-           ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:few_cells
+              ~key_bindings:[ (Shortcut.char 'x', Table.Move_down) ]
+              ())))
 
 let doors_fast_scroll_step () =
   Test_harness.reaches
@@ -1386,12 +1411,13 @@ let doors_fast_scroll_step () =
          ~columns:doors_columns ~rows:many_rows ~fast_scroll_step:2 ())
     ~create_base:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:many_cells ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:many_cells ())))
     ~create:(fun parent ->
       doors_recording
-        (Table.create ~parent ~style:doors_style ~columns:doors_columns
-           ~rows:many_cells ~fast_scroll_step:2 ()))
+        (Table.create ~parent ~style:doors_style
+           (Table.Props.make ~columns:doors_columns ~rows:many_cells
+              ~fast_scroll_step:2 ())))
 
 (* ── Paint ── *)
 

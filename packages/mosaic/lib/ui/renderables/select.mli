@@ -80,37 +80,6 @@ type t
 
 (** {1:construction Construction} *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  ?options:item list ->
-  ?selected_index:int ->
-  ?background:Ansi.Color.t ->
-  ?text_color:Ansi.Color.t ->
-  ?focused_background:Ansi.Color.t ->
-  ?focused_text_color:Ansi.Color.t ->
-  ?selected_background:Ansi.Color.t ->
-  ?selected_text_color:Ansi.Color.t ->
-  ?description_color:Ansi.Color.t ->
-  ?selected_description_color:Ansi.Color.t ->
-  ?show_description:bool ->
-  ?show_scroll_indicator:bool ->
-  ?wrap_selection:bool ->
-  ?item_spacing:int ->
-  ?fast_scroll_step:int ->
-  ?key_bindings:(Shortcut.t * action) list ->
-  unit ->
-  t
-(** [create ~parent ()] is a select node attached to [parent]. The labels after
-    [opacity] are {!Props.make}'s and take its defaults.
-
-    The node is focusable and uses buffered rendering. *)
-
 val node : t -> Renderable.t
 (** [node t] is the underlying renderable. *)
 
@@ -168,33 +137,8 @@ module Props : sig
       - [key_bindings] custom shortcut/action pairs, default [[]]. Later
         bindings override equivalent defaults; other defaults remain available.
 
-      {!val-create} takes these labels with these defaults, and so does
-      [Mosaic.select] for the labels it has. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?options:item list ->
-    ?selected_index:int ->
-    ?background:Ansi.Color.t ->
-    ?text_color:Ansi.Color.t ->
-    ?focused_background:Ansi.Color.t ->
-    ?focused_text_color:Ansi.Color.t ->
-    ?selected_background:Ansi.Color.t ->
-    ?selected_text_color:Ansi.Color.t ->
-    ?description_color:Ansi.Color.t ->
-    ?selected_description_color:Ansi.Color.t ->
-    ?show_description:bool ->
-    ?show_scroll_indicator:bool ->
-    ?wrap_selection:bool ->
-    ?item_spacing:int ->
-    ?fast_scroll_step:int ->
-    ?key_bindings:(Shortcut.t * action) list ->
-    unit ->
-    'a
-
-  (**/**)
+      [Mosaic.select] takes those of these labels it has, with these defaults.
+  *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -208,6 +152,21 @@ module Props : sig
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] have identical visual properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  Props.t ->
+  t
+(** [create ~parent props] is a select node attached to [parent], showing
+    [props].
+
+    The node is focusable and uses buffered rendering. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t]. Only properties that differ
@@ -316,20 +275,3 @@ val set_style : t -> Toffee.Style.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

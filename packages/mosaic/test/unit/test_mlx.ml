@@ -169,8 +169,10 @@ let box_takes_inert () =
     ~observe:(fun _ node -> string_of_bool (Renderable.inert node))
     ~base:(Mosaic_mlx.box ())
     ~element:(Mosaic_mlx.box ~inert:true ())
-    ~create_base:(fun parent -> Box.node (Box.create ~parent ()))
-    ~create:(fun parent -> Box.node (Box.create ~parent ~inert:true ()))
+    ~create_base:(fun parent ->
+      Box.node (Box.create ~parent (Box.Props.make ())))
+    ~create:(fun parent ->
+      Box.node (Box.create ~parent (Box.Props.make ~inert:true ())))
 
 (* The MLX code takes the labels {!Mosaic.code} takes, [truncate] among
    them. *)
@@ -182,10 +184,12 @@ let code_takes_truncate () =
     ~element:
       (Mosaic_mlx.code ~size ~truncate:true ~children:[ "hello world" ] ())
     ~create_base:(fun parent ->
-      Code.node (Code.create ~parent ~style ~content:"hello world" ()))
+      Code.node
+        (Code.create ~parent ~style (Code.Props.make ~content:"hello world" ())))
     ~create:(fun parent ->
       Code.node
-        (Code.create ~parent ~style ~content:"hello world" ~truncate:true ()))
+        (Code.create ~parent ~style
+           (Code.Props.make ~content:"hello world" ~truncate:true ())))
 
 (* The MLX line number takes the labels {!Mosaic.line_number} takes,
    [line_numbers] among them. *)
@@ -194,7 +198,9 @@ let line_number_takes_line_numbers () =
   let style = Toffee.Style.make ~size () in
   let gutter g =
     ignore
-      (Text.create ~parent:(Line_number.node g) ~content:"a\nb" () : Text.t);
+      (Text.create ~parent:(Line_number.node g)
+         (Text.Props.make ~content:"a\nb" ())
+        : Text.t);
     Line_number.node g
   in
   Test_harness.reaches "line_numbers"
@@ -204,9 +210,12 @@ let line_number_takes_line_numbers () =
          ~line_numbers:[ (0, 42) ]
          ~children:[ Mosaic.text "a\nb" ]
          ())
-    ~create_base:(fun parent -> gutter (Line_number.create ~parent ~style ()))
+    ~create_base:(fun parent ->
+      gutter (Line_number.create ~parent ~style (Line_number.Props.make ())))
     ~create:(fun parent ->
-      gutter (Line_number.create ~parent ~style ~line_numbers:[ (0, 42) ] ()))
+      gutter
+        (Line_number.create ~parent ~style
+           (Line_number.Props.make ~line_numbers:[ (0, 42) ] ())))
 
 let () =
   run "mosaic.mlx"

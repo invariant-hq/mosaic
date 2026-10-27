@@ -9,8 +9,9 @@ let make_scroll_bar ?orientation ?show_arrows ?track_color ?thumb_color
   let t = make_ctx () in
   let root = make_root t in
   let bar =
-    Scroll_bar.create ~parent:root ?orientation ?show_arrows ?track_color
-      ?thumb_color ?arrow_fg ?arrow_bg ?on_change ()
+    Scroll_bar.create ~parent:root ?on_change
+      (Scroll_bar.Props.make ?orientation ?show_arrows ?track_color ?thumb_color
+         ?arrow_fg ?arrow_bg ())
   in
   Scroll_bar.set_on_change bar
     (Some
@@ -314,11 +315,11 @@ let arrow_hold_repeats_in_seconds () =
       ()
   in
   let b =
-    Scroll_bar.create ~parent:(Renderer.root renderer) ~style ~show_arrows:true
-      ~scroll_size:100 ~viewport_size:10
+    Scroll_bar.create ~parent:(Renderer.root renderer) ~style
       ~on_change:(fun v ->
         Option.iter (fun b -> Scroll_bar.set_scroll_position b v) !bar)
-      ()
+      (Scroll_bar.Props.make ~show_arrows:true ~scroll_size:100
+         ~viewport_size:10 ())
   in
   bar := Some b;
   let frame dt = Renderer.render_frame renderer ~width:1 ~height:10 ~dt in
@@ -348,10 +349,9 @@ let declared_state_and_rejected_proposals () =
   let t = make_ctx () in
   let proposals = ref [] in
   let bar =
-    Scroll_bar.create ~parent:(make_root t) ~position:10 ~scroll_size:100
-      ~viewport_size:20
+    Scroll_bar.create ~parent:(make_root t)
       ~on_change:(fun next -> proposals := next :: !proposals)
-      ()
+      (Scroll_bar.Props.make ~position:10 ~scroll_size:100 ~viewport_size:20 ())
   in
   equal ~msg:"constructor accepts position" int 10
     (Scroll_bar.scroll_position bar);
@@ -399,9 +399,10 @@ let apply_style_preserves_scroll_state () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.scroll_bar}) or to {!Scroll_bar.create},
-   reaches the live scroll bar ({!Test_harness.reaches}). The element's
-   [state] is the bar's [position]. *)
+(* Each label, given to the element ({!Mosaic.scroll_bar}) or to
+   {!Scroll_bar.Props.make} for {!Scroll_bar.create}, reaches the live scroll
+   bar ({!Test_harness.reaches}). The element's [state] is the bar's
+   [position]. *)
 
 let doors_size = Mosaic.size ~width:1 ~height:8
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -417,12 +418,13 @@ let doors_position () =
          ~viewport_size:10 ~on_change:ignore ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10 ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~position:60
-           ~scroll_size:100 ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~position:60 ~scroll_size:100
+              ~viewport_size:10 ())))
 
 let doors_scroll_size () =
   Test_harness.reaches "scroll_size"
@@ -434,12 +436,12 @@ let doors_scroll_size () =
          ~viewport_size:10 ~on_change:ignore ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10 ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:20
-           ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:20 ~viewport_size:10 ())))
 
 let doors_viewport_size () =
   Test_harness.reaches "viewport_size"
@@ -451,12 +453,12 @@ let doors_viewport_size () =
          ~viewport_size:50 ~on_change:ignore ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10 ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:50 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:50 ())))
 
 let doors_orientation () =
   Test_harness.reaches "orientation"
@@ -468,12 +470,13 @@ let doors_orientation () =
          ~viewport_size:10 ~on_change:ignore ~orientation:`Horizontal ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10 ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ~orientation:`Horizontal ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10
+              ~orientation:`Horizontal ())))
 
 let doors_show_arrows () =
   Test_harness.reaches "show_arrows"
@@ -485,12 +488,13 @@ let doors_show_arrows () =
          ~viewport_size:10 ~on_change:ignore ~show_arrows:true ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10 ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ~show_arrows:true ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10
+              ~show_arrows:true ())))
 
 let doors_track_color () =
   Test_harness.reaches "track_color"
@@ -502,12 +506,13 @@ let doors_track_color () =
          ~viewport_size:10 ~on_change:ignore ~track_color:doors_red ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10 ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ~track_color:doors_red ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10
+              ~track_color:doors_red ())))
 
 let doors_thumb_color () =
   Test_harness.reaches "thumb_color"
@@ -519,12 +524,13 @@ let doors_thumb_color () =
          ~viewport_size:10 ~on_change:ignore ~thumb_color:doors_red ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10 ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ~thumb_color:doors_red ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10
+              ~thumb_color:doors_red ())))
 
 let doors_arrow_fg () =
   Test_harness.reaches "arrow_fg"
@@ -537,12 +543,14 @@ let doors_arrow_fg () =
          ~arrow_fg:doors_red ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ~show_arrows:true ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10
+              ~show_arrows:true ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ~show_arrows:true ~arrow_fg:doors_red ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10
+              ~show_arrows:true ~arrow_fg:doors_red ())))
 
 let doors_arrow_bg () =
   Test_harness.reaches "arrow_bg"
@@ -555,12 +563,14 @@ let doors_arrow_bg () =
          ~arrow_bg:doors_red ())
     ~create_base:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ~show_arrows:true ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10
+              ~show_arrows:true ())))
     ~create:(fun parent ->
       Scroll_bar.node
-        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
-           ~viewport_size:10 ~show_arrows:true ~arrow_bg:doors_red ()))
+        (Scroll_bar.create ~parent ~style:doors_style
+           (Scroll_bar.Props.make ~scroll_size:100 ~viewport_size:10
+              ~show_arrows:true ~arrow_bg:doors_red ())))
 
 (* ── Paint ── *)
 

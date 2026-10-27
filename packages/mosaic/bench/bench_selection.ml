@@ -59,7 +59,8 @@ let make_tree_selection count =
   in
   let last_props = Thumper.black_box (Tree.Props.make ~items ~state:last ()) in
   let tree =
-    Tree.create ~parent:(Renderer.root renderer) ~items ~state:first ()
+    Tree.create ~parent:(Renderer.root renderer)
+      (Tree.Props.make ~items ~state:first ())
   in
   (renderer, tree, first_props, last_props)
 

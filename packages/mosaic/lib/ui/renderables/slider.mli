@@ -23,29 +23,6 @@ type orientation = [ `Horizontal | `Vertical ]
 
 (** {1:construction Construction} *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  ?on_change:(float -> unit) ->
-  ?orientation:orientation ->
-  ?value:float ->
-  ?min:float ->
-  ?max:float ->
-  ?viewport_size:float ->
-  ?track_color:Ansi.Color.t ->
-  ?thumb_color:Ansi.Color.t ->
-  unit ->
-  t
-(** [create ~parent ()] is a slider attached to [parent]. The labels from
-    [orientation] to [thumb_color] are {!Props.make}'s and take its defaults.
-    [on_change] receives clamped proposals from mouse interaction. Input
-    proposes a value; it does not accept it. *)
-
 val node : t -> Renderable.t
 (** [node t] is [t]'s underlying renderable. *)
 
@@ -77,24 +54,8 @@ module Props : sig
       - [track_color] defaults to none, a line in the [Border] role.
       - [thumb_color] defaults to none, the [Plain] role.
 
-      {!val-create} takes these labels with these defaults, and so does
-      [Mosaic.slider] for the labels it has. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?orientation:orientation ->
-    ?value:float ->
-    ?min:float ->
-    ?max:float ->
-    ?viewport_size:float ->
-    ?track_color:Ansi.Color.t ->
-    ?thumb_color:Ansi.Color.t ->
-    unit ->
-    'a
-
-  (**/**)
+      [Mosaic.slider] takes those of these labels it has, with these defaults.
+  *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -103,6 +64,21 @@ module Props : sig
   (** [equal a b] is [true] iff [a] and [b] describe identical visual
       properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?on_change:(float -> unit) ->
+  Props.t ->
+  t
+(** [create ~parent props] is a slider attached to [parent], showing [props].
+    [on_change] receives clamped proposals from mouse interaction. Input
+    proposes a value; it does not accept it. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] accepts all properties, clamps the value to the
@@ -159,21 +135,3 @@ val set_on_change : t -> (float -> unit) option -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a slider for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    ?on_change:(float -> unit) ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

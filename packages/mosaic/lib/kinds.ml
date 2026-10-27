@@ -15,7 +15,7 @@ type tree = Tree_change of Tree.State.t | Tree_activate of Tree.item
 let box : (Box.Props.t, nothing, Box.t) Kind.t =
   Kind.make ~name:"box"
     ~create:(fun ~parent ~layout props ->
-      Box.Private.of_props ~parent ~style:layout props)
+      Box.create ~parent ~style:layout props)
     ~node:Box.node ~layout:Box.set_style ~update:Box.apply_props
     ~equal:Box.Props.equal ()
 
@@ -28,7 +28,7 @@ let modal : (Box.Props.t, unit, Box.t) Kind.t =
 let text =
   Kind.make ~name:"text"
     ~create:(fun ~parent ~layout props ->
-      Text.Private.of_props ~parent ~style:layout props)
+      Text.create ~parent ~style:layout props)
     ~node:Text.node ~update:Text.apply_props ~equal:Text.Props.equal
     ~handler:(fun text emit -> Text.set_on_selection text emit)
     ()
@@ -36,7 +36,7 @@ let text =
 let slider =
   Kind.make ~name:"slider"
     ~create:(fun ~parent ~layout props ->
-      Slider.Private.of_props ~parent ~style:layout props)
+      Slider.create ~parent ~style:layout props)
     ~node:Slider.node ~update:Slider.apply_props ~equal:Slider.Props.equal
     ~events:(fun slider emit -> Slider.set_on_change slider (Some emit))
     ()
@@ -44,7 +44,7 @@ let slider =
 let input =
   Kind.make ~name:"input"
     ~create:(fun ~parent ~layout props ->
-      Text_input.Private.of_props ~on_change:ignore ~parent ~style:layout props)
+      Text_input.create ~on_change:ignore ~parent ~style:layout props)
     ~node:Text_input.node ~update:Text_input.apply_props
     ~equal:Text_input.Props.equal ~focusable:true
     ~events:(fun input emit ->
@@ -55,7 +55,7 @@ let input =
 let textarea =
   Kind.make ~name:"textarea"
     ~create:(fun ~parent ~layout props ->
-      Textarea.Private.of_props ~on_change:ignore ~parent ~style:layout props)
+      Textarea.create ~on_change:ignore ~parent ~style:layout props)
     ~node:Textarea.node ~update:Textarea.apply_props ~equal:Textarea.Props.equal
     ~focusable:true
     ~events:(fun textarea emit ->
@@ -66,7 +66,7 @@ let textarea =
 let select =
   Kind.make ~name:"select"
     ~create:(fun ~parent ~layout props ->
-      Select.Private.of_props ~parent ~style:layout props)
+      Select.create ~parent ~style:layout props)
     ~node:Select.node ~update:Select.apply_props ~equal:Select.Props.equal
     ~focusable:true
     ~events:(fun select emit ->
@@ -77,7 +77,7 @@ let select =
 let tab_select =
   Kind.make ~name:"tab_select"
     ~create:(fun ~parent ~layout props ->
-      Tab_select.Private.of_props ~parent ~style:layout props)
+      Tab_select.create ~parent ~style:layout props)
     ~node:Tab_select.node ~update:Tab_select.apply_props
     ~equal:Tab_select.Props.equal ~focusable:true
     ~events:(fun tab_select emit ->
@@ -194,20 +194,20 @@ let picture : (Matrix_grid.picture, nothing, picture) Kind.t =
 let spinner : (Spinner.Props.t, nothing, Spinner.t) Kind.t =
   Kind.make ~name:"spinner"
     ~create:(fun ~parent ~layout props ->
-      Spinner.Private.of_props ~parent ~style:layout props)
+      Spinner.create ~parent ~style:layout props)
     ~node:Spinner.node ~update:Spinner.apply_props ~equal:Spinner.Props.equal ()
 
 let progress_bar : (Progress_bar.Props.t, nothing, Progress_bar.t) Kind.t =
   Kind.make ~name:"progress_bar"
     ~create:(fun ~parent ~layout props ->
-      Progress_bar.Private.of_props ~parent ~style:layout props)
+      Progress_bar.create ~parent ~style:layout props)
     ~node:Progress_bar.node ~update:Progress_bar.apply_props
     ~equal:Progress_bar.Props.equal ()
 
 let scroll_bar =
   Kind.make ~name:"scroll_bar"
     ~create:(fun ~parent ~layout props ->
-      Scroll_bar.Private.of_props ~parent ~style:layout props)
+      Scroll_bar.create ~parent ~style:layout props)
     ~node:Scroll_bar.node ~update:Scroll_bar.apply_props
     ~equal:Scroll_bar.Props.equal
     ~events:(fun scroll_bar emit ->
@@ -217,7 +217,7 @@ let scroll_bar =
 let scroll_box =
   Kind.make ~name:"scroll_box"
     ~create:(fun ~parent ~layout props ->
-      Scroll_box.Private.of_props ~parent ~style:layout props)
+      Scroll_box.create ~parent ~style:layout props)
     ~node:Scroll_box.node ~layout:Scroll_box.set_style
     ~update:Scroll_box.apply_props ~equal:Scroll_box.Props.equal ~focusable:true
     ~events:(fun scroll_box emit ->
@@ -230,7 +230,7 @@ let scroll_box =
 let table =
   Kind.make ~name:"table"
     ~create:(fun ~parent ~layout props ->
-      Table.Private.of_props ~parent ~style:layout props)
+      Table.create ~parent ~style:layout props)
     ~node:Table.node ~update:Table.apply_props ~equal:Table.Props.equal
     ~focusable:true
     ~handler:(fun table emit ->
@@ -244,7 +244,7 @@ let table =
 let code =
   Kind.make ~name:"code"
     ~create:(fun ~parent ~layout props ->
-      Code.Private.of_props ~parent ~style:layout props)
+      Code.create ~parent ~style:layout props)
     ~node:Code.node ~update:Code.apply_props ~equal:Code.Props.equal
     ~events:(fun code emit -> Code.set_on_selection code (Some emit))
     ()
@@ -252,14 +252,14 @@ let code =
 let line_number : (Line_number.Props.t, nothing, Line_number.t) Kind.t =
   Kind.make ~name:"line_number"
     ~create:(fun ~parent ~layout props ->
-      Line_number.Private.of_props ~parent ~style:layout props)
+      Line_number.create ~parent ~style:layout props)
     ~node:Line_number.node ~update:Line_number.apply_props
     ~equal:Line_number.Props.equal ()
 
 let markdown =
   Kind.make ~name:"markdown"
     ~create:(fun ~parent ~layout props ->
-      Markdown.Private.of_props ~parent ~layout_style:layout props)
+      Markdown.create ~parent ~layout_style:layout props)
     ~node:Markdown.node ~layout:Markdown.set_layout_style
     ~update:Markdown.apply_props ~equal:Markdown.Props.equal
     ~events:(fun markdown emit ->
@@ -269,9 +269,7 @@ let markdown =
 let diff =
   Kind.make ~name:"diff"
     ~create:(fun ~parent ~layout props ->
-      let diff = Diff.create ~parent ~style:layout (Diff.Patch.make []) in
-      Diff.apply_props diff props;
-      diff)
+      Diff.create ~parent ~style:layout props)
     ~node:Diff.node ~update:Diff.apply_props ~equal:Diff.Props.equal
     ~handler:(fun diff emit -> Diff.set_on_line_click diff emit)
     ()
@@ -279,7 +277,7 @@ let diff =
 let tree =
   Kind.make ~name:"tree"
     ~create:(fun ~parent ~layout props ->
-      Tree.Private.of_props ~parent ~style:layout props)
+      Tree.create ~parent ~style:layout props)
     ~node:Tree.node ~update:Tree.apply_props ~equal:Tree.Props.equal
     ~focusable:true
     ~events:(fun tree emit ->

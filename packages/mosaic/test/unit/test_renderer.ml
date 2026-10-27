@@ -290,7 +290,8 @@ let render_frame_until_settled_reports_pending_code () =
   let _jobs, highlighter = async_highlighter () in
   let syntax = Code.with_highlighter ~language:"ocaml" highlighter in
   let _code =
-    Code.create ~parent:(Renderer.root t) ~content:"let x" ~syntax ()
+    Code.create ~parent:(Renderer.root t)
+      (Code.Props.make ~content:"let x" ~syntax ())
   in
   match
     Renderer.render_frame_until_settled ~max_passes:1 t ~width:40 ~height:5
@@ -314,7 +315,8 @@ let render_frame_until_settled_completes_code () =
   in
   let syntax = Code.with_highlighter ~language:"ocaml" highlighter in
   let code =
-    Code.create ~parent:(Renderer.root t) ~content:"let x" ~syntax ()
+    Code.create ~parent:(Renderer.root t)
+      (Code.Props.make ~content:"let x" ~syntax ())
   in
   complete_highlight (List.hd !jobs) (Ok highlights);
   match Renderer.render_frame_until_settled t ~width:40 ~height:5 ~dt:0. with
@@ -413,7 +415,7 @@ let make_culled_transcript ?(rows = 40) ?(vw = 20) ?(vh = 5) t =
   in
   let sb =
     Scroll_box.create ~parent:(Renderer.root t) ~style:box_style
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let row_style =
@@ -712,7 +714,9 @@ let chunks_keep_every_box =
               Renderable.create ~parent ~index ~style:(styled kind) ()
             in
             ignore
-              (Text.create ~parent:row ~content:text ~wrap:`Word () : Text.t))
+              (Text.create ~parent:row
+                 (Text.Props.make ~content:text ~wrap:`Word ())
+                : Text.t))
           [ chunked; flat ]
       in
       let row parent i = Option.get (Renderable.Private.child_at parent i) in
@@ -960,7 +964,7 @@ let zero_width_wrapper_keeps_its_overflowing_row () =
         |> Toffee.Style.set_flex_grow 1.
         |> Toffee.Style.set_width (dim 20)
         |> Toffee.Style.set_height (dim 0))
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let wrapper =
@@ -1001,7 +1005,7 @@ let descendant_reaching_the_viewport_survives_its_offscreen_parent () =
         (Toffee.Style.default
         |> Toffee.Style.set_width (dim 20)
         |> Toffee.Style.set_height (dim 3))
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let rows =
@@ -1026,7 +1030,7 @@ let selection_reads_rows_out_of_view () =
         (Toffee.Style.default
         |> Toffee.Style.set_width (dim 20)
         |> Toffee.Style.set_height (dim 5))
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let row index text =
@@ -1036,7 +1040,9 @@ let selection_reads_rows_out_of_view () =
         ()
     in
     ignore
-      (Text.create ~parent:wrapper ~content:text ~selectable:true () : Text.t)
+      (Text.create ~parent:wrapper
+         (Text.Props.make ~content:text ~selectable:true ())
+        : Text.t)
   in
   for i = 0 to 9 do
     row i (Printf.sprintf "old-%d" i)
@@ -1073,14 +1079,15 @@ let selection_reads_the_top_layer () =
         |> Toffee.Style.set_height (dim 3)
         |> Toffee.Style.set_margin
              { left = lpa 3.; right = lpa 0.; top = lpa 1.; bottom = lpa 0. })
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   for i = 0 to 9 do
     ignore
       (Text.create ~parent:(Scroll_box.node sb)
-         ~content:(Printf.sprintf "row-%d" i)
-         ~selectable:true ()
+         (Text.Props.make
+            ~content:(Printf.sprintf "row-%d" i)
+            ~selectable:true ())
         : Text.t)
   done;
   let top =
@@ -1091,7 +1098,9 @@ let selection_reads_the_top_layer () =
       ()
   in
   ignore
-    (Text.create ~parent:top ~content:"copy me" ~selectable:true () : Text.t);
+    (Text.create ~parent:top
+       (Text.Props.make ~content:"copy me" ~selectable:true ())
+      : Text.t);
   Renderer.set_modal t (Some top);
   do_frame ~width:20 ~height:9 t;
   Scroll_box.scroll_to sb ~y:2 ();
@@ -1132,7 +1141,7 @@ let make_hint_transcript ?(rows = 20) ?(vw = 20) ?(vh = 6) t =
   in
   let sb =
     Scroll_box.create ~parent:(Renderer.root t) ~style:box_style
-      ~show_scrollbars:false ()
+      (Scroll_box.Props.make ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let row_style =
@@ -1143,8 +1152,9 @@ let make_hint_transcript ?(rows = 20) ?(vw = 20) ?(vh = 6) t =
   for i = 0 to rows - 1 do
     ignore
       (Text.create ~parent:(Scroll_box.node sb) ~style:row_style
-         ~content:(Printf.sprintf "row %d" i)
-         ~selectable:false ()
+         (Text.Props.make
+            ~content:(Printf.sprintf "row %d" i)
+            ~selectable:false ())
         : Text.t)
   done;
   Renderer.render_frame t ~width:vw ~height:vh ~dt:0.;
@@ -1198,8 +1208,8 @@ let horizontal_scroll_disqualifies () =
     |> Toffee.Style.set_height (Toffee.Style.Dimension.length 6.)
   in
   let sb =
-    Scroll_box.create ~parent:(Renderer.root t) ~style:box_style ~scroll_x:true
-      ~show_scrollbars:false ()
+    Scroll_box.create ~parent:(Renderer.root t) ~style:box_style
+      (Scroll_box.Props.make ~scroll_x:true ~show_scrollbars:false ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let content_style =
@@ -2168,7 +2178,10 @@ let scroll_on_dead_space_reaches_focused_scrollable () =
     |> Toffee.Style.set_width (Toffee.Style.Dimension.length 10.)
     |> Toffee.Style.set_height (Toffee.Style.Dimension.length 3.)
   in
-  let sb = Scroll_box.create ~parent:(Renderer.root t) ~style () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root t) ~style
+      (Scroll_box.Props.make ())
+  in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let content_style =
     Toffee.Style.default
@@ -2192,7 +2205,10 @@ let selection_drag_auto_scrolls_scroll_box () =
     |> Toffee.Style.set_width (Toffee.Style.Dimension.length 20.)
     |> Toffee.Style.set_height (Toffee.Style.Dimension.length 8.)
   in
-  let sb = Scroll_box.create ~parent:(Renderer.root t) ~style () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root t) ~style
+      (Scroll_box.Props.make ())
+  in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let content_style =
     Toffee.Style.default
@@ -2228,7 +2244,10 @@ let selection_drag_auto_scrolls_scroll_box_when_pointer_leaves_it () =
     |> Toffee.Style.set_width (Toffee.Style.Dimension.length 20.)
     |> Toffee.Style.set_height (Toffee.Style.Dimension.length 8.)
   in
-  let sb = Scroll_box.create ~parent:(Renderer.root t) ~style () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root t) ~style
+      (Scroll_box.Props.make ())
+  in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let content_style =
     Toffee.Style.default
@@ -2258,7 +2277,10 @@ let selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors () =
     |> Toffee.Style.set_width (Toffee.Style.Dimension.length 20.)
     |> Toffee.Style.set_height (Toffee.Style.Dimension.length 8.)
   in
-  let sb = Scroll_box.create ~parent:(Renderer.root t) ~style () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root t) ~style
+      (Scroll_box.Props.make ())
+  in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   let content_style =
     Toffee.Style.default
@@ -2408,11 +2430,12 @@ let width_method_change_remeasures () =
     (Toffee.Style.default
     |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column);
   let emoji = "\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x92\xbb" in
-  let text = Text.create ~parent:root ~content:emoji () in
+  let text = Text.create ~parent:root (Text.Props.make ~content:emoji ()) in
   let spinner =
     Spinner.create ~parent:root
-      ~frame_set:{ Spinner.frames = [| emoji |]; period = 0. }
-      ()
+      (Spinner.Props.make
+         ~frame_set:{ Spinner.frames = [| emoji |]; period = 0. }
+         ())
   in
   let widths () =
     (Renderable.width (Text.node text), Renderable.width (Spinner.node spinner))
@@ -2474,7 +2497,10 @@ let scrollbar_geometry_settles_before_next_input () =
     |> Toffee.Style.set_width (Toffee.Style.Dimension.length 8.)
     |> Toffee.Style.set_height (Toffee.Style.Dimension.length 3.)
   in
-  let box = Scroll_box.create ~parent:(Renderer.root renderer) ~style () in
+  let box =
+    Scroll_box.create ~parent:(Renderer.root renderer) ~style
+      (Scroll_box.Props.make ())
+  in
   let row_style =
     Toffee.Style.default
     |> Toffee.Style.set_width (Toffee.Style.Dimension.length 7.)
@@ -2484,8 +2510,9 @@ let scrollbar_geometry_settles_before_next_input () =
   let add_row i =
     ignore
       (Text.create ~parent:(Scroll_box.node box) ~style:row_style
-         ~content:(Printf.sprintf "row %d" i)
-         ~selectable:false ()
+         (Text.Props.make
+            ~content:(Printf.sprintf "row %d" i)
+            ~selectable:false ())
         : Text.t)
   in
   add_row 0;

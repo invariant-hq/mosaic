@@ -26,32 +26,6 @@ type t
 
 (** {1:construction Construction} *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  ?border:bool ->
-  ?border_style:Matrix_grid.Border.t ->
-  ?border_sides:Matrix_grid.Border.side list ->
-  ?border_width:Toffee.Style.Length_percentage.t Toffee.Geometry.Rect.t ->
-  ?border_color:Ansi.Color.t ->
-  ?focused_border_color:Ansi.Color.t ->
-  ?background:Ansi.Color.t ->
-  ?fill:bool ->
-  ?title:string ->
-  ?title_alignment:[ `Left | `Center | `Right ] ->
-  ?inert:bool ->
-  unit ->
-  t
-(** [create ~parent ()] is a box node attached to [parent]. The labels after
-    [opacity] are {!Props.make}'s and take its defaults.
-
-    Raises [Invalid_argument] as {!Props.make} does. *)
-
 val node : t -> Renderable.t
 (** [node t] is [t]'s underlying renderable. *)
 
@@ -91,30 +65,10 @@ module Props : sig
       - [inert] makes the box and its descendants inert
         ({!Renderable.set_inert}). Defaults to [false].
 
-      {!val-create} and [Mosaic.box] take these labels with these defaults.
+      [Mosaic.box] takes these labels with these defaults.
 
       Raises [Invalid_argument] if a border width is not a length of a whole
       number of cells, [0] or more. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?border:bool ->
-    ?border_style:Matrix_grid.Border.t ->
-    ?border_sides:Matrix_grid.Border.side list ->
-    ?border_width:Toffee.Style.Length_percentage.t Toffee.Geometry.Rect.t ->
-    ?border_color:Ansi.Color.t ->
-    ?focused_border_color:Ansi.Color.t ->
-    ?background:Ansi.Color.t ->
-    ?fill:bool ->
-    ?title:string ->
-    ?title_alignment:[ `Left | `Center | `Right ] ->
-    ?inert:bool ->
-    unit ->
-    'a
-
-  (**/**)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -125,6 +79,18 @@ module Props : sig
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] describe identical properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  Props.t ->
+  t
+(** [create ~parent props] is a box attached to [parent], showing [props]. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] replaces all properties of [t] with [props], updates
@@ -181,20 +147,3 @@ val set_style : t -> Toffee.Style.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a box for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

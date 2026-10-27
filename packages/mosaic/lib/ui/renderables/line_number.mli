@@ -71,27 +71,7 @@ module Props : sig
       - [hidden_line_numbers] is the list of logical line indices whose numbers
         are hidden, leaving a blank gutter. Defaults to [[]].
 
-      {!val-create} and [Mosaic.line_number] take these labels with these
-      defaults. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?fg:Ansi.Color.t ->
-    ?bg:Ansi.Color.t ->
-    ?min_width:int ->
-    ?padding_right:int ->
-    ?show_line_numbers:bool ->
-    ?line_number_offset:int ->
-    ?line_colors:(int * line_color) list ->
-    ?line_signs:(int * line_sign) list ->
-    ?line_numbers:(int * int) list ->
-    ?hidden_line_numbers:int list ->
-    unit ->
-    'a
-
-  (**/**)
+      [Mosaic.line_number] takes these labels with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -111,20 +91,10 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
-  ?fg:Ansi.Color.t ->
-  ?bg:Ansi.Color.t ->
-  ?min_width:int ->
-  ?padding_right:int ->
-  ?show_line_numbers:bool ->
-  ?line_number_offset:int ->
-  ?line_colors:(int * line_color) list ->
-  ?line_signs:(int * line_sign) list ->
-  ?line_numbers:(int * int) list ->
-  ?hidden_line_numbers:int list ->
-  unit ->
+  Props.t ->
   t
-(** [create ~parent ()] is a line number gutter container attached to [parent].
-    The labels after [opacity] are {!Props.make}'s and take its defaults. *)
+(** [create ~parent props] is a line number gutter container attached to
+    [parent], showing [props]. *)
 
 (** {1:accessors Accessors} *)
 
@@ -136,20 +106,3 @@ val node : t -> Renderable.t
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] replaces all properties of [t] with [props] and
     schedules a re-render. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

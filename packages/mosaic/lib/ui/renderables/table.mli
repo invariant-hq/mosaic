@@ -148,46 +148,6 @@ type key_binding = Shortcut.t * action
 (** A shortcut and its action. Custom bindings override defaults; the last
     binding for a shortcut wins. Releases are ignored. *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  ?columns:column list ->
-  ?rows:cell array list ->
-  ?selected_row:int ->
-  ?border:bool ->
-  ?border_style:Matrix_grid.Border.t ->
-  ?show_header:bool ->
-  ?show_column_separator:bool ->
-  ?show_row_separator:bool ->
-  ?cell_padding:int ->
-  ?header_color:Ansi.Color.t ->
-  ?header_background:Ansi.Color.t ->
-  ?text_color:Ansi.Color.t ->
-  ?background:Ansi.Color.t ->
-  ?selected_text_color:Ansi.Color.t ->
-  ?selected_background:Ansi.Color.t ->
-  ?focused_selected_text_color:Ansi.Color.t ->
-  ?focused_selected_background:Ansi.Color.t ->
-  ?selection_visible:bool ->
-  ?show_scroll_indicator:bool ->
-  ?activate_on_click:bool ->
-  ?wheel_navigation:bool ->
-  ?row_styles:Ansi.Style.t list ->
-  ?wrap_selection:bool ->
-  ?key_bindings:key_binding list ->
-  ?fast_scroll_step:int ->
-  unit ->
-  t
-(** [create ~parent ()] is a table node attached to [parent]. The labels after
-    [opacity] are {!Props.make}'s and take its defaults.
-
-    The node is focusable and uses buffered rendering. *)
-
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
 
@@ -278,42 +238,7 @@ module Props : sig
       - [fast_scroll_step] the number of rows to skip on Shift+Up/Down. Defaults
         to [5].
 
-      {!val-create} takes these labels with these defaults, and so does
-      [Mosaic.table] for the labels it has. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?columns:column list ->
-    ?rows:cell array list ->
-    ?selected_row:int ->
-    ?border:bool ->
-    ?border_style:Matrix_grid.Border.t ->
-    ?show_header:bool ->
-    ?show_column_separator:bool ->
-    ?show_row_separator:bool ->
-    ?cell_padding:int ->
-    ?header_color:Ansi.Color.t ->
-    ?header_background:Ansi.Color.t ->
-    ?text_color:Ansi.Color.t ->
-    ?background:Ansi.Color.t ->
-    ?selected_text_color:Ansi.Color.t ->
-    ?selected_background:Ansi.Color.t ->
-    ?focused_selected_text_color:Ansi.Color.t ->
-    ?focused_selected_background:Ansi.Color.t ->
-    ?selection_visible:bool ->
-    ?show_scroll_indicator:bool ->
-    ?activate_on_click:bool ->
-    ?wheel_navigation:bool ->
-    ?row_styles:Ansi.Style.t list ->
-    ?wrap_selection:bool ->
-    ?key_bindings:key_binding list ->
-    ?fast_scroll_step:int ->
-    unit ->
-    'a
-
-  (**/**)
+      [Mosaic.table] takes those of these labels it has, with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -327,6 +252,21 @@ module Props : sig
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] describe identical properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  Props.t ->
+  t
+(** [create ~parent props] is a table node attached to [parent], showing
+    [props].
+
+    The node is focusable and uses buffered rendering. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t], triggering the minimum
@@ -478,20 +418,3 @@ val set_style : t -> Toffee.Style.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

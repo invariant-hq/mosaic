@@ -253,8 +253,8 @@ let bold = Ansi.Style.make ~bold:true ()
 
 let labelled ?(text_style = Ansi.Style.default) b =
   ignore
-    (Text.create ~parent:(Box.node b) ~content:"OK" ~text_style
-       ~selectable:false ()
+    (Text.create ~parent:(Box.node b)
+       (Text.Props.make ~content:"OK" ~text_style ~selectable:false ())
       : Text.t);
   Box.node b
 
@@ -268,8 +268,9 @@ let doors_border () =
   reaches "border"
     ~base:(Mosaic.button ~size ~on_activate:() "OK")
     ~element:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
-    ~create:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
 
 let doors_border_style () =
   reaches "border_style"
@@ -277,10 +278,11 @@ let doors_border_style () =
     ~element:
       (Mosaic.button ~size ~border:true ~border_style:Matrix_grid.Border.double
          ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true
-        ~border_style:Matrix_grid.Border.double ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~border_style:Matrix_grid.Border.double ()))
 
 let doors_border_sides () =
   reaches "border_sides"
@@ -288,9 +290,11 @@ let doors_border_sides () =
     ~element:
       (Mosaic.button ~size ~border:true ~border_sides:[ `Top ] ~on_activate:()
          "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~border_sides:[ `Top ] ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~border_sides:[ `Top ] ()))
 
 let doors_border_width () =
   let two = Toffee.Style.Length_percentage.length 2. in
@@ -303,18 +307,22 @@ let doors_border_width () =
     ~element:
       (Mosaic.button ~size ~border:true ~border_width:widths ~on_activate:()
          "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~border_width:widths ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~border_width:widths ()))
 
 let doors_border_color () =
   reaches "border_color"
     ~base:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
     ~element:
       (Mosaic.button ~size ~border:true ~border_color:red ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~border_color:red ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~border_color:red ()))
 
 let doors_focused_border_color () =
   reaches "focused_border_color" ~act:Test_harness.focus
@@ -322,33 +330,38 @@ let doors_focused_border_color () =
     ~element:
       (Mosaic.button ~size ~border:true ~focused_border_color:red
          ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~focused_border_color:red ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~focused_border_color:red ()))
 
 let doors_background () =
   reaches "background"
     ~base:(Mosaic.button ~size ~on_activate:() "OK")
     ~element:(Mosaic.button ~size ~background:red ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
-    ~create:(fun ~parent -> Box.create ~parent ~style ~background:red ())
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~background:red ()))
 
 let doors_fill () =
   reaches "fill"
     ~base:(Mosaic.button ~size ~background:red ~on_activate:() "OK")
     ~element:
       (Mosaic.button ~size ~background:red ~fill:false ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~background:red ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~background:red ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~background:red ~fill:false ())
+      Box.create ~parent ~style (Box.Props.make ~background:red ~fill:false ()))
 
 let doors_title () =
   reaches "title"
     ~base:(Mosaic.button ~size ~border:true ~on_activate:() "OK")
     ~element:(Mosaic.button ~size ~border:true ~title:"T" ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ~border:true ())
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~title:"T" ())
+      Box.create ~parent ~style (Box.Props.make ~border:true ~title:"T" ()))
 
 let doors_title_alignment () =
   reaches "title_alignment"
@@ -357,25 +370,25 @@ let doors_title_alignment () =
       (Mosaic.button ~size ~border:true ~title:"T" ~title_alignment:`Right
          ~on_activate:() "OK")
     ~create_base:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~title:"T" ())
+      Box.create ~parent ~style (Box.Props.make ~border:true ~title:"T" ()))
     ~create:(fun ~parent ->
-      Box.create ~parent ~style ~border:true ~title:"T" ~title_alignment:`Right
-        ())
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~title:"T" ~title_alignment:`Right ()))
 
 let doors_text_style () =
   reaches "text_style" ~text_style:bold
     ~base:(Mosaic.button ~size ~on_activate:() "OK")
     ~element:(Mosaic.button ~size ~text_style:bold ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
-    ~create:(fun ~parent -> Box.create ~parent ~style ())
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
 
 let doors_disabled () =
   reaches "disabled"
     ~text_style:(Ansi.Style.with_dim true Ansi.Style.default)
     ~base:(Mosaic.button ~size ~on_activate:() "OK")
     ~element:(Mosaic.button ~size ~disabled:true ~on_activate:() "OK")
-    ~create_base:(fun ~parent -> Box.create ~parent ~style ())
-    ~create:(fun ~parent -> Box.create ~parent ~style ())
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
 
 let () =
   run "Button"

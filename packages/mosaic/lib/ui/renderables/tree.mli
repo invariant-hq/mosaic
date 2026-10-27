@@ -151,40 +151,6 @@ type key_binding = Shortcut.t * action
 
 (** {1:construction Construction} *)
 
-val create :
-  parent:Renderable.t ->
-  ?index:int ->
-  ?id:string ->
-  ?style:Toffee.Style.t ->
-  ?visible:bool ->
-  ?z_index:int ->
-  ?opacity:float ->
-  ?items:item list ->
-  ?state:State.t ->
-  ?indent_size:int ->
-  ?show_guides:bool ->
-  ?guide_style:Matrix_grid.Border.t ->
-  ?expand_icon:string ->
-  ?collapse_icon:string ->
-  ?leaf_icon:string ->
-  ?background:Ansi.Color.t ->
-  ?text_color:Ansi.Color.t ->
-  ?selected_background:Ansi.Color.t ->
-  ?selected_text_color:Ansi.Color.t ->
-  ?focused_selected_background:Ansi.Color.t ->
-  ?focused_selected_text_color:Ansi.Color.t ->
-  ?guide_color:Ansi.Color.t ->
-  ?icon_color:Ansi.Color.t ->
-  ?wrap_selection:bool ->
-  ?key_bindings:key_binding list ->
-  ?fast_scroll_step:int ->
-  unit ->
-  t
-(** [create ~parent ()] is a tree widget attached to [parent]. The labels after
-    [opacity] are {!Props.make}'s and take its defaults.
-
-    The widget is focusable and uses buffered rendering. *)
-
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
 
@@ -249,35 +215,7 @@ module Props : sig
         them to another action; defaults to [[]].
       - [fast_scroll_step]: rows to skip with Shift+Up/Down; defaults to [5].
 
-      {!val-create} and [Mosaic.tree] take these labels with these defaults. *)
-
-  (**/**)
-
-  val make_k :
-    (t -> 'a) ->
-    ?items:item list ->
-    ?state:State.t ->
-    ?indent_size:int ->
-    ?show_guides:bool ->
-    ?guide_style:Matrix_grid.Border.t ->
-    ?expand_icon:string ->
-    ?collapse_icon:string ->
-    ?leaf_icon:string ->
-    ?background:Ansi.Color.t ->
-    ?text_color:Ansi.Color.t ->
-    ?selected_background:Ansi.Color.t ->
-    ?selected_text_color:Ansi.Color.t ->
-    ?focused_selected_background:Ansi.Color.t ->
-    ?focused_selected_text_color:Ansi.Color.t ->
-    ?guide_color:Ansi.Color.t ->
-    ?icon_color:Ansi.Color.t ->
-    ?wrap_selection:bool ->
-    ?key_bindings:key_binding list ->
-    ?fast_scroll_step:int ->
-    unit ->
-    'a
-
-  (**/**)
+      [Mosaic.tree] takes these labels with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -285,6 +223,21 @@ module Props : sig
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] describe identical properties. *)
 end
+
+val create :
+  parent:Renderable.t ->
+  ?index:int ->
+  ?id:string ->
+  ?style:Toffee.Style.t ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  Props.t ->
+  t
+(** [create ~parent props] is a tree widget attached to [parent], showing
+    [props].
+
+    The widget is focusable and uses buffered rendering. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t], triggering the minimum
@@ -418,20 +371,3 @@ val set_style : t -> Toffee.Style.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
-
-(**/**)
-
-module Private : sig
-  val of_props :
-    parent:Renderable.t ->
-    ?index:int ->
-    ?id:string ->
-    ?style:Toffee.Style.t ->
-    ?visible:bool ->
-    ?z_index:int ->
-    ?opacity:float ->
-    Props.t ->
-    t
-  (** [of_props ~parent props] is a widget showing [props], made as [create]
-      makes one. *)
-end

@@ -3,7 +3,7 @@
 type orientation = [ `Horizontal | `Vertical ]
 
 (* [Props.make] is the one place the slider's labels get their defaults:
-   [create] and [Mosaic.slider] pass their labels on unset. *)
+   [Mosaic.slider] passes its labels on unset. *)
 module Props = struct
   type t = {
     orientation : orientation;
@@ -24,12 +24,6 @@ module Props = struct
     in
     let value = Option.value value ~default:min in
     { orientation; value; min; max; viewport_size; track_color; thumb_color }
-
-  let make_k k ?orientation ?value ?min ?max ?viewport_size ?track_color
-      ?thumb_color () =
-    k
-      (make ?orientation ?value ?min ?max ?viewport_size ?track_color
-         ?thumb_color ())
 
   let default = make ()
 
@@ -328,7 +322,7 @@ let setup_mouse t =
 
 (* Construction *)
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
     (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
@@ -350,11 +344,6 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
   Renderable.set_render node (render t);
   setup_mouse t;
   t
-
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
-        props)
 
 (* Setters *)
 
@@ -421,7 +410,3 @@ let pp ppf t =
   in
   Format.fprintf ppf "Slider(%s, %s, %.1f/[%.1f..%.1f])" (Renderable.id t.node)
     orient t.value t.props.min t.props.max
-
-module Private = struct
-  let of_props = of_props
-end

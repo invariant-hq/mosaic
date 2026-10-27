@@ -182,8 +182,9 @@ let mouse_scroll_up ~x ~y =
 
 (* ── A widget's two doors ── *)
 
-(* A widget takes its labels through its element and through its imperative
-   [create], and both build its properties with its [Props.make]. [reaches]
+(* A widget takes its labels through its element and through its
+   [Props.make], whose props its imperative [create] takes: both build its
+   properties with its [Props.make]. [reaches]
    checks that one label, given through either door, reaches the live widget:
    the widget made by [create] with the label differs from the one made
    without it, and the element with the label, mounted or declared after the

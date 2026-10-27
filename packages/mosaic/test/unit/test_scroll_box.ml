@@ -9,8 +9,9 @@ let make_scroll_box ?scroll_x ?scroll_y ?scroll ?background ?scroll_accel
   let t = make_ctx () in
   let root = make_root t in
   let sb =
-    Scroll_box.create ~parent:root ?scroll_x ?scroll_y ?scroll ?background
-      ?scroll_accel ()
+    Scroll_box.create ~parent:root
+      (Scroll_box.Props.make ?scroll_x ?scroll_y ?scroll ?background
+         ?scroll_accel ())
   in
   (* The application accepts proposals explicitly. *)
   Scroll_box.set_on_scroll sb
@@ -135,7 +136,7 @@ let create_viewport_has_overflow_hidden () =
 let vertical_bar_visible_when_content_overflows () =
   let t = make_ctx () in
   let root = make_root t in
-  let sb = Scroll_box.create ~parent:root () in
+  let sb = Scroll_box.create ~parent:root (Scroll_box.Props.make ()) in
   layout_node root ~x:0 ~y:0 ~width:20 ~height:8;
   layout_node (Scroll_box.node sb) ~x:0 ~y:0 ~width:20 ~height:8;
   layout_node (Scroll_box.viewport sb) ~x:0 ~y:0 ~width:19 ~height:8;
@@ -258,9 +259,12 @@ let wheel_without_overflow_bubbles () =
 let nested_wheel_bubbles_at_inner_boundary () =
   let test_context = make_ctx () in
   let root = make_root test_context in
-  let outer = Scroll_box.create ~parent:root () in
+  let outer = Scroll_box.create ~parent:root (Scroll_box.Props.make ()) in
   Scroll_box.set_on_scroll outer (Some (Scroll_box.set_scroll outer));
-  let inner = Scroll_box.create ~parent:(Scroll_box.content outer) () in
+  let inner =
+    Scroll_box.create ~parent:(Scroll_box.content outer)
+      (Scroll_box.Props.make ())
+  in
   Scroll_box.set_on_scroll inner (Some (Scroll_box.set_scroll inner));
   let escaped = ref 0 in
   Renderable.on_mouse root (fun _event -> incr escaped);
@@ -406,9 +410,10 @@ let scrollbar_appearance_preserves_axes () =
   let ctx = make_ctx () in
   let root = make_root ctx in
   let sb =
-    Scroll_box.create ~parent:root ~scroll_x:true
-      ~scrollbar_style:(Scroll_bar.style ~show_arrows:true ())
-      ()
+    Scroll_box.create ~parent:root
+      (Scroll_box.Props.make ~scroll_x:true
+         ~scrollbar_style:(Scroll_bar.style ~show_arrows:true ())
+         ())
   in
   let direction bar =
     Toffee.Style.flex_direction (Renderable.style (Scroll_bar.node bar))
@@ -482,8 +487,9 @@ let appearance_keeps_scrollbars_hidden () =
 
 (* ── Both doors ── *)
 
-(* Each label, given to the element ({!Mosaic.scroll_box}) or to {!Scroll_box.create},
-   reaches the live scroll box ({!Test_harness.reaches}). *)
+(* Each label, given to the element ({!Mosaic.scroll_box}) or to
+   {!Scroll_box.Props.make} for {!Scroll_box.create}, reaches the live scroll
+   box ({!Test_harness.reaches}). *)
 
 let doors_size = Mosaic.size ~width:12 ~height:4
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -498,7 +504,9 @@ let doors_lines = List.map (fun l -> Mosaic.text l) doors_contents
 let doors_filled box =
   List.iter
     (fun content ->
-      ignore (Text.create ~parent:(Scroll_box.node box) ~content () : Text.t))
+      ignore
+        (Text.create ~parent:(Scroll_box.node box) (Text.Props.make ~content ())
+          : Text.t))
     doors_contents;
   Scroll_box.node box
 
@@ -511,10 +519,12 @@ let doors_scroll () =
       (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 3)
          ~on_scroll:ignore doors_lines)
     ~create_base:(fun parent ->
-      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style (Scroll_box.Props.make ())))
     ~create:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~scroll:(Scroll.at 3) ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           (Scroll_box.Props.make ~scroll:(Scroll.at 3) ())))
 
 let doors_scroll_x () =
   Test_harness.reaches "scroll_x"
@@ -525,10 +535,12 @@ let doors_scroll_x () =
       (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
          ~on_scroll:ignore ~scroll_x:true doors_lines)
     ~create_base:(fun parent ->
-      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style (Scroll_box.Props.make ())))
     ~create:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~scroll_x:true ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           (Scroll_box.Props.make ~scroll_x:true ())))
 
 let doors_scroll_y () =
   Test_harness.reaches "scroll_y"
@@ -539,10 +551,12 @@ let doors_scroll_y () =
       (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
          ~on_scroll:ignore ~scroll_y:false doors_lines)
     ~create_base:(fun parent ->
-      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style (Scroll_box.Props.make ())))
     ~create:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~scroll_y:false ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           (Scroll_box.Props.make ~scroll_y:false ())))
 
 let doors_background () =
   Test_harness.reaches "background"
@@ -553,10 +567,12 @@ let doors_background () =
       (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
          ~on_scroll:ignore ~background:doors_red doors_lines)
     ~create_base:(fun parent ->
-      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style (Scroll_box.Props.make ())))
     ~create:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~background:doors_red ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           (Scroll_box.Props.make ~background:doors_red ())))
 
 let doors_show_scrollbars () =
   Test_harness.reaches "show_scrollbars"
@@ -567,10 +583,12 @@ let doors_show_scrollbars () =
       (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
          ~on_scroll:ignore ~show_scrollbars:false doors_lines)
     ~create_base:(fun parent ->
-      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style (Scroll_box.Props.make ())))
     ~create:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~show_scrollbars:false ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           (Scroll_box.Props.make ~show_scrollbars:false ())))
 
 let doors_scrollbar_style () =
   Test_harness.reaches "scrollbar_style"
@@ -581,11 +599,12 @@ let doors_scrollbar_style () =
       (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
          ~on_scroll:ignore ~scrollbar_style:doors_bar doors_lines)
     ~create_base:(fun parent ->
-      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style (Scroll_box.Props.make ())))
     ~create:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~scrollbar_style:doors_bar
-           ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           (Scroll_box.Props.make ~scrollbar_style:doors_bar ())))
 
 let doors_vertical_bar_style () =
   Test_harness.reaches "vertical_bar_style"
@@ -596,11 +615,12 @@ let doors_vertical_bar_style () =
       (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
          ~on_scroll:ignore ~vertical_bar_style:doors_bar doors_lines)
     ~create_base:(fun parent ->
-      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style (Scroll_box.Props.make ())))
     ~create:(fun parent ->
       doors_filled
         (Scroll_box.create ~parent ~style:doors_style
-           ~vertical_bar_style:doors_bar ()))
+           (Scroll_box.Props.make ~vertical_bar_style:doors_bar ())))
 
 let doors_horizontal_bar_style () =
   Test_harness.reaches "horizontal_bar_style"
@@ -613,11 +633,13 @@ let doors_horizontal_bar_style () =
          doors_lines)
     ~create_base:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~scroll_x:true ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           (Scroll_box.Props.make ~scroll_x:true ())))
     ~create:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~scroll_x:true
-           ~horizontal_bar_style:doors_bar ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           (Scroll_box.Props.make ~scroll_x:true ~horizontal_bar_style:doors_bar
+              ())))
 
 (* Four wheel notches 50 ms apart, a frame between each: an accelerating
    [scroll_accel] proposes larger steps from the second notch on. The box is
@@ -666,11 +688,12 @@ let doors_scroll_accel () =
     ~create_base:(fun parent ->
       doors_filled
         (Scroll_box.create ~parent ~style:doors_style
-           ~on_scroll:doors_record_scroll ()))
+           ~on_scroll:doors_record_scroll (Scroll_box.Props.make ())))
     ~create:(fun parent ->
       doors_filled
-        (Scroll_box.create ~parent ~style:doors_style ~scroll_accel:doors_accel
-           ~on_scroll:doors_record_scroll ()))
+        (Scroll_box.create ~parent ~style:doors_style
+           ~on_scroll:doors_record_scroll
+           (Scroll_box.Props.make ~scroll_accel:doors_accel ())))
 
 let () =
   run "mosaic.scroll_box"

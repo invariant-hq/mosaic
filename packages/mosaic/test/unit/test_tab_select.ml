@@ -20,8 +20,9 @@ let make_tab_select ?options ?selected ?tab_width ?wrap_selection
   let root = make_root t in
   let options = match options with Some o -> o | None -> sample_items in
   let ts =
-    Tab_select.create ~parent:root ~options ?selected ?tab_width ?wrap_selection
-      ?show_description ?show_underline ?show_scroll_arrows ()
+    Tab_select.create ~parent:root
+      (Tab_select.Props.make ~options ?selected ?tab_width ?wrap_selection
+         ?show_description ?show_underline ?show_scroll_arrows ())
   in
   Tab_select.set_on_change ts (Some (Tab_select.set_selected ts));
   (t, ts)
@@ -415,12 +416,12 @@ let doors_options () =
        place of the reversed list is 2. *)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ()))
+        (Tab_select.create ~parent ~style:doors_style
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
         (Tab_select.create ~parent ~style:doors_style
-           ~options:(List.rev doors_tab_items) ()))
+           (Tab_select.Props.make ~options:(List.rev doors_tab_items) ())))
 
 let doors_selected () =
   Test_harness.reaches "selected"
@@ -432,12 +433,12 @@ let doors_selected () =
          ~on_change:ignore doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ()))
+        (Tab_select.create ~parent ~style:doors_style
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~selected:1 ()))
+        (Tab_select.create ~parent ~style:doors_style
+           (Tab_select.Props.make ~options:doors_tab_items ~selected:1 ())))
 
 let doors_tab_width () =
   Test_harness.reaches "tab_width"
@@ -449,12 +450,12 @@ let doors_tab_width () =
          ~on_change:doors_record ~tab_width:8 doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~tab_width:8 ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ~tab_width:8 ())))
 
 let doors_background () =
   Test_harness.reaches "background"
@@ -466,12 +467,13 @@ let doors_background () =
          ~on_change:doors_record ~background:doors_red doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~background:doors_red ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ~background:doors_red
+              ())))
 
 let doors_text_color () =
   Test_harness.reaches "text_color"
@@ -483,12 +485,13 @@ let doors_text_color () =
          ~on_change:doors_record ~text_color:doors_red doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~text_color:doors_red ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ~text_color:doors_red
+              ())))
 
 let doors_focused_background () =
   Test_harness.reaches ~act:Test_harness.focus "focused_background"
@@ -500,12 +503,13 @@ let doors_focused_background () =
          ~on_change:doors_record ~focused_background:doors_red doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~focused_background:doors_red ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~focused_background:doors_red ())))
 
 let doors_focused_text_color () =
   Test_harness.reaches ~act:Test_harness.focus "focused_text_color"
@@ -517,12 +521,13 @@ let doors_focused_text_color () =
          ~on_change:doors_record ~focused_text_color:doors_red doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~focused_text_color:doors_red ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~focused_text_color:doors_red ())))
 
 let doors_selected_background () =
   Test_harness.reaches "selected_background"
@@ -534,12 +539,13 @@ let doors_selected_background () =
          ~on_change:doors_record ~selected_background:doors_red doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~selected_background:doors_red ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~selected_background:doors_red ())))
 
 let doors_selected_text_color () =
   Test_harness.reaches "selected_text_color"
@@ -551,12 +557,13 @@ let doors_selected_text_color () =
          ~on_change:doors_record ~selected_text_color:doors_red doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~selected_text_color:doors_red ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~selected_text_color:doors_red ())))
 
 let doors_selected_description_color () =
   Test_harness.reaches "selected_description_color" ~act:Test_harness.focus
@@ -569,13 +576,14 @@ let doors_selected_description_color () =
          ~selected_description_color:doors_red doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~show_description:true ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~show_description:true ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~show_description:true
-           ~selected_description_color:doors_red ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~show_description:true ~selected_description_color:doors_red ())))
 
 let doors_description_color () =
   Test_harness.reaches "description_color"
@@ -588,13 +596,14 @@ let doors_description_color () =
          ~description_color:doors_red doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~show_description:true ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~show_description:true ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~show_description:true
-           ~description_color:doors_red ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~show_description:true ~description_color:doors_red ())))
 
 let doors_show_underline () =
   Test_harness.reaches "show_underline"
@@ -606,12 +615,13 @@ let doors_show_underline () =
          ~on_change:doors_record ~show_underline:false doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~show_underline:false ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ~show_underline:false
+              ())))
 
 let doors_show_description () =
   Test_harness.reaches "show_description"
@@ -623,12 +633,13 @@ let doors_show_description () =
          ~on_change:doors_record ~show_description:true doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~show_description:true ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~show_description:true ())))
 
 let doors_show_scroll_arrows () =
   Test_harness.reaches "show_scroll_arrows"
@@ -640,12 +651,13 @@ let doors_show_scroll_arrows () =
          ~on_change:doors_record ~show_scroll_arrows:false doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~show_scroll_arrows:false ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~show_scroll_arrows:false ())))
 
 let doors_wrap_selection () =
   Test_harness.reaches
@@ -659,12 +671,13 @@ let doors_wrap_selection () =
          ~on_change:doors_record ~wrap_selection:true doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ~wrap_selection:true ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ~wrap_selection:true
+              ())))
 
 let doors_key_bindings () =
   Test_harness.reaches
@@ -680,14 +693,14 @@ let doors_key_bindings () =
          doors_tabs)
     ~create_base:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items ())))
     ~create:(fun parent ->
       Tab_select.node
-        (Tab_select.create ~parent ~style:doors_style ~options:doors_tab_items
-           ~on_change:doors_record
-           ~key_bindings:[ (Shortcut.char 'x', Tab_select.Move_right) ]
-           ()))
+        (Tab_select.create ~parent ~style:doors_style ~on_change:doors_record
+           (Tab_select.Props.make ~options:doors_tab_items
+              ~key_bindings:[ (Shortcut.char 'x', Tab_select.Move_right) ]
+              ())))
 
 (* ── Paint ── *)
 

@@ -56,11 +56,11 @@ let create_editor ~parent ?style ?value ?max_length ?cursor ?selection
     Option.iter (fun f -> f state) on_change
   in
   let widget =
-    Text_input.create ~parent ?style ~state ~on_change ?on_submit ?placeholder
-      ?text_color ?background_color ?focused_text_color
-      ?focused_background_color ?placeholder_color ?selection_color
-      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
-      ?show_cursor ()
+    Text_input.create ~parent ?style ~on_change ?on_submit
+      (Text_input.Props.make ~state ?placeholder ?text_color ?background_color
+         ?focused_text_color ?focused_background_color ?placeholder_color
+         ?selection_color ?selection_fg ?cursor_style ?cursor_color
+         ?cursor_blinking ?selectable ?show_cursor ())
   in
   (install := fun state -> Text_input.apply_props widget (props state));
   Hashtbl.replace property_builders
@@ -936,7 +936,9 @@ let invalid_declarations_are_rejected () =
       raises_match ~msg:"property declaration rejects line breaks" invalid
         (fun () -> ignore (Text_input.Props.make ~state ()));
       raises_match ~msg:"construction rejects line breaks" invalid (fun () ->
-          ignore (Text_input.create ~parent:root ~state ~on_change:ignore ())))
+          ignore
+            (Text_input.create ~parent:root ~on_change:ignore
+               (Text_input.Props.make ~state ()))))
     [ "a\nb"; "a\rb"; "a\r\nb"; "a\n"; "\r" ];
   equal ~msg:"invalid construction attaches no child" int 0
     (List.length (Renderable.children root))
@@ -999,9 +1001,9 @@ let multiline_history_is_ignored_by_single_line_input () =
       equal ~msg:"scratch caret restored" int 0 (Text_input.cursor input);
       let restored = ref state in
       let textarea =
-        Textarea.create ~parent:(make_root t) ~state
+        Textarea.create ~parent:(make_root t)
           ~on_change:(fun next -> restored := next)
-          ()
+          (Textarea.Props.make ~state ())
       in
       let event =
         Event.Key.of_input
@@ -1033,9 +1035,9 @@ let typed_bindings_override_defaults_and_recompile () =
     ]
   in
   let input =
-    Text_input.create ~parent ~state ~key_bindings:bindings
+    Text_input.create ~parent
       ~on_change:(fun state -> proposed := state)
-      ()
+      (Text_input.Props.make ~state ~key_bindings:bindings ())
   in
   send_key input Matrix_input.Keystroke.Left;
   equal ~msg:"last equivalent custom shortcut overrides default" int 3
@@ -1065,8 +1067,8 @@ let typed_bindings_override_defaults_and_recompile () =
 
 (* Each label, given to the element ({!Mosaic.input}) or to
    {!Text_input.create}, reaches the live input ({!Test_harness.reaches}).
-   The caret is observed as the node reports it, and proposals as
-   [on_change] receives them. *)
+   The caret is observed as the node reports it, and proposals as [on_change]
+   receives them. *)
 
 let doors_size = Mosaic.size ~width:10 ~height:1
 let doors_style = Toffee.Style.make ~size:doors_size ()
@@ -1104,12 +1106,12 @@ let doors_state () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style
-           ~state:(Editor.of_string "xyz") ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:(Editor.of_string "xyz") ())))
 
 let doors_placeholder () =
   Test_harness.reaches "placeholder"
@@ -1120,12 +1122,12 @@ let doors_placeholder () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:Editor.empty
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:Editor.empty ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:Editor.empty
-           ~placeholder:"type" ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:Editor.empty ~placeholder:"type" ())))
 
 let doors_text_color () =
   Test_harness.reaches "text_color"
@@ -1135,12 +1137,12 @@ let doors_text_color () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~text_color:doors_red ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~text_color:doors_red ())))
 
 let doors_background_color () =
   Test_harness.reaches "background_color"
@@ -1150,12 +1152,12 @@ let doors_background_color () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~background_color:doors_red ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~background_color:doors_red ())))
 
 let doors_focused_text_color () =
   Test_harness.reaches ~act:Test_harness.focus "focused_text_color"
@@ -1165,12 +1167,12 @@ let doors_focused_text_color () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~focused_text_color:doors_red ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~focused_text_color:doors_red ())))
 
 let doors_focused_background_color () =
   Test_harness.reaches ~act:Test_harness.focus "focused_background_color"
@@ -1180,12 +1182,13 @@ let doors_focused_background_color () =
          ~focused_background_color:doors_red ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~focused_background_color:doors_red ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~focused_background_color:doors_red
+              ())))
 
 let doors_placeholder_color () =
   Test_harness.reaches "placeholder_color"
@@ -1197,13 +1200,13 @@ let doors_placeholder_color () =
          ~placeholder_color:doors_red ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:Editor.empty
-           ~placeholder:"type" ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:Editor.empty ~placeholder:"type" ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:Editor.empty
-           ~placeholder:"type" ~placeholder_color:doors_red ~on_change:propose
-           ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:Editor.empty ~placeholder:"type"
+              ~placeholder_color:doors_red ())))
 
 let doors_selection_color () =
   Test_harness.reaches "selection_color"
@@ -1214,12 +1217,13 @@ let doors_selection_color () =
          ~selection_color:doors_red ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc_selected
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc_selected ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc_selected
-           ~selection_color:doors_red ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc_selected ~selection_color:doors_red
+              ())))
 
 let doors_selection_fg () =
   Test_harness.reaches "selection_fg"
@@ -1230,12 +1234,12 @@ let doors_selection_fg () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc_selected
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc_selected ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc_selected
-           ~selection_fg:doors_red ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc_selected ~selection_fg:doors_red ())))
 
 let doors_cursor_style () =
   Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_style"
@@ -1245,12 +1249,12 @@ let doors_cursor_style () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~cursor_style:`Line ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~cursor_style:`Line ())))
 
 let doors_cursor_color () =
   Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_color"
@@ -1260,12 +1264,12 @@ let doors_cursor_color () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~cursor_color:doors_red ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~cursor_color:doors_red ())))
 
 let doors_cursor_blinking () =
   Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_blinking"
@@ -1275,12 +1279,12 @@ let doors_cursor_blinking () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~cursor_blinking:false ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~cursor_blinking:false ())))
 
 let doors_selectable () =
   Test_harness.reaches ~act:drag ~observe:proposed "selectable"
@@ -1290,12 +1294,12 @@ let doors_selectable () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~selectable:false ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~selectable:false ())))
 
 let doors_show_cursor () =
   Test_harness.reaches ~act:Test_harness.focus ~observe:caret "show_cursor"
@@ -1305,12 +1309,12 @@ let doors_show_cursor () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~show_cursor:false ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ~show_cursor:false ())))
 
 let doors_key_bindings () =
   Test_harness.reaches ~act:press_x ~observe:proposed "key_bindings"
@@ -1321,13 +1325,14 @@ let doors_key_bindings () =
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc ())))
     ~create:(fun parent ->
       Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~state:abc
-           ~key_bindings:[ (Shortcut.char 'x', Text_input.Move_left) ]
-           ~on_change:propose ()))
+        (Text_input.create ~parent ~style:doors_style ~on_change:propose
+           (Text_input.Props.make ~state:abc
+              ~key_bindings:[ (Shortcut.char 'x', Text_input.Move_left) ]
+              ())))
 
 (* ── Paint ── *)
 

@@ -12,7 +12,7 @@ type line_sign = {
 (* ───── Props ───── *)
 
 (* [Props.make] is the one place the gutter's labels get their defaults:
-   [create] and [Mosaic.line_number] pass their labels on unset. *)
+   [Mosaic.line_number] passes its labels on unset. *)
 module Props = struct
   type t = {
     fg : Ansi.Color.t option;
@@ -42,14 +42,6 @@ module Props = struct
       line_numbers;
       hidden_line_numbers;
     }
-
-  let make_k k ?fg ?bg ?min_width ?padding_right ?show_line_numbers
-      ?line_number_offset ?line_colors ?line_signs ?line_numbers
-      ?hidden_line_numbers () =
-    k
-      (make ?fg ?bg ?min_width ?padding_right ?show_line_numbers
-         ?line_number_offset ?line_colors ?line_signs ?line_numbers
-         ?hidden_line_numbers ())
 
   let default = make ()
 
@@ -363,7 +355,7 @@ let gutter_measure t ~known_dimensions ~available_space:_ ~style:_ =
 
 (* ───── Construction ───── *)
 
-let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
@@ -410,10 +402,6 @@ let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
   if not props.show_line_numbers then Renderable.set_visible gutter false;
   t
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
-  Props.make_k (fun props ->
-      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
-
 (* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
@@ -429,7 +417,3 @@ let apply_props t (props : Props.t) =
     Renderable.mark_dirty t.gutter;
     Renderable.request_render t.node
   end
-
-module Private = struct
-  let of_props = of_props
-end
