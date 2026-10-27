@@ -1193,7 +1193,14 @@ let test_region_tall () =
   equal ~msg:"the last rows - 1 rows" region_lines
     [ "s1"; "s2"; ""; "r7"; "r8"; "r9" ]
     (lines t);
-  equal ~msg:"the origin on the screen" cursor (0, 0) (Vte.cursor_pos t)
+  equal ~msg:"the origin on the screen" cursor (0, 0) (Vte.cursor_pos t);
+  let rows = List.init 10 (Printf.sprintf "r%d") in
+  feed t (Region.close r ~cols:10 ~rows:4 (frame rows));
+  equal ~msg:"the last frame whole, its first rows in the scrollback"
+    region_lines
+    ([ "s1"; "s2" ] @ rows)
+    (lines t);
+  equal ~msg:"the cursor below it" cursor (3, 0) (Vte.cursor_pos t)
 
 let test_region_width () =
   let t = region_term ~cols:6 ~rows:4 in

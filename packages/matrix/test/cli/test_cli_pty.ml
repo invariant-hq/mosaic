@@ -53,6 +53,15 @@ let test_progress () =
     (lines term);
   usable term
 
+(* A frame taller than the screen shows its last rows while it lives, and
+   goes to the scrollback whole when the scope ends. *)
+let test_tall () =
+  spawn ~rows:10 "tall" @@ fun term c ->
+  exited 0 (T.Child.exit c ~within:10.);
+  equal ~msg:"every row of the last frame" strings
+    (List.init 12 (Printf.sprintf "row %d"))
+    (lines term)
+
 let test_partial () =
   spawn "partial" @@ fun term c ->
   exited 0 (T.Child.exit c ~within:10.);
@@ -307,6 +316,7 @@ let () =
       group "live"
         [
           test "lines above, the last frame stays" test_progress;
+          test "a frame taller than the screen" test_tall;
           test "a line waits for its end" test_partial;
           test "SIGINT" test_sigint;
           test "exit" test_exit;

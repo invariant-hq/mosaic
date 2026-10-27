@@ -43,7 +43,8 @@
     the last rows of a taller frame, so the way back to the origin never meets
     the top of the screen. A frame drawn for a height that the terminal has
     already left behind can still push region rows into the scrollback, where no
-    write reaches them.
+    write reaches them. The last write goes back up to no row, so it draws every
+    row of its frame, and the rows the screen cannot hold go to the scrollback.
 
     The cursor shows where it rests, unless the program hides it, and the
     program may have it rest on one of the region's cells instead, as a program
@@ -189,11 +190,10 @@ val suspend : t -> cols:int -> string
 val close :
   t -> cols:int -> rows:int -> ?above:string -> Matrix_grid.t option -> string
 (** [close r ~cols ~rows ~above frame] is the bytes of [r]'s last write. It is
-    {!draw}'s write with [frame]'s rows drawn from the origin itself, at most
-    [rows] of them, and the cursor left at the start of the row below them, so
-    the frame stays as the program's last output. With [None] the region is
-    erased and the cursor left at the start of the origin. [r] is then as
-    {!create} made it.
+    {!draw}'s write with all of [frame]'s rows drawn from the origin itself and
+    the cursor left at the start of the row below them, so the frame stays whole
+    as the program's last output. With [None] the region is erased and the
+    cursor left at the start of the origin. [r] is then as {!create} made it.
 
     Raises [Invalid_argument] if [cols] or [rows] is not positive. *)
 

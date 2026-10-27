@@ -48,6 +48,10 @@ let () =
       C.live err (fun live ->
           C.show live (rows_frame [ "WAITING"; "TWO" ]);
           forever ())
+  | "tall" ->
+      C.live err (fun live ->
+          C.show live (rows_frame (List.init 12 (Printf.sprintf "row %d")));
+          Unix.sleepf 0.15)
   | "exit" ->
       C.live err (fun live ->
           C.show live (text_frame "EXITING");

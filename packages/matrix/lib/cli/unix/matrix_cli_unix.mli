@@ -29,12 +29,13 @@
     background ({!Tty.background}) draws no frame, so its rows never land among
     what the shell writes, and its lines go out as they are. A [live] scope that
     begins while another lives on the same terminal joins its region, and its
-    rows show below the rows of the scopes that began before it. When a scope
-    ends, its last rows go above the region, which stays for the others, and
-    when the last one ends, its last rows stay in the scrollback with the cursor
-    below them. On an output where no region may be drawn, such as a pipe or a
-    CI job's log, the lines go out as they are printed and the last frame is
-    printed once, at the end.
+    rows show below the rows of the scopes that began before it. The region
+    shows the last rows of a frame taller than the terminal. When a scope ends,
+    its last rows go above the region, which stays for the others, and when the
+    last one ends, its last rows stay in the scrollback with the cursor below
+    them. A scope's last rows stay whole, however tall. On an output where no
+    region may be drawn, such as a pipe or a CI job's log, the lines go out as
+    they are printed and the last frame is printed once, at the end.
 
     The program's own writes to a terminal that bypass its outputs, such as
     [print_string] or a child process's output, land where the cursor rests, at

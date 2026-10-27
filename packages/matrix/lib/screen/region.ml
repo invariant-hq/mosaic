@@ -245,8 +245,10 @@ let suspend r ~cols =
 let close r ~cols ~rows ?(above = "") frame =
   check ~cols ~rows;
   let width = width r ~cols in
-  (* The origin row itself is the frame's first, so it may show [rows]. *)
-  let shown = rows_of r ~width ~height:rows frame in
+  (* The frame is drawn from the origin row down and the cursor never goes
+     back up, so every row shows: those the screen cannot hold scroll into
+     the scrollback above the last ones. *)
+  let shown = rows_of r ~width ~height:max_int frame in
   let w = Ansi.Writer.create 256 in
   afresh r w ~cols ~above;
   (match shown with
