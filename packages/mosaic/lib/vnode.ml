@@ -207,34 +207,72 @@ let viewport_switch ~at_least_width ~wide ~narrow =
 
 (* ───── Elements ───── *)
 
+(* The attributes of an element that declares none, for each default of
+   [focusable], and the handlers of one that declares none. Every such
+   element shares them, so the reconciler's physical comparison finds them
+   unchanged. *)
+let unfocusable_attrs =
+  {
+    style = Toffee.Style.default;
+    visible = true;
+    z_index = 0;
+    opacity = 1.0;
+    focusable = false;
+    focused = false;
+    buffered = false;
+    live = false;
+  }
+
+let focusable_attrs = { unfocusable_attrs with focusable = true }
+
+let no_handlers =
+  {
+    on_mouse = None;
+    on_key = None;
+    on_paste = None;
+    on_click = None;
+    on_focus_request = None;
+    on_size = None;
+  }
+
 (* Every element's attributes and handlers. [focusable] is the kind's
    default, and an element that asks for focus is focusable whatever its
    kind. *)
-let element ?key ~style ?(visible = true) ?(z_index = 0) ?(opacity = 1.0)
-    ~focusable ?(focused = false) ?(buffered = false) ?(live = false) ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ~callbacks kind
-    children =
+let element ?key ~style ?visible ?z_index ?opacity ~focusable ?focused ?buffered
+    ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ~callbacks kind children =
   let attrs =
-    {
-      style;
-      visible;
-      z_index;
-      opacity;
-      focusable = focusable || Option.is_some on_focus_request;
-      focused;
-      buffered;
-      live;
-    }
+    match
+      (visible, z_index, opacity, focused, buffered, live, on_focus_request)
+    with
+    | None, None, None, None, None, None, None
+      when style == Toffee.Style.default ->
+        if focusable then focusable_attrs else unfocusable_attrs
+    | _ ->
+        {
+          style;
+          visible = Option.value visible ~default:true;
+          z_index = Option.value z_index ~default:0;
+          opacity = Option.value opacity ~default:1.0;
+          focusable = focusable || Option.is_some on_focus_request;
+          focused = Option.value focused ~default:false;
+          buffered = Option.value buffered ~default:false;
+          live = Option.value live ~default:false;
+        }
   in
   let handlers =
-    {
-      on_mouse;
-      on_key;
-      on_paste;
-      on_click;
-      on_size;
-      on_focus_request = Option.map (fun message () -> message) on_focus_request;
-    }
+    match (on_mouse, on_key, on_paste, on_click, on_focus_request, on_size) with
+    | None, None, None, None, None, None -> no_handlers
+    | _ ->
+        {
+          on_mouse;
+          on_key;
+          on_paste;
+          on_click;
+          on_size;
+          on_focus_request =
+            Option.map (fun message () -> message) on_focus_request;
+        }
   in
   Element { kind; key; attrs; handlers; callbacks; children }
 

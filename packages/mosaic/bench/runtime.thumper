@@ -5,25 +5,25 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-log-20000/append-a-line-and-drop-it	alloc_words	exact	6760093
-log-50000/append-a-line-and-drop-it	alloc_words	exact	16723853
-loop/burst-1000-keys	alloc_words	exact	1908828
+log-20000/append-a-line-and-drop-it	alloc_words	exact	4559900
+log-50000/append-a-line-and-drop-it	alloc_words	exact	11223660
+loop/burst-1000-keys	alloc_words	exact	1853828
 loop/idle-turns-10000	alloc_words	exact	11
 loop/posts-1000	alloc_words	exact	133030
-primary-transcript-5000/type-and-erase	alloc_words	exact	43901
-primary-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	99764
-select-10000/down-up	alloc_words	exact	5842
-select-100000/down-up	alloc_words	exact	5842
-startup/transcript-5000-first-frame	alloc_words	exact	108260633
-table-100000/down-up	alloc_words	exact	7990
-transcript-20000/resize-roundtrip-249x69	alloc_words	exact	100670542
-transcript-20000/resize-roundtrip-250x69	alloc_words	exact	107122
-transcript-20000/type-and-erase	alloc_words	exact	63087
-transcript-20000/wheel-roundtrip-2x8	alloc_words	exact	148220
-transcript-5000/resize-roundtrip-249x69	alloc_words	exact	25220272
-transcript-5000/resize-roundtrip-250x69	alloc_words	exact	77504
-transcript-5000/type-and-erase	alloc_words	exact	63087
-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	148220
+primary-transcript-5000/type-and-erase	alloc_words	exact	43859
+primary-transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	99428
+select-10000/down-up	alloc_words	exact	5828
+select-100000/down-up	alloc_words	exact	5828
+startup/transcript-5000-first-frame	alloc_words	exact	107400612
+table-100000/down-up	alloc_words	exact	7976
+transcript-20000/resize-roundtrip-249x69	alloc_words	exact	100670500
+transcript-20000/resize-roundtrip-250x69	alloc_words	exact	107080
+transcript-20000/type-and-erase	alloc_words	exact	63045
+transcript-20000/wheel-roundtrip-2x8	alloc_words	exact	147884
+transcript-5000/resize-roundtrip-249x69	alloc_words	exact	25220230
+transcript-5000/resize-roundtrip-250x69	alloc_words	exact	77462
+transcript-5000/type-and-erase	alloc_words	exact	63045
+transcript-5000/wheel-roundtrip-2x8	alloc_words	exact	147884
 
 # machine: fudge
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux

@@ -1469,11 +1469,11 @@ let override v set layout =
   match v with None -> layout | Some v -> set v layout
 
 (* An element's layout is [layout], or the default, with the fields its
-   layout labels give. Given [layout] and no layout label, the element uses
-   that record itself, so a layout built once costs nothing per element and
-   the reconciler finds it unchanged by comparing it physically. A label
-   applies its field's setter to [layout], which keeps the fields no label
-   sets, such as the box generation mode. *)
+   layout labels give. Given no layout label, the element uses [layout], or
+   [Toffee.Style.default], itself, so a layout built once costs nothing per
+   element and the reconciler finds it unchanged by comparing it
+   physically. A label applies its field's setter to [layout], which keeps
+   the fields no label sets, such as the box generation mode. *)
 let layout_style ?layout ?display ?box_sizing ?position ?overflow
     ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio
     ?margin ?padding ?border_width ?gap ?align_items ?align_self ?align_content
@@ -1482,7 +1482,87 @@ let layout_style ?layout ?display ?box_sizing ?position ?overflow
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
     ?grid_row ?grid_column () =
+  let no_label =
+    match
+      ( display,
+        box_sizing,
+        position,
+        overflow,
+        scrollbar_width,
+        text_align,
+        inset,
+        size,
+        min_size,
+        max_size,
+        aspect_ratio,
+        margin,
+        padding,
+        border_width,
+        gap,
+        align_items,
+        align_self,
+        align_content,
+        justify_items,
+        justify_self,
+        justify_content,
+        flex_direction,
+        flex_wrap,
+        flex_grow,
+        flex_shrink,
+        flex_basis,
+        grid_template_rows,
+        grid_template_columns,
+        grid_auto_rows,
+        grid_auto_columns,
+        grid_auto_flow,
+        grid_template_areas,
+        grid_template_column_names,
+        grid_template_row_names,
+        grid_row,
+        grid_column )
+    with
+    | ( None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None ) ->
+        true
+    | _ -> false
+  in
   match layout with
+  | Some layout when no_label -> layout
+  | None when no_label -> Toffee.Style.default
   | None ->
       Toffee.Style.make ?display ?box_sizing ?position ?overflow
         ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -1493,130 +1573,52 @@ let layout_style ?layout ?display ?box_sizing ?position ?overflow
         ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
         ?grid_template_column_names ?grid_template_row_names ?grid_row
         ?grid_column ()
-  | Some layout -> (
-      match
-        ( display,
-          box_sizing,
-          position,
-          overflow,
-          scrollbar_width,
-          text_align,
-          inset,
-          size,
-          min_size,
-          max_size,
-          aspect_ratio,
-          margin,
-          padding,
-          border_width,
-          gap,
-          align_items,
-          align_self,
-          align_content,
-          justify_items,
-          justify_self,
-          justify_content,
-          flex_direction,
-          flex_wrap,
-          flex_grow,
-          flex_shrink,
-          flex_basis,
-          grid_template_rows,
-          grid_template_columns,
-          grid_auto_rows,
-          grid_auto_columns,
-          grid_auto_flow,
-          grid_template_areas,
-          grid_template_column_names,
-          grid_template_row_names,
-          grid_row,
-          grid_column )
-      with
-      | ( None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None,
-          None ) ->
-          layout
-      | _ ->
-          layout
-          |> override display Toffee.Style.set_display
-          |> override box_sizing Toffee.Style.set_box_sizing
-          |> override position Toffee.Style.set_position
-          |> override overflow Toffee.Style.set_overflow
-          |> override scrollbar_width Toffee.Style.set_scrollbar_width
-          |> override text_align Toffee.Style.set_text_align
-          |> override inset Toffee.Style.set_inset
-          |> override size Toffee.Style.set_size
-          |> override min_size Toffee.Style.set_min_size
-          |> override max_size Toffee.Style.set_max_size
-          |> override aspect_ratio (fun v l ->
-              Toffee.Style.set_aspect_ratio (Some v) l)
-          |> override margin Toffee.Style.set_margin
-          |> override padding Toffee.Style.set_padding
-          |> override border_width Toffee.Style.set_border
-          |> override gap Toffee.Style.set_gap
-          |> override align_items (fun v l ->
-              Toffee.Style.set_align_items (Some v) l)
-          |> override align_self (fun v l ->
-              Toffee.Style.set_align_self (Some v) l)
-          |> override align_content (fun v l ->
-              Toffee.Style.set_align_content (Some v) l)
-          |> override justify_items (fun v l ->
-              Toffee.Style.set_justify_items (Some v) l)
-          |> override justify_self (fun v l ->
-              Toffee.Style.set_justify_self (Some v) l)
-          |> override justify_content (fun v l ->
-              Toffee.Style.set_justify_content (Some v) l)
-          |> override flex_direction Toffee.Style.set_flex_direction
-          |> override flex_wrap Toffee.Style.set_flex_wrap
-          |> override flex_grow Toffee.Style.set_flex_grow
-          |> override flex_shrink Toffee.Style.set_flex_shrink
-          |> override flex_basis Toffee.Style.set_flex_basis
-          |> override grid_template_rows Toffee.Style.set_grid_template_rows
-          |> override grid_template_columns
-               Toffee.Style.set_grid_template_columns
-          |> override grid_auto_rows Toffee.Style.set_grid_auto_rows
-          |> override grid_auto_columns Toffee.Style.set_grid_auto_columns
-          |> override grid_auto_flow Toffee.Style.set_grid_auto_flow
-          |> override grid_template_areas Toffee.Style.set_grid_template_areas
-          |> override grid_template_column_names
-               Toffee.Style.set_grid_template_column_names
-          |> override grid_template_row_names
-               Toffee.Style.set_grid_template_row_names
-          |> override grid_row Toffee.Style.set_grid_row
-          |> override grid_column Toffee.Style.set_grid_column)
+  | Some layout ->
+      layout
+      |> override display Toffee.Style.set_display
+      |> override box_sizing Toffee.Style.set_box_sizing
+      |> override position Toffee.Style.set_position
+      |> override overflow Toffee.Style.set_overflow
+      |> override scrollbar_width Toffee.Style.set_scrollbar_width
+      |> override text_align Toffee.Style.set_text_align
+      |> override inset Toffee.Style.set_inset
+      |> override size Toffee.Style.set_size
+      |> override min_size Toffee.Style.set_min_size
+      |> override max_size Toffee.Style.set_max_size
+      |> override aspect_ratio (fun v l ->
+          Toffee.Style.set_aspect_ratio (Some v) l)
+      |> override margin Toffee.Style.set_margin
+      |> override padding Toffee.Style.set_padding
+      |> override border_width Toffee.Style.set_border
+      |> override gap Toffee.Style.set_gap
+      |> override align_items (fun v l ->
+          Toffee.Style.set_align_items (Some v) l)
+      |> override align_self (fun v l -> Toffee.Style.set_align_self (Some v) l)
+      |> override align_content (fun v l ->
+          Toffee.Style.set_align_content (Some v) l)
+      |> override justify_items (fun v l ->
+          Toffee.Style.set_justify_items (Some v) l)
+      |> override justify_self (fun v l ->
+          Toffee.Style.set_justify_self (Some v) l)
+      |> override justify_content (fun v l ->
+          Toffee.Style.set_justify_content (Some v) l)
+      |> override flex_direction Toffee.Style.set_flex_direction
+      |> override flex_wrap Toffee.Style.set_flex_wrap
+      |> override flex_grow Toffee.Style.set_flex_grow
+      |> override flex_shrink Toffee.Style.set_flex_shrink
+      |> override flex_basis Toffee.Style.set_flex_basis
+      |> override grid_template_rows Toffee.Style.set_grid_template_rows
+      |> override grid_template_columns Toffee.Style.set_grid_template_columns
+      |> override grid_auto_rows Toffee.Style.set_grid_auto_rows
+      |> override grid_auto_columns Toffee.Style.set_grid_auto_columns
+      |> override grid_auto_flow Toffee.Style.set_grid_auto_flow
+      |> override grid_template_areas Toffee.Style.set_grid_template_areas
+      |> override grid_template_column_names
+           Toffee.Style.set_grid_template_column_names
+      |> override grid_template_row_names
+           Toffee.Style.set_grid_template_row_names
+      |> override grid_row Toffee.Style.set_grid_row
+      |> override grid_column Toffee.Style.set_grid_column
 
 let box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

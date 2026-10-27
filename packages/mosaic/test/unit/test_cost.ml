@@ -219,6 +219,27 @@ let cursor_keys () =
       same (what ^ ", comparisons") ~small:compared ~large:compared')
     [ (100, 98); (100_000, 50_000); (100_000, 99_998) ]
 
+(* ───── An element that declares nothing ─────
+
+   An element that declares no layout label, attribute or handler shares
+   one layout, one record of attributes and one record of handlers with
+   every such element, so declaring it allocates only its own props and the
+   element around them: the element's record (7 words), its constructor (2),
+   its kind's (2) and the option that gives the props its content (2). A
+   layout record alone is 39 words. *)
+
+let default_text () =
+  let alone f = words f - words ignore in
+  let text = alone (fun () -> ignore (Mosaic.text "x" : unit Mosaic.t))
+  and props =
+    alone (fun () -> ignore (Text.Props.make ~content:"x" () : Text.Props.t))
+  in
+  if text - props > 13 then
+    failf
+      "a text that declares nothing allocates %d words besides its props, over \
+       13"
+      (text - props)
+
 (* ───── A shared layout ─────
 
    An element given [~layout] and no layout label uses that record itself,
@@ -565,6 +586,8 @@ let () =
         ];
       group "Frames follow the visible area"
         [ test "a scrolled transcript" hidden_transcript_rows ];
+      group "An element that declares nothing shares its records"
+        [ test "a text" default_text ];
       group "A shared layout costs nothing per element"
         [ test "a text given ~layout" shared_layout ];
       group "Keys follow the items moved over"

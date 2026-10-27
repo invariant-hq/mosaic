@@ -119,6 +119,22 @@ let mount_retype_and_empty rows =
       Mosaic.Reconciler.render reconciler ~viewport_width boxes;
       Mosaic.Reconciler.render reconciler ~viewport_width empty)
 
+(* Declaring one element, as a view does for each element of every frame:
+   the words an element costs before the reconciler sees it. A label is
+   [Thumper.black_box], so that the compiler does not build the element
+   once, statically. *)
+let label = Thumper.black_box "a representative transcript line"
+let memo_view s = Mosaic.text s
+
+let elements =
+  [
+    Thumper.bench "text" (fun () -> Mosaic.text label);
+    Thumper.bench "box" (fun () -> Mosaic.box []);
+    Thumper.bench "button" (fun () -> Mosaic.button ~on_activate:() label);
+    Thumper.bench "memo" (fun () -> Mosaic.memo ~key:label memo_view);
+    Thumper.bench "map" (fun () -> Mosaic.map ignore (Mosaic.text label));
+  ]
+
 (* THUMPER_MACHINE=exact selects the section CI checks: allocation alone,
    whose counts are the same on any x86_64 Linux under the locked compiler in
    release, while time compares only on one machine. *)
@@ -160,4 +176,5 @@ let () =
       Thumper.group "mount-and-unmount" [ mount_and_unmount 20_000 ];
       Thumper.group "mount-and-empty" [ mount_and_empty 20_000 ];
       Thumper.group "mount-retype-and-empty" [ mount_retype_and_empty 20_000 ];
+      Thumper.group "element" elements;
     ]
