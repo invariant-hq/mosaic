@@ -7,6 +7,8 @@ let default_empty_color = Ansi.Color.of_rgb 37 37 39
 
 type orientation = [ `Horizontal | `Vertical ]
 
+(* [Props.make] is the one place the progress bar's labels get their
+   defaults: [create] and [Vnode.progress_bar] pass their labels on unset. *)
 module Props = struct
   type t = {
     value : float;
@@ -109,15 +111,13 @@ let render t _self grid ~dt:_ =
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?(value = 0.)
-    ?(min = 0.) ?(max = 1.) ?(orientation = `Horizontal)
-    ?(filled_color = default_filled_color) ?(empty_color = default_empty_color)
-    () =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?value ?min ?max
+    ?orientation ?filled_color ?empty_color () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ~value ~min ~max ~orientation ~filled_color ~empty_color ()
+    Props.make ?value ?min ?max ?orientation ?filled_color ?empty_color ()
   in
   let t = { node; props } in
   Renderable.set_render node (render t);

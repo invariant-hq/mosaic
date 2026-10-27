@@ -220,10 +220,30 @@ module Props : sig
     ?text_style:Ansi.Style.t ->
     unit ->
     t
-  (** [make ()] is a diff props value. [patch] defaults to an empty patch,
-      [layout] to [Unified], [theme] to {!default_theme}, [show_line_numbers] to
-      [true], [line_highlights] and [line_spans] to [[]], [wrap] to [`None],
-      [selectable] to [true], and [text_style] to {!Ansi.Style.default}. *)
+  (** [make ()] is a diff props value, with:
+      - [patch] is the patch shown. Defaults to an empty patch.
+      - [layout] is the view layout. Defaults to [Unified].
+      - [theme] is the colour theme. Defaults to {!default_theme}.
+      - [highlight] is optional highlighter-backed split-side syntax. Defaults
+        to none.
+      - [line_highlights] are source-line background highlights, using inclusive
+        1-based old/new source line numbers. Earlier entries win when ranges
+        overlap. Defaults to [[]].
+      - [line_spans] are source-line sub-range highlights: a byte range within
+        one 1-based old/new source line, drawn as a background over its cells.
+        Defaults to [[]]. See {!line_span}.
+      - [line_signs] are source-line gutter signs, using inclusive 1-based
+        old/new source line numbers. Earlier entries win when ranges overlap.
+        Defaults to [[]].
+      - [show_line_numbers] controls whether gutters are shown. Defaults to
+        [true].
+      - [wrap] is the wrap mode for embedded {!Code} children. Defaults to
+        [`None].
+      - [selectable] controls text selection on embedded {!Code} children.
+        Defaults to [true].
+      - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
+
+      {!val-create} and {!Vnode.diff} take these labels with these defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -252,7 +272,8 @@ val create :
   ?text_style:Ansi.Style.t ->
   Patch.t ->
   t
-(** [create ~parent patch] creates a diff renderable attached to [parent]. *)
+(** [create ~parent patch] creates a diff renderable attached to [parent]. The
+    labels after [opacity] are {!Props.make}'s and take its defaults. *)
 
 val node : t -> Renderable.t
 (** [node t] is [t]'s underlying renderable. *)

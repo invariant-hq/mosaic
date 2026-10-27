@@ -85,7 +85,8 @@ it.
 - `select`, `tab_select` and `table` convert their list for display only when the view declares another list than the one it declared last, physically, where every declaration converted and compared every option or row. A declaration finds the selection, and a callback its value, in time linear in its position. A key in a select of 100,000 options took 6 ms and takes 0.2 ms, and in a table of 100,000 rows 8 ms and 0.2 ms
 - Destroying a node, unmounting a view, and dropping rows or embedded nodes from a view take time linear in the nodes they remove. Each node was detached from its parent alone, which took time quadratic in their number, 0.75 s for 20,000 rows
 - A text selection in a scroll box read each text's position from the last frame that painted it, so a text below a row out of view, or one never painted, could be selected where it no longer is, or missed. A selection reads the positions of the texts under its container from the layout whenever it changes
-- Each element takes every label of its widget's `Props.make`: `Mosaic_mlx.box` takes `?inert`, and `code` (and its MLX form) `?truncate`
+- Each element takes every label of its widget's `Props.make`: `Mosaic_mlx.box` takes `?inert`, `code` `?truncate` and `line_number` `?line_numbers` (and their MLX forms)
+- A `scroll_box` element laid its content out for vertical scrolling whatever its axes: with `~scroll_x:true` the content was no wider than the box, so it never scrolled horizontally, and with `~scroll_y:false` it could be taller than the box. It is laid out as `Scroll_box.create` lays it out, and a declaration that changes an axis applies it
 
 #### Removed
 

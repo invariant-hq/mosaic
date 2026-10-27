@@ -58,10 +58,8 @@ val create :
   ?color:Ansi.Color.t ->
   unit ->
   t
-(** [create ~parent ()] is a spinner attached to [parent], with:
-    - [frame_set] is the animation sequence. Defaults to {!default_frame_set}.
-    - [color] is the foreground color for the spinner glyphs. Defaults to
-      {!Ansi.Color.white}.
+(** [create ~parent ()] is a spinner attached to [parent]. [frame_set] and
+    [color] are {!Props.make}'s and take its defaults.
 
     The spinner manages its own liveness: the node is made live while the frame
     set animates (more than one frame and a positive period), so the animation
@@ -80,7 +78,11 @@ module Props : sig
   val make : ?frame_set:frame_set -> ?color:Ansi.Color.t -> unit -> t
   (** [make ()] is a property set, with:
       - [frame_set] is the animation sequence. Defaults to {!default_frame_set}.
-      - [color] is the foreground color. Defaults to {!Ansi.Color.white}. *)
+      - [color] is the foreground color for the spinner glyphs. Defaults to
+        {!Ansi.Color.white}.
+
+      {!val-create} and {!Vnode.spinner} take these labels with these defaults.
+  *)
 
   val default : t
   (** [default] is [make ()]. *)

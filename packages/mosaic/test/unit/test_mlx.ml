@@ -187,6 +187,27 @@ let code_takes_truncate () =
       Code.node
         (Code.create ~parent ~style ~content:"hello world" ~truncate:true ()))
 
+(* The MLX line number takes the labels {!Mosaic.line_number} takes,
+   [line_numbers] among them. *)
+let line_number_takes_line_numbers () =
+  let size = Mosaic.size ~width:8 ~height:2 in
+  let style = Toffee.Style.make ~size () in
+  let gutter g =
+    ignore
+      (Text.create ~parent:(Line_number.node g) ~content:"a\nb" () : Text.t);
+    Line_number.node g
+  in
+  Test_harness.reaches "line_numbers"
+    ~base:(Mosaic_mlx.line_number ~size ~children:[ Mosaic.text "a\nb" ] ())
+    ~element:
+      (Mosaic_mlx.line_number ~size
+         ~line_numbers:[ (0, 42) ]
+         ~children:[ Mosaic.text "a\nb" ]
+         ())
+    ~create_base:(fun parent -> gutter (Line_number.create ~parent ~style ()))
+    ~create:(fun parent ->
+      gutter (Line_number.create ~parent ~style ~line_numbers:[ (0, 42) ] ()))
+
 let () =
   run "mosaic.mlx"
     [
@@ -199,4 +220,5 @@ let () =
       test "line-number children contract" line_number_requires_one_child;
       test "box takes inert" box_takes_inert;
       test "code takes truncate" code_takes_truncate;
+      test "line_number takes line_numbers" line_number_takes_line_numbers;
     ]

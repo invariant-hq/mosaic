@@ -21,6 +21,8 @@ let default_frame_set = dots
 
 (* ───── Props ───── *)
 
+(* [Props.make] is the one place the spinner's labels get their defaults:
+   [create] and [Vnode.spinner] pass their labels on unset. *)
 module Props = struct
   type t = { frame_set : frame_set; color : Ansi.Color.t }
 
@@ -123,12 +125,12 @@ let on_frame t _node ~dt =
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
-    ?(frame_set = default_frame_set) ?(color = Ansi.Color.white) () =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?frame_set
+    ?color () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
-  let props = Props.make ~frame_set ~color () in
+  let props = Props.make ?frame_set ?color () in
   let t = { node; props; frame_index = 0; elapsed = 0.; max_width = None } in
   Renderable.set_render node (render t);
   Renderable.set_measure node (Some (measure t));

@@ -686,6 +686,7 @@ val line_number :
   ?line_number_offset:int ->
   ?line_colors:(int * Line_number.line_color) list ->
   ?line_signs:(int * Line_number.line_sign) list ->
+  ?line_numbers:(int * int) list ->
   ?hidden_line_numbers:int list ->
   ?children:'msg t list ->
   unit ->

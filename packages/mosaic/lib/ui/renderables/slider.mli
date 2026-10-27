@@ -35,17 +35,10 @@ val create :
   ?on_change:(float -> unit) ->
   unit ->
   t
-(** [create ~parent ()] is a slider attached to [parent] with:
-    - [orientation] defaults to [`Horizontal].
-    - [min] defaults to [0.0].
-    - [max] defaults to [100.0].
-    - [value] defaults to [min]. Clamped to \[[min];[max]\].
-    - [viewport_size] controls thumb size relative to the range. Defaults to
-      [max (max -. min) *. 0.1], minimum [1.0].
-    - [track_color] defaults to dark gray (RGB 37 37 39).
-    - [thumb_color] defaults to medium gray (RGB 154 158 163).
-    - [on_change] receives clamped proposals from mouse interaction. Input
-      proposes a value; it does not accept it. *)
+(** [create ~parent ()] is a slider attached to [parent]. The labels from
+    [orientation] to [thumb_color] are {!Props.make}'s and take its defaults.
+    [on_change] receives clamped proposals from mouse interaction. Input
+    proposes a value; it does not accept it. *)
 
 val node : t -> Renderable.t
 (** [node t] is [t]'s underlying renderable. *)
@@ -67,8 +60,19 @@ module Props : sig
     ?thumb_color:Ansi.Color.t ->
     unit ->
     t
-  (** [make ()] declares an accepted value (default [min]), clamped to the
-      declared range. There is no uncontrolled value. *)
+  (** [make ()] declares an accepted value, clamped to the declared range, with:
+      - [orientation] defaults to [`Horizontal].
+      - [min] defaults to [0.0].
+      - [max] defaults to [100.0].
+      - [value] defaults to [min]. Clamped to \[[min];[max]\]. There is no
+        uncontrolled value.
+      - [viewport_size] controls thumb size relative to the range. Defaults to
+        [max (max -. min) *. 0.1], minimum [1.0].
+      - [track_color] defaults to dark gray (RGB 37 37 39).
+      - [thumb_color] defaults to medium gray (RGB 154 158 163).
+
+      {!val-create} and {!Vnode.slider} take these labels with these defaults.
+  *)
 
   val default : t
   (** [default] is [make ()]. *)

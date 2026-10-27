@@ -7,6 +7,8 @@ let default_thumb_color = Ansi.Color.of_rgb 154 158 163
 
 type orientation = [ `Horizontal | `Vertical ]
 
+(* [Props.make] is the one place the slider's labels get their defaults:
+   [create] and [Vnode.slider] pass their labels on unset. *)
 module Props = struct
   type t = {
     orientation : orientation;
@@ -295,18 +297,18 @@ let setup_mouse t =
 
 (* Construction *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
-    ?(orientation = `Horizontal) ?value ?(min = 0.) ?(max = 100.) ?viewport_size
-    ?(track_color = default_track_color) ?(thumb_color = default_thumb_color)
-    ?on_change () =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?orientation
+    ?value ?min ?max ?viewport_size ?track_color ?thumb_color ?on_change () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
   let props =
-    Props.make ~orientation ?value ~min ~max ?viewport_size ~track_color
-      ~thumb_color ()
+    Props.make ?orientation ?value ?min ?max ?viewport_size ?track_color
+      ?thumb_color ()
   in
-  let initial_value = clamp_value ~min ~max props.Props.value in
+  let initial_value =
+    clamp_value ~min:props.Props.min ~max:props.max props.value
+  in
   let t =
     {
       node;

@@ -551,6 +551,99 @@ let rejected_drag_proposals () =
   equal ~msg:"application accepts a transformed value" float_exact 25.
     (Slider.value slider)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.slider}) or to {!Slider.create},
+   reaches the live slider ({!Test_harness.reaches}). The element's [state]
+   is the slider's [value]. *)
+
+let doors_size = Mosaic.size ~width:12 ~height:3
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+
+let doors_value () =
+  Test_harness.reaches "value (the element's state)"
+    ~base:(Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ())
+    ~element:(Mosaic.slider ~size:doors_size ~state:70. ~on_change:ignore ())
+    ~create_base:(fun parent ->
+      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+    ~create:(fun parent ->
+      Slider.node (Slider.create ~parent ~style:doors_style ~value:70. ()))
+
+let doors_orientation () =
+  Test_harness.reaches "orientation"
+    ~base:(Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ())
+    ~element:
+      (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore
+         ~orientation:`Vertical ())
+    ~create_base:(fun parent ->
+      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+    ~create:(fun parent ->
+      Slider.node
+        (Slider.create ~parent ~style:doors_style ~value:20.
+           ~orientation:`Vertical ()))
+
+let doors_min () =
+  Test_harness.reaches "min"
+    ~base:(Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ())
+    ~element:
+      (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ~min:10. ())
+    ~create_base:(fun parent ->
+      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+    ~create:(fun parent ->
+      Slider.node
+        (Slider.create ~parent ~style:doors_style ~value:20. ~min:10. ()))
+
+let doors_max () =
+  Test_harness.reaches "max"
+    ~base:(Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ())
+    ~element:
+      (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ~max:40. ())
+    ~create_base:(fun parent ->
+      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+    ~create:(fun parent ->
+      Slider.node
+        (Slider.create ~parent ~style:doors_style ~value:20. ~max:40. ()))
+
+let doors_viewport_size () =
+  Test_harness.reaches "viewport_size"
+    ~base:(Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ())
+    ~element:
+      (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore
+         ~viewport_size:50. ())
+    ~create_base:(fun parent ->
+      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+    ~create:(fun parent ->
+      Slider.node
+        (Slider.create ~parent ~style:doors_style ~value:20. ~viewport_size:50.
+           ()))
+
+let doors_track_color () =
+  Test_harness.reaches "track_color"
+    ~base:(Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ())
+    ~element:
+      (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore
+         ~track_color:doors_red ())
+    ~create_base:(fun parent ->
+      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+    ~create:(fun parent ->
+      Slider.node
+        (Slider.create ~parent ~style:doors_style ~value:20.
+           ~track_color:doors_red ()))
+
+let doors_thumb_color () =
+  Test_harness.reaches "thumb_color"
+    ~base:(Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore ())
+    ~element:
+      (Mosaic.slider ~size:doors_size ~state:20. ~on_change:ignore
+         ~thumb_color:doors_red ())
+    ~create_base:(fun parent ->
+      Slider.node (Slider.create ~parent ~style:doors_style ~value:20. ()))
+    ~create:(fun parent ->
+      Slider.node
+        (Slider.create ~parent ~style:doors_style ~value:20.
+           ~thumb_color:doors_red ()))
+
 let () =
   run "mosaic.slider"
     [
@@ -647,5 +740,15 @@ let () =
           test "produces output" pp_produces_output;
           test "contains Slider" pp_contains_slider;
           test "contains value" pp_contains_value;
+        ];
+      group "Both doors"
+        [
+          test "value (the element's state)" doors_value;
+          test "orientation" doors_orientation;
+          test "min" doors_min;
+          test "max" doors_max;
+          test "viewport_size" doors_viewport_size;
+          test "track_color" doors_track_color;
+          test "thumb_color" doors_thumb_color;
         ];
     ]

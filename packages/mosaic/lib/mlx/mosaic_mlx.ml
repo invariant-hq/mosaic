@@ -234,7 +234,7 @@ let line_number ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
     ?on_click ?on_focus_request ?on_size ?focused ?fg ?bg ?min_width
     ?padding_right ?show_line_numbers ?line_number_offset ?line_colors
-    ?line_signs ?hidden_line_numbers ?(children = []) () =
+    ?line_signs ?line_numbers ?hidden_line_numbers ?(children = []) () =
   match children with
   | [ child ] ->
       Mosaic.line_number ?key ?display ?box_sizing ?position ?overflow
@@ -248,7 +248,7 @@ let line_number ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
         ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
         ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?fg ?bg
         ?min_width ?padding_right ?show_line_numbers ?line_number_offset
-        ?line_colors ?line_signs ?hidden_line_numbers child
+        ?line_colors ?line_signs ?line_numbers ?hidden_line_numbers child
   | children ->
       invalid_arg
         (Printf.sprintf

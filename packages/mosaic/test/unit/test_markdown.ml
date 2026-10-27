@@ -341,6 +341,148 @@ let pp_does_not_crash () =
 
 (* ── Runner ── *)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.markdown}) or to {!Markdown.create},
+   reaches the live markdown ({!Test_harness.reaches}). The element's
+   [md_style] is the widget's [style]. *)
+
+let doors_size = Mosaic.size ~width:24 ~height:6
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+let doors_md = "**bold** and `code`"
+let doors_table = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |"
+let doors_fenced = "```ocaml\nlet x\n```"
+
+let doors_md_style =
+  Markdown.Style.make [ (Strong, Ansi.Style.make ~fg:doors_red ()) ]
+
+let doors_hl =
+  Code.Highlighter.sync (fun ~language:_ ~content ->
+      Syntax_highlight.of_triples ~content [ (0, 3, "keyword") ])
+
+let doors_syntax_style =
+  Syntax_style.make ~base:Ansi.Style.default
+    [ ("keyword", Ansi.Style.make ~fg:doors_red ()) ]
+
+let doors_selected renderer _ =
+  Option.value ~default:"(none)" (Renderer.selection_text renderer)
+
+let doors_content () =
+  Test_harness.reaches "content"
+    ~base:(Mosaic.markdown ~size:doors_size doors_md)
+    ~element:(Mosaic.markdown ~size:doors_size "# Title")
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:"# Title" ()))
+
+let doors_style_label () =
+  Test_harness.reaches "style (the element's md_style)"
+    ~base:(Mosaic.markdown ~size:doors_size doors_md)
+    ~element:
+      (Mosaic.markdown ~size:doors_size ~md_style:doors_md_style doors_md)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
+           ~style:doors_md_style ()))
+
+let doors_conceal () =
+  Test_harness.reaches "conceal"
+    ~base:(Mosaic.markdown ~size:doors_size doors_md)
+    ~element:(Mosaic.markdown ~size:doors_size ~conceal:false doors_md)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
+           ~conceal:false ()))
+
+let doors_streaming () =
+  Test_harness.reaches "streaming"
+    ~base:(Mosaic.markdown ~size:doors_size doors_table)
+    ~element:(Mosaic.markdown ~size:doors_size ~streaming:true doors_table)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_table
+           ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_table
+           ~streaming:true ()))
+
+let doors_selectable () =
+  Test_harness.reaches ~act:Test_harness.select_text ~observe:doors_selected
+    "selectable"
+    ~base:(Mosaic.markdown ~size:doors_size doors_md)
+    ~element:(Mosaic.markdown ~size:doors_size ~selectable:false doors_md)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
+           ~selectable:false ()))
+
+let doors_selection_bg () =
+  Test_harness.reaches ~act:Test_harness.select_text "selection_bg"
+    ~base:(Mosaic.markdown ~size:doors_size doors_md)
+    ~element:(Mosaic.markdown ~size:doors_size ~selection_bg:doors_red doors_md)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
+           ~selection_bg:doors_red ()))
+
+let doors_selection_fg () =
+  Test_harness.reaches ~act:Test_harness.select_text "selection_fg"
+    ~base:(Mosaic.markdown ~size:doors_size doors_md)
+    ~element:(Mosaic.markdown ~size:doors_size ~selection_fg:doors_red doors_md)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
+           ~selection_fg:doors_red ()))
+
+let doors_highlighter () =
+  Test_harness.reaches "highlighter"
+    ~base:(Mosaic.markdown ~size:doors_size doors_fenced)
+    ~element:
+      (Mosaic.markdown ~size:doors_size ~highlighter:doors_hl doors_fenced)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
+           ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
+           ~highlighter:doors_hl ()))
+
+let doors_syntax_style () =
+  Test_harness.reaches "syntax_style"
+    ~base:(Mosaic.markdown ~size:doors_size ~highlighter:doors_hl doors_fenced)
+    ~element:
+      (Mosaic.markdown ~size:doors_size ~highlighter:doors_hl
+         ~syntax_style:doors_syntax_style doors_fenced)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
+           ~highlighter:doors_hl ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
+           ~highlighter:doors_hl ~syntax_style:doors_syntax_style ()))
+
 let () =
   run "mosaic.markdown"
     [
@@ -399,5 +541,17 @@ let () =
             apply_props_same_content_no_rerender;
           test "streaming append reuses prefix blocks"
             streaming_append_reuses_prefix_blocks;
+        ];
+      group "Both doors"
+        [
+          test "content" doors_content;
+          test "style (the element's md_style)" doors_style_label;
+          test "conceal" doors_conceal;
+          test "streaming" doors_streaming;
+          test "selectable" doors_selectable;
+          test "selection_bg" doors_selection_bg;
+          test "selection_fg" doors_selection_fg;
+          test "highlighter" doors_highlighter;
+          test "syntax_style" doors_syntax_style;
         ];
     ]

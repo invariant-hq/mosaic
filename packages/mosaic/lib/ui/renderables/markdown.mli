@@ -95,18 +95,33 @@ module Props : sig
     t
   (** [make ()] is a props value. With:
       - [content]: the markdown source text. Defaults to [""].
-      - [conceal]: whether to hide markdown syntax characters. Defaults to
-        [true].
-      - [streaming]: whether to enable streaming mode. Defaults to [false].
-      - [style]: the element style. Defaults to {!Style.default}.
+      - [conceal]: whether to hide markdown syntax characters. When [true], a
+        link [[[text](url)]] is displayed as [text (url)]. Defaults to [true].
+      - [streaming]: when [true], incomplete trailing content is handled
+        gracefully; the last table row is skipped to avoid flickering during
+        incremental appends. Defaults to [false].
+      - [style]: the element style. Styles compare by value, so an equal style
+        rebuilt on every view re-renders nothing. Defaults to {!Style.default}.
       - [selectable]: whether rendered markdown text can be selected. Defaults
         to [true].
-      - [selection_bg]: background color for selected text.
-      - [selection_fg]: foreground color for selected text.
-      - [highlighter]: the highlighter for fenced code blocks, matching the
-        [highlighter] argument of {!create}. Defaults to [None].
-      - [syntax_style]: the style of highlighted fenced code blocks. Defaults to
-        {!Syntax_style.default}. *)
+      - [selection_bg] and [selection_fg]: selection colors applied to internal
+        text children. Default to none.
+      - [highlighter]: highlights fenced code blocks when {!create}'s
+        [render_code] is not set. Each fenced block is rendered as a borderless
+        {!Code} view. A block whose info string names a language is highlighted
+        by [highlighter], which receives that language and the block's content
+        in each request and interprets the language name itself; a block without
+        a language is shown plain. [highlighter] is a resource compared by
+        identity (see {!Code.Highlighter.t}): create it once and reuse it.
+        Defaults to [None], which renders fenced blocks as bordered plain
+        blocks.
+      - [syntax_style]: maps the highlighter's scopes to terminal styles.
+        Defaults to {!Syntax_style.default}. Styles compare by value, so
+        rebuilding an equal style changes nothing, and a changed style restyles
+        the blocks without highlighting them again.
+
+      {!create} and {!Vnode.markdown} take these labels with these defaults,
+      [style] being [md_style] in {!Vnode.markdown}. *)
 
   val default : t
   (** [default] is the default props value, equivalent to [make ()]. *)
@@ -147,18 +162,11 @@ val create :
   ?syntax_style:Syntax_style.t ->
   unit ->
   t
-(** [create ~parent ()] is a markdown display widget attached to [parent]. With:
-    - [content]: the markdown source text. Defaults to [""].
-    - [style]: the element style. Defaults to {!Style.default}.
-    - [conceal]: whether to hide markdown syntax characters. When [true], a link
-      [[[text](url)]] is displayed as [text (url)]. Defaults to [true].
-    - [streaming]: when [true], incomplete trailing content is handled
-      gracefully; the last table row is skipped to avoid flickering during
-      incremental appends. Defaults to [false].
-    - [selectable]: whether rendered markdown text can be selected. Defaults to
-      [true].
-    - [selection_bg] and [selection_fg]: selection colors applied to internal
-      text children.
+(** [create ~parent ()] is a markdown display widget attached to [parent]. The
+    labels after [opacity], but [layout_style], [on_selection], [render_node]
+    and [render_code], are {!Props.make}'s and take its defaults. With:
+    - [layout_style]: the node's layout style, in a column of the full width
+      whatever it gives.
     - [on_selection]: called with the selected rendered text when selection
       changes. [None] means no active selected text.
     - [render_node]: a custom block renderer called for every {!Cmarkit.Block.t}
@@ -168,19 +176,8 @@ val create :
     - [render_code]: a custom code block renderer called for code blocks before
       [render_node]. Receives the optional language tag and the code content.
       The returned renderable must be attached to [parent]. Use this for full
-      control over code block rendering.
-    - [highlighter]: highlights fenced code blocks when [render_code] is not
-      set. Each fenced block is rendered as a borderless {!Code} view. A block
-      whose info string names a language is highlighted by [highlighter], which
-      receives that language and the block's content in each request and
-      interprets the language name itself; a block without a language is shown
-      plain. [highlighter] is a resource compared by identity (see
-      {!Code.Highlighter.t}): create it once and reuse it. Defaults to [None],
-      which renders fenced blocks as bordered plain blocks.
-    - [syntax_style]: maps the highlighter's scopes to terminal styles. Defaults
-      to {!Syntax_style.default}. Styles compare by value, so rebuilding an
-      equal style changes nothing, and a changed style restyles the blocks
-      without highlighting them again. *)
+      control over code block rendering. When it is set, [highlighter] is not
+      used. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)

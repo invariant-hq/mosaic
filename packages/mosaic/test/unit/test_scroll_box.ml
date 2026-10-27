@@ -480,6 +480,145 @@ let appearance_keeps_scrollbars_hidden () =
   is_false ~msg:"appearance does not release hidden-bar policy"
     (Renderable.visible (Scroll_bar.node (Scroll_box.vertical_bar sb)))
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.scroll_box}) or to {!Scroll_box.create},
+   reaches the live scroll box ({!Test_harness.reaches}). *)
+
+let doors_size = Mosaic.size ~width:12 ~height:4
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+let doors_bar = Scroll_bar.style ~track_color:doors_red ()
+
+let doors_contents =
+  List.init 8 (fun i -> Printf.sprintf "line %d of the content" i)
+
+let doors_lines = List.map (fun l -> Mosaic.text l) doors_contents
+
+let doors_filled box =
+  List.iter
+    (fun content ->
+      ignore (Text.create ~parent:(Scroll_box.node box) ~content () : Text.t))
+    doors_contents;
+  Scroll_box.node box
+
+let doors_scroll () =
+  Test_harness.reaches "scroll"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 3)
+         ~on_scroll:ignore doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~scroll:(Scroll.at 3) ()))
+
+let doors_scroll_x () =
+  Test_harness.reaches "scroll_x"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore ~scroll_x:true doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~scroll_x:true ()))
+
+let doors_scroll_y () =
+  Test_harness.reaches "scroll_y"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore ~scroll_y:false doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~scroll_y:false ()))
+
+let doors_background () =
+  Test_harness.reaches "background"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore ~background:doors_red doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~background:doors_red ()))
+
+let doors_show_scrollbars () =
+  Test_harness.reaches "show_scrollbars"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore ~show_scrollbars:false doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~show_scrollbars:false ()))
+
+let doors_scrollbar_style () =
+  Test_harness.reaches "scrollbar_style"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore ~scrollbar_style:doors_bar doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~scrollbar_style:doors_bar
+           ()))
+
+let doors_vertical_bar_style () =
+  Test_harness.reaches "vertical_bar_style"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore ~vertical_bar_style:doors_bar doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled (Scroll_box.create ~parent ~style:doors_style ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style
+           ~vertical_bar_style:doors_bar ()))
+
+let doors_horizontal_bar_style () =
+  Test_harness.reaches "horizontal_bar_style"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore ~scroll_x:true doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:ignore ~scroll_x:true ~horizontal_bar_style:doors_bar
+         doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~scroll_x:true ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~scroll_x:true
+           ~horizontal_bar_style:doors_bar ()))
+
 let () =
   run "mosaic.scroll_box"
     [
@@ -534,4 +673,15 @@ let () =
       test "symbolic reveal is idempotent" symbolic_reveal_is_idempotent;
       test "proposals use accepted state" proposals_use_accepted_state;
       test "orthogonal follow is preserved" orthogonal_follow_is_preserved;
+      group "Both doors"
+        [
+          test "scroll" doors_scroll;
+          test "scroll_x" doors_scroll_x;
+          test "scroll_y" doors_scroll_y;
+          test "background" doors_background;
+          test "show_scrollbars" doors_show_scrollbars;
+          test "scrollbar_style" doors_scrollbar_style;
+          test "vertical_bar_style" doors_vertical_bar_style;
+          test "horizontal_bar_style" doors_horizontal_bar_style;
+        ];
     ]

@@ -61,6 +61,9 @@ end
 
 (* ───── Props ───── *)
 
+(* [Props.make] is the one place the scroll box's labels get their defaults:
+   [create] and [Vnode.scroll_box] pass their labels on unset. [scroll_accel],
+   which only [create] takes, gets its default there. *)
 module Props = struct
   type t = {
     scroll_x : bool;
@@ -464,12 +467,29 @@ let set_show_scrollbars t v =
     end
   end
 
+(* The content is at least the viewport's size on both axes, and at most its
+   size on an axis that does not scroll, so only a scrolling axis overflows. *)
+let content_axes_style ~scroll_x ~scroll_y style =
+  let pct100 = Toffee.Style.Dimension.percent 1.0 in
+  let auto = Toffee.Style.Dimension.auto in
+  Toffee.Style.set_max_size
+    {
+      width = (if scroll_x then auto else pct100);
+      height = (if scroll_y then auto else pct100);
+    }
+    style
+
 let apply_props t (props : Props.t) =
-  let scroll_changed =
-    t.props.scroll_x <> props.scroll_x
-    || t.props.scroll_y <> props.scroll_y
-    || not (Scroll.equal t.props.scroll props.scroll)
+  let axes_changed =
+    t.props.scroll_x <> props.scroll_x || t.props.scroll_y <> props.scroll_y
   in
+  let scroll_changed =
+    axes_changed || not (Scroll.equal t.props.scroll props.scroll)
+  in
+  if axes_changed then
+    Renderable.set_style t.content
+      (content_axes_style ~scroll_x:props.scroll_x ~scroll_y:props.scroll_y
+         (Renderable.style t.content));
   set_background t props.background;
   set_show_scrollbars t props.show_scrollbars;
   t.props <- props;
@@ -506,10 +526,26 @@ let set_style t style = Renderable.set_style t.node (root_style style)
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
-    ?(scroll_x = false) ?(scroll_y = true) ?(scroll = Scroll.at 0) ?background
-    ?(scroll_accel = Scroll_accel.linear ()) ?(show_scrollbars = true)
-    ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ?on_scroll () =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?scroll_x
+    ?scroll_y ?scroll ?background ?(scroll_accel = Scroll_accel.linear ())
+    ?show_scrollbars ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style
+    ?on_scroll () =
+  let props =
+    Props.make ?scroll_x ?scroll_y ?scroll ?background ?show_scrollbars
+      ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ()
+  in
+  let ({
+         scroll_x;
+         scroll_y;
+         show_scrollbars;
+         scrollbar_style;
+         vertical_bar_style;
+         horizontal_bar_style;
+         _;
+       }
+        : Props.t) =
+    props
+  in
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -550,14 +586,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       Toffee.Style.set_align_self (Some Toffee.Style.Align_items.Flex_start) s
     in
     let s = Toffee.Style.set_flex_shrink 0. s in
-    let min_sz = Toffee.Style.min_size s in
-    let max_sz = Toffee.Style.max_size s in
-    let min_sz = { min_sz with width = pct100 } in
-    let max_sz = if scroll_x then max_sz else { max_sz with width = pct100 } in
-    let min_sz = { min_sz with height = pct100 } in
-    let max_sz = if scroll_y then max_sz else { max_sz with height = pct100 } in
-    let s = Toffee.Style.set_min_size min_sz s in
-    Toffee.Style.set_max_size max_sz s
+    let s = Toffee.Style.set_min_size { width = pct100; height = pct100 } s in
+    content_axes_style ~scroll_x ~scroll_y s
   in
   Renderable.set_style content_node content_style;
   (* Viewport culling (opentui ScrollBox viewportCulling, default on): only
@@ -588,18 +618,6 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   end;
   (* Route user children to content after internal structure is built. *)
   Renderable.set_child_target node (Some content_node);
-  let props =
-    {
-      Props.scroll_x;
-      scroll_y;
-      scroll;
-      background;
-      show_scrollbars;
-      scrollbar_style;
-      vertical_bar_style;
-      horizontal_bar_style;
-    }
-  in
   let t =
     {
       node;

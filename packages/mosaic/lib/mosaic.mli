@@ -2014,8 +2014,10 @@ val slider :
   on_change:(float -> 'msg) ->
   unit ->
   'msg t
-(** [slider ()] is a slider. Widget-specific visual options follow
-    {!Mosaic_ui.Slider}; layout and paint use the labelled arguments above. *)
+(** [slider ~state ~on_change ()] is a slider. The labels from [orientation] to
+    [thumb_color] are {!Mosaic_ui.Slider.Props.make}'s and take its defaults,
+    and [state] is its [value]. Layout and paint use the other labelled
+    arguments. *)
 
 val input :
   ?key:string ->
@@ -2314,9 +2316,9 @@ val canvas :
   ?focused:bool ->
   (Canvas.t -> dt:float -> unit) ->
   'msg t
-(** [canvas draw] is a custom drawing surface. Widget-specific visual options
-    follow {!Mosaic_ui.Canvas}; layout and paint use the labelled arguments
-    above. *)
+(** [canvas draw] is a custom drawing surface, {!Mosaic_ui.Canvas} with [draw]
+    as its {!Mosaic_ui.Canvas.set_on_draw} callback. Layout and paint use the
+    labelled arguments. *)
 
 val picture :
   ?key:string ->
@@ -2429,9 +2431,9 @@ val spinner :
   ?color:Ansi.Color.t ->
   unit ->
   'msg t
-(** [spinner ()] is an animated activity indicator. Widget-specific visual
-    options follow {!Mosaic_ui.Spinner}; layout and paint use the labelled
-    arguments above. *)
+(** [spinner ()] is an animated activity indicator. [frame_set] and [color] are
+    {!Mosaic_ui.Spinner.Props.make}'s and take its defaults. Layout and paint
+    use the other labelled arguments. *)
 
 val progress_bar :
   ?key:string ->
@@ -2491,9 +2493,9 @@ val progress_bar :
   ?empty_color:Ansi.Color.t ->
   unit ->
   'msg t
-(** [progress_bar ()] is a progress indicator. Widget-specific visual options
-    follow {!Mosaic_ui.Progress_bar}; layout and paint use the labelled
-    arguments above. *)
+(** [progress_bar ()] is a progress indicator. The labels from [value] to
+    [empty_color] are {!Mosaic_ui.Progress_bar.Props.make}'s and take its
+    defaults. Layout and paint use the other labelled arguments. *)
 
 val scroll_bar :
   ?key:string ->
@@ -2557,10 +2559,12 @@ val scroll_bar :
   viewport_size:int ->
   unit ->
   'msg t
-(** [scroll_bar ()] is a scroll indicator. Widget-specific visual options follow
-    {!Mosaic_ui.Scroll_bar}, whose {!Mosaic_ui.Scroll_bar.handle_key} lists the
-    keys the bar acts on when focused; layout and paint use the labelled
-    arguments above. *)
+(** [scroll_bar ~state ~scroll_size ~viewport_size ~on_change ()] is a scroll
+    indicator. The labels from [orientation] to [arrow_bg], [scroll_size] and
+    [viewport_size] are {!Mosaic_ui.Scroll_bar.Props.make}'s and take its
+    defaults, and [state] is its [position]; {!Mosaic_ui.Scroll_bar.handle_key}
+    lists the keys the bar acts on when focused. Layout and paint use the other
+    labelled arguments. *)
 
 val scroll_box :
   ?key:string ->
@@ -2623,12 +2627,11 @@ val scroll_box :
   scroll:Scroll.t ->
   'msg t list ->
   'msg t
-(** [scroll_box children] is a scrollable container. Widget-specific visual
-    options follow {!Mosaic_ui.Scroll_box}; layout and paint use the labelled
-    arguments above. [scrollbar_style] sets shared bar appearance;
-    [vertical_bar_style] and [horizontal_bar_style] replace it for the
-    corresponding axis. When focused, the box acts on the keys
-    {!Mosaic_ui.Scroll_box} lists. *)
+(** [scroll_box ~scroll ~on_scroll children] is a scrollable container. [scroll]
+    and the labels from [scroll_x] to [horizontal_bar_style] are
+    {!Mosaic_ui.Scroll_box.Props.make}'s and take its defaults. When focused,
+    the box acts on the keys {!Mosaic_ui.Scroll_box} lists. Layout and paint use
+    the other labelled arguments. *)
 
 val textarea :
   ?key:string ->
@@ -2834,12 +2837,13 @@ val line_number :
   ?line_number_offset:int ->
   ?line_colors:(int * Line_number.line_color) list ->
   ?line_signs:(int * Line_number.line_sign) list ->
+  ?line_numbers:(int * int) list ->
   ?hidden_line_numbers:int list ->
   'msg t ->
   'msg t
-(** [line_number child] is a line-number gutter for [child]. Widget-specific
-    visual options follow {!Mosaic_ui.Line_number}; layout and paint use the
-    labelled arguments above. *)
+(** [line_number child] is a line-number gutter for [child]. The labels from
+    [fg] to [hidden_line_numbers] are {!Mosaic_ui.Line_number.Props.make}'s and
+    take its defaults. Layout and paint use the other labelled arguments. *)
 
 val diff :
   ?key:string ->
@@ -2904,8 +2908,10 @@ val diff :
   ?on_line_click:(Diff.line_hit -> 'msg option) ->
   Diff.Patch.t ->
   'msg t
-(** [diff patch] is a rendered patch. Widget-specific visual options follow
-    {!Mosaic_ui.Diff}; layout and paint use the labelled arguments above. *)
+(** [diff patch] is a rendered patch. The labels from [layout] to [text_style]
+    are {!Mosaic_ui.Diff.Props.make}'s and take its defaults. [on_line_click] is
+    called with a semantic diff hit when the user clicks a rendered diff line
+    without dragging. Layout and paint use the other labelled arguments. *)
 
 val markdown :
   ?key:string ->
@@ -2968,9 +2974,11 @@ val markdown :
   ?on_selection:(string option -> 'msg option) ->
   string ->
   'msg t
-(** [markdown content] is rendered Markdown. Widget-specific visual options
-    follow {!Mosaic_ui.Markdown}; layout and paint use the labelled arguments
-    above. *)
+(** [markdown content] is rendered Markdown. The labels from [md_style] to
+    [syntax_style] are {!Mosaic_ui.Markdown.Props.make}'s and take its defaults,
+    [md_style] being its [style]. [on_selection] is called with the selected
+    rendered text, or [None] when no text is selected. Layout and paint use the
+    other labelled arguments. *)
 
 val table :
   ?key:string ->

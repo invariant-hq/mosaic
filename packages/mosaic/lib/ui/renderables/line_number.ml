@@ -11,6 +11,8 @@ type line_sign = {
 
 (* ───── Props ───── *)
 
+(* [Props.make] is the one place the gutter's labels get their defaults:
+   [create] and [Vnode.line_number] pass their labels on unset. *)
 module Props = struct
   let default_fg = Ansi.Color.grayscale ~level:12
 

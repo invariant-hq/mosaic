@@ -87,6 +87,8 @@ end
 
 (* ───── Props ───── *)
 
+(* [Props.make] is the one place the markdown's labels get their defaults:
+   [create] and [Vnode.markdown] pass their labels on unset. *)
 module Props = struct
   type t = {
     content : string;
@@ -1239,10 +1241,24 @@ let rerender_blocks t =
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
-    ?opacity ?(content = "") ?(style = Style.default) ?(conceal = true)
-    ?(streaming = false) ?(selectable = true) ?selection_bg ?selection_fg
-    ?on_selection ?render_node ?render_code ?highlighter
-    ?(syntax_style = Syntax_style.default) () =
+    ?opacity ?content ?style ?conceal ?streaming ?selectable ?selection_bg
+    ?selection_fg ?on_selection ?render_node ?render_code ?highlighter
+    ?syntax_style () =
+  let ({
+         content;
+         conceal;
+         streaming;
+         style;
+         selectable;
+         selection_bg;
+         selection_fg;
+         highlighter;
+         syntax_style;
+       }
+        : Props.t) =
+    Props.make ?content ?conceal ?streaming ?style ?selectable ?selection_bg
+      ?selection_fg ?highlighter ?syntax_style ()
+  in
   let node =
     Renderable.create ~parent ?index ?id ~style:layout_style ?visible ?z_index
       ?opacity ()

@@ -302,6 +302,30 @@ let pp_output () =
 
 (* ── Runner ── *)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.canvas}) or to {!Canvas.create},
+   reaches the live canvas ({!Test_harness.reaches}). A canvas has no labels of
+   its own: its [draw] is the callback {!Canvas.set_on_draw} sets. *)
+
+let doors_size = Mosaic.size ~width:6 ~height:2
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_nothing _ ~dt:_ = ()
+let doors_draw c ~dt:_ = Canvas.draw_text c ~x:0 ~y:0 ~text:"drawn"
+
+let doors_drawing canvas draw =
+  Canvas.set_on_draw canvas (Some draw);
+  Canvas.node canvas
+
+let doors_on_draw () =
+  Test_harness.reaches "on_draw (the element's draw)"
+    ~base:(Mosaic.canvas ~size:doors_size doors_nothing)
+    ~element:(Mosaic.canvas ~size:doors_size doors_draw)
+    ~create_base:(fun parent ->
+      doors_drawing (Canvas.create ~parent ~style:doors_style ()) doors_nothing)
+    ~create:(fun parent ->
+      doors_drawing (Canvas.create ~parent ~style:doors_style ()) doors_draw)
+
 let () =
   run "mosaic.canvas"
     [
@@ -341,4 +365,5 @@ let () =
       group "Persistence"
         [ test "content persists across frames" content_persists_across_frames ];
       group "pp" [ test "produces output" pp_output ];
+      group "Both doors" [ test "on_draw (the element's draw)" doors_on_draw ];
     ]

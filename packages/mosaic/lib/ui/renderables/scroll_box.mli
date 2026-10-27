@@ -53,8 +53,20 @@ module Props : sig
     ?horizontal_bar_style:Scroll_bar.style ->
     unit ->
     t
-  (** [make ()] declares position [Scroll.at 0], vertical scrolling only, and
-      visible scrollbars.
+  (** [make ()] declares a viewport with:
+      - [scroll_x] is [true] iff the content scrolls horizontally. Defaults to
+        [false].
+      - [scroll_y] is [true] iff the content scrolls vertically. Defaults to
+        [true].
+      - [scroll] is the declared position. Defaults to [Scroll.at 0].
+      - [background] is the scroll box's background color. Defaults to none.
+      - [show_scrollbars] is [true] iff the bars are shown when the content
+        overflows. Defaults to [true].
+      - [scrollbar_style], [vertical_bar_style] and [horizontal_bar_style] are
+        the bars' appearance, as follows. Default to none.
+
+      {!val-create} and {!Vnode.scroll_box} take these labels with these
+      defaults.
 
       [scrollbar_style] applies to both bars. A [vertical_bar_style] or
       [horizontal_bar_style] replaces the shared style for that axis in full.
@@ -93,9 +105,10 @@ val create :
   unit ->
   t
 (** [create ~parent ()] attaches a viewport. User children are routed to its
-    content node. Missing [on_scroll] rejects interactive scroll proposals.
-    Scrollbar appearance follows {!Props.make}'s replacement and default rules.
-*)
+    content node. The labels after [opacity], but [scroll_accel] and
+    [on_scroll], are {!Props.make}'s and take its defaults. [scroll_accel] is
+    the acceleration of wheel scrolling ({!set_scroll_accel}), a linear one by
+    default. Missing [on_scroll] rejects interactive scroll proposals. *)
 
 val node : t -> Renderable.t
 val content : t -> Renderable.t

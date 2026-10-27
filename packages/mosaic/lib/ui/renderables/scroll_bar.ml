@@ -103,6 +103,8 @@ let style_equal a b =
      && Ansi.Color.equal a.arrow_fg b.arrow_fg
      && Ansi.Color.equal a.arrow_bg b.arrow_bg
 
+(* [Props.make] is the one place the scroll bar's labels get their defaults:
+   [create] and [Vnode.scroll_bar] pass their labels on unset. *)
 module Props = struct
   type t = {
     position : int;
@@ -329,11 +331,27 @@ let orientation_style style orientation ~auto_width ~auto_height =
   in
   Toffee.Style.set_size size style
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?(position = 0)
-    ?(scroll_size = 0) ?(viewport_size = 0) ?(orientation = `Vertical)
-    ?(show_arrows = false) ?(track_color = default_track_color)
-    ?(thumb_color = default_thumb_color) ?(arrow_fg = Ansi.Color.white)
-    ?(arrow_bg = Ansi.Color.transparent) ?on_change () =
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?position
+    ?scroll_size ?viewport_size ?orientation ?show_arrows ?track_color
+    ?thumb_color ?arrow_fg ?arrow_bg ?on_change () =
+  let props =
+    Props.make ?position ?scroll_size ?viewport_size ?orientation ?show_arrows
+      ?track_color ?thumb_color ?arrow_fg ?arrow_bg ()
+  in
+  let ({
+         position;
+         scroll_size;
+         viewport_size;
+         orientation;
+         show_arrows;
+         track_color;
+         thumb_color;
+         arrow_fg;
+         arrow_bg;
+       }
+        : Props.t) =
+    props
+  in
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -398,19 +416,6 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?(position = 0)
       ()
   in
   Renderable.set_visible (Arrow.node end_arrow) show_arrows;
-  let props =
-    {
-      Props.position = max 0 position;
-      scroll_size = max 0 scroll_size;
-      viewport_size = max 0 viewport_size;
-      orientation;
-      show_arrows;
-      track_color;
-      thumb_color;
-      arrow_fg;
-      arrow_bg;
-    }
-  in
   let t =
     {
       node;
@@ -420,10 +425,9 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?(position = 0)
       auto_width;
       auto_height;
       props;
-      scroll_position =
-        max 0 (min position (max 0 (scroll_size - viewport_size)));
-      scroll_size = max 0 scroll_size;
-      viewport_size = max 0 viewport_size;
+      scroll_position = min position (max 0 (scroll_size - viewport_size));
+      scroll_size;
+      viewport_size;
       scroll_step = None;
       manual_visibility = false;
       on_change;

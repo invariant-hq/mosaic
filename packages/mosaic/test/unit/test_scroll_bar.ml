@@ -397,6 +397,171 @@ let apply_style_preserves_scroll_state () =
   equal ~msg:"same appearance schedules nothing" int before
     !(ctx.schedule_count)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.scroll_bar}) or to {!Scroll_bar.create},
+   reaches the live scroll bar ({!Test_harness.reaches}). The element's
+   [state] is the bar's [position]. *)
+
+let doors_size = Mosaic.size ~width:1 ~height:8
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+
+let doors_position () =
+  Test_harness.reaches "position (the element's state)"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:60 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~position:60
+           ~scroll_size:100 ~viewport_size:10 ()))
+
+let doors_scroll_size () =
+  Test_harness.reaches "scroll_size"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:20
+         ~viewport_size:10 ~on_change:ignore ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:20
+           ~viewport_size:10 ()))
+
+let doors_viewport_size () =
+  Test_harness.reaches "viewport_size"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:50 ~on_change:ignore ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:50 ()))
+
+let doors_orientation () =
+  Test_harness.reaches "orientation"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ~orientation:`Horizontal ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ~orientation:`Horizontal ()))
+
+let doors_show_arrows () =
+  Test_harness.reaches "show_arrows"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ~show_arrows:true ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ~show_arrows:true ()))
+
+let doors_track_color () =
+  Test_harness.reaches "track_color"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ~track_color:doors_red ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ~track_color:doors_red ()))
+
+let doors_thumb_color () =
+  Test_harness.reaches "thumb_color"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ~thumb_color:doors_red ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ~thumb_color:doors_red ()))
+
+let doors_arrow_fg () =
+  Test_harness.reaches "arrow_fg"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ~show_arrows:true ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ~show_arrows:true
+         ~arrow_fg:doors_red ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ~show_arrows:true ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ~show_arrows:true ~arrow_fg:doors_red ()))
+
+let doors_arrow_bg () =
+  Test_harness.reaches "arrow_bg"
+    ~base:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ~show_arrows:true ())
+    ~element:
+      (Mosaic.scroll_bar ~size:doors_size ~state:0 ~scroll_size:100
+         ~viewport_size:10 ~on_change:ignore ~show_arrows:true
+         ~arrow_bg:doors_red ())
+    ~create_base:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ~show_arrows:true ()))
+    ~create:(fun parent ->
+      Scroll_bar.node
+        (Scroll_bar.create ~parent ~style:doors_style ~scroll_size:100
+           ~viewport_size:10 ~show_arrows:true ~arrow_bg:doors_red ()))
+
 let () =
   run "mosaic.scroll_bar"
     [
@@ -465,5 +630,17 @@ let () =
         [
           test "produces output" pp_produces_output;
           test "contains ScrollBar" pp_contains_scroll_bar;
+        ];
+      group "Both doors"
+        [
+          test "position (the element's state)" doors_position;
+          test "scroll_size" doors_scroll_size;
+          test "viewport_size" doors_viewport_size;
+          test "orientation" doors_orientation;
+          test "show_arrows" doors_show_arrows;
+          test "track_color" doors_track_color;
+          test "thumb_color" doors_thumb_color;
+          test "arrow_fg" doors_arrow_fg;
+          test "arrow_bg" doors_arrow_bg;
         ];
     ]

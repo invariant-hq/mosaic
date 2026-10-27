@@ -2057,7 +2057,7 @@ let line_number ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
     ?on_click ?on_focus_request ?on_size ?focused ?fg ?bg ?min_width
     ?padding_right ?show_line_numbers ?line_number_offset ?line_colors
-    ?line_signs ?hidden_line_numbers child =
+    ?line_signs ?line_numbers ?hidden_line_numbers child =
   let style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
@@ -2071,7 +2071,7 @@ let line_number ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   Vnode.line_number ?key ~style ?visible ?z_index ?opacity ?buffered ?live
     ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
     ?fg ?bg ?min_width ?padding_right ?show_line_numbers ?line_number_offset
-    ?line_colors ?line_signs ?hidden_line_numbers child
+    ?line_colors ?line_signs ?line_numbers ?hidden_line_numbers child
 
 let diff ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

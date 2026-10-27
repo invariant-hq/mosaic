@@ -33,15 +33,8 @@ val create :
   ?empty_color:Ansi.Color.t ->
   unit ->
   t
-(** [create ~parent ()] is a progress bar attached to [parent] with:
-    - [value] is the initial fill value. Defaults to [0.0].
-    - [min] is the lower bound of the range. Defaults to [0.0].
-    - [max] is the upper bound of the range. Defaults to [1.0].
-    - [orientation] is the track direction. Defaults to [`Horizontal].
-    - [filled_color] is the color of the filled portion. Defaults to medium
-      gray.
-    - [empty_color] is the color of the unfilled portion. Defaults to dark gray.
-*)
+(** [create ~parent ()] is a progress bar attached to [parent]. The labels after
+    [opacity] are {!Props.make}'s and take its defaults. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
@@ -69,7 +62,10 @@ module Props : sig
       - [filled_color] is the color of the filled portion. Defaults to medium
         gray.
       - [empty_color] is the color of the unfilled portion. Defaults to dark
-        gray. *)
+        gray.
+
+      {!val-create} and {!Vnode.progress_bar} take these labels with these
+      defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)

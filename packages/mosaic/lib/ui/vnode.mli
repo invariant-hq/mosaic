@@ -380,18 +380,10 @@ val slider :
   ?on_value_change:(float -> 'msg) ->
   unit ->
   'msg t
-(** [slider ()] is a slider leaf element. Slider does not accept children.
-
-    Slider-specific attributes:
-    - [orientation] is the track direction. Defaults to [`Horizontal].
-    - [value] is the current value. Defaults to [min].
-    - [min] is the lower bound. Defaults to [0.0].
-    - [max] is the upper bound. Defaults to [100.0].
-    - [viewport_size] is the visible-portion size, which controls the thumb
-      length. Defaults to 10% of the range.
-    - [track_color] is the track background color. Defaults to dark gray.
-    - [thumb_color] is the thumb foreground color. Defaults to medium gray.
-    - [on_value_change] is called when the slider value changes. *)
+(** [slider ()] is a slider leaf element. Slider does not accept children. The
+    labels from [orientation] to [thumb_color] are {!Slider.Props.make}'s and
+    take its defaults. [on_value_change] is called when the slider value
+    changes. *)
 
 val input :
   ?key:string ->
@@ -606,15 +598,10 @@ val spinner :
     children.
 
     The spinner cycles through Unicode frame strings at a fixed period driven by
-    the frame-based animation system.
-
-    Spinner-specific attributes:
-    - [live] lets the spinner animate. While it is [false] the spinner shows its
-      current frame and requests no frames. Defaults to [true].
-    - [frame_set] is the set of animation frames and their period. Defaults to
-      {!Spinner.dots}.
-    - [color] is the spinner foreground color. Defaults to {!Ansi.Color.white}.
-*)
+    the frame-based animation system. [live] lets the spinner animate. While it
+    is [false] the spinner shows its current frame and requests no frames.
+    Defaults to [true]. [frame_set] and [color] are {!Spinner.Props.make}'s and
+    take its defaults. *)
 
 val progress_bar :
   ?key:string ->
@@ -644,15 +631,8 @@ val progress_bar :
     accept children.
 
     The bar is rendered with sub-cell precision using Unicode half-block
-    characters to show the filled and empty portions.
-
-    Progress_bar-specific attributes:
-    - [value] is the current progress value. Defaults to [0.0].
-    - [min] is the lower bound. Defaults to [0.0].
-    - [max] is the upper bound. Defaults to [1.0].
-    - [orientation] is the bar fill direction. Defaults to [`Horizontal].
-    - [filled_color] is the filled portion color. Defaults to medium gray.
-    - [empty_color] is the empty portion color. Defaults to dark gray. *)
+    characters to show the filled and empty portions. The labels from [value] to
+    [empty_color] are {!Progress_bar.Props.make}'s and take its defaults. *)
 
 val scroll_bar :
   ?key:string ->
@@ -683,17 +663,9 @@ val scroll_bar :
   unit ->
   'msg t
 (** [scroll_bar ()] is a scroll bar leaf element. Scroll_bar does not accept
-    children.
-
-    Scroll_bar-specific attributes:
-    - [orientation] is the scroll bar direction. Defaults to [`Vertical].
-    - [show_arrows] controls whether arrow buttons are displayed at each end.
-      Defaults to [false].
-    - [track_color] is the track background color.
-    - [thumb_color] is the thumb foreground color.
-    - [arrow_fg] is the arrow button foreground color.
-    - [arrow_bg] is the arrow button background color.
-    - [on_change] is called when the scroll position changes. *)
+    children. The labels from [position] to [arrow_bg] are
+    {!Scroll_bar.Props.make}'s and take its defaults. [on_change] is called when
+    the scroll position changes. *)
 
 val scroll_box :
   ?key:string ->
@@ -725,12 +697,9 @@ val scroll_box :
 (** [scroll_box ~scroll ~on_scroll children] is a scrollable container with
     application-owned scroll state. A wheel event is consumed only when it
     changes the position on an enabled axis; otherwise it bubbles to an
-    enclosing scroll box. [scroll_x] defaults to [false], [scroll_y] to [true].
-
-    [show_scrollbars] defaults to [true] and displays bars on overflowing axes.
-    [scrollbar_style] sets their shared appearance. [vertical_bar_style] and
-    [horizontal_bar_style] each replace it for that axis; absent styles use
-    {!Scroll_bar.style}. Appearance does not change the scroll state. *)
+    enclosing scroll box. [scroll] and the labels from [scroll_x] to
+    [horizontal_bar_style] are {!Scroll_box.Props.make}'s and take its defaults.
+    Appearance does not change the scroll state. *)
 
 val textarea :
   ?key:string ->
@@ -905,27 +874,8 @@ val line_number :
   'msg t
 (** [line_number child] is a line-number gutter container wrapping [child]. The
     gutter discovers the child via a {!Renderable.text_rows} provider and draws
-    line numbers accordingly.
-
-    Line_number-specific attributes:
-    - [fg] is the line number foreground color. Defaults to medium gray.
-    - [bg] is the gutter background color.
-    - [min_width] is the minimum gutter width in columns. Defaults to [3].
-    - [padding_right] is the padding between the number and the content in
-      columns. Defaults to [1].
-    - [show_line_numbers] controls whether the gutter is visible. When [false],
-      the gutter is hidden entirely and takes no layout space. Defaults to
-      [true].
-    - [line_number_offset] is added to each logical line index when displaying
-      numbers. Defaults to [0].
-    - [line_colors] is a list of per-line background colors, keyed by logical
-      line index. Defaults to [[]].
-    - [line_signs] is a list of per-line gutter signs, keyed by logical line
-      index. Defaults to [[]].
-    - [line_numbers] is a list of custom line number overrides, keyed by logical
-      line index. Defaults to [[]].
-    - [hidden_line_numbers] is the list of logical line indices whose numbers
-      are hidden. Defaults to [[]]. *)
+    line numbers accordingly. The labels from [fg] to [hidden_line_numbers] are
+    {!Line_number.Props.make}'s and take its defaults. *)
 
 val markdown :
   ?key:string ->
@@ -957,26 +907,10 @@ val markdown :
 (** [markdown content] is a markdown display leaf element. Parses [content] as
     CommonMark and renders headings, paragraphs, code blocks, lists,
     blockquotes, tables, and inline formatting. Markdown does not accept
-    children.
-
-    Markdown-specific attributes:
-    - [md_style] is the element style. Styles compare by value, so an equal
-      style rebuilt on every view re-renders nothing. Defaults to
-      {!Markdown.Style.default}.
-    - [conceal] controls whether markdown syntax characters are hidden. Defaults
-      to [true].
-    - [streaming] enables graceful handling of incomplete trailing content,
-      useful when content arrives incrementally. Defaults to [false].
-    - [selectable] controls text selection on rendered text children. Defaults
-      to [true].
-    - [selection_bg] and [selection_fg] are the selection colours.
-    - [highlighter] highlights fenced code blocks that name a language; each
-      fenced block is rendered as a borderless {!Code} view. It is a resource
-      compared by identity: create it once. See {!Markdown.create}.
-    - [syntax_style] maps highlight scopes to styles. Defaults to
-      {!Syntax_style.default}.
-    - [on_selection] is called with selected rendered text, or [None] when no
-      text is selected. *)
+    children. The labels from [md_style] to [syntax_style] are
+    {!Markdown.Props.make}'s and take its defaults, [md_style] being its
+    [style]. [on_selection] is called with selected rendered text, or [None]
+    when no text is selected. *)
 
 val diff :
   ?key:string ->
@@ -1007,30 +941,10 @@ val diff :
   ?on_line_click:(Diff.line_hit -> 'msg option) ->
   Diff.Patch.t ->
   'msg t
-(** [diff patch] is a diff display leaf element rendering [patch].
-
-    Diff-specific attributes:
-    - [layout] is the view layout. Defaults to [Diff.Unified].
-    - [theme] is the colour theme. Defaults to {!Diff.default_theme}.
-    - [highlight] is optional highlighter-backed split-side syntax.
-    - [line_highlights] are source-line background highlights, using inclusive
-      1-based old/new source line numbers. Earlier entries win when ranges
-      overlap. Defaults to [[]].
-    - [line_spans] are source-line sub-range highlights: a byte range within one
-      1-based old/new source line, drawn as a background over its cells.
-      Defaults to [[]]. See {!Diff.line_span}.
-    - [line_signs] are source-line gutter signs, using inclusive 1-based old/new
-      source line numbers. Earlier entries win when ranges overlap. Defaults to
-      [[]].
-    - [show_line_numbers] controls whether gutters are shown. Defaults to
-      [true].
-    - [wrap] is the wrap mode for embedded {!Code} children. Defaults to
-      [`None].
-    - [selectable] controls text selection on embedded {!Code} children.
-      Defaults to [true].
-    - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
-    - [on_line_click] is called with a semantic diff hit when the user clicks a
-      rendered diff line without dragging. *)
+(** [diff patch] is a diff display leaf element rendering [patch]. The labels
+    from [layout] to [text_style] are {!Diff.Props.make}'s and take its
+    defaults. [on_line_click] is called with a semantic diff hit when the user
+    clicks a rendered diff line without dragging. *)
 
 val tree :
   ?key:string ->

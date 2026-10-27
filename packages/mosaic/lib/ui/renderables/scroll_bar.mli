@@ -73,12 +73,22 @@ module Props : sig
     unit ->
     t
   (** [make ()] is a scroll bar property bundle. The optional parameters are:
+      - [position] — the scroll position, at least [0]; the bar keeps it in its
+        valid range. Defaults to [0].
+      - [scroll_size] — total content size, at least [0]. Defaults to [0].
+      - [viewport_size] — size of the visible area, at least [0]. Defaults to
+        [0].
       - [orientation] — layout direction. Defaults to [`Vertical].
       - [show_arrows] — display arrow buttons at each end. Defaults to [false].
-      - [track_color] — track background color.
-      - [thumb_color] — thumb foreground color.
+      - [track_color] — track background color. Defaults to dark gray (RGB 37 37
+        39).
+      - [thumb_color] — thumb foreground color. Defaults to medium gray (RGB 154
+        158 163).
       - [arrow_fg] — arrow foreground color. Defaults to white.
-      - [arrow_bg] — arrow background color. Defaults to transparent. *)
+      - [arrow_bg] — arrow background color. Defaults to transparent.
+
+      {!val-create} and {!Vnode.scroll_bar} take these labels with these
+      defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -115,12 +125,9 @@ val create :
   ?on_change:(int -> unit) ->
   unit ->
   t
-(** [create ~parent ()] is a scroll bar attached to [parent]. The optional
-    parameters are:
-    - [orientation] — layout direction. Defaults to [`Vertical].
-    - [show_arrows] — display arrow buttons at each end. Defaults to [false].
-    - [on_change] — callback invoked with the new scroll position whenever it
-      changes. *)
+(** [create ~parent ()] is a scroll bar attached to [parent]. The labels from
+    [position] to [arrow_bg] are {!Props.make}'s and take its defaults.
+    [on_change] is invoked with the new scroll position whenever it changes. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)

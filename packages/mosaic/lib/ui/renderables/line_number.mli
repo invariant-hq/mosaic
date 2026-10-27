@@ -68,7 +68,10 @@ module Props : sig
         the computed [logical_line + 1 + line_number_offset]. Also affects
         gutter width calculation. Defaults to [[]].
       - [hidden_line_numbers] is the list of logical line indices whose numbers
-        are hidden, leaving a blank gutter. Defaults to [[]]. *)
+        are hidden, leaving a blank gutter. Defaults to [[]].
+
+      {!val-create} and {!Vnode.line_number} take these labels with these
+      defaults. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -101,7 +104,7 @@ val create :
   unit ->
   t
 (** [create ~parent ()] is a line number gutter container attached to [parent].
-    Optional parameters have the same defaults as {!Props.make}. *)
+    The labels after [opacity] are {!Props.make}'s and take its defaults. *)
 
 (** {1:accessors Accessors} *)
 

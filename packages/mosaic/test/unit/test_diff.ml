@@ -353,6 +353,247 @@ let syntax_compares_styles_by_value () =
 
 (* ── Runner ── *)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.diff}) or to {!Diff.create},
+   reaches the live diff ({!Test_harness.reaches}). *)
+
+let doors_size = Mosaic.size ~width:24 ~height:6
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+
+let doors_patch =
+  Diff.Patch.of_strings ~old:"a\nb with a long line to wrap\n"
+    ~new_:"a\nc with a long line to wrap\n" ()
+
+let doors_other_patch = Diff.Patch.of_strings ~old:"x\n" ~new_:"y\n" ()
+
+let doors_highlighter =
+  Code.Highlighter.sync (fun ~language:_ ~content ->
+      Syntax_highlight.of_triples ~content [ (0, 1, "keyword") ])
+
+let doors_highlight =
+  let syntax =
+    Diff.syntax ~language:"text"
+      ~style:
+        (Syntax_style.make ~base:Ansi.Style.default
+           [ ("keyword", Ansi.Style.make ~fg:doors_red ()) ])
+      doors_highlighter
+  in
+  { Diff.old = syntax; new_ = syntax }
+
+(* Drags over the first changed line's content, which a code view shows. *)
+let doors_select renderer node =
+  ignore (Renderer.render ~full:true renderer : string);
+  let x = Renderable.x node + 8 and y = Renderable.y node + 1 in
+  ignore
+    (Test_harness.dispatch_mouse renderer
+       (Test_harness.mouse_report ~x ~y (Press Left)));
+  ignore
+    (Test_harness.dispatch_mouse renderer
+       (Test_harness.mouse_report ~x:(x + 4) ~y (Motion (Some Left))))
+
+let doors_selected renderer _ =
+  Option.value ~default:"(none)" (Renderer.selection_text renderer)
+
+let doors_patch_label () =
+  Test_harness.reaches "patch"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:(Mosaic.diff ~size:doors_size doors_other_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_other_patch))
+
+let doors_layout () =
+  Test_harness.reaches "layout"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:(Mosaic.diff ~size:doors_size ~layout:Diff.Split doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style ~layout:Diff.Split doors_patch))
+
+let doors_theme () =
+  Test_harness.reaches "theme"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:
+      (Mosaic.diff ~size:doors_size
+         ~theme:{ Diff.default_theme with added_bg = doors_red }
+         doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           ~theme:{ Diff.default_theme with added_bg = doors_red }
+           doors_patch))
+
+let doors_highlight () =
+  Test_harness.reaches "highlight"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:
+      (Mosaic.diff ~size:doors_size ~highlight:doors_highlight doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style ~highlight:doors_highlight
+           doors_patch))
+
+let doors_line_highlights () =
+  Test_harness.reaches "line_highlights"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:
+      (Mosaic.diff ~size:doors_size
+         ~line_highlights:
+           [
+             {
+               Diff.side = New;
+               first = 2;
+               last = 2;
+               color = { Line_number.gutter = doors_red; content = None };
+             };
+           ]
+         doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           ~line_highlights:
+             [
+               {
+                 Diff.side = New;
+                 first = 2;
+                 last = 2;
+                 color = { Line_number.gutter = doors_red; content = None };
+               };
+             ]
+           doors_patch))
+
+let doors_line_spans () =
+  Test_harness.reaches "line_spans"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:
+      (Mosaic.diff ~size:doors_size
+         ~line_spans:
+           [
+             {
+               Diff.side = New;
+               line = 2;
+               start_byte = 0;
+               end_byte = 1;
+               color = doors_red;
+             };
+           ]
+         doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           ~line_spans:
+             [
+               {
+                 Diff.side = New;
+                 line = 2;
+                 start_byte = 0;
+                 end_byte = 1;
+                 color = doors_red;
+               };
+             ]
+           doors_patch))
+
+let doors_line_signs () =
+  Test_harness.reaches "line_signs"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:
+      (Mosaic.diff ~size:doors_size
+         ~line_signs:
+           [
+             {
+               Diff.side = New;
+               first = 2;
+               last = 2;
+               sign =
+                 {
+                   Line_number.before = Some "!";
+                   after = None;
+                   before_color = None;
+                   after_color = None;
+                 };
+             };
+           ]
+         doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           ~line_signs:
+             [
+               {
+                 Diff.side = New;
+                 first = 2;
+                 last = 2;
+                 sign =
+                   {
+                     Line_number.before = Some "!";
+                     after = None;
+                     before_color = None;
+                     after_color = None;
+                   };
+               };
+             ]
+           doors_patch))
+
+let doors_show_line_numbers () =
+  Test_harness.reaches "show_line_numbers"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:(Mosaic.diff ~size:doors_size ~show_line_numbers:false doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style ~show_line_numbers:false
+           doors_patch))
+
+let doors_wrap () =
+  Test_harness.reaches "wrap"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:(Mosaic.diff ~size:doors_size ~wrap:`Word doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style ~wrap:`Word doors_patch))
+
+let doors_selectable () =
+  Test_harness.reaches ~act:doors_select ~observe:doors_selected "selectable"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:(Mosaic.diff ~size:doors_size ~selectable:false doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style ~selectable:false doors_patch))
+
+let doors_text_style () =
+  Test_harness.reaches "text_style"
+    ~base:(Mosaic.diff ~size:doors_size doors_patch)
+    ~element:
+      (Mosaic.diff ~size:doors_size
+         ~text_style:(Ansi.Style.make ~bold:true ())
+         doors_patch)
+    ~create_base:(fun parent ->
+      Diff.node (Diff.create ~parent ~style:doors_style doors_patch))
+    ~create:(fun parent ->
+      Diff.node
+        (Diff.create ~parent ~style:doors_style
+           ~text_style:(Ansi.Style.make ~bold:true ())
+           doors_patch))
+
 let () =
   run "mosaic.diff"
     [
@@ -381,5 +622,19 @@ let () =
           test "asymmetric resize realigns" asymmetric_resize_realigns;
           test "split aligns lone CR row" split_aligns_lone_cr_row;
           test "async wrapped split settles" async_wrapped_split_settles;
+        ];
+      group "Both doors"
+        [
+          test "patch" doors_patch_label;
+          test "layout" doors_layout;
+          test "theme" doors_theme;
+          test "highlight" doors_highlight;
+          test "line_highlights" doors_line_highlights;
+          test "line_spans" doors_line_spans;
+          test "line_signs" doors_line_signs;
+          test "show_line_numbers" doors_show_line_numbers;
+          test "wrap" doors_wrap;
+          test "selectable" doors_selectable;
+          test "text_style" doors_text_style;
         ];
     ]
