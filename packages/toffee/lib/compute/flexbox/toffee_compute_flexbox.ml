@@ -73,6 +73,7 @@ type flex_item = {
   order : int; (* The order of the node relative to its siblings *)
   (* Size constraints *)
   size : float option size; (* The base size of this item *)
+  size_style : Dimension.t size; (* The size style of this item *)
   min_size : float option size; (* The minimum allowable size of this item *)
   max_size : float option size; (* The maximum allowable size of this item *)
   align_self : align_self; (* The cross-alignment of this item *)
@@ -405,6 +406,7 @@ let generate_anonymous_flex_items (type t)
           node = child_node;
           order = index;
           size;
+          size_style = Style.size child_style;
           min_size;
           max_size;
           align_self;
@@ -1646,149 +1648,182 @@ let resolve_flexible_lengths (line : flex_line) (constants : algo_constants) :
 
     flex_loop ()
 
+(* Whether the used cross size of [child] is the cross size of its flex line:
+   it has an auto cross size and align-self: stretch, and neither of its
+   cross-axis margins is auto. *)
+let is_stretched child (constants : algo_constants) =
+  child.align_self = Style.Align_items.Stretch
+  && (not
+        (if constants.is_row then child.margin_is_auto.top
+         else child.margin_is_auto.left))
+  && (not
+        (if constants.is_row then child.margin_is_auto.bottom
+         else child.margin_is_auto.right))
+  && Style.Dimension.is_auto
+       (if constants.is_row then child.size_style.height
+        else child.size_style.width)
+
 (* Determine hypothetical cross size *)
 let determine_hypothetical_cross_size (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (line : flex_line) (constants : algo_constants)
-    (available_space : Available_space.t size) : unit =
+    (node_size : float option size) (available_space : Available_space.t size) :
+    unit =
+  (* If the flex container is single-line and has a definite cross size, that
+     is the cross size of the line, whatever the hypothetical cross sizes of
+     the items are. *)
+  let line_cross_size_is_known =
+    (not constants.is_wrap)
+    && (if constants.is_row then node_size.height else node_size.width) <> None
+  in
   Array.iter
     (fun child ->
-      let padding_border_sum =
-        if constants.is_row then
-          child.padding.top +. child.padding.bottom +. child.border.top
-          +. child.border.bottom
-        else
-          child.padding.left +. child.padding.right +. child.border.left
-          +. child.border.right
-      in
-
-      let child_known_main =
-        if constants.is_row then constants.container_size.width
-        else constants.container_size.height
-      in
-
-      let child_cross =
-        let cross_size =
-          if constants.is_row then child.size.height else child.size.width
+      (* An item stretched to a line whose cross size is already known is not
+         measured: its hypothetical cross size would be used neither for the
+         line nor for the item (see [calculate_cross_size] and
+         [determine_used_cross_size]). A stretched item has align-self:
+         stretch, so it takes no part in baseline alignment, the other reader
+         of the hypothetical cross size. *)
+      if not (line_cross_size_is_known && is_stretched child constants) then
+        let padding_border_sum =
+          if constants.is_row then
+            child.padding.top +. child.padding.bottom +. child.border.top
+            +. child.border.bottom
+          else
+            child.padding.left +. child.padding.right +. child.border.left
+            +. child.border.right
         in
-        let min_cross =
-          if constants.is_row then child.min_size.height
-          else child.min_size.width
-        in
-        let max_cross =
-          if constants.is_row then child.max_size.height
-          else child.max_size.width
-        in
-        match (cross_size, min_cross, max_cross) with
-        | Some size, Some min, Some max ->
-            Some
-              (Float.max padding_border_sum
-                 (Float.max min (Float.min size max)))
-        | Some size, Some min, None ->
-            Some (Float.max padding_border_sum (Float.max min size))
-        | Some size, None, Some max ->
-            Some (Float.max padding_border_sum (Float.min size max))
-        | Some size, None, None -> Some (Float.max padding_border_sum size)
-        | None, _, _ -> None
-      in
 
-      let child_available_cross =
-        let available_cross =
-          if constants.is_row then available_space.height
-          else available_space.width
+        let child_known_main =
+          if constants.is_row then constants.container_size.width
+          else constants.container_size.height
         in
-        let min_cross =
-          if constants.is_row then child.min_size.height
-          else child.min_size.width
+
+        let child_cross =
+          let cross_size =
+            if constants.is_row then child.size.height else child.size.width
+          in
+          let min_cross =
+            if constants.is_row then child.min_size.height
+            else child.min_size.width
+          in
+          let max_cross =
+            if constants.is_row then child.max_size.height
+            else child.max_size.width
+          in
+          match (cross_size, min_cross, max_cross) with
+          | Some size, Some min, Some max ->
+              Some
+                (Float.max padding_border_sum
+                   (Float.max min (Float.min size max)))
+          | Some size, Some min, None ->
+              Some (Float.max padding_border_sum (Float.max min size))
+          | Some size, None, Some max ->
+              Some (Float.max padding_border_sum (Float.min size max))
+          | Some size, None, None -> Some (Float.max padding_border_sum size)
+          | None, _, _ -> None
         in
-        let max_cross =
-          if constants.is_row then child.max_size.height
-          else child.max_size.width
+
+        let child_available_cross =
+          let available_cross =
+            if constants.is_row then available_space.height
+            else available_space.width
+          in
+          let min_cross =
+            if constants.is_row then child.min_size.height
+            else child.min_size.width
+          in
+          let max_cross =
+            if constants.is_row then child.max_size.height
+            else child.max_size.width
+          in
+          match available_cross with
+          | Available_space.Definite value ->
+              let clamped =
+                match (min_cross, max_cross) with
+                | Some min, Some max -> Float.max min (Float.min value max)
+                | Some min, None -> Float.max min value
+                | None, Some max -> Float.min value max
+                | None, None -> value
+              in
+              Available_space.of_float (Float.max padding_border_sum clamped)
+          | _ -> available_cross
         in
-        match available_cross with
-        | Available_space.Definite value ->
-            let clamped =
-              match (min_cross, max_cross) with
-              | Some min, Some max -> Float.max min (Float.min value max)
-              | Some min, None -> Float.max min value
-              | None, Some max -> Float.min value max
-              | None, None -> value
-            in
-            Available_space.of_float (Float.max padding_border_sum clamped)
-        | _ -> available_cross
-      in
 
-      let child_inner_cross =
-        match child_cross with
-        | Some cross -> cross
-        | None ->
-            (* Need to measure the child *)
-            let child_known_dimensions =
-              if constants.is_row then
-                { Size.width = Some child.target_width; height = child_cross }
-              else
-                { Size.width = child_cross; height = Some child.target_height }
-            in
-            let child_available_space =
-              if constants.is_row then
-                {
-                  Size.width = Available_space.of_float child_known_main;
-                  height = child_available_cross;
-                }
-              else
-                {
-                  Size.width = child_available_cross;
-                  height = Available_space.of_float child_known_main;
-                }
-            in
-            let layout_output =
-              Tree.compute_child_layout tree child.node
-                (Layout_input.make ~run_mode:Run_mode.Compute_size
-                   ~sizing_mode:Sizing_mode.Content_size
-                   ~axis:
-                     (if constants.is_row then Requested_axis.Vertical
-                      else Requested_axis.Horizontal)
-                   ~known_dimensions:child_known_dimensions
-                   ~parent_size:constants.node_inner_size
-                   ~available_space:child_available_space
-                   ~vertical_margins_are_collapsible:Line.both_false)
-            in
-            let measured_size =
-              let size = Layout_output.size layout_output in
-              if constants.is_row then size.height else size.width
-            in
-            let min_cross =
-              if constants.is_row then child.min_size.height
-              else child.min_size.width
-            in
-            let max_cross =
-              if constants.is_row then child.max_size.height
-              else child.max_size.width
-            in
-            let clamped =
-              match (min_cross, max_cross) with
-              | Some min, Some max ->
-                  Float.max min (Float.min measured_size max)
-              | Some min, None -> Float.max min measured_size
-              | None, Some max -> Float.min measured_size max
-              | None, None -> measured_size
-            in
-            Float.max padding_border_sum clamped
-      in
+        let child_inner_cross =
+          match child_cross with
+          | Some cross -> cross
+          | None ->
+              (* Need to measure the child *)
+              let child_known_dimensions =
+                if constants.is_row then
+                  { Size.width = Some child.target_width; height = child_cross }
+                else
+                  {
+                    Size.width = child_cross;
+                    height = Some child.target_height;
+                  }
+              in
+              let child_available_space =
+                if constants.is_row then
+                  {
+                    Size.width = Available_space.of_float child_known_main;
+                    height = child_available_cross;
+                  }
+                else
+                  {
+                    Size.width = child_available_cross;
+                    height = Available_space.of_float child_known_main;
+                  }
+              in
+              let layout_output =
+                Tree.compute_child_layout tree child.node
+                  (Layout_input.make ~run_mode:Run_mode.Compute_size
+                     ~sizing_mode:Sizing_mode.Content_size
+                     ~axis:
+                       (if constants.is_row then Requested_axis.Vertical
+                        else Requested_axis.Horizontal)
+                     ~known_dimensions:child_known_dimensions
+                     ~parent_size:constants.node_inner_size
+                     ~available_space:child_available_space
+                     ~vertical_margins_are_collapsible:Line.both_false)
+              in
+              let measured_size =
+                let size = Layout_output.size layout_output in
+                if constants.is_row then size.height else size.width
+              in
+              let min_cross =
+                if constants.is_row then child.min_size.height
+                else child.min_size.width
+              in
+              let max_cross =
+                if constants.is_row then child.max_size.height
+                else child.max_size.width
+              in
+              let clamped =
+                match (min_cross, max_cross) with
+                | Some min, Some max ->
+                    Float.max min (Float.min measured_size max)
+                | Some min, None -> Float.max min measured_size
+                | None, Some max -> Float.min measured_size max
+                | None, None -> measured_size
+              in
+              Float.max padding_border_sum clamped
+        in
 
-      let child_outer_cross =
-        child_inner_cross
-        +.
-        if constants.is_row then child.margin.top +. child.margin.bottom
-        else child.margin.left +. child.margin.right
-      in
+        let child_outer_cross =
+          child_inner_cross
+          +.
+          if constants.is_row then child.margin.top +. child.margin.bottom
+          else child.margin.left +. child.margin.right
+        in
 
-      if constants.is_row then (
-        child.hypothetical_inner_height <- child_inner_cross;
-        child.hypothetical_outer_height <- child_outer_cross)
-      else (
-        child.hypothetical_inner_width <- child_inner_cross;
-        child.hypothetical_outer_width <- child_outer_cross))
+        if constants.is_row then (
+          child.hypothetical_inner_height <- child_inner_cross;
+          child.hypothetical_outer_height <- child_outer_cross)
+        else (
+          child.hypothetical_inner_width <- child_inner_cross;
+          child.hypothetical_outer_width <- child_outer_cross))
     line.items
 
 (* Calculate children baselines *)
@@ -2073,19 +2108,7 @@ let determine_used_cross_size (type t)
           let child_style = Tree.get_core_container_style tree child.node in
 
           let cross_target_size =
-            if
-              child.align_self = Style.Align_items.Stretch
-              && (not
-                    (if constants.is_row then child.margin_is_auto.top
-                     else child.margin_is_auto.left))
-              && (not
-                    (if constants.is_row then child.margin_is_auto.bottom
-                     else child.margin_is_auto.right))
-              &&
-              let size = Style.size child_style in
-              if constants.is_row then Style.Dimension.is_auto size.height
-              else Style.Dimension.is_auto size.width
-            then
+            if is_stretched child constants then
               (* Special case for stretch alignment *)
               (* For some reason this particular usage of max_width is an exception to the rule that max_width's transfer
              using the aspect_ratio (if set). Both Chrome and Firefox agree on this. And reading the spec, it seems like
@@ -3406,7 +3429,7 @@ let compute_preliminary (type t)
     (fun line ->
       determine_hypothetical_cross_size
         (module Tree)
-        tree line constants available_space)
+        tree line constants known_dimensions available_space)
     flex_lines;
 
   (* Calculate child baselines *)

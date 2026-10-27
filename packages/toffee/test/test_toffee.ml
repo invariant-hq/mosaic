@@ -474,9 +474,134 @@ let test_measure_count_flexbox () =
   match get_node_context tree leaf with
   | None -> fail "Missing node context after layout"
   | Some data ->
-      (* 7, as in Taffy since its cache keys on the requested axis and the
-         parent size (#911). *)
-      equal ~msg:"Measure function call count" int 7 data.count
+      (* 6, as in Taffy since its cache keys on the requested axis and the
+         parent size (#911) and a stretched item of a line of known cross
+         size is not measured (#1332). *)
+      equal ~msg:"Measure function call count" int 6 data.count
+
+(* The measure function of Taffy's test helpers. A node with [words] holds a
+   text in the Ahem font of the fixtures: every glyph is a 10px square, and
+   lines break only between the words, whose lengths [words] lists. A node
+   with no words is a 50x50 box. [calls] counts the calls that are asked a
+   size not already known. *)
+type test_node = { mutable calls : int; words : int list }
+
+let test_measure (known : float option size)
+    (available : Available_space.t size) _node context _style : Sizef.t =
+  match (known, context) with
+  | { width = Some width; height = Some height }, _ -> { width; height }
+  | _, None ->
+      {
+        width = Option.value known.width ~default:0.;
+        height = Option.value known.height ~default:0.;
+      }
+  | _, Some node ->
+      node.calls <- node.calls + 1;
+      let glyph = 10. in
+      let measured : Sizef.t =
+        match node.words with
+        | [] -> { width = 50.; height = 50. }
+        | words ->
+            let longest = Float.of_int (List.fold_left max 0 words) *. glyph in
+            let total = Float.of_int (List.fold_left ( + ) 0 words) *. glyph in
+            let width =
+              match (known.width, available.width) with
+              | Some width, _ -> width
+              | None, Min_content -> longest
+              | None, Max_content -> total
+              | None, Definite width -> Float.min width total
+            in
+            let width = Float.max width longest in
+            let per_line = int_of_float (Float.floor (width /. glyph)) in
+            let lines, _ =
+              List.fold_left
+                (fun (lines, line) n ->
+                  if line + n > per_line then
+                    ((if line > 0 then lines + 1 else lines), n)
+                  else (lines, line + n))
+                (1, 0) words
+            in
+            {
+              width;
+              height =
+                Option.value known.height ~default:(Float.of_int lines *. glyph);
+            }
+      in
+      {
+        width = Option.value known.width ~default:measured.width;
+        height = Option.value known.height ~default:measured.height;
+      }
+
+let max_content =
+  Size.
+    {
+      width = Available_space.max_content;
+      height = Available_space.max_content;
+    }
+
+(* Taffy's measure_count_grid: a measured grid leaf under 101 nested flex
+   containers. *)
+let test_measure_count_grid () =
+  let tree = new_tree () in
+  let node = { calls = 0; words = [] } in
+  let leaf =
+    new_leaf_with_context tree
+      (Style.default |> Style.set_display Style.Display.Grid)
+      node
+    |> or_fail "leaf"
+  in
+  let rec nest depth node =
+    if depth = 0 then node
+    else
+      new_with_children tree Style.default [| node |]
+      |> or_fail "parent"
+      |> nest (depth - 1)
+  in
+  let root = nest 101 leaf in
+  compute_layout_with_measure tree root max_content test_measure
+  |> or_fail "compute";
+  equal ~msg:"Measure function call count" int 6 node.calls
+
+(* Taffy's measure_count_flex_in_grid: a text in a flex container that is the
+   item of a 50px wide grid. Taffy counts 9 calls in a row and 10 in a column.
+   Toffee's flex container also computes its items' cross sizes when it is
+   asked for its main size alone, where Taffy returns early, so its counts are
+   its own: 13 and 10 when the stretched leaf was measured for its
+   hypothetical cross size, 11 and 9 now. *)
+let test_measure_count_flex_in_grid () =
+  List.iter
+    (fun (direction, expected) ->
+      let tree = new_tree () in
+      let node = { calls = 0; words = [ 2; 2; 2; 2 ] } in
+      let leaf =
+        new_leaf_with_context tree Style.default node |> or_fail "leaf"
+      in
+      let flex =
+        new_with_children tree
+          (Style.default |> Style.set_flex_direction direction)
+          [| leaf |]
+        |> or_fail "flex"
+      in
+      let grid =
+        new_with_children tree
+          (Style.default
+          |> Style.set_display Style.Display.Grid
+          |> Style.set_size
+               Size.
+                 {
+                   width = Style.Dimension.length 50.;
+                   height = Style.Dimension.auto;
+                 })
+          [| flex |]
+        |> or_fail "grid"
+      in
+      compute_layout_with_measure tree grid max_content test_measure
+      |> or_fail "compute";
+      let size = Layout.size (layout tree leaf |> or_fail "layout") in
+      equal ~msg:"Leaf width" float_exact 50. size.width;
+      equal ~msg:"Leaf height" float_exact 20. size.height;
+      equal ~msg:"Measure function call count" int expected node.calls)
+    [ (Style.Flex_direction.Row, 11); (Style.Flex_direction.Column, 9) ]
 
 (* The cache, as Taffy's cache.rs tests it: a measurement of a [width]-wide
    node at max-content. *)
@@ -1455,6 +1580,8 @@ let () =
       group "caching"
         [
           test "Measure count flexbox" test_measure_count_flexbox;
+          test "Measure count grid" test_measure_count_grid;
+          test "Measure count flex in grid" test_measure_count_flex_in_grid;
           test "Second chance eviction" test_cache_second_chance;
           test "Update in place" test_cache_update_in_place;
           test "Margin collapse not cached"
