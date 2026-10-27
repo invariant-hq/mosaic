@@ -11,10 +11,12 @@
     An entry is keyed on its {!Layout_input.t}: on each axis, the known
     dimension when there is one and else the available space; the parent size;
     and the requested axis. The final layout matches only the same key. A
-    measurement matches the same known dimensions or available space and the
-    same parent width, and it answers a query for either axis only if it was
-    computed for both axes, since a measurement for one axis may hold garbage in
-    the other.
+    measurement matches the same known dimensions or available space, the same
+    parent width and, when the node's style resolves a percentage or a [calc]
+    height, minimum height or maximum height against it, the same parent height.
+    A layout reads its parent's height through those properties alone. A
+    measurement answers a query for either axis only if it was computed for both
+    axes, since a measurement for one axis may hold garbage in the other.
 
     The sizing mode and the collapsibility of the vertical margins are not in
     the key: they change for a node only when its parent's algorithm or its own
@@ -44,11 +46,13 @@ type clear_state =
   | Cleared  (** Some entries were removed. *)
   | Already_empty  (** Cache was already empty. *)
 
-val get : t -> Layout_input.t -> Layout_output.t option
-(** [get t inputs] is the cached result for [inputs], if any. *)
+val get : t -> Toffee_style.t -> Layout_input.t -> Layout_output.t option
+(** [get t style inputs] is the result cached in [t] for [inputs], if any, where
+    [style] is the node's style. *)
 
-val store : t -> Layout_input.t -> Layout_output.t -> unit
-(** [store t inputs output] caches [output] as the result for [inputs]. *)
+val store : t -> Toffee_style.t -> Layout_input.t -> Layout_output.t -> unit
+(** [store t style inputs output] caches [output] as the result for [inputs] of
+    a node whose style is [style]. *)
 
 val clear : t -> clear_state
 (** [clear t] removes all entries.

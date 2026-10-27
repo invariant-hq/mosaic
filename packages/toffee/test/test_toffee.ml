@@ -624,14 +624,14 @@ let measured width =
 let cached cache input =
   Option.map
     (fun output -> (Layout_output.size output).width)
-    (Cache.get cache input)
+    (Cache.get cache Style.default input)
 
 let cached_width = option float_exact
 
 let test_cache_second_chance () =
   let cache = Cache.make () in
   for width = 0 to Cache.cache_size do
-    Cache.store cache
+    Cache.store cache Style.default
       (measure_input (float_of_int width))
       (measured (float_of_int width))
   done;
@@ -639,7 +639,7 @@ let test_cache_second_chance () =
      so the eleventh evicts the third. *)
   equal ~msg:"evicted" cached_width None (cached cache (measure_input 0.));
   equal ~msg:"used" cached_width (Some 1.) (cached cache (measure_input 1.));
-  Cache.store cache
+  Cache.store cache Style.default
     (measure_input (float_of_int (Cache.cache_size + 1)))
     (measured (float_of_int (Cache.cache_size + 1)));
   equal ~msg:"kept" cached_width (Some 1.) (cached cache (measure_input 1.));
@@ -647,9 +647,9 @@ let test_cache_second_chance () =
 
 let test_cache_update_in_place () =
   let cache = Cache.make () in
-  Cache.store cache (measure_input 1.) (measured 1.);
-  Cache.store cache (measure_input 2.) (measured 2.);
-  Cache.store cache (measure_input 1.) (measured 3.);
+  Cache.store cache Style.default (measure_input 1.) (measured 1.);
+  Cache.store cache Style.default (measure_input 2.) (measured 2.);
+  Cache.store cache Style.default (measure_input 1.) (measured 3.);
   equal ~msg:"updated" cached_width (Some 3.) (cached cache (measure_input 1.));
   equal ~msg:"kept" cached_width (Some 2.) (cached cache (measure_input 2.))
 
@@ -663,11 +663,11 @@ let test_cache_margin_collapse_not_cached () =
       ~bottom_margin:Toffee_tree.Collapsible_margin_set.zero
       ~margins_can_collapse_through:through
   in
-  Cache.store cache (measure_input 1.)
+  Cache.store cache Style.default (measure_input 1.)
     (with_margins ~through:true ~top:Toffee_tree.Collapsible_margin_set.zero 1.);
   equal ~msg:"collapse through" cached_width None
     (cached cache (measure_input 1.));
-  Cache.store cache (measure_input 2.)
+  Cache.store cache Style.default (measure_input 2.)
     (with_margins ~through:false
        ~top:(Toffee_tree.Collapsible_margin_set.from_margin 10.)
        2.);
@@ -676,17 +676,17 @@ let test_cache_margin_collapse_not_cached () =
 
 let test_cache_mode_and_axis () =
   let cache = Cache.make () in
-  Cache.store cache (measure_input 1.) (measured 1.);
+  Cache.store cache Style.default (measure_input 1.) (measured 1.);
   equal ~msg:"other sizing mode" cached_width None
     (cached cache
        (measure_input ~sizing_mode:Toffee_tree.Sizing_mode.Content_size 1.));
-  Cache.store cache
+  Cache.store cache Style.default
     (measure_input ~sizing_mode:Toffee_tree.Sizing_mode.Content_size 1.)
     (measured 4.);
   equal ~msg:"mode change drops entries" cached_width None
     (cached cache (measure_input 1.));
   let cache = Cache.make () in
-  Cache.store cache
+  Cache.store cache Style.default
     (measure_input ~axis:Toffee_tree.Requested_axis.Horizontal 1.)
     (measured 1.);
   equal ~msg:"same axis" cached_width (Some 1.)
@@ -695,7 +695,7 @@ let test_cache_mode_and_axis () =
   equal ~msg:"other axis" cached_width None
     (cached cache (measure_input ~axis:Toffee_tree.Requested_axis.Vertical 1.));
   equal ~msg:"both axes" cached_width None (cached cache (measure_input 1.));
-  Cache.store cache (measure_input 1.) (measured 2.);
+  Cache.store cache Style.default (measure_input 1.) (measured 2.);
   equal ~msg:"both axes answer one" cached_width (Some 2.)
     (cached cache (measure_input ~axis:Toffee_tree.Requested_axis.Vertical 1.))
 
@@ -772,6 +772,89 @@ let test_cache_width_measure_does_not_answer_height () =
         (19. *. float_of_int index)
         (Layout.location layout).y)
     items
+
+(* A leaf of [length] cells that takes the height available to it, up to its
+   length. *)
+let reader length (known : float option size)
+    (available : Available_space.t size) =
+  Sizef.
+    {
+      width =
+        (match (known.width, available.width) with
+        | Some width, _ -> width
+        | None, Definite width -> Float.min width length
+        | None, Min_content -> Float.min 5. length
+        | None, Max_content -> length);
+      height =
+        (match (known.height, available.height) with
+        | Some height, _ -> height
+        | None, Definite height -> Float.min height length
+        | None, Min_content -> 1.
+        | None, Max_content -> length);
+    }
+
+(* A grid holding a leaf whose style is [leaf_style] is laid out [width] wide
+   at the root height [before], then at [after]. The grid measures the leaf
+   against its own inner height, unknown while the grid is measured and known
+   once it is laid out, and the leaf's minimum or maximum height is a
+   percentage of that height: a measurement taken against one must not answer
+   a query against the other. The leaf and the root get the heights a fresh
+   layout at [after] gives them; the leaf's height is returned. *)
+let relayout_at_another_height ~leaf_style ~measure ~width ~before ~after =
+  let build () =
+    let tree = new_tree () in
+    let leaf = new_leaf_with_context tree leaf_style () |> or_fail "leaf" in
+    let grid =
+      new_with_children tree
+        (Style.default |> Style.set_display Style.Display.Grid)
+        [| leaf |]
+      |> or_fail "grid"
+    in
+    let root =
+      new_with_children tree Style.default [| grid |] |> or_fail "root"
+    in
+    (tree, root, leaf)
+  in
+  let lay tree root height =
+    compute_layout_with_measure tree root
+      Size.
+        {
+          width = Available_space.of_float width;
+          height = Available_space.of_float height;
+        }
+      (fun known available _ _ _ -> measure known available)
+    |> or_fail "layout"
+  in
+  let tree, root, leaf = build () in
+  lay tree root before;
+  lay tree root after;
+  let fresh, fresh_root, fresh_leaf = build () in
+  lay fresh fresh_root after;
+  let height tree node = (Layout.size (unrounded_layout tree node)).height in
+  equal ~msg:"leaf height" (float 1e-6) (height fresh fresh_leaf)
+    (height tree leaf);
+  equal ~msg:"root height" (float 1e-6) (height fresh fresh_root)
+    (height tree root);
+  height tree leaf
+
+let test_cache_max_height_follows_parent_height () =
+  let height =
+    relayout_at_another_height
+      ~leaf_style:
+        (Style.default |> Style.set_max_height (Style.Dimension.percent 0.57))
+      ~measure:(reader 22.) ~width:30. ~before:20. ~after:30.
+  in
+  equal ~msg:"57% of the 22-cell grid area" (float 1e-6) 12.54 height
+
+let test_cache_min_height_follows_parent_height () =
+  let height =
+    relayout_at_another_height
+      ~leaf_style:
+        (Style.default |> Style.set_min_height (Style.Dimension.percent 0.85))
+      ~measure:(reader 1.) ~width:70. ~before:40. ~after:30.
+  in
+  equal ~msg:"the content above 85% of the 1-cell grid area" (float 1e-6) 1.
+    height
 
 (* A percent-width item clamped by its own max-width must be measured at the
    clamped width when deriving content-based sizes, so wrapping content
@@ -1589,6 +1672,10 @@ let () =
           test "Mode and axis" test_cache_mode_and_axis;
           test "Width measure does not answer height"
             test_cache_width_measure_does_not_answer_height;
+          test "Maximum height follows the parent height"
+            test_cache_max_height_follows_parent_height;
+          test "Minimum height follows the parent height"
+            test_cache_min_height_follows_parent_height;
         ];
       group "min_max_overrides"
         [

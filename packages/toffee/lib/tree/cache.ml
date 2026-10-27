@@ -119,7 +119,25 @@ let same (a : float) (b : float) =
   Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
 [@@inline]
 
-let entry inputs ~width ~height =
+(* The parent height a measurement is keyed on: the parent's height when
+   [style] resolves a percentage or calc height, minimum height or maximum
+   height against it, and else negative infinity, which no parent height
+   takes. A layout reads its parent's height through those properties
+   alone. *)
+let parent_height_key (style : Toffee_style.t)
+    (parent : float option Geometry.size) =
+  let reads (size : Toffee_style.Dimension.t Geometry.size) =
+    Toffee_style.Dimension.is_percent size.height
+    || Toffee_style.Dimension.is_calc size.height
+  in
+  if
+    reads (Toffee_style.size style)
+    || reads (Toffee_style.min_size style)
+    || reads (Toffee_style.max_size style)
+  then parent_key parent.height
+  else neg_infinity
+
+let entry inputs ~parent_height ~width ~height =
   let known = Layout_input.known_dimensions inputs in
   let available = Layout_input.available_space inputs in
   let parent = Layout_input.parent_size inputs in
@@ -127,20 +145,21 @@ let entry inputs ~width ~height =
     width_key = mixed_key known.width available.width;
     height_key = mixed_key known.height available.height;
     parent_width = parent_key parent.width;
-    parent_height = parent_key parent.height;
+    parent_height;
     axis = axis_key (Layout_input.axis inputs);
     width;
     height;
   }
 
-(* Makes [entries.(index)] a valid entry keyed on [inputs] and holding [width]
-   and [height]: the entry there overwritten, or a new one in place of
-   [no_entry]. *)
-let set t index inputs ~width ~height =
+(* Makes [entries.(index)] a valid entry keyed on [inputs] and
+   [parent_height] and holding [width] and [height]: the entry there
+   overwritten, or a new one in place of [no_entry]. *)
+let set t index inputs ~parent_height ~width ~height =
   if Array.length t.entries = 0 then
     t.entries <- Array.make (cache_size + 1) no_entry;
   let e = t.entries.(index) in
-  (if e == no_entry then t.entries.(index) <- entry inputs ~width ~height
+  (if e == no_entry then
+     t.entries.(index) <- entry inputs ~parent_height ~width ~height
    else
      let known = Layout_input.known_dimensions inputs in
      let available = Layout_input.available_space inputs in
@@ -148,13 +167,13 @@ let set t index inputs ~width ~height =
      e.width_key <- mixed_key known.width available.width;
      e.height_key <- mixed_key known.height available.height;
      e.parent_width <- parent_key parent.width;
-     e.parent_height <- parent_key parent.height;
+     e.parent_height <- parent_height;
      e.axis <- axis_key (Layout_input.axis inputs);
      e.width <- width;
      e.height <- height);
   t.state <- t.state lor (1 lsl (valid_shift + index))
 
-let get t inputs =
+let get t style inputs =
   if cache_mode t <> mode inputs then None
   else
     let known = Layout_input.known_dimensions inputs in
@@ -178,6 +197,7 @@ let get t inputs =
         then Some t.final_layout
         else None
     | Compute_size ->
+        let parent_height = parent_height_key style parent in
         let found = ref (-1) and i = ref 0 in
         while !found < 0 && !i < cache_size do
           if
@@ -186,10 +206,11 @@ let get t inputs =
             let e = t.entries.(!i) in
             same e.width_key width_key
             && same e.height_key height_key
-            (* A measurement keys on the parent's width only, and one for a
-               single axis may hold garbage in the other, so it answers only
-               queries for that axis; one for both axes answers any. *)
             && same e.parent_width parent_width
+            && same e.parent_height parent_height
+            (* A measurement for a single axis may hold garbage in the
+               other, so it answers only queries for that axis; one for both
+               axes answers any. *)
             && (e.axis = 3. || e.axis = axis)
           then found := !i;
           incr i
@@ -218,7 +239,7 @@ let carries_margin_collapse output =
   || (not (zero (Layout_output.top_margin output)))
   || not (zero (Layout_output.bottom_margin output))
 
-let store t inputs output =
+let store t style inputs output =
   match Layout_input.run_mode inputs with
   | Run_mode.Perform_hidden_layout -> ()
   | (Perform_layout | Compute_size) as run_mode -> (
@@ -228,7 +249,9 @@ let store t inputs output =
         set_cache_mode t mode);
       match run_mode with
       | Perform_layout ->
-          set t cache_size inputs ~width:0. ~height:0.;
+          set t cache_size inputs
+            ~parent_height:(parent_key (Layout_input.parent_size inputs).height)
+            ~width:0. ~height:0.;
           t.final_layout <- output
       | Compute_size ->
           (* A measurement keeps only the size and comes back through
@@ -242,7 +265,7 @@ let store t inputs output =
             let width_key = mixed_key known.width available.width in
             let height_key = mixed_key known.height available.height in
             let parent_width = parent_key parent.width in
-            let parent_height = parent_key parent.height in
+            let parent_height = parent_height_key style parent in
             let axis = axis_key (Layout_input.axis inputs) in
             let index = ref (-1) and i = ref 0 in
             while !index < 0 && !i < cache_size do
@@ -271,7 +294,8 @@ let store t inputs output =
               index := !cursor;
               set_recently_used t !used;
               set_cursor t ((!cursor + 1) mod cache_size));
-            set t !index inputs ~width:size.width ~height:size.height;
+            set t !index inputs ~parent_height ~width:size.width
+              ~height:size.height;
             set_recently_used t (recently_used t lor (1 lsl !index)))
       | Perform_hidden_layout -> ())
 

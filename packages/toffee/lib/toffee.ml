@@ -655,12 +655,12 @@ module View = struct
   (* Cache operations *)
   let cache_get tree node_id inputs =
     let node_data = tree.taffy.nodes.(node_index_exn tree.taffy node_id) in
-    Cache.get node_data.cache inputs
+    Cache.get node_data.cache node_data.style inputs
 
   let cache_store tree node_id inputs layout_output =
     let idx = node_index_exn tree.taffy node_id in
     let node_data = tree.taffy.nodes.(idx) in
-    Cache.store node_data.cache inputs layout_output
+    Cache.store node_data.cache node_data.style inputs layout_output
 
   let cache_clear tree node_id =
     let idx = node_index_exn tree.taffy node_id in
@@ -812,11 +812,11 @@ module Cache_tree = struct
 
   let cache_get tree node_id inputs =
     let node_data = tree.nodes.(node_index_exn tree node_id) in
-    Cache.get node_data.cache inputs
+    Cache.get node_data.cache node_data.style inputs
 
   let cache_store tree node_id inputs layout_output =
     let node_data = tree.nodes.(node_index_exn tree node_id) in
-    Cache.store node_data.cache inputs layout_output
+    Cache.store node_data.cache node_data.style inputs layout_output
 
   let cache_clear tree node_id =
     let node_data = tree.nodes.(node_index_exn tree node_id) in
