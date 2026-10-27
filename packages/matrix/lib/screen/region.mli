@@ -192,8 +192,8 @@ val moved : t -> unit
 
 val suspend : t -> cols:int -> string
 (** [suspend r ~cols] is the bytes that erase [r]'s rows and leave the cursor at
-    the start of the origin, for something else to write there. The next {!draw}
-    draws [r] afresh from a row of its own.
+    the start of the origin, shown, for something else to write there. The next
+    {!draw} draws [r] afresh from a row of its own.
 
     Raises [Invalid_argument] if [cols] is not positive. *)
 

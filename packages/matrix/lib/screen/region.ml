@@ -239,6 +239,9 @@ let suspend r ~cols =
   to_origin r w;
   to_own_row r w ~cols;
   erase w;
+  (* What writes next, such as a child process, finds the cursor shown,
+     whatever the last write left. *)
+  str w "\027[?25h";
   reset r;
   Ansi.Writer.contents w
 

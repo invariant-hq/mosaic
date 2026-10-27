@@ -1246,7 +1246,11 @@ let test_region_suspend () =
   draw r t (frame [ "c" ]);
   equal ~msg:"the child's lines stay, unended one included" region_lines
     [ "child"; "no end"; ""; "c" ]
-    (lines t)
+    (lines t);
+  feed t (Region.draw r ~cols:10 ~rows:6 ~cursor:Hidden (frame [ "d" ]));
+  feed t (Region.suspend r ~cols:10);
+  is_true ~msg:"a cursor hidden between writes shows for the child"
+    (Vte.modes t).cursor_visible
 
 let test_region_teardown () =
   let t = region_term ~cols:10 ~rows:8 in
