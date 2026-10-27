@@ -105,6 +105,7 @@ type 'msg t =
   | Viewport_switch of 'msg viewport_switch
   | Memo of 'msg memo
   | Embed of Renderable.t
+  | Themed of (Theme.t -> Theme.t) * 'msg t
   | Empty
 
 and 'msg memo = {
@@ -134,6 +135,7 @@ and 'msg viewport_switch = {
 let empty = Empty
 let fragment children = Fragment children
 let embed node = Embed node
+let themed f child = Themed (f, child)
 
 (* A memo key is compared by representation (see [memo] in the interface).
    Functions, objects and abstract blocks have no comparable representation and
@@ -1071,6 +1073,7 @@ let rec map (f : 'a -> 'b) (vnode : 'a t) : 'b t =
           mappings = Obj.repr f :: m.mappings;
         }
   | Embed node -> Embed node
+  | Themed (theme, child) -> Themed (theme, map f child)
   | Fragment children -> Fragment (List.map (map f) children)
   | Viewport_switch { at_least_width; wide; narrow } ->
       Viewport_switch

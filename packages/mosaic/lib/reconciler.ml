@@ -500,6 +500,8 @@ and fiber = {
 
 and span = {
   mutable memo : unit Vnode.memo;
+  mutable span_theme : (Theme.t -> Theme.t) option;
+      (** The theme its place declares, given to the nodes it places. *)
   mutable view : unit Vnode.t;  (** The memo's view, built once. *)
   mutable span_viewport_width : int;
   mutable span_children : child list;
@@ -821,32 +823,61 @@ let fibers_and_embeds children =
 
 (* ───── Vnode Flattening ───── *)
 
-(* Fragments and Empty nodes are structural -- they group vnodes but don't
-   correspond to real widgets. Flattening collapses them into the list of
-   concrete children: elements, embeds, and memos, whose views are built only
-   when they cannot be reused. *)
+(* Fragments, themed vnodes and Empty nodes are structural -- they group
+   vnodes but don't correspond to real widgets. Flattening collapses them
+   into the list of concrete children: elements, embeds, and memos, whose
+   views are built only when they cannot be reused. A child inside [themed]
+   wrappers carries their functions composed, outermost first, which the
+   reconciler gives its node as its place's
+   ([Renderable.Private.set_place_theme]), apart from its own; a child outside every
+   one is not wrapped, so a view without [themed] allocates nothing for
+   them. *)
 type flattened =
   | Flat_element of unit Vnode.element
   | Flat_embed of Renderable.t
   | Flat_memo of unit Vnode.memo
+  | Flat_themed of (Theme.t -> Theme.t) * flattened
+      (** Never holds another [Flat_themed]. *)
 
-let rec flatten_vnode ~viewport_width (vnode : unit Vnode.t)
+let in_theme theme flat =
+  match theme with None -> flat | Some f -> Flat_themed (f, flat)
+
+(* [inner] applied to what [outer] gives. *)
+let compose outer inner =
+  match outer with None -> inner | Some outer -> fun t -> inner (outer t)
+
+let rec flatten_vnode ~viewport_width ~theme (vnode : unit Vnode.t)
     (acc : flattened list) : flattened list =
   match vnode with
   | Vnode.Empty -> acc
-  | Vnode.Memo memo -> Flat_memo memo :: acc
-  | Vnode.Embed node -> Flat_embed node :: acc
-  | Vnode.Element elem -> Flat_element elem :: acc
-  | Vnode.Fragment children ->
-      List.fold_right (flatten_vnode ~viewport_width) children acc
+  | Vnode.Memo memo -> in_theme theme (Flat_memo memo) :: acc
+  | Vnode.Embed node -> in_theme theme (Flat_embed node) :: acc
+  | Vnode.Element elem -> in_theme theme (Flat_element elem) :: acc
+  | Vnode.Themed (f, child) ->
+      flatten_vnode ~viewport_width ~theme:(Some (compose theme f)) child acc
+  | Vnode.Fragment children -> flatten_list ~viewport_width ~theme children acc
   | Vnode.Viewport_switch { at_least_width; wide; narrow } ->
       let selected =
         if viewport_width >= at_least_width then wide else narrow
       in
-      flatten_vnode ~viewport_width selected acc
+      flatten_vnode ~viewport_width ~theme selected acc
+
+(* [List.fold_right] over [flatten_vnode], without the closure. *)
+and flatten_list ~viewport_width ~theme children acc =
+  match children with
+  | [] -> acc
+  | child :: rest ->
+      flatten_vnode ~viewport_width ~theme child
+        (flatten_list ~viewport_width ~theme rest acc)
 
 let flatten_children ~viewport_width children =
-  List.fold_right (flatten_vnode ~viewport_width) children []
+  flatten_list ~viewport_width ~theme:None children []
+
+let same_theme a b =
+  match (a, b) with
+  | None, None -> true
+  | Some f, Some g -> f == g
+  | Some _, None | None, Some _ -> false
 
 (* ───── Fiber Maps ───── *)
 
@@ -1099,22 +1130,9 @@ and reconcile_list ~(parent_node : Renderable.t) ~viewport_width ~stale
   let elem_idx = ref 0 in
   let new_children =
     List.map
-      (function
-        | Flat_element elem ->
-            let idx = !elem_idx in
-            incr elem_idx;
-            Fiber (reconcile_element ~parent_node maps idx ~viewport_width elem)
-        | Flat_embed n -> Embedded n
-        | Flat_memo memo ->
-            let previous =
-              match !old_spans with
-              | span :: rest ->
-                  old_spans := rest;
-                  Some span
-              | [] -> None
-            in
-            Memo_span
-              (reconcile_span ~parent_node ~viewport_width ~stale previous memo))
+      (fun flat ->
+        reconcile_item ~parent_node maps elem_idx old_spans ~viewport_width
+          ~stale None flat)
       flattened
   in
   (* A discarded span's embedded nodes may reappear elsewhere, so they are
@@ -1133,13 +1151,43 @@ and reconcile_list ~(parent_node : Renderable.t) ~viewport_width ~stale
       destroy_fibers (unused @ span_fibers));
   new_children
 
+(* One child of [reconcile_list], under the theme its place declares. *)
+and reconcile_item ~parent_node maps elem_idx old_spans ~viewport_width ~stale
+    theme = function
+  | Flat_element elem ->
+      let idx = !elem_idx in
+      incr elem_idx;
+      let fiber =
+        reconcile_element ~parent_node maps idx ~viewport_width elem
+      in
+      Renderable.Private.set_place_theme (fiber_node fiber) theme;
+      Fiber fiber
+  | Flat_embed n ->
+      Renderable.Private.set_place_theme n theme;
+      Embedded n
+  | Flat_memo memo ->
+      let previous =
+        match !old_spans with
+        | span :: rest ->
+            old_spans := rest;
+            Some span
+        | [] -> None
+      in
+      Memo_span
+        (reconcile_span ~parent_node ~viewport_width ~stale ~theme previous memo)
+  | Flat_themed (f, flat) ->
+      reconcile_item ~parent_node maps elem_idx old_spans ~viewport_width ~stale
+        (Some f) flat
+
 (* Like Elm's lazy nodes, an equal memo stops the diff: its span keeps its
-   children untouched. *)
-and reconcile_span ~parent_node ~viewport_width ~stale previous memo =
+   children untouched. Under another theme its view, kept, is reconciled
+   again, so that its nodes take the theme. *)
+and reconcile_span ~parent_node ~viewport_width ~stale ~theme previous memo =
   match previous with
   | Some span
     when Vnode.memo_equal span.memo memo
-         && span.span_viewport_width = viewport_width ->
+         && span.span_viewport_width = viewport_width
+         && same_theme span.span_theme theme ->
       span.memo <- memo;
       span.reused <- true;
       span
@@ -1148,12 +1196,14 @@ and reconcile_span ~parent_node ~viewport_width ~stale previous memo =
         span.view <- Vnode.memo_view memo;
       span.memo <- memo;
       span.span_viewport_width <- viewport_width;
+      span.span_theme <- theme;
       update_span ~parent_node ~viewport_width ~stale span;
       span
   | None ->
       let span =
         {
           memo;
+          span_theme = theme;
           view = Vnode.memo_view memo;
           span_viewport_width = viewport_width;
           span_children = [];
@@ -1169,7 +1219,7 @@ and reconcile_span ~parent_node ~viewport_width ~stale previous memo =
 and update_span ~parent_node ~viewport_width ~stale span =
   let children =
     reconcile_list ~parent_node ~viewport_width ~stale span.span_children
-      (flatten_vnode ~viewport_width span.view [])
+      (flatten_vnode ~viewport_width ~theme:span.span_theme span.view [])
   in
   span.span_children <- children;
   span.node_count <- node_count children;
@@ -1186,7 +1236,7 @@ let render (t : t) ~viewport_width (vnode : unit Vnode.t) : unit =
   let children =
     reconcile_list ~parent_node:t.container ~viewport_width ~stale
       t.root_children
-      (flatten_vnode ~viewport_width vnode [])
+      (flatten_vnode ~viewport_width ~theme:None vnode [])
   in
   t.root_children <- children;
   commit_placement t.container ~stale:!stale children;

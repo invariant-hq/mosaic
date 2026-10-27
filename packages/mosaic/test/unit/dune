@@ -39,7 +39,8 @@
   test_items
   test_cursor
   test_column
-  test_combobox)
+  test_combobox
+  test_theme)
  (package mosaic)
  (libraries
   windtrap

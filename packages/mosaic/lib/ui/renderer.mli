@@ -311,6 +311,14 @@ val set_modal : t -> Renderable.t option -> unit
 val modal : t -> Renderable.t option
 (** [modal t] is the modal node, if any. *)
 
+val set_theme : t -> Theme.t -> unit
+(** [set_theme t theme] makes [theme] the theme in scope at [t]'s root
+    ({!Renderable.theme}), and asks for a frame, which draws every node with it.
+    A new renderer's theme is {!Theme.plain}. *)
+
+val theme : t -> Theme.t
+(** [theme t] is the theme in scope at [t]'s root. *)
+
 (** {1:selection Selection} *)
 
 val selection : t -> Selection.t option

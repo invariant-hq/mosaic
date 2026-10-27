@@ -65,6 +65,14 @@ val height : t -> int
     render pass. Inside {!set_on_draw} and {!set_on_resize} callbacks the value
     reflects the current layout dimensions. *)
 
+(** {1:theming Theme} *)
+
+val theme : t -> Theme.t
+(** [theme t] is the theme in scope at [t] ({!Renderable.theme}), with which a
+    {!set_on_draw} callback draws by role, as widgets do: a drawing that styles
+    its cells with it follows a [themed] around the canvas and the terminal's
+    colors, and is drawn again with a theme that changes. *)
+
 (** {1:drawing Drawing}
 
     Drawing operations write into the canvas grid. Changes persist between

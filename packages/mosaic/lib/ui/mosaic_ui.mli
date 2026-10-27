@@ -18,8 +18,9 @@
       which an application keeps in its model and widgets read, and {!Column},
       the columns of a collection's rows.
     - {b Theming.} {!Syntax_style} for tree-sitter/TextMate-style syntax
-      colouring, {!Syntax_highlight} for source highlight ranges, and {!Glyphs}
-      for the characters widgets draw to show state. *)
+      colouring, {!Syntax_highlight} for source highlight ranges, {!Glyphs} for
+      the characters widgets draw to show state, and {!Theme} for the styles of
+      an interface's roles. *)
 
 (** {1:events Events and input} *)
 
@@ -134,6 +135,9 @@ module Column = Column
 
 module Glyphs = Glyphs
 (** The characters widgets draw to show state, in Unicode and ASCII sets. *)
+
+module Theme = Theme
+(** Themes, the styles an interface's roles are drawn in. *)
 
 module Combobox = Combobox
 (** An editable choice: a text field, a list cursor, and its keys. *)

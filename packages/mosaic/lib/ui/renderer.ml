@@ -41,6 +41,7 @@ type scroll_hint_state =
 (* ───── Types ───── *)
 
 type t = {
+  ctx : Renderable.Private.context;
   screen : Screen.t;
   (* [true] when the screen was adopted from a host runtime; presentation
      then belongs to the host, and [render] refuses to run. *)
@@ -592,6 +593,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
       admit_size_report;
       regroups = [];
       top_layer = None;
+      theme = Theme.plain;
     }
   in
   let root_style =
@@ -611,6 +613,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
     (Toffee.Node_id.index (Renderable.Private.toffee_node root))
     root;
   {
+    ctx;
     screen;
     adopted;
     root;
@@ -646,6 +649,15 @@ let focused t = !(t.focused)
 let blur t = blur_current t
 let focus t node = focus_node t node
 let modal t = top_layer t
+let theme t = t.ctx.theme
+
+(* Roles resolve as nodes are drawn, so a new theme needs a frame and no
+   other work. *)
+let set_theme t theme =
+  if not (t.ctx.theme == theme) then begin
+    t.ctx.theme <- theme;
+    Renderable.request_render t.root
+  end
 
 let set_modal t m =
   let same =

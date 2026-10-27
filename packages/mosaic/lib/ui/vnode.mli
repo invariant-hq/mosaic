@@ -131,6 +131,7 @@ type 'msg t =
   | Viewport_switch of 'msg viewport_switch
   | Memo of 'msg memo
   | Embed of Renderable.t
+  | Themed of (Theme.t -> Theme.t) * 'msg t
   | Empty
       (** The type for a virtual node in the UI tree.
 
@@ -141,6 +142,7 @@ type 'msg t =
           - [Embed] wraps an existing {!Renderable.t} node. The node is attached
             but not managed by the reconciler. Use this as an escape hatch for
             imperative code.
+          - [Themed] draws a vnode with a theme ({!val-themed}).
           - [Empty] renders nothing. *)
 
 and 'msg element = {
@@ -176,6 +178,16 @@ val fragment : 'msg t list -> 'msg t
 val embed : Renderable.t -> 'msg t
 (** [embed node] is an {!Embed} vnode wrapping [node]. The renderable is
     attached by the reconciler but not otherwise managed. *)
+
+val themed : (Theme.t -> Theme.t) -> 'msg t -> 'msg t
+(** [themed f child] is [child] drawn with [f] applied to the theme in scope
+    around it ({!Theme}). It is no element of its own: it changes neither the
+    layout nor the focus, and the reconciler gives [f] to each node [child]
+    places ({!Renderable.Private.set_place_theme}). In
+    [themed f (themed g child)], [child] is drawn with [g] applied to [f]'s
+    theme. An embedded node ({!val-embed}) is in the scope its place declares,
+    and its own function ({!Renderable.set_theme}), if any, applies after that
+    scope. *)
 
 val memo : key:'key -> ('key -> 'msg t) -> 'msg t
 (** [memo ~key view] defers [view key]. A reconciler that mounted an equal memo

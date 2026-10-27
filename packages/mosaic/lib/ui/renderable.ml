@@ -65,6 +65,7 @@ type context = {
   admit_size_report : node -> bool;
   mutable regroups : node list;
   mutable top_layer : node option;
+  mutable theme : Theme.t;
 }
 
 (* The region a subtree may paint, in cells relative to its node's layout
@@ -217,6 +218,21 @@ and node = {
   mutable lifecycle_registered : bool;
   mutable is_root : bool;
   mutable live_count_change : (node -> unit) option;
+  (* Theme *)
+  mutable themes : themes option;
+}
+
+(* A node's theme functions: [place], the scope its place in a view
+   declares, which a reconciler sets, and [own], the node's own
+   ([set_theme]), applied after it; one of them at least is set. [applied]
+   is what they gave last, for the theme [around] the node. [fresh] is
+   [false] until they are applied, and again once either changes. *)
+and themes = {
+  mutable place : (Theme.t -> Theme.t) option;
+  mutable own : (Theme.t -> Theme.t) option;
+  mutable around : Theme.t;
+  mutable applied : Theme.t;
+  mutable fresh : bool;
 }
 
 and render = node -> Grid.t -> dt:float -> unit
@@ -439,6 +455,7 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     lifecycle_registered = false;
     is_root = false;
     live_count_change = None;
+    themes = None;
   }
 
 let apply_initial_visibility t =
@@ -542,6 +559,62 @@ let set_on_blur t handler = t.blur_handler <- handler
 (* ───── Rendering ───── *)
 
 let request_render t = t.ctx.schedule ()
+
+(* ───── Theme ───── *)
+
+(* The theme in scope is resolved from the root down at each read: no node
+   stores the theme of its scope, so a node attached elsewhere, or under a
+   theme that changed, reads its new scope at once. A node with a function
+   of its own applies it again only when the theme around it is another
+   value, so reading an unchanged scope allocates nothing. *)
+let apply f theme = match f with Some f -> f theme | None -> theme
+
+let rec theme t =
+  let around = match t.parent with Some p -> theme p | None -> t.ctx.theme in
+  match t.themes with
+  | None -> around
+  | Some th ->
+      if th.fresh && th.around == around then th.applied
+      else
+        let applied = apply th.own (apply th.place around) in
+        th.around <- around;
+        th.applied <- applied;
+        th.fresh <- true;
+        applied
+
+let same f g =
+  match (f, g) with
+  | None, None -> true
+  | Some f, Some g -> f == g
+  | Some _, None | None, Some _ -> false
+
+(* Sets the node's place function ([~place:true]) or its own. *)
+let set_themes t ~place f =
+  match t.themes with
+  | None -> (
+      match f with
+      | None -> ()
+      | Some _ ->
+          t.themes <-
+            Some
+              {
+                place = (if place then f else None);
+                own = (if place then None else f);
+                around = Theme.plain;
+                applied = Theme.plain;
+                fresh = false;
+              };
+          request_render t)
+  | Some th ->
+      if not (same (if place then th.place else th.own) f) then begin
+        if place then th.place <- f else th.own <- f;
+        th.fresh <- false;
+        if Option.is_none th.place && Option.is_none th.own then
+          t.themes <- None;
+        request_render t
+      end
+
+let set_theme t f = set_themes t ~place:false f
 let off_loop t work = t.ctx.off_loop work
 
 let set_render t fn =
@@ -1744,6 +1817,7 @@ module Private = struct
     admit_size_report : t -> bool;
     mutable regroups : t list;
     mutable top_layer : t option;
+    mutable theme : Theme.t;
   }
 
   let create_root ctx ?id ?style () =
@@ -1766,6 +1840,7 @@ module Private = struct
   let child_at t i =
     if i < 0 || i >= t.child_count then None else t.children.(i)
 
+  let set_place_theme t f = set_themes t ~place:true f
   let width_method t = t.ctx.width_method ()
   let cell_size t = t.ctx.cell_size ()
 

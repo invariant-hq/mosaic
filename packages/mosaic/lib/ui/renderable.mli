@@ -255,6 +255,23 @@ val set_live : t -> bool -> unit
 val live : t -> bool
 (** [live t] is [true] iff continuous rendering is enabled. *)
 
+(** {1:theming Theme} *)
+
+val set_theme : t -> (Theme.t -> Theme.t) option -> unit
+(** [set_theme t (Some f)] has [t] and its descendants drawn with [f] applied to
+    the theme in scope around [t], as [Vnode.themed f] does for an element;
+    [set_theme t None] removes it. A node a reconciler made, or embeds, is also
+    in the scope its place in the view declares, which the reconciler gives it
+    apart ({!Private.set_place_theme}): [f] is applied after that scope, as for
+    a node inside it, and the scope never replaces it. *)
+
+val theme : t -> Theme.t
+(** [theme t] is the theme in scope at [t] ({!Theme}): the renderer's theme
+    ([Renderer.set_theme]) with the functions of each node from the root down to
+    [t] applied in turn, a node's place's before its own. It costs a step per
+    ancestor and allocates only where a node's functions are applied to a theme
+    they were not applied to before. *)
+
 (** {1:focus Focus} *)
 
 val set_focusable : t -> bool -> unit
@@ -497,10 +514,19 @@ module Private : sig
     mutable top_layer : t option;
         (** The node in the top layer ({!set_top_layer}). A new context holds
             none. *)
+    mutable theme : Theme.t;
+        (** The theme in scope at the root of the tree, and at a node with no
+            parent ({!val-theme}). *)
   }
   (** The type for renderer callbacks inherited by all nodes in a tree. *)
 
   (** {2:root Root construction} *)
+
+  val set_place_theme : t -> (Theme.t -> Theme.t) option -> unit
+  (** [set_place_theme t f] puts [t] and its descendants in the scope of [f],
+      which [t]'s place in a view declares, or in none. A reconciler sets it on
+      each node it places, and {!val-theme} applies it before the node's own
+      function ({!Renderable.set_theme}). *)
 
   val create_root : context -> ?id:string -> ?style:Toffee.Style.t -> unit -> t
   (** [create_root ctx ()] is a new root node backed by [ctx]'s layout tree.

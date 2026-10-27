@@ -83,6 +83,7 @@ let make_ctx ?(width_method = `Unicode) () =
       admit_size_report = (fun _ -> true);
       regroups = [];
       top_layer = None;
+      theme = Theme.plain;
     }
   in
   { ctx; schedule_count; focus_log; blur_log; unregister_log }

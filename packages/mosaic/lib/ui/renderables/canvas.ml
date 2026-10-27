@@ -13,6 +13,7 @@ let node t = t.node
 let grid t = t.grid
 let width t = Matrix_grid.width t.grid
 let height t = Matrix_grid.height t.grid
+let theme t = Renderable.theme t.node
 
 (* ───── Drawing ───── *)
 

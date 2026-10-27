@@ -446,6 +446,28 @@ let terminal_colors_asked_late () =
     [ reported palette ]
     (List.rev !given)
 
+(* Waits until the program has asked for the colors, from a terminal that
+   answers no query by itself: the run first gives up on the queries it sent
+   before. *)
+let asked s term =
+  let output () = Matrix_test.Terminal.output term in
+  let query = "\027]4;15;?" in
+  let contains s sub =
+    let n = String.length sub in
+    let rec go i =
+      i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
+    in
+    go 0
+  in
+  let rec wait seconds =
+    if not (contains (output ()) query) then
+      if seconds = 0 then fail "the program never asked"
+      else (
+        Matrix_test.advance s 1_000_000_000;
+        wait (seconds - 1))
+  in
+  wait 30
+
 (* A terminal that reports its foreground and background and no palette
    entry: its answer to DA1 ends the wait, at once, and the colors come
    without entries. A terminal that reports neither gives none. The
@@ -453,25 +475,6 @@ let terminal_colors_asked_late () =
    once it has asked, after the run gave up on those it sent before. *)
 let terminal_colors_without_palette () =
   let profile = { Matrix_test.Profile.vte with answers = false } in
-  let asked s term =
-    let output () = Matrix_test.Terminal.output term in
-    let query = "\027]4;15;?" in
-    let contains s sub =
-      let n = String.length sub in
-      let rec go i =
-        i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
-      in
-      go 0
-    in
-    let rec wait seconds =
-      if not (contains (output ()) query) then
-        if seconds = 0 then fail "the program never asked"
-        else (
-          Matrix_test.advance s 1_000_000_000;
-          wait (seconds - 1))
-    in
-    wait 30
-  in
   let da1 = "\027[?62;22c" in
   let given =
     colors_given ~profile (fun s term ->
@@ -497,6 +500,100 @@ let terminal_colors_without_palette () =
         Matrix_test.input s da1)
   in
   equal ~msg:"none" (list colors_testable) [] given
+
+(* The root's theme is the default of the colors the terminal reports,
+   and roles resolve as the frame is drawn: the program draws again with
+   them, and builds no view. *)
+(* A program whose view is a canvas that draws a link by the theme in
+   scope, counting its views. *)
+let link_app views =
+  {
+    init = (fun () -> ((), Cmd.none));
+    update = (fun () () -> ((), Cmd.none));
+    view =
+      (fun () ->
+        incr views;
+        canvas ~size:(size ~width:1 ~height:1) (fun c ~dt:_ ->
+            Canvas.draw_text c ~x:0 ~y:0 ~text:"x"
+              ~style:(Theme.style (Canvas.theme c) Link)));
+    subscriptions = (fun () -> Sub.none);
+  }
+
+(* The link's foreground and whether it is underlined, as drawn and as a
+   theme gives it: the emulator shows the default colors where the style
+   has none. *)
+let link =
+  Testable.(
+    pair (option (Testable.make ~pp:Ansi.Color.pp ~equal:Ansi.Color.equal)) bool)
+
+let drawn term =
+  let (style : Ansi.Style.t) =
+    snd
+      (Matrix_test.Screen.cell (Matrix_test.Terminal.screen term) ~row:0 ~col:0)
+  in
+  (style.fg, Ansi.Attr.mem Underline style.attrs)
+
+let link_of theme =
+  let style = Ansi.Theme.style theme Link in
+  ( Some (Option.value style.fg ~default:Ansi.Color.default_fg),
+    Ansi.Attr.mem Underline style.attrs )
+
+let root_theme_follows_colors () =
+  let profile = { Matrix_test.Profile.vte with answers = false } in
+  let views = ref 0 in
+  let colors =
+    {
+      Ansi.Theme.foreground = (0, 0, 0);
+      background = (0xff, 0xff, 0xff);
+      palette = Array.make 16 None;
+    }
+  in
+  colors.palette.(4) <- Some (0, 0, 0xee);
+  let term = Matrix_test.Terminal.create ~profile ~cols:4 ~rows:1 () in
+  Mosaic_test.run term (link_app views) (fun s ->
+      asked s term;
+      equal ~msg:"plain" link (link_of Ansi.Theme.plain) (drawn term);
+      let views_before = !views in
+      Matrix_test.input s
+        ("\027]10;rgb:0000/0000/0000\027\\\027]11;rgb:ffff/ffff/ffff\027\\\027]4;4;rgb:0000/0000/eeee\027\\"
+       ^ "\027[?62;22c");
+      equal ~msg:"the default of the colors" link
+        (link_of (Ansi.Theme.default colors))
+        (drawn term);
+      equal ~msg:"no view built" int views_before !views)
+
+(* The user picks another theme, in which the link's entry is another: the
+   program draws with the default of the new colors, and builds no view. *)
+let root_theme_follows_a_change () =
+  let views = ref 0 in
+  let dark =
+    {
+      Vte.default_palette with
+      foreground = (0xe5, 0xe5, 0xe5);
+      background = (0, 0, 0);
+    }
+  in
+  let colors = Array.copy dark.colors in
+  colors.(4) <- (0, 0, 0xee);
+  let light =
+    {
+      dark with
+      colors;
+      foreground = (0, 0, 0);
+      background = (0xff, 0xff, 0xff);
+    }
+  in
+  let theme p = Ansi.Theme.default (reported p) in
+  is_false ~msg:"the themes draw the link apart"
+    (link_of (theme dark) = link_of (theme light));
+  let profile = { Matrix_test.Profile.vte with palette = dark } in
+  let term = Matrix_test.Terminal.create ~profile ~cols:4 ~rows:1 () in
+  Mosaic_test.run term (link_app views) (fun s ->
+      equal ~msg:"the first colors" link (link_of (theme dark)) (drawn term);
+      let views_before = !views in
+      Matrix_test.input s (Matrix_test.Terminal.set_colors term light);
+      equal ~msg:"the new colors" link (link_of (theme light)) (drawn term);
+      equal ~msg:"no view built" int views_before !views)
 
 let () =
   Windtrap.run "subscriptions"
@@ -536,4 +633,8 @@ let () =
       test "terminal colors asked by a late subscriber"
         terminal_colors_asked_late;
       test "terminal colors without a palette" terminal_colors_without_palette;
+      test "the root's theme follows the terminal's colors"
+        root_theme_follows_colors;
+      test "the root's theme follows a change of the colors"
+        root_theme_follows_a_change;
     ]

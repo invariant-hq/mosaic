@@ -95,6 +95,9 @@ end
 module Shortcut = Mosaic_ui.Shortcut
 (** Typed keyboard shortcuts shared by widgets and subscriptions. *)
 
+module Theme = Mosaic_ui.Theme
+(** Themes, the styles an interface's roles are drawn in ({!val-themed}). *)
+
 module Canvas : sig
   (** Mutable cell-level drawing surface.
 
@@ -112,6 +115,11 @@ module Canvas : sig
 
   val height : t -> int
   (** [height t] is the grid height of [t] in cells. *)
+
+  val theme : t -> Theme.t
+  (** [theme t] is the theme in scope at [t] ({!Theme}), for an [on_draw] that
+      draws by role: its cells then follow a {!val-themed} around the canvas and
+      the terminal's colors, and are drawn again with a theme that changes. *)
 
   (** {1:drawing Drawing} *)
 
@@ -1727,6 +1735,15 @@ val modal : ?key:string -> ?on_close:'msg -> 'msg t -> 'msg t
     ({!Sub.on_focus_lost}). The application answers with a focus inside, such as
     {!Cmd.focus_next}, and declares the element that opened the modal focused
     again when it closes it, as APG's dialog pattern asks. *)
+
+val themed : (Theme.t -> Theme.t) -> 'msg t -> 'msg t
+(** [themed f child] draws [child] with [f] applied to the theme in scope around
+    it, as {!Theme} describes scopes, so [themed (Theme.with_style Error s)]
+    restyles one role and keeps the others. The view's root is in the scope of
+    {!Theme.default} of the colors the terminal reports
+    ({!Sub.on_terminal_colors}), and of {!Theme.plain} until it reports them or
+    when it reports none. [themed] is no element of its own: it changes neither
+    layout nor focus. *)
 
 val button :
   ?key:string ->

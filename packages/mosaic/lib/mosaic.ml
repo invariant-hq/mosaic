@@ -8,6 +8,7 @@ module Ansi = Matrix.Ansi
 module Border = Matrix.Grid.Border
 module Event = Mosaic_ui.Event
 module Canvas = Mosaic_ui.Canvas
+module Theme = Mosaic_ui.Theme
 module Scroll = Mosaic_ui.Scroll
 module Editor = Mosaic_ui.Editor
 
@@ -554,6 +555,7 @@ let render_static_view runtime (view : _ t) =
     ~explicit_width:true ~explicit_cursor_positioning:false ~hyperlinks:true
     ~colors:`Truecolor ~styling:`Truecolor ~graphics:`Blocks
     ~cell_size:(Matrix.cell_size runtime.matrix_app);
+  Renderer.set_theme renderer (Renderer.theme runtime.renderer);
   let reconciler = Reconciler.create ~container:(Renderer.root renderer) in
   let vnode = compile ~dispatch:(fun _ -> ()) view in
   Reconciler.render reconciler ~viewport_width:width vnode;
@@ -1051,7 +1053,7 @@ let dispatch_paste runtime text =
 
 (* The replies to [colors_query] are collected until DA1's, which ends the
    batch: the colors are known when the foreground and the background
-   came. *)
+   came, and the root's theme is then the default of those colors. *)
 let take_reply runtime (reply : Matrix.Input.Reply.t) =
   let r = runtime.reported in
   match reply with
@@ -1069,6 +1071,7 @@ let take_reply runtime (reply : Matrix.Input.Reply.t) =
               palette = Array.copy r.palette;
             }
           in
+          Renderer.set_theme runtime.renderer (Theme.default colors);
           List.iter
             (fun f -> Option.iter (deliver runtime) (f colors))
             runtime.terminal_colors_sub
@@ -1559,6 +1562,7 @@ let box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?focused_border_color ?background ?fill ?title ?title_alignment children
 
 let modal = Vnode.modal
+let themed = Vnode.themed
 
 let text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
