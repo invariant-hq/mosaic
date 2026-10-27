@@ -58,25 +58,29 @@ let is_chord modifier = modifier land lnot 4 <> 0
    nothing, as its lowercase letter: a terminal that does not report the
    lock sends Caps Lock with r as R. A chord's key is never changed by a
    lock, so a chord is looked up as it is. *)
-let find_typed find_char bindings modifier (mods : Keystroke.mods) c =
+let find_typed ~found find_char bindings modifier (mods : Keystroke.mods) c =
   if is_chord modifier || not (is_upper c || is_lower c) then
     find_char bindings modifier c
   else
     let c = if mods.caps_lock then c lxor 0x20 else c in
-    match find_char bindings modifier c with
-    | None when is_upper c -> find_char bindings modifier (c lor 0x20)
-    | found -> found
+    let r = find_char bindings modifier c in
+    if (not (found r)) && is_upper c then
+      find_char bindings modifier (c lor 0x20)
+    else r
 
-let resolve ~find_char ~find_key bindings (k : Keystroke.t) =
+(* [found] tells a result that found something from one that did not. *)
+let resolve ~found ~find_char ~find_key bindings (k : Keystroke.t) =
   let modifier = modifiers k.mods in
   let direct =
     match k.key with
-    | Char c -> find_typed find_char bindings modifier k.mods (Uchar.to_int c)
+    | Char c ->
+        find_typed ~found find_char bindings modifier k.mods (Uchar.to_int c)
     | key -> find_key bindings modifier key
   in
-  match (direct, k.base) with
-  | Some _, _ | None, None -> direct
-  | None, Some base -> find_char bindings modifier (Uchar.to_int base)
+  match k.base with
+  | Some base when not (found direct) ->
+      find_char bindings modifier (Uchar.to_int base)
+  | Some _ | None -> direct
 
 let matches_char t modifier code =
   t.modifiers = modifier
@@ -91,10 +95,13 @@ let find_key t modifier key =
   if matches_key t modifier key then Some () else None
 
 let matches t event =
-  Option.is_some (resolve ~find_char ~find_key t (Event.Key.data event))
+  Option.is_some
+    (resolve ~found:Option.is_some ~find_char ~find_key t (Event.Key.data event))
 
+(* The bindings from the last one that matches, [[]] when none does: a result
+   with no allocation. *)
 let rec find_last matches modifier key found = function
-  | [] -> ( match found with [] -> None | (_, value) :: _ -> Some value)
+  | [] -> found
   | (shortcut, _) :: rest as bindings ->
       let found = if matches shortcut modifier key then bindings else found in
       find_last matches modifier key found rest
@@ -105,13 +112,17 @@ let find_list_char bindings modifier code =
 let find_list_key bindings modifier key =
   find_last matches_key modifier key [] bindings
 
-let find bindings event =
-  resolve ~find_char:find_list_char ~find_key:find_list_key bindings
-    (Event.Key.data event)
+let found = function [] -> false | _ :: _ -> true
 
-module Private = struct
-  let resolve = resolve
-  let find = find
-  let key t = t.key
-  let modifier t = t.modifiers
-end
+let find bindings event =
+  match
+    resolve ~found ~find_char:find_list_char ~find_key:find_list_key bindings
+      (Event.Key.data event)
+  with
+  | (_, value) :: _ -> value
+  | [] -> raise_notrace Not_found
+
+let find_opt bindings event =
+  match find bindings event with
+  | value -> Some value
+  | exception Not_found -> None

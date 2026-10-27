@@ -335,7 +335,7 @@ module Sub = struct
         fun ev ->
           if Event.Key.default_prevented ev then None
           else
-            let message = Shortcut.Private.find bindings ev in
+            let message = Shortcut.find_opt bindings ev in
             if Option.is_some message then Event.Key.prevent_default ev;
             message )
 

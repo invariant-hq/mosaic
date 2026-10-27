@@ -343,7 +343,7 @@ let select_current t =
 
 let handle_key t (event : Event.key) =
   if t.items <> [] then
-    match Keymap.action t.keymap (Event.Key.data event) with
+    match Keymap.action t.keymap event with
     | None -> ()
     | Some action -> (
         Event.Key.prevent_default event;

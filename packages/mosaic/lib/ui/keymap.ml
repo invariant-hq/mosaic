@@ -5,50 +5,14 @@ type 'a binding = Shortcut.t * 'a
 let binding_equal equal_action (a, action_a) (b, action_b) =
   Shortcut.equal a b && equal_action action_a action_b
 
-module Keys = Hashtbl.Make (struct
-  type t = Keystroke.key
-
-  let equal = ( = )
-  let hash = Hashtbl.hash
-end)
-
-type 'a actions = {
-  chars : (int, 'a option) Hashtbl.t;
-  keys : 'a option Keys.t;
-}
-
-type 'a t = 'a actions option array
-
-let add t (shortcut, action) =
-  let modifier = Shortcut.Private.modifier shortcut in
-  let actions =
-    match t.(modifier) with
-    | Some actions -> actions
-    | None ->
-        let actions = { chars = Hashtbl.create 16; keys = Keys.create 16 } in
-        t.(modifier) <- Some actions;
-        actions
-  in
-  let action = Some action in
-  match Shortcut.Private.key shortcut with
-  | Char code -> Hashtbl.replace actions.chars (Uchar.to_int code) action
-  | key -> Keys.replace actions.keys key action
+(* The bindings in order, [custom] after [defaults], so that [Shortcut.find]'s
+   last match is the custom one, with each action held in the option [action]
+   returns, so that finding one allocates nothing. *)
+type 'a t = (Shortcut.t * 'a option) list
 
 let make ~defaults ?(custom = []) () =
-  let t = Array.make 64 None in
-  List.iter (add t) defaults;
-  List.iter (add t) custom;
-  t
+  List.map
+    (fun (shortcut, action) -> (shortcut, Some action))
+    (defaults @ custom)
 
-let find_char t modifier code =
-  match t.(modifier) with
-  | None -> None
-  | Some actions -> (
-      try Hashtbl.find actions.chars code with Not_found -> None)
-
-let find_key t modifier key =
-  match t.(modifier) with
-  | None -> None
-  | Some actions -> ( try Keys.find actions.keys key with Not_found -> None)
-
-let action t ev = Shortcut.Private.resolve ~find_char ~find_key t ev
+let action t ev = try Shortcut.find t ev with Not_found -> None

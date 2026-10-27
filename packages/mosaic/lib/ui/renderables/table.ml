@@ -611,7 +611,7 @@ let set_on_hover t cb = t.on_hover <- cb
 (* ───── Key Handling ───── *)
 
 let handle_key t (event : Event.key) =
-  match Keymap.action t.keymap (Event.Key.data event) with
+  match Keymap.action t.keymap event with
   | None -> ()
   | Some action -> (
       Event.Key.prevent_default event;

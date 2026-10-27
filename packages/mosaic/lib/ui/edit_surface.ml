@@ -796,8 +796,9 @@ let run_action t action =
 
 (* An unbound key inserts the text it types, which is empty for a chord, a
    control and a key that types nothing. *)
-let key_result_of_event t (data : Matrix_input.Keystroke.t) =
-  match Keymap.action t.keymap data with
+let key_result_of_event t (ev : Event.key) =
+  let data = Event.Key.data ev in
+  match Keymap.action t.keymap ev with
   | Some action -> run_action t action
   | None when data.text <> "" ->
       Some (Editor.insert (sanitize_text t data.text) t.props.state)
@@ -806,7 +807,7 @@ let key_result_of_event t (data : Matrix_input.Keystroke.t) =
 let handle_key t (ev : Event.key) =
   if not (Event.Key.default_prevented ev) then
     let base = t.props.state in
-    match key_result_of_event t (Event.Key.data ev) with
+    match key_result_of_event t ev with
     | None -> ()
     | Some next ->
         Event.Key.prevent_default ev;

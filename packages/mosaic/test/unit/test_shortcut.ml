@@ -85,7 +85,7 @@ let caps_lock () =
   let bindings =
     [ (Shortcut.char 'r', "plain"); (Shortcut.shift 'r', "shift") ]
   in
-  let find ?mods c = Shortcut.Private.find bindings (event ?mods (char c)) in
+  let find ?mods c = Shortcut.find_opt bindings (event ?mods (char c)) in
   let found = option string in
   equal ~msg:"r" found (Some "plain") (find 'r');
   equal ~msg:"Shift+r, both bound" found (Some "shift") (find 'R');
@@ -101,6 +101,31 @@ let caps_lock () =
        (event ~mods:{ ctrl with caps_lock = true } (char 'S')));
   is_false ~msg:"only letters change case"
     (Shortcut.matches (Shortcut.char '1') (event ~mods:caps (char '!')))
+
+(* Of two bindings of one key, the later one gives the action, as a
+   widget's [key_bindings] override its defaults; a key no binding matches
+   gives none. *)
+let later_binding_wins () =
+  let bindings =
+    [
+      (Shortcut.up, "default");
+      (Shortcut.char 'k', "up");
+      (Shortcut.up, "custom");
+    ]
+  in
+  let found = option string in
+  equal ~msg:"the later binding" found (Some "custom")
+    (Shortcut.find_opt bindings (event Keystroke.Up));
+  equal ~msg:"another key" found (Some "up")
+    (Shortcut.find_opt bindings (event (char 'k')));
+  equal ~msg:"no binding" found None
+    (Shortcut.find_opt bindings (event (char 'j')));
+  equal ~msg:"no bindings" found None (Shortcut.find_opt [] (event (char 'j')));
+  equal ~msg:"find, the value itself" string "custom"
+    (Shortcut.find bindings (event Keystroke.Up));
+  raises_match ~msg:"find, no binding"
+    (function Not_found -> true | _ -> false)
+    (fun () -> Shortcut.find bindings (event (char 'j')))
 
 let base_layout () =
   let mods = { Keystroke.no_mods with ctrl = true } in
@@ -168,6 +193,7 @@ let () =
       test "Shift is consumed into the key" shift_and_case;
       test "Caps Lock" caps_lock;
       test "base-layout matching" base_layout;
+      test "a later binding wins" later_binding_wins;
       test "keypad keys and line feed" keypad_and_line_feed;
       test "matching allocation is independent of event count"
         matches_does_not_allocate_per_event;

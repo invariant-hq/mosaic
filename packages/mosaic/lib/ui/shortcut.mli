@@ -103,17 +103,14 @@ val equal : t -> t -> bool
 val matches : t -> Event.key -> bool
 (** [matches shortcut ev] is [true] iff [ev] matches [shortcut]. *)
 
-(**/**)
+val find : (t * 'a) list -> Event.key -> 'a
+(** [find bindings ev] is the value of the last binding of [bindings] whose
+    shortcut {!matches} [ev]: of two bindings of one key, the later one wins, as
+    the bindings a program gives a widget override the widget's own before them.
+    It takes time linear in the number of bindings and allocates nothing.
 
-module Private : sig
-  val resolve :
-    find_char:('a -> int -> int -> 'b option) ->
-    find_key:('a -> int -> Matrix_input.Keystroke.key -> 'b option) ->
-    'a ->
-    Matrix_input.Keystroke.t ->
-    'b option
+    Raises [Not_found] if no binding matches [ev]. *)
 
-  val find : (t * 'a) list -> Event.key -> 'a option
-  val key : t -> Matrix_input.Keystroke.key
-  val modifier : t -> int
-end
+val find_opt : (t * 'a) list -> Event.key -> 'a option
+(** [find_opt bindings ev] is [find bindings ev], or [None] when no binding
+    matches [ev]. *)

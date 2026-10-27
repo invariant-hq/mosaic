@@ -305,7 +305,7 @@ let set_on_activate t cb = t.on_activate <- cb
 
 let handle_key t (event : Event.key) =
   if not (Event.Key.default_prevented event) then
-    match Keymap.action t.keymap (Event.Key.data event) with
+    match Keymap.action t.keymap event with
     | None -> ()
     | Some action -> (
         Event.Key.prevent_default event;
