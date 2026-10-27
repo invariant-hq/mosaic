@@ -21,12 +21,16 @@ let cache_size = 24
    [width_key] and [height_key] encode an axis's known dimension when there is
    one, and else its available space: a known dimension as itself, a definite
    available space as its negation, min-content as negative infinity and
-   max-content as infinity (Taffy's [mixed_cache_key]). [parent_width] and
-   [parent_height] are the parent size, infinity for none. [axis] is the
-   requested axis: 1 horizontal, 2 vertical, 3 both. *)
+   max-content as infinity (Taffy's [mixed_cache_key]). A negative available
+   space negates to a value a known dimension can take too, so [known] tells
+   which axes the two keys give a known dimension: 1 the width, 2 the height,
+   3 both, 0 neither. [parent_width] and [parent_height] are the parent size,
+   infinity for none. [axis] is the requested axis: 1 horizontal, 2 vertical,
+   3 both. *)
 type entry = {
   mutable width_key : float;
   mutable height_key : float;
+  mutable known : float;
   mutable parent_width : float;
   mutable parent_height : float;
   mutable axis : float;
@@ -37,6 +41,7 @@ let no_entry =
   {
     width_key = nan;
     height_key = nan;
+    known = nan;
     parent_width = nan;
     parent_height = nan;
     axis = nan;
@@ -109,6 +114,11 @@ let mixed_key known (available : Available_space.t) =
       | Max_content -> infinity)
 [@@inline]
 
+let known_key (known : float option Geometry.size) =
+  (match known.width with Some _ -> 1. | None -> 0.)
+  +. match known.height with Some _ -> 2. | None -> 0.
+[@@inline]
+
 let parent_key = function Some value -> value | None -> infinity [@@inline]
 
 (* Keys compare by their bits, as in Taffy. *)
@@ -141,6 +151,7 @@ let entry inputs ~parent_height =
   {
     width_key = mixed_key known.width available.width;
     height_key = mixed_key known.height available.height;
+    known = known_key known;
     parent_width = parent_key parent.width;
     parent_height;
     axis = axis_key (Layout_input.axis inputs);
@@ -161,6 +172,7 @@ let set t index inputs ~parent_height =
      let parent = Layout_input.parent_size inputs in
      e.width_key <- mixed_key known.width available.width;
      e.height_key <- mixed_key known.height available.height;
+     e.known <- known_key known;
      e.parent_width <- parent_key parent.width;
      e.parent_height <- parent_height;
      e.axis <- axis_key (Layout_input.axis inputs));
@@ -174,6 +186,7 @@ let get t style inputs =
     let parent = Layout_input.parent_size inputs in
     let width_key = mixed_key known.width available.width in
     let height_key = mixed_key known.height available.height in
+    let known = known_key known in
     let parent_width = parent_key parent.width in
     let axis = axis_key (Layout_input.axis inputs) in
     match Layout_input.run_mode inputs with
@@ -184,6 +197,7 @@ let get t style inputs =
           let e = t.entries.(cache_size) in
           same e.width_key width_key
           && same e.height_key height_key
+          && e.known = known
           && same e.parent_width parent_width
           && same e.parent_height (parent_height_key style parent)
           && e.axis = axis
@@ -199,6 +213,7 @@ let get t style inputs =
             let e = t.entries.(!i) in
             same e.width_key width_key
             && same e.height_key height_key
+            && e.known = known
             && same e.parent_width parent_width
             && same e.parent_height parent_height
             (* A measurement for a single axis may hold garbage in the
@@ -254,6 +269,7 @@ let store t style inputs output =
             let parent = Layout_input.parent_size inputs in
             let width_key = mixed_key known.width available.width in
             let height_key = mixed_key known.height available.height in
+            let known = known_key known in
             let parent_width = parent_key parent.width in
             let parent_height = parent_height_key style parent in
             let axis = axis_key (Layout_input.axis inputs) in
@@ -265,6 +281,7 @@ let store t style inputs output =
                 let e = t.entries.(!i) in
                 same e.width_key width_key
                 && same e.height_key height_key
+                && e.known = known
                 && same e.parent_width parent_width
                 && same e.parent_height parent_height
                 && e.axis = axis

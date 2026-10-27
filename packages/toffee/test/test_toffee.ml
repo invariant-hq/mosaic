@@ -718,6 +718,37 @@ let test_cache_update_in_place () =
   equal ~msg:"updated" cached_width (Some 3.) (cached cache (measure_input 1.));
   equal ~msg:"kept" cached_width (Some 2.) (cached cache (measure_input 2.))
 
+(* A known height of 4 and an available height of -4, which a parent gives
+   a child whose margins exceed its space, are different inputs: a result
+   for one answers no query for the other. *)
+let test_cache_known_size_is_not_available_space () =
+  let input run_mode ~known ~available =
+    Layout_input.make ~run_mode
+      ~sizing_mode:Toffee_tree.Sizing_mode.Inherent_size
+      ~axis:Toffee_tree.Requested_axis.Both
+      ~known_dimensions:Size.{ width = None; height = known }
+      ~parent_size:Size.none
+      ~available_space:
+        Size.
+          {
+            width = Available_space.max_content;
+            height = Available_space.of_float available;
+          }
+      ~vertical_margins_are_collapsible:Line.both_false
+  in
+  List.iter
+    (fun (name, run_mode) ->
+      let cache = Cache.make () in
+      Cache.store cache Style.default
+        (input run_mode ~known:None ~available:(-4.))
+        (measured 1.);
+      equal ~msg:name cached_width None
+        (cached cache (input run_mode ~known:(Some 4.) ~available:4.)))
+    [
+      ("final layout", Run_mode.Perform_layout);
+      ("measurement", Run_mode.Compute_size);
+    ]
+
 let test_cache_margin_collapse_not_cached () =
   let cache = Cache.make () in
   let with_margins ~through ~top width =
@@ -3244,6 +3275,8 @@ let () =
           test "A hit allocates nothing" test_cache_hit_allocates_nothing;
           test "Margin collapse not cached"
             test_cache_margin_collapse_not_cached;
+          test "A known size is not an available space"
+            test_cache_known_size_is_not_available_space;
           test "Mode and axis" test_cache_mode_and_axis;
           test "Width measure does not answer height"
             test_cache_width_measure_does_not_answer_height;
