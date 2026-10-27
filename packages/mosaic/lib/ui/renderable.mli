@@ -621,19 +621,6 @@ module Private : sig
   val render : t -> Matrix_grid.t -> dt:float -> unit
   (** [render t grid ~dt] invokes [t]'s render callback. *)
 
-  val render_before : t -> render option
-  (** [render_before t] is [t]'s pre-render hook, if any. *)
-
-  val render_after : t -> render option
-  (** [render_after t] is [t]'s post-render hook, if any. *)
-
-  val ensure_frame_buffer : t -> parent:Matrix_grid.t -> Matrix_grid.t option
-  (** [ensure_frame_buffer t ~parent] is [Some buf] if [t] uses buffered
-      rendering and has positive dimensions, [None] otherwise. *)
-
-  val blit_frame_buffer : t -> dst:Matrix_grid.t -> unit
-  (** [blit_frame_buffer t ~dst] copies [t]'s frame buffer into [dst]. *)
-
   val render_full : t -> grid:Matrix_grid.t -> dt:float -> unit
   (** [render_full t ~grid ~dt] runs the complete render sequence for [t]: frame
       buffer selection, pre-render hook, render callback, post-render hook, and
