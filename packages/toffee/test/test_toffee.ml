@@ -675,6 +675,41 @@ let test_cache_second_chance () =
   equal ~msg:"kept" cached_width (Some 1.) (cached cache (measure_input 1.));
   equal ~msg:"replaced" cached_width None (cached cache (measure_input 2.))
 
+(* A hit returns the result as it was stored: asking a cache for a
+   measurement or a final layout it holds allocates nothing. *)
+let test_cache_hit_allocates_nothing () =
+  let cache = Cache.make () in
+  let measurement = measure_input 10. in
+  let final =
+    Layout_input.make ~run_mode:Run_mode.Perform_layout
+      ~sizing_mode:Toffee_tree.Sizing_mode.Inherent_size
+      ~axis:Toffee_tree.Requested_axis.Both
+      ~known_dimensions:Size.{ width = Some 10.; height = Some 20. }
+      ~parent_size:Size.none
+      ~available_space:
+        Size.
+          {
+            width = Available_space.max_content;
+            height = Available_space.max_content;
+          }
+      ~vertical_margins_are_collapsible:Line.both_false
+  in
+  Cache.store cache Style.default measurement (measured 10.);
+  Cache.store cache Style.default final (measured 20.);
+  let words input =
+    let before = Gc.minor_words () in
+    let hit = Cache.get cache Style.default input in
+    let words = Gc.minor_words () -. before in
+    is_true ~msg:"a hit" (Option.is_some hit);
+    words
+  in
+  let nothing =
+    let before = Gc.minor_words () in
+    Gc.minor_words () -. before
+  in
+  equal ~msg:"words for a measurement" float_exact nothing (words measurement);
+  equal ~msg:"words for a final layout" float_exact nothing (words final)
+
 let test_cache_update_in_place () =
   let cache = Cache.make () in
   Cache.store cache Style.default (measure_input 1.) (measured 1.);
@@ -2964,6 +2999,7 @@ let () =
           test "Measure count flex in grid" test_measure_count_flex_in_grid;
           test "Second chance eviction" test_cache_second_chance;
           test "Update in place" test_cache_update_in_place;
+          test "A hit allocates nothing" test_cache_hit_allocates_nothing;
           test "Margin collapse not cached"
             test_cache_margin_collapse_not_cached;
           test "Mode and axis" test_cache_mode_and_axis;

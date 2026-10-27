@@ -15,8 +15,8 @@ module Geometry = Toffee_geometry
    is asked again, so no child hits. *)
 let cache_size = 24
 
-(* A key and, for a measurement, the size measured. Every field is a float, so
-   an entry is a single flat block, which a store overwrites in place.
+(* A key. Every field is a float, so an entry is a single flat block, which a
+   store overwrites in place.
 
    [width_key] and [height_key] encode an axis's known dimension when there is
    one, and else its available space: a known dimension as itself, a definite
@@ -30,8 +30,6 @@ type entry = {
   mutable parent_width : float;
   mutable parent_height : float;
   mutable axis : float;
-  mutable width : float;
-  mutable height : float;
 }
 
 (* The absent entry, told apart by physical equality and never written. *)
@@ -42,21 +40,21 @@ let no_entry =
     parent_width = nan;
     parent_height = nan;
     axis = nan;
-    width = nan;
-    height = nan;
   }
 
-(* [entries.(cache_size)] keys the final layout, [final_layout]; the others are
-   the measurements. The array is made by the first store, as many nodes are
-   never laid out. An entry counts only while its valid bit is set, so
-   clearing a cache keeps its entries for the next stores to overwrite.
-   [state] packs those bits and the rest of Taffy's cache into one int: which
+(* [entries.(cache_size)] keys the final layout and the others the
+   measurements, and [outputs] holds their results at the same indices. The
+   arrays are made by the first store, as many nodes are never laid out. An
+   entry counts only while its valid bit is set, so clearing a cache keeps its
+   entries for the next stores to overwrite. A hit returns the result as it was
+   stored, with its [Some], so that asking a cache allocates nothing. [state]
+   packs those bits and the rest of Taffy's cache into one int: which
    measurements were used since the eviction cursor last passed them (one bit
    each), which entries are valid (one bit each), the cursor (5 bits) and the
    cache's mode (3 bits, see [mode]). *)
 type t = {
   mutable entries : entry array;
-  mutable final_layout : Layout_output.t;
+  mutable outputs : Layout_output.t option array;
   mutable state : int;
 }
 
@@ -78,8 +76,7 @@ let set_cursor t cursor =
 let set_cache_mode t mode =
   t.state <- t.state land lnot (0x7 lsl mode_shift) lor (mode lsl mode_shift)
 
-let make () =
-  { entries = [||]; final_layout = Layout_output.default; state = 0 }
+let make () = { entries = [||]; outputs = [||]; state = 0 }
 
 type clear_state = Cleared | Already_empty
 
@@ -137,7 +134,7 @@ let parent_height_key (style : Toffee_style.t)
   then parent_key parent.height
   else neg_infinity
 
-let entry inputs ~parent_height ~width ~height =
+let entry inputs ~parent_height =
   let known = Layout_input.known_dimensions inputs in
   let available = Layout_input.available_space inputs in
   let parent = Layout_input.parent_size inputs in
@@ -147,19 +144,17 @@ let entry inputs ~parent_height ~width ~height =
     parent_width = parent_key parent.width;
     parent_height;
     axis = axis_key (Layout_input.axis inputs);
-    width;
-    height;
   }
 
 (* Makes [entries.(index)] a valid entry keyed on [inputs] and
-   [parent_height] and holding [width] and [height]: the entry there
+   [parent_height]: the entry there
    overwritten, or a new one in place of [no_entry]. *)
-let set t index inputs ~parent_height ~width ~height =
-  if Array.length t.entries = 0 then
+let set t index inputs ~parent_height =
+  if Array.length t.entries = 0 then (
     t.entries <- Array.make (cache_size + 1) no_entry;
+    t.outputs <- Array.make (cache_size + 1) None);
   let e = t.entries.(index) in
-  (if e == no_entry then
-     t.entries.(index) <- entry inputs ~parent_height ~width ~height
+  (if e == no_entry then t.entries.(index) <- entry inputs ~parent_height
    else
      let known = Layout_input.known_dimensions inputs in
      let available = Layout_input.available_space inputs in
@@ -168,9 +163,7 @@ let set t index inputs ~parent_height ~width ~height =
      e.height_key <- mixed_key known.height available.height;
      e.parent_width <- parent_key parent.width;
      e.parent_height <- parent_height;
-     e.axis <- axis_key (Layout_input.axis inputs);
-     e.width <- width;
-     e.height <- height);
+     e.axis <- axis_key (Layout_input.axis inputs));
   t.state <- t.state lor (1 lsl (valid_shift + index))
 
 let get t style inputs =
@@ -194,7 +187,7 @@ let get t style inputs =
           && same e.parent_width parent_width
           && same e.parent_height (parent_height_key style parent)
           && e.axis = axis
-        then Some t.final_layout
+        then t.outputs.(cache_size)
         else None
     | Compute_size ->
         let parent_height = parent_height_key style parent in
@@ -216,18 +209,15 @@ let get t style inputs =
           incr i
         done;
         if !found < 0 then None
-        else
-          let e = t.entries.(!found) in
+        else (
           set_recently_used t (recently_used t lor (1 lsl !found));
-          Some
-            (Layout_output.from_outer_size
-               { Geometry.Sizef.width = e.width; height = e.height })
+          t.outputs.(!found))
     | Perform_hidden_layout -> None
 
 let clear t =
   if t.state land valid_mask = 0 then Already_empty
   else (
-    t.final_layout <- Layout_output.default;
+    t.outputs.(cache_size) <- None;
     t.state <- t.state land (0x7 lsl mode_shift);
     Cleared)
 
@@ -251,9 +241,8 @@ let store t style inputs output =
       | Perform_layout ->
           set t cache_size inputs
             ~parent_height:
-              (parent_height_key style (Layout_input.parent_size inputs))
-            ~width:0. ~height:0.;
-          t.final_layout <- output
+              (parent_height_key style (Layout_input.parent_size inputs));
+          t.outputs.(cache_size) <- Some output
       | Compute_size ->
           (* A measurement keeps only the size and comes back through
              [Layout_output.from_outer_size], without margin-collapse
@@ -295,8 +284,11 @@ let store t style inputs output =
               index := !cursor;
               set_recently_used t !used;
               set_cursor t ((!cursor + 1) mod cache_size));
-            set t !index inputs ~parent_height ~width:size.width
-              ~height:size.height;
+            set t !index inputs ~parent_height;
+            t.outputs.(!index) <-
+              Some
+                (Layout_output.from_outer_size
+                   { Geometry.Sizef.width = size.width; height = size.height });
             set_recently_used t (recently_used t lor (1 lsl !index)))
       | Perform_hidden_layout -> ())
 
@@ -306,6 +298,6 @@ let store t style inputs output =
 let forget_final_layout t =
   if valid t cache_size then (
     t.entries.(cache_size).axis <- nan;
-    t.final_layout <- Layout_output.default)
+    t.outputs.(cache_size) <- None)
 
 let is_empty t = t.state land valid_mask = 0
