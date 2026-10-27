@@ -57,15 +57,15 @@ val plain : t
     attributes that change no color: [keyword] bold and [comment] italic, the
     other scopes in the base style. *)
 
-val of_colors : Ansi.Theme.colors -> t
+val of_colors : Ansi.Color.reported -> t
 (** [of_colors c] is {!plain} with the palette entry of a scope's hue where [c]
-    reports it and it reaches the contrast of text against [c]'s background, the
-    lower of [4.5] and the contrast of [c]'s pair, as {!Ansi.Theme.default}
-    chooses the entries of text: [keyword] and [tag] take entry 5, [string] and
-    [attribute] 2, [number], [constant], [constructor], [type] and [module] 3,
-    [function] 4, each trying the entry and then the entry plus 8, without bold.
-    A [comment] takes entry 8 where its contrast reaches the target and is below
-    the pair's, and stays italic. Colors are written as palette indices. *)
+    reports it and it is legible ({!Ansi.Color.legible}), as
+    {!Ansi.Theme.default} chooses the entries of text: [keyword] and [tag] take
+    entry 5, [string] and [attribute] 2, [number], [constant], [constructor],
+    [type] and [module] 3, [function] 4, each trying the entry and then the
+    entry plus 8, without bold. A [comment] takes entry 8 where it is legible
+    and its contrast is below the pair's, and stays italic. Colors are written
+    as palette indices. *)
 
 (** {1:predicates Predicates} *)
 

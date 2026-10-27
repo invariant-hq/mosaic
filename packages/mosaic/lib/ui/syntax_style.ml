@@ -78,35 +78,22 @@ let plain =
 
 let rgb (r, g, b) = Ansi.Color.of_rgb r g b
 
-(* As [Ansi.Theme.default] chooses its text's entries: an entry where the
-   terminal reports it and its contrast against the background reaches the
-   target of text, the lower of 4.5 and the pair's, trying the entry and
-   then its bright variant; a comment takes entry 8 as [Muted] text does. *)
-let of_colors (c : Ansi.Theme.colors) =
-  let entry i =
-    if i < Array.length c.palette && i < 16 then c.palette.(i) else None
-  in
-  let contrast e = Ansi.Color.contrast (rgb e) (rgb c.background) in
+(* The entries of a scope's hue and of a comment are chosen as those of
+   [Ansi.Theme.default]'s text are: a legible entry, and for a comment entry
+   8 where it is legible and quieter than the pair, as [Muted] text. *)
+let of_colors (c : Ansi.Color.reported) =
   let pair = Ansi.Color.contrast (rgb c.foreground) (rgb c.background) in
-  let target = Float.min 4.5 pair in
-  let reaching s =
-    List.find_opt
-      (fun i ->
-        match entry i with Some e -> contrast e >= target | None -> false)
-      [ s; s + 8 ]
-  in
   let comment =
-    match entry 8 with
-    | Some e when contrast e >= target && contrast e < pair ->
-        Ansi.Style.fg (Ansi.Color.indexed 8) comment
+    match (Ansi.Color.legible c 8, Ansi.Color.legible ~target:pair c 8) with
+    | Some e, None -> Ansi.Style.fg e comment
     | _ -> comment
   in
   make ~base:Ansi.Style.default
     (("comment", comment)
     :: List.map
          (fun (scope, s, attributes) ->
-           match reaching s with
-           | Some i -> (scope, Ansi.Style.make ~fg:(Ansi.Color.indexed i) ())
+           match Ansi.Color.legible c s with
+           | Some e -> (scope, Ansi.Style.make ~fg:e ())
            | None -> (scope, attributes))
          hued)
 

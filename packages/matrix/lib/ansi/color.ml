@@ -486,3 +486,49 @@ let of_hex_exn hex =
 let to_hex color =
   let r, g, b = to_rgb color in
   Printf.sprintf "#%02x%02x%02x" r g b
+
+type reported = {
+  foreground : int * int * int;
+  background : int * int * int;
+  palette : (int * int * int) option array;
+}
+
+let entry c i =
+  if i >= 0 && i < 16 && i < Array.length c.palette then c.palette.(i) else None
+
+let rgb (r, g, b) = of_rgb r g b
+
+(* The RGB [color] shows on a terminal of colors [c]: SGR writes the
+   default color, and a transparent RGB color, as [39] or [49], and the
+   terminal draws its own [default]. *)
+let shown c ~default color =
+  match intent color with
+  | Default -> Some default
+  | Rgb when Packed.alpha color = 0 -> Some default
+  | Indexed i when i < 16 -> entry c i
+  | Indexed _ | Rgb -> Some (to_rgb color)
+
+let contrast_on c ~fg ~bg =
+  match
+    (shown c ~default:c.foreground fg, shown c ~default:c.background bg)
+  with
+  | Some fg, Some bg -> Some (contrast (rgb fg) (rgb bg))
+  | _ -> None
+
+(* The legibility gate. Every table of styles by purpose that takes palette
+   entries for text, mosaic's theme and its syntax style among them, calls
+   this function, so that they all choose the same entries. *)
+let legible ?target c i =
+  let target =
+    match target with
+    | Some target -> target
+    | None -> Float.min 4.5 (contrast (rgb c.foreground) (rgb c.background))
+  in
+  let reaches i =
+    match entry c i with
+    | Some e -> contrast (rgb e) (rgb c.background) >= target
+    | None -> false
+  in
+  if reaches i then Some (indexed i)
+  else if 0 <= i && i < 8 && reaches (i + 8) then Some (indexed (i + 8))
+  else None

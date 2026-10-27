@@ -53,16 +53,12 @@ val roles : role list
 
 (** {1:colors Colors} *)
 
-type colors = {
-  foreground : int * int * int;  (** The default foreground, OSC 10. *)
-  background : int * int * int;  (** The default background, OSC 11. *)
+type colors = Color.reported = {
+  foreground : int * int * int;
+  background : int * int * int;
   palette : (int * int * int) option array;
-      (** Entries 0 to 15 of the palette, OSC 4, [None] where the terminal did
-          not report one. An entry past the array is not reported, and entries
-          past 15 are ignored. *)
 }
-(** The type for the colors a terminal reported, each red, green and blue from 0
-    to 255. *)
+(** The type for the colors a terminal reported, {!Color.reported}. *)
 
 (** {1:themes Themes} *)
 
@@ -78,7 +74,7 @@ val plain : t
 
 val default : colors -> t
 (** [default c] is {!plain} with the palette entries [c] reports where they
-    reach their target against [c.background]:
+    reach their target against [c.background] ({!Color.legible}):
     - [Link], [Added] and [Removed] text is drawn in entry 4, 2 and 1, or else
       in entry 12, 10 and 9, the first that reaches the target of text. Link
       text stays underlined.

@@ -39,7 +39,7 @@ let index = function
   | Removed -> 9
   | Border -> 10
 
-type colors = {
+type colors = Color.reported = {
   foreground : int * int * int;
   background : int * int * int;
   palette : (int * int * int) option array;
@@ -66,6 +66,7 @@ let plain_text = function
   | Plain | Muted | Ok | Added | Removed | Border -> Style.default
 
 let make f = Array.of_list (List.map f roles)
+let rgb (r, g, b) = Color.of_rgb r g b
 
 let plain =
   let text = make plain_text in
@@ -77,46 +78,27 @@ let plain =
   in
   { text; mark; alone = text }
 
-let rgb (r, g, b) = Color.of_rgb r g b
-let contrast a b = Color.contrast (rgb a) (rgb b)
-
-let entry c i =
-  if i < Array.length c.palette && i < 16 then c.palette.(i) else None
-
-(* The first of the entries [s] and [s + 8] that [c] reports and whose
-   contrast against the background reaches [target]. *)
-let reaching c ~target s =
-  List.find_opt
-    (fun i ->
-      match entry c i with
-      | Some e -> contrast e c.background >= target
-      | None -> false)
-    [ s; s + 8 ]
-
 let default c =
-  let pair = contrast c.foreground c.background in
-  let target = Float.min 4.5 pair in
+  let pair = Color.contrast (rgb c.foreground) (rgb c.background) in
   let text =
     make (fun role ->
         let base = plain_text role in
-        match role with
-        | Link | Added | Removed -> (
-            match reaching c ~target (Option.get (slot role)) with
-            | Some i -> Style.fg (Color.indexed i) base
-            | None -> base)
-        | Muted -> (
-            match entry c 8 with
-            | Some e ->
-                let k = contrast e c.background in
-                if k >= target && k < pair then Style.fg (Color.indexed 8) base
-                else base
-            | None -> base)
-        | _ -> base)
+        let entry =
+          match role with
+          | Link | Added | Removed -> Color.legible c (Option.get (slot role))
+          | Muted -> (
+              (* Entry 8 where it is legible and quieter than the pair. *)
+              match (Color.legible c 8, Color.legible ~target:pair c 8) with
+              | Some e, None -> Some e
+              | _ -> None)
+          | _ -> None
+        in
+        match entry with Some e -> Style.fg e base | None -> base)
   in
   let alone =
     make (fun role ->
-        match Option.bind (slot role) (reaching c ~target:3.) with
-        | Some i -> Style.make ~fg:(Color.indexed i) ()
+        match Option.bind (slot role) (Color.legible ~target:3. c) with
+        | Some e -> Style.make ~fg:e ()
         | None -> text.(index role))
   in
   let mark =
@@ -144,30 +126,18 @@ let equal a b =
   let same x y = Array.for_all2 Style.equal x y in
   same a.text b.text && same a.mark b.mark && same a.alone b.alone
 
-(* The RGB a color shows on a terminal of colors [c], [None] for an entry
-   of 0 to 15 that [c] does not report. Entries 16 to 255 are the same on
-   every terminal that has them, and an RGB color is itself. *)
-let shown c ~default color =
-  match color with
-  | None -> Some default
-  | Some color -> (
-      match Color.intent color with
-      | Default -> Some default
-      | Indexed i when i < 16 -> entry c i
-      | Indexed _ | Rgb -> Some (Color.to_rgb color))
-
 let check c t =
-  let pair = contrast c.foreground c.background in
+  let pair = Color.contrast (rgb c.foreground) (rgb c.background) in
   List.filter_map
     (fun role ->
       let s = style t role in
       let target = Float.min (if role = Border then 3. else 4.5) pair in
+      let or_default d = Option.value ~default:d in
       match
-        ( shown c ~default:c.foreground s.Style.fg,
-          shown c ~default:c.background s.Style.bg )
+        Color.contrast_on c
+          ~fg:(or_default Color.default_fg s.Style.fg)
+          ~bg:(or_default Color.default_bg s.bg)
       with
-      | Some fg, Some bg ->
-          let k = contrast fg bg in
-          if k < target then Some (role, k) else None
+      | Some k when k < target -> Some (role, k)
       | _ -> None)
     roles

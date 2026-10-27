@@ -165,6 +165,125 @@ let color_contrast () =
     (Color.contrast (c "#ff0000") black)
     (Color.contrast Color.bright_red black)
 
+(* xterm's palette as it reports it, and its two defaults: black on white
+   and, as XTerm-color, light gray on black. *)
+let xterm_palette =
+  Array.map
+    (fun h -> Some (Color.to_rgb (Color.of_hex_exn h)))
+    [|
+      "000000";
+      "cd0000";
+      "00cd00";
+      "cdcd00";
+      "0000ee";
+      "cd00cd";
+      "00cdcd";
+      "e5e5e5";
+      "7f7f7f";
+      "ff0000";
+      "00ff00";
+      "ffff00";
+      "5c5cff";
+      "ff00ff";
+      "00ffff";
+      "ffffff";
+    |]
+
+let xterm_light =
+  {
+    Color.foreground = (0, 0, 0);
+    background = (255, 255, 255);
+    palette = xterm_palette;
+  }
+
+let xterm_dark =
+  { xterm_light with foreground = (0xe5, 0xe5, 0xe5); background = (0, 0, 0) }
+
+let color_contrast_on () =
+  let shown = option (float 0.005) in
+  let c = { xterm_light with palette = [| None; Some (0xcd, 0, 0) |] } in
+  let on_default fg = Color.contrast_on c ~fg ~bg:Color.default_bg in
+  equal ~msg:"the pair" shown (Some 21.0)
+    (Color.contrast_on c ~fg:Color.default_fg ~bg:Color.default_bg);
+  equal ~msg:"a default background is the reported one" shown (Some 21.0)
+    (on_default Color.default_bg);
+  equal ~msg:"a transparent color is the default" shown (Some 21.0)
+    (on_default Color.transparent);
+  equal ~msg:"an entry as reported" shown (Some 5.84)
+    (on_default (Color.indexed 1));
+  equal ~msg:"an entry not reported" shown None (on_default (Color.indexed 0));
+  equal ~msg:"an entry past the palette" shown None
+    (on_default (Color.indexed 2));
+  equal ~msg:"a background not reported" shown None
+    (Color.contrast_on c ~fg:Color.default_fg ~bg:(Color.indexed 0));
+  equal ~msg:"entry 196, #ff0000 everywhere" shown (Some 4.00)
+    (on_default (Color.indexed 196));
+  equal ~msg:"an RGB color" shown (Some 4.48)
+    (on_default (Color.of_rgb 0x77 0x77 0x77))
+
+let color_legible () =
+  let entry = option check_color in
+  let i = Color.indexed in
+  equal ~msg:"blue on white" entry (Some (i 4)) (Color.legible xterm_light 4);
+  equal ~msg:"green on white, neither" entry None (Color.legible xterm_light 2);
+  equal ~msg:"red on black, the bright one" entry
+    (Some (i 9))
+    (Color.legible xterm_dark 1);
+  equal ~msg:"a target of 3" entry
+    (Some (i 1))
+    (Color.legible ~target:3. xterm_light 1);
+  equal ~msg:"yellow at 3, neither" entry None
+    (Color.legible ~target:3. xterm_light 3);
+  equal ~msg:"entry 8 on white, below 4.5" entry None
+    (Color.legible xterm_light 8);
+  equal ~msg:"entry 8 on black" entry (Some (i 8)) (Color.legible xterm_dark 8);
+  equal ~msg:"an entry not reported" entry None
+    (Color.legible { xterm_light with palette = [||] } 4);
+  (* A pair of 4.0:1, as xterm's bright black on white, lowers the target
+     of text to its own. *)
+  let low = { xterm_light with foreground = (0x7f, 0x7f, 0x7f) } in
+  equal ~msg:"down to the pair" entry (Some (i 8)) (Color.legible low 8);
+  equal ~msg:"below the pair" entry None (Color.legible low 3)
+
+let gen_rgb =
+  Gen.triple (Gen.int_range 0 255) (Gen.int_range 0 255) (Gen.int_range 0 255)
+
+let gen_rgb_pp ppf (r, g, b) = Format.fprintf ppf "#%02x%02x%02x" r g b
+
+let gen_reported =
+  Gen.map
+    (fun (foreground, background, palette) ->
+      { Color.foreground; background; palette })
+    (Gen.triple gen_rgb gen_rgb
+       (Gen.array ~size:(Gen.int_range 0 16) (Gen.option gen_rgb)))
+  |> Gen.with_pp (fun ppf (c : Color.reported) ->
+      Format.fprintf ppf "%a on %a, palette [%a]" gen_rgb_pp c.foreground
+        gen_rgb_pp c.background
+        (Format.pp_print_list
+           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
+           (Format.pp_print_option
+              ~none:(fun ppf () -> Format.pp_print_string ppf "-")
+              gen_rgb_pp))
+        (Array.to_list c.palette))
+
+(* What [legible] gives on any reported colors: entry [i] where it is
+   reported and reaches the target, else [i + 8] for [i] below 8 where it
+   does, else nothing. *)
+let color_legible_laws (c, i) =
+  let pair = Color.contrast_on c ~fg:Color.default_fg ~bg:Color.default_bg in
+  let target = Float.min 4.5 (Option.get pair) in
+  let reaches i =
+    match Color.contrast_on c ~fg:(Color.indexed i) ~bg:Color.default_bg with
+    | Some k -> k >= target
+    | None -> false
+  in
+  let expected =
+    if reaches i then Some (Color.indexed i)
+    else if i < 8 && reaches (i + 8) then Some (Color.indexed (i + 8))
+    else None
+  in
+  equal ~msg:"legible" (option check_color) expected (Color.legible c i)
+
 (* --- 2. Attributes & Style --- *)
 
 let attr_bitmask_integrity () =
@@ -2560,8 +2679,6 @@ let check_result =
           ~equal:( = ))
        (float 0.005))
 
-let gen_rgb_pp ppf (r, g, b) = Format.fprintf ppf "#%02x%02x%02x" r g b
-
 let entry (s : Style.t) =
   match Option.map Color.intent s.fg with
   | None -> "-"
@@ -2700,31 +2817,13 @@ let theme_with_style () =
     (Theme.check white
        (Theme.with_style Error (Style.make ~fg:Color.yellow ()) Theme.plain))
 
-let gen_rgb =
-  Gen.triple (Gen.int_range 0 255) (Gen.int_range 0 255) (Gen.int_range 0 255)
-
-let gen_colors =
-  Gen.map
-    (fun (foreground, background, palette) ->
-      { Theme.foreground; background; palette })
-    (Gen.triple gen_rgb gen_rgb
-       (Gen.array ~size:(Gen.int_range 0 16) (Gen.option gen_rgb)))
-  |> Gen.with_pp (fun ppf (c : Theme.colors) ->
-      Format.fprintf ppf "%a on %a, palette [%a]" gen_rgb_pp c.foreground
-        gen_rgb_pp c.background
-        (Format.pp_print_list
-           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
-           (Format.pp_print_option
-              ~none:(fun ppf () -> Format.pp_print_string ppf "-")
-              gen_rgb_pp))
-        (Array.to_list c.palette))
-
 let theme_tests =
   [
     test "27 palettes" theme_palettes;
     test "adjudicated classes" theme_classes;
     test "with_style, equal, check" theme_with_style;
-    prop "any reported colors" gen_colors (fun c -> theme_laws ~msg:"random" c);
+    prop "any reported colors" gen_reported (fun c ->
+        theme_laws ~msg:"random" c);
   ]
 
 let tests =
@@ -2735,6 +2834,11 @@ let tests =
         test "hsl roundtrip" color_hsl_roundtrip;
         test "blending" color_blending;
         test "contrast" color_contrast;
+        test "contrast on reported colors" color_contrast_on;
+        test "legible entries" color_legible;
+        prop "legible on any reported colors"
+          (Gen.pair gen_reported (Gen.int_range 0 15))
+          color_legible_laws;
         test "intent identity" color_intent_is_part_of_identity;
         test "ansi16 fallback palette"
           color_ansi16_palette_matches_standard_fallback;

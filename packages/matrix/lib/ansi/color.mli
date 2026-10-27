@@ -227,6 +227,45 @@ val to_depth : depth -> t -> t
     [to_depth] reads no environment. The caller gives the depth, from what the
     terminal reports. *)
 
+(** {1:terminal_colors Reported colors}
+
+    A terminal's default foreground and background, the user's {e pair}, and
+    entries 0 to 15 of its palette are colors its user chose, and a program
+    knows them only if the terminal reports them (OSC 10, 11 and 4). A color is
+    {e shown on} a terminal of reported colors [c] as the terminal draws it. The
+    default color, and a transparent RGB color, which SGR writes as the default,
+    are [c]'s foreground or background. An entry 0 to 15 is [c]'s report of it,
+    and any other color is the RGB of its snapshot.
+
+    No palette entry is legible on both a light and a dark background, so a
+    program that draws text in an entry checks the entry against the background
+    its terminal reports. An entry is legible when its contrast ({!contrast})
+    against that background reaches a {e target}. The target of text is the
+    lower of [4.5] and the contrast of the pair, so a user who chose a pair of
+    lower contrast gets entries down to their own choice. *)
+
+type reported = {
+  foreground : int * int * int;  (** The default foreground, OSC 10. *)
+  background : int * int * int;  (** The default background, OSC 11. *)
+  palette : (int * int * int) option array;
+      (** Entries 0 to 15 of the palette, OSC 4, [None] where the terminal did
+          not report one. An entry past the array is not reported, and entries
+          past 15 are ignored. *)
+}
+(** The type for the colors a terminal reported, each red, green and blue from 0
+    to 255. *)
+
+val contrast_on : reported -> fg:t -> bg:t -> float option
+(** [contrast_on c ~fg ~bg] is the contrast of [fg] drawn as a foreground on
+    [bg] drawn as a background, both shown on a terminal of reported colors [c].
+    It is [None] if [fg] or [bg] is an entry 0 to 15 [c] does not report. *)
+
+val legible : ?target:float -> reported -> int -> t option
+(** [legible ~target c i] is palette entry [i], or else, for [i] below 8, its
+    bright variant [i + 8], the first that [c] reports and whose contrast
+    against [c]'s background reaches [target]. It is [None] if neither does.
+    [target] defaults to the target of text. *)
+
 (** {1:sgr SGR codes} *)
 
 val to_sgr_codes : ?depth:depth -> bg:bool -> t -> int list
