@@ -17,8 +17,8 @@
     with [Fmt.pr], is flushed before each write, as [Format.pp_print_flush]
     flushes a formatter, so the standard outputs keep their order under [2>&1].
 
-    A {e live} region ({!live}) is a few rows that a program redraws below its
-    output while it works, such as a progress bar. It is a
+    A {e live} region ({!val-live}) is a few rows that a program redraws below
+    its output while it works, such as a progress bar. It is a
     {!Matrix_screen.Region}, whose model says what a redraw may and may not
     erase. Its rows show below a blank row, its origin, where the cursor rests
     between two draws, so that what another process prints there stays whole.
@@ -29,7 +29,7 @@
     without its end waits for its end, or for the region to be suspended or
     closed. A frame is drawn at most ten times a second, as cargo and Rich
     redraw their progress bars, and at once when lines go above it. A scope may
-    also have the region drawn on a clock ({!live}'s [tick]). The region is
+    also have the region drawn on a clock ({!val-live}'s [tick]). The region is
     redrawn when the terminal's width changes, and drawn afresh when the job is
     continued. A job stopped with Ctrl+Z first erases it. A job in the
     background ({!Tty.background}) draws no frame, so its rows never land among
