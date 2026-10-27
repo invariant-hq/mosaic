@@ -37,6 +37,14 @@ val of_keyed : ('k, 'a) Keyed.t -> 'a t
     items in a {!Keyed.t}, to show them with [Mosaic.keyed], gives a collection
     widget the same value. *)
 
+val map_list : ('a -> 'b) -> 'a list -> 'b t
+(** [map_list f l] is the items of [List.map f l], with [f] applied when an item
+    is read, so a model's records give items through a function, as their names
+    for a {!Cursor}, without a list made per call. [f] must return equal items
+    for one element of [l] every time. [map_list f l] and [map_list f' l'] are
+    the same items when [f] and [f'], and [l] and [l'], are physically equal: a
+    function defined once, not a closure made per call. *)
+
 val make : length:int -> (int -> 'a) -> 'a t
 (** [make ~length f] is the [length] items [f 0], ..., [f (length - 1)]. [f] is
     called when an item is read, and must return equal items for one position
@@ -67,16 +75,3 @@ val to_list : 'a t -> 'a list
 
 val iter : ('a -> unit) -> 'a t -> unit
 (** [iter f s] applies [f] to the items of [s] in order. *)
-
-(**/**)
-
-(* For the widgets that hold lists of their own items: select, tab_select and
-   table. *)
-
-val map_list : ('a -> 'b) -> 'a list -> 'b t
-(** [map_list f l] is the items of [List.map f l], with [f] applied when an item
-    is read. [f] must return equal items for one element of [l] every time.
-    [map_list f l] and [map_list f' l'] are the same when [f] and [f'], and [l]
-    and [l'], are physically equal. *)
-
-(**/**)

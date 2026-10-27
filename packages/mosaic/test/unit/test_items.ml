@@ -36,6 +36,27 @@ let sameness () =
        (Items.make ~length:3 (fun i -> i + 1))
        (Items.make ~length:3 (fun i -> i + 1)))
 
+(* A list mapped into items is read through the function when an item is
+   read, and is the same items as another of one list and one function. *)
+let mapped () =
+  let reads = ref 0 in
+  let f i =
+    incr reads;
+    string_of_int i
+  in
+  let l = [ 1; 2; 3 ] in
+  let items = Items.map_list f l in
+  equal ~msg:"no item read yet" int 0 !reads;
+  equal ~msg:"length" int 3 (Items.length items);
+  equal ~msg:"an item" string "2" (Items.get items 1);
+  equal ~msg:"one read" int 1 !reads;
+  is_true ~msg:"one list and one function"
+    (Items.same items (Items.map_list f l));
+  is_false ~msg:"another function"
+    (Items.same items (Items.map_list (fun i -> string_of_int i) l));
+  is_false ~msg:"an equal list made again"
+    (Items.same items (Items.map_list f (List.init 3 succ)))
+
 let equality () =
   let eq = Items.equal Int.equal in
   is_true ~msg:"equal lists made apart"
@@ -55,5 +76,6 @@ let () =
           test "reading by position" reading;
           test "the same items" sameness;
           test "equal items" equality;
+          test "a mapped list" mapped;
         ];
     ]
