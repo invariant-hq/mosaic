@@ -413,7 +413,7 @@ type t = {
   mutable ended : bool;
   mutable frames : int;
   mutable steps : int;
-  mutable device : Matrix.device option;
+  mutable device : Matrix.Device.t option;
   mutable presented :
     unit ->
     Matrix.Grid.t
@@ -465,40 +465,61 @@ let idle s ~until ~stepped =
     s.quiesced <- false;
     ready)
 
-let make_device s : Matrix.device =
+(* The session's terminal as the run's device: it applies what the run
+   writes and queues its answers at once, its clock moves only when the test
+   or a wait for a silent terminal moves it, and it takes no signal of the
+   process, a resize being its window signal. *)
+let make_device s : Matrix.Device.t =
   let profile = Terminal.profile s.term in
   let vte = Terminal.vte s.term in
   {
-    read_clock = (fun () -> s.clock);
+    now = (fun () -> s.clock);
     wait =
-      (fun ~until ->
-        if queued s then true
-        else (
-          (match until with Some u when u > s.clock -> s.clock <- u | _ -> ());
-          false));
-    read = read s;
-    write = (fun b off len -> send s (Terminal.apply s.term b off len));
-    window =
+      (fun ~until ~reading ->
+        let ready =
+          queued s
+          ||
+          ((match until with
+           | Some u when u > s.clock -> s.clock <- u
+           | _ -> ());
+           false)
+        in
+        ready && reading);
+    wake = ignore;
+    fds = (fun ~reading:_ -> []);
+    take_signals =
+      (fun () ->
+        if s.resized then (
+          s.resized <- false;
+          [ Matrix.Device.Winch ])
+        else []);
+    read_input = read s;
+    write_output = (fun b off len -> send s (Terminal.apply s.term b off len));
+    terminal_size =
       (fun () ->
         if profile.tty then Some (Vte.cols vte, Vte.rows vte) else None);
-    resized =
-      (fun () ->
-        let r = s.resized in
-        s.resized <- false;
-        r);
-    set_raw = (fun raw -> s.term.raw <- raw);
-    flush =
+    window_pixels = (fun () -> None);
+    set_raw_mode = (fun raw -> s.term.raw <- raw);
+    flush_input =
       (fun () ->
         Queue.clear s.writes;
         s.read_off <- 0);
-    tty = profile.tty;
+    input_is_tty = profile.tty;
+    output_is_tty = profile.tty;
+    controlling = false;
+    on_fatal = ignore;
+    cleanup = ignore;
     env =
       Matrix.Terminal.Caps.env
         (fun name -> List.assoc_opt name profile.env)
         ~win32:false;
-    frame = (fun () -> s.frames <- s.frames + 1);
-    idle = (fun ~until ~stepped -> idle s ~until ~stepped);
-    presented = (fun f -> s.presented <- f);
+    in_process =
+      Some
+        {
+          idle = (fun ~until ~stepped -> idle s ~until ~stepped);
+          frame = (fun () -> s.frames <- s.frames + 1);
+          presented = (fun f -> s.presented <- f);
+        };
   }
 
 let run_jobs s =

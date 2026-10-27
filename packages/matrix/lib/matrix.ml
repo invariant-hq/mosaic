@@ -52,10 +52,18 @@ module Signal = Tty.Signal
 
 (* The device a run drives: a terminal's input and output, a clock, and a
    way to wait for them. A run decodes, negotiates and schedules; a device
-   moves bytes and waits. [unix] is the device of every run; the runtime's
-   own tests build others, whose clock and input they script. *)
-module Backend = struct
+   moves bytes and waits. [unix] is the device of a run on descriptors. *)
+module Device = struct
   type signal = Winch | Cont | Tstp | Terminate of int
+
+  type in_process = {
+    idle : until:int option -> stepped:bool -> bool;
+    frame : unit -> unit;
+    presented :
+      (unit ->
+      Grid.t * [ `Row of int | `Cursor of int ] * [ `Kitty | `Sixel | `Blocks ]) ->
+      unit;
+  }
 
   type t = {
     now : unit -> int;
@@ -75,6 +83,7 @@ module Backend = struct
     on_fatal : string -> unit;
     cleanup : unit -> unit;
     env : Terminal.Caps.env;
+    in_process : in_process option;
   }
 
   let drain fd =
@@ -203,54 +212,9 @@ module Backend = struct
             (fun () -> set_raw_mode false)
             ~finally:(fun () -> Signal.release holder));
       env;
+      in_process = None;
     }
 end
-
-(* A terminal emulated in the program's own process, for [Matrix_test]. A
-   run on one keeps the device's time and is driven by its steps, so the
-   device decides how the run's own waits end: as it takes and gives back
-   the terminal, it waits for answers until a time, and a device whose
-   terminal stays silent moves its clock there, as a terminal that never
-   answers leaves the wait. *)
-type device = {
-  read_clock : unit -> int;
-  wait : until:int option -> bool;
-  read : bytes -> int -> int -> int;
-  write : bytes -> int -> int -> unit;
-  window : unit -> (int * int) option;
-  resized : unit -> bool;
-  set_raw : bool -> unit;
-  flush : unit -> unit;
-  tty : bool;
-  env : Terminal.Caps.env;
-  frame : unit -> unit;
-  idle : until:int option -> stepped:bool -> bool;
-  presented :
-    (unit ->
-    Grid.t * [ `Row of int | `Cursor of int ] * [ `Kitty | `Sixel | `Blocks ]) ->
-    unit;
-}
-
-let backend_of_device d : Backend.t =
-  {
-    now = d.read_clock;
-    wait = (fun ~until ~reading -> d.wait ~until && reading);
-    wake = ignore;
-    fds = (fun ~reading:_ -> []);
-    take_signals = (fun () -> if d.resized () then [ Backend.Winch ] else []);
-    read_input = d.read;
-    write_output = d.write;
-    terminal_size = d.window;
-    window_pixels = (fun () -> None);
-    set_raw_mode = d.set_raw;
-    flush_input = d.flush;
-    input_is_tty = d.tty;
-    output_is_tty = d.tty;
-    controlling = false;
-    on_fatal = ignore;
-    cleanup = ignore;
-    env = d.env;
-  }
 
 (* Stop requests. A request wakes the runs the request was given to, by
    their serial, so that a run waiting for its descriptors steps and sees
@@ -325,7 +289,7 @@ type config = {
   min_tui_height : int option;  (** [None] when the application states none. *)
   caps : Terminal.capabilities option;
   color : Ansi.Styling.choice option;  (** [None] for [`Auto]. *)
-  device : device option;
+  device : Device.t option;
   (* [MATRIX_DEBUG], which [run] reads for a run on descriptors. *)
   debug : string option;
 }
@@ -436,7 +400,7 @@ type 'msg app = {
   (* Events decoded and not yet returned. *)
   events : event Queue.t;
   config : config;
-  backend : Backend.t;
+  backend : Device.t;
   variable : string -> string option;
       (* [Caps.variable] of the backend's environment, made once: a frame
          decides the styling and allocates nothing for it. *)
@@ -574,7 +538,7 @@ type 'msg app = {
   (* Signals the run took, to restore when it ends. *)
   mutable taken : int list;
   (* Signals received and not yet acted on, oldest first. *)
-  mutable kept : Backend.signal list;
+  mutable kept : Device.signal list;
   mutable tstp_ignored : bool;
   (* Undos of the steps that took the terminal, latest first. *)
   mutable undo : (exiting:bool -> unit) list;
@@ -2134,7 +2098,7 @@ let release t f =
       t.kept
       @ List.filter
           (function
-            | Backend.Terminate s -> not (List.mem s interrupting_signals)
+            | Device.Terminate s -> not (List.mem s interrupting_signals)
             | _ -> true)
           (t.backend.take_signals ());
     t.released <- false;
@@ -2240,7 +2204,7 @@ and continued t =
 and on_signals t signals =
   List.iter
     (function
-      | Backend.Winch ->
+      | Device.Winch ->
           t.size_report <- Read;
           owe_frame t
       | Cont -> continued t
@@ -2250,7 +2214,7 @@ and on_signals t signals =
             (* The SIGCONT that ended the stop is this one's. *)
             on_signals t
               (List.filter
-                 (function Backend.Cont -> false | _ -> true)
+                 (function Device.Cont -> false | _ -> true)
                  (received t)))
       | Terminate s -> end_run t s)
     signals
@@ -2417,8 +2381,8 @@ let rec next t =
   | exception Idle ->
       let until = wait_deadline t in
       t.waited_ready <-
-        (match t.config.device with
-        | Some d ->
+        (match t.backend.in_process with
+        | Some (d : Device.in_process) ->
             (* A device decides how a run that waits goes on. *)
             let stepped = t.stepped in
             t.stepped <- false;
@@ -2433,7 +2397,7 @@ let make backend ?stop config =
   let evidence =
     match config.caps with
     | Some caps -> Terminal.Caps.assume caps
-    | None -> Terminal.Caps.evidence backend.Backend.env
+    | None -> Terminal.Caps.evidence backend.Device.env
   in
   let terminal =
     Terminal.make ~tty:backend.output_is_tty
@@ -2509,7 +2473,7 @@ let make backend ?stop config =
     owe_post = false;
     interval = Float.to_int (Float.round (1e9 /. config.fps));
     dirty = true;
-    in_process = Option.is_some config.device;
+    in_process = Option.is_some backend.in_process;
     asked_outside = true;
     in_frame_step = false;
     discrete = false;
@@ -2517,7 +2481,9 @@ let make backend ?stop config =
     early = false;
     stepped = false;
     on_frame =
-      (match config.device with Some d -> d.frame | None -> Fun.const ());
+      (match backend.Device.in_process with
+      | Some d -> d.Device.frame
+      | None -> Fun.const ());
     tools = Option.bind config.debug tools_of_string;
     drawing = false;
     void = false;
@@ -2656,7 +2622,7 @@ let run_on backend ?stop ?(config = config ()) f =
     try make backend ?stop config
     with exn ->
       let bt = Printexc.get_raw_backtrace () in
-      (try backend.Backend.cleanup () with _ -> ());
+      (try backend.Device.cleanup () with _ -> ());
       Printexc.raise_with_backtrace exn bt
   in
   if not (hold t) then (
@@ -2666,7 +2632,7 @@ let run_on backend ?stop ?(config = config ()) f =
   (* A device reads the frame the run presented, and the terminal row its
      first row is on. *)
   Option.iter
-    (fun d ->
+    (fun (d : Device.in_process) ->
       d.presented (fun () ->
           ( current_grid t,
             (match t.config.mode with
@@ -2679,7 +2645,7 @@ let run_on backend ?stop ?(config = config ()) f =
             match Screen.cell_size t.screen with
             | None -> `Blocks
             | Some _ -> (Terminal.capabilities t.terminal).graphics )))
-    config.device;
+    backend.in_process;
   let finish () =
     Atomic.set t.accepting false;
     wake_posts t;
@@ -2707,10 +2673,10 @@ let run_on backend ?stop ?(config = config ()) f =
 let run ?input ?output ?env ?stop ?config f =
   let backend =
     match (config, input, output, env) with
-    | Some { device = Some d; _ }, None, None, None -> backend_of_device d
+    | Some { device = Some d; _ }, None, None, None -> d
     | Some { device = Some _; _ }, _, _, _ ->
         invalid_arg "Matrix.run: a run on a device takes no descriptors"
-    | _ -> Backend.unix ?input ?output ?env ()
+    | _ -> Device.unix ?input ?output ?env ()
   in
   let config =
     match config with

@@ -30,7 +30,7 @@ type fake = {
   mutable now : int;
   mutable input : string list;
   mutable eof : bool;
-  mutable signals : Matrix.Backend.signal list;
+  mutable signals : Matrix.Device.signal list;
   mutable size : int * int;
   output : Buffer.t;
   mutable reads : int;
@@ -72,7 +72,11 @@ let fake ?(tty = false) ?(size = (80, 24)) ?(input = []) ?(answer = fun _ -> "")
 
 let output f = Buffer.contents f.output
 
-let backend f : Matrix.Backend.t =
+(* A run on device [d], with [config], as [Matrix.run] gives one. *)
+let run_on d ?stop ?(config = Matrix.config ()) f =
+  Matrix.run ?stop ~config:(Matrix.on_device d config) f
+
+let backend f : Matrix.Device.t =
   let wait ~until ~reading =
     f.waits <- (f.now, until) :: f.waits;
     let readable () = reading && (f.input <> [] || f.eof) in
@@ -132,13 +136,14 @@ let backend f : Matrix.Backend.t =
     on_fatal = ignore;
     cleanup = (fun () -> f.cleanups <- f.cleanups + 1);
     env = no_env;
+    in_process = None;
   }
 
 let quiet ?(mode = `Alt) ?(fps = 60.) ?caps ?(min_tui_height = 1) ?color () =
   Matrix.config ~mode ~fps ~mouse:`Off ~bracketed_paste:false
     ~kitty_keyboard:`Off ?caps ~min_tui_height ?color ()
 
-let run ?config f body = Matrix.run_on (backend f) ?config body
+let run ?config f body = run_on (backend f) ?config body
 
 (* The next step that is not a frame; frames met meanwhile are drawn
    empty. *)
@@ -634,7 +639,7 @@ let test_frame_property () =
     in
     let waits = ref 0 in
     let resizes_ok = ref true in
-    Matrix.run_on backend ~config:(quiet ()) (fun app ->
+    run_on backend ~config:(quiet ()) (fun app ->
         f.on_wait <-
           (fun f ~until ->
             incr waits;
@@ -648,7 +653,7 @@ let test_frame_property () =
               | 2 ->
                   f.size <-
                     (10 + Random.State.int rand 70, 5 + Random.State.int rand 20);
-                  f.signals <- [ Matrix.Backend.Winch ];
+                  f.signals <- [ Matrix.Device.Winch ];
                   (* A resize asks for a frame. *)
                   pending := true;
                   f.now <- f.now + Random.State.int rand (ms 5)
@@ -727,7 +732,7 @@ let idle_deadline_property
           | 4 ->
               f.size <-
                 (10 + Random.State.int rand 70, 5 + Random.State.int rand 20);
-              f.signals <- [ Matrix.Backend.Winch ]
+              f.signals <- [ Matrix.Device.Winch ]
           | 5 ->
               if tty then
                 Matrix.query app
@@ -766,34 +771,37 @@ let test_idle_deadline_property =
 (* [f] as a device: each input chunk is a whole write, a wait for an answer
    with nothing queued moves the clock to its end, and the frames begun are
    counted. *)
-let device ?(frames = ref 0) f : Matrix.device =
+let device ?(frames = ref 0) f : Matrix.Device.t =
   let b = backend f in
   {
-    read_clock = (fun () -> f.now);
+    b with
     wait =
-      (fun ~until ->
-        if f.input <> [] then true
-        else (
-          (match until with
-          | Some u when u > f.now -> f.now <- u
-          | Some _ -> ()
-          | None -> fail "the run waits forever");
-          false));
-    read = b.read_input;
-    write = b.write_output;
-    window = (fun () -> Some f.size);
-    resized =
+      (fun ~until ~reading ->
+        let ready =
+          f.input <> []
+          ||
+          ((match until with
+           | Some u when u > f.now -> f.now <- u
+           | Some _ -> ()
+           | None -> fail "the run waits forever");
+           false)
+        in
+        ready && reading);
+    take_signals =
       (fun () ->
-        let w = List.mem Matrix.Backend.Winch f.signals in
+        let w = List.mem Matrix.Device.Winch f.signals in
         f.signals <- [];
-        w);
-    set_raw = b.set_raw_mode;
-    flush = (fun () -> f.input <- []);
-    tty = f.tty;
-    env = no_env;
-    frame = (fun () -> incr frames);
-    idle = (fun ~until:_ ~stepped:_ -> fail "the run waits");
-    presented = ignore;
+        if w then [ Matrix.Device.Winch ] else []);
+    flush_input = (fun () -> f.input <- []);
+    controlling = false;
+    cleanup = ignore;
+    in_process =
+      Some
+        {
+          idle = (fun ~until:_ ~stepped:_ -> fail "the run waits");
+          frame = (fun () -> incr frames);
+          presented = ignore;
+        };
   }
 
 let run_device ?(frames = ref 0) ?(config = quiet ()) f body =
@@ -821,6 +829,23 @@ let settle ?(animate = fun () -> false) ?(on = ignore) f app =
 
 (* A frame asked for by input, a timer or a post is drawn in the turn that
    asked, without the clock moving. *)
+(* A device's run takes its terminal from the device: it is given no
+   descriptor and no environment, and its program sees the device's size and
+   input. *)
+let test_device_of_its_own () =
+  let f = fake ~size:(30, 7) ~input:[ "a" ] () in
+  f.eof <- true;
+  let config = Matrix.on_device (backend f) (quiet ()) in
+  raises_match ~msg:"with descriptors"
+    (function Invalid_argument _ -> true | _ -> false)
+    (fun () -> Matrix.run ~input:Unix.stdin ~config ignore);
+  Matrix.run ~config (fun app ->
+      equal ~msg:"its size" (pair int int) (30, 7) (Matrix.size app);
+      match next_event app with
+      | Matrix.Event (Key _) -> ()
+      | _ -> fail "its input");
+  equal ~msg:"cleaned up once" int 1 f.cleanups
+
 let test_device_frames_asked_outside () =
   let f = fake () and frames = ref 0 in
   run_device ~frames ~config:(quiet ~fps:30. ()) f (fun app ->
@@ -889,7 +914,7 @@ let test_device_resize () =
       in
       settle ~on f app;
       f.size <- (40, 10);
-      f.signals <- [ Matrix.Backend.Winch ];
+      f.signals <- [ Matrix.Device.Winch ];
       settle ~on f app;
       equal ~msg:"the resize" (list (pair int int)) [ (40, 10) ] !resized;
       equal ~msg:"its frame, at once" int 2 !frames)
@@ -948,7 +973,7 @@ let test_turn_budget_property () =
     let keys = ref [] and posts = Array.make 3 [] in
     let typed = ref 0 and posted = Array.make 3 0 and waits = ref 0 in
     let work = ref [] in
-    Matrix.run_on backend ~config:(quiet ()) (fun app ->
+    run_on backend ~config:(quiet ()) (fun app ->
         f.on_wait <-
           (fun f ~until ->
             incr waits;
@@ -1173,7 +1198,7 @@ let test_stop_before_the_run () =
   let stop = Matrix.Stop.create () in
   Matrix.Stop.request stop;
   let f = fake () in
-  Matrix.run_on (backend f) ~stop ~config:(quiet ()) (fun app ->
+  run_on (backend f) ~stop ~config:(quiet ()) (fun app ->
       match Matrix.next app with
       | Stopped -> ()
       | _ -> fail "expected the run to stop")
@@ -1402,7 +1427,7 @@ let test_setup_rolls_back () =
     Fun.protect
       ~finally:(fun () -> Printexc.record_backtrace recording)
       (fun () ->
-        match Matrix.run_on backend ignore with
+        match run_on backend ignore with
         | () -> None
         | exception exn -> Some (exn, Printexc.get_raw_backtrace ()))
   in
@@ -1423,15 +1448,14 @@ let test_setup_rolls_back () =
 let test_nested_runs () =
   let f = fake () in
   let controlling f = { (backend f) with controlling = true } in
-  Matrix.run_on (controlling f) ~config:(quiet ()) (fun app ->
+  run_on (controlling f) ~config:(quiet ()) (fun app ->
       raises_match ~msg:"a run inside a run"
         (function Invalid_argument _ -> true | _ -> false)
-        (fun () ->
-          Matrix.run_on (controlling (fake ())) ~config:(quiet ()) ignore);
+        (fun () -> run_on (controlling (fake ())) ~config:(quiet ()) ignore);
       run ~config:(quiet ()) (fake ()) ignore;
       let inner = fake () in
       Matrix.release app (fun () ->
-          Matrix.run_on (controlling inner) ~config:(quiet ()) ignore);
+          run_on (controlling inner) ~config:(quiet ()) ignore);
       equal ~msg:"the inner run ran" int 1 inner.cleanups;
       raises_match ~msg:"a release inside a release"
         (function Invalid_argument _ -> true | _ -> false)
@@ -1551,7 +1575,7 @@ let test_ghostty_profile_reaches_runtime () =
           ];
     }
   in
-  Matrix.run_on backend (fun app ->
+  run_on backend (fun app ->
       is_true ~msg:"the probe keeps the wide profile"
         ((Matrix.capabilities app).unicode_width = `Unicode_wide);
       let grid = Matrix.Screen.next_grid (Matrix.screen app) in
@@ -1574,7 +1598,7 @@ let test_grapheme_mode_as_found () =
     let backend =
       { (backend f) with env = env [ ("TERM", "xterm-256color") ] }
     in
-    Matrix.run_on backend (fun app ->
+    run_on backend (fun app ->
         is_true ~msg:"grapheme clusters"
           ((Matrix.capabilities app).unicode_width = `Unicode));
     output f
@@ -1782,8 +1806,7 @@ let test_partial_frame_restores_transient_modes () =
           in
           let backend = { (backend f) with output_is_tty = true } in
           (try
-             Matrix.run_on backend ~config:(quiet ~mode:`Primary ~caps ())
-               (fun app ->
+             run_on backend ~config:(quiet ~mode:`Primary ~caps ()) (fun app ->
                  Matrix.static_write app
                    (static_grid
                       (String.concat "\n" (List.init 24 (fun _ -> "row"))));
@@ -1920,7 +1943,7 @@ let run_term ?(mode = `Primary) ?(min_tui_height = 1) ?caps ?(mouse = `Off)
 let resize term ~cols ~rows =
   ignore (Vte.resize term.vte ~rows ~cols : Matrix_input.Reply.t list);
   term.f.size <- (cols, rows);
-  term.f.signals <- term.f.signals @ [ Matrix.Backend.Winch ]
+  term.f.signals <- term.f.signals @ [ Matrix.Device.Winch ]
 
 let screen_rows term =
   List.map rtrim (String.split_on_char '\n' (Vte.to_string term.vte))
@@ -2008,7 +2031,7 @@ let test_static_write_snapshots_selected_rows () =
 let test_static_clear_is_immediate_and_forces_full_repaint () =
   let f = fake () in
   let backend = { (backend f) with output_is_tty = true } in
-  Matrix.run_on backend ~config:(quiet ~mode:`Primary ()) (fun app ->
+  run_on backend ~config:(quiet ~mode:`Primary ()) (fun app ->
       present app [ "live" ];
       Buffer.clear f.output;
       Matrix.static_clear app;
@@ -2519,7 +2542,7 @@ let test_resize_before_the_first_frame () =
 let test_primary_input_not_a_terminal () =
   let term = vte_term ~shell:"$0\r\n$1\r\n$2\r\n" ~cols:8 ~rows:6 () in
   let backend = { (backend term.f) with input_is_tty = false } in
-  Matrix.run_on backend ~config:(quiet ~mode:`Primary ()) (fun app ->
+  run_on backend ~config:(quiet ~mode:`Primary ()) (fun app ->
       present app [ "live" ];
       equal ~msg:"the shell's lines" (list string) [ "$0"; "$1"; "$2" ]
         (transcript term);
@@ -2600,7 +2623,7 @@ let run_unstated ?(input_is_tty = true) term body =
     Matrix.config ~mode:`Primary ~mouse:`Off ~bracketed_paste:false
       ~kitty_keyboard:`Off ()
   in
-  Matrix.run_on { (backend term.f) with input_is_tty } ~config body
+  run_on { (backend term.f) with input_is_tty } ~config body
 
 let reports term =
   let out = output term.f and n = ref 0 in
@@ -2737,7 +2760,7 @@ let test_primary_reset_bytes () =
   let f = fake ~tty:true () in
   let reset = ref "" in
   let backend = { (backend f) with on_fatal = (fun b -> reset := b) } in
-  Matrix.run_on backend ~config:(quiet ~mode:`Primary ()) (fun app ->
+  run_on backend ~config:(quiet ~mode:`Primary ()) (fun app ->
       present ~required:3 app [ "a" ];
       contains ~msg:"below the three rows" ~sub:"\027[3B\r\n" !reset;
       not_contains ~msg:"no scrolling region" ~sub:"\027[r" !reset;
@@ -2845,7 +2868,7 @@ let clocked ?(limit = 10.) ?(rtt = 0.) ?(answer = fun _ -> []) typed =
     Bytes.blit_string bytes 0 buf off n;
     if n > 0 then n else if c.now >= c.limit then 0 else -1
   in
-  let backend : Matrix.Backend.t =
+  let backend : Matrix.Device.t =
     {
       now = (fun () -> c.now);
       wait;
@@ -2868,14 +2891,14 @@ let clocked ?(limit = 10.) ?(rtt = 0.) ?(answer = fun _ -> []) typed =
       on_fatal = ignore;
       cleanup = ignore;
       env = no_env;
+      in_process = None;
     }
   in
   (c, backend)
 
 let run_clocked ?(mode = `Alt) ?(env = no_env) ?(start = fun _ -> ())
     ?(on_event = fun _ _ -> ()) (c, backend) =
-  Matrix.run_on { backend with env } ~config:(Matrix.config ~mode ())
-    (fun app ->
+  run_on { backend with env } ~config:(Matrix.config ~mode ()) (fun app ->
       start app;
       let rec loop () =
         match Matrix.next app with
@@ -3107,7 +3130,7 @@ let test_meta_sends_escape_kept () =
         else [])
       []
   in
-  Matrix.run_on backend ignore;
+  run_on backend ignore;
   not_contains ~sub:"\027[?1036"
     ( Buffer.contents c.written |> fun w ->
       match index_of w "\027[?1036$p" with
@@ -3463,14 +3486,14 @@ let test_signals_of_a_served_terminal () =
       f.answer <- probe_answer;
       { (backend f) with controlling = false }
     in
-    Matrix.run_on (served ()) (fun _ ->
+    run_on (served ()) (fun _ ->
         List.iter
           (fun (name, s) -> is_true ~msg:("taken: " ^ name) (caught s))
           [ ("TERM", sigterm); ("HUP", sighup); ("INT", sigint) ];
         List.iter
           (fun (name, s) -> is_false ~msg:("not taken: " ^ name) (caught s))
           [ ("WINCH", sigwinch); ("TSTP", sigtstp) ];
-        Matrix.run_on (served ()) ignore;
+        run_on (served ()) ignore;
         is_true ~msg:"still taken after the other run" (caught sigterm));
     is_false ~msg:"given back with the last run" (caught sigterm))
 
@@ -3532,7 +3555,7 @@ let test_unix_controlling () =
       Pty.close slave)
     (fun () ->
       let fd = Pty.file_descr slave in
-      let b = Matrix.Backend.unix ~input:fd ~output:fd () in
+      let b = Matrix.Device.unix ~input:fd ~output:fd () in
       is_true ~msg:"a terminal" b.input_is_tty;
       is_false ~msg:"not the controlling one" b.controlling)
 
@@ -3612,11 +3635,11 @@ let test_unix_post_wakes_the_loop () =
   Fun.protect
     ~finally:(fun () -> List.iter Unix.close [ input_r; input_w; devnull ])
     (fun () ->
-      let backend = Matrix.Backend.unix ~input:input_r ~output:devnull () in
+      let backend = Matrix.Device.unix ~input:input_r ~output:devnull () in
       (* A loop the post did not wake would wait for input forever: the
          test's timeout fails it. *)
       let woken =
-        Matrix.run_on backend ~config:(quiet ()) (fun app ->
+        run_on backend ~config:(quiet ()) (fun app ->
             let poster =
               Thread.create
                 (fun () ->
@@ -3717,7 +3740,7 @@ let test_unix_write_cut_by_a_signal () =
       ignore (Sys.signal Sys.sigusr1 previous : Sys.signal_behavior);
       List.iter Unix.close [ r; devnull ])
     (fun () ->
-      let backend = Matrix.Backend.unix ~input:devnull ~output:w () in
+      let backend = Matrix.Device.unix ~input:devnull ~output:w () in
       let n = 200_000 in
       let sent = Bytes.init n (fun i -> Char.chr (i * 7 land 255)) in
       let writer =
@@ -3758,7 +3781,7 @@ let test_unix_reset_without_terminal_input () =
       Pty.close slave)
     (fun () ->
       let output = Pty.file_descr slave in
-      let b = Matrix.Backend.unix ~input:devnull ~output () in
+      let b = Matrix.Device.unix ~input:devnull ~output () in
       Fun.protect ~finally:b.cleanup (fun () ->
           b.on_fatal "RESET";
           (* What an abort does, from OCaml. *)
@@ -3799,7 +3822,7 @@ let test_unix_description () =
       let sync term =
         set "TERM" term;
         let devnull = Unix.openfile "/dev/null" [ O_RDWR; O_CLOEXEC ] 0 in
-        let b = Matrix.Backend.unix ~input:devnull ~output:devnull () in
+        let b = Matrix.Device.unix ~input:devnull ~output:devnull () in
         let caps =
           Matrix.Terminal.Caps.derive (Matrix.Terminal.Caps.evidence b.env)
         in
@@ -3895,7 +3918,7 @@ let posix_signals f () =
 
 let unix_backend f () =
   if Sys.win32 then
-    skip ~reason:"Backend.unix, which needs a wake pipe Windows lacks" ()
+    skip ~reason:"Device.unix, which needs a wake pipe Windows lacks" ()
   else f ()
 
 (* Styling ----------------------------------------------------------------- *)
@@ -4118,6 +4141,7 @@ let () =
         [
           test "a frame asked for outside a frame is drawn at once"
             test_device_frames_asked_outside;
+          test "a device of its own" test_device_of_its_own;
           test "an animation keeps its interval and its grid"
             test_device_animation;
           test "a resize is drawn at once" test_device_resize;

@@ -284,7 +284,7 @@ val config :
       {!Ansi.Styling.decide} gives for [color], the environment of {!run}'s
       [env] ([NO_COLOR], [FORCE_COLOR], [CLICOLOR_FORCE] and [CLICOLOR]),
       whether the output is a terminal, and the terminal's [colors] and [dumb]
-      ({!Terminal.capabilities}). So with [NO_COLOR] set a run writes its
+      ({!Terminal.type-capabilities}). So with [NO_COLOR] set a run writes its
       attributes, such as bold and reverse, without a color, a terminal of 16
       colors gets 16, and [`Never] writes no style and no hyperlink.
 
@@ -341,7 +341,9 @@ val run :
     [env] is the environment of the session the terminal runs, from which the
     runtime guesses what the terminal can do until it answers. It defaults to
     the process's, with the description the terminfo database has for its [TERM]
-    ({!Tty.terminfo}). [stop] ends the run from elsewhere ({!Stop}).
+    ({!Tty.terminfo}). [stop] ends the run from elsewhere ({!Stop}). It runs on
+    {!Device.unix} of [input], [output] and [env], or on the device [config]
+    names ({{!devices}Devices}).
 
     The run takes the terminal, and gives it back, as
     {{!lifecycle}Taking and giving back the terminal} says. It draws and dumps
@@ -992,41 +994,121 @@ val dump_frame :
     Raises [Invalid_argument] if no {!Frame} is being drawn, [Failure] if [dir]
     cannot be made, and [Sys_error] if a file cannot be written. *)
 
-(**/**)
+(** {1:devices Devices}
 
-(* The device a run drives, for the runtime's own tests, which script its
-   clock, its input and what the terminal answers. [run] is [run_on] the
-   device of its descriptors. A device's [wait] returns once the input is
-   readable (when [reading]), once [wake] was called since the last wait, or
-   once [now ()] reaches [until], and says whether the input is readable; a
-   wait until a time already past only looks. [read_input] returns [0] at the
-   end of the input and [-1] when nothing is there. [terminal_size] is [None]
-   for an output with no window, and [window_pixels], the window's size in
-   pixels, [None] when the system reports none. [fds] are the descriptors
-   whose readability ends a wait. *)
+    A {e device} ({!Device.t}) is the terminal a run drives as the runtime sees
+    it: bytes in and out, a clock, a way to wait for input or a time, the
+    window's size, the terminal's settings, and the signals of its session. A
+    run decodes, negotiates, schedules and draws; a device moves bytes and
+    waits. {!run} drives a device over its descriptors, {!Device.unix}, so a
+    program needs a device of its own only where its terminal is not a pair of
+    descriptors of the process:
+    - a server that runs a program for each remote session, as wish serves
+      Bubble Tea programs over SSH, writes the session's channel, reads its
+      input, and reports its window changes as [Winch] and its end as
+      [Terminate];
+    - an embedding that shows a program in a terminal of its own, emulated in
+      the process, such as a pane of a multiplexer or {!Matrix_test}'s sessions;
+    - a test of the runtime that scripts the clock, the input, the answers and
+      the signals.
 
-module Backend : sig
-  type signal = Winch | Cont | Tstp | Terminate of int
+    A program runs on a device with {!on_device}: [run ~config:(on_device d c)]
+    runs as [run ~config:c] does, on [d]. A device wraps another by record
+    update, such as {!Device.unix} with the size a transport reports. *)
+
+module Device : sig
+  (** The type for the events of a terminal's session that a run acts on, named
+      as the POSIX signals that report them on a terminal of the process. *)
+  type signal =
+    | Winch  (** The window's size changed: it is read again. *)
+    | Cont  (** The process continued after a stop it did not ask for. *)
+    | Tstp  (** A suspend was asked for: the run releases its terminal. *)
+    | Terminate of int
+        (** The session ended with this signal: the run gives its terminal back
+            and the process ends with it ({{!signals}Signals}). *)
+
+  type in_process = {
+    idle : until:int option -> stepped:bool -> bool;
+        (** [idle ~until ~stepped] is called in place of [wait] when a run that
+            waits with {!next} has nothing to do until [until], [stepped]
+            whether {!next} returned a step since the last call. It returns once
+            input is there or the clock has moved, and says whether input is
+            there. A device that drives its program by turns, as a test does,
+            holds the program still here until it gives it something. *)
+    frame : unit -> unit;  (** Called as each frame begins. *)
+    presented :
+      (unit ->
+      Grid.t * [ `Row of int | `Cursor of int ] * [ `Kitty | `Sixel | `Blocks ]) ->
+      unit;
+        (** Given, as the run begins, a function that is the frame the run last
+            presented ({!current_grid}), the terminal row its first row is on
+            ([`Row r], or in [`Primary] mode [`Cursor n], [n] rows below the
+            cursor's), and the form its picture cells were written in, so that
+            the device checks its terminal shows that frame. *)
+  }
+  (** The type for a terminal emulated in the run's own process, which applies
+      what the run writes before [write] returns and has queued its answers by
+      then. A run on one draws at once a frame asked for outside a frame (by
+      input, a timer, a post or the runtime), where a run on a terminal draws at
+      once only for discrete input and the others on the frame grid; the grid
+      needs a clock that moves by itself. It decodes the input whole once
+      nothing follows it, as the terminal has written all it sent; it takes no
+      signal of the process; and a post to it never waits for its steps, since
+      the device holds the program still while its caller runs. *)
 
   type t = {
     now : unit -> int;
+        (** The device's clock, in nanoseconds, never going back
+            ({{!time}Time}). *)
     wait : until:int option -> reading:bool -> bool;
+        (** [wait ~until ~reading] returns once the input is readable (if
+            [reading]), once [wake] was called since the last wait, or once
+            [now ()] reaches [until], and says whether the input is readable. A
+            wait until a time already past only looks. *)
     wake : unit -> unit;
+        (** Ends the current or next wait, from any thread or a signal handler:
+            {!post} and {!Stop} call it. *)
     fds : reading:bool -> Unix.file_descr list;
+        (** The descriptors whose readability ends a wait, which {!val-fds}
+            gives a program that waits with its own loop; [[]] for a device no
+            descriptor wakes. *)
     take_signals : unit -> signal list;
+        (** The signals received since the last call, which every turn asks for.
+        *)
     read_input : bytes -> int -> int -> int;
+        (** [read_input b off len] reads what is there, at most [len] bytes,
+            without waiting: [0] at the end of the input and [-1] when nothing
+            is there. *)
     write_output : bytes -> int -> int -> unit;
+        (** [write_output b off len] writes all [len] bytes, waiting while the
+            terminal takes none. *)
     terminal_size : unit -> (int * int) option;
+        (** The window's columns and rows, [None] for an output with no window,
+            whose size the terminal reports in band. *)
     window_pixels : unit -> (int * int) option;
+        (** The window's size in pixels, [None] when it is not known. *)
     set_raw_mode : bool -> unit;
+        (** Puts the input in raw mode, or its saved settings back. *)
     flush_input : unit -> unit;
-    input_is_tty : bool;
-    output_is_tty : bool;
+        (** Drops input not yet read, before the terminal is given back. *)
+    input_is_tty : bool;  (** Whether the input is a terminal. *)
+    output_is_tty : bool;  (** Whether the output is a terminal. *)
     controlling : bool;
+        (** Whether the terminal is the process's controlling terminal, the one
+            job control stops and continues the process for. *)
     on_fatal : string -> unit;
+        (** Given the bytes that reset the modes the run set, which the device
+            writes to its terminal if the process dies before [cleanup]. *)
     cleanup : unit -> unit;
+        (** Called once, as the run ends, after the terminal is given back. *)
     env : Terminal.Caps.env;
+        (** The environment of the session, from which the runtime guesses what
+            the terminal can do until it answers. *)
+    in_process : in_process option;
+        (** [Some] for a terminal emulated in the run's process. *)
   }
+  (** The type for devices. A run calls these on the thread that called {!run},
+      except [wake]. *)
 
   val unix :
     ?input:Unix.file_descr ->
@@ -1034,63 +1116,20 @@ module Backend : sig
     ?env:Terminal.Caps.env ->
     unit ->
     t
+  (** [unix ~input ~output ~env ()] is the device over the descriptors [input]
+      and [output], as {!run} takes them: it waits with [select(2)] on the input
+      and a wake pipe that {!post} and the signal handlers write, takes the
+      signals as {{!signals}Signals} says, and sets the input's raw mode with
+      termios.
+
+      Raises [Failure] on Windows, as {!run} does, and [Unix.Unix_error] if the
+      wake pipe cannot be made. *)
 end
 
-val run_on :
-  Backend.t -> ?stop:Stop.t -> ?config:config -> ('msg app -> 'a) -> 'a
+val on_device : Device.t -> config -> config
+(** [on_device d c] is [c] for a run on [d]. {!run} given it takes no
+    descriptors and no environment, which are [d]'s, and reads no [MATRIX_DEBUG]
+    ({{!diagnostics}Diagnostics}).
 
-(* A terminal emulated in the program's own process, for [Matrix_test], which
-   a run takes through its configuration ([on_device]), and then from [run]
-   with no descriptor and no environment of its own. Its writes are applied
-   before [write] returns and its input is queued whole, so a run on it
-   differs from one on a terminal in three ways:
-   - a frame asked for outside a frame (by input, a timer, a post or the
-     runtime itself, as after a resize) is drawn in the turn that asked, and
-     one asked for from a Frame step until the next step, an animation's,
-     waits its interval. A terminal draws in the turn that asked only the
-     frames discrete input asks for, and the others on the grid. The grid
-     is in real time, and the device's clock moves only when the test moves
-     it: under it, a frame a timer, a post or the mouse's motion asks for
-     would wait for a grid frame that never comes. The grid is the same on
-     both: a frame drawn before the grid's next one is early ([early]) and
-     does not move it;
-   - input is decoded whole once nothing follows it, as the terminal has
-     finished writing;
-   - the run takes no signal of the process: [resized] is its window signal.
-   [wait ~until] says whether input is queued. With none queued and [until]
-   later than [read_clock ()], the terminal is silent until then, and the device
-   moves its clock there, as a terminal that never answers leaves the run's
-   wait for an answer. [read] returns [-1] when nothing is queued, [window]
-   [None] for an output with no window, and [frame] is called as each frame
-   begins. [next] does not wait on a device: when the run has nothing to do
-   it calls [idle ~until ~stepped], [until] the run's deadline and [stepped]
-   whether [next] returned a step since its last call, which returns once
-   input is queued or the clock has moved, and says whether input is
-   queued. As the run begins, [presented] is given a function that is the
-   frame the run last presented ({!current_grid}), where its first row is
-   shown, the terminal row [`Row r] or, in [`Primary] mode, [`Cursor n] rows
-   below the cursor's, and the form its picture cells were written in.
-   A post to a run on a device never waits for its steps ({!post}). *)
-
-type device = {
-  read_clock : unit -> int;
-  wait : until:int option -> bool;
-  read : bytes -> int -> int -> int;
-  write : bytes -> int -> int -> unit;
-  window : unit -> (int * int) option;
-  resized : unit -> bool;
-  set_raw : bool -> unit;
-  flush : unit -> unit;
-  tty : bool;
-  env : Terminal.Caps.env;
-  frame : unit -> unit;
-  idle : until:int option -> stepped:bool -> bool;
-  presented :
-    (unit ->
-    Grid.t * [ `Row of int | `Cursor of int ] * [ `Kitty | `Sixel | `Blocks ]) ->
-    unit;
-}
-
-val on_device : device -> config -> config
-
-(**/**)
+    {!run} raises [Invalid_argument] if it is given descriptors or an
+    environment with such a configuration. *)

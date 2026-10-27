@@ -982,6 +982,10 @@ let render r app grid =
         };
       r.drawn <- Some (Grid.copy grid, c)
 
+(* A run on device [d], with [config], as [Matrix.run] gives one. *)
+let run_on d ?stop ?(config = Matrix.config ()) f =
+  Matrix.run ?stop ~config:(Matrix.on_device d config) f
+
 let run_case case =
   let vte =
     Vte.create ~scrollback:4096 ~width_method:case.width_method ~rows:case.rows
@@ -1044,7 +1048,7 @@ let run_case case =
       | None -> failwith "the loop would wait forever");
       false)
   in
-  let backend : Matrix.Backend.t =
+  let backend : Matrix.Device.t =
     {
       now = (fun () -> !now);
       wait;
@@ -1072,6 +1076,7 @@ let run_case case =
           (function
             | "NO_COLOR" when case.styling = `Mono -> Some "1" | _ -> None)
           ~win32:false;
+      in_process = None;
     }
   in
   let config =
@@ -1081,7 +1086,7 @@ let run_case case =
       ?min_tui_height:(if case.min_live = 0 then None else Some case.min_live)
       ~caps:(capabilities case) ()
   in
-  Matrix.run_on backend ~config (fun app ->
+  run_on backend ~config (fun app ->
       (* Each frame of the case is set up, drawn and checked in turn. *)
       let next_frame () =
         match r.pending with

@@ -3741,7 +3741,7 @@ let%expect_test "an animation that never ends settles at each instant" =
    [`Stopped]. *)
 let%expect_test "a caller drives a started program by its steps" =
   if Sys.win32 then
-    Windtrap.skip ~reason:"Backend.unix, which needs a wake pipe Windows lacks"
+    Windtrap.skip ~reason:"Device.unix, which needs a wake pipe Windows lacks"
       ();
   (* On a pipe the test writes and a file it reads: the program waits for
      nothing but its frame interval, on the run's own clock. *)

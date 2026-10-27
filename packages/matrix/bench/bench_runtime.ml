@@ -6,7 +6,11 @@
    changes, and the measured frames only add to the count. *)
 let written = ref 0
 
-let backend () : Matrix.Backend.t =
+(* A run on device [d], with [config], as [Matrix.run] gives one. *)
+let run_on d ?stop ?(config = Matrix.config ()) f =
+  Matrix.run ?stop ~config:(Matrix.on_device d config) f
+
+let backend () : Matrix.Device.t =
   let clock = ref 0 in
   {
     now =
@@ -29,6 +33,7 @@ let backend () : Matrix.Backend.t =
     on_fatal = ignore;
     cleanup = (fun () -> ());
     env = Matrix.Terminal.Caps.env (fun _ -> None) ~win32:false;
+    in_process = None;
   }
 
 (* The output is no terminal, which a run writes no style to unless told:
@@ -69,7 +74,7 @@ let require condition message =
   if not condition then failwith ("runtime benchmark: " ^ message)
 
 let () =
-  Matrix.run_on (backend ()) ~config @@ fun app ->
+  run_on (backend ()) ~config @@ fun app ->
   frame app ignore;
   frame app ignore;
   require (bytes app ignore = 0) "an unchanged frame wrote bytes";
