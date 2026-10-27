@@ -323,6 +323,17 @@ let piped mode =
   ignore (Unix.waitpid [] pid : int * Unix.process_status);
   out
 
+(* Whether a region redraws its rows: on a terminal, outside CI, and not on
+   a pipe. *)
+let test_redraws () =
+  ( spawn "redraws" @@ fun term c ->
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:"on a terminal" (has_line "REDRAWS true" term) );
+  ( spawn ~env:[ ("CI", "true") ] "redraws" @@ fun term c ->
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:"in CI" (has_line "REDRAWS false" term) );
+  equal ~msg:"on a pipe" Testable.string "REDRAWS false\n" (piped "redraws")
+
 (* A grid printed on an output: its rows at the output's styling, each
    ended where it shows nothing more. *)
 let test_print_grid () =
@@ -378,6 +389,7 @@ let () =
           test "Format's formatters" test_fmt;
           test "Format's buffers keep their order" test_format_order;
           test "a notification" test_notify;
+          test "whether a region redraws" test_redraws;
         ];
       group "prompts"
         [

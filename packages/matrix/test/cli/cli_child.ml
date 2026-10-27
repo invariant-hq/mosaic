@@ -135,6 +135,7 @@ let () =
           C.show live (text_frame "FRAME");
           Format.eprintf "note 3\n";
           C.print err "step b\n")
+  | "redraws" -> Printf.printf "REDRAWS %b\n" (C.redraws err)
   | "notify" ->
       C.notify err ~title:"Done" ~body:"built";
       C.bell err;

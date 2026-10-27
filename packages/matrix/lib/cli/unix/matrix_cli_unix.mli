@@ -39,8 +39,9 @@
     its last rows go above the region, which stays for the others, and when the
     last one ends, its last rows stay in the scrollback with the cursor below
     them. A scope's last rows stay whole, however tall. On an output where no
-    region may be drawn, such as a pipe or a CI job's log, the lines go out as
-    they are printed and the last frame is printed once, at the end.
+    region may be drawn ({!redraws}), such as a pipe or a CI job's log, the
+    lines go out as they are printed and the last frame is printed once, at the
+    end.
 
     The program's own writes to a terminal that bypass its outputs, such as
     [print_string] or a child process's output, land where the cursor rests, at
@@ -123,6 +124,13 @@ val width : t -> int option
     is set to a positive number (POSIX's "user's preferred width in column
     positions"), else the width of [o]'s terminal when [o] is one, read at each
     call, and [None] for a pipe or a file. *)
+
+val redraws : t -> bool
+(** [redraws o] is [true] iff a live region on [o] redraws its rows in place
+    ({!Matrix_cli.Policy.live}). Where it is [false], as on a pipe, a dumb
+    terminal or in a CI job's log, a region shows its last frame once, at its
+    end, so a program prints there what it would otherwise only show in the
+    rows, such as the start of each step. *)
 
 val print : t -> string -> unit
 (** [print o s] writes [s] to [o], adapted to its styling, in one write. *)

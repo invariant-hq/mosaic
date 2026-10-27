@@ -486,6 +486,7 @@ let make ?color fd =
     out_device = device fd;
   }
 
+let redraws t = t.live_ok
 let stdout ?color () = make ?color Unix.stdout
 let stderr ?color () = make ?color Unix.stderr
 let styling t = t.styling
