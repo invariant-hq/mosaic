@@ -716,10 +716,16 @@ module View = struct
     let node_data = tree.taffy.nodes.(idx) in
     Cache.store node_data.cache node_data.style inputs layout_output
 
+  (* Only hidden layout clears a cache during a layout, that of a node of
+     display none and of each node below it, whose layouts it replaces. It
+     forgets their final layouts and keeps their caches non-empty: dirtying
+     stops at an empty cache and takes its ancestors to be dirty, while the
+     node of display none that the hidden layout started at keeps the result it
+     cached, so a change below it would not reach it nor the root. *)
   let cache_clear tree node_id =
     let idx = node_index_exn tree.taffy node_id in
     let node_data = tree.taffy.nodes.(idx) in
-    ignore (Cache.clear node_data.cache)
+    Cache.forget_final_layout node_data.cache
 
   let rec compute_child_layout tree node inputs =
     if Layout_input.run_mode inputs = Run_mode.Perform_hidden_layout then

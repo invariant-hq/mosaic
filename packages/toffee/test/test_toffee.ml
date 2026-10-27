@@ -2475,6 +2475,30 @@ let test_toggle_grid_child_display_none () =
   equal ~msg:"Hidden height again" (float 0.001) 0.0
     (Layout.size layout_hidden_again).height
 
+let layout_t = Testable.make ~pp:Layout.pp ~equal:Layout.equal
+
+(* A text moved from a visible row into a node below a node of display none
+   is hidden at the next layout: hidden layout keeps the caches below the
+   node of display none non-empty, so the move dirties the node of display
+   none, which lays its subtree out hidden again. *)
+let test_moved_into_hidden_subtree_is_hidden () =
+  let tree = new_tree () in
+  let text = leaf tree (Text 12.) in
+  let inner = node tree Style.default [] in
+  let hidden =
+    node tree (Style.make ~display:Style.Display.None ()) [ inner ]
+  in
+  let shown = node tree Style.default [ text ] in
+  let root = node tree Style.default [ hidden; shown ] in
+  lay_texts tree root;
+  remove_child tree shown text |> or_fail "remove_child" |> ignore;
+  add_child tree inner text |> or_fail "add_child";
+  lay_texts tree root;
+  equal ~msg:"unrounded" layout_t (Layout.with_order 0)
+    (unrounded_layout tree text);
+  equal ~msg:"final" layout_t (Layout.with_order 0)
+    (layout tree text |> or_fail "layout")
+
 let test_relayout_stable () =
   let tree = new_tree () in
   let node1 =
@@ -3164,6 +3188,8 @@ let () =
             test_toggle_flex_container_display_none;
           test "Toggle grid child display none"
             test_toggle_grid_child_display_none;
+          test "A node moved into a hidden subtree is hidden"
+            test_moved_into_hidden_subtree_is_hidden;
         ];
       group "relayout" [ test "Relayout is stable" test_relayout_stable ];
       group "children"
