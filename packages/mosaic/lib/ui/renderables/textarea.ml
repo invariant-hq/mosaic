@@ -49,11 +49,12 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~state
     ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
     ~on_change ?on_submit () =
   Edit_surface.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
-    ~state ?annotations ?syntax ?ghost_text ?ghost_text_color ?placeholder ?wrap
-    ?text_color ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
-    ~on_change ?on_submit ()
+    ~on_change ?on_submit
+    (Props.make ~state ?annotations ?syntax ?ghost_text ?ghost_text_color
+       ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
+       ?focused_background_color ?placeholder_color ?selection_color
+       ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+       ?show_cursor ?key_bindings ())
 
 let node = Edit_surface.node
 let state = Edit_surface.state

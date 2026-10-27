@@ -403,6 +403,7 @@ val code :
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
+  ?truncate:bool ->
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->

@@ -52,6 +52,8 @@ type action = Textarea.action =
 
 type key_binding = Shortcut.t * action
 
+(* [Props.make] is the one place the input's labels get their defaults:
+   [create] and [Vnode.input] pass their labels on unset. *)
 module Props = struct
   type t = {
     state : Editor.t;
@@ -157,16 +159,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~state
   in
   let surface =
     Edit_surface.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
-      ~state:props.state ~placeholder:props.placeholder ~wrap:`None
-      ~text_color:props.text_color ~background_color:props.background_color
-      ~focused_text_color:props.focused_text_color
-      ~focused_background_color:props.focused_background_color
-      ~placeholder_color:props.placeholder_color
-      ~selection_color:props.selection_color ?selection_fg:props.selection_fg
-      ~cursor_style:props.cursor_style ~cursor_color:props.cursor_color
-      ~cursor_blinking:props.cursor_blinking ~selectable:props.selectable
-      ~show_cursor:props.show_cursor ~mode:`Single_line
-      ~key_bindings:props.key_bindings ~on_change ?on_submit ()
+      ~mode:`Single_line ~on_change ?on_submit (surface_props props)
   in
   { surface; props }
 

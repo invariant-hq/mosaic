@@ -172,6 +172,21 @@ let box_takes_inert () =
     ~create_base:(fun parent -> Box.node (Box.create ~parent ()))
     ~create:(fun parent -> Box.node (Box.create ~parent ~inert:true ()))
 
+(* The MLX code takes the labels {!Mosaic.code} takes, [truncate] among
+   them. *)
+let code_takes_truncate () =
+  let size = Mosaic.size ~width:8 ~height:1 in
+  let style = Toffee.Style.make ~size () in
+  Test_harness.reaches "truncate"
+    ~base:(Mosaic_mlx.code ~size ~children:[ "hello world" ] ())
+    ~element:
+      (Mosaic_mlx.code ~size ~truncate:true ~children:[ "hello world" ] ())
+    ~create_base:(fun parent ->
+      Code.node (Code.create ~parent ~style ~content:"hello world" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style ~content:"hello world" ~truncate:true ()))
+
 let () =
   run "mosaic.mlx"
     [
@@ -183,4 +198,5 @@ let () =
       test "children and model-owned scroll" scroll_children_and_state;
       test "line-number children contract" line_number_requires_one_child;
       test "box takes inert" box_takes_inert;
+      test "code takes truncate" code_takes_truncate;
     ]

@@ -1485,6 +1485,373 @@ let annotations_go_over_syntax () =
   is_true ~msg:"annotation over syntax" (red 1 && blue 1 && red 2 && blue 2);
   is_true ~msg:"syntax after the annotation" (red 3 && not (blue 3))
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.textarea}) or to
+   {!Textarea.create}, reaches the live textarea ({!Test_harness.reaches}).
+   The caret is observed as the node reports it, and proposals as
+   [on_change] receives them. *)
+
+let doors_size = Mosaic.size ~width:10 ~height:3
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+let abc = Editor.of_string "abc"
+let abc_selected = Editor.select ~anchor:0 ~cursor:2 abc
+let let_x = Editor.of_string "let x"
+
+let let_x_bold =
+  Text_buffer.Annotations.make ~content:"let x"
+    [ { start_byte = 0; end_byte = 3; style = Ansi.Style.make ~bold:true () } ]
+
+let let_x_syntax =
+  Code.syntax
+    ~style:
+      (Syntax_style.make ~base:Ansi.Style.default
+         [ ("keyword", Ansi.Style.make ~fg:doors_red ()) ])
+    (Syntax_highlight.of_triples ~content:"let x" [ (0, 3, "keyword") ])
+
+let doors_proposals = ref []
+
+let propose e =
+  doors_proposals :=
+    Printf.sprintf "%S@%d" (Editor.text e) (Editor.cursor e) :: !doors_proposals
+
+let proposed _ _ = String.concat ";" (List.rev !doors_proposals)
+
+let caret _ node =
+  Format.asprintf "%a"
+    (Format.pp_print_option Renderable.pp_cursor)
+    (Renderable.cursor node)
+
+let press_x renderer node =
+  doors_proposals := [];
+  Test_harness.focus renderer node;
+  ignore (Test_harness.dispatch_key renderer (char_key 'x') : Event.key)
+
+let drag renderer node =
+  doors_proposals := [];
+  Test_harness.focus renderer node;
+  Test_harness.select_text renderer node
+
+let doors_state () =
+  Test_harness.reaches "state"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:(Editor.of_string "xyz")
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style
+           ~state:(Editor.of_string "xyz") ~on_change:propose ()))
+
+let doors_annotations () =
+  Test_harness.reaches "annotations"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:let_x ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:let_x ~annotations:let_x_bold
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:let_x
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:let_x
+           ~annotations:let_x_bold ~on_change:propose ()))
+
+let doors_syntax () =
+  Test_harness.reaches "syntax"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:let_x ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:let_x ~syntax:let_x_syntax
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:let_x
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:let_x
+           ~syntax:let_x_syntax ~on_change:propose ()))
+
+let doors_ghost_text () =
+  Test_harness.reaches ~act:Test_harness.focus "ghost_text"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~ghost_text:"zz"
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc ~ghost_text:"zz"
+           ~on_change:propose ()))
+
+let doors_ghost_text_color () =
+  Test_harness.reaches ~act:Test_harness.focus "ghost_text_color"
+    ~base:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~ghost_text:"zz"
+         ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~ghost_text:"zz"
+         ~ghost_text_color:doors_red ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc ~ghost_text:"zz"
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc ~ghost_text:"zz"
+           ~ghost_text_color:doors_red ~on_change:propose ()))
+
+let doors_placeholder () =
+  Test_harness.reaches "placeholder"
+    ~base:
+      (Mosaic.textarea ~size:doors_size ~state:Editor.empty ~on_change:propose
+         ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:Editor.empty ~placeholder:"type"
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:Editor.empty
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:Editor.empty
+           ~placeholder:"type" ~on_change:propose ()))
+
+let doors_wrap () =
+  Test_harness.reaches "wrap"
+    ~base:
+      (Mosaic.textarea ~size:doors_size
+         ~state:(Editor.of_string "hello world foo")
+         ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size
+         ~state:(Editor.of_string "hello world foo")
+         ~wrap:`None ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style
+           ~state:(Editor.of_string "hello world foo")
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style
+           ~state:(Editor.of_string "hello world foo")
+           ~wrap:`None ~on_change:propose ()))
+
+let doors_text_color () =
+  Test_harness.reaches "text_color"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~text_color:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~text_color:doors_red ~on_change:propose ()))
+
+let doors_background_color () =
+  Test_harness.reaches "background_color"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~background_color:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~background_color:doors_red ~on_change:propose ()))
+
+let doors_focused_text_color () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_text_color"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~focused_text_color:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~focused_text_color:doors_red ~on_change:propose ()))
+
+let doors_focused_background_color () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_background_color"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc
+         ~focused_background_color:doors_red ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~focused_background_color:doors_red ~on_change:propose ()))
+
+let doors_placeholder_color () =
+  Test_harness.reaches "placeholder_color"
+    ~base:
+      (Mosaic.textarea ~size:doors_size ~state:Editor.empty ~placeholder:"type"
+         ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:Editor.empty ~placeholder:"type"
+         ~placeholder_color:doors_red ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:Editor.empty
+           ~placeholder:"type" ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:Editor.empty
+           ~placeholder:"type" ~placeholder_color:doors_red ~on_change:propose
+           ()))
+
+let doors_selection_color () =
+  Test_harness.reaches "selection_color"
+    ~base:
+      (Mosaic.textarea ~size:doors_size ~state:abc_selected ~on_change:propose
+         ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc_selected
+         ~selection_color:doors_red ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc_selected
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc_selected
+           ~selection_color:doors_red ~on_change:propose ()))
+
+let doors_selection_fg () =
+  Test_harness.reaches "selection_fg"
+    ~base:
+      (Mosaic.textarea ~size:doors_size ~state:abc_selected ~on_change:propose
+         ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc_selected
+         ~selection_fg:doors_red ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc_selected
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc_selected
+           ~selection_fg:doors_red ~on_change:propose ()))
+
+let doors_cursor_style () =
+  Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_style"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~cursor_style:`Line
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~cursor_style:`Line ~on_change:propose ()))
+
+let doors_cursor_color () =
+  Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_color"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~cursor_color:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~cursor_color:doors_red ~on_change:propose ()))
+
+let doors_cursor_blinking () =
+  Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_blinking"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~cursor_blinking:false
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~cursor_blinking:false ~on_change:propose ()))
+
+let doors_selectable () =
+  Test_harness.reaches ~act:drag ~observe:proposed "selectable"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~selectable:false
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc ~selectable:false
+           ~on_change:propose ()))
+
+let doors_show_cursor () =
+  Test_harness.reaches ~act:Test_harness.focus ~observe:caret "show_cursor"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc ~show_cursor:false
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~show_cursor:false ~on_change:propose ()))
+
+let doors_key_bindings () =
+  Test_harness.reaches ~act:press_x ~observe:proposed "key_bindings"
+    ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.textarea ~size:doors_size ~state:abc
+         ~key_bindings:[ (Shortcut.char 'x', Textarea.Move_left) ]
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Textarea.node
+        (Textarea.create ~parent ~style:doors_style ~state:abc
+           ~key_bindings:[ (Shortcut.char 'x', Textarea.Move_left) ]
+           ~on_change:propose ()))
+
 let () =
   run "mosaic.textarea"
     [
@@ -1704,5 +2071,28 @@ let () =
         [
           test "non-empty output" pp_produces_non_empty_output;
           test "contains Textarea prefix" pp_contains_textarea_prefix;
+        ];
+      group "Both doors"
+        [
+          test "state" doors_state;
+          test "annotations" doors_annotations;
+          test "syntax" doors_syntax;
+          test "ghost_text" doors_ghost_text;
+          test "ghost_text_color" doors_ghost_text_color;
+          test "placeholder" doors_placeholder;
+          test "wrap" doors_wrap;
+          test "text_color" doors_text_color;
+          test "background_color" doors_background_color;
+          test "focused_text_color" doors_focused_text_color;
+          test "focused_background_color" doors_focused_background_color;
+          test "placeholder_color" doors_placeholder_color;
+          test "selection_color" doors_selection_color;
+          test "selection_fg" doors_selection_fg;
+          test "cursor_style" doors_cursor_style;
+          test "cursor_color" doors_cursor_color;
+          test "cursor_blinking" doors_cursor_blinking;
+          test "selectable" doors_selectable;
+          test "show_cursor" doors_show_cursor;
+          test "key_bindings" doors_key_bindings;
         ];
     ]

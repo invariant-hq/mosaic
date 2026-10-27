@@ -428,44 +428,13 @@ val input :
   state:Editor.t ->
   unit ->
   'msg t
-(** [input ()] is a single-line text input leaf element. Input does not accept
-    children.
+(** [input ~state ~on_change ()] is a single-line text input leaf element. Input
+    does not accept children. [focusable] defaults to [true]. [state] and the
+    labels from [placeholder] to [key_bindings] are {!Text_input.Props.make}'s
+    and take its defaults. [on_change] receives the proposed editor state and
+    [on_submit] the text when Enter is pressed.
 
-    Input-specific attributes:
-    - [focusable] controls whether the node can receive focus. Defaults to
-      [true].
-    - [value] is the controlled text content. Every reconciliation restores it
-      if the live edit buffer has diverged. Defaults to [""].
-    - [cursor] is an optional controlled cursor grapheme offset.
-    - [selection] is an optional controlled selection range.
-    - [placeholder] is the text shown when the input is empty, regardless of
-      focus. Defaults to [""].
-    - [max_length] is the maximum grapheme cluster count. Defaults to [1000].
-    - [text_color] is the text color when unfocused. Defaults to
-      {!Ansi.Color.white}.
-    - [background_color] is the background color when unfocused.
-    - [focused_text_color] is the text color when focused. Defaults to
-      {!Ansi.Color.white}.
-    - [focused_background_color] is the background color when focused.
-    - [placeholder_color] is the placeholder text color. Defaults to
-      {!Ansi.Color.bright_black}.
-    - [selection_color] is the selection background color. Defaults to
-      {!Ansi.Color.blue}.
-    - [selection_fg] is the selection foreground color. When unset, the normal
-      text color is used.
-    - [cursor_style] is the cursor shape when focused. Defaults to [`Block].
-    - [cursor_color] is the cursor color when focused. Defaults to
-      {!Ansi.Color.white}.
-    - [cursor_blinking] controls whether the cursor blinks. Defaults to [true].
-    - [selectable] controls whether mouse selection is enabled. Defaults to
-      [true].
-    - [show_cursor] controls whether the focused cursor is shown. Defaults to
-      [true].
-    - [on_input] is called after every text change at keystroke-level.
-    - [on_change] is called when the committed value changes (on blur or
-      submit).
-    - [on_submit] is called when Enter is pressed.
-    - [on_cursor] is called when cursor position or selection changes. *)
+    Raises [Invalid_argument] as {!Text_input.Props.make} does. *)
 
 val select :
   ?key:string ->
@@ -858,7 +827,8 @@ val textarea :
     [annotations] styles source byte ranges without copying text. Its source
     bytes must match [state]; stale annotations raise [Invalid_argument] before
     changing the widget. [syntax] highlights the text as {!Code} does, and
-    [annotations] go over it. Other visual options follow {!Textarea}. *)
+    [annotations] go over it. [state] and the labels from [annotations] to
+    [key_bindings] are {!Textarea.Props.make}'s and take its defaults. *)
 
 val table :
   ?key:string ->
@@ -987,22 +957,9 @@ val code :
   string ->
   'msg t
 (** [code content] is a code display leaf element showing [content]. Code does
-    not accept children.
-
-    Code-specific attributes:
-    - [syntax] configures source-code highlighting. Defaults to plain text.
-    - [conceal] applies the captures' conceal metadata. Defaults to [true].
-    - [text_style] is the base ANSI style applied to the text. Defaults to
-      {!Ansi.Style.default}.
-    - [wrap] is the line-wrapping mode. Defaults to [`None].
-    - [tab_width] is the tab-stop width in columns. Defaults to [4].
-    - [truncate] controls whether overlong lines are truncated with an ellipsis.
-      Defaults to [false].
-    - [selectable] controls whether text can be mouse-selected. Defaults to
-      [true].
-    - [selection_bg] is the selection background color.
-    - [selection_fg] is the selection foreground color.
-    - [on_selection] is called when the current selection changes.
+    not accept children. The labels from [syntax] to [selection_fg] are
+    {!Code.Props.make}'s and take its defaults. [on_selection] is called when
+    the current selection changes.
 
     Raises [Invalid_argument] if [tab_width < 1]. *)
 

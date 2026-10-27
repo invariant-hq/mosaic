@@ -991,6 +991,147 @@ let incremental_requests_hold_on_random_scripts () =
   done;
   if !violations <> [] then failf "%s" (List.hd !violations)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.code}) or to {!Code.create},
+   reaches the live code ({!Test_harness.reaches}). *)
+
+let doors_size = Mosaic.size ~width:8 ~height:3
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_bold = Ansi.Style.make ~bold:true ()
+let let_x_syntax = Code.syntax ~style:(syntax_style red) highlights
+
+let concealing =
+  let meta = { Syntax_highlight.default_meta with conceal = Some "*" } in
+  Code.syntax ~style:(syntax_style red)
+    (Syntax_highlight.make ~content:"abcd e"
+       [
+         Syntax_highlight.range ~meta ~start_byte:0 ~end_byte:4 ~scope:"keyword"
+           ();
+       ])
+
+let selected renderer _ =
+  Option.value ~default:"(none)" (Renderer.selection_text renderer)
+
+let doors_content () =
+  Test_harness.reaches "content"
+    ~base:(Mosaic.code ~size:doors_size "abc")
+    ~element:(Mosaic.code ~size:doors_size "xyz")
+    ~create_base:(fun parent ->
+      Code.node (Code.create ~parent ~style:doors_style ~content:"abc" ()))
+    ~create:(fun parent ->
+      Code.node (Code.create ~parent ~style:doors_style ~content:"xyz" ()))
+
+let doors_syntax () =
+  Test_harness.reaches "syntax"
+    ~base:(Mosaic.code ~size:doors_size "let x")
+    ~element:(Mosaic.code ~size:doors_size ~syntax:let_x_syntax "let x")
+    ~create_base:(fun parent ->
+      Code.node (Code.create ~parent ~style:doors_style ~content:"let x" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"let x"
+           ~syntax:let_x_syntax ()))
+
+let doors_conceal () =
+  Test_harness.reaches "conceal"
+    ~base:(Mosaic.code ~size:doors_size ~syntax:concealing "abcd e")
+    ~element:
+      (Mosaic.code ~size:doors_size ~syntax:concealing ~conceal:false "abcd e")
+    ~create_base:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"abcd e"
+           ~syntax:concealing ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"abcd e"
+           ~syntax:concealing ~conceal:false ()))
+
+let doors_text_style () =
+  Test_harness.reaches "text_style"
+    ~base:(Mosaic.code ~size:doors_size "hello world")
+    ~element:(Mosaic.code ~size:doors_size ~text_style:doors_bold "hello world")
+    ~create_base:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world"
+           ~text_style:doors_bold ()))
+
+let doors_wrap () =
+  Test_harness.reaches "wrap"
+    ~base:(Mosaic.code ~size:doors_size "hello world")
+    ~element:(Mosaic.code ~size:doors_size ~wrap:`Word "hello world")
+    ~create_base:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world"
+           ~wrap:`Word ()))
+
+let doors_tab_width () =
+  Test_harness.reaches "tab_width"
+    ~base:(Mosaic.code ~size:doors_size "a\tb")
+    ~element:(Mosaic.code ~size:doors_size ~tab_width:2 "a\tb")
+    ~create_base:(fun parent ->
+      Code.node (Code.create ~parent ~style:doors_style ~content:"a\tb" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"a\tb" ~tab_width:2 ()))
+
+let doors_truncate () =
+  Test_harness.reaches "truncate"
+    ~base:(Mosaic.code ~size:doors_size "hello world")
+    ~element:(Mosaic.code ~size:doors_size ~truncate:true "hello world")
+    ~create_base:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world"
+           ~truncate:true ()))
+
+let doors_selectable () =
+  Test_harness.reaches ~act:Test_harness.select_text ~observe:selected
+    "selectable"
+    ~base:(Mosaic.code ~size:doors_size "hello world")
+    ~element:(Mosaic.code ~size:doors_size ~selectable:false "hello world")
+    ~create_base:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world"
+           ~selectable:false ()))
+
+let doors_selection_bg () =
+  Test_harness.reaches ~act:Test_harness.select_text "selection_bg"
+    ~base:(Mosaic.code ~size:doors_size "hello world")
+    ~element:
+      (Mosaic.code ~size:doors_size ~selection_bg:Ansi.Color.red "hello world")
+    ~create_base:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world"
+           ~selection_bg:Ansi.Color.red ()))
+
+let doors_selection_fg () =
+  Test_harness.reaches ~act:Test_harness.select_text "selection_fg"
+    ~base:(Mosaic.code ~size:doors_size "hello world")
+    ~element:
+      (Mosaic.code ~size:doors_size ~selection_fg:Ansi.Color.red "hello world")
+    ~create_base:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world" ()))
+    ~create:(fun parent ->
+      Code.node
+        (Code.create ~parent ~style:doors_style ~content:"hello world"
+           ~selection_fg:Ansi.Color.red ()))
+
 let () =
   run "mosaic.code"
     [
@@ -1062,5 +1203,18 @@ let () =
             text_style_restamps_plain_content;
           test "is_highlighting false for sync highlights"
             is_highlighting_false_for_sync_highlights;
+        ];
+      group "Both doors"
+        [
+          test "content" doors_content;
+          test "syntax" doors_syntax;
+          test "conceal" doors_conceal;
+          test "text_style" doors_text_style;
+          test "wrap" doors_wrap;
+          test "tab_width" doors_tab_width;
+          test "truncate" doors_truncate;
+          test "selectable" doors_selectable;
+          test "selection_bg" doors_selection_bg;
+          test "selection_fg" doors_selection_fg;
         ];
     ]

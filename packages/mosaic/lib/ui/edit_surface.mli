@@ -107,35 +107,16 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
-  state:Editor.t ->
-  ?annotations:Text_buffer.Annotations.t ->
-  ?syntax:Syntax_session.syntax ->
-  ?ghost_text:string ->
-  ?ghost_text_color:Ansi.Color.t ->
-  ?placeholder:string ->
-  ?wrap:Text_surface.wrap ->
-  ?text_color:Ansi.Color.t ->
-  ?background_color:Ansi.Color.t ->
-  ?focused_text_color:Ansi.Color.t ->
-  ?focused_background_color:Ansi.Color.t ->
-  ?placeholder_color:Ansi.Color.t ->
-  ?selection_color:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
-  ?cursor_style:[ `Block | `Line | `Underline ] ->
-  ?cursor_color:Ansi.Color.t ->
-  ?cursor_blinking:bool ->
-  ?selectable:bool ->
-  ?show_cursor:bool ->
   ?mode:mode ->
-  ?key_bindings:key_binding list ->
   on_change:(Editor.t -> unit) ->
   ?on_submit:(string -> unit) ->
-  unit ->
+  Props.t ->
   t
-(** [create ~parent ~state ~on_change ()] renders the accepted [state]. Default
-    editing events propose a complete next state through [on_change]; they do
-    not mutate the accepted editor. Apply new properties to accept a proposal.
-    [on_submit] reports accepted text. Focus and blur do not commit edits. *)
+(** [create ~parent ~on_change props] renders the accepted state of [props].
+    Default editing events propose a complete next state through [on_change];
+    they do not mutate the accepted editor. Apply new properties to accept a
+    proposal. [on_submit] reports accepted text. Focus and blur do not commit
+    edits. *)
 
 (** {1:accessors Accessors} *)
 

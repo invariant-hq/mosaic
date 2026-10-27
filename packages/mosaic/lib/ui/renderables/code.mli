@@ -263,6 +263,8 @@ module Props : sig
       - [selection_bg] is the selection background color.
       - [selection_fg] is the selection foreground color.
 
+      {!val-create} and {!Vnode.code} take these labels with these defaults.
+
       Raises [Invalid_argument] if [tab_width < 1]. *)
 
   val default : t
@@ -295,29 +297,11 @@ val create :
   ?on_selection:((int * int) option -> unit) ->
   unit ->
   t
-(** [create ~parent ()] is a new code display renderable attached to [parent]
-    with:
-    - [index] is the child insertion index in [parent].
-    - [id] is an optional identifier for the node.
-    - [style] is the layout style.
-    - [visible] controls initial visibility.
-    - [z_index] is the stacking order.
-    - [opacity] is the opacity. Defaults to [1.0].
-    - [content] is the plain source code text. Defaults to [""].
-    - [syntax] configures source-code highlighting.
-    - [conceal] applies the captures' conceal metadata. Defaults to [true].
-    - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
-    - [wrap] is the wrapping mode. Defaults to [`None].
-    - [tab_width] is the tab stop width in columns. Defaults to [4].
-    - [truncate] controls whether long lines are truncated with an ellipsis.
-      Defaults to [false].
-    - [selectable] controls whether text can be selected. Defaults to [true].
-    - [selection_bg] is the selection background color.
-    - [selection_fg] is the selection foreground color.
+(** [create ~parent ()] is a new code display renderable attached to [parent].
+    The labels from [content] to [selection_fg] are {!Props.make}'s and take its
+    defaults. [on_selection] is called when the selection changes.
 
-    See also {!Props.make} for the code-specific props.
-
-    Raises [Invalid_argument] if [tab_width < 1]. *)
+    Raises [Invalid_argument] as {!Props.make} does. *)
 
 (** {1:accessors Accessors} *)
 

@@ -1061,6 +1061,274 @@ let typed_bindings_override_defaults_and_recompile () =
   equal ~msg:"removing custom bindings restores defaults" int 0
     (Editor.cursor !proposed)
 
+(* ── Both doors ── *)
+
+(* Each label, given to the element ({!Mosaic.input}) or to
+   {!Text_input.create}, reaches the live input ({!Test_harness.reaches}).
+   The caret is observed as the node reports it, and proposals as
+   [on_change] receives them. *)
+
+let doors_size = Mosaic.size ~width:10 ~height:1
+let doors_style = Toffee.Style.make ~size:doors_size ()
+let doors_red = Ansi.Color.red
+let abc = Editor.of_string "abc"
+let abc_selected = Editor.select ~anchor:0 ~cursor:2 abc
+let proposals = ref []
+
+let propose e =
+  proposals :=
+    Printf.sprintf "%S@%d" (Editor.text e) (Editor.cursor e) :: !proposals
+
+let proposed _ _ = String.concat ";" (List.rev !proposals)
+
+let caret _ node =
+  Format.asprintf "%a"
+    (Format.pp_print_option Renderable.pp_cursor)
+    (Renderable.cursor node)
+
+let press_x renderer node =
+  proposals := [];
+  Test_harness.focus renderer node;
+  ignore (Test_harness.dispatch_key renderer (char_key 'x') : Event.key)
+
+let drag renderer node =
+  proposals := [];
+  Test_harness.focus renderer node;
+  Test_harness.select_text renderer node
+
+let doors_state () =
+  Test_harness.reaches "state"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:(Editor.of_string "xyz")
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style
+           ~state:(Editor.of_string "xyz") ~on_change:propose ()))
+
+let doors_placeholder () =
+  Test_harness.reaches "placeholder"
+    ~base:
+      (Mosaic.input ~size:doors_size ~state:Editor.empty ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:Editor.empty ~placeholder:"type"
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:Editor.empty
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:Editor.empty
+           ~placeholder:"type" ~on_change:propose ()))
+
+let doors_text_color () =
+  Test_harness.reaches "text_color"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc ~text_color:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~text_color:doors_red ~on_change:propose ()))
+
+let doors_background_color () =
+  Test_harness.reaches "background_color"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc ~background_color:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~background_color:doors_red ~on_change:propose ()))
+
+let doors_focused_text_color () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_text_color"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc ~focused_text_color:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~focused_text_color:doors_red ~on_change:propose ()))
+
+let doors_focused_background_color () =
+  Test_harness.reaches ~act:Test_harness.focus "focused_background_color"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc
+         ~focused_background_color:doors_red ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~focused_background_color:doors_red ~on_change:propose ()))
+
+let doors_placeholder_color () =
+  Test_harness.reaches "placeholder_color"
+    ~base:
+      (Mosaic.input ~size:doors_size ~state:Editor.empty ~placeholder:"type"
+         ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:Editor.empty ~placeholder:"type"
+         ~placeholder_color:doors_red ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:Editor.empty
+           ~placeholder:"type" ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:Editor.empty
+           ~placeholder:"type" ~placeholder_color:doors_red ~on_change:propose
+           ()))
+
+let doors_selection_color () =
+  Test_harness.reaches "selection_color"
+    ~base:
+      (Mosaic.input ~size:doors_size ~state:abc_selected ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc_selected
+         ~selection_color:doors_red ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc_selected
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc_selected
+           ~selection_color:doors_red ~on_change:propose ()))
+
+let doors_selection_fg () =
+  Test_harness.reaches "selection_fg"
+    ~base:
+      (Mosaic.input ~size:doors_size ~state:abc_selected ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc_selected ~selection_fg:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc_selected
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc_selected
+           ~selection_fg:doors_red ~on_change:propose ()))
+
+let doors_cursor_style () =
+  Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_style"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc ~cursor_style:`Line
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~cursor_style:`Line ~on_change:propose ()))
+
+let doors_cursor_color () =
+  Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_color"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc ~cursor_color:doors_red
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~cursor_color:doors_red ~on_change:propose ()))
+
+let doors_cursor_blinking () =
+  Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_blinking"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc ~cursor_blinking:false
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~cursor_blinking:false ~on_change:propose ()))
+
+let doors_selectable () =
+  Test_harness.reaches ~act:drag ~observe:proposed "selectable"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc ~selectable:false
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~selectable:false ~on_change:propose ()))
+
+let doors_show_cursor () =
+  Test_harness.reaches ~act:Test_harness.focus ~observe:caret "show_cursor"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc ~show_cursor:false
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~show_cursor:false ~on_change:propose ()))
+
+let doors_key_bindings () =
+  Test_harness.reaches ~act:press_x ~observe:proposed "key_bindings"
+    ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
+    ~element:
+      (Mosaic.input ~size:doors_size ~state:abc
+         ~key_bindings:[ (Shortcut.char 'x', Text_input.Move_left) ]
+         ~on_change:propose ())
+    ~create_base:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~on_change:propose ()))
+    ~create:(fun parent ->
+      Text_input.node
+        (Text_input.create ~parent ~style:doors_style ~state:abc
+           ~key_bindings:[ (Shortcut.char 'x', Text_input.Move_left) ]
+           ~on_change:propose ()))
+
 let () =
   run "mosaic.text-input"
     [
@@ -1247,5 +1515,23 @@ let () =
         [
           test "non-empty output" pp_produces_non_empty_output;
           test "contains Input prefix" pp_contains_input_prefix;
+        ];
+      group "Both doors"
+        [
+          test "state" doors_state;
+          test "placeholder" doors_placeholder;
+          test "text_color" doors_text_color;
+          test "background_color" doors_background_color;
+          test "focused_text_color" doors_focused_text_color;
+          test "focused_background_color" doors_focused_background_color;
+          test "placeholder_color" doors_placeholder_color;
+          test "selection_color" doors_selection_color;
+          test "selection_fg" doors_selection_fg;
+          test "cursor_style" doors_cursor_style;
+          test "cursor_color" doors_cursor_color;
+          test "cursor_blinking" doors_cursor_blinking;
+          test "selectable" doors_selectable;
+          test "show_cursor" doors_show_cursor;
+          test "key_bindings" doors_key_bindings;
         ];
     ]

@@ -90,9 +90,12 @@ val create :
 (** [create ~parent ~state ~on_change ()] renders the accepted [state]. Default
     editing events propose a complete next state through [on_change]; they do
     not mutate the accepted editor. Apply new properties to accept a proposal.
-    [on_submit] reports accepted text. Focus and blur do not commit edits.
-    Raises [Invalid_argument] if [Editor.text state] contains CR or LF, before
-    attaching a renderable to [parent]. *)
+    [on_submit] reports accepted text. Focus and blur do not commit edits. The
+    labels from [state] to [key_bindings] are {!Props.make}'s and take its
+    defaults.
+
+    Raises [Invalid_argument] as {!Props.make} does, before attaching a
+    renderable to [parent]. *)
 
 (** {1:accessors Accessors} *)
 
@@ -127,7 +130,35 @@ module Props : sig
     ?key_bindings:key_binding list ->
     unit ->
     t
-  (** [make ~state ()] describes [state] with the widget's visual defaults.
+  (** [make ~state ()] describes [state] with:
+      - [placeholder] is the text shown when the input is empty, whether or not
+        it is focused. Defaults to [""].
+      - [text_color] is the text color when unfocused. Defaults to
+        {!Ansi.Color.white}.
+      - [background_color] is the background color when unfocused. Defaults to
+        {!Ansi.Color.transparent}.
+      - [focused_text_color] is the text color when focused. Defaults to
+        {!Ansi.Color.white}.
+      - [focused_background_color] is the background color when focused.
+        Defaults to {!Ansi.Color.transparent}.
+      - [placeholder_color] is the placeholder's color. Defaults to
+        {!Ansi.Color.bright_black}.
+      - [selection_color] is the selection's background color. Defaults to
+        {!Ansi.Color.blue}.
+      - [selection_fg] is the selection's foreground color. Defaults to the text
+        color.
+      - [cursor_style] is the caret's shape when focused. Defaults to [`Block].
+      - [cursor_color] is the caret's color when focused. Defaults to
+        {!Ansi.Color.white}.
+      - [cursor_blinking] is [true] iff the caret blinks. Defaults to [true].
+      - [selectable] is [true] iff the pointer selects text. Defaults to [true].
+      - [show_cursor] is [true] iff the focused input shows its caret. Defaults
+        to [true].
+      - [key_bindings] adds keys to those {!section-keys} lists or binds one of
+        them to another action. Defaults to [[]].
+
+      {!val-create} and {!Vnode.input} take these labels with these defaults.
+
       Raises [Invalid_argument] if [Editor.text state] contains CR or LF.
       Validation uses the editor's cached logical-line index; caret-only changes
       do not rescan the text. *)

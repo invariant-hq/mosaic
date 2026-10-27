@@ -2093,9 +2093,10 @@ val input :
 
     Raises [Invalid_argument] if [state] contains CR or LF. Typed and pasted
     newlines are stripped. Undo and redo that would restore multiline text are
-    ignored. Widget-specific visual options follow {!Mosaic_ui.Text_input},
-    which lists the keys the input acts on when focused; layout and paint use
-    the labelled arguments above. *)
+    ignored. [state] and the labels from [placeholder] to [key_bindings] are
+    {!Mosaic_ui.Text_input.Props.make}'s and take its defaults;
+    {!Mosaic_ui.Text_input} lists the keys the input acts on when focused.
+    Layout and paint use the other labelled arguments. *)
 
 val select :
   ?key:string ->
@@ -2700,9 +2701,10 @@ val textarea :
   state:Editor.t ->
   unit ->
   'msg t
-(** [textarea ()] is a multiline editor. Widget-specific visual options follow
-    {!Mosaic_ui.Textarea}, which lists the keys the editor acts on when focused;
-    layout and paint use the labelled arguments above. *)
+(** [textarea ()] is a multiline editor. [state] and the labels from
+    [annotations] to [key_bindings] are {!Mosaic_ui.Textarea.Props.make}'s and
+    take its defaults; {!Mosaic_ui.Textarea} lists the keys the editor acts on
+    when focused. Layout and paint use the other labelled arguments. *)
 
 val code :
   ?key:string ->
@@ -2759,15 +2761,17 @@ val code :
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
+  ?truncate:bool ->
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
   ?on_selection:((int * int) option -> 'msg option) ->
   string ->
   'msg t
-(** [code content] is syntax-highlighted source. Widget-specific visual options
-    follow {!Mosaic_ui.Code}; layout and paint use the labelled arguments above.
-*)
+(** [code content] is syntax-highlighted source. The labels from [syntax] to
+    [selection_fg] are {!Mosaic_ui.Code.Props.make}'s and take its defaults.
+    [on_selection] is called when the selection changes. Layout and paint use
+    the other labelled arguments. *)
 
 val line_number :
   ?key:string ->
