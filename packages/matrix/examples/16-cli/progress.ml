@@ -3,10 +3,11 @@
 
     matrix.cli draws rows and leaves what they show to the program, so the task
     rows here are this program's code. A thread runs each download and publishes
-    its state, and the main thread redraws the rows ten times a second, so that
-    the spinners turn between updates. A line a thread prints goes above the
-    rows. Where no region may be drawn, as through a pipe or under [CI], the
-    last rows are printed once, at the end. *)
+    its state, and the region draws the rows ten times a second ([live]'s
+    [tick]), each time from the states and the clock, so that the spinners turn
+    between updates. A line a thread prints goes above the rows. Where no region
+    may be drawn, as through a pipe or under [CI], the last rows are printed
+    once, at the end. *)
 
 module Out = Matrix_cli_unix
 module Grid = Matrix_grid
@@ -58,11 +59,11 @@ let bar_width = 30
 
 (* A task's row: its mark, its name in a column [name_width] wide, its bar
    and its status. *)
-let row g ~y ~name_width ~tick t =
+let row g ~y ~name_width ~turn t =
   let mark, style =
     match t.state with
     | Done _ -> ("✓", ok)
-    | Downloading _ | Verifying -> (spinner.(tick mod 10), accent)
+    | Downloading _ | Verifying -> (spinner.(turn mod 10), accent)
   in
   Grid.draw_text g ~x:0 ~y ~style ~text:mark;
   Grid.draw_text g ~x:2 ~y ~text:t.name;
@@ -79,12 +80,16 @@ let row g ~y ~name_width ~tick t =
   in
   Grid.draw_text g ~x:(x + bar_width + 1) ~y ~style:dim ~text:status
 
-let rows tasks ~tick ~width =
+(* The rows of the tasks' states as they are when the region draws, the
+   spinners turning ten times a second. *)
+let rows slots ~started ~width =
+  let tasks = List.map Atomic.get slots in
+  let turn = Float.to_int ((Unix.gettimeofday () -. started) *. 10.) in
   let name_width =
     List.fold_left (fun w t -> max w (String.length t.name)) 0 tasks
   in
   let g = Grid.create ~width ~height:(List.length tasks) () in
-  List.iteri (fun y t -> row g ~y ~name_width ~tick t) tasks;
+  List.iteri (fun y t -> row g ~y ~name_width ~turn t) tasks;
   Some g
 
 let () =
@@ -97,17 +102,9 @@ let () =
       downloads
   in
   let threads = List.map (Thread.create (download err)) slots in
-  let finished t = match t.state with Done _ -> true | _ -> false in
-  Out.live err (fun live ->
-      let rec redraw tick =
-        let tasks = List.map Atomic.get slots in
-        Out.show live (rows tasks ~tick);
-        if not (List.for_all finished tasks) then (
-          Thread.delay 0.1;
-          redraw (tick + 1))
-      in
-      redraw 0);
-  List.iter Thread.join threads;
+  Out.live ~tick:0.1 err (fun live ->
+      Out.show live (rows slots ~started);
+      List.iter Thread.join threads);
   let bytes = List.fold_left (fun n (_, size, _) -> n + size) 0 downloads in
   Out.print err
     (Printf.sprintf "Fetched %d packages (%s MiB) in %.1fs\n"

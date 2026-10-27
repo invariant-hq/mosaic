@@ -28,9 +28,10 @@
     above it, each in the write that redraws the rows below, and a line printed
     without its end waits for its end, or for the region to be suspended or
     closed. A frame is drawn at most ten times a second, as cargo and Rich
-    redraw their progress bars, and at once when lines go above it. The region
-    is redrawn when the terminal's width changes, and drawn afresh when the job
-    is continued. A job stopped with Ctrl+Z first erases it. A job in the
+    redraw their progress bars, and at once when lines go above it. A scope may
+    also have the region drawn on a clock ({!live}'s [tick]). The region is
+    redrawn when the terminal's width changes, and drawn afresh when the job is
+    continued. A job stopped with Ctrl+Z first erases it. A job in the
     background ({!Tty.background}) draws no frame, so its rows never land among
     what the shell writes, and its lines go out as they are. A [live] scope that
     begins while another lives on the same terminal joins its region, and its
@@ -176,14 +177,19 @@ val bell : t -> unit
 type live
 (** The type for live regions. *)
 
-val live : t -> (live -> 'a) -> 'a
-(** [live o f] runs [f] with a live region on [o], the region that lives on
-    [o]'s terminal if one does, or with one that draws nothing where none may be
-    drawn ({!Matrix_cli.Policy.live}). When [f] returns or raises, or the
+val live : ?tick:float -> t -> (live -> 'a) -> 'a
+(** [live ~tick o f] runs [f] with a live region on [o], the region that lives
+    on [o]'s terminal if one does, or with one that draws nothing where none may
+    be drawn ({!Matrix_cli.Policy.live}). With [tick], the region also draws
+    every [tick] seconds while [f] runs, calling the frames again, for a frame
+    that changes with the time, such as a spinner or an elapsed time, between
+    two {!show}s. A region whose scopes give ticks draws at the shortest, and at
+    most ten times a second as any region. When [f] returns or raises, or the
     process exits in it, its last rows stay, as the module's preamble says, or
     are printed once, at [o]'s {!width} or 80 columns when it has none.
 
-    Raises what a frame given to {!show} raised, if [f] returned. *)
+    Raises [Invalid_argument] if [tick] is not positive, and what a frame given
+    to {!show} raised, if [f] returned. *)
 
 val show : live -> (width:int -> Matrix_grid.t option) -> unit
 (** [show l frame] makes [frame] [l]'s rows and draws them, now or at most a

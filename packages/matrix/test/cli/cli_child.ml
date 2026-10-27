@@ -135,6 +135,16 @@ let () =
           C.show live (text_frame "FRAME");
           Format.eprintf "note 3\n";
           C.print err "step b\n")
+  | "tick" ->
+      (* A frame that changes on its own, shown once: only a region that
+         draws on a clock calls it more than at its show and its end. *)
+      let calls = Atomic.make 0 in
+      C.live ~tick:0.1 err (fun live ->
+          C.show live (fun ~width ->
+              text_frame
+                (Printf.sprintf "CALLS %d" (Atomic.fetch_and_add calls 1 + 1))
+                ~width);
+          Unix.sleepf 1.5)
   | "redraws" -> Printf.printf "REDRAWS %b\n" (C.redraws err)
   | "notify" ->
       C.notify err ~title:"Done" ~body:"built";

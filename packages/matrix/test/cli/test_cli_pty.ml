@@ -62,6 +62,27 @@ let test_tall () =
     (List.init 12 (Printf.sprintf "row %d"))
     (lines term)
 
+(* A region with a tick draws its rows again on the clock, calling the frame
+   between two shows. *)
+let test_tick () =
+  spawn "tick" @@ fun _ c ->
+  let calls t =
+    let s = T.Terminal.screen t in
+    List.fold_left
+      (fun n (row, col) ->
+        let text = T.Screen.row s row in
+        let from = col + String.length "CALLS " in
+        match
+          int_of_string_opt
+            (String.trim (String.sub text from (String.length text - from)))
+        with
+        | Some k -> max n k
+        | None -> n)
+      0 (T.Screen.find s "CALLS ")
+  in
+  T.Child.wait c ~within:10. (fun t -> calls t >= 4);
+  exited 0 (T.Child.exit c ~within:10.)
+
 let test_partial () =
   spawn "partial" @@ fun term c ->
   exited 0 (T.Child.exit c ~within:10.);
@@ -371,6 +392,7 @@ let () =
           test "lines above, the last frame stays" test_progress;
           test "a frame taller than the screen" test_tall;
           test "a line waits for its end" test_partial;
+          test "a tick" test_tick;
           test "SIGINT" test_sigint;
           test "exit" test_exit;
           test "a live inside a live" test_nested;

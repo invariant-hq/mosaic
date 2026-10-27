@@ -106,6 +106,7 @@ and state = {
   mutable held : string;  (** A line printed above without its end. *)
   mutable last_draw : int;
   mutable pending : bool;
+  mutable last_tick : int;  (** When the clock last asked for a draw. *)
   mutable published : string;  (** The teardown of the last whole write. *)
 }
 
@@ -113,6 +114,7 @@ and state = {
 and part = {
   mutable frame : width:int -> Matrix_grid.t option;
   mutable ended : bool;
+  tick : int option;  (** The time between two draws it asks for. *)
 }
 
 and prompt = { on_stop : unit -> unit; on_continue : unit -> unit }
@@ -348,15 +350,38 @@ let ends = [ Sys.sigint; Sys.sigterm; Sys.sighup; Sys.sigquit ]
    lock before acting on a signal that ends the process: the work that
    needs the lock is [owed] until it can be taken. The fields it reads
    without the lock only time its wait. *)
+(* When the clock asks for the region's next draw: the shortest time
+   between two draws its scopes ask for, at least [interval], after its last
+   draw or tick, or never when none asks. *)
+let next_tick l =
+  let shortest =
+    List.fold_left
+      (fun shortest p ->
+        match (p.tick, shortest) with
+        | Some k, Some s -> Some (min k s)
+        | Some k, None -> Some k
+        | None, _ -> shortest)
+      None l.parts
+  in
+  Option.map (fun k -> max l.last_draw l.last_tick + max interval k) shortest
+
 let rec watch d session ~continue ~redraw =
   let wake = Signal.wake_fd session.holder in
   let timeout =
     if continue || redraw then 0.01
     else
       match d.live with
-      | Some l when l.pending ->
-          Float.of_int (max 0 (l.last_draw + interval - Tty.now ())) *. 1e-9
-      | _ -> -1.
+      | Some l -> (
+          let pending =
+            if l.pending then Some (l.last_draw + interval) else None
+          in
+          match (pending, next_tick l) with
+          | Some a, Some b ->
+              Float.of_int (max 0 (min a b - Tty.now ())) *. 1e-9
+          | Some at, None | None, Some at ->
+              Float.of_int (max 0 (at - Tty.now ())) *. 1e-9
+          | None, None -> -1.)
+      | None -> -1.
   in
   (try ignore (Unix.select [ wake ] [] [] timeout)
    with Unix.Unix_error (Unix.EINTR, _, _) -> ());
@@ -374,9 +399,13 @@ let rec watch d session ~continue ~redraw =
     in
     let continue = Signal.received h Sys.sigcont || continue in
     let redraw = Signal.received h Sys.sigwinch || redraw in
+    let ticked l =
+      match next_tick l with Some at -> Tty.now () >= at | None -> false
+    in
     let due =
       match d.live with
-      | Some l -> l.pending && Tty.now () >= l.last_draw + interval
+      | Some l ->
+          (l.pending && Tty.now () >= l.last_draw + interval) || ticked l
       | None -> false
     in
     if (continue || redraw || due) && Mutex.try_lock d.lock then (
@@ -386,7 +415,11 @@ let rec watch d session ~continue ~redraw =
           if continue then continued d
           else
             match d.live with
-            | Some l when redraw || l.pending ->
+            | Some l when redraw || l.pending || ticked l ->
+                (* On a tick, the frames are called again. *)
+                if ticked l then (
+                  l.last_tick <- Tty.now ();
+                  l.cached <- None);
                 if Tty.now () >= l.last_draw + interval then draw l ~above:""
                 else l.pending <- true
             | _ -> ());
@@ -591,34 +624,40 @@ let no_frame ~width:_ = None
 let join t p =
   let d = t.out_device in
   Mutex.protect d.lock (fun () ->
-      match d.live with
-      | Some l ->
-          l.parts <- l.parts @ [ p ];
-          l.cached <- None;
-          l
-      | None ->
-          let l =
-            {
-              device = d;
-              out = t;
-              region =
-                Region.create ~eager_wrap:t.caps.eager_wrap
-                  ~lifts_resting_cursor:t.caps.lifts_resting_cursor
-                  ~styling:t.styling ();
-              parts = [ p ];
-              cached = None;
-              failed = None;
-              on_screen = false;
-              suspended = 0;
-              held = "";
-              last_draw = 0;
-              pending = false;
-              published = "";
-            }
-          in
-          enter d t.fd;
-          d.live <- Some l;
-          l)
+      let l =
+        match d.live with
+        | Some l ->
+            l.parts <- l.parts @ [ p ];
+            l.cached <- None;
+            l
+        | None ->
+            let l =
+              {
+                device = d;
+                out = t;
+                region =
+                  Region.create ~eager_wrap:t.caps.eager_wrap
+                    ~lifts_resting_cursor:t.caps.lifts_resting_cursor
+                    ~styling:t.styling ();
+                parts = [ p ];
+                cached = None;
+                failed = None;
+                on_screen = false;
+                suspended = 0;
+                held = "";
+                last_draw = 0;
+                pending = false;
+                last_tick = 0;
+                published = "";
+              }
+            in
+            enter d t.fd;
+            d.live <- Some l;
+            l
+      in
+      (* The scope's tick may come before the thread's next wake. *)
+      Option.iter (fun s -> Signal.wake s.holder) d.session;
+      l)
 
 let plain_width t = max 1 (Option.value (width t) ~default:80)
 
@@ -682,9 +721,16 @@ let print_last t v =
       let lines = lines t (v.last ~width:(plain_width t)) in
       if lines <> "" then emit t lines)
 
-let live t f =
+let live ?tick t f =
+  let tick =
+    match tick with
+    | Some s when not (s > 0.) ->
+        invalid_arg "Matrix_cli_unix.live: tick must be positive"
+    | Some s -> Some (Float.to_int (Float.min (s *. 1e9) 1e18))
+    | None -> None
+  in
   flush_formatters ();
-  let part = { frame = no_frame; ended = false } in
+  let part = { frame = no_frame; ended = false; tick } in
   match if t.live_ok then Some (join t part) else None with
   | None -> (
       let v = { state = None; part; last = no_frame } in
