@@ -20,10 +20,12 @@
     A {e live} region ({!live}) is a few rows that a program redraws below its
     output while it works, such as a progress bar. It is a
     {!Matrix_screen.Region}, whose model says what a redraw may and may not
-    erase. While it lives, the lines printed through any output on its terminal
-    go above it, each in the write that redraws the rows below, and a line
-    printed without its end waits for its end, or for the region to be suspended
-    or closed. A frame is drawn at most ten times a second, as cargo and Rich
+    erase. Its rows show below a blank row, its origin, where the cursor rests
+    between two draws, so that what another process prints there stays whole.
+    While it lives, the lines printed through any output on its terminal go
+    above it, each in the write that redraws the rows below, and a line printed
+    without its end waits for its end, or for the region to be suspended or
+    closed. A frame is drawn at most ten times a second, as cargo and Rich
     redraw their progress bars, and at once when lines go above it. The region
     is redrawn when the terminal's width changes, and drawn afresh when the job
     is continued. A job stopped with Ctrl+Z first erases it. A job in the

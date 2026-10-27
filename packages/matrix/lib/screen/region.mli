@@ -29,6 +29,16 @@
     such a terminal the cursor rests in the second column of the origin instead,
     and what another writer prints there starts one column in.
 
+    The origin is blank for the writers the region cannot see. A line another
+    process prints between two writes lands where the cursor rests, on a row of
+    its own, and stays whole above the next write's origin. Were the region's
+    first row on the origin, such a line would cover only the start of that row,
+    and the rest of the row would stay after it. A terminal that rewraps its
+    rows when its width changes finds nothing to rewrap on the cursor's row
+    either, so the next write erases from where it left the origin. The row
+    costs one line of the screen while the region lives, and the last write
+    draws the frame from the origin itself.
+
     A line that another process leaves unended on the origin is erased by the
     next write drawn afresh, as each {!draw} is, since the region cannot see it.
     When the program knows that someone else may have written, as after the
