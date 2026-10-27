@@ -7,10 +7,10 @@ let[@inline] to_int (x : t) = x
 let[@inline] unsafe_of_int (x : int) = x
 (* An inline cell holds a scalar (bits 0-20) and its width (bits 21-22). A
    complex start cell holds a grapheme store slot (bits 0-35) and its
-   generation (bits 36-42), the distance to its span's last cell (bits 43-60)
+   generation (bits 36-42), the distance to its extent's last cell (bits 43-60)
    and its flag (bit 62). A continuation cell holds the distances to its
-   span's first and last cells (bits 25-42 and 43-60) and its flags (bits
-   61-62); its text is its start cell's, so it names no slot. A span is
+   extent's first and last cells (bits 25-42 and 43-60) and its flags (bits
+   61-62); its text is its start cell's, so it names no slot. An extent is
    therefore at most [max_extent + 1] cells wide, which bounds the grid's
    width. *)
 

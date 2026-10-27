@@ -94,7 +94,7 @@ let expect_invalid_arg msg f =
   | () -> fail (msg ^ ": expected Invalid_argument")
   | exception Invalid_argument _ -> ()
 
-let assert_valid_spans grid =
+let assert_valid_extents grid =
   for y = 0 to Grid.height grid - 1 do
     let covered_until = ref (-1) in
     for x = 0 to Grid.width grid - 1 do
@@ -107,7 +107,7 @@ let assert_valid_spans grid =
         let w = Grid.cell_width grid i in
         if w > 1 then begin
           is_true
-            ~msg:(Printf.sprintf "wide span at (%d,%d) fits row" x y)
+            ~msg:(Printf.sprintf "wide extent at (%d,%d) fits row" x y)
             (x + w <= Grid.width grid);
           for dx = 1 to w - 1 do
             is_true
@@ -136,22 +136,22 @@ let combining_mark_stays_with_ascii_base () =
   equal ~msg:"cluster occupies one column" int 1
     (Grid.cell_width grid (Grid.idx grid ~x:0 ~y:0))
 
-(* Every cell of a grapheme gives its span, and the spans tile the row. *)
-let span_of_every_cell () =
+(* Every cell of a grapheme gives its extent, and the extents tile the row. *)
+let extent_of_every_cell () =
   let grid = Grid.create ~width:12 ~height:2 () in
   (* a, 中 (one scalar, two cells), a ZWJ sequence of two cells, b *)
   Grid.draw_text grid ~x:0 ~y:1 ~text:"a\u{4E2D}\u{1F469}\u{200D}\u{1F4BB}b";
-  let spans y =
+  let extents y =
     List.init (Grid.width grid) (fun x ->
-        let start, width = Grid.span grid (idx grid x y) in
+        let start, width = Grid.extent grid (idx grid x y) in
         Printf.sprintf "%d+%d" (start - idx grid 0 y) width)
     |> String.concat " "
   in
   equal ~msg:"wide graphemes" string
-    "0+1 1+2 1+2 3+2 3+2 5+1 6+1 7+1 8+1 9+1 10+1 11+1" (spans 1);
+    "0+1 1+2 1+2 3+2 3+2 5+1 6+1 7+1 8+1 9+1 10+1 11+1" (extents 1);
   equal ~msg:"a blank row" string
-    "0+1 1+1 2+1 3+1 4+1 5+1 6+1 7+1 8+1 9+1 10+1 11+1" (spans 0);
-  let start, width = Grid.span grid (idx grid 4 1) in
+    "0+1 1+1 2+1 3+1 4+1 5+1 6+1 7+1 8+1 9+1 10+1 11+1" (extents 0);
+  let start, width = Grid.extent grid (idx grid 4 1) in
   equal ~msg:"the start cell's width" int (Grid.cell_width grid start) width;
   (* A grapheme as wide as the row. *)
   let row = Grid.create ~width:3 ~height:1 () in
@@ -162,9 +162,9 @@ let span_of_every_cell () =
   equal ~msg:"three cells"
     (list (pair int int))
     [ (0, 3); (0, 3); (0, 3) ]
-    (List.init 3 (Grid.span row));
-  expect_invalid_arg "negative index" (fun () -> ignore (Grid.span row (-1)));
-  expect_invalid_arg "past the end" (fun () -> ignore (Grid.span row 3))
+    (List.init 3 (Grid.extent row));
+  expect_invalid_arg "negative index" (fun () -> ignore (Grid.extent row (-1)));
+  expect_invalid_arg "past the end" (fun () -> ignore (Grid.extent row 3))
 
 let thai_spacing_mark_cell_placement () =
   List.iter
@@ -226,7 +226,7 @@ let overflow_respects_scissor_for_wide_grapheme () =
   Grid.draw_text grid ~x:2 ~y:0 ~text:"中";
   Grid.pop_clip grid;
   is_true ~msg:"x=3 is continuation" (Grid.is_continuation grid (idx grid 3 0));
-  assert_valid_spans grid
+  assert_valid_extents grid
 
 let alpha_blit_orphan_continuation_draws_space () =
   let src = Grid.create ~width:3 ~height:1 () in
@@ -366,7 +366,7 @@ let copied_payloads_survive_source_reuse () =
     (Grid.get_text dst 2);
   equal ~msg:"copied hyperlink belongs to destination" string
     "https://example.com/flag" (Grid.get_link dst 2);
-  assert_valid_spans dst
+  assert_valid_extents dst
 
 (* Clearing one grid of a sharing group must not release payloads still
    referenced by a sibling. *)
@@ -518,7 +518,7 @@ let independent_storage_cells_equal () =
   is_false ~msg:"equal text with different URL differs"
     (Grid.cells_equal a 0 b 0)
 
-let scalar_writes_preserve_spans () =
+let scalar_writes_preserve_extents () =
   let grid = Grid.create ~width:4 ~height:1 () in
   let draw x uchar =
     Grid.set_uchar grid ~x ~y:0 ~uchar ~fg:Ansi.Color.white ~bg:Ansi.Color.black
@@ -529,7 +529,7 @@ let scalar_writes_preserve_spans () =
     (fun () -> draw 1 (Uchar.of_int 0x4E2D));
   equal ~msg:"wide scalar start" string "中" (Grid.get_text grid 1);
   is_true ~msg:"continuation extends beyond clip" (Grid.is_continuation grid 2);
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   draw 2 (Uchar.of_char 'x');
   equal ~msg:"overwriting continuation clears its start" string " "
     (Grid.get_text grid 1);
@@ -547,23 +547,23 @@ let scalar_writes_preserve_spans () =
         (Grid.get_text grid 0);
       equal ~msg:"empty scalar has no text" string "" (Grid.get_text grid 1))
     [ 0; 9; 10; 27; 127; 0x0301 ];
-  assert_valid_spans grid
+  assert_valid_extents grid
 
 (* A grapheme [width] cells wide at [(x, 0)], as a terminal places text it
    is told the size of (OSC 66): no text measures wider than two cells. *)
-let span grid ~x width =
+let wide grid ~x width =
   Grid.set_grapheme grid ~x ~y:0 ~width ~fg:Ansi.Color.default_fg
     ~bg:Ansi.Color.default_bg ~attrs:Ansi.Attr.empty "w" ~pos:0 ~len:1
 
 let clipped_multi_column_grapheme () =
   let src = Grid.create ~width:6 ~height:1 () in
-  span src ~x:0 4;
+  wide src ~x:0 4;
   equal ~msg:"fixture spans four columns" int 4 (Grid.cell_width src 0);
   List.iter
     (fun transfer ->
       let dst = Grid.create ~width:3 ~height:1 () in
       transfer ~src ~dst ~src_x:0 ~src_y:0 ~width:3 ~height:1 ~dst_x:0 ~dst_y:0;
-      assert_valid_spans dst;
+      assert_valid_extents dst;
       equal ~msg:"entire clipped grapheme becomes spaces" string "   "
         (Grid.to_text ~trim:false dst))
     [ Grid.blit_region; Grid.draw_region ];
@@ -578,17 +578,17 @@ let clipped_multi_column_grapheme () =
   equal ~msg:"copy ignores drawing opacity, composition observes it" string "x "
     (Grid.to_text ~trim:false dst)
 
-let overlapping_wide_spans () =
+let overlapping_wide_extents () =
   let grid = Grid.create ~width:8 ~height:1 () in
   Grid.draw_text grid ~x:0 ~y:0 ~text:"a中🇫🇷bc";
   Grid.blit_region ~src:grid ~dst:grid ~src_x:0 ~src_y:0 ~width:7 ~height:1
     ~dst_x:1 ~dst_y:0;
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   equal ~msg:"right shift preserves complete graphemes" string "aa中🇫🇷bc"
     (Grid.to_text grid);
   Grid.blit_region ~src:grid ~dst:grid ~src_x:1 ~src_y:0 ~width:7 ~height:1
     ~dst_x:0 ~dst_y:0;
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   equal ~msg:"left shift preserves complete graphemes" string "a中🇫🇷bcc"
     (Grid.to_text grid)
 
@@ -687,12 +687,12 @@ let resize_shrink_clips_stored_grapheme () =
   let grid = Grid.create ~width:2 ~height:1 () in
   Grid.draw_text grid ~x:0 ~y:0 ~text:"👩‍🚀";
   Grid.resize grid ~width:1 ~height:1;
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   equal ~msg:"row after shrink clears truncated complex grapheme" string ""
     (row_trimmed grid 0);
   Grid.resize grid ~width:2 ~height:1;
   Grid.draw_text grid ~x:0 ~y:0 ~text:"👨‍🚀";
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   equal ~msg:"stored grapheme still usable after shrink" string "👨‍🚀"
     (row_trimmed grid 0)
 
@@ -704,7 +704,7 @@ let resize_keeps_stored_grapheme () =
       let grid = Grid.create ~width:2 ~height:1 () in
       Grid.draw_text grid ~x:0 ~y:0 ~text:"👩‍🚀";
       Grid.resize grid ~width ~height;
-      assert_valid_spans grid;
+      assert_valid_extents grid;
       equal
         ~msg:(Printf.sprintf "text after resize to %dx%d" width height)
         string "👩‍🚀" (Grid.get_text grid 0);
@@ -1236,7 +1236,7 @@ let scroll_keeps_multi_codepoint_graphemes () =
   scroll grid ~top:0 ~bottom:2 (-2);
   equal ~msg:"moved down" string "e\u{301}" (Grid.get_text grid (idx grid 0 2))
 
-let draw_text_overwrite_clears_span () =
+let draw_text_overwrite_clears_extent () =
   let grid = Grid.create ~width:4 ~height:1 () in
   Grid.draw_text grid ~x:0 ~y:0 ~text:"中";
   Grid.draw_text grid ~x:0 ~y:0 ~text:"a";
@@ -1245,7 +1245,7 @@ let draw_text_overwrite_clears_span () =
   equal ~msg:"start width" int 1 (read_width grid 0 0);
   equal ~msg:"continuation width cleared" int 1 (read_width grid 1 0)
 
-let blit_region_skips_partial_span () =
+let blit_region_skips_partial_extent () =
   let src = Grid.create ~width:3 ~height:1 () in
   Grid.draw_text src ~x:0 ~y:0 ~text:"中a";
   let dst = Grid.create ~width:2 ~height:1 () in
@@ -1260,7 +1260,7 @@ let fill_rect_clears_inline_wide_start () =
   let grid = Grid.create ~width:3 ~height:1 () in
   Grid.draw_text grid ~x:0 ~y:0 ~text:"中";
   Grid.fill_rect grid ~x:0 ~y:0 ~width:1 ~height:1 ~color:Ansi.Color.red;
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   equal ~msg:"start cell reset to space" int (Char.code ' ')
     (read_char grid 0 0);
   equal ~msg:"old continuation cleared" int (Char.code ' ') (read_char grid 1 0);
@@ -1270,7 +1270,7 @@ let fill_rect_clears_inline_wide_continuation () =
   let grid = Grid.create ~width:3 ~height:1 () in
   Grid.draw_text grid ~x:0 ~y:0 ~text:"中";
   Grid.fill_rect grid ~x:1 ~y:0 ~width:1 ~height:1 ~color:Ansi.Color.red;
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   equal ~msg:"old start cleared" int (Char.code ' ') (read_char grid 0 0);
   equal ~msg:"continuation cell reset to space" int (Char.code ' ')
     (read_char grid 1 0);
@@ -1282,7 +1282,7 @@ let blit_region_clears_right_truncated_wide_start () =
   let dst = Grid.create ~width:2 ~height:1 () in
   Grid.blit_region ~src ~dst ~src_x:0 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
     ~dst_y:0;
-  assert_valid_spans dst;
+  assert_valid_extents dst;
   equal ~msg:"right-truncated wide start becomes space" int (Char.code ' ')
     (read_char dst 0 0);
   equal ~msg:"width reset" int 1 (read_width dst 0 0)
@@ -1292,7 +1292,7 @@ let blit_region_shifts_wide_over_wide () =
   Grid.draw_text grid ~x:0 ~y:0 ~text:"中😀";
   Grid.blit_region ~src:grid ~dst:grid ~src_x:0 ~src_y:0 ~width:4 ~height:1
     ~dst_x:2 ~dst_y:0;
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   is_true ~msg:"moved continuation kept" (Grid.is_continuation grid 3);
   equal ~msg:"row" string "中中😀" (row_to_string grid 0)
 
@@ -1361,15 +1361,15 @@ let to_ansi_handles_empty_glyph () =
   let ansi = Grid.to_ansi grid in
   is_true ~msg:"serialized empty glyph as space" (String.contains ansi ' ')
 
-let copied_partial_span_becomes_space () =
+let copied_partial_extent_becomes_space () =
   let src = Grid.create ~width:2 ~height:1 () in
   Grid.draw_text src ~x:0 ~y:0 ~text:"中";
   let grid = Grid.create ~width:1 ~height:1 () in
   Grid.blit_region ~src ~dst:grid ~src_x:1 ~src_y:0 ~width:1 ~height:1 ~dst_x:0
     ~dst_y:0;
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   let ansi = Grid.to_ansi grid in
-  is_true ~msg:"partial span serializes as space" (String.contains ansi ' ')
+  is_true ~msg:"partial extent serializes as space" (String.contains ansi ' ')
 
 let to_ansi_preserves_indexed_foreground () =
   let grid = Grid.create ~width:1 ~height:1 () in
@@ -1778,32 +1778,32 @@ let draw_text_overflow_clears_row_tail () =
   equal ~msg:"prefix preserved" string "XY"
     (String.sub (row_to_string grid 0) 0 2)
 
-let wide_span_beyond_four_cells () =
+let wide_extent_beyond_four_cells () =
   let n = 300 in
   let grid = Grid.create ~width:(n + 2) ~height:1 () in
-  span grid ~x:1 n;
+  wide grid ~x:1 n;
   equal ~msg:"start spans the grapheme" int n (Grid.cell_width grid 1);
   is_true ~msg:"last cell continues it" (Grid.is_continuation grid n);
   is_false ~msg:"cell after it is free" (Grid.is_continuation grid (n + 1));
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   Grid.draw_text grid ~x:150 ~y:0 ~text:"x";
   equal ~msg:"overwriting its middle clears it whole" string
     (String.make 150 ' ' ^ "x" ^ String.make 151 ' ')
     (Grid.to_text ~trim:false grid);
-  assert_valid_spans grid
+  assert_valid_extents grid
 
-let wide_span_survives_moves () =
+let wide_extent_survives_moves () =
   let grid = Grid.create ~width:12 ~height:2 () in
-  span grid ~x:0 6;
+  wide grid ~x:0 6;
   Grid.blit_region ~src:grid ~dst:grid ~src_x:0 ~src_y:0 ~width:12 ~height:1
     ~dst_x:3 ~dst_y:1;
   equal ~msg:"copy keeps the width" int 6 (Grid.cell_width grid 15);
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   let dst = Grid.create ~width:12 ~height:1 () in
   Grid.blit_region ~src:grid ~dst ~src_x:0 ~src_y:0 ~width:5 ~height:1 ~dst_x:0
     ~dst_y:0;
   equal ~msg:"a cut copy leaves no part" string "" (Grid.to_text dst);
-  assert_valid_spans dst
+  assert_valid_extents dst
 
 let max_width_bounds_grid () =
   ignore (Grid.create ~width:Grid.max_width ~height:1 () : Grid.t);
@@ -1831,7 +1831,7 @@ let wide_rows ?(width = 8) ?(height = 1) () =
 
 (* Every space of [grid] is the one blank on [color]. *)
 let assert_one_blank ~msg grid color =
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   for i = 0 to (Grid.width grid * Grid.height grid) - 1 do
     if Grid.get_text grid i = " " then begin
       let at = Printf.sprintf "%s: cell %d" msg i in
@@ -1919,7 +1919,7 @@ let shift_carries_cell_contents () =
   equal ~msg:"link" string "https://example.com" (Grid.get_link grid i);
   is_true ~msg:"bg" (Ansi.Color.equal Ansi.Color.blue (Grid.get_bg grid i));
   is_true ~msg:"attrs" (Grid.get_attrs grid i <> 0);
-  assert_valid_spans grid
+  assert_valid_extents grid
 
 (* set_grapheme and protection *)
 
@@ -1938,7 +1938,7 @@ let set_grapheme_places_exactly () =
   put grid 4 2 "a";
   equal ~msg:"a single scalar widened" int 2 (Grid.cell_width grid 4);
   is_true ~msg:"its continuation" (Grid.is_continuation grid 5);
-  assert_valid_spans grid;
+  assert_valid_extents grid;
   Grid.push_opacity grid 0.5;
   Grid.push_clip grid (region 0 0 1 1);
   put grid 1 1 "z";
@@ -1948,7 +1948,7 @@ let set_grapheme_places_exactly () =
   equal ~msg:"cut grapheme blanked" string " " (Grid.get_text grid 0);
   is_true ~msg:"on the written background"
     (Ansi.Color.equal Ansi.Color.blue (Grid.get_bg grid 2));
-  assert_valid_spans grid
+  assert_valid_extents grid
 
 let set_grapheme_rejects () =
   let grid = Grid.create ~width:4 ~height:2 () in
@@ -2033,7 +2033,7 @@ let erase_unprotected_keeps_rendition () =
     (Ansi.Color.equal Ansi.Color.blue (Grid.get_bg grid 4));
   is_false ~msg:"no continuation left" (Grid.is_continuation grid 4);
   equal ~msg:"no grapheme left" int 0 (fst (Grid.grapheme_stats grid));
-  assert_valid_spans grid
+  assert_valid_extents grid
 
 (* A cell's text is what [get_text] gives: nothing for an empty cell and for
    the continuation cells of a wide grapheme. *)
@@ -2364,7 +2364,7 @@ let tests =
     test "many distinct graphemes" many_distinct_graphemes;
     test "cell text of empty and continuation cells"
       cell_text_of_empty_and_continuation_cells;
-    test "span of every cell" span_of_every_cell;
+    test "extent of every cell" extent_of_every_cell;
     test "overwritten hyperlinks are collected"
       overwritten_hyperlinks_are_collected;
     test "collected grids release shared graphemes"
@@ -2375,12 +2375,12 @@ let tests =
       combining_mark_stays_with_ascii_base;
     test "Thai spacing mark cell placement" thai_spacing_mark_cell_placement;
     test "Thai spacing mark wcwidth units" thai_spacing_mark_wcwidth_units;
-    test "wide span beyond four cells" wide_span_beyond_four_cells;
+    test "wide extent beyond four cells" wide_extent_beyond_four_cells;
     test "translucent wide character has one background"
       translucent_wide_character_has_one_background;
     test "translucent fill tints a wide character"
       translucent_fill_tints_wide_character;
-    test "wide span survives moves" wide_span_survives_moves;
+    test "wide extent survives moves" wide_extent_survives_moves;
     test "max width bounds the grid" max_width_bounds_grid;
     test "one operation, one blank" one_operation_one_blank;
     test "clear_rect clears whole graphemes" clear_rect_clears_whole_graphemes;
@@ -2419,10 +2419,11 @@ let tests =
       scroll_single_row_clears_only_that_row;
     test "scroll keeps multi-codepoint graphemes"
       scroll_keeps_multi_codepoint_graphemes;
-    test "draw text overwrites grapheme span" draw_text_overwrite_clears_span;
+    test "draw text overwrites grapheme extent"
+      draw_text_overwrite_clears_extent;
     test "draw text overflow clears row tail" draw_text_overflow_clears_row_tail;
     test "draw text skips zero-width graphemes" draw_text_skips_zero_width;
-    test "blit region skips partial spans" blit_region_skips_partial_span;
+    test "blit region skips partial extents" blit_region_skips_partial_extent;
     test "fill_rect clears inline wide start" fill_rect_clears_inline_wide_start;
     test "fill_rect clears inline wide continuation"
       fill_rect_clears_inline_wide_continuation;
@@ -2437,7 +2438,8 @@ let tests =
       blit_region_preserves_default_foreground_glyph;
     test "to_ansi selects complete rows" to_ansi_selects_complete_rows;
     test "to_ansi handles empty glyph" to_ansi_handles_empty_glyph;
-    test "copied partial span becomes space" copied_partial_span_becomes_space;
+    test "copied partial extent becomes space"
+      copied_partial_extent_becomes_space;
     test "to_ansi at a styling" to_ansi_at_a_styling;
     test "to_ansi trims" to_ansi_trims;
     test "to_ansi preserves indexed foreground"
@@ -2494,8 +2496,8 @@ let tests =
       overflowing_wide_graphemes_do_not_leak_store;
     test "shared storage cells equal" shared_storage_cells_equal;
     test "independent storage cells equal" independent_storage_cells_equal;
-    test "scalar writes preserve spans" scalar_writes_preserve_spans;
-    test "overlapping wide spans" overlapping_wide_spans;
+    test "scalar writes preserve extents" scalar_writes_preserve_extents;
+    test "overlapping wide extents" overlapping_wide_extents;
     test "clipped multi-column grapheme" clipped_multi_column_grapheme;
     test "shared storage links equal" shared_storage_links_equal;
     test "grapheme store churn stays balanced"

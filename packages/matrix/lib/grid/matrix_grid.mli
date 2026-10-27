@@ -8,10 +8,10 @@
 
     A {e grapheme} is the text a cell shows, one or more scalars that a terminal
     places as one, as {!Matrix_text} measures them. A grapheme [w] cells wide
-    fills [w] adjacent cells of one row, its {e span}. The first is its
+    fills [w] adjacent cells of one row, its {e extent}. The first is its
     {e start cell}, which holds it, and the other [w - 1] are its
     {e continuation cells}. A grapheme may be as wide as a row, and every cell
-    belongs to exactly one span ({!span}). A cell may also be {e empty}, as
+    belongs to exactly one extent ({!extent}). A cell may also be {e empty}, as
     after a control character is written. A {e blank} is a space with the
     default foreground, no attributes and no link, on a background the operation
     that makes it chooses. Text is stored with each ill-formed UTF-8 subsequence
@@ -36,7 +36,7 @@
     that the {e scissor}, the top of the stack of clipping regions
     ({!section-clipping}), contains. {!draw_text} and {!val-set_uchar} write the
     continuation cells of a grapheme whose start cell they write even outside
-    the scissor, so that the row keeps whole spans. Each function says whether
+    the scissor, so that the row keeps whole extents. Each function says whether
     it draws or copies.
 
     Grids made with {!create_like} share their grapheme storage, which makes
@@ -176,19 +176,19 @@ val cell_width : t -> int -> int
 (** [cell_width g idx] is the width of the grapheme that starts at cell [idx],
     and [0] for an empty or a continuation cell. *)
 
-val span : t -> int -> int * int
-(** [span g idx] is [(start, width)], the span of the grapheme that covers cell
-    [idx], which starts at index [start] and covers [width] cells of the same
-    row, [idx] among them. A cell that holds a grapheme one cell wide, or none,
-    is a span of its own, [(idx, 1)]. Every cell of a wide grapheme, its start
-    cell and its continuations, gives the same span, whose [width] is the start
-    cell's {!cell_width}. A program acts on the whole span of a wide grapheme,
-    such as the cells to select, to redraw, or to report under the pointer. It
-    reads one cell. *)
+val extent : t -> int -> int * int
+(** [extent g idx] is [(start, width)], the extent of the grapheme that covers
+    cell [idx], which starts at index [start] and covers [width] cells of the
+    same row, [idx] among them. A cell that holds a grapheme one cell wide, or
+    none, is an extent of its own, [(idx, 1)]. Every cell of a wide grapheme,
+    its start cell and its continuations, gives the same extent, whose [width]
+    is the start cell's {!cell_width}. A program acts on the whole extent of a
+    wide grapheme, such as the cells to select, to redraw, or to report under
+    the pointer. It reads one cell. *)
 
 val cells_equal : t -> int -> t -> int -> bool
 (** [cells_equal g1 idx1 g2 idx2] is [true] iff the two cells have the same
-    text, place in their span, colors, attributes and hyperlink. Protection is
+    text, place in their extent, colors, attributes and hyperlink. Protection is
     not compared, since it does not show. The grids may have their own storage,
     and a comparison between grids that share storage reads no grapheme. *)
 

@@ -210,7 +210,7 @@ module Screen = struct
       let line = Buffer.create (cols s) and styled = ref false in
       for x = 0 to cols s - 1 do
         let idx = Grid.idx s.grid ~x ~y in
-        let start, _ = Grid.span s.grid idx in
+        let start, _ = Grid.extent s.grid idx in
         let st = Grid.get_style s.grid start in
         if is_default st then Buffer.add_char line ' '
         else (
