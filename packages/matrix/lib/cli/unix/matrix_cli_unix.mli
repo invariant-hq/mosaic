@@ -232,6 +232,167 @@ val suspend : live -> (unit -> 'a) -> 'a
     to the terminal, such as a child process, then draws [l] again from a row of
     its own, below a line [f] left without its end. *)
 
+(** {1:tasks Tasks}
+
+    A {e task} is a step of the work a program reports: a label, a count of
+    items or of bytes done, out of a total when the program says one, the lines
+    of output the program gives it, and how it ended. A task succeeds, fails or
+    is cancelled, once. Tasks form a tree under a {e root}, the work as a whole,
+    which {!val-tasks} makes for the scope of a function and shows on an output
+    in the output's mode ({!progress}):
+    - [`Tty] draws a live region whose last row is the {e summary}, the line
+      that says how far the work is, and prints the lines of [`Plain] above it.
+    - [`Plain] prints a line when a task starts, one for each line of its output
+      and one when it ends, which says [failed] or [cancelled] in words when it
+      did not succeed. Each line names its task by its {e path}, the labels from
+      the root's task down to it, so the lines of tasks that run at once can
+      interleave. The summary is the last line.
+    - [`Quiet] prints the ending line of each task that failed, then all its
+      output.
+    - [`Json] prints each change as one event a line ({!section-events}).
+
+    The lines are for people and their format may change. A program reads
+    [`Json].
+
+    A {e transient} task prints its lines only when it fails. A task's label and
+    lines show as text ({!Ansi.sanitize}), a label on one line. A task is told
+    from any thread, domain or fiber, and the lines of the changes are written
+    in the order of the changes. A task that ended ignores what it is told. A
+    task keeps its output until the work ends. Times are seconds since the root
+    started, by the clock {!val-tasks} is given.
+
+    An Eio fiber cancelled inside {!Task.run} fails its task, and inside
+    {!val-tasks} fails the work. A program shows them cancelled with
+    {[
+    let run parent label f =
+      Task.run parent label (fun t ->
+          try f t
+          with Eio.Cancel.Cancelled _ as e ->
+            Task.cancel t;
+            raise e)
+
+    let tasks out f =
+      Matrix_cli_unix.tasks out (fun root ->
+          try f root
+          with Eio.Cancel.Cancelled _ as e ->
+            Task.cancel root;
+            raise e)
+    ]} *)
+
+(** Tasks. *)
+module Task : sig
+  type t
+  (** The type for tasks, the root among them. *)
+
+  type status = [ `Running | `Succeeded | `Failed | `Cancelled ]
+  (** The type for where a task is: running or how it ended. *)
+
+  val start : ?transient:bool -> t -> string -> t
+  (** [start ~transient parent label] is a task named [label], started under
+      [parent], transient iff [transient] ([false] by default). A task started
+      under one that ended is cancelled at once and prints nothing. *)
+
+  val run : ?transient:bool -> t -> string -> (t -> 'a) -> 'a
+  (** [run ~transient parent label f] is [f t] for the task [t] that [start]
+      starts. [t] succeeds when [f] returns and fails when [f] raises, with the
+      exception as its message, which is raised again. An ending [f] gave [t]
+      counts. *)
+
+  val items : t -> ?total:int -> int -> unit
+  (** [items t ~total n] says that [t] has done [n] items, out of [total] when
+      given. Its rate is the count a second, weighing the past by
+      [exp (-. dt /. 2.)] for [dt] seconds ago, and a count below the last
+      starts it again.
+
+      Raises [Invalid_argument] if [n] or [total] is negative. *)
+
+  val bytes : t -> ?total:int -> int -> unit
+  (** [bytes] is {!items} for a task that counts bytes. *)
+
+  val rename : t -> string -> unit
+  (** [rename t label] makes [label] [t]'s label. *)
+
+  val log : t -> string -> unit
+  (** [log t text] gives [t] each line of [text] as its output. *)
+
+  val succeed : ?message:string -> t -> unit
+  (** [succeed ~message t] ends [t] as a success, [message] after its label. The
+      tasks under [t] that still run end first, and succeed with it. *)
+
+  val fail : ?message:string -> t -> unit
+  (** [fail ~message t] ends [t] as a failure, [message] after its label. The
+      tasks under [t] that still run are cancelled first. *)
+
+  val cancel : ?message:string -> t -> unit
+  (** [cancel ~message t] ends [t] as cancelled, [message] after its label. The
+      tasks under [t] that still run are cancelled first. *)
+
+  type state = {
+    label : string;
+    status : status;
+    message : string option;  (** The message it ended with. *)
+    count : int;  (** [0] until it is counted. *)
+    total : int option;
+    unit : [ `Items | `Bytes ];  (** What it counts. *)
+    elapsed : float;  (** Seconds since it started, up to its end. *)
+    rate : float option;  (** Its count a second, once it has one. *)
+    output : string list;  (** Its lines of output, oldest first. *)
+    children : t list;  (** The tasks started under it, oldest first. *)
+  }
+  (** The type for what a task is, at a time. *)
+
+  val state : t -> state
+  (** [state t] is [t] as it is now. *)
+end
+
+val tasks :
+  ?label:string ->
+  ?now:(unit -> float) ->
+  ?frame:(Task.t -> width:int -> height:int -> Matrix_grid.t list) ->
+  t ->
+  (Task.t -> 'a) ->
+  'a
+(** [tasks ~label ~now ~frame o f] is [f root] for the root of the work, named
+    [label] on its summary line ([""] by default), shown on [o] in [o]'s mode
+    until [f] ends. The root succeeds when [f] returns and fails when [f]
+    raises, which is raised again, unless [f] ended it, and its ending ends the
+    tasks still running as {!Task.succeed} and {!Task.fail} do. [now] is the
+    clock in seconds, monotonic by default. With [frame], the region of [`Tty]
+    shows [frame root] in place of the summary, and [`Plain] prints its last
+    frame once, at the end. [frame] must not tell a task anything and must not
+    print. A [tasks] inside another on one output numbers its tasks apart
+    ({!section-events}). *)
+
+(** {2:events JSON events}
+
+    Under [`Json], each change is an event, one JSON object on a line of its
+    own, in the order of the changes, as ocaml-console writes them. Every event
+    has two members: [time], the seconds since the root started, rounded to the
+    millisecond, and [event], its name. An event of a task also has [id], a
+    number that no other task shown on the output has, and [task], its path, an
+    array of strings. The events are:
+    - ["start"], with [parent], the [id] of the task it started under unless
+      that is the root;
+    - ["progress"], with [count], [total] when the program gave one, and [unit],
+      ["items"] or ["bytes"];
+    - ["label"], with [text], its new label;
+    - ["output"], with [text], a line of output. An output event of no task is a
+      line the program printed ({!print});
+    - ["end"], with [status], ["succeeded"], ["failed"] or ["cancelled"],
+      [elapsed], its seconds from start to end, and [message] when it has one.
+      An end event of no task is the end of the work as a whole.
+
+    Strings are valid UTF-8, with their C0 controls and DEL escaped. Objects may
+    gain members and new events may be added, but the members above keep their
+    meaning, so a program skips a member or an event it does not know. This is
+    the scope of a task that compiles one file:
+    {v
+    {"time":0,"event":"start","id":0,"task":["compile"]}
+    {"time":0,"event":"output","id":0,"task":["compile"],"text":"parser.ml"}
+    {"time":0.5,"event":"end","id":0,"task":["compile"],"status":"succeeded","elapsed":0.5}
+    {"time":0.5,"event":"end","status":"succeeded","elapsed":0.5}
+    v} *)
+
 (** {1:prompts Prompts} *)
 
 (** Questions asked at the terminal.

@@ -120,6 +120,9 @@ type device = {
   mutable users : int;
   mutable live : state option;
   mutable prompt : prompt option;
+  next_id : int Atomic.t;  (** The id of the next task shown on it. *)
+  mutable work_time : (unit -> float) option;
+      (** The clock of the work shown on it, if one is. *)
 }
 
 (* The signals of a terminal, while a region or a prompt uses it: a holder,
@@ -203,6 +206,8 @@ let device fd =
           users = 0;
           live = None;
           prompt = None;
+          next_id = Atomic.make 0;
+          work_time = None;
         }
       in
       devices := d :: !devices;
@@ -635,7 +640,12 @@ let event members =
 (* What a program prints on a [`Json] output: an output event of no task for
    each of its lines, and for what follows its last line end. *)
 let output_events t s =
-  let time = json_number (Float.of_int (Tty.now () - t.made) *. 1e-9) in
+  let time =
+    json_number
+      (match t.out_device.work_time with
+      | Some now -> now ()
+      | None -> Float.of_int (Tty.now () - t.made) *. 1e-9)
+  in
   let lines = String.split_on_char '\n' (Ansi.sanitize s) in
   let lines =
     match List.rev lines with "" :: rest -> List.rev rest | _ -> lines
@@ -972,6 +982,491 @@ let off_screen d f =
 
 let suspend v f =
   match v.state with None -> f () | Some l -> off_screen l.device f
+
+(* Tasks *)
+
+type output = t
+
+(* What a program writes through an output that is already events or lines
+   of its own: adapted to the output's styling, and as it is on a [`Json]
+   output. *)
+let write_lines t s =
+  flush_formatters ();
+  Mutex.protect t.out_device.lock (fun () ->
+      let bytes =
+        match t.progress with `Json -> s | _ -> Matrix_cli.adapt t.adapter s
+      in
+      if bytes <> "" then emit t bytes)
+
+(* The glyphs of tasks, all in one place, for the day a terminal that does
+   not show UTF-8 is told apart. Their meanings are also in words where a
+   line is read without them: [failed] and [cancelled] end a line. *)
+module Glyph = struct
+  let running = "\u{2022}"
+  let succeeded = "\u{2713}"
+  let failed = "\u{2717}"
+  let cancelled = "-"
+  let path = " \u{25B8} "
+  let output = "\u{203A}"
+end
+
+module Task = struct
+  type status = [ `Running | `Succeeded | `Failed | `Cancelled ]
+
+  type t = {
+    work : work;
+    id : int;  (** [-1] for the root. *)
+    parent : t option;
+    mutable label : string;
+    transient : bool;
+    started : float;
+    mutable count : int;
+    mutable total : int option;
+    mutable bytes : bool;
+    mutable counted : (float * int) option;
+        (** When it was last counted, and its count then. *)
+    mutable rate : float option;
+    mutable output : string list;  (** Newest first. *)
+    mutable status : status;
+    mutable message : string option;
+    mutable ended : float option;
+    mutable children : t list;  (** Newest first. *)
+  }
+
+  (* The work as a whole, which its root stands for. [lock] guards the
+     fields of its tasks. [order] keeps the lines of two changes in the
+     order of the changes, since a change writes them after it lets [lock]
+     go, so that a frame, which takes [lock] while the device's lock is
+     held, never waits for a write. The order of the locks is [order],
+     then [lock], let go before the device's. *)
+  and work = {
+    out : output;
+    now : unit -> float;
+    lock : Mutex.t;
+    order : Mutex.t;
+    mutable live : live option;
+    mutable frame : width:int -> height:int -> Matrix_grid.t list;
+  }
+
+  type state = {
+    label : string;
+    status : status;
+    message : string option;
+    count : int;
+    total : int option;
+    unit : [ `Items | `Bytes ];
+    elapsed : float;
+    rate : float option;
+    output : string list;
+    children : t list;
+  }
+
+  let elapsed (t : t) =
+    Option.value t.ended ~default:(t.work.now ()) -. t.started
+
+  let state (t : t) =
+    Mutex.protect t.work.lock @@ fun () ->
+    {
+      label = t.label;
+      status = t.status;
+      message = t.message;
+      count = t.count;
+      total = t.total;
+      unit = (if t.bytes then `Bytes else `Items);
+      elapsed = elapsed t;
+      rate = t.rate;
+      output = List.rev t.output;
+      children = List.rev t.children;
+    }
+
+  (* A label shows as text, on one line. *)
+  let one_line s =
+    String.map (function '\n' -> ' ' | c -> c) (Ansi.sanitize s)
+
+  (* How tasks show. *)
+
+  let style ?fg ?bold ?dim () = Ansi.Style.make ?fg ?bold ?dim ()
+  let accent = style ~fg:Ansi.Color.cyan ()
+  let faint = style ~dim:true ()
+  let strong = style ~bold:true ()
+
+  let mark = function
+    | `Running -> Ansi.span ~style:accent Glyph.running
+    | `Succeeded ->
+        Ansi.span ~style:(style ~fg:Ansi.Color.green ()) Glyph.succeeded
+    | `Failed -> Ansi.span ~style:(style ~fg:Ansi.Color.red ()) Glyph.failed
+    | `Cancelled ->
+        Ansi.span ~style:(style ~fg:Ansi.Color.yellow ()) Glyph.cancelled
+
+  let bytes_text n =
+    let n = Float.of_int n in
+    if n >= 1073741824. then Printf.sprintf "%.2f GiB" (n /. 1073741824.)
+    else if n >= 1048576. then Printf.sprintf "%.2f MiB" (n /. 1048576.)
+    else if n >= 1024. then Printf.sprintf "%.2f KiB" (n /. 1024.)
+    else Printf.sprintf "%.0f B" n
+
+  let counts (t : t) =
+    match (t.counted, t.total) with
+    | None, _ -> ""
+    | Some _, None ->
+        if t.bytes then bytes_text t.count else string_of_int t.count
+    | Some _, Some total ->
+        if t.bytes then bytes_text t.count ^ " / " ^ bytes_text total
+        else Printf.sprintf "%d/%d" t.count total
+
+  let seconds f = Printf.sprintf "%.1fs" f
+
+  (* The labels from the top task down to [t]. *)
+  let rec path (t : t) =
+    match t.parent with None -> [] | Some p -> path p @ [ t.label ]
+
+  let name t = Ansi.span ~style:strong (String.concat Glyph.path (path t))
+
+  (* A line of spans, its columns two cells apart. *)
+  let line head columns =
+    Ansi.render
+      (head
+      @ List.concat_map
+          (fun c -> [ Ansi.span "  "; c ])
+          (List.filter (fun (c : Ansi.span) -> c.text <> "") columns))
+    ^ "\n"
+
+  let output_line ?of_task l =
+    match of_task with
+    | Some t ->
+        line
+          [
+            Ansi.span ~style:faint ("  " ^ Glyph.output ^ " ");
+            name t;
+            Ansi.span ~style:faint ": ";
+            Ansi.span l;
+          ]
+          []
+    | None ->
+        line
+          [ Ansi.span ~style:faint ("  " ^ Glyph.output ^ " "); Ansi.span l ]
+          []
+
+  (* The line of a task that ended. *)
+  let ending (t : t) =
+    line
+      [ mark t.status; Ansi.span " "; name t ]
+      [
+        Ansi.span (Option.value t.message ~default:"");
+        Ansi.span ~style:faint (counts t);
+        Ansi.span ~style:faint (seconds (elapsed t));
+        Ansi.span
+          (match t.status with
+          | `Failed -> "failed"
+          | `Cancelled -> "cancelled"
+          | _ -> "");
+      ]
+
+  let rec all (t : t) =
+    List.concat_map (fun c -> c :: all c) (List.rev t.children)
+
+  (* The line that says how far the work is. *)
+  let summary (root : t) =
+    let all = all root in
+    let ended = List.filter (fun (t : t) -> t.status <> `Running) all in
+    [ mark root.status; Ansi.span " " ]
+    @ List.concat_map
+        (fun c -> [ c; Ansi.span "  " ])
+        (List.filter
+           (fun (c : Ansi.span) -> c.text <> "")
+           [
+             Ansi.span ~style:strong root.label;
+             Ansi.span (Option.value root.message ~default:"");
+             Ansi.span ~style:faint (seconds (elapsed root));
+           ])
+    @ [
+        Ansi.span ~style:faint
+          (Printf.sprintf "%d/%d" (List.length ended) (List.length all));
+      ]
+
+  let summary_frame (root : t) ~width ~height:_ =
+    let spans = Mutex.protect root.work.lock (fun () -> summary root) in
+    let g = Matrix_grid.create ~width:(max 1 width) ~height:1 () in
+    ignore (Matrix_grid.draw_spans g ~x:0 ~y:0 spans : int);
+    [ g ]
+
+  (* JSON events. *)
+
+  let event (t : t) kind members =
+    let task =
+      if t.id < 0 then []
+      else
+        [
+          ("id", string_of_int t.id);
+          ("task", "[" ^ String.concat "," (List.map json_string (path t)) ^ "]");
+        ]
+    in
+    event
+      (("time", json_number (t.work.now ()))
+       :: ("event", json_string kind)
+       :: task
+      @ members)
+
+  let status_name = function
+    | `Running -> "running"
+    | `Succeeded -> "succeeded"
+    | `Failed -> "failed"
+    | `Cancelled -> "cancelled"
+
+  (* Changes *)
+
+  (* Makes a change under the work's lock, then shows the frame again and
+     writes the lines the change gives, in the order of the changes. *)
+  let change (w : work) f =
+    Mutex.protect w.order @@ fun () ->
+    let lines = Mutex.protect w.lock f in
+    Option.iter (fun l -> show l w.frame) w.live;
+    if lines <> "" then write_lines w.out lines
+
+  let shows_lines (t : t) =
+    match t.work.out.progress with
+    | `Tty | `Plain -> not t.transient
+    | `Quiet | `Json -> false
+
+  let start ?(transient = false) parent label =
+    let w = parent.work in
+    let label = one_line label in
+    let made = ref None in
+    change w (fun () ->
+        let running = parent.status = `Running and now = w.now () in
+        let t =
+          {
+            work = w;
+            id = Atomic.fetch_and_add w.out.out_device.next_id 1;
+            parent = Some parent;
+            label;
+            transient;
+            started = now;
+            count = 0;
+            total = None;
+            bytes = false;
+            counted = None;
+            rate = None;
+            output = [];
+            status = (if running then `Running else `Cancelled);
+            message = None;
+            ended = (if running then None else Some now);
+            children = [];
+          }
+        in
+        parent.children <- t :: parent.children;
+        made := Some t;
+        if not running then ""
+        else if shows_lines t then
+          line [ mark `Running; Ansi.span " "; name t ] []
+        else
+          match w.out.progress with
+          | `Json ->
+              event t "start"
+                (if parent.id >= 0 then [ ("parent", string_of_int parent.id) ]
+                 else [])
+          | _ -> "");
+    Option.get !made
+
+  let count ~bytes (t : t) ?total count =
+    if count < 0 || Option.fold ~none:false ~some:(fun n -> n < 0) total then
+      invalid_arg "Matrix_cli_unix.Task: negative count";
+    change t.work @@ fun () ->
+    if t.status <> `Running then ""
+    else
+      let now = t.work.now () in
+      (* The rate weighs the past by exp (-dt / 2) for dt seconds ago, and
+         starts again at a count below the last, such as a download tried
+         again. *)
+      (match t.counted with
+      | Some (_, before) when count < before || bytes <> t.bytes ->
+          t.rate <- None
+      | Some (at, before) when now > at ->
+          let r = Float.of_int (count - before) /. (now -. at) in
+          let k = exp (-.(now -. at) /. 2.) in
+          t.rate <-
+            Some
+              (match t.rate with
+              | Some r0 -> (k *. r0) +. ((1. -. k) *. r)
+              | None -> r)
+      | _ -> ());
+      let changed =
+        t.counted = None || count <> t.count || total <> t.total
+        || bytes <> t.bytes
+      in
+      t.counted <- Some (now, count);
+      t.count <- count;
+      t.total <- total;
+      t.bytes <- bytes;
+      match t.work.out.progress with
+      | `Json when changed ->
+          event t "progress"
+            ([ ("count", string_of_int count) ]
+            @ Option.fold ~none:[]
+                ~some:(fun n -> [ ("total", string_of_int n) ])
+                total
+            @ [ ("unit", json_string (if bytes then "bytes" else "items")) ])
+      | _ -> ""
+
+  let items t ?total n = count ~bytes:false t ?total n
+  let bytes t ?total n = count ~bytes:true t ?total n
+
+  (* The lines of a text, without the empty one after its last line end. *)
+  let lines_of text =
+    match List.rev (String.split_on_char '\n' (Ansi.sanitize text)) with
+    | "" :: rest -> List.rev rest
+    | ls -> List.rev ls
+
+  let log (t : t) text =
+    let ls = lines_of text in
+    change t.work @@ fun () ->
+    if t.status <> `Running then ""
+    else (
+      t.output <- List.rev_append ls t.output;
+      if shows_lines t then
+        String.concat "" (List.map (output_line ~of_task:t) ls)
+      else
+        match t.work.out.progress with
+        | `Json ->
+            String.concat ""
+              (List.map
+                 (fun l -> event t "output" [ ("text", json_string l) ])
+                 ls)
+        | _ -> "")
+
+  let rename (t : t) label =
+    let label = one_line label in
+    change t.work @@ fun () ->
+    if t.status <> `Running then ""
+    else (
+      t.label <- label;
+      match t.work.out.progress with
+      | `Json -> event t "label" [ ("text", json_string label) ]
+      | _ -> "")
+
+  (* Ends [t], and first the tasks under it that run, and is the lines
+     their endings write. *)
+  let rec close (t : t) status message =
+    if t.status <> `Running then ""
+    else
+      let under = if status = `Succeeded then `Succeeded else `Cancelled in
+      let first =
+        String.concat "" (List.rev_map (fun c -> close c under None) t.children)
+      in
+      t.status <- status;
+      t.message <- Option.map one_line message;
+      t.ended <- Some (t.work.now ());
+      let failure () =
+        if status = `Failed then
+          ending t
+          ^ String.concat "" (List.rev_map (fun l -> output_line l) t.output)
+        else ""
+      in
+      let end_event members =
+        event t "end"
+          ([
+             ("status", json_string (status_name status));
+             ("elapsed", json_number (elapsed t));
+           ]
+          @ members
+          @ Option.fold ~none:[]
+              ~some:(fun m -> [ ("message", json_string m) ])
+              t.message)
+      in
+      let own =
+        match t.work.out.progress with
+        | `Json -> end_event []
+        | _ when t.id < 0 -> ""
+        | (`Tty | `Plain) when not t.transient -> ending t
+        | `Tty | `Plain | `Quiet -> failure ()
+      in
+      first ^ own
+
+  let succeed ?message t = change t.work (fun () -> close t `Succeeded message)
+  let fail ?message t = change t.work (fun () -> close t `Failed message)
+  let cancel ?message t = change t.work (fun () -> close t `Cancelled message)
+
+  let run ?transient parent label f =
+    let t = start ?transient parent label in
+    match f t with
+    | result ->
+        succeed t;
+        result
+    | exception e ->
+        let bt = Printexc.get_raw_backtrace () in
+        fail ~message:(Printexc.to_string e) t;
+        Printexc.raise_with_backtrace e bt
+end
+
+let tasks ?(label = "") ?now ?frame out f =
+  let now =
+    match now with
+    | Some now -> now
+    | None ->
+        let t0 = Tty.now () in
+        fun () -> Float.of_int (Tty.now () - t0) *. 1e-9
+  in
+  let w =
+    {
+      Task.out;
+      now;
+      lock = Mutex.create ();
+      order = Mutex.create ();
+      live = None;
+      frame = no_frame;
+    }
+  in
+  let root : Task.t =
+    {
+      work = w;
+      id = -1;
+      parent = None;
+      label = Task.one_line label;
+      transient = false;
+      started = now ();
+      count = 0;
+      total = None;
+      bytes = false;
+      counted = None;
+      rate = None;
+      output = [];
+      status = `Running;
+      message = None;
+      ended = None;
+      children = [];
+    }
+  in
+  w.frame <-
+    (match frame with
+    | Some frame -> frame root
+    | None -> Task.summary_frame root);
+  (* What the program prints on a [`Json] output while the work runs is
+     timed by the work's clock, as its tasks are. *)
+  let d = out.out_device in
+  let timed =
+    Mutex.protect d.lock (fun () ->
+        if Option.is_none d.work_time then (
+          d.work_time <- Some now;
+          true)
+        else false)
+  in
+  Fun.protect ~finally:(fun () ->
+      if timed then Mutex.protect d.lock (fun () -> d.work_time <- None))
+  @@ fun () ->
+  live ~tick:0.1 out @@ fun l ->
+  Mutex.protect w.order (fun () -> w.live <- Some l);
+  show l w.frame;
+  let ended () = Mutex.protect w.order (fun () -> w.live <- None) in
+  match f root with
+  | result ->
+      Task.succeed root;
+      ended ();
+      result
+  | exception e ->
+      let bt = Printexc.get_raw_backtrace () in
+      Task.fail root;
+      ended ();
+      Printexc.raise_with_backtrace e bt
 
 (* Prompts *)
 

@@ -16,6 +16,31 @@ let rows_frame rows ~width ~height:_ =
   List.iteri (fun y text -> Matrix_grid.draw_text g ~x:0 ~y ~text) rows;
   [ g ]
 
+(* ocaml-console's progress example: a step that compiles five files, and a
+   layer under it that downloads 2 GiB and fails when [fail]. *)
+let build ~fail root =
+  let module T = C.Task in
+  let step = T.start root "RUN make" in
+  for i = 0 to 5 do
+    T.items step ~total:5 (min i 5);
+    T.log step (Printf.sprintf "  CC src/file%d.c" i)
+  done;
+  let layer = T.start step "sha256:abcd" in
+  for i = 0 to 8 do
+    T.bytes layer ~total:2147483648 (i * 268435456)
+  done;
+  if fail then (
+    T.log layer "checksum mismatch";
+    T.fail layer;
+    T.fail step;
+    T.fail root)
+  else (
+    T.succeed layer;
+    T.succeed step)
+
+(* A clock that stands still, so that every time is 0. *)
+let still () = 0.
+
 let rec forever () =
   Unix.sleepf 3600.;
   forever ()
@@ -63,6 +88,77 @@ let () =
           C.print err "line\n");
       C.live err (fun live -> C.show live (fun ~width:_ ~height:_ -> []));
       print_string "AFTER\n"
+  | ("tasks" | "tasks-fail") as mode ->
+      C.tasks ~label:"Building" ~now:still err
+        (build ~fail:(mode = "tasks-fail"));
+      print_string "DONE\n"
+  | "tasks-nested" ->
+      C.tasks ~now:still err (fun root ->
+          C.Task.run root "outer" (fun _ ->
+              C.tasks ~now:still err (fun root ->
+                  C.Task.run root "inner" ignore)))
+  | "tasks-threads" ->
+      (* Four threads that each run twenty tasks. *)
+      C.tasks ~now:still err (fun root ->
+          List.init 4 (fun k ->
+              Thread.create
+                (fun () ->
+                  for i = 1 to 20 do
+                    C.Task.run root (Printf.sprintf "t%d-%d" k i) (fun t ->
+                        C.Task.log t "x")
+                  done)
+                ())
+          |> List.iter Thread.join)
+  | "tasks-after" ->
+      (* A task told things after it ended, and one started under it. *)
+      C.tasks ~now:still err (fun root ->
+          let t = C.Task.start root "a" in
+          C.Task.succeed t;
+          C.Task.log t "late";
+          C.Task.items t 3;
+          C.Task.rename t "b";
+          C.Task.fail t;
+          let u = C.Task.start t "under" in
+          C.print err
+            (match (C.Task.state u).status with
+            | `Cancelled -> "UNDER CANCELLED\n"
+            | _ -> "UNDER OTHER\n"))
+  | "tasks-transient" ->
+      C.tasks ~now:still err (fun root ->
+          C.Task.run ~transient:true root "quick" ignore;
+          C.Task.cancel (C.Task.start root "skipped");
+          try
+            C.Task.run ~transient:true root "broken" (fun t ->
+                C.Task.log t "why";
+                failwith "broken")
+          with Failure _ -> ())
+  | "tasks-raise" -> (
+      try C.tasks ~now:still err (fun _ -> failwith "boom")
+      with Failure _ -> print_string "RAISED\n")
+  | "tasks-ended" ->
+      (* The root ended by [f] keeps its ending when [f] raises after. *)
+      (try
+         C.tasks ~now:still err (fun root ->
+             C.Task.succeed ~message:"early" root;
+             failwith "after")
+       with Failure _ -> ());
+      print_string "DONE\n"
+  | "tasks-back" ->
+      (* A count that goes back starts the rate again. *)
+      let clock = ref 0. in
+      let now () =
+        clock := !clock +. 1.;
+        !clock
+      in
+      C.tasks ~now err (fun root ->
+          C.Task.run root "fetch" (fun t ->
+              C.Task.bytes t 0;
+              C.Task.bytes t 100;
+              let rated = (C.Task.state t).rate <> None in
+              C.Task.bytes t 50;
+              C.print err
+                (Printf.sprintf "RATE %b %b\n" rated
+                   ((C.Task.state t).rate <> None))))
   | "tall" ->
       C.live err (fun live ->
           C.show live (rows_frame (List.init 12 (Printf.sprintf "row %d")));

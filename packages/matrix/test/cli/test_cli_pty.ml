@@ -474,6 +474,178 @@ let test_format_order () =
         "result 1\nstep a\nresult 2\nnote 3\nstep b\nFRAME\n" (piped mode))
     [ "fmt-order"; "fmt-order-adapted" ]
 
+(* ───── Tasks ───── *)
+
+let progress mode name = piped ~env:[ ("CLI_PROGRESS", mode) ] name
+
+let build_lines =
+  [
+    "\u{2022} RUN make";
+    "  \u{203A} RUN make:   CC src/file0.c";
+    "  \u{203A} RUN make:   CC src/file1.c";
+    "  \u{203A} RUN make:   CC src/file2.c";
+    "  \u{203A} RUN make:   CC src/file3.c";
+    "  \u{203A} RUN make:   CC src/file4.c";
+    "  \u{203A} RUN make:   CC src/file5.c";
+    "\u{2022} RUN make \u{25B8} sha256:abcd";
+  ]
+
+let test_tasks_plain () =
+  equal ~msg:"succeeded" strings
+    (build_lines
+    @ [
+        "\u{2713} RUN make \u{25B8} sha256:abcd  2.00 GiB / 2.00 GiB  0.0s";
+        "\u{2713} RUN make  5/5  0.0s";
+        "\u{2713} Building  0.0s  2/2";
+        "DONE";
+        "";
+      ])
+    (String.split_on_char '\n' (progress "plain" "tasks"));
+  equal ~msg:"failed" strings
+    (build_lines
+    @ [
+        "  \u{203A} RUN make \u{25B8} sha256:abcd: checksum mismatch";
+        "\u{2717} RUN make \u{25B8} sha256:abcd  2.00 GiB / 2.00 GiB  0.0s  \
+         failed";
+        "\u{2717} RUN make  5/5  0.0s  failed";
+        "\u{2717} Building  0.0s  2/2";
+        "DONE";
+        "";
+      ])
+    (String.split_on_char '\n' (progress "plain" "tasks-fail"))
+
+let test_tasks_quiet () =
+  equal ~msg:"succeeded" Testable.string "DONE\n" (progress "quiet" "tasks");
+  equal ~msg:"each failure, then all its output" strings
+    [
+      "\u{2717} RUN make \u{25B8} sha256:abcd  2.00 GiB / 2.00 GiB  0.0s  \
+       failed";
+      "  \u{203A} checksum mismatch";
+      "\u{2717} RUN make  5/5  0.0s  failed";
+      "  \u{203A}   CC src/file0.c";
+      "  \u{203A}   CC src/file1.c";
+      "  \u{203A}   CC src/file2.c";
+      "  \u{203A}   CC src/file3.c";
+      "  \u{203A}   CC src/file4.c";
+      "  \u{203A}   CC src/file5.c";
+      "DONE";
+      "";
+    ]
+    (String.split_on_char '\n' (progress "quiet" "tasks-fail"))
+
+let test_tasks_json () =
+  let task id path =
+    Printf.sprintf "\"id\":%d,\"task\":[%s]" id
+      (String.concat "," (List.map (Printf.sprintf "\"%s\"") path))
+  in
+  let ev s = "{\"time\":0," ^ s ^ "}" in
+  let step = task 0 [ "RUN make" ]
+  and layer = task 1 [ "RUN make"; "sha256:abcd" ] in
+  let items i =
+    [
+      ev
+        (Printf.sprintf
+           "\"event\":\"progress\",%s,\"count\":%d,\"total\":5,\"unit\":\"items\""
+           step (min i 5));
+      ev
+        (Printf.sprintf "\"event\":\"output\",%s,\"text\":\"  CC src/file%d.c\""
+           step i);
+    ]
+  in
+  let bytes i =
+    ev
+      (Printf.sprintf
+         "\"event\":\"progress\",%s,\"count\":%d,\"total\":2147483648,\"unit\":\"bytes\""
+         layer (i * 268435456))
+  in
+  equal ~msg:"events" strings
+    ([ ev ("\"event\":\"start\"," ^ step) ]
+    @ List.concat_map items [ 0; 1; 2; 3; 4; 5 ]
+    @ [ ev ("\"event\":\"start\"," ^ layer ^ ",\"parent\":0") ]
+    @ List.map bytes [ 0; 1; 2; 3; 4; 5; 6; 7; 8 ]
+    @ [
+        ev ("\"event\":\"output\"," ^ layer ^ ",\"text\":\"checksum mismatch\"");
+        ev
+          ("\"event\":\"end\"," ^ layer ^ ",\"status\":\"failed\",\"elapsed\":0");
+        ev ("\"event\":\"end\"," ^ step ^ ",\"status\":\"failed\",\"elapsed\":0");
+        ev "\"event\":\"end\",\"status\":\"failed\",\"elapsed\":0";
+        "DONE";
+        "";
+      ])
+    (String.split_on_char '\n' (progress "json" "tasks-fail"))
+
+(* Two works on one output, one inside the other, number their tasks
+   apart. *)
+let test_tasks_ids () =
+  equal ~msg:"events" strings
+    [
+      "{\"time\":0,\"event\":\"start\",\"id\":0,\"task\":[\"outer\"]}";
+      "{\"time\":0,\"event\":\"start\",\"id\":1,\"task\":[\"inner\"]}";
+      "{\"time\":0,\"event\":\"end\",\"id\":1,\"task\":[\"inner\"],\"status\":\"succeeded\",\"elapsed\":0}";
+      "{\"time\":0,\"event\":\"end\",\"status\":\"succeeded\",\"elapsed\":0}";
+      "{\"time\":0,\"event\":\"end\",\"id\":0,\"task\":[\"outer\"],\"status\":\"succeeded\",\"elapsed\":0}";
+      "{\"time\":0,\"event\":\"end\",\"status\":\"succeeded\",\"elapsed\":0}";
+      "";
+    ]
+    (String.split_on_char '\n' (progress "json" "tasks-nested"))
+
+(* Tasks told from four threads: each task's lines in the order of its
+   changes. *)
+let test_tasks_threads () =
+  let lines = String.split_on_char '\n' (progress "plain" "tasks-threads") in
+  let index l =
+    let rec go i = function
+      | [] -> failf "no line %S" l
+      | x :: _ when x = l -> i
+      | _ :: rest -> go (i + 1) rest
+    in
+    go 0 lines
+  in
+  for k = 0 to 3 do
+    for i = 1 to 20 do
+      let label = Printf.sprintf "t%d-%d" k i in
+      let start = index ("\u{2022} " ^ label)
+      and out = index ("  \u{203A} " ^ label ^ ": x")
+      and stop = index ("\u{2713} " ^ label ^ "  0.0s") in
+      if not (start < out && out < stop) then failf "%s out of order" label
+    done
+  done
+
+let test_tasks_endings () =
+  equal ~msg:"told after it ended" strings
+    [
+      "\u{2022} a";
+      "\u{2713} a  0.0s";
+      "UNDER CANCELLED";
+      "\u{2713} 0.0s  2/2";
+      "";
+    ]
+    (String.split_on_char '\n' (progress "plain" "tasks-after"));
+  equal ~msg:"transient and cancelled" strings
+    [
+      "\u{2022} skipped";
+      "- skipped  0.0s  cancelled";
+      "\u{2717} broken  Failure(\"broken\")  0.0s  failed";
+      "  \u{203A} why";
+      "\u{2713} 0.0s  3/3";
+      "";
+    ]
+    (String.split_on_char '\n' (progress "plain" "tasks-transient"));
+  equal ~msg:"quiet: the failure, not the cancelled" strings
+    [
+      "\u{2717} broken  Failure(\"broken\")  0.0s  failed"; "  \u{203A} why"; "";
+    ]
+    (String.split_on_char '\n' (progress "quiet" "tasks-transient"));
+  equal ~msg:"a raise fails the work" strings
+    [ "\u{2717} 0.0s  0/0"; "RAISED"; "" ]
+    (String.split_on_char '\n' (progress "plain" "tasks-raise"));
+  equal ~msg:"an ending f gave the work counts" strings
+    [ "\u{2713} early  0.0s  0/0"; "DONE"; "" ]
+    (String.split_on_char '\n' (progress "plain" "tasks-ended"));
+  is_true ~msg:"a count that goes back starts the rate again"
+    (List.mem "RATE true false"
+       (String.split_on_char '\n' (progress "plain" "tasks-back")))
+
 let () =
   run "matrix.cli.pty"
     [
@@ -505,6 +677,15 @@ let () =
           test "a notification" test_notify;
           test "how progress shows" test_progress_of;
           test "quiet and json" test_quiet_json;
+        ];
+      group "tasks"
+        [
+          test "plain" test_tasks_plain;
+          test "quiet" test_tasks_quiet;
+          test "json" test_tasks_json;
+          test "ids of nested works" test_tasks_ids;
+          test "lines from threads" test_tasks_threads;
+          test "endings" test_tasks_endings;
         ];
       group "prompts"
         [
