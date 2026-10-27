@@ -214,6 +214,7 @@ it.
 - A measurement of a node whose height, minimum height or maximum height is a percentage is cached for the parent height it was taken against. A grid measures its items against its inner height before and after it knows it, and an item took the size of the other measurement: with `min-height: 85%` and one cell of content it came out as tall as the root
 - A block's measurement stores none of its children's layouts, which a layout of the block taken from its cache then kept: a text measured at its min-content width stayed wrapped there
 - A measurement that lays out descendants (a block's in-flow children, the items a flex row or a grid aligns on their baselines) makes the node's cached final layout compute again, so a relayout no longer keeps the measurement's layouts below the node (`Cache.forget_final_layout`)
+- A leaf's measurement gives its measure function the known size of its content box, clamped by its minimum and maximum sizes, as its final layout gives that size as available space, and applies the aspect ratio as the final layout does: a text with padding in a column was measured wrapping at its border box's width, 2 lines short of what it lays out
 
 #### Removed
 

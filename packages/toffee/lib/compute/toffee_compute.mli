@@ -59,7 +59,11 @@ val compute_leaf_layout :
     - [resolve_calc_value]: Resolver for CSS [calc()] expressions
     - [measure_function]: Closure computing content size given
       [known_dimensions] and [available_space]. For text nodes, this measures
-      text; for images, it returns intrinsic dimensions.
+      text; for images, it returns intrinsic dimensions. A measurement gives it
+      the content box's known size, clamped by the minimum and maximum sizes; a
+      final layout gives it none, with that size as definite available space.
+      The leaf gets the same size from both when the closure answers the two
+      alike.
 
     The function handles:
 

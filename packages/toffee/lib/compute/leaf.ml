@@ -144,9 +144,15 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
   with
   | Run_mode.Compute_size, true, { width = Some width; height = Some height } ->
       let size =
-        Sizef.{ width; height } |> fun s ->
-        Sizef.clamp node_min_size node_max_size s |> fun s -> Sizef.max s pb_sum
+        Sizef.clamp node_min_size node_max_size Sizef.{ width; height }
       in
+      let size =
+        match aspect_ratio with
+        | Some ratio ->
+            { size with height = Float.max size.height (size.width /. ratio) }
+        | None -> size
+      in
+      let size = Sizef.max size pb_sum in
       Layout_output.make ~size ~content_size:Sizef.zero
         ~first_baselines:Point.none ~top_margin:Collapsible_margin_set.zero
         ~bottom_margin:Collapsible_margin_set.zero
@@ -204,10 +210,45 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
       in
 
       (* Measure node *)
+      (* A measurement gives the measure function the known size of the
+         content box, clamped as the available space is. A final layout gives
+         it none, and the same size as available space, so that a function
+         that treats the two alike measures the leaf the same in both. *)
       let measured_size =
+        (* The known size itself, allocating nothing, when neither the
+           bounds nor the inset change it. *)
+        let[@inline] content known min max inset =
+          match known with
+          | None -> known
+          | Some size ->
+              let clamped =
+                match max with Some max -> Float.min size max | None -> size
+              in
+              let clamped =
+                match min with
+                | Some min -> Float.max clamped min
+                | None -> clamped
+              in
+              let content = Float.max 0. (clamped -. inset) in
+              if Float.equal content size then known else Some content
+        in
         let known_for_measure =
           match run_mode with
-          | Run_mode.Compute_size -> known_dimensions
+          | Run_mode.Compute_size ->
+              let width =
+                content known_dimensions.width node_min_size.width
+                  node_max_size.width
+                  (Rectf.horizontal_axis_sum content_box_inset)
+              and height =
+                content known_dimensions.height node_min_size.height
+                  node_max_size.height
+                  (Rectf.vertical_axis_sum content_box_inset)
+              in
+              if
+                width == known_dimensions.width
+                && height == known_dimensions.height
+              then known_dimensions
+              else Size.{ width; height }
           | Run_mode.Perform_layout -> Size.none
           | Run_mode.Perform_hidden_layout ->
               invalid_arg "Leaf node cannot be measured in hidden layout mode"

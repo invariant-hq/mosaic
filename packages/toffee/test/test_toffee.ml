@@ -1380,6 +1380,104 @@ let test_percentages_follow_a_resized_root () =
     (fun l -> (Layout.size l).height)
     200.
 
+(* A leaf's measurement is its final layout, a property. A measurement
+   ([Compute_size]) and a final layout ([Perform_layout]) of a leaf under the
+   same inputs give it the same size, for random styles (padding, borders,
+   sizes, minimums and maximums in lengths and percentages, aspect ratios,
+   both box sizings) and random inputs. The leaf holds a text, which wraps at
+   the width it is given, known or available, or a reader. *)
+let leaf_measurement_is_its_final_layout seed =
+  let rng = Random.State.make [| seed |] in
+  let int n = Random.State.int rng n in
+  let chance p = Random.State.float rng 1. < p in
+  let pick a = a.(int (Array.length a)) in
+  let length () = Float.of_int (int 30) in
+  let dimension () =
+    match int 3 with
+    | 0 -> Style.Dimension.length (length ())
+    | 1 -> Style.Dimension.percent (Float.of_int (10 + int 90) /. 100.)
+    | _ -> Style.Dimension.auto
+  in
+  let sometimes f = if chance 0.3 then f () else Style.Dimension.auto in
+  let edges () =
+    Rect.all (Style.Length_percentage.length (Float.of_int (int 3)))
+  in
+  let style =
+    Style.make
+      ~box_sizing:(pick [| Style.Box_sizing.Border_box; Content_box |])
+      ~size:{ width = dimension (); height = dimension () }
+      ~min_size:{ width = sometimes dimension; height = sometimes dimension }
+      ~max_size:{ width = sometimes dimension; height = sometimes dimension }
+      ?aspect_ratio:(if chance 0.2 then Some (pick [| 0.5; 1.; 2. |]) else None)
+      ~padding:(edges ()) ~border:(edges ()) ()
+  in
+  let known () = if chance 0.5 then Some (length ()) else None in
+  let available () =
+    match int 3 with
+    | 0 -> Available_space.of_float (length ())
+    | 1 -> Available_space.min_content
+    | _ -> Available_space.max_content
+  in
+  let content =
+    if chance 0.5 then text (Float.of_int (1 + int 40))
+    else reader (Float.of_int (1 + int 40))
+  in
+  let known_dimensions = Size.{ width = known (); height = known () } in
+  let available_space = Size.{ width = available (); height = available () } in
+  let parent_size = Size.{ width = Some 50.; height = Some 40. } in
+  let sizing_mode =
+    pick [| Toffee_tree.Sizing_mode.Inherent_size; Content_size |]
+  in
+  let size run_mode =
+    Toffee_compute.compute_leaf_layout
+      ~inputs:
+        (Layout_input.make ~run_mode ~sizing_mode
+           ~axis:Toffee_tree.Requested_axis.Both ~known_dimensions ~parent_size
+           ~available_space ~vertical_margins_are_collapsible:Line.both_false)
+      ~style
+      ~resolve_calc_value:(fun _ _ -> 0.)
+      ~measure_function:content
+    |> Layout_output.size
+  in
+  let measured = size Run_mode.Compute_size
+  and laid_out = size Run_mode.Perform_layout in
+  if not (Sizef.equal measured laid_out) then
+    failf "seed %d: measured %s, laid out %s" seed (Sizef.to_string measured)
+      (Sizef.to_string laid_out)
+
+(* A text of 36 cells with a padding of 2 in a column 11 wide: measured, it
+   wraps at its content width of 7 cells into 6 lines, as it is laid out, and
+   the line below it starts under them. *)
+let test_padded_text_measured_as_laid_out () =
+  let tree = new_tree () in
+  let text =
+    leaf tree
+      ~style:
+        (Style.default
+        |> Style.set_padding (Rect.all (Style.Length_percentage.length 2.)))
+      (Text 36.)
+  in
+  let next = leaf tree (Text 1.) in
+  let column =
+    node tree
+      (Style.default
+      |> Style.set_flex_direction Style.Flex_direction.Column
+      |> Style.set_width (Style.Dimension.length 11.))
+      [ text; next ]
+  in
+  compute_layout_with_measure tree column
+    Size.
+      {
+        width = Available_space.of_float 100.;
+        height = Available_space.of_float 100.;
+      }
+    content_measure
+  |> or_fail "layout";
+  let l = layout tree text |> or_fail "text" in
+  equal ~msg:"text height" float_exact 10. (Layout.size l).height;
+  equal ~msg:"next line" float_exact 10.
+    (Layout.location (layout tree next |> or_fail "next")).y
+
 (* A percent-width item clamped by its own max-width must be measured at the
    clamped width when deriving content-based sizes, so wrapping content
    reports the height the final layout paints. Regression: the flex base size
@@ -2262,6 +2360,10 @@ let () =
           prop ~count:1000 "Every cache hit is a computation" Gen.int
             every_cache_hit_is_a_computation;
           test "A chunk keeps its final layout" test_chunk_keeps_final_layout;
+          prop ~count:2000 "A leaf's measurement is its final layout" Gen.int
+            leaf_measurement_is_its_final_layout;
+          test "A padded text is measured as it is laid out"
+            test_padded_text_measured_as_laid_out;
           test "Percentages follow a resized root"
             test_percentages_follow_a_resized_root;
         ];

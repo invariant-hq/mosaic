@@ -527,23 +527,22 @@ type 'context measure_function =
   'context option ->
   Style.t ->
   Geometry.Sizef.t
-(** ['context measure_function] computes intrinsic size for leaf nodes.
+(** ['context measure_function] computes the size of a leaf's content.
 
-    Parameters:
-    - [known_dimensions]: Dimensions already resolved from the style (e.g.,
-      explicit [width] or [height]). [Some w] indicates width is known; [None]
-      requires computation.
-    - [available_space]: Space constraints from the parent. [Definite n]
-      provides [n] pixels; [Min_content] and [Max_content] guide intrinsic
-      sizing.
-    - [node_id]: The node being measured.
-    - [context]: Custom data associated with the node via
-      {!new_leaf_with_context}, or [None].
-    - [style]: The node's style.
+    [measure known_dimensions available_space node context style] is the size of
+    [node]'s content box. [known_dimensions] holds the content box's width or
+    height when the layout has fixed it, clamped by the node's minimum and
+    maximum sizes; [available_space] is the space for the content box on each
+    axis, a definite size or a [Min_content] or [Max_content] constraint.
+    [context] is the node's data from {!new_leaf_with_context}, and [style] its
+    style.
 
-    Returns the measured [size]. The function should respect [known_dimensions]:
-    if [known_dimensions.width] is [Some w], return [size.width = w]. When both
-    dimensions are known, computation may be skipped. *)
+    A layout measures a leaf with the known dimensions and lays it out with
+    none, giving their sizes as definite available space. The function must
+    therefore give the same size for a known dimension as for that dimension
+    given as definite available space, or a leaf's measurement and its final
+    layout disagree. With a known dimension, the result's size on that axis is
+    the known dimension. *)
 
 val compute_layout_with_measure :
   'context tree ->
