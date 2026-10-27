@@ -1,0 +1,10 @@
+(executables
+ (names hello table tree progress prompts build)
+ (libraries
+  matrix.ansi
+  matrix.cli
+  matrix.cli.unix
+  matrix.grid
+  matrix.input
+  threads.posix
+  unix))

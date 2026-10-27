@@ -1,6 +1,6 @@
 # Matrix examples
 
-Run them from the repository root. The comment at the top of each `main.ml`
+Run them from the repository root. The comment at the top of each program
 says what it shows and which keys it takes.
 
 | Example | What it shows | Run |
@@ -20,6 +20,7 @@ says what it shows and which keys it takes.
 | `13-dragdrop` | Drag and drop with alpha blending | `dune exec ./packages/matrix/examples/13-dragdrop/main.exe` |
 | `14-particles` | A particle system with five emitters | `dune exec ./packages/matrix/examples/14-particles/main.exe` |
 | `15-synthesizer` | Waveforms drawn with `matrix.charts` | `dune exec ./packages/matrix/examples/15-synthesizer/main.exe` |
+| `16-cli` | Command-line output with `matrix.cli`: `hello`, `table`, `tree`, `progress`, `prompts` and `build` | `dune exec ./packages/matrix/examples/16-cli/build.exe` |
 | `x-emulator` | A terminal emulator on SDL2 (needs `tsdl` and `tsdl-ttf`) | `dune exec ./packages/matrix/examples/x-emulator/main.exe` |
 
 Any example shows the debug overlay with `MATRIX_DEBUG=overlay`, for example
