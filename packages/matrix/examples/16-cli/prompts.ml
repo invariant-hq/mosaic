@@ -64,8 +64,8 @@ let choose_license err =
 
 let () =
   let out = Out.stdout () and err = Out.stderr () in
-  let name = answer ~default:"demo" (Prompt.line "? Project name: ") in
-  let token = answer ~default:"" (Prompt.secret "? API token: ") in
+  let name = answer ~default:"demo" (Prompt.line "? Project name:") in
+  let token = answer ~default:"" (Prompt.secret "? API token:") in
   let license = choose_license err in
   Out.print out
     (Printf.sprintf "Created %s (%s), with a token of %d characters.\n" name

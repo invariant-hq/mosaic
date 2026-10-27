@@ -121,6 +121,9 @@ type device = {
   mutable live : state option;
   mutable prompt : prompt option;
   next_id : int Atomic.t;  (** The id of the next task shown on it. *)
+  mutable asking : int;  (** The prompts that ask on it. *)
+  mutable waiting : (t * string) list;
+      (** What was written while a prompt asked, newest first. *)
   mutable work_time : (unit -> float) option;
       (** The clock of the work shown on it, if one is. *)
 }
@@ -207,6 +210,8 @@ let device fd =
           live = None;
           prompt = None;
           next_id = Atomic.make 0;
+          asking = 0;
+          waiting = [];
           work_time = None;
         }
       in
@@ -606,9 +611,12 @@ let width t =
    on the screen; called with the device's lock held. *)
 let emit t bytes =
   flush_std ();
-  match t.out_device.live with
-  | Some l when l.on_screen && l.suspended = 0 -> above l bytes
-  | _ -> write_all t.fd bytes 0 (String.length bytes)
+  let d = t.out_device in
+  if d.asking > 0 then d.waiting <- (t, bytes) :: d.waiting
+  else
+    match d.live with
+    | Some l when l.on_screen && l.suspended = 0 -> above l bytes
+    | _ -> write_all t.fd bytes 0 (String.length bytes)
 
 (* JSON events, one object on a line. A string is valid UTF-8, as
    Ansi.sanitize leaves it, with its C0 controls and DEL escaped. A time is
@@ -1799,44 +1807,82 @@ module Prompt = struct
         | None -> read_line fd buf b)
     | exception Unix.Unix_error (Unix.EINTR, _, _) -> read_line fd buf b
 
-  let line question =
+  (* While a prompt asks on [d], what is written there waits, so that no
+     line lands inside the question or its answer, and goes out once the
+     prompt ends. *)
+  let holding d f =
+    Mutex.protect d.lock (fun () -> d.asking <- d.asking + 1);
+    Fun.protect f ~finally:(fun () ->
+        Mutex.protect d.lock (fun () ->
+            d.asking <- d.asking - 1;
+            if d.asking = 0 then (
+              let waiting = List.rev d.waiting in
+              d.waiting <- [];
+              List.iter (fun (t, bytes) -> emit t bytes) waiting)))
+
+  (* Writes the question, adapted to [o]'s styling, past the lines that
+     wait. *)
+  let ask_on o question =
+    Mutex.protect o.out_device.lock (fun () ->
+        flush_std ();
+        let bytes = Matrix_cli.adapt o.adapter question in
+        write_all o.fd bytes 0 (String.length bytes))
+
+  (* The question as a prompt writes it: its hint in brackets, if any, then
+     a space. *)
+  let with_hint question = function
+    | None | Some "" -> question ^ " "
+    | Some hint -> question ^ " [" ^ hint ^ "] "
+
+  let ask ?color question =
     if not (Tty.is_tty Unix.stdin) then Error `Not_interactive
     else
+      let o = stderr ?color () in
+      holding o.out_device @@ fun () ->
       off_screen (device Unix.stdin) @@ fun () ->
-      print (stderr ()) question;
+      ask_on o question;
       match In_channel.input_line Stdlib.stdin with
       | Some l -> Ok l
       | None -> Error `End_of_input
 
-  let secret question =
-    with_terminal @@ fun fd ->
-    let ask () = write_all fd question 0 (String.length question) in
-    off_screen (device fd) @@ fun () ->
-    (* The echo goes off, and what was typed before is discarded, before the
-       question shows, so that nothing typed once it shows is echoed or
-       discarded. *)
-    let answer =
-      in_settings fd ~set:Tty.no_echo
-        ~again:(fun () ->
-          write_all fd "\r\n" 0 2;
-          ask ())
-        (fun () ->
-          ask ();
-          read_line fd (Buffer.create 64) (Bytes.create 256))
-    in
-    write_all fd "\r\n" 0 2;
-    answer
+  let line ?color ?default question =
+    match (ask ?color (with_hint question default), default) with
+    | (Error `Not_interactive | Ok ""), Some d -> Ok d
+    | answer, _ -> answer
 
-  let keys f =
-    with_terminal @@ fun fd ->
-    in_settings fd ~set:Tty.keys ~again:ignore @@ fun () ->
+  (* An affirmative answer starts with y or Y, a negative one with n or N,
+     as the POSIX locale's yesexpr and noexpr have them ("^[yY]",
+     "^[nN]"). *)
+  let confirm ?color ?default question =
+    let hint =
+      match default with
+      | None -> "y/n"
+      | Some true -> "Y/n"
+      | Some false -> "y/N"
+    in
+    let rec go () =
+      match ask ?color (with_hint question (Some hint)) with
+      | Error `Not_interactive when Option.is_some default ->
+          Ok (Option.get default)
+      | Error e -> Error e
+      | Ok a -> (
+          match (String.trim a, default) with
+          | "", Some d -> Ok d
+          | a, _ when a <> "" && (a.[0] = 'y' || a.[0] = 'Y') -> Ok true
+          | a, _ when a <> "" && (a.[0] = 'n' || a.[0] = 'N') -> Ok false
+          | _ -> go ())
+    in
+    go ()
+
+  (* The events read at [fd], decoded, as a sequence read once. *)
+  let read_events fd =
     let module D = Matrix_input.Decoder in
     let d = D.create () and queue = Queue.create () in
     let buf = Bytes.create 256 in
-    let push = function D.Key k -> Queue.push k queue | _ -> () in
+    let push e = Queue.push e queue in
     let rec next () =
       match Queue.take_opt queue with
-      | Some k -> Seq.Cons (k, next)
+      | Some e -> Seq.Cons (e, next)
       | None -> (
           let timeout = if D.pending d = D.Nothing then -1. else 0.05 in
           match Unix.select [ fd ] [] [] timeout with
@@ -1854,5 +1900,204 @@ module Prompt = struct
                   next ()
               | exception Unix.Unix_error (Unix.EINTR, _, _) -> next ()))
     in
-    Ok (f next)
+    next
+
+  (* The characters of [s], one string each. *)
+  let chars s =
+    let rec go i acc =
+      if i >= String.length s then List.rev acc
+      else
+        let n = Uchar.utf_decode_length (String.get_utf_8_uchar s i) in
+        go (i + n) (String.sub s i n :: acc)
+    in
+    go 0 []
+
+  (* A line typed with a star shown for each character, one for each code
+     point as sudo's pwfeedback counts them, and for each ill-formed byte,
+     kept as typed so that a masked and an unmasked read agree. The keys
+     are decoded, so a key's sequence types nothing, and the text of a key,
+     Alt's included, of an input method and of a paste counts; a line end
+     in a paste ends the line. The terminal's erase character and Backspace
+     erase the last character, its kill character every one, and Ctrl+W
+     the last word; its end-of-file character ends the input on an empty
+     line. A character the terminal disabled is NUL, as Linux's
+     _POSIX_VDISABLE is, and matches no key. Erasing moves the cursor back
+     by rows, over the rows the question and the stars take at the
+     terminal's width, so it works where they wrap, which one BS a star,
+     as sudo erases them, does not. [shown] is the stars on the
+     terminal. *)
+  let masked fd o ~question ~width ~typed ~shown events =
+    let tio = Unix.tcgetattr fd in
+    let is c k = c <> '\000' && c = k in
+    let write s = write_all fd s 0 (String.length s) in
+    let cols () =
+      match Tty.window fd with Some (c, _) when c > 0 -> c | _ -> 80
+    in
+    (* The rows above the cursor that the question and [n] stars take. *)
+    let above n =
+      let w = width + n in
+      if w = 0 then 0
+      else if o.caps.eager_wrap then w / cols ()
+      else (w - 1) / cols ()
+    in
+    let redraw n =
+      let up = above !shown in
+      write
+        ("\r"
+        ^ (if up > 0 then Printf.sprintf "\027[%dA" up else "")
+        ^ "\027[J" ^ question ^ String.make n '*');
+      shown := n
+    in
+    let add c =
+      typed := c :: !typed;
+      write "*";
+      incr shown
+    in
+    let erase () =
+      match !typed with
+      | [] -> ()
+      | _ :: rest ->
+          typed := rest;
+          redraw (List.length rest)
+    in
+    let rec erase_word blank =
+      match !typed with
+      | c :: rest when (c = " " || c = "\t") = blank ->
+          typed := rest;
+          erase_word blank
+      | _ -> if blank then erase_word false
+    in
+    let line () =
+      redraw 0;
+      Ok (String.concat "" (List.rev !typed))
+    in
+    let control (k : Matrix_input.Keystroke.t) =
+      match k.key with
+      | Backspace -> Some '\127'
+      | Enter -> Some '\r'
+      | Char u when k.mods.ctrl ->
+          let c = Uchar.to_int u in
+          if c >= Char.code 'a' && c <= Char.code 'z' then
+            Some (Char.chr (c - Char.code 'a' + 1))
+          else None
+      | _ -> None
+    in
+    let rec go events =
+      match events () with
+      | Seq.Nil ->
+          redraw 0;
+          Error `End_of_input
+      | Seq.Cons (e, events) -> (
+          match (e : Matrix_input.Decoder.event) with
+          | Key k -> (
+              match control k with
+              | Some ('\r' | '\n') -> line ()
+              | Some c when c = '\127' || c = '\b' || is tio.c_verase c ->
+                  erase ();
+                  go events
+              | Some c when is tio.c_vkill c ->
+                  typed := [];
+                  redraw 0;
+                  go events
+              | Some '\023' ->
+                  erase_word true;
+                  redraw (List.length !typed);
+                  go events
+              | Some c when is tio.c_veof c ->
+                  if !typed = [] then (
+                    redraw 0;
+                    Error `End_of_input)
+                  else go events
+              | Some _ -> go events
+              | None ->
+                  (* An Alt-modified key types its character too. *)
+                  (match (k.text, k.key) with
+                  | "", Char u ->
+                      let b = Buffer.create 4 in
+                      Buffer.add_utf_8_uchar b u;
+                      add (Buffer.contents b)
+                  | text, _ -> List.iter add (chars text));
+                  go events)
+          | Text s ->
+              List.iter add (chars s);
+              go events
+          | Invalid s ->
+              add s;
+              go events
+          | Paste_data s -> (
+              match
+                (String.index_from_opt s 0 '\n', String.index_from_opt s 0 '\r')
+              with
+              | None, None ->
+                  List.iter add (chars s);
+                  go events
+              | a, b ->
+                  let i =
+                    min
+                      (Option.value a ~default:max_int)
+                      (Option.value b ~default:max_int)
+                  in
+                  List.iter add (chars (String.sub s 0 i));
+                  line ())
+          | _ -> go events)
+    in
+    go events
+
+  let ask_secret ?color ~mask question =
+    with_terminal @@ fun fd ->
+    let o = make ?color fd in
+    let question = question ^ " " in
+    let bytes = Matrix_cli.adapt o.adapter question in
+    let ask () = write_all fd bytes 0 (String.length bytes) in
+    holding o.out_device @@ fun () ->
+    off_screen (device fd) @@ fun () ->
+    let answer =
+      if mask && not o.caps.dumb then
+        let typed = ref [] and shown = ref 0 in
+        let width =
+          Matrix_text.measure ~width_method:o.caps.unicode_width ~tab_width:8
+            (Ansi.sanitize question)
+        in
+        (* What was typed before the question is discarded, as [Tty.no_echo]
+           discards it. *)
+        in_settings fd
+          ~set:(fun fd ->
+            Unix.tcflush fd Unix.TCIFLUSH;
+            Tty.keys fd)
+          ~again:(fun () ->
+            write_all fd "\r\n" 0 2;
+            ask ();
+            shown := List.length !typed;
+            write_all fd (String.make !shown '*') 0 !shown)
+          (fun () ->
+            ask ();
+            masked fd o ~question:bytes ~width ~typed ~shown (read_events fd))
+      else
+        (* The echo goes off, and what was typed before is discarded, before
+           the question shows, so that nothing typed once it shows is echoed
+           or discarded. *)
+        in_settings fd ~set:Tty.no_echo
+          ~again:(fun () ->
+            write_all fd "\r\n" 0 2;
+            ask ())
+          (fun () ->
+            ask ();
+            read_line fd (Buffer.create 64) (Bytes.create 256))
+    in
+    write_all fd "\r\n" 0 2;
+    answer
+
+  let secret ?color ?default ?(mask = false) question =
+    match (ask_secret ?color ~mask question, default) with
+    | (Error `Not_interactive | Ok ""), Some d -> Ok d
+    | answer, _ -> answer
+
+  let keys f =
+    with_terminal @@ fun fd ->
+    in_settings fd ~set:Tty.keys ~again:ignore @@ fun () ->
+    Ok
+      (f
+         (Seq.filter_map
+            (function Matrix_input.Decoder.Key k -> Some k | _ -> None)
+            (read_events fd)))
 end

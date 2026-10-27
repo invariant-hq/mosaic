@@ -422,8 +422,17 @@ val tasks :
     edits a line before Enter sends it. A question only the user can answer,
     such as a password, is asked on the {e controlling terminal} ([/dev/tty]),
     as getpass(3) asks it, however the program's input is redirected. While a
-    line or a secret is asked, a live region on its terminal is off the screen.
-    While keys are read it stays, so a program can draw a menu in it.
+    line or a secret is asked, a live region on its terminal is off the screen,
+    and what the program prints on that terminal waits, to go out once the
+    prompt has its answer, so that no line lands inside the question. While keys
+    are read the region stays, so a program can draw a menu in it.
+
+    A prompt writes its question, then its {e hint} in brackets when it shows
+    one, such as [[y/N]] or a default, then a space. The question is adapted to
+    the styling of the terminal it is written to ({!section-outputs}), for the
+    program's [color] choice. A [default] answers an empty line, and a run where
+    nobody can answer, such as with standard input a pipe, where a prompt
+    without one is [Error `Not_interactive] and writes nothing.
 
     A prompt leaves the interrupt, quit and suspend characters to the terminal,
     so Ctrl+C ends the job, the quit character quits it and Ctrl+Z stops it as
@@ -436,7 +445,7 @@ val tasks :
     run while the user types. The fibers that share the thread wait with it. So
     an Eio program, whose fibers share their domain's thread, asks through
     [Eio_unix.run_in_systhread], as in
-    [Eio_unix.run_in_systhread (fun () -> Prompt.line "Name? ")], and its other
+    [Eio_unix.run_in_systhread (fun () -> Prompt.line "Name?")], and its other
     fibers keep running. *)
 module Prompt : sig
   type error =
@@ -444,18 +453,51 @@ module Prompt : sig
     | `End_of_input  (** The input ended before a line did. *) ]
   (** The type for the reasons a prompt has no answer. *)
 
-  val line : string -> (string, error) result
-  (** [line question] writes [question] to standard error and is the line read
-      from standard input, without its end. It is [Error `Not_interactive],
-      writing nothing, when standard input is not a terminal. *)
+  val line :
+    ?color:Ansi.Styling.choice ->
+    ?default:string ->
+    string ->
+    (string, error) result
+  (** [line ~color ~default question] writes [question] to standard error, with
+      [default] as its hint, and is the line read from standard input, without
+      its end. It is [Error `Not_interactive] when standard input is not a
+      terminal. *)
 
-  val secret : string -> (string, error) result
-  (** [secret question] writes [question] to the controlling terminal and is the
-      line read there with the echo off ({!Tty.no_echo}), without its end. What
-      was typed before the question is discarded, the terminal's settings are
-      put back on every way out, and the line end the echo did not show is
-      written after the answer. It is [Error `Not_interactive] when the process
-      has no controlling terminal. *)
+  val confirm :
+    ?color:Ansi.Styling.choice ->
+    ?default:bool ->
+    string ->
+    (bool, error) result
+  (** [confirm ~color ~default question] asks [question] as {!line} does, with
+      the hint [[y/n]], or [[Y/n]] and [[y/N]] for a [default] of [true] and
+      [false]. It is [true] for a line whose first character after its blanks is
+      [y] or [Y], and [false] for [n] or [N], as the POSIX locale's [yesexpr]
+      and [noexpr] read an answer. Another line, or an empty one without
+      [default], asks again. *)
+
+  val secret :
+    ?color:Ansi.Styling.choice ->
+    ?default:string ->
+    ?mask:bool ->
+    string ->
+    (string, error) result
+  (** [secret ~color ~default ~mask question] writes [question] to the
+      controlling terminal and is the line read there, without its end, with the
+      echo off ({!Tty.no_echo}). Its hint never shows [default]. What was typed
+      before the question is discarded, the terminal's settings are put back on
+      every way out, and the line end the echo did not show is written after the
+      answer. It is [Error `Not_interactive] when the process has no controlling
+      terminal.
+
+      With [~mask:true] ([false] by default), each character typed shows as [*],
+      so the user sees the keys reach the program, and anyone who sees the
+      screen sees the secret's length. The keys are decoded, so a key that types
+      no text, such as an arrow, is ignored, and the text of a key, a paste or
+      an input method is typed, a line end in a paste ending the line. The
+      terminal's erase character and Backspace erase the last character, its
+      kill character every one, Ctrl+W the last word, and its end-of-file
+      character on an empty line ends the input. The stars are erased once the
+      line ends. On a dumb terminal, which cannot erase them, nothing shows. *)
 
   val keys : (Matrix_input.Keystroke.t Seq.t -> 'a) -> ('a, error) result
   (** [keys f] is [Ok (f ks)] where [ks] is the keys typed at the controlling

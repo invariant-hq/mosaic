@@ -267,11 +267,115 @@ let test_notify () =
     | _ -> false)
 
 let test_line () =
-  spawn "line" @@ fun term c ->
+  ( spawn "line" @@ fun term c ->
+    T.Child.wait c ~within:10. (shows "Name?");
+    T.Child.send c "Ada\r";
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:"the answer" (has_line "HELLO Ada" term);
+    is_true ~msg:"the prompt's space" (has_line "Name? Ada" term) );
+  ( spawn "line-default" @@ fun term c ->
+    T.Child.wait c ~within:10. (shows "Name? [demo]");
+    T.Child.send c "\r";
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:"an empty line is the default" (has_line "HELLO demo" term) );
+  equal ~msg:"nobody to ask: the default, and no question" Testable.string
+    "HELLO demo\n" (piped "line-default");
+  equal ~msg:"no default" Testable.string "NOT INTERACTIVE\n" (piped "line")
+
+(* A confirmation reads y or n first, as the POSIX locale does, and asks
+   again otherwise. *)
+let test_confirm () =
+  (* Each line once the question shows again. *)
+  let answer ?(mode = "confirm") keys expected =
+    spawn mode @@ fun term c ->
+    List.iteri
+      (fun i k ->
+        T.Child.wait c ~within:10. (fun t ->
+            List.length (T.Screen.find (T.Terminal.screen t) "Publish?") > i);
+        T.Child.send c k)
+      keys;
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:(String.concat "," keys) (has_line expected term);
+    term
+  in
+  ignore (answer [ "y\r" ] "YES" : T.Terminal.t);
+  ignore (answer [ "  Yes!\r" ] "YES" : T.Terminal.t);
+  ignore (answer [ "n\r" ] "NO" : T.Terminal.t);
+  ignore (answer [ "\r" ] "NO" : T.Terminal.t);
+  let term = answer [ "maybe\r"; "N\r" ] "NO" in
+  equal ~msg:"asked again" (list string)
+    [ "Publish? [y/N] maybe"; "Publish? [y/N] N" ]
+    (List.filter (String.starts_with ~prefix:"Publish?") (lines term));
+  let term = answer ~mode:"confirm-nodefault" [ "\r"; "y\r" ] "YES" in
+  equal ~msg:"no default: an empty line asks again" (list string)
+    [ "Publish? [y/n]"; "Publish? [y/n] y" ]
+    (List.filter (String.starts_with ~prefix:"Publish?") (lines term));
+  equal ~msg:"nobody to ask" Testable.string "NO\n" (piped "confirm")
+
+(* A masked secret shows a star for each character, reads keys decoded, and
+   erases its stars when the line ends. *)
+let test_secret_mask () =
+  let answer ?(cols = 40) keys expected =
+    spawn ~cols "secret-mask" @@ fun term c ->
+    T.Child.wait c ~within:10. (shows "Password:");
+    T.Child.send c keys;
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:(String.escaped keys) (has_line ("GOT " ^ expected) term);
+    is_false ~msg:"no star left" (shows "*" term)
+  in
+  answer "hunter2\r" "\"hunter2\"";
+  answer "huntx\127er2\r" "\"hunter2\"";
+  answer "ab\027[Dc\r" "\"abc\"";
+  answer "xyz\021ab cd\023\r" "\"ab \"";
+  answer "\027[200~pw\027[201~\r" "\"pw\"";
+  answer "\027[200~pw\nrest\027[201~" "\"pw\"";
+  answer "caf\233\r" "\"caf\\233\"";
+  answer "pw\027a\r" "\"pwa\"";
+  ( spawn ~cols:20 "secret-mask" @@ fun term c ->
+    T.Child.wait c ~within:10. (shows "Password:");
+    T.Child.send c (String.make 30 'x');
+    T.Child.wait c ~within:10. (shows "**********");
+    T.Child.send c "\r";
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:"stars that wrap are erased"
+      (List.mem "Password:" (lines term) && not (shows "*" term)) );
+  spawn "secret-mask" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "Password:");
+  T.Child.send c "ab";
+  T.Child.wait c ~within:10. (shows "Password: **");
+  T.Child.send c "\004";
+  is_false ~msg:"Ctrl+D on a line goes on" (has_line "EOF" term);
+  T.Child.send c "\021\004";
+  exited 0 (T.Child.exit c ~within:10.);
+  is_true ~msg:"Ctrl+D on an empty line ends the input" (has_line "EOF" term)
+
+(* A question is written at the styling of the terminal it is asked on. *)
+let test_secret_styled () =
+  spawn ~env:[ ("NO_COLOR", "1") ] "secret-styled" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "Password:");
+  T.Child.send c "pw\r";
+  exited 0 (T.Child.exit c ~within:10.);
+  is_true ~msg:"the question" (shows "? Password:" term);
+  is_false ~msg:"no color" (contains (T.Terminal.output term) "\027[31m")
+
+(* What a thread prints while a question is asked waits for the answer. *)
+let test_line_held () =
+  spawn "line-held" @@ fun term c ->
   T.Child.wait c ~within:10. (shows "Name?");
+  Unix.sleepf 0.2;
   T.Child.send c "Ada\r";
   exited 0 (T.Child.exit c ~within:10.);
-  is_true ~msg:"the answer" (has_line "HELLO Ada" term)
+  is_true ~msg:"the question whole" (has_line "Name? Ada" term);
+  let ls = lines term in
+  let rec after_question = function
+    | "Name? Ada" :: rest -> rest
+    | _ :: rest -> after_question rest
+    | [] -> []
+  in
+  is_true ~msg:"lines printed while asked come after"
+    (List.length
+       (List.filter (String.starts_with ~prefix:"TICK") (after_question ls))
+    >= 2)
 
 (* A prompt blocks only the thread that asks: another keeps running, which
    is what an Eio program relies on when it asks through
@@ -750,7 +854,11 @@ let () =
         [
           test "a line" test_line;
           test "a line asked on a thread" test_line_thread;
+          test "a confirmation" test_confirm;
+          test "lines held while asked" test_line_held;
           test "a secret" test_secret;
+          test "a masked secret" test_secret_mask;
+          test "a styled question" test_secret_styled;
           test "Ctrl+C in a secret" test_secret_interrupted;
           test "Ctrl+Z in a secret" test_secret_stop;
           test "keys" test_keys;

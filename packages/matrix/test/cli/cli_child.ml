@@ -297,7 +297,7 @@ let () =
       let answer = Atomic.make None in
       let asker =
         Thread.create
-          (fun () -> Atomic.set answer (Some (C.Prompt.line "Name? ")))
+          (fun () -> Atomic.set answer (Some (C.Prompt.line "Name?")))
           ()
       in
       let i = ref 0 in
@@ -320,15 +320,54 @@ let () =
       C.notify err ~title:"Done" ~body:"built";
       C.bell err;
       print_string "NOTIFIED\n"
-  | "line" -> (
-      match C.Prompt.line "Name? " with
+  | ("line" | "line-default") as mode -> (
+      let default = if mode = "line-default" then Some "demo" else None in
+      match C.Prompt.line ?default "Name?" with
       | Ok name -> Printf.printf "HELLO %s\n" name
       | Error `End_of_input -> print_string "EOF\n"
       | Error `Not_interactive -> print_string "NOT INTERACTIVE\n")
+  | ("confirm" | "confirm-nodefault") as mode -> (
+      let default = if mode = "confirm" then Some false else None in
+      match C.Prompt.confirm ?default "Publish?" with
+      | Ok true -> print_string "YES\n"
+      | Ok false -> print_string "NO\n"
+      | Error `End_of_input -> print_string "EOF\n"
+      | Error `Not_interactive -> print_string "NOT INTERACTIVE\n")
+  | ("secret-mask" | "secret-styled") as mode -> (
+      let question =
+        if mode = "secret-styled" then "\027[31m?\027[0m Password:"
+        else "Password:"
+      in
+      match C.Prompt.secret ~mask:(mode = "secret-mask") question with
+      | Ok p -> Printf.printf "GOT %S\n" p
+      | Error `End_of_input -> print_string "EOF\n"
+      | Error `Not_interactive -> print_string "NOT INTERACTIVE\n")
+  | "line-held" -> (
+      (* Lines printed on a thread while a question is asked wait for the
+         answer. *)
+      let answered = Atomic.make false in
+      let printer =
+        Thread.create
+          (fun () ->
+            let i = ref 0 in
+            while not (Atomic.get answered) do
+              incr i;
+              C.print err (Printf.sprintf "TICK %d\n" !i);
+              Thread.delay 0.05
+            done)
+          ()
+      in
+      Thread.delay 0.12;
+      let answer = C.Prompt.line "Name?" in
+      Atomic.set answered true;
+      Thread.join printer;
+      match answer with
+      | Ok name -> C.print err (Printf.sprintf "HELLO %s\n" name)
+      | Error _ -> C.print err "NO ANSWER\n")
   | "secret" -> (
       C.live err @@ fun live ->
       C.show live (text_frame "BUSY");
-      match C.Prompt.secret "Password: " with
+      match C.Prompt.secret "Password:" with
       | Ok p -> C.print err (Printf.sprintf "GOT %s\n" p)
       | Error `End_of_input -> C.print err "EOF\n"
       | Error `Not_interactive -> C.print err "NOT INTERACTIVE\n")
@@ -340,8 +379,7 @@ let () =
       | 0 ->
           ignore
             (Sys.signal Sys.sigint Sys.Signal_default : Sys.signal_behavior);
-          ignore
-            (C.Prompt.secret "Password: " : (string, C.Prompt.error) result);
+          ignore (C.Prompt.secret "Password:" : (string, C.Prompt.error) result);
           exit 0
       | pid ->
           let status =
