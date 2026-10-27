@@ -162,7 +162,7 @@ val feed : t -> bytes -> int -> int -> Matrix_input.Reply.t list
     or dropping any it answers otherwise. It is [[]], with no allocation, when
     there are none. A sequence split across calls is answered by the call that
     completes it. It applies the bytes with {!advance} until all are applied,
-    then takes {!replies}.
+    then takes {!val-replies}.
 
     Raises [Invalid_argument] if [off] and [len] do not designate a range of
     [b]. *)
@@ -334,7 +334,7 @@ val advance : t -> bytes -> int -> int -> int
 (** [advance t b off len] applies bytes of [b] from [off] to [t], in order, and
     is the number it applied: the [len] bytes, or fewer when one of them opens
     or ends an update, which is then the last applied. It keeps the replies the
-    bytes ask for until {!replies} takes them. It stops at each update's two
+    bytes ask for until {!val-replies} takes them. It stops at each update's two
     ends whichever way the bytes are split, so a reader that loops on it sees
     the same points whatever its reads.
 
