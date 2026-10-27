@@ -6,8 +6,10 @@ open Toffee_geometry
 open Style
 open Tree
 
-(* Stdlib's max on floats, compiled without boxing its arguments. *)
+(* Stdlib's max and min on floats, compiled without boxing their
+   arguments. *)
 let fmax (a : float) b = if a >= b then a else b
+let fmin (a : float) b = if a <= b then a else b
 
 (* Flex direction helpers *)
 module Flex_direction_ext = struct
@@ -85,6 +87,14 @@ type flex_item = {
   flex_grow : float; (* The flex grow style of the item *)
   (* Resolved sizes *)
   mutable resolved_minimum_main_size : float; (* The minimum size of the item *)
+  (* The constraints the item is measured under for its flex base size and its
+     min-content main size: its known dimensions (its cross size when its
+     style sets one or it is stretched), its parent size for percentages (the
+     container's inner cross size), and the available space in its cross axis,
+     clamped by its own cross-axis minimum and maximum. *)
+  mutable measure_known_dimensions : float option size;
+  mutable measure_parent_size : float option size;
+  mutable measure_available_cross : Available_space.t;
   (* Positioning *)
   inset : float option rect; (* The final offset of this item *)
   mutable margin : Rectf.t; (* The margin of this item *)
@@ -419,6 +429,9 @@ let generate_anonymous_flex_items (type t)
           violation = 0.0;
           frozen = false;
           resolved_minimum_main_size = 0.0;
+          measure_known_dimensions = Size.none;
+          measure_parent_size = Size.none;
+          measure_available_cross = Available_space.max_content;
           inset;
           margin;
           margin_is_auto;
@@ -497,6 +510,185 @@ let clamp_known_cross_size (item : flex_item) ~(is_row : bool)
       width = clamp known.width item.min_size.width item.max_size.width;
     }
 
+(* Sets [child]'s measurement constraints for the current layout. *)
+let set_measure_constraints (constants : algo_constants)
+    (available_space : Available_space.t size) (child : flex_item) =
+  (* Parent size for child sizing *)
+  let cross_axis_parent_size =
+    if constants.is_row then constants.node_inner_size.height
+    else constants.node_inner_size.width
+  in
+  let child_parent_size =
+    if constants.is_row then
+      Size.{ width = None; height = cross_axis_parent_size }
+    else Size.{ width = cross_axis_parent_size; height = None }
+  in
+
+  (* Available space for child sizing *)
+  let cross_axis_margin_sum =
+    if constants.is_row then child.margin.top +. child.margin.bottom
+    else child.margin.left +. child.margin.right
+  in
+
+  let child_min_cross =
+    (if constants.is_row then child.min_size.height else child.min_size.width)
+    |> Option.map (fun v -> v +. cross_axis_margin_sum)
+  in
+  let child_max_cross =
+    (if constants.is_row then child.max_size.height else child.max_size.width)
+    |> Option.map (fun v -> v +. cross_axis_margin_sum)
+  in
+
+  (* Clamp available space by min- and max- size *)
+  let cross_axis_available_space =
+    let available_cross =
+      if constants.is_row then available_space.height else available_space.width
+    in
+    match available_cross with
+    | Available_space.Definite val_ ->
+        let clamped =
+          Option.value cross_axis_parent_size ~default:val_ |> fun v ->
+          match (child_min_cross, child_max_cross) with
+          | Some min, Some max -> Float.max min (Float.min v max)
+          | Some min, None -> Float.max min v
+          | None, Some max -> Float.min v max
+          | None, None -> v
+        in
+        Available_space.of_float clamped
+    | Available_space.Min_content -> (
+        match child_min_cross with
+        | Some min -> Available_space.of_float min
+        | None -> Available_space.min_content)
+    | Available_space.Max_content -> (
+        match child_max_cross with
+        | Some max -> Available_space.of_float max
+        | None -> Available_space.max_content)
+  in
+
+  (* Known dimensions for child sizing *)
+  let child_known_dimensions =
+    let base_size =
+      if constants.is_row then { Size.width = None; height = child.size.height }
+      else { Size.width = child.size.width; height = None }
+    in
+    (* Handle stretch alignment *)
+    let cross_dim =
+      if constants.is_row then base_size.height else base_size.width
+    in
+    (if child.align_self = Stretch && cross_dim = None then
+       let cross_size =
+         Available_space.to_option cross_axis_available_space
+         |> Option.map (fun v -> v -. cross_axis_margin_sum)
+       in
+       if constants.is_row then { base_size with height = cross_size }
+       else { base_size with width = cross_size }
+     else base_size)
+    |> clamp_known_cross_size child ~is_row:constants.is_row
+  in
+  child.measure_known_dimensions <- child_known_dimensions;
+  child.measure_parent_size <- child_parent_size;
+  child.measure_available_cross <- cross_axis_available_space
+
+let[@inline] main_padding_border (constants : algo_constants)
+    (child : flex_item) =
+  if constants.is_row then
+    child.padding.left +. child.padding.right +. child.border.left
+    +. child.border.right
+  else
+    child.padding.top +. child.padding.bottom +. child.border.top
+    +. child.border.bottom
+
+(* An item's automatic minimum main size (CSS Flexbox 4.5) is its min-content
+   main size, capped by its specified main size and its maximum main size, and
+   floored by its main-axis padding and border. Measuring the min-content size
+   lays the item out under a min-content constraint, so it is measured only
+   when a step of the algorithm depends on it
+   ([resolve_minimum_main_size]). Until
+   then the item's [resolved_minimum_main_size] is NaN.
+
+   The cap does not depend on the content. An automatic minimum is therefore
+   at most [automatic_minimum_bound], the smaller of the specified main size
+   and the maximum, floored by padding and border, or infinity when the style
+   sets neither. A step that compares the minimum with a size at least this
+   bound gets the same result whatever the minimum, and does not measure
+   it. *)
+let[@inline] automatic_minimum_bound (constants : algo_constants)
+    (child : flex_item) =
+  let cap =
+    match
+      ( (if constants.is_row then child.size.width else child.size.height),
+        if constants.is_row then child.max_size.width else child.max_size.height
+      )
+    with
+    | Some size, Some max -> fmin size max
+    | Some size, None -> size
+    | None, Some max -> max
+    | None, None -> Float.infinity
+  in
+  fmax cap (main_padding_border constants child)
+
+(* Measures [child]'s automatic minimum and keeps it as its resolved minimum
+   main size. *)
+let measure_automatic_minimum (type t)
+    (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
+    (constants : algo_constants) (child : flex_item) =
+  (* Compute min-content size *)
+  let child_available_space =
+    if constants.is_row then
+      Size.
+        {
+          width = Available_space.min_content;
+          height = child.measure_available_cross;
+        }
+    else
+      Size.
+        {
+          width = child.measure_available_cross;
+          height = Available_space.min_content;
+        }
+  in
+  let layout_output =
+    Tree.compute_child_layout tree child.node
+      (Layout_input.make ~run_mode:Run_mode.Compute_size
+         ~sizing_mode:Sizing_mode.Content_size
+         ~axis:
+           (if constants.is_row then Requested_axis.Horizontal
+            else Requested_axis.Vertical)
+         ~known_dimensions:child.measure_known_dimensions
+         ~parent_size:child.measure_parent_size
+         ~available_space:child_available_space
+         ~vertical_margins_are_collapsible:Line.both_false)
+  in
+
+  let min_content_main_size =
+    let measured_size = Layout_output.size layout_output in
+    if constants.is_row then measured_size.width else measured_size.height
+  in
+
+  (* Apply automatic minimum size clamping *)
+  let clamped_min =
+    min_content_main_size |> fun v ->
+    (match if constants.is_row then child.size.width else child.size.height with
+      | Some size -> Float.min v size
+      | None -> v)
+    |> fun v ->
+    match
+      if constants.is_row then child.max_size.width else child.max_size.height
+    with
+    | Some max -> Float.min v max
+    | None -> v
+  in
+  child.resolved_minimum_main_size <-
+    Float.max clamped_min (main_padding_border constants child)
+
+(* Measures [child]'s automatic minimum and keeps it as its resolved minimum
+   main size, if it does not have one yet. *)
+let resolve_minimum_main_size (type t)
+    (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
+    (constants : algo_constants) (child : flex_item) =
+  if Float.is_nan child.resolved_minimum_main_size then
+    measure_automatic_minimum (module Tree) tree constants child
+
 let determine_flex_base_size (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (constants : algo_constants) (available_space : Available_space.t size)
@@ -506,83 +698,7 @@ let determine_flex_base_size (type t)
   Array.iter
     (fun child ->
       let child_style = Tree.get_core_container_style tree child.node in
-
-      (* Parent size for child sizing *)
-      let cross_axis_parent_size =
-        if constants.is_row then constants.node_inner_size.height
-        else constants.node_inner_size.width
-      in
-      let child_parent_size =
-        if constants.is_row then
-          Size.{ width = None; height = cross_axis_parent_size }
-        else Size.{ width = cross_axis_parent_size; height = None }
-      in
-
-      (* Available space for child sizing *)
-      let cross_axis_margin_sum =
-        if constants.is_row then child.margin.top +. child.margin.bottom
-        else child.margin.left +. child.margin.right
-      in
-
-      let child_min_cross =
-        (if constants.is_row then child.min_size.height
-         else child.min_size.width)
-        |> Option.map (fun v -> v +. cross_axis_margin_sum)
-      in
-      let child_max_cross =
-        (if constants.is_row then child.max_size.height
-         else child.max_size.width)
-        |> Option.map (fun v -> v +. cross_axis_margin_sum)
-      in
-
-      (* Clamp available space by min- and max- size *)
-      let cross_axis_available_space =
-        let available_cross =
-          if constants.is_row then available_space.height
-          else available_space.width
-        in
-        match available_cross with
-        | Available_space.Definite val_ ->
-            let clamped =
-              Option.value cross_axis_parent_size ~default:val_ |> fun v ->
-              match (child_min_cross, child_max_cross) with
-              | Some min, Some max -> Float.max min (Float.min v max)
-              | Some min, None -> Float.max min v
-              | None, Some max -> Float.min v max
-              | None, None -> v
-            in
-            Available_space.of_float clamped
-        | Available_space.Min_content -> (
-            match child_min_cross with
-            | Some min -> Available_space.of_float min
-            | None -> Available_space.min_content)
-        | Available_space.Max_content -> (
-            match child_max_cross with
-            | Some max -> Available_space.of_float max
-            | None -> Available_space.max_content)
-      in
-
-      (* Known dimensions for child sizing *)
-      let child_known_dimensions =
-        let base_size =
-          if constants.is_row then
-            { Size.width = None; height = child.size.height }
-          else { Size.width = child.size.width; height = None }
-        in
-        (* Handle stretch alignment *)
-        let cross_dim =
-          if constants.is_row then base_size.height else base_size.width
-        in
-        (if child.align_self = Stretch && cross_dim = None then
-           let cross_size =
-             Available_space.to_option cross_axis_available_space
-             |> Option.map (fun v -> v -. cross_axis_margin_sum)
-           in
-           if constants.is_row then { base_size with height = cross_size }
-           else { base_size with width = cross_size }
-         else base_size)
-        |> clamp_known_cross_size child ~is_row:constants.is_row
-      in
+      set_measure_constraints constants available_space child;
 
       (* Get container width for resolving flex basis *)
       let container_width =
@@ -637,12 +753,12 @@ let determine_flex_base_size (type t)
                  Size.
                    {
                      width = main_available;
-                     height = cross_axis_available_space;
+                     height = child.measure_available_cross;
                    }
                else
                  Size.
                    {
-                     width = cross_axis_available_space;
+                     width = child.measure_available_cross;
                      height = main_available;
                    }
              in
@@ -654,8 +770,8 @@ let determine_flex_base_size (type t)
                     ~axis:
                       (if constants.is_row then Requested_axis.Horizontal
                        else Requested_axis.Vertical)
-                    ~known_dimensions:child_known_dimensions
-                    ~parent_size:child_parent_size
+                    ~known_dimensions:child.measure_known_dimensions
+                    ~parent_size:child.measure_parent_size
                     ~available_space:child_available_space
                     ~vertical_margins_are_collapsible:Line.both_false)
              in
@@ -665,14 +781,7 @@ let determine_flex_base_size (type t)
              else measured_size.height);
 
       (* Floor flex-basis by the padding_border_sum *)
-      let padding_border_sum =
-        if constants.is_row then
-          child.padding.left +. child.padding.right +. child.border.left
-          +. child.border.right
-        else
-          child.padding.top +. child.padding.bottom +. child.border.top
-          +. child.border.bottom
-      in
+      let padding_border_sum = main_padding_border constants child in
       child.flex_basis <- Float.max child.flex_basis padding_border_sum;
 
       (* Compute inner flex basis *)
@@ -698,76 +807,27 @@ let determine_flex_base_size (type t)
         | None, None -> None
       in
 
+      let max_main =
+        if constants.is_row then child.max_size.width else child.max_size.height
+      in
       child.resolved_minimum_main_size <-
-        (match style_min_main_size with
-        | Some v -> v
-        | None ->
-            (* Compute min-content size *)
-            let child_available_space =
-              let cross_available =
-                if constants.is_row then
-                  Size.
-                    {
-                      width = Available_space.min_content;
-                      height = cross_axis_available_space;
-                    }
-                else
-                  Size.
-                    {
-                      width = cross_axis_available_space;
-                      height = Available_space.min_content;
-                    }
-              in
-              cross_available
-            in
+        (match style_min_main_size with Some v -> v | None -> Float.nan);
 
-            let layout_output =
-              Tree.compute_child_layout tree child.node
-                (Layout_input.make ~run_mode:Run_mode.Compute_size
-                   ~sizing_mode:Sizing_mode.Content_size
-                   ~axis:
-                     (if constants.is_row then Requested_axis.Horizontal
-                      else Requested_axis.Vertical)
-                   ~known_dimensions:child_known_dimensions
-                   ~parent_size:child_parent_size
-                   ~available_space:child_available_space
-                   ~vertical_margins_are_collapsible:Line.both_false)
-            in
-
-            let min_content_main_size =
-              let measured_size = Layout_output.size layout_output in
-              if constants.is_row then measured_size.width
-              else measured_size.height
-            in
-
-            (* Apply automatic minimum size clamping *)
-            let clamped_min =
-              min_content_main_size |> fun v ->
-              (match
-                 if constants.is_row then child.size.width
-                 else child.size.height
-               with
-                | Some size -> Float.min v size
-                | None -> v)
-              |> fun v ->
-              match
-                if constants.is_row then child.max_size.width
-                else child.max_size.height
-              with
-              | Some max -> Float.min v max
-              | None -> v
-            in
-            Float.max clamped_min padding_border_sum);
-
-      (* Compute hypothetical sizes *)
+      (* Compute hypothetical sizes. With a maximum, the hypothetical size
+         depends on the minimum only through its padding and border floor, as
+         an automatic minimum is at most the maximum or equal to that floor.
+         Without one, the hypothetical size is the flex base size whenever
+         the bound of an automatic minimum does not exceed it. *)
+      if
+        Float.is_nan child.resolved_minimum_main_size
+        && max_main = None
+        && automatic_minimum_bound constants child > child.flex_basis
+      then measure_automatic_minimum (module Tree) tree constants child;
       let hypothetical_inner_min_main =
-        Float.max child.resolved_minimum_main_size padding_border_sum
+        if Float.is_nan child.resolved_minimum_main_size then padding_border_sum
+        else Float.max child.resolved_minimum_main_size padding_border_sum
       in
       let hypothetical_inner_width =
-        let max_main =
-          if constants.is_row then child.max_size.width
-          else child.max_size.height
-        in
         match max_main with
         | Some max ->
             Float.min child.flex_basis
@@ -1066,6 +1126,12 @@ let determine_container_main_size (type t)
                     in
 
                     let min_main_size =
+                      resolve_minimum_main_size
+                        (module Tree)
+                        tree constants flex_item;
+                      let resolved_minimum_main_size =
+                        flex_item.resolved_minimum_main_size
+                      in
                       let base_min =
                         match (style_min, flex_basis_min) with
                         | Some s, Some f -> Some (Float.max s f)
@@ -1074,9 +1140,8 @@ let determine_container_main_size (type t)
                         | None, None -> None
                       in
                       match base_min with
-                      | Some v ->
-                          Float.max v flex_item.resolved_minimum_main_size
-                      | None -> flex_item.resolved_minimum_main_size
+                      | Some v -> Float.max v resolved_minimum_main_size
+                      | None -> resolved_minimum_main_size
                     in
 
                     let max_main_size =
@@ -1448,8 +1513,9 @@ let determine_container_main_size (type t)
       { constants.node_inner_size with height = Some inner_main_size })
 
 (* Resolve flexible lengths *)
-let resolve_flexible_lengths (line : flex_line) (constants : algo_constants) :
-    unit =
+let resolve_flexible_lengths (type t)
+    (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
+    (line : flex_line) (constants : algo_constants) : unit =
   let total_main_axis_gap =
     sum_axis_gaps
       (if constants.is_row then constants.gap.width else constants.gap.height)
@@ -1602,21 +1668,27 @@ let resolve_flexible_lengths (line : flex_line) (constants : algo_constants) :
                   if constants.is_row then child.target_width
                   else child.target_height
                 in
-                let resolved_min = Some child.resolved_minimum_main_size in
                 let max_main =
                   if constants.is_row then child.max_size.width
                   else child.max_size.height
                 in
+                let capped =
+                  match max_main with
+                  | Some max -> Float.min current_size max
+                  | None -> current_size
+                in
+                (* A minimum no larger than the capped size leaves it as it
+                   is, so an automatic minimum is measured only for a size
+                   below its bound. *)
                 let clamped =
-                  let v =
-                    match (resolved_min, max_main) with
-                    | Some min, Some max ->
-                        Float.max min (Float.min current_size max)
-                    | Some min, None -> Float.max min current_size
-                    | None, Some max -> Float.min current_size max
-                    | None, None -> current_size
-                  in
-                  Float.max 0.0 v
+                  if
+                    Float.is_nan child.resolved_minimum_main_size
+                    && capped >= automatic_minimum_bound constants child
+                  then Float.max 0.0 capped
+                  else (
+                    resolve_minimum_main_size (module Tree) tree constants child;
+                    Float.max 0.0
+                      (Float.max child.resolved_minimum_main_size capped))
                 in
                 child.violation <- clamped -. current_size;
                 if constants.is_row then (
@@ -3420,7 +3492,9 @@ let compute_preliminary (type t)
 
   (* 6. Resolve the flexible lengths of all the flex items to find their used
      main size *)
-  List.iter (fun line -> resolve_flexible_lengths line constants) flex_lines;
+  List.iter
+    (fun line -> resolve_flexible_lengths (module Tree) tree line constants)
+    flex_lines;
 
   (* 9.4. Cross Size Determination *)
 

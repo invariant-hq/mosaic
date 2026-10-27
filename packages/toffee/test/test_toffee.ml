@@ -1517,6 +1517,182 @@ let leaf_measurement_is_its_final_layout ~replaced seed =
     failf "seed %d: measured %s, laid out %s" seed (Sizef.to_string measured)
       (Sizef.to_string laid_out)
 
+(* A box whose min-content and max-content sizes are the same on both axes
+   and known in advance; a definite available space between them sets its
+   size. *)
+type box_content = { min_content : float; max_content : float }
+
+let box_measure (known : float option size) (available : Available_space.t size)
+    _node context _style : Sizef.t =
+  let content =
+    Option.value context ~default:{ min_content = 0.; max_content = 0. }
+  in
+  let axis known (available : Available_space.t) =
+    match (known, available) with
+    | Some size, _ -> size
+    | None, Min_content -> content.min_content
+    | None, Max_content -> content.max_content
+    | None, Definite size ->
+        Float.max content.min_content (Float.min size content.max_content)
+  in
+  {
+    width = axis known.width available.width;
+    height = axis known.height available.height;
+  }
+
+(* A row 250 wide holds an item 100% wide whose content is 300 wide at the
+   least. The item's automatic minimum is at most its width, its flex base
+   size, and the line holds it exactly, so nothing reads the minimum and the
+   item is never measured at min-content. *)
+let test_definite_item_not_measured_at_min_content () =
+  let tree = new_tree () in
+  let min_content_measures = ref 0 in
+  let measure (known : float option size) (available : Available_space.t size)
+      node context style =
+    if known.width = None && available.width = Available_space.Min_content then
+      incr min_content_measures;
+    box_measure known available node context style
+  in
+  let item =
+    new_leaf_with_context tree
+      (Style.make
+         ~size:
+           { width = Style.Dimension.percent 1.; height = Style.Dimension.auto }
+         ())
+      { min_content = 300.; max_content = 400. }
+    |> or_fail "item"
+  in
+  let row =
+    new_with_children tree
+      (Style.make
+         ~size:
+           {
+             width = Style.Dimension.length 250.;
+             height = Style.Dimension.length 70.;
+           }
+         ())
+      [| item |]
+    |> or_fail "row"
+  in
+  compute_layout_with_measure tree row max_content measure |> or_fail "compute";
+  equal ~msg:"item width" float_exact 250.
+    (Layout.size (layout tree item |> or_fail "layout")).width;
+  equal ~msg:"measurements at min-content" int 0 !min_content_measures
+
+(* An automatic minimum, a property. A flex item's automatic minimum main size
+   is its min-content main size, capped by its main size and its maximum and
+   floored by its padding and border, and a layout measures it only when the
+   result depends on it. Random flex containers of definite size hold boxes
+   whose min-content size is known in advance, so the value each automatic
+   minimum resolves to is known too: the layout with automatic minimums is the
+   layout with each minimum set to that value, which nothing measures. *)
+let automatic_minimum_is_its_value seed =
+  let rng = Random.State.make [| seed |] in
+  let int n = Random.State.int rng n in
+  let chance p = Random.State.float rng 1. < p in
+  let pick a = a.(int (Array.length a)) in
+  let length n = Float.of_int (int n) in
+  let sometimes n = if chance 0.5 then Some (length n) else None in
+  let dimension = function
+    | Some size -> Style.Dimension.length size
+    | None -> Style.Dimension.auto
+  in
+  let direction =
+    pick [| Style.Flex_direction.Row; Column; Row_reverse; Column_reverse |]
+  in
+  let is_row = direction = Row || direction = Row_reverse in
+  let axes main cross : Style.Dimension.t size =
+    if is_row then { width = main; height = cross }
+    else { width = cross; height = main }
+  in
+  let container =
+    Style.make ~flex_direction:direction
+      ~flex_wrap:(if chance 0.3 then Style.Flex_wrap.Wrap else No_wrap)
+      ~size:
+        {
+          width = Style.Dimension.length (length 120);
+          height = Style.Dimension.length (length 120);
+        }
+      ~padding:(Rect.all (Style.Length_percentage.length (length 4)))
+      ~gap:(Size.square (Style.Length_percentage.length (length 6)))
+      ~align_items:(pick [| Style.Align_items.Stretch; Center; Baseline |])
+      ()
+  in
+  (* Each item: its content, its style with an automatic minimum, and its
+     style with the minimum set to the value the automatic one resolves to. *)
+  let items =
+    List.init
+      (1 + int 6)
+      (fun _ ->
+        let content = { min_content = length 60; max_content = length 60 } in
+        let main = sometimes 60 and cross = sometimes 40 in
+        let maximum = if chance 0.3 then sometimes 60 else None in
+        let basis =
+          if chance 0.3 then Some (dimension (sometimes 60)) else None
+        in
+        let padding = length 4 and border = length 3 in
+        let padding_border = 2. *. (padding +. border) in
+        let value =
+          let capped =
+            List.fold_left
+              (fun size cap ->
+                match cap with Some cap -> Float.min size cap | None -> size)
+              (content.min_content +. padding_border)
+              [ main; maximum ]
+          in
+          Float.max capped padding_border
+        in
+        let style =
+          Style.make
+            ~size:(axes (dimension main) (dimension cross))
+            ~max_size:(axes (dimension maximum) Style.Dimension.auto)
+            ?flex_basis:basis ~flex_grow:(length 3) ~flex_shrink:(length 3)
+            ~margin:(Rect.all (Style.Length_percentage_auto.length (length 3)))
+            ~padding:(Rect.all (Style.Length_percentage.length padding))
+            ~border:(Rect.all (Style.Length_percentage.length border))
+            ()
+        in
+        let explicit =
+          Style.set_min_size
+            (axes (Style.Dimension.length value) Style.Dimension.auto)
+            style
+        in
+        (content, style, explicit))
+  in
+  let lay_out style_of =
+    let tree = new_tree () |> disable_rounding in
+    let children =
+      List.map
+        (fun item ->
+          let content, _, _ = item in
+          new_leaf_with_context tree (style_of item) content |> or_fail "item")
+        items
+    in
+    let root =
+      new_with_children tree container (Array.of_list children)
+      |> or_fail "container"
+    in
+    compute_layout_with_measure tree root max_content box_measure
+    |> or_fail "compute";
+    List.map
+      (fun node -> layout tree node |> or_fail "layout")
+      (root :: children)
+  in
+  let automatic = lay_out (fun (_, style, _) -> style)
+  and explicit = lay_out (fun (_, _, style) -> style) in
+  List.iteri
+    (fun i (a, e) ->
+      if not (a = e) then
+        failf
+          "seed %d, node %d: laid out at %s %s with an automatic minimum, %s \
+           %s with its value"
+          seed i
+          (Pointf.to_string (Layout.location a))
+          (Sizef.to_string (Layout.size a))
+          (Pointf.to_string (Layout.location e))
+          (Sizef.to_string (Layout.size e)))
+    (List.combine automatic explicit)
+
 (* A text of 36 cells with a padding of 2 in a column 11 wide: measured, it
    wraps at its content width of 7 cells into 6 lines, as it is laid out, and
    the line below it starts under them. *)
@@ -2825,6 +3001,13 @@ let () =
             test_flex_stretches_replaced_item;
           test "Percentages follow a resized root"
             test_percentages_follow_a_resized_root;
+        ];
+      group "automatic_minimum"
+        [
+          test "A definite item is not measured at min-content"
+            test_definite_item_not_measured_at_min_content;
+          prop ~count:2000 "An automatic minimum is its value" Gen.int
+            automatic_minimum_is_its_value;
         ];
       group "min_max_overrides"
         [
