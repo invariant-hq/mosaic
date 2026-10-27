@@ -1,4 +1,4 @@
 (library
  (name mosaic_mlx)
  (public_name mosaic.mlx)
- (libraries mosaic mosaic.ui))
+ (libraries mosaic mosaic.ui cmarkit))

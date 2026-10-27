@@ -62,28 +62,34 @@ end
 (* ───── Props ───── *)
 
 (* [Props.make] is the one place the scroll box's labels get their defaults:
-   [create] and [Vnode.scroll_box] pass their labels on unset. [scroll_accel],
-   which only [create] takes, gets its default there. *)
+   [create] and [Vnode.scroll_box] pass their labels on unset. *)
 module Props = struct
   type t = {
     scroll_x : bool;
     scroll_y : bool;
     scroll : Scroll.t;
     background : Ansi.Color.t option;
+    scroll_accel : Scroll_accel.t;
     show_scrollbars : bool;
     scrollbar_style : Scroll_bar.style option;
     vertical_bar_style : Scroll_bar.style option;
     horizontal_bar_style : Scroll_bar.style option;
   }
 
+  (* One linear acceleration serves every box without its own: it keeps no
+     history, so sharing it shares nothing, and two default props compare
+     equal. *)
+  let linear = Scroll_accel.linear ()
+
   let make ?(scroll_x = false) ?(scroll_y = true) ?(scroll = Scroll.at 0)
-      ?background ?(show_scrollbars = true) ?scrollbar_style ?vertical_bar_style
-      ?horizontal_bar_style () =
+      ?background ?(scroll_accel = linear) ?(show_scrollbars = true)
+      ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style () =
     {
       scroll_x;
       scroll_y;
       scroll;
       background;
+      scroll_accel;
       show_scrollbars;
       scrollbar_style;
       vertical_bar_style;
@@ -96,6 +102,7 @@ module Props = struct
     a.scroll_x = b.scroll_x && a.scroll_y = b.scroll_y
     && Scroll.equal a.scroll b.scroll
     && Option.equal Ansi.Color.equal a.background b.background
+    && a.scroll_accel == b.scroll_accel
     && a.show_scrollbars = b.show_scrollbars
     && Option.equal Scroll_bar.style_equal a.scrollbar_style b.scrollbar_style
     && Option.equal Scroll_bar.style_equal a.vertical_bar_style
@@ -120,7 +127,6 @@ type t = {
   mutable content_w : int;
   mutable content_h : int;
   mutable on_scroll : (Scroll.t -> unit) option;
-  mutable scroll_accel : Scroll_accel.t;
   (* Seconds accumulated from frame deltas; feeds Scroll_accel.tick. *)
   mutable frame_clock : float;
   mutable wheel_acc_x : float;
@@ -383,7 +389,9 @@ let on_mouse t (event : Event.mouse) =
       let dx = if t.props.scroll_x then dx else 0 in
       let dy = if t.props.scroll_y then dy else 0 in
       if dx <> 0 || dy <> 0 then begin
-        let mult = Scroll_accel.tick t.scroll_accel ~seconds:t.frame_clock in
+        let mult =
+          Scroll_accel.tick t.props.scroll_accel ~seconds:t.frame_clock
+        in
         let fx = float_of_int dx *. mult in
         let fy = float_of_int dy *. mult in
         t.wheel_acc_x <- t.wheel_acc_x +. fx;
@@ -421,7 +429,7 @@ let handle_key t (event : Event.key) =
     || (t.props.scroll_x && Scroll_bar.handle_key t.horizontal_bar event)
   in
   if consumed then (
-    Scroll_accel.reset t.scroll_accel;
+    Scroll_accel.reset t.props.scroll_accel;
     t.wheel_acc_x <- 0.;
     t.wheel_acc_y <- 0.;
     true)
@@ -441,7 +449,7 @@ let set_background t color =
     Renderable.request_render t.node)
 
 let set_on_scroll t cb = t.on_scroll <- cb
-let set_scroll_accel t accel = t.scroll_accel <- accel
+let set_scroll_accel t scroll_accel = t.props <- { t.props with scroll_accel }
 
 (* ───── Apply Props ───── *)
 
@@ -527,12 +535,12 @@ let set_style t style = Renderable.set_style t.node (root_style style)
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?scroll_x
-    ?scroll_y ?scroll ?background ?(scroll_accel = Scroll_accel.linear ())
-    ?show_scrollbars ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style
-    ?on_scroll () =
+    ?scroll_y ?scroll ?background ?scroll_accel ?show_scrollbars
+    ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ?on_scroll () =
   let props =
-    Props.make ?scroll_x ?scroll_y ?scroll ?background ?show_scrollbars
-      ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ()
+    Props.make ?scroll_x ?scroll_y ?scroll ?background ?scroll_accel
+      ?show_scrollbars ?scrollbar_style ?vertical_bar_style
+      ?horizontal_bar_style ()
   in
   let ({
          scroll_x;
@@ -633,7 +641,6 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?scroll_x
       content_w = 0;
       content_h = 0;
       on_scroll;
-      scroll_accel;
       frame_clock = 0.;
       wheel_acc_x = 0.;
       wheel_acc_y = 0.;

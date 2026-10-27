@@ -89,6 +89,16 @@ module Props : sig
     ?selectable:bool ->
     ?selection_bg:Ansi.Color.t ->
     ?selection_fg:Ansi.Color.t ->
+    ?render_node:
+      (Cmarkit.Block.t ->
+      parent:Renderable.t ->
+      is_last:bool ->
+      Renderable.t option) ->
+    ?render_code:
+      (parent:Renderable.t ->
+      language:string option ->
+      content:string ->
+      Renderable.t) ->
     ?highlighter:Code.Highlighter.t ->
     ?syntax_style:Syntax_style.t ->
     unit ->
@@ -106,15 +116,27 @@ module Props : sig
         to [true].
       - [selection_bg] and [selection_fg]: selection colors applied to internal
         text children. Default to none.
-      - [highlighter]: highlights fenced code blocks when {!create}'s
-        [render_code] is not set. Each fenced block is rendered as a borderless
-        {!Code} view. A block whose info string names a language is highlighted
-        by [highlighter], which receives that language and the block's content
-        in each request and interprets the language name itself; a block without
-        a language is shown plain. [highlighter] is a resource compared by
-        identity (see {!Code.Highlighter.t}): create it once and reuse it.
-        Defaults to [None], which renders fenced blocks as bordered plain
-        blocks.
+      - [render_node]: a custom block renderer called for every
+        {!Cmarkit.Block.t} before default rendering. Return [Some r] to replace
+        default rendering with renderable [r], or [None] to fall through to the
+        default. The returned renderable must be attached to [parent]. Defaults
+        to none.
+      - [render_code]: a custom code block renderer called for code blocks
+        before [render_node]. Receives the optional language tag and the code
+        content. The returned renderable must be attached to [parent]. When it
+        is set, [highlighter] is not used. Defaults to none.
+
+      Props compare [render_node] and [render_code] physically, and a different
+      function renders every block again, so a view must give the same function
+      on every declaration, defined once outside the view.
+      - [highlighter]: highlights fenced code blocks when [render_code] is not
+        set. Each fenced block is rendered as a borderless {!Code} view. A block
+        whose info string names a language is highlighted by [highlighter],
+        which receives that language and the block's content in each request and
+        interprets the language name itself; a block without a language is shown
+        plain. [highlighter] is a resource compared by identity (see
+        {!Code.Highlighter.t}): create it once and reuse it. Defaults to [None],
+        which renders fenced blocks as bordered plain blocks.
       - [syntax_style]: maps the highlighter's scopes to terminal styles.
         Defaults to {!Syntax_style.default}. Styles compare by value, so
         rebuilding an equal style changes nothing, and a changed style restyles
@@ -163,21 +185,11 @@ val create :
   unit ->
   t
 (** [create ~parent ()] is a markdown display widget attached to [parent]. The
-    labels after [opacity], but [layout_style], [on_selection], [render_node]
-    and [render_code], are {!Props.make}'s and take its defaults. With:
-    - [layout_style]: the node's layout style, in a column of the full width
-      whatever it gives.
-    - [on_selection]: called with the selected rendered text when selection
-      changes. [None] means no active selected text.
-    - [render_node]: a custom block renderer called for every {!Cmarkit.Block.t}
-      before default rendering. Return [Some r] to replace default rendering
-      with renderable [r], or [None] to fall through to the default. The
-      returned renderable must be attached to [parent].
-    - [render_code]: a custom code block renderer called for code blocks before
-      [render_node]. Receives the optional language tag and the code content.
-      The returned renderable must be attached to [parent]. Use this for full
-      control over code block rendering. When it is set, [highlighter] is not
-      used. *)
+    labels after [opacity], but [on_selection], are {!Props.make}'s and take its
+    defaults. [layout_style] is the node's layout style, the [style] of other
+    widgets' [create], laid out as a column of the full width whatever it gives.
+    [on_selection] is called with the selected rendered text when the selection
+    changes, [None] when no text is selected. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)

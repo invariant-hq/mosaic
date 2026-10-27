@@ -483,6 +483,47 @@ let doors_syntax_style () =
         (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
            ~highlighter:doors_hl ~syntax_style:doors_syntax_style ()))
 
+(* A renderer of the doors' tests draws a paragraph, or a code block, as a
+   text of its own. The same function is given on every declaration, as
+   props compare it physically. *)
+let doors_custom parent text = Text.node (Text.create ~parent ~content:text ())
+
+let doors_render_node block ~parent ~is_last:_ =
+  match block with
+  | Cmarkit.Block.Paragraph _ -> Some (doors_custom parent "custom paragraph")
+  | _ -> None
+
+let doors_render_code ~parent ~language:_ ~content:_ =
+  doors_custom parent "custom code"
+
+let doors_render_node_label () =
+  Test_harness.reaches "render_node"
+    ~base:(Mosaic.markdown ~size:doors_size doors_md)
+    ~element:
+      (Mosaic.markdown ~size:doors_size ~render_node:doors_render_node doors_md)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_md
+           ~render_node:doors_render_node ()))
+
+let doors_render_code_label () =
+  Test_harness.reaches "render_code"
+    ~base:(Mosaic.markdown ~size:doors_size doors_fenced)
+    ~element:
+      (Mosaic.markdown ~size:doors_size ~render_code:doors_render_code
+         doors_fenced)
+    ~create_base:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
+           ()))
+    ~create:(fun parent ->
+      Markdown.node
+        (Markdown.create ~parent ~layout_style:doors_style ~content:doors_fenced
+           ~render_code:doors_render_code ()))
+
 let () =
   run "mosaic.markdown"
     [
@@ -551,6 +592,8 @@ let () =
           test "selectable" doors_selectable;
           test "selection_bg" doors_selection_bg;
           test "selection_fg" doors_selection_fg;
+          test "render_node" doors_render_node_label;
+          test "render_code" doors_render_code_label;
           test "highlighter" doors_highlighter;
           test "syntax_style" doors_syntax_style;
         ];

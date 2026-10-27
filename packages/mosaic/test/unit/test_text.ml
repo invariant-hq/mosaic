@@ -762,6 +762,50 @@ let doors_rich_truncate () =
     ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
     ~create:(fun parent -> rich (Text.create ~parent ~style ~truncate:true ()))
 
+(* The selections [on_selection] reported, in the order reported. *)
+let selections = ref []
+
+let record_selection s =
+  selections :=
+    (match s with Some (a, b) -> Printf.sprintf "%d-%d" a b | None -> "none")
+    :: !selections
+
+let select renderer node =
+  selections := [];
+  Test_harness.select_text renderer node
+
+let reported _ _ =
+  match !selections with [] -> "(none)" | l -> String.concat ";" (List.rev l)
+
+let doors_on_selection () =
+  Test_harness.reaches "on_selection" ~act:select ~observe:reported
+    ~base:(Mosaic.text ~size words)
+    ~element:
+      (Mosaic.text ~size
+         ~on_selection:(fun s ->
+           record_selection s;
+           None)
+         words)
+    ~create_base:(fun parent ->
+      Text.node (Text.create ~parent ~style ~content:words ()))
+    ~create:(fun parent ->
+      Text.node
+        (Text.create ~parent ~style ~content:words
+           ~on_selection:record_selection ()))
+
+let doors_rich_on_selection () =
+  Test_harness.reaches "rich on_selection" ~act:select ~observe:reported
+    ~base:(Mosaic.rich_text ~size fragments)
+    ~element:
+      (Mosaic.rich_text ~size
+         ~on_selection:(fun s ->
+           record_selection s;
+           None)
+         fragments)
+    ~create_base:(fun parent -> rich (Text.create ~parent ~style ()))
+    ~create:(fun parent ->
+      rich (Text.create ~parent ~style ~on_selection:record_selection ()))
+
 let () =
   run "mosaic.text"
     [
@@ -896,6 +940,7 @@ let () =
           test "selection_fg" doors_selection_fg;
           test "tab_width" doors_tab_width;
           test "truncate" doors_truncate;
+          test "on_selection" doors_on_selection;
           test "rich text_style" doors_rich_text_style;
           test "rich wrap" doors_rich_wrap;
           test "rich selectable" doors_rich_selectable;
@@ -903,5 +948,6 @@ let () =
           test "rich selection_fg" doors_rich_selection_fg;
           test "rich tab_width" doors_rich_tab_width;
           test "rich truncate" doors_rich_truncate;
+          test "rich on_selection" doors_rich_on_selection;
         ];
     ]

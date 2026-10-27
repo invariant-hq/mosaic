@@ -47,6 +47,7 @@ module Props : sig
     ?scroll_y:bool ->
     ?scroll:Scroll.t ->
     ?background:Ansi.Color.t ->
+    ?scroll_accel:Scroll_accel.t ->
     ?show_scrollbars:bool ->
     ?scrollbar_style:Scroll_bar.style ->
     ?vertical_bar_style:Scroll_bar.style ->
@@ -60,6 +61,11 @@ module Props : sig
         [true].
       - [scroll] is the declared position. Defaults to [Scroll.at 0].
       - [background] is the scroll box's background color. Defaults to none.
+      - [scroll_accel] is the acceleration of wheel scrolling. Defaults to
+        {!Scroll_accel.linear}. It keeps the history of the gesture in progress,
+        and props compare it physically, so a view must give the same value on
+        every declaration, made once outside the view. A new value starts a new
+        history.
       - [show_scrollbars] is [true] iff the bars are shown when the content
         overflows. Defaults to [true].
       - [scrollbar_style], [vertical_bar_style] and [horizontal_bar_style] are
@@ -105,10 +111,9 @@ val create :
   unit ->
   t
 (** [create ~parent ()] attaches a viewport. User children are routed to its
-    content node. The labels after [opacity], but [scroll_accel] and
-    [on_scroll], are {!Props.make}'s and take its defaults. [scroll_accel] is
-    the acceleration of wheel scrolling ({!set_scroll_accel}), a linear one by
-    default. Missing [on_scroll] rejects interactive scroll proposals. *)
+    content node. The labels after [opacity], but [on_scroll], are
+    {!Props.make}'s and take its defaults. Missing [on_scroll] rejects
+    interactive scroll proposals. *)
 
 val node : t -> Renderable.t
 val content : t -> Renderable.t

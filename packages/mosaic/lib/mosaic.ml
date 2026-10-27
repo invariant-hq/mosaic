@@ -163,6 +163,7 @@ end
 module Tree = Mosaic_ui.Tree
 module Spinner = Mosaic_ui.Spinner
 module Slider = Mosaic_ui.Slider
+module Scroll_box = Mosaic_ui.Scroll_box
 module Scroll_bar = Mosaic_ui.Scroll_bar
 module Text = Mosaic_ui.Text
 module Text_surface = Mosaic_ui.Text_surface
@@ -1573,7 +1574,8 @@ let text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key
     ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?text_style ?wrap
-    ?selectable ?selection_bg ?selection_fg ?tab_width ?truncate content =
+    ?selectable ?selection_bg ?selection_fg ?tab_width ?truncate ?on_selection
+    content =
   let layout_style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
@@ -1590,7 +1592,7 @@ let text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   Vnode.text ?key ~style:layout_style ?visible ?z_index ?opacity ?buffered ?live
     ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
     ?text_style ?wrap ?selectable ?selection_bg ?selection_fg ?tab_width
-    ?truncate content
+    ?truncate ?on_selection content
 
 let rich_text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
@@ -1601,7 +1603,8 @@ let rich_text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key
     ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?text_style ?wrap
-    ?selectable ?selection_bg ?selection_fg ?tab_width ?truncate content =
+    ?selectable ?selection_bg ?selection_fg ?tab_width ?truncate ?on_selection
+    content =
   let layout_style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
@@ -1618,7 +1621,7 @@ let rich_text ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   Vnode.rich_text ?key ~style:layout_style ?visible ?z_index ?opacity ?buffered
     ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ?focused ?text_style ?wrap ?selectable ?selection_bg ?selection_fg
-    ?tab_width ?truncate content
+    ?tab_width ?truncate ?on_selection content
 
 let button ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
@@ -1972,8 +1975,8 @@ let scroll_box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
     ?on_click ?on_focus_request ?on_size ?focused ?scroll_x ?scroll_y
-    ?background ?show_scrollbars ?scrollbar_style ?vertical_bar_style
-    ?horizontal_bar_style ~on_scroll ~scroll children =
+    ?background ?scroll_accel ?show_scrollbars ?scrollbar_style
+    ?vertical_bar_style ?horizontal_bar_style ~on_scroll ~scroll children =
   let style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
@@ -1986,8 +1989,9 @@ let scroll_box ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   in
   Vnode.scroll_box ~scroll ?key ~style ?visible ?z_index ?opacity ?buffered
     ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ?focused ?scroll_x ?scroll_y ?background ?show_scrollbars ?scrollbar_style
-    ?vertical_bar_style ?horizontal_bar_style ~on_scroll children
+    ?focused ?scroll_x ?scroll_y ?background ?scroll_accel ?show_scrollbars
+    ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ~on_scroll
+    children
 
 let textarea ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items
@@ -2108,8 +2112,8 @@ let markdown ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
     ?on_click ?on_focus_request ?on_size ?focused ?md_style ?conceal ?streaming
-    ?selectable ?selection_bg ?selection_fg ?highlighter ?syntax_style
-    ?on_selection content =
+    ?selectable ?selection_bg ?selection_fg ?render_node ?render_code
+    ?highlighter ?syntax_style ?on_selection content =
   let style =
     layout_style ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?text_align ?inset ?size ?min_size ?max_size ?aspect_ratio ?margin
@@ -2123,7 +2127,7 @@ let markdown ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
   Vnode.markdown ?key ~style ?visible ?z_index ?opacity ?buffered ?live
     ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
     ?md_style ?conceal ?streaming ?selectable ?selection_bg ?selection_fg
-    ?highlighter ?syntax_style ?on_selection content
+    ?render_node ?render_code ?highlighter ?syntax_style ?on_selection content
 
 let table ?key ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?text_align ?inset ?flex_direction ?flex_wrap ?justify_content ?align_items

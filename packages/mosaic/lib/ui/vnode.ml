@@ -59,6 +59,9 @@ type 'msg widget_callbacks =
       on_change : (int -> 'msg) option;
       on_activate : (int -> 'msg) option;
     }
+  | Text_callbacks of {
+      on_selection : ((int * int) option -> 'msg option) option;
+    }
   | Canvas_callbacks of { on_draw : (Canvas.t -> dt:float -> unit) option }
   | Scroll_bar_callbacks of { on_change : (int -> 'msg) option }
   | Scroll_box_callbacks of { on_scroll : (Scroll.t -> 'msg) option }
@@ -269,11 +272,17 @@ let modal ?key ?on_close child =
         }
   | _ -> assert false
 
+(* A text without [on_selection] shares [No_callbacks], so a view of plain
+   texts allocates no callbacks. *)
+let text_callbacks = function
+  | None -> No_callbacks
+  | on_selection -> Text_callbacks { on_selection }
+
 let text ?key ?(style = Toffee.Style.default) ?(visible = true) ?(z_index = 0)
     ?(opacity = 1.0) ?(focusable = false) ?(focused = false) ?(buffered = false)
     ?(live = false) ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
     ?on_size ?text_style ?wrap ?selectable ?selection_bg ?selection_fg
-    ?tab_width ?truncate content =
+    ?tab_width ?truncate ?on_selection content =
   let kind =
     Text
       (Text.Props.make ~content ?text_style ?wrap ?selectable ?selection_bg
@@ -302,13 +311,20 @@ let text ?key ?(style = Toffee.Style.default) ?(visible = true) ?(z_index = 0)
     }
   in
   Element
-    { kind; key; attrs; handlers; callbacks = No_callbacks; children = [] }
+    {
+      kind;
+      key;
+      attrs;
+      handlers;
+      callbacks = text_callbacks on_selection;
+      children = [];
+    }
 
 let rich_text ?key ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(focused = false)
     ?(buffered = false) ?(live = false) ?on_mouse ?on_key ?on_paste ?on_click
     ?on_focus_request ?on_size ?text_style ?wrap ?selectable ?selection_bg
-    ?selection_fg ?tab_width ?truncate content =
+    ?selection_fg ?tab_width ?truncate ?on_selection content =
   let kind =
     Text
       (Text.Props.make_rich ?text_style ?wrap ?selectable ?selection_bg
@@ -337,7 +353,14 @@ let rich_text ?key ?(style = Toffee.Style.default) ?(visible = true)
     }
   in
   Element
-    { kind; key; attrs; handlers; callbacks = No_callbacks; children = [] }
+    {
+      kind;
+      key;
+      attrs;
+      handlers;
+      callbacks = text_callbacks on_selection;
+      children = [];
+    }
 
 let slider ?key ?(style = Toffee.Style.default) ?(visible = true) ?(z_index = 0)
     ?(opacity = 1.0) ?(focusable = false) ?(focused = false) ?(buffered = false)
@@ -665,13 +688,13 @@ let scroll_bar ?key ?(style = Toffee.Style.default) ?(visible = true)
 let scroll_box ?key ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = true) ?(focused = false)
     ?(buffered = false) ?(live = false) ?on_mouse ?on_key ?on_paste ?on_click
-    ?on_focus_request ?on_size ?scroll_x ?scroll_y ?background ?show_scrollbars
-    ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ~on_scroll
-    ~scroll children =
+    ?on_focus_request ?on_size ?scroll_x ?scroll_y ?background ?scroll_accel
+    ?show_scrollbars ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style
+    ~on_scroll ~scroll children =
   let kind =
     Scroll_box
       (Scroll_box.Props.make ~scroll ?scroll_x ?scroll_y ?background
-         ?show_scrollbars ?scrollbar_style ?vertical_bar_style
+         ?scroll_accel ?show_scrollbars ?scrollbar_style ?vertical_bar_style
          ?horizontal_bar_style ())
   in
   let attrs =
@@ -870,12 +893,13 @@ let markdown ?key ?(style = Toffee.Style.default) ?(visible = true)
     ?(z_index = 0) ?(opacity = 1.0) ?(focusable = false) ?(focused = false)
     ?(buffered = false) ?(live = false) ?on_mouse ?on_key ?on_paste ?on_click
     ?on_focus_request ?on_size ?md_style ?conceal ?streaming ?selectable
-    ?selection_bg ?selection_fg ?highlighter ?syntax_style ?on_selection content
-    =
+    ?selection_bg ?selection_fg ?render_node ?render_code ?highlighter
+    ?syntax_style ?on_selection content =
   let kind =
     Markdown
       (Markdown.Props.make ~content ?style:md_style ?conceal ?streaming
-         ?selectable ?selection_bg ?selection_fg ?highlighter ?syntax_style ())
+         ?selectable ?selection_bg ?selection_fg ?render_node ?render_code
+         ?highlighter ?syntax_style ())
   in
   let attrs =
     {
@@ -1014,6 +1038,12 @@ let map_callbacks (f : 'a -> 'b) : 'a widget_callbacks -> 'b widget_callbacks =
         {
           on_change = Option.map (fun g i -> f (g i)) on_change;
           on_activate = Option.map (fun g i -> f (g i)) on_activate;
+        }
+  | Text_callbacks { on_selection } ->
+      Text_callbacks
+        {
+          on_selection =
+            Option.map (fun g sel -> Option.map f (g sel)) on_selection;
         }
   | Canvas_callbacks { on_draw } -> Canvas_callbacks { on_draw }
   | Scroll_bar_callbacks { on_change } ->

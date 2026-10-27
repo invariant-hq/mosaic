@@ -207,6 +207,7 @@ val scroll_box :
   ?scroll_x:bool ->
   ?scroll_y:bool ->
   ?background:Ansi.Color.t ->
+  ?scroll_accel:Scroll_box.Scroll_accel.t ->
   ?show_scrollbars:bool ->
   ?scrollbar_style:Scroll_bar.style ->
   ?vertical_bar_style:Scroll_bar.style ->
@@ -278,6 +279,7 @@ val text :
   ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
+  ?on_selection:((int * int) option -> 'msg option) ->
   ?children:string list ->
   unit ->
   'msg t
@@ -341,6 +343,7 @@ val rich_text :
   ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
+  ?on_selection:((int * int) option -> 'msg option) ->
   ?children:Text.fragment list ->
   unit ->
   'msg t
@@ -469,6 +472,16 @@ val markdown :
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
+  ?render_node:
+    (Cmarkit.Block.t ->
+    parent:Mosaic_ui.Renderable.t ->
+    is_last:bool ->
+    Mosaic_ui.Renderable.t option) ->
+  ?render_code:
+    (parent:Mosaic_ui.Renderable.t ->
+    language:string option ->
+    content:string ->
+    Mosaic_ui.Renderable.t) ->
   ?highlighter:Code.Highlighter.t ->
   ?syntax_style:Syntax_style.t ->
   ?on_selection:(string option -> 'msg option) ->

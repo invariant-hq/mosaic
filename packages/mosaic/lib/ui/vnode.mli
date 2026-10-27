@@ -73,6 +73,9 @@ type 'msg widget_callbacks =
       on_change : (int -> 'msg) option;
       on_activate : (int -> 'msg) option;
     }
+  | Text_callbacks of {
+      on_selection : ((int * int) option -> 'msg option) option;
+    }
   | Canvas_callbacks of { on_draw : (Canvas.t -> dt:float -> unit) option }
   | Scroll_bar_callbacks of { on_change : (int -> 'msg) option }
   | Scroll_box_callbacks of { on_scroll : (Scroll.t -> 'msg) option }
@@ -313,11 +316,13 @@ val text :
   ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
+  ?on_selection:((int * int) option -> 'msg option) ->
   string ->
   'msg t
 (** [text content] is a text leaf element displaying [content]. Text does not
-    accept children. The labels from [text_style] on are {!Text.Props.make}'s
-    and take its defaults.
+    accept children. The labels from [text_style] to [truncate] are
+    {!Text.Props.make}'s and take its defaults. [on_selection] is called when
+    the selection changes, as {!Text.create}'s is.
 
     Raises [Invalid_argument] if [tab_width < 1]. *)
 
@@ -344,6 +349,7 @@ val rich_text :
   ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
+  ?on_selection:((int * int) option -> 'msg option) ->
   Text.fragment list ->
   'msg t
 (** [rich_text fragments] renders structured text as one selectable text widget.
@@ -686,6 +692,7 @@ val scroll_box :
   ?scroll_x:bool ->
   ?scroll_y:bool ->
   ?background:Ansi.Color.t ->
+  ?scroll_accel:Scroll_box.Scroll_accel.t ->
   ?show_scrollbars:bool ->
   ?scrollbar_style:Scroll_bar.style ->
   ?vertical_bar_style:Scroll_bar.style ->
@@ -899,6 +906,16 @@ val markdown :
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
+  ?render_node:
+    (Cmarkit.Block.t ->
+    parent:Renderable.t ->
+    is_last:bool ->
+    Renderable.t option) ->
+  ?render_code:
+    (parent:Renderable.t ->
+    language:string option ->
+    content:string ->
+    Renderable.t) ->
   ?highlighter:Code.Highlighter.t ->
   ?syntax_style:Syntax_style.t ->
   ?on_selection:(string option -> 'msg option) ->

@@ -628,6 +628,12 @@ module Slider : sig
   (** The type for track direction: [`Horizontal] or [`Vertical]. *)
 end
 
+(** Companion values for the {!val-scroll_box} widget. *)
+module Scroll_box : sig
+  module Scroll_accel = Mosaic_ui.Scroll_box.Scroll_accel
+  (** The acceleration of wheel scrolling. *)
+end
+
 (** Companion types for the {!val-scroll_bar} widget. *)
 module Scroll_bar : sig
   type orientation = Mosaic_ui.Scroll_bar.orientation
@@ -1889,12 +1895,14 @@ val text :
   ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
+  ?on_selection:((int * int) option -> 'msg option) ->
   string ->
   'msg t
-(** [text content] is a text element. The labels from [text_style] on are
-    {!Mosaic_ui.Text.Props.make}'s and take its defaults; [style] is the text
-    style when [text_style] is absent. Layout and paint use the other labelled
-    arguments. *)
+(** [text content] is a text element. The labels from [text_style] to [truncate]
+    are {!Mosaic_ui.Text.Props.make}'s and take its defaults; [style] is the
+    text style when [text_style] is absent. [on_selection] is called with the
+    selected grapheme range, or [None], when the selection changes. Layout and
+    paint use the other labelled arguments. *)
 
 val rich_text :
   ?key:string ->
@@ -1954,6 +1962,7 @@ val rich_text :
   ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
+  ?on_selection:((int * int) option -> 'msg option) ->
   Text.fragment list ->
   'msg t
 (** [rich_text fragments] renders structured text as one selectable text widget.
@@ -2629,6 +2638,7 @@ val scroll_box :
   ?scroll_x:bool ->
   ?scroll_y:bool ->
   ?background:Ansi.Color.t ->
+  ?scroll_accel:Scroll_box.Scroll_accel.t ->
   ?show_scrollbars:bool ->
   ?scrollbar_style:Scroll_bar.style ->
   ?vertical_bar_style:Scroll_bar.style ->
@@ -2979,6 +2989,16 @@ val markdown :
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
+  ?render_node:
+    (Cmarkit.Block.t ->
+    parent:Renderable.t ->
+    is_last:bool ->
+    Renderable.t option) ->
+  ?render_code:
+    (parent:Renderable.t ->
+    language:string option ->
+    content:string ->
+    Renderable.t) ->
   ?highlighter:Code.Highlighter.t ->
   ?syntax_style:Syntax_style.t ->
   ?on_selection:(string option -> 'msg option) ->

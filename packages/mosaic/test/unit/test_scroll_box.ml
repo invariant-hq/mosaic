@@ -619,6 +619,59 @@ let doors_horizontal_bar_style () =
         (Scroll_box.create ~parent ~style:doors_style ~scroll_x:true
            ~horizontal_bar_style:doors_bar ()))
 
+(* Four wheel notches 50 ms apart, a frame between each: an accelerating
+   [scroll_accel] proposes larger steps from the second notch on. The box is
+   controlled and nothing stores the proposals, so each starts from the top. *)
+let doors_wheel_proposals = ref []
+
+let doors_record_scroll s =
+  let _, y =
+    Scroll.resolve s ~width:12 ~height:4 ~content_width:12 ~content_height:8
+  in
+  doors_wheel_proposals := y :: !doors_wheel_proposals
+
+let doors_accel = Scroll_box.Scroll_accel.macos ()
+
+(* The acceleration's history starts empty, and the box's clock is past
+   zero, which the acceleration takes for no notch yet. *)
+let doors_wheel renderer node =
+  doors_wheel_proposals := [];
+  Scroll_box.Scroll_accel.reset doors_accel;
+  let frame () =
+    Renderer.render_frame renderer ~width:Test_harness.doors_width
+      ~height:Test_harness.doors_height ~dt:0.05
+  in
+  frame ();
+  ignore (Renderer.render ~full:true renderer : string);
+  let x = Renderable.x node + 1 and y = Renderable.y node + 1 in
+  for _ = 1 to 4 do
+    ignore
+      (Test_harness.dispatch_mouse renderer
+         (Test_harness.mouse_report ~x ~y (Scroll `Down)));
+    frame ()
+  done
+
+let doors_wheel_proposed _ _ =
+  String.concat ";" (List.rev_map string_of_int !doors_wheel_proposals)
+
+let doors_scroll_accel () =
+  Test_harness.reaches ~act:doors_wheel ~observe:doors_wheel_proposed
+    "scroll_accel"
+    ~base:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:doors_record_scroll doors_lines)
+    ~element:
+      (Mosaic.scroll_box ~size:doors_size ~scroll:(Scroll.at 0)
+         ~on_scroll:doors_record_scroll ~scroll_accel:doors_accel doors_lines)
+    ~create_base:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style
+           ~on_scroll:doors_record_scroll ()))
+    ~create:(fun parent ->
+      doors_filled
+        (Scroll_box.create ~parent ~style:doors_style ~scroll_accel:doors_accel
+           ~on_scroll:doors_record_scroll ()))
+
 let () =
   run "mosaic.scroll_box"
     [
@@ -679,6 +732,7 @@ let () =
           test "scroll_x" doors_scroll_x;
           test "scroll_y" doors_scroll_y;
           test "background" doors_background;
+          test "scroll_accel" doors_scroll_accel;
           test "show_scrollbars" doors_show_scrollbars;
           test "scrollbar_style" doors_scrollbar_style;
           test "vertical_bar_style" doors_vertical_bar_style;

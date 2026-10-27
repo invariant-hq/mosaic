@@ -8,5 +8,5 @@
 editor/typing-wrapped-150-lines	alloc_words	exact	8184
 idle/frame-full-200x50	alloc_words	exact	10531
 primary/typing-inline-transcript-1000	alloc_words	exact	8847
-viewport/frame-scroll-one-row-and-back	alloc_words	exact	14253
+viewport/frame-scroll-one-row-and-back	alloc_words	exact	14255
 viewport/frame-scrolled-transcript-1000	alloc_words	exact	6904

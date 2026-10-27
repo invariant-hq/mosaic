@@ -87,6 +87,15 @@ end
 
 (* ───── Props ───── *)
 
+type render_node =
+  Cmarkit.Block.t -> parent:Renderable.t -> is_last:bool -> Renderable.t option
+
+type render_code =
+  parent:Renderable.t ->
+  language:string option ->
+  content:string ->
+  Renderable.t
+
 (* [Props.make] is the one place the markdown's labels get their defaults:
    [create] and [Vnode.markdown] pass their labels on unset. *)
 module Props = struct
@@ -98,13 +107,16 @@ module Props = struct
     selectable : bool;
     selection_bg : Ansi.Color.t option;
     selection_fg : Ansi.Color.t option;
+    render_node : render_node option;
+    render_code : render_code option;
     highlighter : Code.Highlighter.t option;
     syntax_style : Syntax_style.t;
   }
 
   let make ?(content = "") ?(conceal = true) ?(streaming = false)
       ?(style = Style.default) ?(selectable = true) ?selection_bg ?selection_fg
-      ?highlighter ?(syntax_style = Syntax_style.default) () =
+      ?render_node ?render_code ?highlighter
+      ?(syntax_style = Syntax_style.default) () =
     {
       content;
       conceal;
@@ -113,6 +125,8 @@ module Props = struct
       selectable;
       selection_bg;
       selection_fg;
+      render_node;
+      render_code;
       highlighter;
       syntax_style;
     }
@@ -126,6 +140,8 @@ module Props = struct
     && a.selectable = b.selectable
     && Option.equal Ansi.Color.equal a.selection_bg b.selection_bg
     && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
+    && Option.equal ( == ) a.render_node b.render_node
+    && Option.equal ( == ) a.render_code b.render_code
     && Option.equal ( == ) a.highlighter b.highlighter
     && Syntax_style.equal a.syntax_style b.syntax_style
 end
@@ -175,18 +191,8 @@ type render_env = {
   selection_bg : Ansi.Color.t option;
   selection_fg : Ansi.Color.t option;
   on_text_selection : ((int * int) option -> unit) option;
-  render_node :
-    (Cmarkit.Block.t ->
-    parent:Renderable.t ->
-    is_last:bool ->
-    Renderable.t option)
-    option;
-  render_code :
-    (parent:Renderable.t ->
-    language:string option ->
-    content:string ->
-    Renderable.t)
-    option;
+  render_node : render_node option;
+  render_code : render_code option;
   highlighter : Code.Highlighter.t option;
   syntax_style : Syntax_style.t;
 }
@@ -205,18 +211,8 @@ type t = {
   mutable on_selection : (string option -> unit) option;
   mutable blocks : tagged_block list;
   mutable last_defs : Cmarkit.Label.defs;
-  render_node :
-    (Cmarkit.Block.t ->
-    parent:Renderable.t ->
-    is_last:bool ->
-    Renderable.t option)
-    option;
-  render_code :
-    (parent:Renderable.t ->
-    language:string option ->
-    content:string ->
-    Renderable.t)
-    option;
+  mutable render_node : render_node option;
+  mutable render_code : render_code option;
   mutable highlighter : Code.Highlighter.t option;
   mutable syntax_style : Syntax_style.t;
 }
@@ -1252,12 +1248,14 @@ let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
          selectable;
          selection_bg;
          selection_fg;
+         render_node;
+         render_code;
          highlighter;
          syntax_style;
        }
         : Props.t) =
     Props.make ?content ?conceal ?streaming ?style ?selectable ?selection_bg
-      ?selection_fg ?highlighter ?syntax_style ()
+      ?selection_fg ?render_node ?render_code ?highlighter ?syntax_style ()
   in
   let node =
     Renderable.create ~parent ?index ?id ~style:layout_style ?visible ?z_index
@@ -1379,7 +1377,12 @@ let set_on_selection t f =
 let apply_props t (props : Props.t) =
   (* Collapse every change into at most one pass over the blocks: a content
      append must not pay for unconditional style re-renders, and a combined
-     change must not re-render twice. *)
+     change must not re-render twice. A block a custom renderer made cannot
+     be updated in place, so a changed renderer renders every block again. *)
+  let renderers_changed =
+    (not (Option.equal ( == ) t.render_node props.render_node))
+    || not (Option.equal ( == ) t.render_code props.render_code)
+  in
   let presentation_changed =
     (not (Style.equal t.style props.style))
     || (not (Option.equal ( == ) t.highlighter props.highlighter))
@@ -1390,6 +1393,8 @@ let apply_props t (props : Props.t) =
   let content_changed = not (String.equal t.content props.content) in
   let old_content = t.content in
   t.style <- props.style;
+  t.render_node <- props.render_node;
+  t.render_code <- props.render_code;
   t.highlighter <- props.highlighter;
   t.syntax_style <- props.syntax_style;
   t.conceal <- props.conceal;
@@ -1398,7 +1403,12 @@ let apply_props t (props : Props.t) =
   set_selectable t props.selectable;
   set_selection_bg t props.selection_bg;
   set_selection_fg t props.selection_fg;
-  if content_changed then
+  if renderers_changed then begin
+    List.iter (fun tb -> destroy_widget tb.widget) t.blocks;
+    t.blocks <- [];
+    update_blocks t
+  end
+  else if content_changed then
     if presentation_changed then update_blocks t
     else update_blocks ~old_content t
   else if presentation_changed then

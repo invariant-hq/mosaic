@@ -713,8 +713,16 @@ let create_callback_refs (instance : instance)
               Diff.set_on_line_click widget
                 (Option.map (Fun.const dispatch) c.on_line_click)
           | _ -> Diff.set_on_line_click widget None)
-    | Box_instance _ | Text_instance _ | Spinner_instance _
-    | Progress_bar_instance _ | Line_number_instance _ | Picture_instance _ ->
+    | Text_instance widget -> (
+        function
+        | Vnode.Text_callbacks c ->
+            Text.set_on_selection widget
+              (Option.map
+                 (fun f value -> ignore (f value : unit option))
+                 c.on_selection)
+        | _ -> Text.set_on_selection widget None)
+    | Box_instance _ | Spinner_instance _ | Progress_bar_instance _
+    | Line_number_instance _ | Picture_instance _ ->
         Fun.const ()
   in
   update_presence initial;

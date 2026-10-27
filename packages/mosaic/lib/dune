@@ -10,5 +10,6 @@
   matrix.screen
   matrix.input
   mosaic_ui
+  cmarkit
   threads.posix
   unix))
