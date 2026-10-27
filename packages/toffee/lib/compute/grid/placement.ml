@@ -131,25 +131,28 @@ let place_definite_secondary_axis_item cell_occupancy_matrix placement auto_flow
       | None -> primary_axis_grid_start_line
   in
 
-  let position = ref starting_position in
-  let rec loop () =
-    let primary_axis_placement =
-      PlacementInBothAxes.get placement primary_axis |> fun line ->
-      PlacementLine.resolve_indefinite_grid_tracks line !position
+  (* The item spans the same count of tracks wherever it starts *)
+  let primary_line = PlacementInBothAxes.get placement primary_axis in
+  let primary_span =
+    let first =
+      PlacementLine.resolve_indefinite_grid_tracks primary_line
+        starting_position
     in
-
-    let does_fit =
-      Cell_occupancy.line_area_is_unoccupied cell_occupancy_matrix
-        (Abstract_axis.to_absolute_naive primary_axis)
-        primary_axis_placement secondary_axis_placement
-    in
-
-    if does_fit then (primary_axis_placement, secondary_axis_placement)
-    else (
-      incr position;
-      loop ())
+    first.end_ - first.start
   in
-  loop ()
+  let position = ref starting_position in
+  while
+    not
+      (Cell_occupancy.lines_are_unoccupied cell_occupancy_matrix
+         (Abstract_axis.to_absolute_naive primary_axis)
+         ~primary_start:!position ~primary_end:(!position + primary_span)
+         ~secondary_start:secondary_axis_placement.Line.start
+         ~secondary_end:secondary_axis_placement.end_)
+  do
+    incr position
+  done;
+  ( PlacementLine.resolve_indefinite_grid_tracks primary_line !position,
+    secondary_axis_placement )
 
 (* 8.5. Grid Item Placement Algorithm Step 4. Position the remaining grid
    items *)
@@ -187,12 +190,7 @@ let place_indefinitely_positioned_item cell_occupancy_matrix placement auto_flow
     |> Grid_track_counts.implicit_start_line
   in
 
-  let line_area_is_occupied primary_span secondary_span =
-    not
-      (Cell_occupancy.line_area_is_unoccupied cell_occupancy_matrix
-         (Abstract_axis.to_absolute_naive primary_axis)
-         primary_span secondary_span)
-  in
+  let primary_absolute_axis = Abstract_axis.to_absolute_naive primary_axis in
 
   let primary_idx, secondary_idx = grid_position in
   let primary_idx = ref primary_idx in
@@ -213,20 +211,19 @@ let place_indefinitely_positioned_item cell_occupancy_matrix placement auto_flow
 
     (* Item has fixed primary axis position: so we simply increment the
        secondary axis position until we find a space that the item fits in *)
-    let rec loop () =
-      let secondary_span =
-        Line.{ start = !secondary_idx; end_ = !secondary_idx + secondary_span }
-      in
-
+    while
+      not
+        (Cell_occupancy.lines_are_unoccupied cell_occupancy_matrix
+           primary_absolute_axis ~primary_start:primary_span.Line.start
+           ~primary_end:primary_span.end_ ~secondary_start:!secondary_idx
+           ~secondary_end:(!secondary_idx + secondary_span))
+    do
       (* If area is occupied, increment the index and try again *)
-      if line_area_is_occupied primary_span secondary_span then (
-        incr secondary_idx;
-        loop ())
-      else
-        (* Once we find a free space, return that position *)
-        (primary_span, secondary_span)
-    in
-    loop ())
+      incr secondary_idx
+    done;
+    (* Once we find a free space, return that position *)
+    ( primary_span,
+      Line.{ start = !secondary_idx; end_ = !secondary_idx + secondary_span } ))
   else
     let primary_span = PlacementLine.indefinite_span primary_placement_style in
 
@@ -234,32 +231,27 @@ let place_indefinitely_positioned_item cell_occupancy_matrix placement auto_flow
        until we hit the end of the already existent tracks, and then we reset
        the primary axis back to zero and increment the secondary axis index. We
        continue in this vein until we find a space that the item fits in. *)
-    let rec loop () =
-      let primary_span =
-        Line.{ start = !primary_idx; end_ = !primary_idx + primary_span }
-      in
-      let secondary_span =
-        Line.{ start = !secondary_idx; end_ = !secondary_idx + secondary_span }
-      in
-
+    let found = ref false in
+    while not !found do
       (* If the primary index is out of bounds, then increment the secondary
          index and reset the primary index back to the start of the grid *)
-      let primary_out_of_bounds =
-        primary_span.Line.end_ > primary_axis_grid_end_line
-      in
-      if primary_out_of_bounds then (
+      if !primary_idx + primary_span > primary_axis_grid_end_line then (
         incr secondary_idx;
-        primary_idx := primary_axis_grid_start_line;
-        loop ())
-      else if line_area_is_occupied primary_span secondary_span then (
-        (* If area is occupied, increment the primary index and try again *)
-        incr primary_idx;
-        loop ())
+        primary_idx := primary_axis_grid_start_line)
+      else if
+        Cell_occupancy.lines_are_unoccupied cell_occupancy_matrix
+          primary_absolute_axis ~primary_start:!primary_idx
+          ~primary_end:(!primary_idx + primary_span)
+          ~secondary_start:!secondary_idx
+          ~secondary_end:(!secondary_idx + secondary_span)
+      then found := true
       else
-        (* Once we find a free space that's in bounds, return that position *)
-        (primary_span, secondary_span)
-    in
-    loop ()
+        (* If area is occupied, increment the primary index and try again *)
+        incr primary_idx
+    done;
+    (* Once we find a free space that's in bounds, return that position *)
+    ( Line.{ start = !primary_idx; end_ = !primary_idx + primary_span },
+      Line.{ start = !secondary_idx; end_ = !secondary_idx + secondary_span } )
 
 (* Record the grid item in both CellOccupancyMatrix and the GridItems list once
    a definite placement has been determined *)

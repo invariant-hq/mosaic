@@ -149,19 +149,10 @@ let mark_area_as t primary_axis primary_span secondary_span value =
 (* Determines whether a grid area specified by a range of indexes into this
    CellOccupancyMatrix is entirely unnocupied. Returns true if all grid cells
    within the grid area are unoccupied, else false *)
-let track_area_is_unoccupied t primary_axis primary_range secondary_range =
-  let open Absolute_axis in
-  let row_range, col_range =
-    match primary_axis with
-    | Horizontal -> (secondary_range, primary_range)
-    | Vertical -> (primary_range, secondary_range)
-  in
-
-  let row_start, row_end = row_range in
-  let col_start, col_end = col_range in
-
-  (* Search for occupied cells in the specified area. Out of bounds cells are
-     considered unoccupied *)
+(* Whether the cells of the rows [row_start] to [row_end] (exclusive) and the
+   columns [col_start] to [col_end] are unoccupied. Out of bounds cells are
+   considered unoccupied *)
+let cells_are_unoccupied t ~row_start ~row_end ~col_start ~col_end =
   try
     for row = row_start to row_end - 1 do
       for col = col_start to col_end - 1 do
@@ -171,6 +162,16 @@ let track_area_is_unoccupied t primary_axis primary_range secondary_range =
     done;
     true
   with Exit -> false
+
+let track_area_is_unoccupied t primary_axis (primary_start, primary_end)
+    (secondary_start, secondary_end) =
+  match primary_axis with
+  | Absolute_axis.Horizontal ->
+      cells_are_unoccupied t ~row_start:secondary_start ~row_end:secondary_end
+        ~col_start:primary_start ~col_end:primary_end
+  | Vertical ->
+      cells_are_unoccupied t ~row_start:primary_start ~row_end:primary_end
+        ~col_start:secondary_start ~col_end:secondary_end
 
 (* Returns the track counts of this CellOccupancyMatrix in the relevant axis *)
 let track_counts t track_type =
@@ -193,18 +194,32 @@ let row_is_occupied t row_index =
 (* Determines whether a grid area specified by the bounding grid lines in
    OriginZero coordinates is entirely unnocupied. Returns true if all grid cells
    within the grid area are unoccupied, else false *)
-let line_area_is_unoccupied t primary_axis primary_span secondary_span =
-  let primary_range =
-    Grid_track_counts.oz_line_range_to_track_range
-      (track_counts t primary_axis)
-      primary_span
+let lines_are_unoccupied t primary_axis ~primary_start ~primary_end
+    ~secondary_start ~secondary_end =
+  (* A line in OriginZero coordinates is followed by the track at its index
+     plus the negative implicit track count
+     ([Grid_track_counts.oz_line_range_to_track_range]) *)
+  let primary = (track_counts t primary_axis).negative_implicit in
+  let secondary =
+    (track_counts t (Absolute_axis.other primary_axis)).negative_implicit
   in
-  let secondary_range =
-    Grid_track_counts.oz_line_range_to_track_range
-      (track_counts t (Absolute_axis.other primary_axis))
-      secondary_span
-  in
-  track_area_is_unoccupied t primary_axis primary_range secondary_range
+  let primary_start = primary_start + primary
+  and primary_end = primary_end + primary
+  and secondary_start = secondary_start + secondary
+  and secondary_end = secondary_end + secondary in
+  match primary_axis with
+  | Absolute_axis.Horizontal ->
+      cells_are_unoccupied t ~row_start:secondary_start ~row_end:secondary_end
+        ~col_start:primary_start ~col_end:primary_end
+  | Vertical ->
+      cells_are_unoccupied t ~row_start:primary_start ~row_end:primary_end
+        ~col_start:secondary_start ~col_end:secondary_end
+
+let line_area_is_unoccupied t primary_axis (primary_span : int Line.t)
+    (secondary_span : int Line.t) =
+  lines_are_unoccupied t primary_axis ~primary_start:primary_span.start
+    ~primary_end:primary_span.end_ ~secondary_start:secondary_span.start
+    ~secondary_end:secondary_span.end_
 
 (* Determines whether the specified column contains any items *)
 let column_is_occupied t column_index =

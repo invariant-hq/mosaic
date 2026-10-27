@@ -88,6 +88,19 @@ val line_area_is_unoccupied :
     Spans are in OriginZero line coordinates. Converts to track ranges before
     checking occupancy. *)
 
+val lines_are_unoccupied :
+  t ->
+  Toffee_geometry.Absolute_axis.t ->
+  primary_start:int ->
+  primary_end:int ->
+  secondary_start:int ->
+  secondary_end:int ->
+  bool
+(** [lines_are_unoccupied t primary_axis ~primary_start ~primary_end
+     ~secondary_start ~secondary_end] is {!line_area_is_unoccupied} of the spans
+    from [primary_start] to [primary_end] and from [secondary_start] to
+    [secondary_end], given as their lines. *)
+
 val row_is_occupied : t -> int -> bool
 (** [row_is_occupied t row_index] checks if the specified row contains any
     occupied cells.

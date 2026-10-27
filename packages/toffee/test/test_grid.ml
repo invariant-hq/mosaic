@@ -288,6 +288,71 @@ let placement_test_runner ~flow ~explicit_cols ~explicit_rows children
     (Toffee_compute_grid.Grid_track_counts.positive_implicit expected_col_counts)
     (Toffee_compute_grid.Grid_track_counts.positive_implicit actual_cols)
 
+(* The words placing the items of a grid of one row and [columns] columns
+   allocates, and the column of the last item. *)
+let placement_words ~columns children =
+  let cell_occupancy =
+    Toffee_compute_grid.Cell_occupancy.with_track_counts
+      (make_counts ~neg:0 ~explicit:columns ~pos:0)
+      (make_counts ~neg:0 ~explicit:1 ~pos:0)
+  in
+  let items = ref [] in
+  let name_resolver = Toffee_compute_grid.Named.create Style.default 0 0 in
+  Toffee_compute_grid.Named.set_explicit_column_count name_resolver columns;
+  Toffee_compute_grid.Named.set_explicit_row_count name_resolver 1;
+  let children = Array.of_list children in
+  let tree =
+    (module struct
+      type t = unit
+
+      let child_ids _ _ =
+        Array.to_seq (Array.mapi (fun i _ -> Tree.Node_id.make i) children)
+
+      let child_count _ _ = Array.length children
+      let get_child_id _ _ idx = Tree.Node_id.make idx
+      let get_core_container_style _ node = children.(Tree.Node_id.index node)
+      let set_unrounded_layout _ _ _ = ()
+      let compute_child_layout _ _ _ = Layout_output.hidden
+      let resolve_calc_value _ _ v = v
+    end : Tree.LAYOUT_PARTIAL_TREE
+      with type t = unit)
+  in
+  let before = Gc.minor_words () in
+  Toffee_compute_grid.Placement.place_grid_items tree
+    ~cell_occupancy_matrix:cell_occupancy ~items ~tree:()
+    ~parent_node:(Tree.Node_id.make (-1))
+    ~grid_auto_flow:Style.Grid_auto_flow.Row
+    ~align_items:(Some Style.Align_items.Start)
+    ~justify_items:(Some Style.Align_items.Start)
+    ~named_line_resolver:name_resolver;
+  let words = Gc.minor_words () -. before in
+  let last =
+    List.find
+      (fun item ->
+        Tree.Node_id.index item.Toffee_compute_grid.Grid_item.node
+        = Array.length children - 1)
+      !items
+  in
+  (words, last.Toffee_compute_grid.Grid_item.column.start)
+
+(* An item placed automatically after an item that spans [occupied] columns
+   tries each of those columns before the next: the search allocates the
+   same whatever the count of columns it tries. *)
+let test_placement_search_allocates_nothing_per_cell () =
+  let words occupied =
+    let children =
+      [
+        make_grid_style (line 1, span occupied, line 1, auto);
+        make_grid_style (auto, auto, line 1, auto);
+      ]
+    in
+    let words, column = placement_words ~columns:30 children in
+    equal ~msg:"column" int occupied column;
+    words
+  in
+  equal ~msg:"words after 20 columns as after 2" float_exact (words 2)
+    (words 20)
+
 let placement_tests =
   let flow_row = Style.Grid_auto_flow.Row in
   let flow_col = Style.Grid_auto_flow.Column in
@@ -474,5 +539,9 @@ let () =
             test_explicit_grid_sizing_auto_fill_with_gaps;
         ];
       group "placement"
-        (List.map (fun (name, fn) -> test name fn) placement_tests);
+        (List.map (fun (name, fn) -> test name fn) placement_tests
+        @ [
+            test "The search allocates nothing per cell"
+              test_placement_search_allocates_nothing_per_cell;
+          ]);
     ]
