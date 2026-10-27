@@ -17,7 +17,7 @@ let forced getenv name =
   | None | Some ("0" | "false") -> false
   | Some _ -> true
 
-let decide ?(color = `Auto) getenv ~tty ~dumb (colors : Color.depth) : t =
+let decide ?(color = `Auto) getenv ~tty ~dumb (colors : [< Color.depth ]) : t =
   let colors = (colors :> t) in
   match color with
   | `Always -> colors

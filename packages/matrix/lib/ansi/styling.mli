@@ -57,9 +57,10 @@ val decide :
   (string -> string option) ->
   tty:bool ->
   dumb:bool ->
-  Color.depth ->
+  [< Color.depth ] ->
   t
 (** [decide ~color getenv ~tty ~dumb colors] is the styling of a destination,
     which is a terminal iff [tty], dumb iff [dumb], and shows the colors of
     depth [colors], for the program's choice [color] ([`Auto] by default) and
-    the environment read through [getenv], by the module's rule. *)
+    the environment read through [getenv], by the module's rule. [colors] may be
+    of any type of fewer depths, such as [Matrix_terminal.Caps]' [colors]. *)

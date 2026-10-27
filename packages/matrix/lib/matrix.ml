@@ -846,8 +846,7 @@ let refresh_capabilities t =
   let caps = Terminal.capabilities t.terminal in
   let styling =
     Ansi.Styling.decide ?color:t.config.color t.variable
-      ~tty:t.backend.output_is_tty ~dumb:caps.dumb
-      (caps.colors :> Ansi.Color.depth)
+      ~tty:t.backend.output_is_tty ~dumb:caps.dumb caps.colors
   in
   Screen.apply_capabilities t.screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning

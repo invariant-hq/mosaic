@@ -2090,6 +2090,12 @@ let styling_tests =
           equal ~msg:"names" (list string)
             [ "auto"; "always"; "never" ]
             (List.map fst Styling.choices));
+      (* A terminal's capabilities give fewer depths than Color.depth has,
+         and pass them as they are. *)
+      test "a narrower type of depths" (fun () ->
+          let colors : [ `Ansi16 | `Ansi256 | `Truecolor ] = `Ansi256 in
+          equal ~msg:"styling" styling_t `Ansi256
+            (Styling.decide (fun _ -> None) ~tty:true ~dumb:false colors));
     ]
 
 let tests =
