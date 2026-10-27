@@ -532,6 +532,7 @@ let default_background_is_transparent () =
 
 let set_background_noop () =
   let t, tree = make_tree () in
+  Tree.set_background tree (Ansi.Color.of_rgba 0 0 0 0);
   let before = !(t.schedule_count) in
   Tree.set_background tree (Ansi.Color.of_rgba 0 0 0 0);
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -556,6 +557,7 @@ let set_show_guides_noop () =
 
 let set_text_color_noop () =
   let t, tree = make_tree () in
+  Tree.set_text_color tree (Ansi.Color.of_rgb 255 255 255);
   let before = !(t.schedule_count) in
   Tree.set_text_color tree (Ansi.Color.of_rgb 255 255 255);
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -1239,9 +1241,53 @@ let doors_fast_scroll_step () =
         (Tree.create ~parent ~style:doors_style ~items:many_items
            ~state:many_state ~fast_scroll_step:2 ()))
 
+(* ── Paint ── *)
+
+(* Labels in the [Plain] role, icons the theme's glyphs in [Muted], guides
+   in [Border], the selected row on the [Cursor] surface while focused and
+   [Selected] otherwise; a label replaces its role or glyph. *)
+
+let paint_view ?expand_icon () =
+  Mosaic.tree ~size:doors_size ~items:doors_items ~state:doors_state
+    ~show_guides:true ?expand_icon ~on_change:ignore ()
+
+let paint_legible_on_light () =
+  List.iter
+    (fun focused ->
+      equal ~msg:"no cell below its contrast" (list string) []
+        (illegible xterm_light
+           (painted
+              (paint
+                 ~theme:(Theme.default xterm_light)
+                 ~focused (paint_view ())))))
+    [ false; true ]
+
+(* Row 0 is "a", expanded; row 3 is "b", collapsed. *)
+let paint_glyphs () =
+  let ascii = Mosaic.themed (Theme.with_glyphs Glyphs.ascii) (paint_view ()) in
+  equal ~msg:"collapse, unicode" string "\u{25BC}"
+    (cell_text (paint (paint_view ())) ~x:0 ~y:0);
+  equal ~msg:"collapse, ascii" string "-" (cell_text (paint ascii) ~x:0 ~y:0);
+  equal ~msg:"expand, ascii" string "+" (cell_text (paint ascii) ~x:0 ~y:3);
+  equal ~msg:"the label first" string "*"
+    (cell_text (paint (paint_view ~expand_icon:"*" ())) ~x:0 ~y:3)
+
+let paint_surfaces () =
+  is_true ~msg:"focused, the Cursor surface"
+    (has Inverse (cell_style (paint ~focused:true (paint_view ())) ~x:2 ~y:0));
+  let s = cell_style (paint (paint_view ())) ~x:2 ~y:0 in
+  is_true ~msg:"unfocused, the Selected surface"
+    (has Bold s && has Underline s && not (has Inverse s))
+
 let () =
   run "mosaic.tree"
     [
+      group "Paint"
+        [
+          test "legible on a light terminal" paint_legible_on_light;
+          test "icons are the theme's glyphs" paint_glyphs;
+          test "row surfaces" paint_surfaces;
+        ];
       group "State.step"
         [
           test "moves over shown nodes" step_moves;

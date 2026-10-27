@@ -5,4 +5,4 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-viewport/frame-hover-rerender-1000x4	alloc_words	exact	4540
+viewport/frame-hover-rerender-1000x4	alloc_words	exact	4508

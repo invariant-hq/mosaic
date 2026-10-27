@@ -15,7 +15,7 @@ let%expect_test "basic rendering first selected" =
   render ~width:30 ~height:10 (Vnode.select ~options:items ~selected_index:0 ());
   [%expect_exact
     {|
- ▶ Alpha
+ › Alpha
    First item
    Beta
    Second item
@@ -32,7 +32,7 @@ let%expect_test "second item selected" =
     {|
    Alpha
    First item
- ▶ Beta
+ › Beta
    Second item
    Gamma
 
@@ -45,7 +45,7 @@ let%expect_test "no descriptions" =
   render ~width:30 ~height:10
     (Vnode.select ~options:items ~show_description:false ());
   [%expect_exact {|
- ▶ Alpha
+ › Alpha
    Beta
    Gamma
    Delta
@@ -72,7 +72,7 @@ let%expect_test "navigation changes selection" =
   frame app ~width:30 ~height:10;
   [%expect_exact
     {|
- ▶ Alpha
+ ❯ Alpha
    First item
    Beta
    Second item
@@ -84,7 +84,7 @@ let%expect_test "navigation changes selection" =
    Fifth item
    Alpha
    First item
- ▶ Beta
+ ❯ Beta
    Second item
    Gamma
 
@@ -101,7 +101,7 @@ let%expect_test "focused vs unfocused" =
   frame app ~width:30 ~height:10;
   [%expect_exact
     {|
- ▶ Alpha
+ › Alpha
    First item
    Beta
    Second item
@@ -111,7 +111,7 @@ let%expect_test "focused vs unfocused" =
    Fourth item
    Epsilon
    Fifth item
- ▶ Alpha
+ ❯ Alpha
    First item
    Beta
    Second item
@@ -144,6 +144,6 @@ let%expect_test "intrinsic select fits between siblings on its first frame" =
        ]);
   [%expect_exact {|
 before
- ▶ A
+ › A
    B
 after|}]

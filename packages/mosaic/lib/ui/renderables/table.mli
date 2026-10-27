@@ -8,6 +8,14 @@
     widget is keyboard- and mouse-navigable and automatically scrolls to keep
     the selected row visible.
 
+    The table draws by the roles of the theme in scope ({!Renderable.theme}):
+    its lines in the [Border] role, the header in the [Emphasis] role, cells in
+    the [Plain] role, and the selected row on the [Cursor] surface while the
+    table is focused and the [Selected] surface otherwise. A cell's style is
+    merged over its row's ({!Ansi.Style.merge}), so a styled cell keeps its
+    colors on the selected row and the row keeps its surface. A color label
+    replaces the role or surface it names.
+
     {2:keys Keys}
 
     When focused, the widget's behavior (see {!Renderable.set_key_behavior})
@@ -236,13 +244,16 @@ module Props : sig
         [false].
       - [cell_padding] the horizontal padding (in terminal columns) per side of
         each cell. Defaults to [0].
-      - [header_color] the header text color. Defaults to white.
-      - [header_background] the header background color. Defaults to dark gray.
-      - [text_color] the default cell text color. Defaults to white.
-      - [background] the table background color. Defaults to transparent.
-      - [selected_text_color] the selected row text color. Defaults to yellow.
-      - [selected_background] the selected row background. Defaults to dark
-        blue.
+      - [header_color] the header text color. Defaults to none, the [Emphasis]
+        role.
+      - [header_background] the header background color. Defaults to none.
+      - [text_color] the default cell text color. Defaults to none, the [Plain]
+        role.
+      - [background] the table background color. Defaults to none.
+      - [selected_text_color] the selected row text color. Defaults to none.
+      - [selected_background] the selected row background. Defaults to none, the
+        [Cursor] surface while the table is focused and the [Selected] surface
+        otherwise.
       - [focused_selected_text_color] the focused-and-selected row text color.
         When [None], [selected_text_color] is used instead.
       - [focused_selected_background] the focused-and-selected row background.

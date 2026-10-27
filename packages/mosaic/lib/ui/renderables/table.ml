@@ -117,14 +117,14 @@ module Props = struct
     show_column_separator : bool;
     show_row_separator : bool;
     cell_padding : int;
-    header_color : Ansi.Color.t;
-    header_background : Ansi.Color.t;
-    text_color : Ansi.Color.t;
-    background : Ansi.Color.t;
-    selected_text_color : Ansi.Color.t;
-    selected_background : Ansi.Color.t;
-    focused_selected_text_color : Ansi.Color.t;
-    focused_selected_background : Ansi.Color.t;
+    header_color : Ansi.Color.t option;
+    header_background : Ansi.Color.t option;
+    text_color : Ansi.Color.t option;
+    background : Ansi.Color.t option;
+    selected_text_color : Ansi.Color.t option;
+    selected_background : Ansi.Color.t option;
+    focused_selected_text_color : Ansi.Color.t option;
+    focused_selected_background : Ansi.Color.t option;
     selection_visible : bool;
     show_scroll_indicator : bool;
     activate_on_click : bool;
@@ -137,27 +137,13 @@ module Props = struct
   let make ?(columns = []) ?(rows = []) ?(selected_row = 0) ?(border = true)
       ?(border_style = Matrix_grid.Border.single) ?(show_header = true)
       ?(show_column_separator = false) ?(show_row_separator = false)
-      ?(cell_padding = 0) ?(header_color = Ansi.Color.of_rgb 255 255 255)
-      ?(header_background = Ansi.Color.of_rgb 51 51 51)
-      ?(text_color = Ansi.Color.of_rgb 255 255 255)
-      ?(background = Ansi.Color.of_rgba 0 0 0 0)
-      ?(selected_text_color = Ansi.Color.of_rgb 255 255 0)
-      ?(selected_background = Ansi.Color.of_rgb 51 68 85)
+      ?(cell_padding = 0) ?header_color ?header_background ?text_color
+      ?background ?selected_text_color ?selected_background
       ?focused_selected_text_color ?focused_selected_background
       ?(selection_visible = true) ?(show_scroll_indicator = false)
       ?(activate_on_click = false) ?(wheel_navigation = true) ?(row_styles = [])
       ?(wrap_selection = false) ?(key_bindings = []) ?(fast_scroll_step = 5) ()
       =
-    let focused_selected_text_color =
-      match focused_selected_text_color with
-      | Some c -> c
-      | None -> selected_text_color
-    in
-    let focused_selected_background =
-      match focused_selected_background with
-      | Some c -> c
-      | None -> selected_background
-    in
     {
       key_bindings;
       columns;
@@ -205,15 +191,15 @@ module Props = struct
     && Bool.equal a.show_column_separator b.show_column_separator
     && Bool.equal a.show_row_separator b.show_row_separator
     && Int.equal a.cell_padding b.cell_padding
-    && Ansi.Color.equal a.header_color b.header_color
-    && Ansi.Color.equal a.header_background b.header_background
-    && Ansi.Color.equal a.text_color b.text_color
-    && Ansi.Color.equal a.background b.background
-    && Ansi.Color.equal a.selected_text_color b.selected_text_color
-    && Ansi.Color.equal a.selected_background b.selected_background
-    && Ansi.Color.equal a.focused_selected_text_color
+    && Option.equal Ansi.Color.equal a.header_color b.header_color
+    && Option.equal Ansi.Color.equal a.header_background b.header_background
+    && Option.equal Ansi.Color.equal a.text_color b.text_color
+    && Option.equal Ansi.Color.equal a.background b.background
+    && Option.equal Ansi.Color.equal a.selected_text_color b.selected_text_color
+    && Option.equal Ansi.Color.equal a.selected_background b.selected_background
+    && Option.equal Ansi.Color.equal a.focused_selected_text_color
          b.focused_selected_text_color
-    && Ansi.Color.equal a.focused_selected_background
+    && Option.equal Ansi.Color.equal a.focused_selected_background
          b.focused_selected_background
     && Bool.equal a.selection_visible b.selection_visible
     && Bool.equal a.show_scroll_indicator b.show_scroll_indicator
@@ -537,43 +523,35 @@ let set_show_row_separator t v =
 (* ───── Color Setters ───── *)
 
 let set_header_color t c =
-  if not (Ansi.Color.equal t.props.header_color c) then (
-    t.props <- { t.props with header_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.header_color (Some c)) then (
+    t.props <- { t.props with header_color = Some c };
     request t)
 
 let set_header_background t c =
-  if not (Ansi.Color.equal t.props.header_background c) then (
-    t.props <- { t.props with header_background = c };
+  if not (Option.equal Ansi.Color.equal t.props.header_background (Some c)) then (
+    t.props <- { t.props with header_background = Some c };
     request t)
 
 let set_text_color t c =
-  if not (Ansi.Color.equal t.props.text_color c) then (
-    t.props <- { t.props with text_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.text_color (Some c)) then (
+    t.props <- { t.props with text_color = Some c };
     request t)
 
 let set_background t c =
-  if not (Ansi.Color.equal t.props.background c) then (
-    t.props <- { t.props with background = c };
+  if not (Option.equal Ansi.Color.equal t.props.background (Some c)) then (
+    t.props <- { t.props with background = Some c };
     request t)
 
 let set_selected_text_color t c =
-  if not (Ansi.Color.equal t.props.selected_text_color c) then (
-    t.props <- { t.props with selected_text_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.selected_text_color (Some c))
+  then (
+    t.props <- { t.props with selected_text_color = Some c };
     request t)
 
 let set_selected_background t c =
-  if not (Ansi.Color.equal t.props.selected_background c) then (
-    t.props <- { t.props with selected_background = c };
-    request t)
-
-let set_focused_selected_text_color t c =
-  if not (Ansi.Color.equal t.props.focused_selected_text_color c) then (
-    t.props <- { t.props with focused_selected_text_color = c };
-    request t)
-
-let set_focused_selected_background t c =
-  if not (Ansi.Color.equal t.props.focused_selected_background c) then (
-    t.props <- { t.props with focused_selected_background = c };
+  if not (Option.equal Ansi.Color.equal t.props.selected_background (Some c))
+  then (
+    t.props <- { t.props with selected_background = Some c };
     request t)
 
 let set_selection_visible t visible =
@@ -747,7 +725,11 @@ let draw_cell_content ~width_method grid ~x ~y ~col_width ~padding ~alignment
   let content_x = x + padding in
   match cell with
   | Plain { text; style } ->
-      let st = Option.value style ~default:default_style in
+      let st =
+        match style with
+        | None -> default_style
+        | Some overlay -> Ansi.Style.merge ~base:default_style ~overlay
+      in
       draw_text_aligned ~width_method grid ~x:content_x ~y ~width:content_width
         ~alignment ~overflow ~style:st ~text
   | Rich fragments ->
@@ -794,6 +776,11 @@ let draw_cell_content ~width_method grid ~x ~y ~col_width ~padding ~alignment
 
 (* ───── Rendering ───── *)
 
+let first_some a b = match a with Some _ -> a | None -> b
+
+let labelled color style =
+  match color with Some c -> Ansi.Style.fg c style | None -> style
+
 let render t _self grid ~dt:_ =
   let width = Renderable.width t.node in
   let height = Renderable.height t.node in
@@ -807,12 +794,21 @@ let render t _self grid ~dt:_ =
     let show_col_sep = t.props.show_column_separator in
     let show_row_sep = t.props.show_row_separator in
     let ncols = Array.length t.col_specs in
-    let border_fg = Ansi.Color.of_rgb 229 229 229 in
-    let border_bg = t.props.background in
+    (* Labels first, then roles: lines in the [Border] role, the header in
+       [Emphasis], cells in [Plain] with each cell's style merged over its
+       row, and the selected row on the [Cursor] surface while focused and
+       the [Selected] surface otherwise. *)
+    let theme = Renderable.theme t.node in
+    let border_fg =
+      Option.value (Theme.style theme Border).fg ~default:Ansi.Color.default_fg
+    in
+    let background =
+      Option.value t.props.background ~default:Ansi.Color.transparent
+    in
+    let border_bg = background in
 
     (* Background fill *)
-    Matrix_grid.clear_rect ~color:t.props.background grid ~x:0 ~y:0 ~width
-      ~height;
+    Matrix_grid.clear_rect ~color:background grid ~x:0 ~y:0 ~width ~height;
 
     (* Compute layout positions *)
     let border_left = if border then 1 else 0 in
@@ -837,9 +833,12 @@ let render t _self grid ~dt:_ =
 
     (* Header row *)
     if show_header && ncols > 0 then (
-      Matrix_grid.fill_rect grid ~x:border_left ~y:!cur_y
-        ~width:(width - (2 * border_left))
-        ~height:1 ~color:t.props.header_background;
+      Option.iter
+        (fun color ->
+          Matrix_grid.fill_rect grid ~x:border_left ~y:!cur_y
+            ~width:(width - (2 * border_left))
+            ~height:1 ~color)
+        t.props.header_background;
       if border then
         draw_cell grid ~x:0 ~y:!cur_y ~fg:border_fg ~bg:border_bg
           border_style.vertical;
@@ -851,7 +850,7 @@ let render t _self grid ~dt:_ =
             ~width:(max 0 (cw - (2 * pad)))
             ~alignment:t.col_specs.(c).alignment
             ~overflow:t.col_specs.(c).overflow
-            ~style:(Ansi.Style.make ~fg:t.props.header_color ~bold:true ())
+            ~style:(labelled t.props.header_color (Theme.style theme Emphasis))
             ~text:t.col_specs.(c).header;
           cx := !cx + cw;
           if c < ncols - 1 then (
@@ -876,20 +875,36 @@ let render t _self grid ~dt:_ =
     let data_y = !cur_y in
     let start_index = scroll_offset t in
     let end_index = min (row_count t) (start_index + max_visible_rows t) in
-    let default_text_style = Ansi.Style.make ~fg:t.props.text_color () in
+    let default_text_style =
+      labelled t.props.text_color (Theme.style theme Plain)
+    in
+    (* The selected row's style, made only for a frame that shows it. *)
+    let selected_style () =
+      let sel_bg =
+        if focused then
+          first_some t.props.focused_selected_background
+            t.props.selected_background
+        else t.props.selected_background
+      in
+      let sel_fg =
+        if focused then
+          first_some t.props.focused_selected_text_color
+            t.props.selected_text_color
+        else t.props.selected_text_color
+      in
+      let surface =
+        match sel_bg with
+        | Some bg -> Ansi.Style.make ~bg ()
+        | None -> Theme.surface theme (if focused then Cursor else Selected)
+      in
+      labelled sel_fg
+        (Ansi.Style.merge ~base:surface ~overlay:default_text_style)
+    in
     let row_styles = t.props.row_styles in
     let n_row_styles = List.length row_styles in
     for i = start_index to end_index - 1 do
       if !cur_y < height - if border then 1 else 0 then (
         let is_selected = t.props.selection_visible && i = t.selected_row in
-        let sel_bg =
-          if focused then t.props.focused_selected_background
-          else t.props.selected_background
-        in
-        let sel_fg =
-          if focused then t.props.focused_selected_text_color
-          else t.props.selected_text_color
-        in
         (* Alternating row style *)
         let alt_style =
           if n_row_styles > 0 then
@@ -897,10 +912,13 @@ let render t _self grid ~dt:_ =
           else None
         in
         (* Row background: selection takes priority, then alternating style *)
+        let selected_style =
+          if is_selected then selected_style () else default_text_style
+        in
         (if is_selected then
-           Matrix_grid.fill_rect grid ~x:border_left ~y:!cur_y
-             ~width:(width - (2 * border_left))
-             ~height:1 ~color:sel_bg
+           Matrix_grid.draw_text ~style:selected_style grid ~x:border_left
+             ~y:!cur_y
+             ~text:(String.make (max 0 (width - (2 * border_left))) ' ')
          else
            match alt_style with
            | Some s when Option.is_some s.Ansi.Style.bg ->
@@ -924,7 +942,7 @@ let render t _self grid ~dt:_ =
               else Plain { text = ""; style = None }
             in
             let row_style =
-              if is_selected then Ansi.Style.make ~fg:sel_fg ()
+              if is_selected then selected_style
               else
                 match alt_style with
                 | Some s -> Ansi.Style.merge ~base:default_text_style ~overlay:s
@@ -971,7 +989,7 @@ let render t _self grid ~dt:_ =
          let row_height = if show_row_sep then 2 else 1 in
          let hidden_above = start_index > 0 in
          let hidden_below = end_index < row_count t in
-         let style = Ansi.Style.make ~fg:t.props.text_color () in
+         let style = default_text_style in
          for offset = 0 to visible_rows - 1 do
            let text =
              if visible_rows = 1 && hidden_above && hidden_below then "↕"
@@ -1146,14 +1164,34 @@ let apply_props t (props : Props.t) =
   set_show_column_separator t props.show_column_separator;
   set_show_row_separator t props.show_row_separator;
   set_cell_padding t props.cell_padding;
-  set_header_color t props.header_color;
-  set_header_background t props.header_background;
-  set_text_color t props.text_color;
-  set_background t props.background;
-  set_selected_text_color t props.selected_text_color;
-  set_selected_background t props.selected_background;
-  set_focused_selected_text_color t props.focused_selected_text_color;
-  set_focused_selected_background t props.focused_selected_background;
+  let same a b = Option.equal Ansi.Color.equal a b in
+  if
+    not
+      (same t.props.header_color props.header_color
+      && same t.props.header_background props.header_background
+      && same t.props.text_color props.text_color
+      && same t.props.background props.background
+      && same t.props.selected_text_color props.selected_text_color
+      && same t.props.selected_background props.selected_background
+      && same t.props.focused_selected_text_color
+           props.focused_selected_text_color
+      && same t.props.focused_selected_background
+           props.focused_selected_background)
+  then begin
+    t.props <-
+      {
+        t.props with
+        header_color = props.header_color;
+        header_background = props.header_background;
+        text_color = props.text_color;
+        background = props.background;
+        selected_text_color = props.selected_text_color;
+        selected_background = props.selected_background;
+        focused_selected_text_color = props.focused_selected_text_color;
+        focused_selected_background = props.focused_selected_background;
+      };
+    request t
+  end;
   set_selection_visible t props.selection_visible;
   set_show_scroll_indicator t props.show_scroll_indicator;
   set_activate_on_click t props.activate_on_click;

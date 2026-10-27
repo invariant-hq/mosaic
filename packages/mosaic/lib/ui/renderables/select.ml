@@ -35,14 +35,14 @@ module Props = struct
   type t = {
     options : item Items.t;
     selected_index : int;
-    background : Ansi.Color.t;
-    text_color : Ansi.Color.t;
-    focused_background : Ansi.Color.t;
-    focused_text_color : Ansi.Color.t;
-    selected_background : Ansi.Color.t;
-    selected_text_color : Ansi.Color.t;
-    description_color : Ansi.Color.t;
-    selected_description_color : Ansi.Color.t;
+    background : Ansi.Color.t option;
+    text_color : Ansi.Color.t option;
+    focused_background : Ansi.Color.t option;
+    focused_text_color : Ansi.Color.t option;
+    selected_background : Ansi.Color.t option;
+    selected_text_color : Ansi.Color.t option;
+    description_color : Ansi.Color.t option;
+    selected_description_color : Ansi.Color.t option;
     show_description : bool;
     show_scroll_indicator : bool;
     wrap_selection : bool;
@@ -52,33 +52,11 @@ module Props = struct
   }
 
   let make ?(options = []) ?(selected_index = 0) ?background ?text_color
-      ?focused_background ?focused_text_color
-      ?(selected_background = Ansi.Color.of_rgb 51 68 85)
-      ?(selected_text_color = Ansi.Color.of_rgb 255 255 0)
-      ?(description_color = Ansi.Color.of_rgb 136 136 136)
-      ?(selected_description_color = Ansi.Color.of_rgb 204 204 204)
+      ?focused_background ?focused_text_color ?selected_background
+      ?selected_text_color ?description_color ?selected_description_color
       ?(show_description = true) ?(show_scroll_indicator = false)
       ?(wrap_selection = false) ?(item_spacing = 0) ?(fast_scroll_step = 5)
       ?(key_bindings = []) () =
-    let background_opt = background in
-    let background =
-      Option.value background ~default:(Ansi.Color.of_rgba 0 0 0 0)
-    in
-    let text_color =
-      Option.value text_color ~default:(Ansi.Color.of_rgb 255 255 255)
-    in
-    (* When no focused_background is given: inherit from the caller's
-       background, or fall back to a subtle dark gray so focused state is
-       visually distinguishable from unfocused transparent. *)
-    let focused_background =
-      match focused_background with
-      | Some c -> c
-      | None ->
-          Option.value background_opt ~default:(Ansi.Color.of_rgb 26 26 26)
-    in
-    let focused_text_color =
-      Option.value focused_text_color ~default:text_color
-    in
     {
       options = Items.of_list options;
       selected_index = max (-1) selected_index;
@@ -104,14 +82,14 @@ module Props = struct
   let equal a b =
     Items.equal item_equal a.options b.options
     && Int.equal a.selected_index b.selected_index
-    && Ansi.Color.equal a.background b.background
-    && Ansi.Color.equal a.text_color b.text_color
-    && Ansi.Color.equal a.focused_background b.focused_background
-    && Ansi.Color.equal a.focused_text_color b.focused_text_color
-    && Ansi.Color.equal a.selected_background b.selected_background
-    && Ansi.Color.equal a.selected_text_color b.selected_text_color
-    && Ansi.Color.equal a.description_color b.description_color
-    && Ansi.Color.equal a.selected_description_color
+    && Option.equal Ansi.Color.equal a.background b.background
+    && Option.equal Ansi.Color.equal a.text_color b.text_color
+    && Option.equal Ansi.Color.equal a.focused_background b.focused_background
+    && Option.equal Ansi.Color.equal a.focused_text_color b.focused_text_color
+    && Option.equal Ansi.Color.equal a.selected_background b.selected_background
+    && Option.equal Ansi.Color.equal a.selected_text_color b.selected_text_color
+    && Option.equal Ansi.Color.equal a.description_color b.description_color
+    && Option.equal Ansi.Color.equal a.selected_description_color
          b.selected_description_color
     && Bool.equal a.show_description b.show_description
     && Bool.equal a.show_scroll_indicator b.show_scroll_indicator
@@ -138,10 +116,6 @@ let node t = t.node
 
 (* ───── Constants ───── *)
 
-let indicator_selected = "\xe2\x96\xb6 " (* ▶ + space *)
-let indicator_blank = "  "
-let scroll_block = "\xe2\x96\x88" (* █ *)
-
 (* ───── Internal Helpers ───── *)
 
 let request t = Renderable.request_render t.node
@@ -151,11 +125,20 @@ let clamp_index t idx =
   let len = option_count t in
   if len = 0 then -1 else max (-1) (min (len - 1) idx)
 
+(* The colors the labels give, the focused ones falling back to the
+   others; a color no label gives is the role's. *)
+let first_some a b = match a with Some _ -> a | None -> b
+
 let effective_bg t focused =
-  if focused then t.props.focused_background else t.props.background
+  if focused then first_some t.props.focused_background t.props.background
+  else t.props.background
 
 let effective_fg t focused =
-  if focused then t.props.focused_text_color else t.props.text_color
+  if focused then first_some t.props.focused_text_color t.props.text_color
+  else t.props.text_color
+
+let labelled color style =
+  match color with Some c -> Ansi.Style.fg c style | None -> style
 
 (* Each item occupies 1 line (label) or 2 lines (label + description), plus any
    inter-item spacing. This drives both viewport capacity and mouse click ->
@@ -267,43 +250,50 @@ let set_fast_scroll_step t n =
 (* ───── Color Setters ───── *)
 
 let set_background t c =
-  if not (Ansi.Color.equal t.props.background c) then (
-    t.props <- { t.props with background = c };
+  if not (Option.equal Ansi.Color.equal t.props.background (Some c)) then (
+    t.props <- { t.props with background = Some c };
     request t)
 
 let set_text_color t c =
-  if not (Ansi.Color.equal t.props.text_color c) then (
-    t.props <- { t.props with text_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.text_color (Some c)) then (
+    t.props <- { t.props with text_color = Some c };
     request t)
 
 let set_focused_background t c =
-  if not (Ansi.Color.equal t.props.focused_background c) then (
-    t.props <- { t.props with focused_background = c };
+  if not (Option.equal Ansi.Color.equal t.props.focused_background (Some c))
+  then (
+    t.props <- { t.props with focused_background = Some c };
     request t)
 
 let set_focused_text_color t c =
-  if not (Ansi.Color.equal t.props.focused_text_color c) then (
-    t.props <- { t.props with focused_text_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.focused_text_color (Some c))
+  then (
+    t.props <- { t.props with focused_text_color = Some c };
     request t)
 
 let set_selected_background t c =
-  if not (Ansi.Color.equal t.props.selected_background c) then (
-    t.props <- { t.props with selected_background = c };
+  if not (Option.equal Ansi.Color.equal t.props.selected_background (Some c))
+  then (
+    t.props <- { t.props with selected_background = Some c };
     request t)
 
 let set_selected_text_color t c =
-  if not (Ansi.Color.equal t.props.selected_text_color c) then (
-    t.props <- { t.props with selected_text_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.selected_text_color (Some c))
+  then (
+    t.props <- { t.props with selected_text_color = Some c };
     request t)
 
 let set_description_color t c =
-  if not (Ansi.Color.equal t.props.description_color c) then (
-    t.props <- { t.props with description_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.description_color (Some c)) then (
+    t.props <- { t.props with description_color = Some c };
     request t)
 
 let set_selected_description_color t c =
-  if not (Ansi.Color.equal t.props.selected_description_color c) then (
-    t.props <- { t.props with selected_description_color = c };
+  if
+    not
+      (Option.equal Ansi.Color.equal t.props.selected_description_color (Some c))
+  then (
+    t.props <- { t.props with selected_description_color = Some c };
     request t)
 
 (* ───── Callbacks ───── *)
@@ -356,24 +346,41 @@ let handle_mouse t (event : Event.mouse) =
 
 (* ───── Rendering ───── *)
 
+(* The select's paint, resolved against the theme in scope: labels first,
+   then roles. Text is the [Plain] role, descriptions the [Muted] role, and
+   the selected item's row the [Cursor] surface while focused, where it
+   shows no surface unfocused; its mark, [cursor] or [cursor_inactive],
+   shows the selected item and the focus whatever the styling. *)
 let render t _self grid ~dt:_ =
   let width = Renderable.width t.node in
   let height = Renderable.height t.node in
   if width <= 0 || height <= 0 then ()
   else
     let focused = Renderable.focused t.node in
-    let base_bg = effective_bg t focused in
-
+    let theme = Renderable.theme t.node in
+    let glyphs = Theme.glyphs theme in
+    let fg = labelled (effective_fg t focused) (Theme.style theme Plain) in
+    let muted = Theme.style theme Muted in
+    let base_bg =
+      Option.value (effective_bg t focused) ~default:Ansi.Color.transparent
+    in
     (* Clear the entire area first so spacing rows and empty regions below the
        last item don't show stale content. *)
     Matrix_grid.clear_rect ~color:base_bg grid ~x:0 ~y:0 ~width ~height;
-
+    let row_surface =
+      match t.props.selected_background with
+      | Some bg -> Ansi.Style.make ~bg ()
+      | None ->
+          if focused then Theme.surface theme Cursor else Ansi.Style.default
+    in
+    let selected_fg =
+      labelled t.props.selected_text_color
+        (Ansi.Style.merge ~base:row_surface ~overlay:fg)
+    in
+    let mark = if focused then glyphs.cursor else glyphs.cursor_inactive in
     let max_visible = max_visible_items t in
     let start_index = scroll_offset t in
     let end_index = min (option_count t) (start_index + max_visible) in
-    let base_text = effective_fg t focused in
-
-    (* Draw visible items *)
     for i = 0 to max_visible - 1 do
       let actual_index = start_index + i in
       if actual_index < end_index then
@@ -381,39 +388,35 @@ let render t _self grid ~dt:_ =
         let item_y = i * lines_per_item t in
         if item_y < height then (
           let is_selected = actual_index = t.selected_index in
-          (* Highlight covers only the content rows (label + description), not
-             the inter-item spacing rows. *)
+          (* The row's surface covers only the content rows (label and
+             description), not the spacing rows. *)
           let content_height = if t.props.show_description then 2 else 1 in
           if is_selected then
-            Matrix_grid.fill_rect grid ~x:0 ~y:item_y ~width
-              ~height:content_height ~color:t.props.selected_background;
-          let indicator =
-            if is_selected then indicator_selected else indicator_blank
-          in
-          let label_color =
-            if is_selected then t.props.selected_text_color else base_text
-          in
-          let label_text = indicator ^ it.label in
-          Matrix_grid.draw_text
-            ~style:(Ansi.Style.make ~fg:label_color ())
-            grid ~x:1 ~y:item_y ~text:label_text;
+            for r = 0 to min content_height (height - item_y) - 1 do
+              Matrix_grid.draw_text ~style:row_surface grid ~x:0 ~y:(item_y + r)
+                ~text:(String.make width ' ')
+            done;
+          let style = if is_selected then selected_fg else fg in
+          if is_selected then
+            Matrix_grid.draw_text ~style grid ~x:1 ~y:item_y ~text:mark;
+          Matrix_grid.draw_text ~style grid ~x:3 ~y:item_y ~text:it.label;
           if t.props.show_description then
             match it.description with
             | None -> ()
             | Some desc ->
                 if item_y + 1 < height then
-                  let desc_color =
-                    if is_selected then t.props.selected_description_color
-                    else t.props.description_color
+                  let style =
+                    if is_selected then
+                      labelled t.props.selected_description_color
+                        (Ansi.Style.merge ~base:row_surface ~overlay:muted)
+                    else labelled t.props.description_color muted
                   in
-                  (* Description indented past the indicator column *)
-                  Matrix_grid.draw_text
-                    ~style:(Ansi.Style.make ~fg:desc_color ())
-                    grid ~x:3 ~y:(item_y + 1) ~text:desc)
+                  (* Description indented past the mark's column *)
+                  Matrix_grid.draw_text ~style grid ~x:3 ~y:(item_y + 1)
+                    ~text:desc)
     done;
-
-    (* Scroll indicator: single block character in the rightmost column,
-       positioned proportionally to the selection within the list. *)
+    (* Scroll indicator: one thumb glyph in the rightmost column, placed
+       proportionally to the selection within the list. *)
     if t.props.show_scroll_indicator && option_count t > max_visible then
       let len = max 1 (option_count t - 1) in
       let scroll_percent = float (max 0 t.selected_index) /. float len in
@@ -423,10 +426,8 @@ let render t _self grid ~dt:_ =
       let indicator_y =
         1 + int_of_float (floor (scroll_percent *. float indicator_height))
       in
-      let indicator_x = width - 1 in
-      Matrix_grid.draw_text
-        ~style:(Ansi.Style.make ~fg:(Ansi.Color.of_rgb 102 102 102) ())
-        grid ~x:indicator_x ~y:indicator_y ~text:scroll_block
+      Matrix_grid.draw_text ~style:muted grid ~x:(width - 1) ~y:indicator_y
+        ~text:glyphs.thumb
 
 (* ───── Resize ───── *)
 
@@ -572,14 +573,33 @@ let apply_props t (props : Props.t) =
   set_item_spacing t props.item_spacing;
   set_fast_scroll_step t props.fast_scroll_step;
   set_key_bindings t props.key_bindings;
-  set_background t props.background;
-  set_text_color t props.text_color;
-  set_focused_background t props.focused_background;
-  set_focused_text_color t props.focused_text_color;
-  set_selected_background t props.selected_background;
-  set_selected_text_color t props.selected_text_color;
-  set_description_color t props.description_color;
-  set_selected_description_color t props.selected_description_color
+  let same a b = Option.equal Ansi.Color.equal a b in
+  if
+    not
+      (same t.props.background props.background
+      && same t.props.text_color props.text_color
+      && same t.props.focused_background props.focused_background
+      && same t.props.focused_text_color props.focused_text_color
+      && same t.props.selected_background props.selected_background
+      && same t.props.selected_text_color props.selected_text_color
+      && same t.props.description_color props.description_color
+      && same t.props.selected_description_color
+           props.selected_description_color)
+  then begin
+    t.props <-
+      {
+        t.props with
+        background = props.background;
+        text_color = props.text_color;
+        focused_background = props.focused_background;
+        focused_text_color = props.focused_text_color;
+        selected_background = props.selected_background;
+        selected_text_color = props.selected_text_color;
+        description_color = props.description_color;
+        selected_description_color = props.selected_description_color;
+      };
+    request t
+  end
 
 (* ───── Pretty-printing ───── *)
 

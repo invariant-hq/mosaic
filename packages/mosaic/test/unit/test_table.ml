@@ -695,6 +695,7 @@ let set_show_header_noop () =
 
 let set_text_color_noop () =
   let t, tbl = make_table () in
+  Table.set_text_color tbl (Ansi.Color.of_rgb 255 255 255);
   let before = !(t.schedule_count) in
   Table.set_text_color tbl (Ansi.Color.of_rgb 255 255 255);
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -1392,9 +1393,64 @@ let doors_fast_scroll_step () =
         (Table.create ~parent ~style:doors_style ~columns:doors_columns
            ~rows:many_cells ~fast_scroll_step:2 ()))
 
+(* ── Paint ── *)
+
+(* Cells in the [Plain] role, the header in [Emphasis], lines in [Border];
+   the selected row on the [Cursor] surface while focused and the
+   [Selected] surface otherwise; a label replaces its role, and a cell's
+   style merges over its row. *)
+
+let paint_view ?selected_background ?(rows = few_rows) () =
+  Mosaic.table ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+    ~columns:doors_columns ?selected_background ~on_change:ignore ~rows ()
+
+let paint_legible_on_light () =
+  List.iter
+    (fun focused ->
+      equal ~msg:"no cell below its contrast" (list string) []
+        (illegible xterm_light
+           (painted
+              (paint
+                 ~theme:(Theme.default xterm_light)
+                 ~focused (paint_view ())))))
+    [ false; true ]
+
+(* The first data row is under the top border, the header and its rule. *)
+let paint_surfaces () =
+  let row r = cell_style r ~x:1 ~y:3 in
+  is_true ~msg:"focused, the Cursor surface"
+    (has Inverse (row (paint ~focused:true (paint_view ()))));
+  let s = row (paint (paint_view ())) in
+  is_true ~msg:"unfocused, the Selected surface"
+    (has Bold s && has Underline s && not (has Inverse s));
+  is_true ~msg:"the label first"
+    (bg_is doors_red
+       (row
+          (paint ~focused:true (paint_view ~selected_background:doors_red ()))))
+
+let paint_cell_merges () =
+  let blue = Ansi.Color.blue in
+  let rows =
+    [
+      Mosaic.Table.row 0
+        [|
+          Table.cell ~style:(Ansi.Style.make ~fg:blue ()) "row0"; Table.cell "0";
+        |];
+    ]
+  in
+  let s = cell_style (paint ~focused:true (paint_view ~rows ())) ~x:1 ~y:3 in
+  is_true ~msg:"the cell's color on the row's surface"
+    (fg_is blue s && has Inverse s)
+
 let () =
   run "mosaic.table"
     [
+      group "Paint"
+        [
+          test "legible on a light terminal" paint_legible_on_light;
+          test "row surfaces" paint_surfaces;
+          test "a cell's style merges over its row" paint_cell_merges;
+        ];
       test "proposals do not drift" proposals_do_not_drift;
       test "absent selection is preserved" absent_selection_is_preserved;
       group "Props"

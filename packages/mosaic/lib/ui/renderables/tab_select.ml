@@ -34,52 +34,32 @@ module Props = struct
     options : item Items.t;
     selected : int;
     tab_width : int;
-    background : Ansi.Color.t;
-    text_color : Ansi.Color.t;
-    focused_background : Ansi.Color.t;
-    focused_text_color : Ansi.Color.t;
-    selected_background : Ansi.Color.t;
-    selected_text_color : Ansi.Color.t;
-    description_color : Ansi.Color.t;
-    selected_description_color : Ansi.Color.t;
+    background : Ansi.Color.t option;
+    text_color : Ansi.Color.t option;
+    focused_background : Ansi.Color.t option;
+    focused_text_color : Ansi.Color.t option;
+    selected_background : Ansi.Color.t option;
+    selected_text_color : Ansi.Color.t option;
+    description_color : Ansi.Color.t option;
+    selected_description_color : Ansi.Color.t option;
     show_underline : bool;
     show_description : bool;
     show_scroll_arrows : bool;
     wrap_selection : bool;
   }
 
-  let default_selected_background = Ansi.Color.of_rgb 59 130 246
-  let default_description_color = Ansi.Color.of_rgb 203 213 225
-  let default_selected_description_color = Ansi.Color.of_rgb 204 204 204
-
   let make ~options ?(selected = 0) ?(tab_width = 12) ?background ?text_color
-      ?focused_background ?focused_text_color
-      ?(selected_background = default_selected_background)
-      ?(selected_text_color = Ansi.Color.white)
-      ?(description_color = default_description_color)
-      ?(selected_description_color = default_selected_description_color)
+      ?focused_background ?focused_text_color ?selected_background
+      ?selected_text_color ?description_color ?selected_description_color
       ?(show_underline = true) ?(show_description = false)
       ?(show_scroll_arrows = true) ?(wrap_selection = false)
       ?(key_bindings = []) () =
-    let transparent = Ansi.Color.of_rgba 0 0 0 0 in
-    let background' = Option.value ~default:transparent background in
-    let text_color =
-      Option.value ~default:(Ansi.Color.of_rgb 226 232 240) text_color
-    in
-    let focused_background =
-      match focused_background with
-      | Some c -> c
-      | None -> Option.value ~default:(Ansi.Color.of_rgb 26 26 26) background
-    in
-    let focused_text_color =
-      Option.value ~default:text_color focused_text_color
-    in
     {
       key_bindings;
       options = Items.of_list options;
       selected = max (-1) selected;
       tab_width = max 1 tab_width;
-      background = background';
+      background;
       text_color;
       focused_background;
       focused_text_color;
@@ -101,14 +81,14 @@ module Props = struct
     && Items.equal equal_item a.options b.options
     && Int.equal a.selected b.selected
     && a.tab_width = b.tab_width
-    && Ansi.Color.equal a.background b.background
-    && Ansi.Color.equal a.text_color b.text_color
-    && Ansi.Color.equal a.focused_background b.focused_background
-    && Ansi.Color.equal a.focused_text_color b.focused_text_color
-    && Ansi.Color.equal a.selected_background b.selected_background
-    && Ansi.Color.equal a.selected_text_color b.selected_text_color
-    && Ansi.Color.equal a.description_color b.description_color
-    && Ansi.Color.equal a.selected_description_color
+    && Option.equal Ansi.Color.equal a.background b.background
+    && Option.equal Ansi.Color.equal a.text_color b.text_color
+    && Option.equal Ansi.Color.equal a.focused_background b.focused_background
+    && Option.equal Ansi.Color.equal a.focused_text_color b.focused_text_color
+    && Option.equal Ansi.Color.equal a.selected_background b.selected_background
+    && Option.equal Ansi.Color.equal a.selected_text_color b.selected_text_color
+    && Option.equal Ansi.Color.equal a.description_color b.description_color
+    && Option.equal Ansi.Color.equal a.selected_description_color
          b.selected_description_color
     && a.show_underline = b.show_underline
     && a.show_description = b.show_description
@@ -198,7 +178,17 @@ let measure t ~known_dimensions ~available_space ~style:_ =
 
 (* ───── Rendering ───── *)
 
-let underline_char = "\xe2\x96\xac"
+(* Labels first, then roles: tab labels in the [Plain] role; the selected
+   tab on the [Selected] surface, and also on the [Cursor] surface while
+   focused, with a mark in its first cell, [cursor] while focused and
+   [cursor_inactive] otherwise, so the selected tab and the focus show by a
+   glyph whatever the styling; the underline and scroll arrows
+   are glyphs of the theme in scope, the arrows and the description in the
+   [Muted] role. *)
+let labelled color style =
+  match color with Some c -> Ansi.Style.fg c style | None -> style
+
+let first_some a b = match a with Some _ -> a | None -> b
 
 let rec render t _self grid ~dt:_ =
   let w = Renderable.width t.node in
@@ -208,23 +198,46 @@ let rec render t _self grid ~dt:_ =
     let props = t.props in
     let width_method = Renderable.Private.width_method t.node in
     let focused = Renderable.focused t.node in
-    let bg = if focused then props.focused_background else props.background in
-    Matrix_grid.clear_rect ~color:bg grid ~x:0 ~y:0 ~width:w ~height:h;
+    let theme = Renderable.theme t.node in
+    let bg =
+      if focused then first_some props.focused_background props.background
+      else props.background
+    in
+    Matrix_grid.clear_rect
+      ~color:(Option.value bg ~default:Ansi.Color.transparent)
+      grid ~x:0 ~y:0 ~width:w ~height:h;
     let tw = props.tab_width in
     let n = List.length t.items in
     let max_visible = max 1 (w / tw) in
     let scroll = scroll_offset t in
-    let base_text_color =
-      if focused then props.focused_text_color else props.text_color
+    let text =
+      labelled
+        (if focused then first_some props.focused_text_color props.text_color
+         else props.text_color)
+        (Theme.style theme Plain)
     in
-    render_tabs t grid ~width_method ~props ~w ~h ~tw ~max_visible ~scroll
-      ~base_text_color;
-    render_scroll_arrows grid ~props ~w ~n ~max_visible ~scroll;
-    render_description grid ~width_method ~props ~items:t.items ~w ~h
-      ~selected_index:t.selected_index
+    let selected =
+      match props.selected_background with
+      | Some bg -> Ansi.Style.make ~bg ()
+      | None ->
+          let s = Theme.surface theme Selected in
+          if focused then
+            Ansi.Style.merge ~base:s ~overlay:(Theme.surface theme Cursor)
+          else s
+    in
+    let selected =
+      labelled props.selected_text_color
+        (Ansi.Style.merge ~base:selected ~overlay:(Theme.style theme Plain))
+    in
+    render_tabs t grid ~theme ~width_method ~focused ~w ~h ~tw ~max_visible
+      ~scroll ~text ~selected;
+    render_scroll_arrows grid ~theme ~props ~w ~n ~max_visible ~scroll;
+    render_description grid ~theme ~width_method ~focused ~props ~items:t.items
+      ~w ~h ~selected_index:t.selected_index
 
-and render_tabs t grid ~width_method ~props ~w ~h ~tw ~max_visible ~scroll
-    ~base_text_color =
+and render_tabs t grid ~theme ~width_method ~focused ~w ~h ~tw ~max_visible
+    ~scroll ~text ~selected =
+  let glyphs = Theme.glyphs theme in
   let visible_opts = list_drop scroll t.items in
   let rec loop lst col =
     if col >= max_visible then ()
@@ -236,24 +249,28 @@ and render_tabs t grid ~width_method ~props ~w ~h ~tw ~max_visible ~scroll
           let tab_x = col * tw in
           let actual_tw = min tw (w - tab_x) in
           if actual_tw > 0 then (
-            if is_sel then
-              Matrix_grid.fill_rect grid ~x:tab_x ~y:0 ~width:actual_tw
-                ~height:1 ~color:props.selected_background;
-            let text_color =
-              if is_sel then props.selected_text_color else base_text_color
-            in
+            let style = if is_sel then selected else text in
+            if is_sel then begin
+              Matrix_grid.draw_text ~style grid ~x:tab_x ~y:0
+                ~text:(String.make actual_tw ' ');
+              Matrix_grid.draw_text ~style grid ~x:tab_x ~y:0
+                ~text:
+                  (if focused then glyphs.cursor else glyphs.cursor_inactive)
+            end;
             let label =
               truncate_text ~width_method item.label (actual_tw - 2)
             in
-            Matrix_grid.draw_text
-              ~style:(Ansi.Style.make ~fg:text_color ())
-              grid ~x:(tab_x + 1) ~y:0 ~text:label;
-            if props.show_underline && is_sel && h >= 2 then
+            Matrix_grid.draw_text ~style grid ~x:(tab_x + 1) ~y:0 ~text:label;
+            if t.props.show_underline && is_sel && h >= 2 then
               let ul_style =
-                Ansi.Style.make ~fg:text_color ~bg:props.selected_background ()
+                match t.props.selected_background with
+                | Some bg ->
+                    Ansi.Style.bg bg (labelled t.props.selected_text_color text)
+                | None -> labelled t.props.selected_text_color text
               in
               let ul_text =
-                String.concat "" (List.init actual_tw (fun _ -> underline_char))
+                String.concat ""
+                  (List.init actual_tw (fun _ -> glyphs.underline))
               in
               Matrix_grid.draw_text ~style:ul_style grid ~x:tab_x ~y:1
                 ~text:ul_text);
@@ -261,26 +278,32 @@ and render_tabs t grid ~width_method ~props ~w ~h ~tw ~max_visible ~scroll
   in
   loop visible_opts 0
 
-and render_scroll_arrows grid ~props ~w ~n ~max_visible ~scroll =
+and render_scroll_arrows grid ~theme ~props ~w ~n ~max_visible ~scroll =
   if props.Props.show_scroll_arrows then (
-    let arrow_style = Ansi.Style.make ~fg:(Ansi.Color.of_rgb 170 170 170) () in
+    let glyphs = Theme.glyphs theme in
+    let style = Theme.style theme Muted in
     if scroll > 0 then
-      Matrix_grid.draw_text ~style:arrow_style grid ~x:0 ~y:0
-        ~text:"\xe2\x80\xb9";
+      Matrix_grid.draw_text ~style grid ~x:0 ~y:0 ~text:glyphs.more_before;
     if scroll + max_visible < n then
-      Matrix_grid.draw_text ~style:arrow_style grid ~x:(w - 1) ~y:0
-        ~text:"\xe2\x80\xba")
+      Matrix_grid.draw_text ~style grid ~x:(w - 1) ~y:0 ~text:glyphs.more_after)
 
-and render_description grid ~width_method ~props ~items ~w ~h ~selected_index =
+and render_description grid ~theme ~width_method ~focused ~props ~items ~w ~h
+    ~selected_index =
   if props.Props.show_description && selected_index >= 0 then
     let desc_y = 1 + if props.show_underline then 1 else 0 in
     if desc_y < h then
       match List.nth_opt items selected_index with
       | Some item when item.description <> "" ->
           let desc = truncate_text ~width_method item.description (w - 1) in
-          Matrix_grid.draw_text
-            ~style:(Ansi.Style.make ~fg:props.selected_description_color ())
-            grid ~x:0 ~y:desc_y ~text:desc
+          let style =
+            labelled
+              (if focused then
+                 first_some props.selected_description_color
+                   props.description_color
+               else props.description_color)
+              (Theme.style theme Muted)
+          in
+          Matrix_grid.draw_text ~style grid ~x:0 ~y:desc_y ~text:desc
       | _ -> ()
 
 (* ───── Query ───── *)
@@ -394,43 +417,54 @@ let set_tab_width t w =
     request_render t)
 
 let set_background t color =
-  if not (Ansi.Color.equal t.props.background color) then (
-    t.props <- { t.props with background = color };
+  if not (Option.equal Ansi.Color.equal t.props.background (Some color)) then (
+    t.props <- { t.props with background = Some color };
     request_render t)
 
 let set_text_color t color =
-  if not (Ansi.Color.equal t.props.text_color color) then (
-    t.props <- { t.props with text_color = color };
+  if not (Option.equal Ansi.Color.equal t.props.text_color (Some color)) then (
+    t.props <- { t.props with text_color = Some color };
     request_render t)
 
 let set_focused_background t color =
-  if not (Ansi.Color.equal t.props.focused_background color) then (
-    t.props <- { t.props with focused_background = color };
+  if not (Option.equal Ansi.Color.equal t.props.focused_background (Some color))
+  then (
+    t.props <- { t.props with focused_background = Some color };
     if Renderable.focused t.node then request_render t)
 
 let set_focused_text_color t color =
-  if not (Ansi.Color.equal t.props.focused_text_color color) then (
-    t.props <- { t.props with focused_text_color = color };
+  if not (Option.equal Ansi.Color.equal t.props.focused_text_color (Some color))
+  then (
+    t.props <- { t.props with focused_text_color = Some color };
     if Renderable.focused t.node then request_render t)
 
 let set_selected_background t color =
-  if not (Ansi.Color.equal t.props.selected_background color) then (
-    t.props <- { t.props with selected_background = color };
+  if
+    not (Option.equal Ansi.Color.equal t.props.selected_background (Some color))
+  then (
+    t.props <- { t.props with selected_background = Some color };
     request_render t)
 
 let set_selected_text_color t color =
-  if not (Ansi.Color.equal t.props.selected_text_color color) then (
-    t.props <- { t.props with selected_text_color = color };
+  if
+    not (Option.equal Ansi.Color.equal t.props.selected_text_color (Some color))
+  then (
+    t.props <- { t.props with selected_text_color = Some color };
     request_render t)
 
 let set_description_color t color =
-  if not (Ansi.Color.equal t.props.description_color color) then (
-    t.props <- { t.props with description_color = color };
+  if not (Option.equal Ansi.Color.equal t.props.description_color (Some color))
+  then (
+    t.props <- { t.props with description_color = Some color };
     if t.props.show_description then request_render t)
 
 let set_selected_description_color t color =
-  if not (Ansi.Color.equal t.props.selected_description_color color) then (
-    t.props <- { t.props with selected_description_color = color };
+  if
+    not
+      (Option.equal Ansi.Color.equal t.props.selected_description_color
+         (Some color))
+  then (
+    t.props <- { t.props with selected_description_color = Some color };
     if t.props.show_description then request_render t)
 
 let set_show_underline t v =
@@ -483,14 +517,33 @@ let apply_props t (props : Props.t) =
   set_show_underline t props.show_underline;
   set_show_description t props.show_description;
   set_show_scroll_arrows t props.show_scroll_arrows;
-  set_background t props.background;
-  set_text_color t props.text_color;
-  set_focused_background t props.focused_background;
-  set_focused_text_color t props.focused_text_color;
-  set_selected_background t props.selected_background;
-  set_selected_text_color t props.selected_text_color;
-  set_description_color t props.description_color;
-  set_selected_description_color t props.selected_description_color
+  let same a b = Option.equal Ansi.Color.equal a b in
+  if
+    not
+      (same t.props.background props.background
+      && same t.props.text_color props.text_color
+      && same t.props.focused_background props.focused_background
+      && same t.props.focused_text_color props.focused_text_color
+      && same t.props.selected_background props.selected_background
+      && same t.props.selected_text_color props.selected_text_color
+      && same t.props.description_color props.description_color
+      && same t.props.selected_description_color
+           props.selected_description_color)
+  then begin
+    t.props <-
+      {
+        t.props with
+        background = props.background;
+        text_color = props.text_color;
+        focused_background = props.focused_background;
+        focused_text_color = props.focused_text_color;
+        selected_background = props.selected_background;
+        selected_text_color = props.selected_text_color;
+        description_color = props.description_color;
+        selected_description_color = props.selected_description_color;
+      };
+    request_render t
+  end
 
 (* ───── Pretty-printing ───── *)
 

@@ -5,6 +5,13 @@
     to show or hide its children. The widget automatically scrolls to keep the
     selected node visible.
 
+    The tree draws by the roles of the theme in scope ({!Renderable.theme}):
+    labels in the [Plain] role, icons as the theme's glyphs in the [Muted] role,
+    guide lines in the [Border] role, and the selected node's row on the
+    [Cursor] surface while the tree is focused and the [Selected] surface
+    otherwise. A color or icon label replaces the role, surface or glyph it
+    names.
+
     Input gestures propose a complete {!State.t} through {!set_on_change}.
     Rejected proposals leave the tree unchanged. Explicit setters and
     {!apply_props} install accepted state without emitting proposals.
@@ -216,24 +223,26 @@ module Props : sig
       - [show_guides]: draw box-drawing guide lines; defaults to [false].
       - [guide_style]: border character set for guide lines; defaults to
         {!Matrix_grid.Border.single}.
-      - [expand_icon]: icon for collapsed expandable nodes; defaults to
-        ["\xe2\x96\xb6"] (U+25B6 BLACK RIGHT-POINTING TRIANGLE).
-      - [collapse_icon]: icon for expanded nodes; defaults to ["\xe2\x96\xbc"]
-        (U+25BC BLACK DOWN-POINTING TRIANGLE).
-      - [leaf_icon]: icon for leaf nodes; defaults to [" "].
-      - [background]: background color; defaults to transparent.
-      - [text_color]: text color; defaults to white.
+      - [expand_icon]: icon for collapsed expandable nodes; defaults to the
+        theme's [expand] glyph ({!Glyphs}).
+      - [collapse_icon]: icon for expanded nodes; defaults to the theme's
+        [collapse] glyph.
+      - [leaf_icon]: icon for leaf nodes; defaults to the theme's [leaf] glyph.
+      - [background]: background color; defaults to none.
+      - [text_color]: text color; defaults to none, the [Plain] role.
       - [selected_background]: background color of the selected node; defaults
-        to dark blue.
+        to none, the [Cursor] surface while focused and the [Selected] surface
+        otherwise.
       - [selected_text_color]: text color of the selected node; defaults to
-        yellow.
+        none.
       - [focused_selected_background]: background color of the selected node
         when the widget is focused; when unset, falls back to
         [selected_background].
       - [focused_selected_text_color]: text color of the selected node when the
         widget is focused; when unset, falls back to [selected_text_color].
-      - [guide_color]: guide line color; defaults to gray.
-      - [icon_color]: expand/collapse icon color; defaults to gray.
+      - [guide_color]: guide line color; defaults to none, the [Border] role.
+      - [icon_color]: expand/collapse icon color; defaults to none, the [Muted]
+        role.
       - [wrap_selection]: wrap selection at list boundaries; defaults to
         [false].
       - [key_bindings]: adds keys to those {!section-keys} lists or binds one of

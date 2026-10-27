@@ -238,6 +238,7 @@ let set_options_empty () =
 
 let set_background_noop () =
   let t, ts = make_tab_select () in
+  Tab_select.set_background ts (Ansi.Color.of_rgba 0 0 0 0);
   let before = !(t.schedule_count) in
   Tab_select.set_background ts (Ansi.Color.of_rgba 0 0 0 0);
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -558,7 +559,7 @@ let doors_selected_text_color () =
            ~on_change:doors_record ~selected_text_color:doors_red ()))
 
 let doors_selected_description_color () =
-  Test_harness.reaches "selected_description_color"
+  Test_harness.reaches "selected_description_color" ~act:Test_harness.focus
     ~base:
       (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
          ~on_change:doors_record ~show_description:true doors_tabs)
@@ -577,7 +578,7 @@ let doors_selected_description_color () =
            ~selected_description_color:doors_red ()))
 
 let doors_description_color () =
-  Test_harness.reaches ~shows:false "description_color"
+  Test_harness.reaches "description_color"
     ~base:
       (Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
          ~on_change:doors_record ~show_description:true doors_tabs)
@@ -688,9 +689,50 @@ let doors_key_bindings () =
            ~key_bindings:[ (Shortcut.char 'x', Tab_select.Move_right) ]
            ()))
 
+(* ── Paint ── *)
+
+(* Tab labels in the [Plain] role, the selected tab on the [Selected]
+   surface with a mark in its first cell, [cursor] and the [Cursor] surface
+   while focused; the description in [Muted], or in [description_color]
+   unfocused and [selected_description_color] focused. *)
+
+let paint_view ?description_color ?selected_description_color () =
+  Mosaic.tab_select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+    ~show_description:true ?description_color ?selected_description_color
+    ~on_change:ignore doors_tabs
+
+let paint_legible_on_light () =
+  List.iter
+    (fun focused ->
+      equal ~msg:"no cell below its contrast" (list string) []
+        (illegible xterm_light
+           (painted
+              (paint
+                 ~theme:(Theme.default xterm_light)
+                 ~focused (paint_view ())))))
+    [ false; true ]
+
+let paint_focus_shows () = focus_shows (paint_view ())
+
+let paint_description_colors () =
+  let blue = Ansi.Color.blue in
+  let view =
+    paint_view ~description_color:doors_red ~selected_description_color:blue ()
+  in
+  is_true ~msg:"unfocused, description_color"
+    (fg_is doors_red (cell_style (paint view) ~x:0 ~y:2));
+  is_true ~msg:"focused, selected_description_color"
+    (fg_is blue (cell_style (paint ~focused:true view) ~x:0 ~y:2))
+
 let () =
   run "mosaic.tab_select"
     [
+      group "Paint"
+        [
+          test "legible on a light terminal" paint_legible_on_light;
+          test "focus shows at every styling" paint_focus_shows;
+          test "description colors" paint_description_colors;
+        ];
       test "proposals do not drift" proposals_do_not_drift;
       test "absent selection is preserved" absent_selection_is_preserved;
       group "Props"

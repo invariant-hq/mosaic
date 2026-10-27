@@ -45,7 +45,18 @@
     The viewport displays as many items as fit within the available height. When
     an item is selected the view scrolls to center it. The
     {!val-set_show_scroll_indicator} option displays a proportional position
-    indicator in the rightmost column. *)
+    indicator in the rightmost column.
+
+    {2:paint Paint}
+
+    The select draws by the roles of the theme in scope ({!Renderable.theme}):
+    labels in the [Plain] role, descriptions and the position indicator in the
+    [Muted] role. The selected item is marked by the theme's [cursor] glyph
+    while the select is focused and by [cursor_inactive] otherwise ({!Glyphs}),
+    so the selection and the focus show whatever the output's styling, and its
+    row is drawn on the [Cursor] surface while focused. A color label replaces
+    the role or surface it names, a [selected_background] filling the selected
+    row whether or not the select is focused. *)
 
 (** {1:types Types} *)
 
@@ -133,16 +144,17 @@ module Props : sig
       - [selected_index] the accepted index. Negative values mean no selection
         ([-1]); other values clamp to the last item. The default [0] selects the
         first item of a nonempty list. Empty lists have no selection.
-      - [background] unfocused background color. Defaults to transparent.
-      - [text_color] unfocused text color. Defaults to white.
-      - [focused_background] focused background color. Defaults to [background]
-        when provided, otherwise a subtle dark gray.
+      - [background] unfocused background color. Defaults to none.
+      - [text_color] unfocused text color. Defaults to none, the [Plain] role.
+      - [focused_background] focused background color. Defaults to [background].
       - [focused_text_color] focused text color. Defaults to [text_color].
-      - [selected_background] selected item background. Defaults to dark blue.
-      - [selected_text_color] selected item text color. Defaults to yellow.
-      - [description_color] description text color. Defaults to gray.
+      - [selected_background] selected item background. Defaults to none, the
+        [Cursor] surface while focused.
+      - [selected_text_color] selected item text color. Defaults to none.
+      - [description_color] description text color. Defaults to none, the
+        [Muted] role.
       - [selected_description_color] selected item description color. Defaults
-        to light gray.
+        to none, the [Muted] role on the selected row.
       - [show_description] whether to display description lines. Defaults to
         [true].
       - [show_scroll_indicator] whether to display scroll position indicator.

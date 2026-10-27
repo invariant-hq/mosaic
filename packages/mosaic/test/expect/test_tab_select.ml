@@ -16,41 +16,53 @@ let sample_options =
 
 let%expect_test "default tab_select renders tabs" =
   render ~width:60 ~height:3 (Vnode.tab_select ~options:sample_options ());
-  [%expect {| Home        Files       Settings    Help
-▬▬▬▬▬▬▬▬▬▬▬▬|}]
+  [%expect
+    {|
+    ›Home        Files       Settings    Help
+    ▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 let%expect_test "selected:0 highlights first tab" =
   render ~width:60 ~height:3
     (Vnode.tab_select ~options:sample_options ~selected:0 ());
-  [%expect {| Home        Files       Settings    Help
-▬▬▬▬▬▬▬▬▬▬▬▬|}]
+  [%expect
+    {|
+    ›Home        Files       Settings    Help
+    ▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 let%expect_test "selected:2 highlights third tab" =
   render ~width:60 ~height:3
     (Vnode.tab_select ~options:sample_options ~selected:2 ());
   [%expect
-    {|Home        Files       Settings    Help
-                       ▬▬▬▬▬▬▬▬▬▬▬▬|}]
+    {|
+    Home        Files      ›Settings    Help
+                           ▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 let%expect_test "show_description shows description line" =
   render ~width:60 ~height:4
     (Vnode.tab_select ~options:sample_options ~show_description:true ());
   [%expect
-    {| Home        Files       Settings    Help
-▬▬▬▬▬▬▬▬▬▬▬▬
-Main dashboard|}]
+    {|
+    ›Home        Files       Settings    Help
+    ▬▬▬▬▬▬▬▬▬▬▬▬
+    Main dashboard
+    |}]
 
 let%expect_test "show_underline:false hides underline" =
   render ~width:60 ~height:3
     (Vnode.tab_select ~options:sample_options ~show_underline:false ());
-  [%expect {|Home        Files       Settings    Help|}]
+  [%expect {| ›Home        Files       Settings    Help |}]
 
 let%expect_test "custom tab_width changes column size" =
   render ~width:80 ~height:3
     (Vnode.tab_select ~options:sample_options ~tab_width:20 ());
   [%expect
-    {| Home                Files               Settings            Help
-▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬|}]
+    {|
+    ›Home                Files               Settings            Help
+    ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 (* ── Interactive — keyboard navigation ── *)
 
@@ -67,8 +79,11 @@ let%expect_test "left arrow at start stays" =
   send_key app Matrix_input.Keystroke.Left;
   reconcile app (view ());
   frame app ~width:60 ~height:3;
-  [%expect {| Home        Files       Settings    Help
-▬▬▬▬▬▬▬▬▬▬▬▬|}]
+  [%expect
+    {|
+    ❯Home        Files       Settings    Help
+    ▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 let%expect_test "wrap_selection wraps right to first" =
   let app = make_app () in
@@ -83,8 +98,11 @@ let%expect_test "wrap_selection wraps right to first" =
   send_key app Matrix_input.Keystroke.Right;
   reconcile app (view ());
   frame app ~width:60 ~height:3;
-  [%expect {| Home        Files       Settings    Help
-▬▬▬▬▬▬▬▬▬▬▬▬|}]
+  [%expect
+    {|
+    ❯Home        Files       Settings    Help
+    ▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 let%expect_test "wrap_selection wraps left to last" =
   let app = make_app () in
@@ -100,22 +118,28 @@ let%expect_test "wrap_selection wraps left to last" =
   reconcile app (view ());
   frame app ~width:60 ~height:3;
   [%expect
-    {|Home        Files       Settings    Help
-                                   ▬▬▬▬▬▬▬▬▬▬▬▬|}]
+    {|
+    Home        Files       Settings   ❯Help
+                                       ▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 (* ── Scroll arrows ── *)
 
 let%expect_test "scroll arrows appear when tabs overflow" =
   render ~width:30 ~height:3
     (Vnode.tab_select ~options:sample_options ~tab_width:12 ());
-  [%expect {| Home        Files           ›
-▬▬▬▬▬▬▬▬▬▬▬▬|}]
+  [%expect {|
+    ›Home        Files           ›
+    ▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 let%expect_test "narrow width shows scroll arrow" =
   render ~width:30 ~height:3
     (Vnode.tab_select ~options:sample_options ~tab_width:12 ~selected:3 ());
-  [%expect {|‹Settings    Help
-            ▬▬▬▬▬▬▬▬▬▬▬▬|}]
+  [%expect {|
+    ‹Settings   ›Help
+                ▬▬▬▬▬▬▬▬▬▬▬▬
+    |}]
 
 (* ── ANSI styling ── *)
 
@@ -126,7 +150,7 @@ let%expect_test "focused tab_select has styled output" =
   frame_ansi app ~width:60 ~height:3;
   [%expect
     {|
-    [0;48;2;59;130;246m [38;5;7mHome[39m       [48;2;26;26;26m [38;2;226;232;240mFiles[39m       [38;2;226;232;240mSettings[39m    [38;2;226;232;240mHelp[39m                   [0m
-    [0;38;5;7;48;2;59;130;246m▬▬▬▬▬▬▬▬▬▬▬▬[39;48;2;26;26;26m                                                [0m
-    [0;48;2;26;26;26m                                                            [0m
+    [0;1;4;7m❯Home       [22;24;27m Files       Settings    Help                   [0m
+    [0m▬▬▬▬▬▬▬▬▬▬▬▬                                                [0m
+    [0m                                                            [0m
     |}]

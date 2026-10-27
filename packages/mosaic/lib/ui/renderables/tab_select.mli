@@ -10,6 +10,16 @@
 
     Selection state and scroll offset are managed internally.
 
+    The tab selector draws by the roles of the theme in scope
+    ({!Renderable.theme}): labels in the [Plain] role, the selected tab on the
+    [Selected] surface and also on the [Cursor] surface while focused, the
+    scroll arrows, the underline and the marks as glyphs of the theme
+    ({!Glyphs}), the arrows and the description in the [Muted] role. The
+    selected tab's first cell holds the [cursor] glyph while the selector is
+    focused and [cursor_inactive] otherwise, so the selection and the focus show
+    whatever the output's styling. A color label replaces the role or surface it
+    names.
+
     {2:keys Keys}
 
     When focused and holding at least one tab, the widget's behavior (see
@@ -124,15 +134,17 @@ module Props : sig
         the last tab. Empty lists have no selection. {!apply_props} accepts it
         without firing the change callback.
       - [tab_width] defaults to [12] (minimum [1]).
-      - [background] defaults to transparent (RGBA 0 0 0 0).
-      - [text_color] defaults to light gray (RGB 226 232 240).
-      - [focused_background] falls back to [background] if provided, otherwise
-        dark gray (RGB 26 26 26).
+      - [background] defaults to none.
+      - [text_color] defaults to none, the [Plain] role.
+      - [focused_background] falls back to [background].
       - [focused_text_color] falls back to [text_color].
-      - [selected_background] defaults to blue (RGB 59 130 246).
-      - [selected_text_color] defaults to white.
-      - [description_color] defaults to slate (RGB 203 213 225).
-      - [selected_description_color] defaults to light gray (RGB 204 204 204).
+      - [selected_background] defaults to none, the [Selected] surface, with the
+        [Cursor] surface over it while focused.
+      - [selected_text_color] defaults to none.
+      - [description_color] is the description's color while the selector is
+        unfocused. Defaults to none, the [Muted] role.
+      - [selected_description_color] is the description's color while the
+        selector is focused. Falls back to [description_color].
       - [show_underline] defaults to [true].
       - [show_description] defaults to [false].
       - [show_scroll_arrows] defaults to [true].
@@ -216,12 +228,13 @@ val set_selected_text_color : t -> Ansi.Color.t -> unit
 (** [set_selected_text_color t color] sets the selected-tab text color. *)
 
 val set_description_color : t -> Ansi.Color.t -> unit
-(** [set_description_color t color] sets the description line text color. Only
-    re-renders when descriptions are visible. *)
+(** [set_description_color t color] sets the description line text color while
+    [t] is unfocused. Only re-renders when descriptions are visible. *)
 
 val set_selected_description_color : t -> Ansi.Color.t -> unit
-(** [set_selected_description_color t color] sets the description text color for
-    the selected tab. Only re-renders when descriptions are visible. *)
+(** [set_selected_description_color t color] sets the description line text
+    color while [t] is focused. Only re-renders when descriptions are visible.
+*)
 
 (** {1:display Display flags} *)
 

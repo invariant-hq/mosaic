@@ -369,6 +369,7 @@ let set_options_does_not_fire_on_change () =
 
 let set_background_noop () =
   let t, sel = make_select () in
+  Select.set_background sel (Ansi.Color.of_rgba 0 0 0 0);
   let before = !(t.schedule_count) in
   Select.set_background sel (Ansi.Color.of_rgba 0 0 0 0);
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -393,18 +394,21 @@ let set_item_spacing_noop () =
 
 let set_text_color_noop () =
   let t, sel = make_select () in
+  Select.set_text_color sel (Ansi.Color.of_rgb 255 255 255);
   let before = !(t.schedule_count) in
   Select.set_text_color sel (Ansi.Color.of_rgb 255 255 255);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_focused_background_noop () =
   let t, sel = make_select () in
+  Select.set_focused_background sel (Ansi.Color.of_rgb 26 26 26);
   let before = !(t.schedule_count) in
   Select.set_focused_background sel (Ansi.Color.of_rgb 26 26 26);
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
 let set_selected_text_color_noop () =
   let t, sel = make_select () in
+  Select.set_selected_text_color sel (Ansi.Color.of_rgb 255 255 0);
   let before = !(t.schedule_count) in
   Select.set_selected_text_color sel (Ansi.Color.of_rgb 255 255 0);
   equal ~msg:"no schedule" int before !(t.schedule_count)
@@ -1020,9 +1024,55 @@ let doors_key_bindings () =
            ~key_bindings:[ (Shortcut.char 'x', Select.Move_down) ]
            ()))
 
+(* ── Paint ── *)
+
+(* Items in the [Plain] role, descriptions in [Muted], the selected item
+   marked by [cursor] while focused and [cursor_inactive] otherwise, its row
+   on the [Cursor] surface while focused; a label replaces its role. *)
+
+let paint_view ?selected_background () =
+  Mosaic.select ~size:doors_size ~equal:Int.equal ~selected:(Some 0)
+    ?selected_background ~on_change:ignore few_options
+
+let paint_legible_on_light () =
+  List.iter
+    (fun focused ->
+      equal ~msg:"no cell below its contrast" (list string) []
+        (illegible xterm_light
+           (painted
+              (paint
+                 ~theme:(Theme.default xterm_light)
+                 ~focused (paint_view ())))))
+    [ false; true ]
+
+let paint_focus_shows () = focus_shows (paint_view ())
+
+let paint_marks () =
+  equal ~msg:"unfocused" string "\u{203A}"
+    (cell_text (paint (paint_view ())) ~x:1 ~y:0);
+  equal ~msg:"focused" string "\u{276F}"
+    (cell_text (paint ~focused:true (paint_view ())) ~x:1 ~y:0);
+  equal ~msg:"ascii, focused" string ">"
+    (cell_text
+       (paint ~focused:true
+          (Mosaic.themed (Theme.with_glyphs Glyphs.ascii) (paint_view ())))
+       ~x:1 ~y:0)
+
+let paint_selected_background () =
+  let r = paint (paint_view ~selected_background:doors_red ()) in
+  is_true ~msg:"the label's background, unfocused"
+    (bg_is doors_red (cell_style r ~x:5 ~y:0))
+
 let () =
   run "mosaic.select"
     [
+      group "Paint"
+        [
+          test "legible on a light terminal" paint_legible_on_light;
+          test "focus shows at every styling" paint_focus_shows;
+          test "the selected item's mark" paint_marks;
+          test "selected_background" paint_selected_background;
+        ];
       group "Intrinsic sizing"
         [
           test "content, descriptions and spacing" intrinsic_content_size;

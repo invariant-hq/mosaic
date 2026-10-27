@@ -289,42 +289,28 @@ module Props = struct
     indent_size : int;
     show_guides : bool;
     guide_style : Matrix_grid.Border.t;
-    expand_icon : string;
-    collapse_icon : string;
-    leaf_icon : string;
-    background : Ansi.Color.t;
-    text_color : Ansi.Color.t;
-    selected_background : Ansi.Color.t;
-    selected_text_color : Ansi.Color.t;
-    focused_selected_background : Ansi.Color.t;
-    focused_selected_text_color : Ansi.Color.t;
-    guide_color : Ansi.Color.t;
-    icon_color : Ansi.Color.t;
+    expand_icon : string option;
+    collapse_icon : string option;
+    leaf_icon : string option;
+    background : Ansi.Color.t option;
+    text_color : Ansi.Color.t option;
+    selected_background : Ansi.Color.t option;
+    selected_text_color : Ansi.Color.t option;
+    focused_selected_background : Ansi.Color.t option;
+    focused_selected_text_color : Ansi.Color.t option;
+    guide_color : Ansi.Color.t option;
+    icon_color : Ansi.Color.t option;
     wrap_selection : bool;
     fast_scroll_step : int;
   }
 
   let make ?(items = []) ?(state = State.empty) ?(indent_size = 2)
       ?(show_guides = false) ?(guide_style = Matrix_grid.Border.single)
-      ?(expand_icon = "\xe2\x96\xb6") ?(collapse_icon = "\xe2\x96\xbc")
-      ?(leaf_icon = " ") ?(background = Ansi.Color.of_rgba 0 0 0 0)
-      ?(text_color = Ansi.Color.of_rgb 255 255 255)
-      ?(selected_background = Ansi.Color.of_rgb 51 68 85)
-      ?(selected_text_color = Ansi.Color.of_rgb 255 255 0)
-      ?focused_selected_background ?focused_selected_text_color
-      ?(guide_color = Ansi.Color.of_rgb 102 102 102)
-      ?(icon_color = Ansi.Color.of_rgb 153 153 153) ?(wrap_selection = false)
-      ?(key_bindings = []) ?(fast_scroll_step = 5) () =
-    let focused_selected_background =
-      match focused_selected_background with
-      | Some c -> c
-      | None -> selected_background
-    in
-    let focused_selected_text_color =
-      match focused_selected_text_color with
-      | Some c -> c
-      | None -> selected_text_color
-    in
+      ?expand_icon ?collapse_icon ?leaf_icon ?background ?text_color
+      ?selected_background ?selected_text_color ?focused_selected_background
+      ?focused_selected_text_color ?guide_color ?icon_color
+      ?(wrap_selection = false) ?(key_bindings = []) ?(fast_scroll_step = 5) ()
+      =
     {
       key_bindings;
       items;
@@ -356,19 +342,19 @@ module Props = struct
     && Int.equal a.indent_size b.indent_size
     && Bool.equal a.show_guides b.show_guides
     && a.guide_style = b.guide_style
-    && String.equal a.expand_icon b.expand_icon
-    && String.equal a.collapse_icon b.collapse_icon
-    && String.equal a.leaf_icon b.leaf_icon
-    && Ansi.Color.equal a.background b.background
-    && Ansi.Color.equal a.text_color b.text_color
-    && Ansi.Color.equal a.selected_background b.selected_background
-    && Ansi.Color.equal a.selected_text_color b.selected_text_color
-    && Ansi.Color.equal a.focused_selected_background
+    && Option.equal String.equal a.expand_icon b.expand_icon
+    && Option.equal String.equal a.collapse_icon b.collapse_icon
+    && Option.equal String.equal a.leaf_icon b.leaf_icon
+    && Option.equal Ansi.Color.equal a.background b.background
+    && Option.equal Ansi.Color.equal a.text_color b.text_color
+    && Option.equal Ansi.Color.equal a.selected_background b.selected_background
+    && Option.equal Ansi.Color.equal a.selected_text_color b.selected_text_color
+    && Option.equal Ansi.Color.equal a.focused_selected_background
          b.focused_selected_background
-    && Ansi.Color.equal a.focused_selected_text_color
+    && Option.equal Ansi.Color.equal a.focused_selected_text_color
          b.focused_selected_text_color
-    && Ansi.Color.equal a.guide_color b.guide_color
-    && Ansi.Color.equal a.icon_color b.icon_color
+    && Option.equal Ansi.Color.equal a.guide_color b.guide_color
+    && Option.equal Ansi.Color.equal a.icon_color b.icon_color
     && Bool.equal a.wrap_selection b.wrap_selection
     && Int.equal a.fast_scroll_step b.fast_scroll_step
 end
@@ -627,60 +613,52 @@ let set_guide_style t s =
     request t)
 
 let set_expand_icon t s =
-  if not (String.equal t.props.expand_icon s) then (
-    t.props <- { t.props with expand_icon = s };
+  if not (Option.equal String.equal t.props.expand_icon (Some s)) then (
+    t.props <- { t.props with expand_icon = Some s };
     request t)
 
 let set_collapse_icon t s =
-  if not (String.equal t.props.collapse_icon s) then (
-    t.props <- { t.props with collapse_icon = s };
+  if not (Option.equal String.equal t.props.collapse_icon (Some s)) then (
+    t.props <- { t.props with collapse_icon = Some s };
     request t)
 
 let set_leaf_icon t s =
-  if not (String.equal t.props.leaf_icon s) then (
-    t.props <- { t.props with leaf_icon = s };
+  if not (Option.equal String.equal t.props.leaf_icon (Some s)) then (
+    t.props <- { t.props with leaf_icon = Some s };
     request t)
 
 (* ───── Color Setters ───── *)
 
 let set_background t c =
-  if not (Ansi.Color.equal t.props.background c) then (
-    t.props <- { t.props with background = c };
+  if not (Option.equal Ansi.Color.equal t.props.background (Some c)) then (
+    t.props <- { t.props with background = Some c };
     request t)
 
 let set_text_color t c =
-  if not (Ansi.Color.equal t.props.text_color c) then (
-    t.props <- { t.props with text_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.text_color (Some c)) then (
+    t.props <- { t.props with text_color = Some c };
     request t)
 
 let set_selected_background t c =
-  if not (Ansi.Color.equal t.props.selected_background c) then (
-    t.props <- { t.props with selected_background = c };
+  if not (Option.equal Ansi.Color.equal t.props.selected_background (Some c))
+  then (
+    t.props <- { t.props with selected_background = Some c };
     request t)
 
 let set_selected_text_color t c =
-  if not (Ansi.Color.equal t.props.selected_text_color c) then (
-    t.props <- { t.props with selected_text_color = c };
-    request t)
-
-let set_focused_selected_background t c =
-  if not (Ansi.Color.equal t.props.focused_selected_background c) then (
-    t.props <- { t.props with focused_selected_background = c };
-    request t)
-
-let set_focused_selected_text_color t c =
-  if not (Ansi.Color.equal t.props.focused_selected_text_color c) then (
-    t.props <- { t.props with focused_selected_text_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.selected_text_color (Some c))
+  then (
+    t.props <- { t.props with selected_text_color = Some c };
     request t)
 
 let set_guide_color t c =
-  if not (Ansi.Color.equal t.props.guide_color c) then (
-    t.props <- { t.props with guide_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.guide_color (Some c)) then (
+    t.props <- { t.props with guide_color = Some c };
     request t)
 
 let set_icon_color t c =
-  if not (Ansi.Color.equal t.props.icon_color c) then (
-    t.props <- { t.props with icon_color = c };
+  if not (Option.equal Ansi.Color.equal t.props.icon_color (Some c)) then (
+    t.props <- { t.props with icon_color = Some c };
     request t)
 
 (* ───── Behavior Setters ───── *)
@@ -702,9 +680,6 @@ let set_on_change t cb = t.on_change <- cb
 let set_on_activate t cb = t.on_activate <- cb
 
 (* ───── Rendering Helpers ───── *)
-
-let draw_cell grid ~x ~y ~fg ~bg uch =
-  Matrix_grid.set_uchar grid ~x ~y ~uchar:uch ~fg ~bg ~attrs:Ansi.Attr.empty ()
 
 (* ───── Key Handling ───── *)
 
@@ -777,28 +752,62 @@ let handle_mouse t (event : Event.mouse) =
 
 (* ───── Rendering ───── *)
 
+(* Labels first, then roles: labels in the [Plain] role, icons the theme's
+   glyphs in the [Muted] role, guides in the [Border] role, and the selected
+   row on the [Cursor] surface while focused and the [Selected] surface
+   otherwise, the row's labels, icon and guides merged over it. *)
+let first_some a b = match a with Some _ -> a | None -> b
+
+let labelled color style =
+  match color with Some c -> Ansi.Style.fg c style | None -> style
+
+(* [on_row ~surface selected style] is [style] on the selected row's surface
+   where [selected]. *)
+let on_row ~surface selected style =
+  if selected then Ansi.Style.merge ~base:surface ~overlay:style else style
+
+let draw_glyph grid ~x ~y (style : Ansi.Style.t) uch =
+  Matrix_grid.set_uchar grid ~x ~y ~uchar:uch
+    ~fg:(Option.value style.fg ~default:Ansi.Color.default_fg)
+    ~bg:(Option.value style.bg ~default:Ansi.Color.transparent)
+    ~attrs:style.attrs ()
+
 let render t _self grid ~dt:_ =
   let width = Renderable.width t.node in
   let height = Renderable.height t.node in
   if width <= 0 || height <= 0 then ()
   else
     let focused = Renderable.focused t.node in
-
+    let theme = Renderable.theme t.node in
+    let glyphs = Theme.glyphs theme in
     (* Blanks on the background replace the last frame in the buffer, and a
        transparent background lets what is beneath show through. *)
-    Matrix_grid.clear_rect ~color:t.props.background grid ~x:0 ~y:0 ~width
-      ~height;
+    let background =
+      Option.value t.props.background ~default:Ansi.Color.transparent
+    in
+    Matrix_grid.clear_rect ~color:background grid ~x:0 ~y:0 ~width ~height;
 
     let start_index = scroll_offset t in
     let end_index = min (visible_count t) (start_index + max_visible t) in
 
-    let sel_bg =
-      if focused then t.props.focused_selected_background
-      else t.props.selected_background
-    in
-    let sel_fg =
-      if focused then t.props.focused_selected_text_color
+    let text = labelled t.props.text_color (Theme.style theme Plain) in
+    let icon = labelled t.props.icon_color (Theme.style theme Muted) in
+    let guide = labelled t.props.guide_color (Theme.style theme Border) in
+    let selected_fg =
+      if focused then
+        first_some t.props.focused_selected_text_color
+          t.props.selected_text_color
       else t.props.selected_text_color
+    in
+    let surface =
+      match
+        if focused then
+          first_some t.props.focused_selected_background
+            t.props.selected_background
+        else t.props.selected_background
+      with
+      | Some bg -> Ansi.Style.make ~bg ()
+      | None -> Theme.surface theme (if focused then Cursor else Selected)
     in
 
     for vi = start_index to end_index - 1 do
@@ -807,16 +816,16 @@ let render t _self grid ~dt:_ =
         let entry = t.visible.(vi) in
         let is_selected = vi = t.selected_index in
 
-        (* Selection highlight *)
+        (* The selected row's surface *)
         if is_selected then
-          Matrix_grid.fill_rect grid ~x:0 ~y:row ~width ~height:1 ~color:sel_bg;
+          Matrix_grid.draw_text ~style:surface grid ~x:0 ~y:row
+            ~text:(String.make width ' ');
 
         let indent = entry.depth * t.props.indent_size in
 
         (* Guide lines *)
         if t.props.show_guides && entry.depth > 0 then (
-          let guide_fg = t.props.guide_color in
-          let guide_bg = if is_selected then sel_bg else t.props.background in
+          let guide = on_row ~surface is_selected guide in
           let border = t.props.guide_style in
           (* Draw ancestor continuation lines *)
           let guides = entry.parent_guides in
@@ -826,8 +835,7 @@ let render t _self grid ~dt:_ =
             | continues :: rest ->
                 let gx = (entry.depth - 1 - d) * t.props.indent_size in
                 if continues && gx >= 0 && gx < width then
-                  draw_cell grid ~x:gx ~y:row ~fg:guide_fg ~bg:guide_bg
-                    border.vertical;
+                  draw_glyph grid ~x:gx ~y:row guide border.vertical;
                 draw_guides rest (d + 1)
           in
           draw_guides guides 0;
@@ -837,37 +845,38 @@ let render t _self grid ~dt:_ =
             let connector =
               if entry.is_last_child then border.bottom_left else border.left_t
             in
-            draw_cell grid ~x:branch_x ~y:row ~fg:guide_fg ~bg:guide_bg
-              connector;
+            draw_glyph grid ~x:branch_x ~y:row guide connector;
             (* Horizontal segment *)
             let hx = branch_x + 1 in
             if hx < width && hx < indent then
-              draw_cell grid ~x:hx ~y:row ~fg:guide_fg ~bg:guide_bg
-                border.horizontal));
+              draw_glyph grid ~x:hx ~y:row guide border.horizontal));
 
         (* Icon *)
         let icon_x = indent in
         (if icon_x < width then
-           let icon =
+           let glyph =
              if entry.expandable then
-               if entry.expanded then t.props.collapse_icon
-               else t.props.expand_icon
-             else t.props.leaf_icon
+               if entry.expanded then
+                 Option.value t.props.collapse_icon ~default:glyphs.collapse
+               else Option.value t.props.expand_icon ~default:glyphs.expand
+             else Option.value t.props.leaf_icon ~default:glyphs.leaf
            in
-           let icon_style =
-             Ansi.Style.make
-               ~fg:(if is_selected then sel_fg else t.props.icon_color)
-               ()
+           let style =
+             if is_selected then
+               labelled selected_fg (on_row ~surface is_selected icon)
+             else icon
            in
-           Matrix_grid.draw_text ~style:icon_style grid ~x:icon_x ~y:row
-             ~text:icon);
+           Matrix_grid.draw_text ~style grid ~x:icon_x ~y:row ~text:glyph);
 
         (* Label *)
         let label_x = indent + 2 in
         if label_x < width then
-          let label_fg = if is_selected then sel_fg else t.props.text_color in
-          let label_style = Ansi.Style.make ~fg:label_fg () in
-          Matrix_grid.draw_text ~style:label_style grid ~x:label_x ~y:row
+          let style =
+            if is_selected then
+              labelled selected_fg (on_row ~surface is_selected text)
+            else text
+          in
+          Matrix_grid.draw_text ~style grid ~x:label_x ~y:row
             ~text:entry.item.label)
     done
 
@@ -933,17 +942,41 @@ let apply_props t (props : Props.t) =
   set_indent_size t props.indent_size;
   set_show_guides t props.show_guides;
   set_guide_style t props.guide_style;
-  set_expand_icon t props.expand_icon;
-  set_collapse_icon t props.collapse_icon;
-  set_leaf_icon t props.leaf_icon;
-  set_background t props.background;
-  set_text_color t props.text_color;
-  set_selected_background t props.selected_background;
-  set_selected_text_color t props.selected_text_color;
-  set_focused_selected_background t props.focused_selected_background;
-  set_focused_selected_text_color t props.focused_selected_text_color;
-  set_guide_color t props.guide_color;
-  set_icon_color t props.icon_color;
+  let same a b = Option.equal Ansi.Color.equal a b in
+  let same_icon a b = Option.equal String.equal a b in
+  if
+    not
+      (same_icon t.props.expand_icon props.expand_icon
+      && same_icon t.props.collapse_icon props.collapse_icon
+      && same_icon t.props.leaf_icon props.leaf_icon
+      && same t.props.background props.background
+      && same t.props.text_color props.text_color
+      && same t.props.selected_background props.selected_background
+      && same t.props.selected_text_color props.selected_text_color
+      && same t.props.focused_selected_background
+           props.focused_selected_background
+      && same t.props.focused_selected_text_color
+           props.focused_selected_text_color
+      && same t.props.guide_color props.guide_color
+      && same t.props.icon_color props.icon_color)
+  then begin
+    t.props <-
+      {
+        t.props with
+        expand_icon = props.expand_icon;
+        collapse_icon = props.collapse_icon;
+        leaf_icon = props.leaf_icon;
+        background = props.background;
+        text_color = props.text_color;
+        selected_background = props.selected_background;
+        selected_text_color = props.selected_text_color;
+        focused_selected_background = props.focused_selected_background;
+        focused_selected_text_color = props.focused_selected_text_color;
+        guide_color = props.guide_color;
+        icon_color = props.icon_color;
+      };
+    request t
+  end;
   set_wrap_selection t props.wrap_selection;
   set_fast_scroll_step t props.fast_scroll_step
 
