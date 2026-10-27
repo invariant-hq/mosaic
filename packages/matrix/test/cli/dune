@@ -8,7 +8,11 @@
   matrix.grid
   matrix.text
   matrix.ansi
-  matrix.terminal))
+  matrix.terminal
+  matrix.cli.unix
+  matrix.tty
+  unix
+  threads.posix))
 
 (executable
  (name cli_child)

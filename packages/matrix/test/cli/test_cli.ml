@@ -902,6 +902,58 @@ let adapt_tests =
           (List.rev !writes));
   ]
 
+(* ───── A region's clock ───── *)
+
+(* The clock draws a frame that waits for its time with no other call, on
+   every system, Windows included. *)
+let clock_tests =
+  let ms = 1_000_000 in
+  let within lock s ok =
+    let until = Unix.gettimeofday () +. s in
+    let rec go () =
+      if not (Mutex.protect lock ok) then
+        if Unix.gettimeofday () > until then fail "not within the time"
+        else (
+          Thread.delay 0.005;
+          go ())
+    in
+    go ()
+  in
+  [
+    test "a draw due later happens with no other call" (fun () ->
+        let lock = Mutex.create () in
+        let at = Tty.now () + (50 * ms) in
+        let due = ref (Some at) and drawn = ref [] in
+        let c =
+          Matrix_cli_unix.clock lock
+            ~due:(fun () -> !due)
+            (fun () ->
+              drawn := Tty.now () :: !drawn;
+              due := None)
+        in
+        within lock 2. (fun () -> !drawn <> []);
+        is_true ~msg:"not before its time"
+          (List.for_all (fun t -> t >= at) !drawn);
+        Mutex.protect lock (fun () -> Matrix_cli_unix.stop c));
+    test "an idle clock wakes for a draw, and ticks again" (fun () ->
+        let lock = Mutex.create () in
+        let due = ref None and drawn = ref 0 in
+        let c =
+          Matrix_cli_unix.clock lock
+            ~due:(fun () -> !due)
+            (fun () ->
+              incr drawn;
+              due := if !drawn < 3 then Some (Tty.now () + (20 * ms)) else None)
+        in
+        Thread.delay 0.05;
+        equal ~msg:"idle" int 0 (Mutex.protect lock (fun () -> !drawn));
+        Mutex.protect lock (fun () ->
+            due := Some (Tty.now ());
+            Matrix_cli_unix.wake c);
+        within lock 2. (fun () -> !drawn = 3);
+        Mutex.protect lock (fun () -> Matrix_cli_unix.stop c));
+  ]
+
 let () =
   run "matrix.cli"
     [
@@ -912,4 +964,5 @@ let () =
       group "ocaml-console" console_tests;
       group "policy" policy_tests;
       group "adapting" adapt_tests;
+      group "clock" clock_tests;
     ]

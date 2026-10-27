@@ -63,6 +63,49 @@ let flush_formatters () =
   (try Format.pp_print_flush Format.std_formatter () with Sys_error _ -> ());
   try Format.pp_print_flush Format.err_formatter () with Sys_error _ -> ()
 
+(* The clock *)
+
+(* A thread that calls [fire] whenever the time [due] gives has come, with
+   [lock] held, as both are called. It sleeps until then, at most [interval]
+   at a time, so that a time made earlier while it sleeps comes at most
+   [interval] late, and waits for [wake] while [due] gives none. It runs on
+   every system, since a region's frames and ticks need no signal. *)
+type clock = { ready : Condition.t; mutable stopped : bool }
+
+let clock lock ~due fire =
+  let c = { ready = Condition.create (); stopped = false } in
+  let rec run () =
+    if not c.stopped then
+      match due () with
+      | None ->
+          Condition.wait c.ready lock;
+          run ()
+      | Some at ->
+          let left = at - Tty.now () in
+          if left <= 0 then (
+            fire ();
+            run ())
+          else (
+            Mutex.unlock lock;
+            Thread.delay (Float.of_int (min left interval) *. 1e-9);
+            Mutex.lock lock;
+            run ())
+  in
+  ignore
+    (Thread.create
+       (fun () ->
+         Mutex.lock lock;
+         Fun.protect ~finally:(fun () -> Mutex.unlock lock) run)
+       ()
+      : Thread.t);
+  c
+
+let wake c = Condition.signal c.ready
+
+let stop c =
+  c.stopped <- true;
+  Condition.signal c.ready
+
 (* Devices *)
 
 (* Descriptors that reach one terminal, or one file, share a device: its
@@ -82,7 +125,7 @@ type device = {
 
 (* The signals of a terminal, while a region or a prompt uses it: a holder,
    with a descriptor of its own for the bytes an abort writes, and the
-   thread that acts on the signals and draws the frames that wait. *)
+   thread that acts on the signals. *)
 and session = {
   holder : Signal.holder;
   output : Unix.file_descr;
@@ -109,6 +152,8 @@ and state = {
   mutable pending : bool;
   mutable last_tick : int;  (** When the clock last asked for a draw. *)
   mutable published : string;  (** The teardown of the last whole write. *)
+  mutable clock : clock option;
+      (** The thread that draws a frame that waits, and the ticks. *)
 }
 
 (* The rows of one [live] scope, below those of the scopes before it. *)
@@ -346,7 +391,7 @@ let continued d =
 (* SIGTSTP: the region off the screen and a prompt's settings put back,
    then the stop. It is [true] when the lock was held, and [continued] has
    then run. *)
-let stop d session =
+let stop_job d session =
   let locked = lock_until d.lock (Tty.now () + teardown_wait) in
   Fun.protect
     ~finally:(fun () -> if locked then Mutex.unlock d.lock)
@@ -362,11 +407,6 @@ let stop d session =
 
 let ends = [ Sys.sigint; Sys.sigterm; Sys.sighup; Sys.sigquit ]
 
-(* The session's thread. It waits on the holder's wake pipe until a signal
-   or a frame that waits for its time, and never waits for the device's
-   lock before acting on a signal that ends the process: the work that
-   needs the lock is [owed] until it can be taken. The fields it reads
-   without the lock only time its wait. *)
 (* When the clock asks for the region's next draw: the shortest time
    between two draws its scopes ask for, at least [interval], after its last
    draw or tick, or never when none asks. *)
@@ -382,24 +422,37 @@ let next_tick l =
   in
   Option.map (fun k -> max l.last_draw l.last_tick + max interval k) shortest
 
+(* When the region draws next on its clock: when a frame that waits may be
+   drawn, or at its next tick. *)
+let due l =
+  let pending = if l.pending then Some (l.last_draw + interval) else None in
+  match (pending, next_tick l) with
+  | Some a, Some b -> Some (min a b)
+  | (Some _ as at), None | None, (Some _ as at) -> at
+  | None, None -> None
+
+(* The clock's draw: on a tick, the frames are called again. *)
+let fire l =
+  (match next_tick l with
+  | Some at when Tty.now () >= at ->
+      l.last_tick <- Tty.now ();
+      l.cached <- None
+  | _ -> ());
+  if Tty.now () >= l.last_draw + interval then draw l ~above:""
+
+(* A frame waits for its time, which the clock keeps. *)
+let defer l =
+  if not l.pending then (
+    l.pending <- true;
+    Option.iter wake l.clock)
+
+(* The session's thread. It waits on the holder's wake pipe until a signal,
+   and never waits for the device's lock before acting on a signal that
+   ends the process: the work that needs the lock waits until it can be
+   taken. *)
 let rec watch d session ~continue ~redraw =
   let wake = Signal.wake_fd session.holder in
-  let timeout =
-    if continue || redraw then 0.01
-    else
-      match d.live with
-      | Some l -> (
-          let pending =
-            if l.pending then Some (l.last_draw + interval) else None
-          in
-          match (pending, next_tick l) with
-          | Some a, Some b ->
-              Float.of_int (max 0 (min a b - Tty.now ())) *. 1e-9
-          | Some at, None | None, Some at ->
-              Float.of_int (max 0 (at - Tty.now ())) *. 1e-9
-          | None, None -> -1.)
-      | None -> -1.
-  in
+  let timeout = if continue || redraw then 0.01 else -1. in
   (try ignore (Unix.select [ wake ] [] [] timeout)
    with Unix.Unix_error (Unix.EINTR, _, _) -> ());
   let buf = Bytes.create 64 in
@@ -412,36 +465,24 @@ let rec watch d session ~continue ~redraw =
     let h = session.holder in
     List.iter (fun s -> if Signal.received h s then terminate d s) ends;
     let continue =
-      if Signal.received h Sys.sigtstp then not (stop d session) else continue
+      if Signal.received h Sys.sigtstp then not (stop_job d session)
+      else continue
     in
     let continue = Signal.received h Sys.sigcont || continue in
     let redraw = Signal.received h Sys.sigwinch || redraw in
-    let ticked l =
-      match next_tick l with Some at -> Tty.now () >= at | None -> false
-    in
-    let due =
-      match d.live with
-      | Some l ->
-          (l.pending && Tty.now () >= l.last_draw + interval) || ticked l
-      | None -> false
-    in
-    if (continue || redraw || due) && Mutex.try_lock d.lock then (
+    if (continue || redraw) && Mutex.try_lock d.lock then (
       Fun.protect
         ~finally:(fun () -> Mutex.unlock d.lock)
         (fun () ->
           if continue then continued d
           else
             match d.live with
-            | Some l when redraw || l.pending || ticked l ->
-                (* On a tick, the frames are called again. *)
-                if ticked l then (
-                  l.last_tick <- Tty.now ();
-                  l.cached <- None);
+            | Some l ->
                 if Tty.now () >= l.last_draw + interval then draw l ~above:""
-                else l.pending <- true
-            | _ -> ());
+                else defer l
+            | None -> ());
       watch d session ~continue:false ~redraw:false)
-    else watch d session ~continue ~redraw:(redraw || due))
+    else watch d session ~continue ~redraw)
 
 (* [exit] runs the program's [at_exit] functions and ends the process,
    leaving every [live] scope that runs unended. What ends them is set once
@@ -674,14 +715,17 @@ let join t p =
                 pending = false;
                 last_tick = 0;
                 published = "";
+                clock = None;
               }
             in
             enter d t.fd;
+            l.clock <-
+              Some (clock d.lock ~due:(fun () -> due l) (fun () -> fire l));
             d.live <- Some l;
             l
       in
-      (* The scope's tick may come before the thread's next wake. *)
-      Option.iter (fun s -> Signal.wake s.holder) d.session;
+      (* The scope's tick may come before the clock's next draw. *)
+      Option.iter wake l.clock;
       l)
 
 let plain_width t = max 1 (Option.value (width t) ~default:80)
@@ -704,6 +748,7 @@ let lines t = function
    holds back. The device then has no region; called with its lock held. *)
 let closing l frame =
   l.device.live <- None;
+  Option.iter stop l.clock;
   let held = if l.held = "" then "" else l.held ^ "\n" in
   l.held <- "";
   let drawable = l.suspended = 0 && not (Tty.background l.out.fd) in
@@ -848,9 +893,7 @@ let show v frame =
           v.part.frame <- frame;
           l.cached <- None;
           if Tty.now () >= l.last_draw + interval then draw l ~above:""
-          else if not l.pending then (
-            l.pending <- true;
-            Option.iter (fun s -> Signal.wake s.holder) l.device.session))
+          else defer l)
 
 let print_grid t g =
   flush_formatters ();

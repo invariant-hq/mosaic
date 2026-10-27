@@ -264,3 +264,19 @@ module Prompt : sig
       milliseconds of silence. It is [Error `Not_interactive] when the process
       has no controlling terminal. *)
 end
+
+(**/**)
+
+(* A region's clock, for the tests that run it on every system. [clock m ~due
+   fire] starts a thread that calls [fire ()] whenever the time [due ()] gives
+   ({!Tty.now}) has come, both with [m] held, and that waits for [wake c]
+   while [due ()] is [None]. [wake] and [stop] must be called with [m] held,
+   and [stop c] ends the thread. *)
+
+type clock
+
+val clock : Mutex.t -> due:(unit -> int option) -> (unit -> unit) -> clock
+val wake : clock -> unit
+val stop : clock -> unit
+
+(**/**)
