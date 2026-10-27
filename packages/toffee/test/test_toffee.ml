@@ -856,6 +856,66 @@ let test_cache_min_height_follows_parent_height () =
   equal ~msg:"the content above 85% of the 1-cell grid area" (float 1e-6) 1.
     height
 
+(* A block's measurement lays its children out to find its height and keeps
+   their layouts from the tree, which holds the layouts of the block's final
+   layout. Here a centered flex item holds a block holding a text of 8 cells.
+   The block is measured at its min-content width, where the text wraps to 5
+   cells and 2 lines, and laid out at 8 cells. Laid out again under another
+   root height, the block's final layout comes from its cache, and the text
+   keeps the layout of that final layout. *)
+let test_block_measurement_keeps_child_layouts () =
+  let text length (known : float option size)
+      (available : Available_space.t size) =
+    let width =
+      match (known.width, available.width) with
+      | Some width, _ -> width
+      | None, Definite width -> Float.min width length
+      | None, Min_content -> Float.min 5. length
+      | None, Max_content -> length
+    in
+    Sizef.
+      {
+        width;
+        height =
+          Option.value known.height
+            ~default:(Float.ceil (length /. Float.max 1. width));
+      }
+  in
+  let tree = new_tree () in
+  let leaf = new_leaf_with_context tree Style.default () |> or_fail "text" in
+  let block =
+    new_with_children tree
+      (Style.default |> Style.set_display Style.Display.Block)
+      [| leaf |]
+    |> or_fail "block"
+  in
+  let item =
+    new_with_children tree
+      (Style.default |> Style.set_align_self (Some Style.Align_items.Center))
+      [| block |]
+    |> or_fail "item"
+  in
+  let root =
+    new_with_children tree Style.default [| item |] |> or_fail "root"
+  in
+  let lay height =
+    compute_layout_with_measure tree root
+      Size.
+        {
+          width = Available_space.of_float 60.;
+          height = Available_space.of_float height;
+        }
+      (fun known available _ _ _ -> text 8. known available)
+    |> or_fail "layout"
+  in
+  let size () = Layout.size (layout tree leaf |> or_fail "text layout") in
+  lay 20.;
+  equal ~msg:"width" float_exact 8. (size ()).width;
+  equal ~msg:"height" float_exact 1. (size ()).height;
+  lay 60.;
+  equal ~msg:"width after relayout" float_exact 8. (size ()).width;
+  equal ~msg:"height after relayout" float_exact 1. (size ()).height
+
 (* A percent-width item clamped by its own max-width must be measured at the
    clamped width when deriving content-based sizes, so wrapping content
    reports the height the final layout paints. Regression: the flex base size
@@ -1676,6 +1736,8 @@ let () =
             test_cache_max_height_follows_parent_height;
           test "Minimum height follows the parent height"
             test_cache_min_height_follows_parent_height;
+          test "Block measurement keeps its children's layouts"
+            test_block_measurement_keeps_child_layouts;
         ];
       group "min_max_overrides"
         [

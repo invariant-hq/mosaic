@@ -48,6 +48,9 @@ type block_item = {
          scrollbar_gutters but not inset *)
   mutable can_be_collapsed_through : bool;
       (* Whether margins can be collapsed through this item *)
+  mutable final_layout : Layout.t option;
+      (* The layout of an in-flow item, which the container commits to the
+         tree from its final layout alone *)
 }
 
 (* Generate a list of block items from the children of a node *)
@@ -147,6 +150,7 @@ let generate_item_list (type t)
              values) *)
           static_position = Pointf.zero;
           can_be_collapsed_through = false;
+          final_layout = None;
         }
       in
       items := item :: !items;
@@ -477,11 +481,12 @@ let perform_final_layout_on_in_flow_children (type t)
             }
         in
 
-        Tree.set_unrounded_layout tree item.node_id
-          (Layout.make ~order:item.order ~size:final_size
-             ~content_size:(Layout_output.content_size item_layout)
-             ~scrollbar_size ~location ~padding:item.padding ~border:item.border
-             ~margin:resolved_margin);
+        item.final_layout <-
+          Some
+            (Layout.make ~order:item.order ~size:final_size
+               ~content_size:(Layout_output.content_size item_layout)
+               ~scrollbar_size ~location ~padding:item.padding
+               ~border:item.border ~margin:resolved_margin);
 
         (* Update inflow_content_size *)
         inflow_content_size :=
@@ -1167,7 +1172,14 @@ let compute_inner (type t)
       (* Short-circuit if computing size *)
       if run_mode = Run_mode.Compute_size then
         Layout_output.from_outer_size final_outer_size
-      else
+      else (
+        (* Commit the in-flow children's layouts. *)
+        List.iter
+          (fun item ->
+            match item.final_layout with
+            | Some layout -> Tree.set_unrounded_layout tree item.node_id layout
+            | None -> ())
+          items;
         (* 4. Layout absolutely positioned children *)
         let absolute_position_inset =
           Rectf.add resolved_border scrollbar_gutter
@@ -1253,7 +1265,7 @@ let compute_inner (type t)
         in
         Layout_output.make ~size:final_outer_size ~content_size
           ~first_baselines:Point.none ~top_margin ~bottom_margin
-          ~margins_can_collapse_through:can_be_collapsed_through
+          ~margins_can_collapse_through:can_be_collapsed_through)
 
 (* Computes the layout of a block container according to the block layout
    algorithm *)

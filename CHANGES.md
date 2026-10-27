@@ -211,6 +211,7 @@ it.
 - Flexbox measures an item's intrinsic contribution under the same sizing mode as its other measurements, applying the item's own preferred size on top, and a column container clamps it by the flex basis alone
 - Flexbox clamps a known cross size by the item's own min/max when measuring, so a percent-width item under `max-width` is no longer measured at a width the final layout never gives it (which let the next sibling paint over it)
 - A measurement of a node whose height, minimum height or maximum height is a percentage is cached for the parent height it was taken against. A grid measures its items against its inner height before and after it knows it, and an item took the size of the other measurement: with `min-height: 85%` and one cell of content it came out as tall as the root
+- A block's measurement stores none of its children's layouts, which a layout of the block taken from its cache then kept: a text measured at its min-content width stayed wrapped there
 
 #### Removed
 
