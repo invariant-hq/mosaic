@@ -3471,21 +3471,26 @@ let compute_flexbox_layout (type t)
   let max_height = resolve (Style.max_size style) ~width:false in
 
   (* The size of the container on an axis, floored by the padding and border,
-     NaN when none is set: the style's size clamped by the minimum and
-     maximum (inherent sizing alone), or else the minimum where the maximum
-     does not exceed it, or else the known size. This is the order of
-     [Size.choose_first]'s arguments in the pipeline it replaces,
-     [known |> choose_first min_max |> choose_first clamped]. *)
+     NaN when none is set: the known size, or else the minimum where the
+     maximum does not exceed it, or else the style's size clamped by the
+     minimum and maximum (inherent sizing alone). This is the order of Taffy's
+     [known_dimensions.or(min_max_definite_size.or(clamped_style_size))]: the
+     parent's known size wins, as the parent resolved the style against the
+     containing block, which for an absolutely positioned child is the padding
+     box. Taffy floors the two styled sizes alone and relies on parents to
+     floor the known size; the floor stays on all three here, as before. *)
   let styled known ~min ~max ~size ~padding_border =
     let size =
-      if not (Float.is_nan size) then
-        if Float.is_nan min then
-          if Float.is_nan max then size else Float.min max size
-        else if Float.is_nan max then Float.max min size
-        else Float.max min (Float.min max size)
-      else if (not (Float.is_nan min)) && (not (Float.is_nan max)) && max <= min
-      then min
-      else match known with Some known -> known | None -> Float.nan
+      match known with
+      | Some known -> known
+      | None ->
+          if (not (Float.is_nan min)) && (not (Float.is_nan max)) && max <= min
+          then min
+          else if Float.is_nan size then size
+          else if Float.is_nan min then
+            if Float.is_nan max then size else Float.min max size
+          else if Float.is_nan max then Float.max min size
+          else Float.max min (Float.min max size)
     in
     if Float.is_nan size then size else Float.max size padding_border
       [@@inline]

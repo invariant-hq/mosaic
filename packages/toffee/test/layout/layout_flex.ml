@@ -484,6 +484,46 @@ let () =
             [| 0.; 80.; 100.; 100. |];
             [| 0.; 0.; 100.; 100. |];
           ];
+      case "absolute_container_percentage_size_of_padding_box"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:
+                 {
+                   width = Dimension.length 100.;
+                   height = Dimension.length 100.;
+                 }
+               ~padding:
+                 {
+                   left = Length_percentage.length 10.;
+                   right = Length_percentage.length 10.;
+                   top = Length_percentage.length 10.;
+                   bottom = Length_percentage.length 10.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~position:Absolute
+                   ~size:
+                     {
+                       width = Dimension.percent 0.5;
+                       height = Dimension.percent 0.5;
+                     }
+                   ())
+                [ node (Style.make ~box_sizing ~flex_grow:1. ()) [] ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 100. |];
+            [| 10.; 10.; 50.; 50. |];
+            [| 0.; 0.; 50.; 50. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 120.; 120. |];
+            [| 10.; 10.; 60.; 60. |];
+            [| 0.; 0.; 60.; 60. |];
+          ];
       case "absolute_correct_cross_child_size_with_percentage"
         (fun box_sizing ->
           node
