@@ -619,7 +619,7 @@ let reply : R.t Gen.t =
            (one_of
               [
                 of_list [ `Foreground; `Background; `Cursor ];
-                map (fun i -> `Palette i) (int_range 0 999_999_999);
+                map (fun i -> `Entry i) (int_range 0 999_999_999);
               ])
            rgb terminator);
       map

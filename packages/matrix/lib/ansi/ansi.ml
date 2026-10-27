@@ -1,6 +1,7 @@
 include Escape
 module Writer = Writer
 module Color = Color
+module Palette = Palette
 module Attr = Attr
 module Style = Style
 module Parser = Parser

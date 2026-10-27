@@ -554,7 +554,8 @@ type query =
   | Color_scheme_report
   | Foreground_color
   | Background_color
-  | Palette_color of int
+  | Cursor_color
+  | Palette_entry of int
 
 let query = function
   | Cursor_position -> literal "\027[6n"
@@ -577,5 +578,6 @@ let query = function
   | Color_scheme_report -> literal "\027[?996n"
   | Foreground_color -> literal "\027]10;?\027\\"
   | Background_color -> literal "\027]11;?\027\\"
-  | Palette_color i ->
+  | Cursor_color -> literal "\027]12;?\027\\"
+  | Palette_entry i ->
       literal ("\027]4;" ^ string_of_int (max 0 (min 255 i)) ^ ";?\027\\")

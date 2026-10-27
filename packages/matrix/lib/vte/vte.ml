@@ -127,13 +127,6 @@ type cluster = {
   mutable prev : string;
 }
 
-type palette = {
-  colors : (int * int * int) array;
-  foreground : int * int * int;
-  background : int * int * int;
-  cursor : int * int * int;
-}
-
 (* An OSC is kept only when the VTE performs it: [Osc_number n] while its
    number is read (-1 before the first digit), [Osc_text n] once it is known
    to be kept, and [Osc_skip] otherwise. *)
@@ -175,11 +168,11 @@ type t = {
   mutable tabs : bool array;
   mutable title : string;
   cluster : cluster;
-  (* The palette its user configured, [create]'s or [set_colors]', and the
-     one programs set. Neither's colours are ever written: a change makes a
-     new array. *)
-  mutable initial : palette;
-  mutable palette : palette;
+  (* The palette its user configured, [create]'s or [set_palette]'s, and
+     the one programs set, each with 256 entries. Neither's entries are ever
+     written: a change makes a new array. *)
+  mutable initial : Ansi.Palette.t;
+  mutable palette : Ansi.Palette.t;
   parser : Ansi.Parser.t;
   mutable osc : osc;
   osc_text : Buffer.t;
@@ -1214,35 +1207,25 @@ let check_cols fn cols =
   if cols > Grid.max_width then
     invalid_arg (Printf.sprintf "Vte.%s: cols > %d" fn Grid.max_width)
 
-(* The colours of Ansi.Color.indexed, white (7) on black (0), and the
-   cursor the foreground's. *)
-let default_palette =
-  let colors =
-    Array.init 256 (fun i -> Ansi.Color.to_rgb (Ansi.Color.indexed i))
-  in
-  {
-    colors;
-    foreground = colors.(7);
-    background = colors.(0);
-    cursor = colors.(7);
-  }
-
-let check_palette ?(fn = "create") p =
+(* The palette kept is a copy with all 256 entries, an entry past the
+   given array unknown, so that setting one never grows the array. *)
+let check_palette ?(fn = "create") (p : Ansi.Palette.t) =
   let channel v = v >= 0 && v <= 255 in
   let rgb (r, g, b) = channel r && channel g && channel b in
-  if Array.length p.colors <> 256 then
-    invalid_arg ("Vte." ^ fn ^ ": the palette does not have 256 colours");
+  let known = Option.fold ~none:true ~some:rgb in
+  if Array.length p.entries > 256 then
+    invalid_arg ("Vte." ^ fn ^ ": the palette has more than 256 entries");
   if
     not
-      (Array.for_all rgb p.colors && rgb p.foreground && rgb p.background
-     && rgb p.cursor)
+      (Array.for_all known p.entries
+      && rgb p.foreground && rgb p.background && known p.cursor)
   then invalid_arg ("Vte." ^ fn ^ ": a palette channel is outside 0..255");
-  { p with colors = Array.copy p.colors }
+  { p with entries = Array.init 256 (Ansi.Palette.entry p) }
 
 (* The structure, which RIS gives its power-up state. *)
 let create ?(identity = vt100) ?(extensions = extensions) ?(scrollback = 10000)
-    ?(width_method = `Unicode) ?(palette = default_palette) ?cell_size ~rows
-    ~cols () =
+    ?(width_method = `Unicode) ?(palette = Ansi.Palette.default) ?cell_size
+    ~rows ~cols () =
   check_cols "create" cols;
   let initial = check_palette palette in
   let rows = max 1 rows and cols = max 1 cols in
@@ -1656,14 +1639,15 @@ let decimal s =
 
 let palette t = t.palette
 
-let palette_colour p = function
-  | `Foreground -> p.foreground
-  | `Background -> p.background
+(* A colour the palette leaves unknown is [None]. *)
+let palette_colour (p : Ansi.Palette.t) = function
+  | `Foreground -> Some p.foreground
+  | `Background -> Some p.background
   | `Cursor -> p.cursor
-  | `Palette i -> p.colors.(i)
+  | `Entry i -> p.entries.(i)
 
 (* Every cell, and the cursor, may show a colour that changed. *)
-let set_palette t p =
+let change_palette t p =
   if p <> t.palette then (
     t.palette <- p;
     t.dirty.cursor <- true;
@@ -1671,31 +1655,35 @@ let set_palette t p =
 
 let set_colour t target rgb =
   let p = t.palette in
-  set_palette t
+  change_palette t
     (match target with
-    | `Foreground -> { p with foreground = rgb }
-    | `Background -> { p with background = rgb }
+    | `Foreground ->
+        { p with foreground = Option.value rgb ~default:p.foreground }
+    | `Background ->
+        { p with background = Option.value rgb ~default:p.background }
     | `Cursor -> { p with cursor = rgb }
-    | `Palette i ->
-        let colors = Array.copy p.colors in
-        colors.(i) <- rgb;
-        { p with colors })
+    | `Entry i ->
+        let entries = Array.copy p.entries in
+        entries.(i) <- rgb;
+        { p with entries })
 
 let reset_colour t target =
   set_colour t target (palette_colour t.initial target)
 
 (* A spec [?] asks for the colour, answered as the OSC that would set it,
-   with the query's terminator; another spec sets it, if it names one.
+   with the query's terminator, unless the palette leaves it unknown, as a
+   terminal that does not report it; another spec sets it, if it names one.
    [false] if the spec names no colour. *)
 let colour t terminator target spec =
   if spec = "?" then (
-    reply t
-      (Color { target; rgb = palette_colour t.palette target; terminator });
+    Option.iter
+      (fun rgb -> reply t (Color { target; rgb; terminator }))
+      (palette_colour t.palette target);
     true)
   else
     match Reply.rgb_of_spec spec with
     | Some rgb ->
-        set_colour t target rgb;
+        set_colour t target (Some rgb);
         true
     | None -> false
 
@@ -1717,7 +1705,7 @@ let osc_colours t n terminator text =
   let rec pairs = function
     | c :: spec :: rest -> (
         match decimal c with
-        | Some i when i <= 255 && colour t terminator (`Palette i) spec ->
+        | Some i when i <= 255 && colour t terminator (`Entry i) spec ->
             pairs rest
         | _ -> ())
     | _ -> ()
@@ -1726,7 +1714,7 @@ let osc_colours t n terminator text =
     | c :: rest -> (
         match decimal c with
         | Some i ->
-            if i <= 255 then reset_colour t (`Palette i);
+            if i <= 255 then reset_colour t (`Entry i);
             resets rest
         | None -> ())
     | [] -> ()
@@ -1744,7 +1732,7 @@ let osc_colours t n terminator text =
   match n with
   | 4 -> pairs (String.split_on_char ';' text)
   | 104 when text = "" ->
-      set_palette t { t.palette with colors = t.initial.colors }
+      change_palette t { t.palette with entries = t.initial.entries }
   | 104 -> resets (String.split_on_char ';' text)
   | 110 -> reset_colour t `Foreground
   | 111 -> reset_colour t `Background
@@ -2078,10 +2066,10 @@ let set_color_scheme t scheme =
     t.color_scheme <- scheme;
     if t.modes.color_scheme_reports then [ Reply.Color_scheme scheme ] else [])
 
-let set_colors t p =
-  let p = check_palette ~fn:"set_colors" p in
+let set_palette t p =
+  let p = check_palette ~fn:"set_palette" p in
   t.initial <- p;
-  set_palette t p;
+  change_palette t p;
   if t.modes.color_scheme_reports then [ Reply.Color_scheme t.color_scheme ]
   else []
 

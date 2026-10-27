@@ -66,24 +66,7 @@
 type t
 (** The type for terminals. *)
 
-type palette = {
-  colors : (int * int * int) array;
-      (** The 256 indexed colors, from index 0. They are the eight of SGR 30 to
-          37, the eight bright ones of SGR 90 to 97, then those only SGR 38 ; 5
-          selects. *)
-  foreground : int * int * int;  (** The default foreground (OSC 10). *)
-  background : int * int * int;  (** The default background (OSC 11). *)
-  cursor : int * int * int;  (** The cursor's color (OSC 12). *)
-}
-(** The type for palettes ({!section-palette}). Each color is red, green and
-    blue, from 0 to 255. *)
-
 (** {1:create Creating} *)
-
-val default_palette : palette
-(** [default_palette] is the colors of {!Ansi.Color.indexed}, with indexed color
-    7 as the default foreground and the cursor's color, and 0 as the default
-    background. *)
 
 type identity = {
   attributes : int list;  (** The parameters of its DA1 reply. *)
@@ -119,7 +102,7 @@ val create :
   ?extensions:extension list ->
   ?scrollback:int ->
   ?width_method:Matrix_text.width_method ->
-  ?palette:palette ->
+  ?palette:Ansi.Palette.t ->
   ?cell_size:int * int ->
   rows:int ->
   cols:int ->
@@ -135,7 +118,8 @@ val create :
       first. Defaults to [10000]; [0] keeps none.
     - [width_method], how wide characters are ({!section-printing}). Defaults to
       [`Unicode].
-    - [palette], the palette. Defaults to {!default_palette}. [t] keeps a copy.
+    - [palette], the palette its user configured ({!section-palette}). Defaults
+      to {!Ansi.Palette.default}. [t] keeps a copy.
     - [cell_size], the size of a cell in pixels, [(width, height)], which it
       reports to [CSI 16 t], and times its size to [CSI 14 t]. Without it, it
       answers neither.
@@ -143,7 +127,7 @@ val create :
     [rows] and [cols] below [1] are taken as [1].
 
     Raises [Invalid_argument] if [cols > Matrix_grid.max_width], or if [palette]
-    does not have 256 colors or has a channel outside 0..255. *)
+    has more than 256 entries or a channel outside \[[0];[255]\]. *)
 
 (** {1:feeding Feeding output}
 
@@ -289,9 +273,10 @@ val reset : t -> unit
       when it has the extension;
     - a color spec [?] in OSC 4, 10, 11 or 12, which asks for a color of the
       palette ({!section-palette}), with a [Color] from the palette as it is,
-      the OSC that would set it, such as [OSC 11 ; rgb:0000/0000/0000]. The
-      reply ends as the query did, with BEL or ST, since xterm "uses the same
-      terminator used in a query" (ctlseqs, "Operating System Commands"). *)
+      the OSC that would set it, such as [OSC 11 ; rgb:0000/0000/0000], when the
+      palette gives the color. The reply ends as the query did, with BEL or ST,
+      since xterm "uses the same terminator used in a query" (ctlseqs,
+      "Operating System Commands"). *)
 
 (** {2:resets Resets}
 
@@ -600,22 +585,21 @@ val set_color_scheme : t -> [ `Dark | `Light ] -> Matrix_input.Reply.t list
 
 (** {1:palette The palette}
 
-    The palette is the colors the emulated terminal's user configured. These are
-    the 256 indexed colors SGR selects, the default foreground and background,
-    and the cursor's color. {!val-create} is given it, as it is given the size,
-    its user may configure others ({!set_colors}), and programs may change it,
-    as xterm lets them (ctlseqs, "Operating System Commands"):
-    - OSC 4 [; c ; spec], with any number of pairs, sets indexed color [c], from
-      0 to 255;
+    The palette ({!Ansi.Palette}) is the colors the emulated terminal's user
+    configured. {!val-create} is given it, as it is given the size, its user may
+    configure another ({!set_palette}), and programs may change it, as xterm
+    lets them (ctlseqs, "Operating System Commands"):
+    - OSC 4 [; c ; spec], with any number of pairs, sets entry [c], from 0 to
+      255;
     - OSC 10, 11 and 12 [; spec] set the default foreground, the default
       background and the cursor's color. "Each successive parameter changes the
       next color in the list", so [OSC 10 ; a ; b] sets the foreground to [a]
       and the background to [b];
     - a spec [?] asks for the color instead ({!section-replies});
-    - OSC 104 [; c] resets the indexed colors listed, all of them when none is,
-      and OSC 110, 111 and 112 reset the foreground, the background and the
-      cursor's color, each to the palette its user configured: the one
-      {!val-create} was given, or {!set_colors}'.
+    - OSC 104 [; c] resets the entries listed, all of them when none is, and OSC
+      110, 111 and 112 reset the foreground, the background and the cursor's
+      color, each to the palette its user configured: the one {!val-create} was
+      given, or {!set_palette}'s.
 
     {!Matrix_input.Reply.rgb_of_spec} reads a spec, such as [rgb:r/g/b],
     [#rrggbb] or an X11 color name such as [ghost white]. OSC 4 and OSC 104 stop
@@ -625,6 +609,13 @@ val set_color_scheme : t -> [ `Dark | `Light ] -> Matrix_input.Reply.t list
     OSC 10, 11 and 12, a spec that names no color is skipped. A change marks
     every row and the cursor changed ({!section-dirty}).
 
+    A palette that does not give the cursor's color or an entry describes a
+    terminal that does not report it. A spec [?] for it has no reply. Setting it
+    gives it, and resetting it returns it to the configured palette's. A
+    renderer shows an entry the palette does not give as {!Ansi.Color.to_rgb} of
+    the entry, the color {!Ansi.Color} assumes, and the cursor as the
+    foreground.
+
     Cells keep colors as the pen gave them. The defaults (SGR 39 and 49, or no
     color) are {!Ansi.Color.default_fg} and {!Ansi.Color.default_bg}, indexed
     colors keep their index, and RGB colors are kept as they are. The palette
@@ -632,20 +623,20 @@ val set_color_scheme : t -> [ `Dark | `Light ] -> Matrix_input.Reply.t list
     palette changes no cell. A renderer resolves the default and indexed intents
     of {!Ansi.Color} through {!val-palette} when it draws. *)
 
-val palette : t -> palette
+val palette : t -> Ansi.Palette.t
 (** [palette t] is the palette as programs left it. The caller must not change
-    its [colors]. *)
+    its [entries]. *)
 
-val set_colors : t -> palette -> Matrix_input.Reply.t list
-(** [set_colors t p] is the change by [t]'s user of the colors they configured
+val set_palette : t -> Ansi.Palette.t -> Matrix_input.Reply.t list
+(** [set_palette t p] is the change by [t]'s user of the palette they configured
     to [p], as when they pick another theme. [p] replaces the palette, the
     colors programs set included, and is what OSC 104 to 112 and RIS reset to.
     It is the report the terminal sends: its [Color_scheme] while mode 2031 is
-    set, which tells the program that the colors may have changed, and [[]]
+    set, which tells the program that the palette may have changed, and [[]]
     otherwise. The caller writes it to the program's input. [t] keeps a copy of
     [p].
 
-    Raises [Invalid_argument] if [p] does not have 256 colors or a channel is
+    Raises [Invalid_argument] if [p] has more than 256 entries or a channel is
     outside \[[0];[255]\]. *)
 
 (** {1:rows Rows and the scrollback}

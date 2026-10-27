@@ -106,22 +106,23 @@ let plain =
     syntax = Syntax_style.plain;
   }
 
-let pair (c : Ansi.Color.reported) =
+let pair (p : Ansi.Palette.t) =
   let rgb (r, g, b) = Ansi.Color.of_rgb r g b in
-  Ansi.Color.contrast (rgb c.foreground) (rgb c.background)
+  Ansi.Color.contrast (rgb p.foreground) (rgb p.background)
 
-let default c =
+let default p =
   let text =
     make (fun role ->
         let base = plain_text role in
         let entry =
           match role with
           | Link | Added | Removed ->
-              Ansi.Color.legible c (Option.get (slot role))
+              Ansi.Palette.legible p (Option.get (slot role))
           | Muted -> (
               (* Entry 8 where it is legible and quieter than the pair. *)
               match
-                (Ansi.Color.legible c 8, Ansi.Color.legible ~target:(pair c) c 8)
+                ( Ansi.Palette.legible p 8,
+                  Ansi.Palette.legible ~target:(pair p) p 8 )
               with
               | Some e, None -> Some e
               | _ -> None)
@@ -131,7 +132,7 @@ let default c =
   in
   let alone =
     make (fun role ->
-        match Option.bind (slot role) (Ansi.Color.legible ~target:3. c) with
+        match Option.bind (slot role) (Ansi.Palette.legible ~target:3. p) with
         | Some e -> Ansi.Style.make ~fg:e ()
         | None -> text.(index role))
   in
@@ -146,7 +147,7 @@ let default c =
     mark;
     alone;
     glyphs = Glyphs.unicode;
-    syntax = Syntax_style.of_colors c;
+    syntax = Syntax_style.of_palette p;
   }
 
 let style t role = t.text.(index role)
@@ -168,15 +169,15 @@ let with_style role s t =
 let with_glyphs glyphs t = { t with glyphs }
 let with_syntax syntax t = { t with syntax }
 
-let check c t =
-  let pair = pair c in
+let check p t =
+  let pair = pair p in
   List.filter_map
     (fun role ->
       let s = style t role in
       let target = Float.min (if role = Border then 3. else 4.5) pair in
       let or_default d = Option.value ~default:d in
       match
-        Ansi.Color.contrast_on c
+        Ansi.Palette.contrast p
           ~fg:(or_default Ansi.Color.default_fg s.Ansi.Style.fg)
           ~bg:(or_default Ansi.Color.default_bg s.bg)
       with

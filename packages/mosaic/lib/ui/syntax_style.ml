@@ -52,7 +52,7 @@ let default =
       ("constructor", Ansi.Style.make ~fg:(Ansi.Color.of_rgb 209 154 102) ());
     ]
 
-(* The scopes [plain] and [of_colors] style, each with the palette entry of
+(* The scopes [plain] and [of_palette] style, each with the palette entry of
    its hue and the style it keeps where no entry reaches its target: the
    attributes a scope keeps change no color. *)
 let hued =
@@ -81,10 +81,10 @@ let rgb (r, g, b) = Ansi.Color.of_rgb r g b
 (* The entries of a scope's hue and of a comment are chosen as those of
    [Theme.default]'s text are: a legible entry, and for a comment entry
    8 where it is legible and quieter than the pair, as [Muted] text. *)
-let of_colors (c : Ansi.Color.reported) =
-  let pair = Ansi.Color.contrast (rgb c.foreground) (rgb c.background) in
+let of_palette (p : Ansi.Palette.t) =
+  let pair = Ansi.Color.contrast (rgb p.foreground) (rgb p.background) in
   let comment =
-    match (Ansi.Color.legible c 8, Ansi.Color.legible ~target:pair c 8) with
+    match (Ansi.Palette.legible p 8, Ansi.Palette.legible ~target:pair p 8) with
     | Some e, None -> Ansi.Style.fg e comment
     | _ -> comment
   in
@@ -92,7 +92,7 @@ let of_colors (c : Ansi.Color.reported) =
     (("comment", comment)
     :: List.map
          (fun (scope, s, attributes) ->
-           match Ansi.Color.legible c s with
+           match Ansi.Palette.legible p s with
            | Some e -> (scope, Ansi.Style.make ~fg:e ())
            | None -> (scope, attributes))
          hued)

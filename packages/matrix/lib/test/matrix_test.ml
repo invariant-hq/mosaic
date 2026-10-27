@@ -12,7 +12,7 @@ module Profile = struct
     identity : Vte.identity;
     extensions : Vte.extension list;
     width_method : Matrix.Text.width_method;
-    palette : Vte.palette;
+    palette : Matrix.Ansi.Palette.t;
     color_scheme : [ `Dark | `Light ];
     cell_size : (int * int) option;
   }
@@ -25,7 +25,7 @@ module Profile = struct
       identity = Vte.vt100;
       extensions = Vte.extensions;
       width_method = `Unicode;
-      palette = Vte.default_palette;
+      palette = Matrix.Ansi.Palette.default;
       color_scheme = `Dark;
       cell_size = None;
     }
@@ -355,7 +355,7 @@ module Terminal = struct
     if (Vte.modes t.vte).focus_reports then Decoder.encode_focus focused else ""
 
   let color_scheme t scheme = Reply.encode (Vte.set_color_scheme t.vte scheme)
-  let set_colors t palette = Reply.encode (Vte.set_colors t.vte palette)
+  let set_palette t palette = Reply.encode (Vte.set_palette t.vte palette)
 
   (* A resize, and the report the terminal sends of it. *)
   let resize t ~cols ~rows = Reply.encode (Vte.resize t.vte ~rows ~cols)

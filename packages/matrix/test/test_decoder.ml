@@ -598,7 +598,7 @@ let string_replies =
           [ "Reply Color background #ff8000 BEL" ] );
         ("\x1b]10;rgb:f/8/0\x1b\\", [ "Reply Color foreground #ff8800" ]);
         ("\x1b]12;rgb:fff/000/800\x07", [ "Reply Color cursor #ff0080 BEL" ]);
-        ("\x1b]4;1;rgb:cd/00/00\x1b\\", [ "Reply Color palette 1 #cd0000" ]);
+        ("\x1b]4;1;rgb:cd/00/00\x1b\\", [ "Reply Color entry 1 #cd0000" ]);
         (* The older form: its digits are the high bits, not scaled. *)
         ("\x1b]11;#ffffff\x1b\\", [ "Reply Color background #ffffff" ]);
         ("\x1b]11;#f80\x1b\\", [ "Reply Color background #f08000" ]);

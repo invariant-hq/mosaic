@@ -341,22 +341,20 @@ let sub_on_color_scheme_maps_messages () =
 (* ── Terminal colors ── *)
 
 let palette =
-  let colors = Array.copy Vte.default_palette.colors in
-  colors.(1) <- (0xcd, 0, 0);
-  colors.(12) <- (0x5c, 0x5c, 0xff);
+  let entries = Array.copy Ansi.Palette.default.entries in
+  entries.(1) <- Some (0xcd, 0, 0);
+  entries.(12) <- Some (0x5c, 0x5c, 0xff);
   {
-    Vte.default_palette with
-    colors;
+    Ansi.Palette.default with
+    entries;
     foreground = (0xe5, 0xe5, 0xe5);
     background = (0x10, 0x20, 0x30);
   }
 
-let reported (p : Vte.palette) =
-  {
-    Ansi.Color.foreground = p.foreground;
-    background = p.background;
-    palette = Array.init 16 (fun i -> Some p.colors.(i));
-  }
+(* The program asks for the pair and entries 0 to 15 of what the terminal
+   holds. *)
+let reported (p : Ansi.Palette.t) =
+  { p with cursor = None; entries = Array.sub p.entries 0 16 }
 
 (* Runs a program that records the colors it is given, on a terminal of
    [profile], through [steps]; the colors given, oldest first. *)
@@ -378,17 +376,7 @@ let colors_given ?(profile = { Matrix_test.Profile.vte with palette }) steps =
   List.rev !given
 
 let colors_testable =
-  Testable.make
-    ~pp:(fun ppf (c : Ansi.Color.reported) ->
-      let rgb ppf (r, g, b) = Format.fprintf ppf "#%02x%02x%02x" r g b in
-      Format.fprintf ppf "{fg %a; bg %a; palette [%a]}" rgb c.foreground rgb
-        c.background
-        (Format.pp_print_array ~pp_sep:Format.pp_print_space
-           (Format.pp_print_option
-              ~none:(fun ppf () -> Format.pp_print_string ppf "-")
-              rgb))
-        c.palette)
-    ~equal:( = )
+  Testable.make ~pp:Ansi.Palette.pp ~equal:Ansi.Palette.equal
 
 (* The program asks as it begins, and the terminal's answer is the palette
    its user configured. *)
@@ -402,7 +390,7 @@ let terminal_colors_on_start () =
 let light =
   {
     palette with
-    colors = Array.init 256 (fun i -> (i, i / 2, 0));
+    entries = Array.init 256 (fun i -> Some (i, i / 2, 0));
     foreground = (0, 0, 0);
     background = (0xff, 0xff, 0xff);
   }
@@ -410,7 +398,7 @@ let light =
 let terminal_colors_after_scheme () =
   let given =
     colors_given (fun s term ->
-        Matrix_test.input s (Matrix_test.Terminal.set_colors term light))
+        Matrix_test.input s (Matrix_test.Terminal.set_palette term light))
   in
   equal ~msg:"the colors, then the new ones" (list colors_testable)
     [ reported palette; reported light ]
@@ -488,9 +476,10 @@ let terminal_colors_without_palette () =
   equal ~msg:"foreground and background" (list colors_testable)
     [
       {
-        Ansi.Color.foreground = (0xe5, 0xe5, 0xe5);
+        Ansi.Palette.foreground = (0xe5, 0xe5, 0xe5);
         background = (0x10, 0x20, 0x30);
-        palette = Array.make 16 None;
+        cursor = None;
+        entries = [||];
       };
     ]
     given;
@@ -543,12 +532,13 @@ let root_theme_follows_colors () =
   let views = ref 0 in
   let colors =
     {
-      Ansi.Color.foreground = (0, 0, 0);
+      Ansi.Palette.foreground = (0, 0, 0);
       background = (0xff, 0xff, 0xff);
-      palette = Array.make 16 None;
+      cursor = None;
+      entries = Array.make 16 None;
     }
   in
-  colors.palette.(4) <- Some (0, 0, 0xee);
+  colors.entries.(4) <- Some (0, 0, 0xee);
   let term = Matrix_test.Terminal.create ~profile ~cols:4 ~rows:1 () in
   Mosaic_test.run term (link_app views) (fun s ->
       asked s term;
@@ -568,17 +558,17 @@ let root_theme_follows_a_change () =
   let views = ref 0 in
   let dark =
     {
-      Vte.default_palette with
+      Ansi.Palette.default with
       foreground = (0xe5, 0xe5, 0xe5);
       background = (0, 0, 0);
     }
   in
-  let colors = Array.copy dark.colors in
-  colors.(4) <- (0, 0, 0xee);
+  let entries = Array.copy dark.entries in
+  entries.(4) <- Some (0, 0, 0xee);
   let light =
     {
       dark with
-      colors;
+      entries;
       foreground = (0, 0, 0);
       background = (0xff, 0xff, 0xff);
     }
@@ -591,7 +581,7 @@ let root_theme_follows_a_change () =
   Mosaic_test.run term (link_app views) (fun s ->
       equal ~msg:"the first colors" link (link_of (theme dark)) (drawn term);
       let views_before = !views in
-      Matrix_test.input s (Matrix_test.Terminal.set_colors term light);
+      Matrix_test.input s (Matrix_test.Terminal.set_palette term light);
       equal ~msg:"the new colors" link (link_of (theme light)) (drawn term);
       equal ~msg:"no view built" int views_before !views)
 

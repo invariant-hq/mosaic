@@ -57,9 +57,9 @@ val plain : t
     attributes that change no color: [keyword] bold and [comment] italic, the
     other scopes in the base style. *)
 
-val of_colors : Ansi.Color.reported -> t
-(** [of_colors c] is {!plain} with the palette entry of a scope's hue where [c]
-    reports it and it is legible ({!Ansi.Color.legible}), as [Theme.default]
+val of_palette : Ansi.Palette.t -> t
+(** [of_palette p] is {!plain} with the palette entry of a scope's hue where [p]
+    knows it and it is legible ({!Ansi.Palette.legible}), as [Theme.default]
     chooses the entries of text: [keyword] and [tag] take entry 5, [string] and
     [attribute] 2, [number], [constant], [constructor], [type] and [module] 3,
     [function] 4, each trying the entry and then the entry plus 8, without bold.

@@ -485,12 +485,16 @@ let render state =
   let grid_height = Grid.height grid in
 
   (* The terminal's palette says what the default and indexed colors show:
-     programs may change it. *)
+     programs may change it. An entry it leaves unknown shows as Ansi.Color
+     assumes. *)
   let palette = Vte.palette vte in
   let resolve ~default c =
     match Ansi.Color.intent c with
     | Default -> default
-    | Indexed i -> palette.colors.(i)
+    | Indexed i ->
+        Option.value
+          (Ansi.Palette.entry palette i)
+          ~default:(Ansi.Color.to_rgb c)
     | Rgb -> Ansi.Color.to_rgb c
   in
 
@@ -607,7 +611,7 @@ let render state =
   (* Render cursor (always at live position, even in scrollback view) *)
   if (Vte.modes vte).cursor_visible then (
     let r, c = Vte.cursor_pos vte in
-    let cr, cg, cb = palette.cursor in
+    let cr, cg, cb = Option.value palette.cursor ~default:palette.foreground in
     Sdl.set_render_draw_color renderer cr cg cb 255
     |> or_else "Set cursor color";
     let cursor_rect =

@@ -202,7 +202,7 @@ let test_mouse_paste_focus () =
   T.input s (T.Terminal.paste term "hi");
   T.input s (T.Terminal.focus term false);
   T.input s (T.Terminal.color_scheme term `Light);
-  T.input s (T.Terminal.set_colors term Vte.default_palette);
+  T.input s (T.Terminal.set_palette term Matrix.Ansi.Palette.default);
   equal ~msg:"events" (list string)
     [
       "Mouse Press Left at 3,1 ctrl";
@@ -601,13 +601,13 @@ let test_picture_static () =
 (* The terminal's colors, asked with [Ansi.query]: the replies come back as
    [Reply.Color], from the palette its user configured. *)
 let test_colors () =
-  let colors = Array.copy Vte.default_palette.colors in
-  colors.(1) <- (0xcd, 0, 0);
-  colors.(12) <- (0x5c, 0x5c, 0xff);
+  let entries = Array.copy Matrix.Ansi.Palette.default.entries in
+  entries.(1) <- Some (0xcd, 0, 0);
+  entries.(12) <- Some (0x5c, 0x5c, 0xff);
   let palette =
     {
-      Vte.default_palette with
-      colors;
+      Matrix.Ansi.Palette.default with
+      entries;
       foreground = (0xe5, 0xe5, 0xe5);
       background = (0x10, 0x20, 0x30);
     }
@@ -630,8 +630,8 @@ let test_colors () =
           [
             q Foreground_color;
             q Background_color;
-            q (Palette_color 1);
-            q (Palette_color 12);
+            q (Palette_entry 1);
+            q (Palette_entry 12);
           ]));
   T.settle s;
   let color target rgb =
@@ -642,8 +642,8 @@ let test_colors () =
     [
       color `Foreground (0xe5, 0xe5, 0xe5);
       color `Background (0x10, 0x20, 0x30);
-      color (`Palette 1) (0xcd, 0, 0);
-      color (`Palette 12) (0x5c, 0x5c, 0xff);
+      color (`Entry 1) (0xcd, 0, 0);
+      color (`Entry 12) (0x5c, 0x5c, 0xff);
       Primary_attributes Vte.vt100.attributes;
     ]
     (List.rev !replies)

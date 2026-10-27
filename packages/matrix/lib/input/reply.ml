@@ -21,7 +21,7 @@ type t =
   | Version of string
   | Termcap of { valid : bool; entries : (string * string option) list }
   | Color of {
-      target : [ `Foreground | `Background | `Cursor | `Palette of int ];
+      target : [ `Foreground | `Background | `Cursor | `Entry of int ];
       rgb : int * int * int;
       terminator : Ansi.terminator;
     }
@@ -93,7 +93,7 @@ let pp ppf = function
         | `Foreground -> "foreground"
         | `Background -> "background"
         | `Cursor -> "cursor"
-        | `Palette i -> "palette " ^ string_of_int i
+        | `Entry i -> "entry " ^ string_of_int i
       in
       Format.fprintf ppf "Color %s #%02x%02x%02x%a" target r g b pp_bel
         terminator
@@ -282,7 +282,7 @@ let of_osc terminator content =
   | "4", Some rest -> (
       match split_at ';' rest with
       | index, Some spec when is_number index && String.length index <= 9 ->
-          color (`Palette (int_of_string index)) spec
+          color (`Entry (int_of_string index)) spec
       | _ -> raw)
   | "52", Some rest -> (
       match split_at ';' rest with
@@ -502,7 +502,7 @@ let add b = function
       | `Foreground -> Buffer.add_string b "10"
       | `Background -> Buffer.add_string b "11"
       | `Cursor -> Buffer.add_string b "12"
-      | `Palette i ->
+      | `Entry i ->
           Buffer.add_string b "4;";
           add_id b i);
       Buffer.add_string b ";rgb:";

@@ -75,14 +75,14 @@ type t =
           [DCS 0 + r name ST], with each capability's name and value decoded
           from hex. *)
   | Color of {
-      target : [ `Foreground | `Background | `Cursor | `Palette of int ];
+      target : [ `Foreground | `Background | `Cursor | `Entry of int ];
       rgb : int * int * int;
       terminator : Ansi.terminator;
     }
       (** [OSC 10], [OSC 11], [OSC 12] or [OSC 4 ; index], the OSC that would
-          set that color, with a color in a form {!rgb_of_spec} reads. The OSCs
-          that set a color take the same forms. A reply with a color in any
-          other form is {!Osc}. *)
+          set that color of the palette ({!Ansi.Palette}), with a color in a
+          form {!rgb_of_spec} reads. The OSCs that set a color take the same
+          forms. A reply with a color in any other form is {!Osc}. *)
   | Clipboard of {
       selection : string;
       data : string;

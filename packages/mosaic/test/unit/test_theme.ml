@@ -36,9 +36,10 @@ let surfaces : Theme.role list =
 let default_surfaces () =
   let colors =
     {
-      Ansi.Color.foreground = (0, 0, 0);
+      Ansi.Palette.foreground = (0, 0, 0);
       background = (255, 255, 255);
-      palette = Array.init 16 (fun i -> Some (i * 16, 0, 0));
+      cursor = None;
+      entries = Array.init 16 (fun i -> Some (i * 16, 0, 0));
     }
   in
   let t = Theme.default colors in
@@ -680,9 +681,10 @@ let hex h =
 
 let colors_of fg bg entries =
   {
-    Ansi.Color.foreground = hex fg;
+    Ansi.Palette.foreground = hex fg;
     background = hex bg;
-    palette =
+    cursor = None;
+    entries =
       Array.of_list
         (List.map (function "" -> None | h -> Some (hex h)) entries);
   }
@@ -839,9 +841,10 @@ let theme_with_style () =
   is_false ~msg:"changed" (Theme.equal Theme.plain t);
   let white =
     {
-      Ansi.Color.foreground = (0, 0, 0);
+      Ansi.Palette.foreground = (0, 0, 0);
       background = (255, 255, 255);
-      palette = Array.make 16 None;
+      cursor = None;
+      entries = Array.make 16 None;
     }
   in
   equal ~msg:"a gray below 4.5:1" check_result
@@ -868,23 +871,13 @@ let theme_with_style () =
 let gen_rgb =
   Gen.triple (Gen.int_range 0 255) (Gen.int_range 0 255) (Gen.int_range 0 255)
 
-let gen_rgb_pp ppf (r, g, b) = Format.fprintf ppf "#%02x%02x%02x" r g b
-
-let gen_reported =
+let gen_palette =
   Gen.map
-    (fun (foreground, background, palette) ->
-      { Ansi.Color.foreground; background; palette })
+    (fun (foreground, background, entries) ->
+      { Ansi.Palette.foreground; background; cursor = None; entries })
     (Gen.triple gen_rgb gen_rgb
        (Gen.array ~size:(Gen.int_range 0 16) (Gen.option gen_rgb)))
-  |> Gen.with_pp (fun ppf (c : Ansi.Color.reported) ->
-      Format.fprintf ppf "%a on %a, palette [%a]" gen_rgb_pp c.foreground
-        gen_rgb_pp c.background
-        (Format.pp_print_list
-           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
-           (Format.pp_print_option
-              ~none:(fun ppf () -> Format.pp_print_string ppf "-")
-              gen_rgb_pp))
-        (Array.to_list c.palette))
+  |> Gen.with_pp Ansi.Palette.pp
 
 (* ───── Scope ───── *)
 
@@ -1074,7 +1067,7 @@ let read_allocates_nothing () =
 (* ───── Default styles ───── *)
 
 (* The default styles of syntax, Markdown and diffs come from the roles of
-   the theme in scope: on a terminal of reported colors, under its
+   the theme in scope: on a terminal of a known palette, under its
    Theme.default, no text they draw is below its contrast. The colors are
    xterm's two defaults, VTE's default and kitty on white. *)
 
@@ -1088,11 +1081,12 @@ let palette hex =
     hex
   |> Array.of_list
 
-let vte : Ansi.Color.reported =
+let vte : Ansi.Palette.t =
   {
     foreground = (0xc0, 0xc0, 0xc0);
     background = (0, 0, 0);
-    palette =
+    cursor = None;
+    entries =
       palette
         [
           "000000";
@@ -1114,11 +1108,12 @@ let vte : Ansi.Color.reported =
         ];
   }
 
-let kitty_white : Ansi.Color.reported =
+let kitty_white : Ansi.Palette.t =
   {
     foreground = (0, 0, 0);
     background = (255, 255, 255);
-    palette =
+    cursor = None;
+    entries =
       palette
         [
           "000000";
@@ -1238,8 +1233,7 @@ let () =
           test "27 palettes" theme_palettes;
           test "adjudicated classes" theme_classes;
           test "with_style, equal, check" theme_with_style;
-          prop "any reported colors" gen_reported (fun c ->
-              theme_laws ~msg:"random" c);
+          prop "any palette" gen_palette (fun c -> theme_laws ~msg:"random" c);
         ];
       group "Scope"
         [

@@ -438,7 +438,10 @@ type query =
   | Background_color
       (** OSC 11 with [?], which asks for the default background color. The
           terminal replies with the OSC 11 that would set it. *)
-  | Palette_color of int
+  | Cursor_color
+      (** OSC 12 with [?], which asks for the text cursor's color. The terminal
+          replies with the OSC 12 that would set it. *)
+  | Palette_entry of int
       (** OSC 4 with [i] and [?], which asks for palette entry [i], clamped to
           \[[0];[255]\]. The terminal replies with the OSC 4 that would set it.
       *)
@@ -529,6 +532,9 @@ module Writer = Writer
 
 module Color = Color
 (** Colors. *)
+
+module Palette = Palette
+(** Palettes, the colors a terminal's user configured. *)
 
 module Attr = Attr
 (** Text attributes. *)

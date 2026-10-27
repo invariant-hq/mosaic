@@ -165,9 +165,9 @@ let color_contrast () =
     (Color.contrast (c "#ff0000") black)
     (Color.contrast Color.bright_red black)
 
-(* xterm's palette as it reports it, and its two defaults: black on white
-   and, as XTerm-color, light gray on black. *)
-let xterm_palette =
+(* xterm's palette as it reports it, entries 0 to 15, and its two defaults:
+   black on white and, as XTerm-color, light gray on black. *)
+let xterm_entries =
   Array.map
     (fun h -> Some (Color.to_rgb (Color.of_hex_exn h)))
     [|
@@ -191,89 +191,145 @@ let xterm_palette =
 
 let xterm_light =
   {
-    Color.foreground = (0, 0, 0);
+    Palette.foreground = (0, 0, 0);
     background = (255, 255, 255);
-    palette = xterm_palette;
+    cursor = None;
+    entries = xterm_entries;
   }
 
 let xterm_dark =
   { xterm_light with foreground = (0xe5, 0xe5, 0xe5); background = (0, 0, 0) }
 
-let color_contrast_on () =
+let palette_contrast () =
   let shown = option (float 0.005) in
-  let c = { xterm_light with palette = [| None; Some (0xcd, 0, 0) |] } in
-  let on_default fg = Color.contrast_on c ~fg ~bg:Color.default_bg in
+  let p = { xterm_light with entries = [| None; Some (0xcd, 0, 0) |] } in
+  let on_default fg = Palette.contrast p ~fg ~bg:Color.default_bg in
   equal ~msg:"the pair" shown (Some 21.0)
-    (Color.contrast_on c ~fg:Color.default_fg ~bg:Color.default_bg);
-  equal ~msg:"a default background is the reported one" shown (Some 21.0)
+    (Palette.contrast p ~fg:Color.default_fg ~bg:Color.default_bg);
+  equal ~msg:"a default background is the palette's" shown (Some 21.0)
     (on_default Color.default_bg);
   equal ~msg:"a transparent color is the default" shown (Some 21.0)
     (on_default Color.transparent);
-  equal ~msg:"an entry as reported" shown (Some 5.84)
+  equal ~msg:"an entry as known" shown (Some 5.84)
     (on_default (Color.indexed 1));
-  equal ~msg:"an entry not reported" shown None (on_default (Color.indexed 0));
-  equal ~msg:"an entry past the palette" shown None
-    (on_default (Color.indexed 2));
-  equal ~msg:"a background not reported" shown None
-    (Color.contrast_on c ~fg:Color.default_fg ~bg:(Color.indexed 0));
-  equal ~msg:"entry 196, #ff0000 everywhere" shown (Some 4.00)
-    (on_default (Color.indexed 196));
+  equal ~msg:"an entry unknown" shown None (on_default (Color.indexed 0));
+  equal ~msg:"an entry past the array" shown None (on_default (Color.indexed 2));
+  equal ~msg:"a background unknown" shown None
+    (Palette.contrast p ~fg:Color.default_fg ~bg:(Color.indexed 0));
+  equal ~msg:"entry 100 of 16 entries, unknown" shown None
+    (Palette.contrast xterm_light ~fg:(Color.indexed 100) ~bg:Color.default_bg);
+  equal ~msg:"entry 196 of the default palette" shown (Some 5.25)
+    (Palette.contrast Palette.default ~fg:(Color.indexed 196)
+       ~bg:Color.default_bg);
   equal ~msg:"an RGB color" shown (Some 4.48)
     (on_default (Color.of_rgb 0x77 0x77 0x77))
 
-let color_legible () =
+let palette_legible () =
   let entry = option check_color in
   let i = Color.indexed in
-  equal ~msg:"blue on white" entry (Some (i 4)) (Color.legible xterm_light 4);
-  equal ~msg:"green on white, neither" entry None (Color.legible xterm_light 2);
+  equal ~msg:"blue on white" entry (Some (i 4)) (Palette.legible xterm_light 4);
+  equal ~msg:"green on white, neither" entry None
+    (Palette.legible xterm_light 2);
   equal ~msg:"red on black, the bright one" entry
     (Some (i 9))
-    (Color.legible xterm_dark 1);
+    (Palette.legible xterm_dark 1);
   equal ~msg:"a target of 3" entry
     (Some (i 1))
-    (Color.legible ~target:3. xterm_light 1);
+    (Palette.legible ~target:3. xterm_light 1);
   equal ~msg:"yellow at 3, neither" entry None
-    (Color.legible ~target:3. xterm_light 3);
+    (Palette.legible ~target:3. xterm_light 3);
   equal ~msg:"entry 8 on white, below 4.5" entry None
-    (Color.legible xterm_light 8);
-  equal ~msg:"entry 8 on black" entry (Some (i 8)) (Color.legible xterm_dark 8);
-  equal ~msg:"an entry not reported" entry None
-    (Color.legible { xterm_light with palette = [||] } 4);
+    (Palette.legible xterm_light 8);
+  equal ~msg:"entry 8 on black" entry
+    (Some (i 8))
+    (Palette.legible xterm_dark 8);
+  equal ~msg:"an entry unknown" entry None
+    (Palette.legible { xterm_light with entries = [||] } 4);
+  equal ~msg:"entry 21, blue, on white" entry
+    (Some (i 21))
+    (Palette.legible { Palette.default with background = (255, 255, 255) } 21);
+  equal ~msg:"entry 21 of 16 entries, unknown" entry None
+    (Palette.legible xterm_light 21);
   (* A pair of 4.0:1, as xterm's bright black on white, lowers the target
      of text to its own. *)
   let low = { xterm_light with foreground = (0x7f, 0x7f, 0x7f) } in
-  equal ~msg:"down to the pair" entry (Some (i 8)) (Color.legible low 8);
-  equal ~msg:"below the pair" entry None (Color.legible low 3)
+  equal ~msg:"down to the pair" entry (Some (i 8)) (Palette.legible low 8);
+  equal ~msg:"below the pair" entry None (Palette.legible low 3)
+
+let palette_entry () =
+  let rgb = option (triple int int int) in
+  equal ~msg:"a known entry" rgb
+    (Some (0xcd, 0, 0))
+    (Palette.entry xterm_light 1);
+  equal ~msg:"past the array" rgb None (Palette.entry xterm_light 16);
+  equal ~msg:"below 0" rgb None (Palette.entry Palette.default (-1));
+  equal ~msg:"above 255" rgb None (Palette.entry Palette.default 256);
+  equal ~msg:"past 255 in a longer array" rgb None
+    (Palette.entry
+       { xterm_light with entries = Array.make 300 (Some (1, 2, 3)) }
+       256);
+  equal ~msg:"the default's entries are Color's" rgb
+    (Some (Color.to_rgb (Color.indexed 100)))
+    (Palette.entry Palette.default 100);
+  equal ~msg:"the default's pair"
+    (pair (triple int int int) (triple int int int))
+    (Color.to_rgb (Color.indexed 7), Color.to_rgb (Color.indexed 0))
+    (Palette.default.foreground, Palette.default.background);
+  equal ~msg:"the default's cursor" rgb
+    (Some (Color.to_rgb (Color.indexed 7)))
+    Palette.default.cursor
+
+let palette_equal () =
+  let trailing =
+    { xterm_light with entries = Array.append xterm_entries [| None; None |] }
+  in
+  is_true ~msg:"trailing unknowns" (Palette.equal xterm_light trailing);
+  is_false ~msg:"an entry more"
+    (Palette.equal xterm_light
+       {
+         xterm_light with
+         entries = Array.append xterm_entries [| Some (0, 0, 0) |];
+       });
+  is_false ~msg:"an entry unknown"
+    (Palette.equal xterm_light
+       { xterm_light with entries = Array.sub xterm_entries 0 15 });
+  is_false ~msg:"the cursor"
+    (Palette.equal xterm_light { xterm_light with cursor = Some (0, 0, 0) });
+  is_false ~msg:"the background" (Palette.equal xterm_light xterm_dark);
+  is_true ~msg:"past 255"
+    (Palette.equal Palette.default
+       {
+         Palette.default with
+         entries = Array.append Palette.default.entries [| Some (1, 2, 3) |];
+       })
+
+let palette_pp () =
+  let shown p = Format.asprintf "%a" Palette.pp p in
+  equal ~msg:"up to the last entry known" string
+    "{fg #000000; bg #ffffff; cursor -; entries [- #cd0000]}"
+    (shown { xterm_light with entries = [| None; Some (0xcd, 0, 0); None |] });
+  equal ~msg:"equal palettes print alike" string (shown xterm_light)
+    (shown { xterm_light with entries = Array.append xterm_entries [| None |] })
 
 let gen_rgb =
   Gen.triple (Gen.int_range 0 255) (Gen.int_range 0 255) (Gen.int_range 0 255)
 
-let gen_rgb_pp ppf (r, g, b) = Format.fprintf ppf "#%02x%02x%02x" r g b
-
-let gen_reported =
+let gen_palette =
   Gen.map
-    (fun (foreground, background, palette) ->
-      { Color.foreground; background; palette })
+    (fun (foreground, background, entries) ->
+      { Palette.foreground; background; cursor = None; entries })
     (Gen.triple gen_rgb gen_rgb
        (Gen.array ~size:(Gen.int_range 0 16) (Gen.option gen_rgb)))
-  |> Gen.with_pp (fun ppf (c : Color.reported) ->
-      Format.fprintf ppf "%a on %a, palette [%a]" gen_rgb_pp c.foreground
-        gen_rgb_pp c.background
-        (Format.pp_print_list
-           ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
-           (Format.pp_print_option
-              ~none:(fun ppf () -> Format.pp_print_string ppf "-")
-              gen_rgb_pp))
-        (Array.to_list c.palette))
+  |> Gen.with_pp Palette.pp
 
-(* What [legible] gives on any reported colors: entry [i] where it is
-   reported and reaches the target, else [i + 8] for [i] below 8 where it
-   does, else nothing. *)
-let color_legible_laws (c, i) =
-  let pair = Color.contrast_on c ~fg:Color.default_fg ~bg:Color.default_bg in
+(* What [legible] gives on any palette: entry [i] where it is known and
+   reaches the target, else [i + 8] for [i] below 8 where it does, else
+   nothing. *)
+let palette_legible_laws (p, i) =
+  let pair = Palette.contrast p ~fg:Color.default_fg ~bg:Color.default_bg in
   let target = Float.min 4.5 (Option.get pair) in
   let reaches i =
-    match Color.contrast_on c ~fg:(Color.indexed i) ~bg:Color.default_bg with
+    match Palette.contrast p ~fg:(Color.indexed i) ~bg:Color.default_bg with
     | Some k -> k >= target
     | None -> false
   in
@@ -282,7 +338,7 @@ let color_legible_laws (c, i) =
     else if i < 8 && reaches (i + 8) then Some (Color.indexed (i + 8))
     else None
   in
-  equal ~msg:"legible" (option check_color) expected (Color.legible c i)
+  equal ~msg:"legible" (option check_color) expected (Palette.legible p i)
 
 (* --- 2. Attributes & Style --- *)
 
@@ -1518,10 +1574,11 @@ let color_queries () =
   let q x = to_string (query x) in
   check_seq "foreground" "\027]10;?\027\\" (q Foreground_color);
   check_seq "background" "\027]11;?\027\\" (q Background_color);
-  check_seq "palette entry" "\027]4;1;?\027\\" (q (Palette_color 1));
-  check_seq "bright entry" "\027]4;15;?\027\\" (q (Palette_color 15));
-  check_seq "clamped below" "\027]4;0;?\027\\" (q (Palette_color (-3)));
-  check_seq "clamped above" "\027]4;255;?\027\\" (q (Palette_color 300))
+  check_seq "cursor" "\027]12;?\027\\" (q Cursor_color);
+  check_seq "palette entry" "\027]4;1;?\027\\" (q (Palette_entry 1));
+  check_seq "bright entry" "\027]4;15;?\027\\" (q (Palette_entry 15));
+  check_seq "clamped below" "\027]4;0;?\027\\" (q (Palette_entry (-3)));
+  check_seq "clamped above" "\027]4;255;?\027\\" (q (Palette_entry 300))
 
 let color_scheme_report_query () =
   check_seq "DSR 996" "\x1b[?996n"
@@ -2037,17 +2094,23 @@ let styling_tests =
 
 let tests =
   [
+    group "Palettes"
+      [
+        test "contrast as a palette shows colors" palette_contrast;
+        test "legible entries" palette_legible;
+        prop "legible on any palette"
+          (Gen.pair gen_palette (Gen.int_range 0 15))
+          palette_legible_laws;
+        test "entries" palette_entry;
+        test "equality" palette_equal;
+        test "printing" palette_pp;
+      ];
     group "Color Logic"
       [
         test "hex parsing" color_parsing_hex;
         test "hsl roundtrip" color_hsl_roundtrip;
         test "blending" color_blending;
         test "contrast" color_contrast;
-        test "contrast on reported colors" color_contrast_on;
-        test "legible entries" color_legible;
-        prop "legible on any reported colors"
-          (Gen.pair gen_reported (Gen.int_range 0 15))
-          color_legible_laws;
         test "intent identity" color_intent_is_part_of_identity;
         test "ansi16 fallback palette"
           color_ansi16_palette_matches_standard_fallback;

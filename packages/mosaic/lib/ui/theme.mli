@@ -16,12 +16,12 @@
     that shows a state, such as [✗] for an error, [✓] for success or [!] for a
     warning.
 
-    The terminal's user chose its colors, and a program knows them only if the
-    terminal reports them ({!Ansi.Color.reported}). Its default foreground and
-    background, the user's {e pair}, are legible together. No palette entry is
-    legible on both a light and a dark background, so a role's text keeps the
+    The terminal's user chose its colors, its palette ({!Ansi.Palette}), and a
+    program knows them only if the terminal reports them. Its default foreground
+    and background, the user's {e pair}, are legible together. No palette entry
+    is legible on both a light and a dark background, so a role's text keeps the
     pair and takes a palette entry only where the entry is legible
-    ({!Ansi.Color.legible}). A role whose colors come from the palette is
+    ({!Ansi.Palette.legible}). A role whose colors come from the palette is
     written as the palette's index, so the terminal shows the color its user
     set. {!default} is the theme of a terminal whose colors are reported, and
     {!plain} the theme of one whose colors are not. Neither combines bold with a
@@ -31,8 +31,8 @@
     styles ({!with_style}) judges them with {!check}.
 
     An element is drawn with the theme {e in scope} where it is. The root's
-    theme is the program's: {!default} of the colors the terminal reports, and
-    {!plain} until it reports them or when it reports none. An element inside
+    theme is the program's: {!default} of the palette the terminal reports, and
+    {!plain} until it reports it or when it reports none. An element inside
     [themed f] ([Mosaic.themed], {!Vnode.themed}), or a node given [f] with
     {!Renderable.set_theme}, is drawn with [f] applied to the theme in scope
     around it, so the nearest such [f] decides last, and an application can
@@ -92,10 +92,10 @@ val plain : t
     underline for [Selected]. The glyphs are {!Glyphs.unicode} and the syntax
     style {!Syntax_style.plain}. *)
 
-val default : Ansi.Color.reported -> t
-(** [default c] is {!plain} with the palette entries [c] reports where they are
-    legible on [c]'s background ({!Ansi.Color.legible}), and the syntax style
-    {!Syntax_style.of_colors}[ c]:
+val default : Ansi.Palette.t -> t
+(** [default p] is {!plain} with the palette entries [p] knows where they are
+    legible on [p]'s background ({!Ansi.Palette.legible}), and the syntax style
+    {!Syntax_style.of_palette}[ p]:
     - [Link], [Added] and [Removed] text is drawn in entry 4, 2 and 1, or else
       in entry 12, 10 and 9, the first that is legible. Link text stays
       underlined.
@@ -137,15 +137,15 @@ val with_glyphs : Glyphs.t -> t -> t
 val with_syntax : Syntax_style.t -> t -> t
 (** [with_syntax s t] is [t] with highlighted source styled by [s]. *)
 
-val check : Ansi.Color.reported -> t -> (role * float) list
-(** [check c t] is each role whose text [t] draws below its target on a terminal
-    of reported colors [c], with the contrast it has
-    ({!Ansi.Color.contrast_on}), in the order of {!type-role}. The text's
-    foreground and background are the style's, or the pair where the style has
-    none, so a surface is judged by the text drawn on it. The target of [Border]
-    is the lower of [3] and the contrast of the pair, and that of the other
-    roles the target of text. A role whose colors are a palette entry that [c]
-    does not report is left out, since its contrast is unknown. *)
+val check : Ansi.Palette.t -> t -> (role * float) list
+(** [check p t] is each role whose text [t] draws below its target on a terminal
+    of palette [p], with the contrast it has ({!Ansi.Palette.contrast}), in the
+    order of {!type-role}. The text's foreground and background are the style's,
+    or the pair where the style has none, so a surface is judged by the text
+    drawn on it. The target of [Border] is the lower of [3] and the contrast of
+    the pair, and that of the other roles the target of text. A role whose
+    colors are a palette entry that [p] does not know is left out, since its
+    contrast is unknown. *)
 
 val equal : t -> t -> bool
 (** [equal a b] is [true] iff [a] and [b] give every role the same styles and

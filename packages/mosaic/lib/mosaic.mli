@@ -813,8 +813,8 @@ module Syntax_style : sig
   val plain : t
   (** {!Mosaic_ui.Syntax_style.plain}. *)
 
-  val of_colors : Ansi.Color.reported -> t
-  (** {!Mosaic_ui.Syntax_style.of_colors}. *)
+  val of_palette : Ansi.Palette.t -> t
+  (** {!Mosaic_ui.Syntax_style.of_palette}. *)
 
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] have equal base styles and equal
@@ -1163,7 +1163,7 @@ module Sub : sig
         (** {!val-on_color_scheme}. *)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)  (** {!val-worker}. *)
     | On_focus_lost of 'msg  (** {!val-on_focus_lost}. *)
-    | On_terminal_colors of (Ansi.Color.reported -> 'msg option)
+    | On_terminal_colors of (Ansi.Palette.t -> 'msg option)
         (** {!val-on_terminal_colors}. *)
 
   val none : 'msg t
@@ -1293,12 +1293,13 @@ module Sub : sig
       terminal answers {!Cmd.val-query_color_scheme} or reports a change (mode
       2031), and dispatches the message it returns. *)
 
-  val on_terminal_colors : (Ansi.Color.reported -> 'msg option) -> 'msg t
-  (** [on_terminal_colors f] calls [f] with the colors the terminal reports, its
-      default foreground and background and the first 16 entries of its palette,
-      and dispatches the message it returns. The program asks for them as it
-      begins, after each report of the color scheme ({!val-on_color_scheme}),
-      with which the user may have changed them, and when the application asks
+  val on_terminal_colors : (Ansi.Palette.t -> 'msg option) -> 'msg t
+  (** [on_terminal_colors f] calls [f] with the terminal's palette
+      ({!Ansi.Palette}), as far as the terminal reports its default foreground
+      and background and the first 16 entries, and dispatches the message it
+      returns. The program asks for them as it begins, after each report of the
+      color scheme ({!val-on_color_scheme}), with which the user may have
+      changed them, and when the application asks
       ({!Cmd.val-query_terminal_colors}); [f] is called once the terminal has
       answered, with the entries it reported. A subscription declared after the
       program began receives the colors from the next answer, so an application

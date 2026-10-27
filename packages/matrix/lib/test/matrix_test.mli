@@ -112,7 +112,7 @@ module Profile : sig
     extensions : Vte.extension list;
         (** The protocols it implements beyond the VT core. *)
     width_method : Matrix.Text.width_method;  (** How it measures text. *)
-    palette : Vte.palette;  (** The colors its user configured. *)
+    palette : Matrix.Ansi.Palette.t;  (** The palette its user configured. *)
     color_scheme : [ `Dark | `Light ];  (** The scheme its user chose. *)
     cell_size : (int * int) option;
         (** The size of its cells in pixels, [(width, height)], which it reports
@@ -123,9 +123,9 @@ module Profile : sig
 
   val vte : t
   (** [vte] is matrix's emulator as it is: a terminal that answers, with its own
-      identity ({!Vte.vt100}), every extension, Unicode widths, the default
-      palette, a dark scheme, no cell size, [TERM=xterm-256color] and
-      [COLORTERM=truecolor]. *)
+      identity ({!Vte.vt100}), every extension, Unicode widths, the palette
+      {!Matrix.Ansi.Palette.default}, a dark scheme, no cell size,
+      [TERM=xterm-256color] and [COLORTERM=truecolor]. *)
 
   val pipe : t
   (** [pipe] is {!vte} as an output that is not a terminal, which answers no
@@ -277,11 +277,11 @@ module Terminal : sig
   (** [color_scheme t c] changes [t]'s color scheme to [c], and is its report
       when the scheme changed and the program has set color scheme reports. *)
 
-  val set_colors : t -> Vte.palette -> string
-  (** [set_colors t p] changes the colors [t]'s user configured to [p], as when
-      they pick another theme ({!Vte.set_colors}), and is the report of the
-      change, the color scheme's, when the program has set color scheme reports.
-  *)
+  val set_palette : t -> Matrix.Ansi.Palette.t -> string
+  (** [set_palette t p] changes the palette [t]'s user configured to [p], as
+      when they pick another theme ({!Vte.set_palette}), and is the report of
+      the change, the color scheme's, when the program has set color scheme
+      reports. *)
 
   (** {2:reading Reading} *)
 

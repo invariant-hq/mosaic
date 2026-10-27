@@ -272,9 +272,10 @@ let press_key key renderer node =
 
 (* ── Paint by roles ── *)
 
-(* The colors two terminals reported: xterm's default, black on white, and
-   xterm with its XTerm-color resources, light gray on black. *)
-let xterm_palette =
+(* The palettes of two terminals as they report them, the pair and entries
+   0 to 15: xterm's default, black on white, and xterm with its XTerm-color
+   resources, light gray on black. *)
+let xterm_entries =
   [|
     (0x00, 0x00, 0x00);
     (0xcd, 0x00, 0x00);
@@ -294,36 +295,41 @@ let xterm_palette =
     (0xff, 0xff, 0xff);
   |]
 
-let xterm_light : Ansi.Color.reported =
+let xterm_light : Ansi.Palette.t =
   {
     foreground = (0, 0, 0);
     background = (255, 255, 255);
-    palette = Array.map Option.some xterm_palette;
+    cursor = None;
+    entries = Array.map Option.some xterm_entries;
   }
 
-let xterm_dark : Ansi.Color.reported =
+let xterm_dark : Ansi.Palette.t =
   {
     foreground = (0xe5, 0xe5, 0xe5);
     background = (0, 0, 0);
-    palette = Array.map Option.some xterm_palette;
+    cursor = None;
+    entries = Array.map Option.some xterm_entries;
   }
 
-(* The RGB a cell's color shows on a terminal of colors [c]: the default
-   color, and a transparent background, are the terminal's own, and an
-   entry of 0 to 15 its palette's. *)
-let shown (c : Ansi.Color.reported) ~default color =
+(* The RGB a cell's color shows on a terminal of palette [p]: the default
+   color, and a transparent background, are the terminal's own, an entry
+   the palette's, and one it does not know the color Ansi.Color assumes. *)
+let shown (p : Ansi.Palette.t) ~default color =
   if Ansi.Color.alpha color = 0. then default
   else
     match Ansi.Color.intent color with
     | Default -> default
-    | Indexed i when i < 16 -> Option.get c.palette.(i)
-    | Indexed _ | Rgb -> Ansi.Color.to_rgb color
+    | Indexed i -> (
+        match Ansi.Palette.entry p i with
+        | Some rgb -> rgb
+        | None -> Ansi.Color.to_rgb color)
+    | Rgb -> Ansi.Color.to_rgb color
 
 let rgb (r, g, b) = Ansi.Color.of_rgb r g b
 
 (* The cells of [grid] that hold text below the contrast of text, the lower
-   of 4.5 and the pair's, on a terminal of colors [c], as "x,y". *)
-let illegible (c : Ansi.Color.reported) grid =
+   of 4.5 and the pair's, on a terminal of palette [c], as "x,y". *)
+let illegible (c : Ansi.Palette.t) grid =
   let pair = Ansi.Color.contrast (rgb c.foreground) (rgb c.background) in
   let target = Float.min 4.5 pair in
   let bad = ref [] in

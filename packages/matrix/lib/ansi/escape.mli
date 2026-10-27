@@ -202,6 +202,7 @@ type query =
   | Color_scheme_report
   | Foreground_color
   | Background_color
-  | Palette_color of int
+  | Cursor_color
+  | Palette_entry of int
 
 val query : query -> t

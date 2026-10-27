@@ -311,7 +311,7 @@ module Sub = struct
     | On_color_scheme of ([ `Dark | `Light ] -> 'msg option)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)
     | On_focus_lost of 'msg
-    | On_terminal_colors of (Ansi.Color.reported -> 'msg option)
+    | On_terminal_colors of (Ansi.Palette.t -> 'msg option)
 
   let none = None
   let batch subs = Batch subs
@@ -501,7 +501,7 @@ type ('model, 'msg) runtime = {
   (* The view last reconciled declared a focused element. *)
   mutable had_focus : bool;
   mutable color_scheme_sub : ([ `Dark | `Light ] -> 'msg option) list;
-  mutable terminal_colors_sub : (Ansi.Color.reported -> 'msg option) list;
+  mutable terminal_colors_sub : (Ansi.Palette.t -> 'msg option) list;
   reported : reported;
   (* The timer armed at the earliest deadline of the timers and the
      paste stalls, and that deadline. *)
@@ -636,7 +636,7 @@ let colors_query =
     to_string
       (seq
          (query Foreground_color :: query Background_color
-         :: List.init 16 (fun i -> query (Palette_color i)))))
+         :: List.init 16 (fun i -> query (Palette_entry i)))))
 
 let colors_owed =
   { Matrix.Input.Decoder.cursor_reports = 0; string_replies = 18 }
@@ -1060,16 +1060,16 @@ let take_reply runtime (reply : Matrix.Input.Reply.t) =
   match reply with
   | Color { target = `Foreground; rgb; _ } -> r.foreground <- Some rgb
   | Color { target = `Background; rgb; _ } -> r.background <- Some rgb
-  | Color { target = `Palette i; rgb; _ } when i < 16 ->
-      r.palette.(i) <- Some rgb
+  | Color { target = `Entry i; rgb; _ } when i < 16 -> r.palette.(i) <- Some rgb
   | Primary_attributes _ ->
       (match (r.foreground, r.background) with
       | Some foreground, Some background ->
           let colors =
             {
-              Ansi.Color.foreground;
+              Ansi.Palette.foreground;
               background;
-              palette = Array.copy r.palette;
+              cursor = None;
+              entries = Array.copy r.palette;
             }
           in
           Renderer.set_theme runtime.renderer (Theme.default colors);
