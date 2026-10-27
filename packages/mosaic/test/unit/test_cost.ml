@@ -360,6 +360,60 @@ let keyed_log_changes () =
       ("editing the newest line", streamed);
     ]
 
+(* ───── A capped log's frame ─────
+
+   A keyed log in a scroll box that follows its bottom, over a 120x40
+   screen, appends a line and drops the oldest, and the measured call
+   reconciles, lays out, culls and paints the frame. The column holds its
+   lines in chunks of 256: the chunks after the first move up a row, and the
+   layout tree keeps their members' rounded layouts, the column's regroup
+   passes over them whole and the cull index keeps their indexes, so the
+   frame's words follow what changed, the chunks and the lines shown. Only
+   the column's own layout, one item per chunk, grows with the log: 50,000
+   lines allocate under 1.5 times the words of 5,000, where each line cost
+   about 90 words and the ratio was 3.6. *)
+
+let capped_log_frame n =
+  let line i = Printf.sprintf "L%06d a line of the log" i in
+  let lines =
+    Mosaic.Keyed.of_list ~compare:Int.compare
+      (List.init n (fun i -> (i, line i)))
+  in
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
+  let render lines =
+    Mosaic.Reconciler.render reconciler ~viewport_width:120
+      (Mosaic.box ~flex_direction:Mosaic.Flex_direction.Column
+         ~size:(Mosaic.size_wh (Mosaic.pct 100) (Mosaic.pct 100))
+         [
+           Mosaic.scroll_box ~flex_grow:1. ~scroll_x:false
+             ~min_size:(Mosaic.size ~width:0 ~height:0)
+             ~scroll:(Mosaic.Scroll.follow `Bottom (Mosaic.Scroll.at 0))
+             ~on_scroll:(fun _ -> None)
+             [ Mosaic.keyed lines log_line ];
+         ]);
+    Renderer.render_frame renderer ~width:120 ~height:40 ~dt:0.;
+    ignore (Renderer.render renderer : string)
+  in
+  render lines;
+  let lines = ref lines and next = ref n in
+  words (fun () ->
+      lines :=
+        Mosaic.Keyed.remove (!next - n)
+          (Mosaic.Keyed.add !next (line !next) !lines);
+      incr next;
+      render !lines)
+
+let capped_log_frames () =
+  let small = capped_log_frame 5_000 and large = capped_log_frame 50_000 in
+  if 2 * large > 3 * small then
+    failf
+      "a capped log's frame: %d words at 5,000 lines, %d at 50,000, over 1.5 \
+       times"
+      small large
+
 (* ───── A shared layout ─────
 
    An element given [~layout] and no layout label uses that record itself,
@@ -758,6 +812,8 @@ let () =
         [ test "a keystroke beside a memo" memo_key_check ];
       group "A keyed log costs what changed"
         [ test "append, capped append and edit" keyed_log_changes ];
+      group "A capped log's frame costs what changed"
+        [ test "5,000 and 50,000 lines" capped_log_frames ];
       group "A shared layout costs nothing per element"
         [ test "a text given ~layout" shared_layout ];
       group "Keys follow the items moved over"

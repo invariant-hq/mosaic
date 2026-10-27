@@ -51,21 +51,30 @@ type config = { use_rounding : bool }
 
 let default_config = { use_rounding = true }
 
-(* Node data stored for each node. [rounded] holds when [final_layout] and
+(* Node data stored for each node. [rounding] holds two flags, [rounded] and
+   [exact]. [rounded] holds when [final_layout] and
    every final layout below it were rounded from the current unrounded
    layouts, with the node's parent at the position [rounded_at] (x, y).
    Storing a different unrounded layout, or changing the node's style,
    context or children, clears it on the node and its ancestors, so [rounded]
-   on a node implies it on every descendant. *)
+   on a node implies it on every descendant. [exact] holds when that rounding
+   met whole numbers only: [rounded_at] and every value of the unrounded
+   layouts below it that rounding reads. Rounding then returned the unrounded
+   values, and it returns them again with the parent any whole number of
+   cells away. *)
 type node_data = {
   style : Style.t;
   mutable unrounded_layout : Layout.t;
   mutable final_layout : Layout.t;
   has_context : bool;
   cache : Cache.t;
-  mutable rounded : bool;
+  mutable rounding : int;
   rounded_at : float array;
 }
+
+let flag_rounded = 1
+let flag_exact = 2
+let[@inline] has flag node_data = node_data.rounding land flag <> 0
 
 let new_node_data style =
   {
@@ -74,7 +83,7 @@ let new_node_data style =
     unrounded_layout = Layout.default;
     final_layout = Layout.default;
     has_context = false;
-    rounded = false;
+    rounding = 0;
     rounded_at = [| 0.; 0. |];
   }
 
@@ -250,8 +259,8 @@ let rec mark_dirty_recursive tree idx =
    rounded has no rounded ancestor, so clearing stops there. *)
 let rec unround tree idx =
   let node_data = tree.nodes.(idx) in
-  if node_data.rounded then begin
-    node_data.rounded <- false;
+  if has flag_rounded node_data then begin
+    node_data.rounding <- 0;
     match tree.parents.(idx) with
     | Some parent -> unround tree (Node_id.index parent)
     | None -> ()
@@ -758,18 +767,62 @@ module View = struct
   let get_unrounded_layout tree node =
     tree.taffy.nodes.(node_index_exn tree.taffy node).unrounded_layout
 
+  (* Rounding sets a node's [exact] before its children's, then clears it on
+     the node and its ancestors when the node or a child kept as it was is
+     not exact, so [exact] holds of a subtree once its pass is done. A node
+     found not exact had its ancestors cleared then. *)
+  let rec inexact taffy idx =
+    let node_data = taffy.nodes.(idx) in
+    if has flag_exact node_data then begin
+      node_data.rounding <- node_data.rounding land lnot flag_exact;
+      match taffy.parents.(idx) with
+      | Some parent -> inexact taffy (Node_id.index parent)
+      | None -> ()
+    end
+
+  (* Whole, or infinite, which a move by whole cells keeps too: a test with
+     no call, which would box its argument. *)
+  let[@inline] whole f = Float.round f = f
+
   let is_rounded tree node_id ~x ~y =
-    let node_data = tree.taffy.nodes.(node_index_exn tree.taffy node_id) in
-    node_data.rounded
-    && Float.equal node_data.rounded_at.(0) x
-    && Float.equal node_data.rounded_at.(1) y
+    let idx = node_index_exn tree.taffy node_id in
+    let node_data = tree.taffy.nodes.(idx) in
+    let kept =
+      has flag_rounded node_data
+      && (Float.equal node_data.rounded_at.(0) x
+          && Float.equal node_data.rounded_at.(1) y
+         || (has flag_exact node_data && whole x && whole y))
+    in
+    (if kept && not (has flag_exact node_data) then
+       match tree.taffy.parents.(idx) with
+       | Some parent -> inexact tree.taffy (Node_id.index parent)
+       | None -> ());
+    kept
+
+  let whole_point (p : Geometry.Pointf.t) = whole p.x && whole p.y
+  let whole_size (s : Geometry.Sizef.t) = whole s.width && whole s.height
+
+  let whole_rect (r : Geometry.Rectf.t) =
+    whole r.left && whole r.right && whole r.top && whole r.bottom
 
   let set_final_layout tree node_id ~x ~y layout =
-    let node_data = tree.taffy.nodes.(node_index_exn tree.taffy node_id) in
+    let idx = node_index_exn tree.taffy node_id in
+    let node_data = tree.taffy.nodes.(idx) in
     node_data.final_layout <- layout;
     node_data.rounded_at.(0) <- x;
     node_data.rounded_at.(1) <- y;
-    node_data.rounded <- true
+    node_data.rounding <- flag_rounded lor flag_exact;
+    let u = node_data.unrounded_layout in
+    if
+      not
+        (whole x && whole y
+        && whole_point (Layout.location u)
+        && whole_size (Layout.size u)
+        && whole_size (Layout.content_size u)
+        && whole_size (Layout.scrollbar_size u)
+        && whole_rect (Layout.border u)
+        && whole_rect (Layout.padding u))
+    then inexact tree.taffy idx
 end
 
 (* Main layout computation *)

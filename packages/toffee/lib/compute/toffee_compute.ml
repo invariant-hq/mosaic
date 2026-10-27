@@ -296,10 +296,15 @@ let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
       Tree.set_final_layout tree node_id ~x:parent_x ~y:parent_y layout;
 
       let child_count = Tree.child_count tree node_id in
-      for index = 0 to child_count - 1 do
-        let child = Tree.get_child_id tree node_id index in
-        round_layout_inner child cumulative_x cumulative_y
-      done
+      if child_count > 0 then begin
+        (* Boxed once here rather than at each child's call. *)
+        let cumulative_x = Sys.opaque_identity cumulative_x
+        and cumulative_y = Sys.opaque_identity cumulative_y in
+        for index = 0 to child_count - 1 do
+          let child = Tree.get_child_id tree node_id index in
+          round_layout_inner child cumulative_x cumulative_y
+        done
+      end
     end
   in
 

@@ -235,7 +235,9 @@ val round_layout :
 
     A subtree for which [Tree.is_rounded] holds at its parent's position is
     skipped: its stored result is what rounding would produce, so the cost of a
-    pass follows the nodes whose unrounded layout or position changed.
+    pass follows the nodes whose unrounded layout changed, and those whose
+    position changed unless it moved by whole cells over whole values, as a
+    column's children do below a line removed above them.
 
     Call this function after layout completes to prepare coordinates for
     rendering. *)

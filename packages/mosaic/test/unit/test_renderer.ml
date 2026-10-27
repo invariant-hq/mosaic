@@ -740,8 +740,8 @@ let chunks_keep_every_box =
           (List.concat_map boxes (Renderable.children parent))
       in
       let same = ref true in
-      for _ = 1 to 12 do
-        (match Random.State.int rng 6 with
+      for _ = 1 to 16 do
+        (match Random.State.int rng 9 with
         | 0 ->
             for _ = 1 to 1 + Random.State.int rng 40 do
               add ~index:(count ()) (kind ()) (words ())
@@ -763,6 +763,38 @@ let chunks_keep_every_box =
               (fun p ->
                 let r = row p i in
                 Renderable.set_visible r (not (Renderable.visible r)))
+              [ chunked; flat ]
+        | 5 ->
+            (* A capped log: the first rows leave, as many come at the end. *)
+            let n = 1 + Random.State.int rng 3 in
+            for _ = 1 to n do
+              List.iter
+                (fun p -> Renderable.destroy_recursively (row p 0))
+                [ chunked; flat ];
+              add ~index:(count ()) (kind ()) (words ())
+            done
+        | 7 ->
+            (* Rows leave together, as a render's stale nodes do. *)
+            let picks =
+              List.sort_uniq compare
+                (List.init
+                   (1 + Random.State.int rng 3)
+                   (fun _ -> Random.State.int rng (count ())))
+            in
+            List.iter
+              (fun p -> Renderable.Private.detach_all (List.map (row p) picks))
+              [ chunked; flat ]
+        | 6 ->
+            (* The last row moves up to a random place. *)
+            let i = Random.State.int rng (count ()) in
+            List.iter
+              (fun p ->
+                let children = Renderable.children p in
+                let tail = List.filteri (fun j _ -> j >= i) children in
+                let last = List.nth tail (List.length tail - 1) in
+                let order = last :: List.filter (fun c -> c != last) tail in
+                Renderable.Private.place_children p i (fun f ->
+                    List.iter f order))
               [ chunked; flat ]
         | _ ->
             let w =
@@ -798,6 +830,45 @@ let chunks_keep_every_box =
         then same := false
       done;
       is_true ~msg:"every box as in the flat column, culled as a scan" !same)
+
+(* A member that stops being contained leaves its chunk: an absolute row
+   is placed against the column, as in a flat column, and not against the
+   chunk that held it. *)
+let member_leaves_its_chunk () =
+  let t = make_renderer () in
+  let column () =
+    Renderable.create ~parent:(Renderer.root t)
+      ~style:
+        (Toffee.Style.default
+        |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column
+        |> Toffee.Style.set_width (dim 10))
+      ()
+  in
+  let chunked = column () and flat = column () in
+  Renderable.Private.set_viewport_cull chunked true;
+  let row =
+    Toffee.Style.default
+    |> Toffee.Style.set_height (dim 1)
+    |> Toffee.Style.set_flex_shrink 0.
+  in
+  let rows p =
+    Array.init 600 (fun _ -> Renderable.create ~parent:p ~style:row ())
+  in
+  let a = rows chunked and b = rows flat in
+  do_frame ~width:20 ~height:20 t;
+  let lpa = Toffee.Style.Length_percentage_auto.length in
+  let absolute =
+    row
+    |> Toffee.Style.set_position Absolute
+    |> Toffee.Style.set_inset
+         { left = lpa 0.; right = lpa 0.; top = lpa 5.; bottom = lpa 0. }
+  in
+  Renderable.set_style a.(450) absolute;
+  Renderable.set_style b.(450) absolute;
+  do_frame ~width:20 ~height:20 t;
+  equal ~msg:"placed against the column" int
+    (Renderable.y b.(450) - Renderable.y flat)
+    (Renderable.y a.(450) - Renderable.y chunked)
 
 (* A chunk's member grows while the chunk's first member keeps its layout:
    culling finds the grown member where it now is, and the member after it
@@ -2648,6 +2719,8 @@ let () =
           culling_matches_a_scan;
           chunks_keep_every_box;
           test "a chunk follows a grown member" chunk_follows_a_grown_member;
+          test "a member that stops being contained leaves its chunk"
+            member_leaves_its_chunk;
         ];
       group "Scroll hints"
         [

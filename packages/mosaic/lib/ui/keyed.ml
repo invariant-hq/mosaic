@@ -199,6 +199,33 @@ module Private = struct
       in
       loop (cons a.tree End) (cons b.tree End) acc
 
+  let rank m k =
+    let rec go t before =
+      match t with
+      | Leaf -> before
+      | Node n ->
+          let c = m.compare k n.k in
+          if c = 0 then before + size n.l
+          else if c < 0 then go n.l before
+          else go n.r (before + size n.l + 1)
+    in
+    go m.tree 0
+
+  let fold_range f m lo hi acc =
+    (* [first] is the position of the first binding of [t]. *)
+    let rec go t first acc =
+      match t with
+      | Leaf -> acc
+      | Node n ->
+          if first >= hi || first + n.s <= lo then acc
+          else
+            let at = first + size n.l in
+            let acc = go n.l first acc in
+            let acc = if at >= lo && at < hi then f n.k n.v acc else acc in
+            go n.r (at + 1) acc
+    in
+    go m.tree 0 acc
+
   let find_map f m =
     let rec go = function
       | Leaf -> None

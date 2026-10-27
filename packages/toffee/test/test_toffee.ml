@@ -2271,22 +2271,28 @@ let full_rounding tree root =
     tree root;
   finals
 
-let random_style rng =
-  let fraction () = Float.of_int (Random.State.int rng 40) /. 3. in
+(* With [whole], every length is a whole number and no size is a
+   percentage, so most layouts are whole and rounding them meets whole
+   numbers only, as a terminal's layouts do. *)
+let random_style ?(whole = false) rng =
+  let fraction () =
+    if whole then Float.of_int (Random.State.int rng 14)
+    else Float.of_int (Random.State.int rng 40) /. 3.
+  in
   let dimension () =
     match Random.State.int rng 3 with
     | 0 -> Style.Dimension.auto
     | 1 -> Style.Dimension.length (fraction ())
+    | _ when whole -> Style.Dimension.length (fraction ())
     | _ -> Style.Dimension.pct (Float.of_int (Random.State.int rng 10) /. 7.)
   in
+  let edge () =
+    Style.Length_percentage.length
+      (if whole then Float.of_int (Random.State.int rng 3)
+       else fraction () /. 4.)
+  in
   let edges () =
-    Rect.
-      {
-        left = Style.Length_percentage.length (fraction () /. 4.);
-        right = Style.Length_percentage.length (fraction () /. 4.);
-        top = Style.Length_percentage.length (fraction () /. 4.);
-        bottom = Style.Length_percentage.length (fraction () /. 4.);
-      }
+    Rect.{ left = edge (); right = edge (); top = edge (); bottom = edge () }
   in
   Style.default
   |> Style.set_flex_direction
@@ -2297,7 +2303,9 @@ let random_style rng =
   |> Style.set_padding (edges ())
   |> Style.set_border (edges ())
   |> Style.set_margin_left
-       (Style.Length_percentage_auto.length (fraction () /. 5.))
+       (Style.Length_percentage_auto.length
+          (if whole then Float.of_int (Random.State.int rng 2)
+           else fraction () /. 5.))
   |> Style.set_display
        (if Random.State.int rng 10 = 0 then Style.Display.None
         else Style.Display.Flex)
@@ -2324,7 +2332,8 @@ let rec hidden tree node =
   Style.Display.is_none (Style.display (style tree node |> Result.get_ok))
   || match parent tree node with Some p -> hidden tree p | None -> false
 
-let incremental_rounding_matches_full_rounding seed =
+let incremental_rounding_matches_full_rounding ?(whole = false) seed =
+  let random_style = random_style ~whole in
   let rng = Random.State.make [| seed |] in
   let previous = Hashtbl.create 64 in
   let tree : unit Toffee.tree = new_tree () in
@@ -2343,7 +2352,8 @@ let incremental_rounding_matches_full_rounding seed =
     let available =
       let space () =
         Available_space.of_float
-          (50. +. (Float.of_int (Random.State.int rng 60) /. 7.))
+          (if whole then 50. +. Float.of_int (Random.State.int rng 9)
+           else 50. +. (Float.of_int (Random.State.int rng 60) /. 7.))
       in
       Size.{ width = space (); height = space () }
     in
@@ -2682,6 +2692,41 @@ let test_moved_child_rounded_at_new_position () =
   equal ~msg:"c1 at y 10.4" float_exact 11.0 (height c1);
   equal ~msg:"c2 at y 0" float_exact 10.0 (height c2)
 
+(* A subtree whose layouts are whole, moved by whole cells, rounds to the
+   layouts it had: rounding keeps its final layouts, the same values. A
+   subtree moved by a fraction of a cell is rounded again. *)
+let test_whole_move_keeps_rounded_layouts () =
+  let tree = new_tree () in
+  let row height = Style.default |> Style.set_size (make_size 10.0 height) in
+  let first = new_leaf tree (row 1.0) |> or_fail "first" in
+  let leaf = new_leaf tree (row 2.0) |> or_fail "leaf" in
+  let inner =
+    new_with_children tree
+      (Style.default |> Style.set_flex_direction Style.Flex_direction.Column)
+      [| leaf |]
+    |> or_fail "inner"
+  in
+  let root =
+    new_with_children tree
+      (Style.default |> Style.set_flex_direction Style.Flex_direction.Column)
+      [| first; inner |]
+    |> or_fail "root"
+  in
+  let available = Size.{ width = definite 100.0; height = definite 100.0 } in
+  let final node = layout tree node |> Result.get_ok in
+  compute_or_fail tree root available "Compute layout";
+  let before = final leaf in
+  set_style tree first (row 3.0) |> or_fail "grow";
+  compute_or_fail tree root available "Recompute layout";
+  equal ~msg:"inner moved" float_exact 3.0 (Layout.location (final inner)).y;
+  is_true ~msg:"the leaf keeps its layout" (final leaf == before);
+  set_style tree first (row 3.5) |> or_fail "grow by half";
+  compute_or_fail tree root available "Recompute at a fraction";
+  equal ~msg:"inner at 3.5, rounded" float_exact 4.0
+    (Layout.location (final inner)).y;
+  equal ~msg:"leaf height from 3.5 to 5.5, rounded" float_exact 2.0
+    (Layout.size (final leaf)).height
+
 let () =
   run "Toffee Tests"
     [
@@ -2768,6 +2813,10 @@ let () =
           test "Rounding without gaps" test_rounding_doesnt_leave_gaps;
           prop ~count:300 "Incremental rounding matches full rounding" Gen.int
             incremental_rounding_matches_full_rounding;
+          prop ~count:300 "Incremental rounding of whole layouts" Gen.int
+            (incremental_rounding_matches_full_rounding ~whole:true);
+          test "A whole move keeps rounded layouts"
+            test_whole_move_keeps_rounded_layouts;
           prop ~count:300 "Drawn edges are the rounded edges" Gen.int
             drawn_edges_are_rounded_edges;
           test "Equal relayout keeps layouts" test_equal_relayout_keeps_layouts;

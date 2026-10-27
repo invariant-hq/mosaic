@@ -99,6 +99,15 @@ module Private : sig
       Raises [Invalid_argument] if [a] and [b] were made with different
       [compare] functions. *)
 
+  val rank : ('k, 'v) t -> 'k -> int
+  (** [rank m k] is the number of keys of [m] before [k] in its order. *)
+
+  val fold_range :
+    ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> int -> int -> 'acc -> 'acc
+  (** [fold_range f m lo hi acc] folds [f] over the bindings of [m] at the
+      positions from [lo] to [hi - 1], in order, in time logarithmic in the size
+      of [m] and linear in [hi - lo]. *)
+
   val find_map : ('v -> 'a option) -> ('k, 'v) t -> 'a option
   (** [find_map f m] is the first [Some] [f] gives on [m]'s values in order. *)
 end

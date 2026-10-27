@@ -130,12 +130,16 @@ and span = {
 (* A keyed map's place: the map and item function it declared last, and one
    span per binding, in the map's order. [focused] holds the bindings that
    declare focus, so that the span's focus is found without visiting the
-   others. *)
+   others. [touched] holds the keys whose bindings its last reconciliation
+   bound or reconciled again, newest first, unless it reconciled them all
+   ([touched_all]): placing the span checks those alone. *)
 and keyed = {
   mutable declared : (Obj.t, Obj.t) Keyed.t;
   mutable item : Obj.t -> Obj.t -> msg Vnode.t;
   mutable bindings : (Obj.t, span) Keyed.t;
   mutable focused : (Obj.t, span) Keyed.t;
+  mutable touched : Obj.t list;
+  mutable touched_all : bool;
 }
 
 let fiber_node f = f.kind.Kind.node f.widget
@@ -535,19 +539,58 @@ and misplaced_in_span parent index span =
   else
     match span.keyed with
     | None -> first_misplaced parent index span.span_children
-    | Some k -> (
-        let index = ref index and found = ref None in
-        try
-          Keyed.Private.iter
-            (fun _ binding ->
-              match misplaced_in_span parent !index binding with
-              | None -> index := !index + binding.node_count
-              | Some _ as misplaced ->
-                  found := misplaced;
-                  raise_notrace Exit)
-            k.bindings;
-          None
-        with Exit -> !found)
+    | Some k when k.touched_all -> misplaced_in_bindings parent index k
+    | Some k -> misplaced_in_touched parent index span k
+
+and misplaced_in_bindings parent index k =
+  let index = ref index and found = ref None in
+  try
+    Keyed.Private.iter
+      (fun _ binding ->
+        match misplaced_in_span parent !index binding with
+        | None -> index := !index + binding.node_count
+        | Some _ as misplaced ->
+            found := misplaced;
+            raise_notrace Exit)
+      k.bindings;
+    None
+  with Exit -> !found
+
+(* The bindings a reconciliation did not touch keep their nodes, and nodes
+   only leave a parent or join it at its end before placement, so those
+   bindings' nodes follow each other in order. When the first binding's node
+   is at [index], the bindings before the first touched one are in place,
+   and a touched binding in place is followed by bindings in place up to the
+   next touched one: a new node in place has no old node after it, and an old
+   one is followed by the old nodes that followed it. So the touched bindings
+   are the ones to check, each at the count of nodes before it. *)
+and misplaced_in_touched parent index span k =
+  match Keyed.min_binding_opt k.bindings with
+  | None -> None
+  | Some (_, { first_node = None; _ }) -> misplaced_in_bindings parent index k
+  | Some (_, { first_node = Some first; _ }) -> (
+      match Renderable.Private.child_at parent index with
+      | Some n when n == first ->
+          let rec check = function
+            | [] -> None
+            | key :: rest -> (
+                match Keyed.find_opt key k.bindings with
+                | None -> check rest
+                | Some binding -> (
+                    let at = index + nodes_before span k key in
+                    match misplaced_in_span parent at binding with
+                    | None -> check rest
+                    | Some _ as misplaced -> misplaced))
+          in
+          check (List.rev k.touched)
+      | Some _ | None -> Some index)
+
+(* The nodes of the bindings before [key], counted from the nearer end. *)
+and nodes_before span k key =
+  let count _ binding nodes = nodes + binding.node_count in
+  let i = Keyed.Private.rank k.bindings key and n = Keyed.cardinal k.bindings in
+  if i <= n - i then Keyed.Private.fold_range count k.bindings 0 i 0
+  else span.node_count - Keyed.Private.fold_range count k.bindings i n 0
 
 and probe parent index node rest =
   match Renderable.Private.child_at parent index with
@@ -926,6 +969,8 @@ and reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme previous
         || (not (same_theme span.span_theme theme))
         || not (Keyed.Private.same_order k.declared map)
       in
+      k.touched <- [];
+      k.touched_all <- all;
       let changed =
         if all then begin
           rebind_all ~parent_node ~route ~viewport_width ~stale ~theme span k
@@ -938,9 +983,11 @@ and reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme previous
               (match change with
               | Keyed.Private.Removed _ -> unbind ~stale span k key
               | Added value ->
+                  k.touched <- key :: k.touched;
                   bind ~parent_node ~route ~viewport_width ~stale ~theme span k
                     key (item key value)
               | Changed (_, value) -> (
+                  k.touched <- key :: k.touched;
                   match Keyed.find_opt key k.bindings with
                   | Some binding ->
                       rebind ~parent_node ~viewport_width ~stale ~theme span k
@@ -964,6 +1011,8 @@ and reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme previous
           item;
           bindings = Keyed.Private.empty_like map;
           focused = Keyed.Private.empty_like map;
+          touched = [];
+          touched_all = true;
         }
       in
       let span =

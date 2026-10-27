@@ -10,9 +10,9 @@ element/button	alloc_words	exact	83
 element/map	alloc_words	exact	22
 element/memo	alloc_words	exact	11
 element/text	alloc_words	exact	19
-mount-and-empty/keyed-list-20000	alloc_words	exact	7540180
-mount-and-unmount/keyed-list-20000	alloc_words	exact	7446095
-mount-retype-and-empty/unkeyed-list-20000	alloc_words	exact	22740256
+mount-and-empty/keyed-list-20000	alloc_words	exact	7540146
+mount-and-unmount/keyed-list-20000	alloc_words	exact	7446061
+mount-retype-and-empty/unkeyed-list-20000	alloc_words	exact	22740188
 reconcile/nested-map-3-over-1000	alloc_words	exact	22156
 reconcile/reorder-keyed-list-500	alloc_words	exact	23193
 reconcile/reorder-keyed-list-5000	alloc_words	exact	236609

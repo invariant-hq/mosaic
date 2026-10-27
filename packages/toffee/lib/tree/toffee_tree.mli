@@ -150,11 +150,13 @@ module type ROUND_TREE = sig
 
   val is_rounded : t -> Node_id.t -> x:float -> y:float -> bool
   (** [is_rounded tree node ~x ~y] is [true] only if the final layouts of [node]
-      and of all its descendants were stored by {!set_final_layout} with
-      [node]'s parent at the unrounded absolute position [(x, y)], and none of
-      their unrounded layouts was set since. Rounding then skips the subtree,
-      whose result would be the same. A tree that does not track this returns
-      [false]. *)
+      and of all its descendants were stored by {!set_final_layout}, none of
+      their unrounded layouts was set since, and rounding them with [node]'s
+      parent at the unrounded absolute position [(x, y)] gives them again:
+      either they were stored with the parent at [(x, y)], or that position and
+      the one they were stored at are whole and every value rounding read was
+      whole, so that rounding returned the unrounded values. Rounding then skips
+      the subtree. A tree that does not track this returns [false]. *)
 
   val set_final_layout :
     t -> Node_id.t -> x:float -> y:float -> Layout.t -> unit

@@ -1375,6 +1375,79 @@ let keyed_keeps_order () =
     [ "head"; "a1"; "a5"; "a9"; "mid"; "tail" ]
     (rows renderer 6)
 
+(* Bindings of no node, one node and two nodes, edited at random between two
+   elements: after each render the rows follow the map's order. A render
+   that changes some bindings places the nodes of those alone, so the edits
+   reach every case of it: at the start, inside, at the end, a capped log's
+   step, and bindings with no node. *)
+let shaped _ text =
+  match text.[0] with
+  | 'z' -> Mosaic.fragment []
+  | 'd' -> Mosaic.fragment [ Mosaic.text text; Mosaic.text (text ^ "'") ]
+  | _ -> Mosaic.text text
+
+let keyed_edits_keep_order seed =
+  let rng = Random.State.make [| seed |] in
+  let renderer, reconciler = make () in
+  let value () =
+    Printf.sprintf "%c%d"
+      "adz".[Random.State.int rng 3]
+      (Random.State.int rng 99)
+  in
+  let view m =
+    column [ Mosaic.text "head"; Mosaic.keyed m shaped; Mosaic.text "tail" ]
+  in
+  let expected m =
+    "head"
+    :: List.concat_map
+         (fun (_, text) ->
+           match text.[0] with
+           | 'z' -> []
+           | 'd' -> [ text; text ^ "'" ]
+           | _ -> [ text ])
+         (List.rev (Mosaic.Keyed.fold (fun k v l -> (k, v) :: l) m []))
+    @ [ "tail" ]
+  in
+  let keys m = Mosaic.Keyed.fold (fun k _ l -> k :: l) m [] in
+  let pick m =
+    match keys m with
+    | [] -> None
+    | ks -> Some (List.nth ks (Random.State.int rng (List.length ks)))
+  in
+  let m =
+    ref (ints (List.init (Random.State.int rng 6) (fun i -> (i * 3, value ()))))
+  in
+  render_view reconciler (view !m);
+  for step = 1 to 30 do
+    (m :=
+       match Random.State.int rng 4 with
+       | 0 when Mosaic.Keyed.cardinal !m < 7 ->
+           Mosaic.Keyed.add (Random.State.int rng 20) (value ()) !m
+       | 1 -> (
+           match pick !m with Some k -> Mosaic.Keyed.remove k !m | None -> !m)
+       | 2 -> (
+           match pick !m with
+           | Some k -> Mosaic.Keyed.add k (value ()) !m
+           | None -> !m)
+       | _ -> (
+           let next =
+             match Mosaic.Keyed.max_binding_opt !m with
+             | Some (k, _) -> k + 1
+             | None -> 0
+           in
+           let m = Mosaic.Keyed.add next (value ()) !m in
+           match Mosaic.Keyed.min_binding_opt m with
+           | Some (k, _) when Mosaic.Keyed.cardinal m > 4 ->
+               Mosaic.Keyed.remove k m
+           | Some _ | None -> m));
+    render_view reconciler (view !m);
+    let expected = expected !m in
+    equal
+      ~msg:(Printf.sprintf "seed %d, step %d" seed step)
+      (list string) expected
+      (rows renderer (List.length expected))
+  done
+
 (* A render views only the bindings that changed, and the others keep their
    nodes. *)
 let keyed_views_what_changed () =
@@ -1481,6 +1554,7 @@ let () =
       group "Keyed"
         [
           test "keeps the order" keyed_keeps_order;
+          prop ~count:100 "edits keep the order" Gen.int keyed_edits_keep_order;
           test "views what changed" keyed_views_what_changed;
           test "a capturing item keeps the nodes"
             keyed_capturing_item_keeps_nodes;
