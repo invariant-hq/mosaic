@@ -393,7 +393,7 @@ let buffer_tab_width_triggers_recompute () =
 
 let call_measure surface ~available_width ~available_height =
   let node = Text_surface.node surface in
-  match Renderable.Private.measure node with
+  match Renderable.measure node with
   | None -> failwith "no measure function registered"
   | Some m ->
       m
@@ -408,7 +408,7 @@ let call_measure surface ~available_width ~available_height =
 let call_measure_with_known surface ~known_w ~known_h ~available_width
     ~available_height =
   let node = Text_surface.node surface in
-  match Renderable.Private.measure node with
+  match Renderable.measure node with
   | None -> failwith "no measure function registered"
   | Some m ->
       m

@@ -478,14 +478,14 @@ let measure_single_line t ~known_dimensions ~available_space:_ ~style:_ =
   let source = Editor.source t.props.state in
   let content_width =
     Layout.Source.columns source
-      ~width_method:(Renderable.Private.width_method t.node)
+      ~width_method:(Renderable.width_method t.node)
       ~tab_width:(Text_buffer.tab_width t.text_buf)
       ~first:0
       ~last:(Layout.Source.length source)
   in
   let placeholder_width =
     Matrix.Text.measure
-      ~width_method:(Renderable.Private.width_method t.node)
+      ~width_method:(Renderable.width_method t.node)
       ~tab_width:(Text_buffer.tab_width t.text_buf)
       t.props.placeholder
   in

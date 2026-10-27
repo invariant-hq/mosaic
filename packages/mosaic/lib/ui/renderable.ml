@@ -225,7 +225,7 @@ and node = {
   mutable reported_height : int;
   mutable lifecycle_registered : bool;
   mutable is_root : bool;
-  mutable live_count_change : (node -> unit) option;
+  mutable live_count_change : (unit -> unit) option;
   (* Theme *)
   mutable themes : themes option;
 }
@@ -291,7 +291,7 @@ let prepare_style style =
 let rec adjust_live_count node delta =
   if delta <> 0 then (
     node.live_count <- node.live_count + delta;
-    Option.iter (fun f -> f node) node.live_count_change;
+    Option.iter (fun f -> f ()) node.live_count_change;
     Option.iter (fun p -> adjust_live_count p delta) node.parent)
 
 let compute_self_live node = if node.live && node.visible then 1 else 0
@@ -1615,7 +1615,7 @@ let set_on_update t cb = t.on_update <- cb
 let set_on_frame t cb = t.on_frame <- cb
 let set_on_resize t cb = t.on_resize <- cb
 
-let set_lifecycle_pass t cb =
+let set_on_lifecycle_pass t cb =
   t.on_lifecycle_pass <- cb;
   update_lifecycle_registration t
 
@@ -2023,9 +2023,24 @@ let pp ppf t =
 
 (* ───── Private ───── *)
 
-module Private = struct
-  let set_focus_request t callback = t.focus_request <- callback
+let set_on_focus_request t callback = t.focus_request <- callback
+let set_on_click t handler = t.click_handler <- handler
+let set_on_size t callback = t.size_observer <- callback
+let set_place_theme t f = set_themes t ~place:true f
+let uid t = t.num
+let child_at t i = if i < 0 || i >= t.child_count then None else t.children.(i)
+let cell_size t = t.ctx.cell_size ()
+let width_method t = t.ctx.width_method ()
+let viewport_cull t = t.viewport_cull
+let measure t = t.measure
 
+(* A clipping node always yields a region — possibly empty — so the
+   renderer can skip its children entirely instead of painting them
+   unclipped when the node quantizes to zero extent. *)
+let child_clip t =
+  match t.child_clip with Some f -> f t | None -> Some (bounds t)
+
+module Private = struct
   let request_focus t =
     match t.focus_request with
     | Some callback when not t.destroyed ->
@@ -2072,17 +2087,7 @@ module Private = struct
     check_alive t;
     t.cleanup <- Some f
 
-  let num t = t.num
   let toffee_node t = t.toffee_node
-  let detach_all = detach_all
-  let place_children = place_children
-
-  let child_at t i =
-    if i < 0 || i >= t.child_count then None else t.children.(i)
-
-  let set_place_theme t f = set_themes t ~place:true f
-  let width_method t = t.ctx.width_method ()
-  let cell_size t = t.ctx.cell_size ()
 
   let set_is_root t v =
     if t.is_root <> v then (
@@ -2092,8 +2097,6 @@ module Private = struct
   let layout_dirty t = t.layout_dirty
   let clear_layout_dirty t = t.layout_dirty <- false
   let update_layout = update_layout
-  let refresh_positions = refresh_positions
-  let measure t = t.measure
   let pre_render_update = pre_render_update
   let render = render_node
   let render_full = render_full
@@ -2102,19 +2105,14 @@ module Private = struct
   let iter_children_z = iter_children_z
   let children_in_viewport = children_in_viewport
   let iter_children_in_viewport = iter_children_in_viewport
-  let set_viewport_cull = set_viewport_cull
   let flush_regroups = flush_regroups
   let location_x = location_x
   let location_y = location_y
-  let viewport_cull t = t.viewport_cull
   let focus_direct = focus_direct
   let blur_direct = blur_direct
   let live_count t = t.live_count
-  let set_size_observer t callback = t.size_observer <- callback
   let set_on_live_count_change t cb = t.live_count_change <- cb
-  let set_lifecycle_pass = set_lifecycle_pass
   let run_lifecycle_pass = run_lifecycle_pass
-  let set_click_handler t handler = t.click_handler <- handler
 
   let emit_click t event =
     Option.iter (fun handler -> handler (at_node t event)) t.click_handler
@@ -2131,10 +2129,4 @@ module Private = struct
   let get_selection t = t.ctx.get_selection ()
   let request_selection_update t = t.ctx.request_selection_update ()
   let report_scroll t ~region ~dx ~dy = t.ctx.report_scroll t ~region ~dx ~dy
-
-  (* A clipping node always yields a region — possibly empty — so the
-     renderer can skip its children entirely instead of painting them
-     unclipped when the node quantizes to zero extent. *)
-  let child_clip t =
-    match t.child_clip with Some f -> f t | None -> Some (bounds t)
 end

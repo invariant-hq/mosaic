@@ -109,9 +109,7 @@ type picture = {
 (* A picture's ratio of columns to rows, at the terminal's cell size. *)
 let picture_ratio p =
   let pw, ph = Matrix_grid.picture_size p.picture in
-  let cw, ch =
-    Option.value (Renderable.Private.cell_size p.node) ~default:(10, 20)
-  in
+  let cw, ch = Option.value (Renderable.cell_size p.node) ~default:(10, 20) in
   float pw /. float cw /. (float ph /. float ch)
 
 (* A picture is a replaced element, as an image is in CSS: its parent's layout
@@ -135,7 +133,7 @@ let apply_picture_style p = Renderable.set_style p.node (picture_style p)
 let picture_measure p ~known_dimensions ~available_space ~style:_ =
   let pw, _ = Matrix_grid.picture_size p.picture in
   let cw =
-    Option.value (Renderable.Private.cell_size p.node) ~default:(10, 20) |> fst
+    Option.value (Renderable.cell_size p.node) ~default:(10, 20) |> fst
   in
   let ratio = picture_ratio p in
   let open Toffee.Geometry.Size in

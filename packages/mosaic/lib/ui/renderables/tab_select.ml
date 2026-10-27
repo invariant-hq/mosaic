@@ -196,7 +196,7 @@ let rec render t _self grid ~dt:_ =
   if w <= 0 || h <= 0 then ()
   else
     let props = t.props in
-    let width_method = Renderable.Private.width_method t.node in
+    let width_method = Renderable.width_method t.node in
     let focused = Renderable.focused t.node in
     let theme = Renderable.theme t.node in
     let bg =

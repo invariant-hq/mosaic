@@ -407,7 +407,7 @@ let detach_all_wide () =
   let focused = List.hd gone in
   Renderable.set_focusable focused true;
   ignore (Renderable.focus focused : bool);
-  Renderable.Private.detach_all gone;
+  Renderable.detach_all gone;
   is_false ~msg:"blurred" (Renderable.focused focused);
   is_true ~msg:"orphaned"
     (List.for_all (fun node -> Option.is_none (Renderable.parent node)) gone);

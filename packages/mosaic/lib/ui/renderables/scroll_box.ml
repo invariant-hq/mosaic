@@ -623,7 +623,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
      256 in the layout tree, so a frame that changes a child lays out the
      members of its chunk again and answers the others from their layout
      caches. *)
-  Renderable.Private.set_viewport_cull content_node true;
+  Renderable.set_viewport_cull content_node true;
   (* Horizontal scroll bar: inside wrapper, below viewport *)
   let horizontal_bar =
     let bar =

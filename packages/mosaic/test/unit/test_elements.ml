@@ -292,7 +292,7 @@ let meter_kind ?(name = "meter") () =
       m.level <- level)
     ~equal:Int.equal
     ~events:(fun m emit ->
-      Renderable.Private.set_click_handler m.node (Some (fun _ -> emit m.level)))
+      Renderable.set_on_click m.node (Some (fun _ -> emit m.level)))
     ()
 
 let meter = meter_kind ()

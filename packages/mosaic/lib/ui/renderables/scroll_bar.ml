@@ -56,7 +56,7 @@ module Arrow = struct
 
   let measure t ~known_dimensions:_ ~available_space:_ ~style:_ =
     let text = arrow_char t in
-    let width_method = Renderable.Private.width_method t.node in
+    let width_method = Renderable.width_method t.node in
     let width =
       float_of_int (max 1 (Matrix.Text.measure ~width_method ~tab_width:2 text))
     in

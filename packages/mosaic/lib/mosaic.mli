@@ -2484,11 +2484,10 @@ val picture :
     The picture is laid out as a replaced element, as an image is in CSS
     ({!Toffee.Style.item_is_replaced}): a flex container stretches it, a block
     and a grid's [normal] alignment do not. It keeps [p]'s ratio of columns to
-    rows at the terminal's cell size
-    ({!Mosaic_ui.Renderable.Private.val-cell_size}, 10 by 20 pixels while
-    unknown) through layout, unless its layout sets one. A size given on one
-    axis, by the layout arguments or by the parent's layout, sets the other.
-    Where nothing gives a size, it is [p]'s size in cells,
+    rows at the terminal's cell size ({!Mosaic_ui.Renderable.val-cell_size}, 10
+    by 20 pixels while unknown) through layout, unless its layout sets one. A
+    size given on one axis, by the layout arguments or by the parent's layout,
+    sets the other. Where nothing gives a size, it is [p]'s size in cells,
     [ceil (width / cell width)] by [ceil (height / cell height)], shrunk to the
     space available, and it shrinks down to one cell wide. A box of another
     shape, with both sizes given, shows the picture letterboxed. *)

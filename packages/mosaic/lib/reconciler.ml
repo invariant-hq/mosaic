@@ -199,14 +199,14 @@ let create_fiber ~(parent : Renderable.t) ~route (elem : msg Vnode.element) :
   Renderable.set_focusable node (attrs.focusable || attrs.focused);
   if attrs.buffered then Renderable.set_buffered node true;
   if attrs.live || Kind.same e.kind Kinds.spinner then apply_live f;
-  Renderable.Private.set_focus_request node (focus_request route e.handlers);
+  Renderable.set_on_focus_request node (focus_request route e.handlers);
   Renderable.on_mouse node (fun ev ->
       Option.iter (fun g -> send_option f.route (g ev)) f.handlers.on_mouse);
-  Renderable.Private.set_click_handler node
+  Renderable.set_on_click node
     (Some
        (fun ev ->
          Option.iter (fun g -> send_option f.route (g ev)) f.handlers.on_click));
-  Renderable.Private.set_size_observer node
+  Renderable.set_on_size node
     (Some
        (fun node ->
          Option.iter
@@ -238,7 +238,7 @@ let update_fiber : type p e w. (p, e, w) fiber -> msg Vnode.element -> bool =
   | None -> invalid_arg "Reconciler: an element of another kind"
   | Some Type.Equal ->
       if f.handlers != e.handlers then begin
-        Renderable.Private.set_focus_request (fiber_node f)
+        Renderable.set_on_focus_request (fiber_node f)
           (focus_request f.route e.handlers);
         f.handlers <- e.handlers
       end;
@@ -312,8 +312,7 @@ let destroy_fibers ?(embeds = []) (fibers : child list) =
         | Embedded _ | Span _ -> acc)
       (List.rev embeds) fibers
   in
-  Renderable.Private.detach_all
-    (List.rev_append embeds (List.map child_node fibers));
+  Renderable.detach_all (List.rev_append embeds (List.map child_node fibers));
   List.iter
     (fun fiber -> Renderable.destroy_recursively (child_node fiber))
     fibers
@@ -494,9 +493,9 @@ let finish b =
    its index through the O(1) [child_at] probe, and a reused span whose first
    node is in place is skipped whole: its nodes were placed contiguously, and
    placement before it only shifts them. From the first child out of place,
-   the children are placed in one pass ([Renderable.Private.place_children]), so
+   the children are placed in one pass ([Renderable.place_children]), so
    any order costs time linear in the number of children. Node sets are keyed
-   by [Renderable.Private.num] -- hashing raw nodes would apply polymorphic
+   by [Renderable.uid] -- hashing raw nodes would apply polymorphic
    hash and compare to cyclic records of closures. *)
 let rec iter_embeds f = function
   | Fiber _ -> ()
@@ -507,12 +506,10 @@ let detach_stale_embeds ~stale (new_children : child list) =
   if stale <> [] then begin
     let kept = Hashtbl.create 8 in
     List.iter
-      (iter_embeds (fun n -> Hashtbl.replace kept (Renderable.Private.num n) ()))
+      (iter_embeds (fun n -> Hashtbl.replace kept (Renderable.uid n) ()))
       new_children;
-    Renderable.Private.detach_all
-      (List.filter
-         (fun n -> not (Hashtbl.mem kept (Renderable.Private.num n)))
-         stale)
+    Renderable.detach_all
+      (List.filter (fun n -> not (Hashtbl.mem kept (Renderable.uid n))) stale)
   end
 
 (* The index of the first of [children] that is not at its index among
@@ -530,7 +527,7 @@ and misplaced_in_span parent index span =
   let in_place =
     span.reused
     &&
-    match (span.first_node, Renderable.Private.child_at parent index) with
+    match (span.first_node, Renderable.child_at parent index) with
     | Some first, Some n -> n == first
     | None, _ -> true
     | Some _, None -> false
@@ -569,7 +566,7 @@ and misplaced_in_touched parent index span k =
   | None -> None
   | Some (_, { first_node = None; _ }) -> misplaced_in_bindings parent index k
   | Some (_, { first_node = Some first; _ }) -> (
-      match Renderable.Private.child_at parent index with
+      match Renderable.child_at parent index with
       | Some n when n == first ->
           let rec check = function
             | [] -> None
@@ -593,7 +590,7 @@ and nodes_before span k key =
   else span.node_count - Keyed.fold_range count k.bindings i n 0
 
 and probe parent index node rest =
-  match Renderable.Private.child_at parent index with
+  match Renderable.child_at parent index with
   | Some n when n == node -> first_misplaced parent (index + 1) rest
   | Some _ | None -> Some index
 
@@ -636,8 +633,7 @@ let commit_placement parent_node ~stale new_children =
   match first_misplaced parent 0 new_children with
   | None -> ()
   | Some index ->
-      Renderable.Private.place_children parent index
-        (iter_from index new_children)
+      Renderable.place_children parent index (iter_from index new_children)
 
 (* ───── Reconciliation ───── *)
 
@@ -806,7 +802,7 @@ and reconcile_list ~parent_node ~route ~viewport_width ~stale ~theme
    children but are no widgets. The walk goes through them to the concrete
    children (elements, embeds, and the spans of memos and maps) in order. A
    child inside [themed] wrappers takes their functions composed, outermost
-   first, as its place's theme ([Renderable.Private.set_place_theme]); a view
+   first, as its place's theme ([Renderable.set_place_theme]); a view
    without [themed] allocates nothing for them. *)
 and walk ~parent_node ~route m b ~viewport_width ~stale ~theme
     (vnode : msg Vnode.t) =
@@ -817,11 +813,11 @@ and walk ~parent_node ~route m b ~viewport_width ~stale ~theme
         reconcile_element ~parent_node ~route m ~viewport_width elem
       in
       (match child with
-      | Fiber f -> Renderable.Private.set_place_theme (fiber_node f) theme
+      | Fiber f -> Renderable.set_place_theme (fiber_node f) theme
       | Embedded _ | Span _ -> ());
       emit b child
   | Vnode.Embed n ->
-      Renderable.Private.set_place_theme n theme;
+      Renderable.set_place_theme n theme;
       let child =
         match b.rest with
         | (Embedded n' as child) :: _ when n' == n -> child

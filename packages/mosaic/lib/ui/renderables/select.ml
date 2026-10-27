@@ -435,7 +435,7 @@ let on_resize t _node = request t
 (* ───── Measure ───── *)
 
 let content_widths t =
-  let width_method = Renderable.Private.width_method t.node in
+  let width_method = Renderable.width_method t.node in
   match t.content_widths with
   | Some ((cached_method, _, _) as widths) when cached_method = width_method ->
       widths

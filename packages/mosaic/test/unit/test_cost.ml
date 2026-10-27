@@ -585,7 +585,7 @@ let rows ~cull n =
       ~style:Toffee.Style.(default |> set_flex_direction Flex_direction.Column)
       ()
   in
-  if cull then Renderable.Private.set_viewport_cull column true;
+  if cull then Renderable.set_viewport_cull column true;
   let row =
     Toffee.Style.(
       default
@@ -613,7 +613,7 @@ let removal_words ~cull n removals =
     (fun (what, pick) ->
       let gone = pick (Renderable.children column) in
       let minor, promoted, major = Gc.counters () in
-      Renderable.Private.detach_all gone;
+      Renderable.detach_all gone;
       let minor', promoted', major' = Gc.counters () in
       ignore (Sys.opaque_identity renderer : Renderer.t);
       ( what,
@@ -625,8 +625,8 @@ let removal_time ~cull n =
   let renderer, column, children = rows ~cull n in
   let gone = every_other (Array.to_list children) in
   let step () =
-    Renderable.Private.detach_all gone;
-    Renderable.Private.place_children column 0 (fun f -> Array.iter f children)
+    Renderable.detach_all gone;
+    Renderable.place_children column 0 (fun f -> Array.iter f children)
   in
   let best = ref infinity in
   for _ = 1 to 5 do

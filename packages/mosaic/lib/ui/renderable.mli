@@ -95,6 +95,24 @@ val detach : t -> unit
     reattached with {!attach}. Blurs [t] if focused. No-op if already detached.
 *)
 
+val detach_all : t list -> unit
+(** [detach_all nodes] detaches each of [nodes] as {!detach} does, in time
+    linear in the number of children their parents had, where detaching them one
+    by one shifts the children after each. *)
+
+val place_children : t -> int -> ((t -> unit) -> unit) -> unit
+(** [place_children t i iter] makes the nodes [iter] gives the children of [t]'s
+    child target ({!child_target}) from index [i] on, in order, attaching those
+    that are not its children. The children from [i] on that it leaves out
+    follow them in their order. A node among the children before [i], or one
+    that [iter] gives twice, keeps its first place. [iter f] must apply [f] to
+    the nodes in order, and give the same nodes each time [place_children] calls
+    it. It takes time linear in the number of children, whatever their order,
+    where moving them one by one is quadratic for a rotation.
+
+    Raises [Invalid_argument] if [i] is negative or greater than the number of
+    children, or as {!attach} does for a node to attach. *)
+
 val destroy : t -> unit
 (** [destroy t] detaches [t], removes all children (clearing their parent
     pointers and lifecycle registrations), frees its layout node, and clears all
@@ -116,6 +134,10 @@ val destroyed : t -> bool
 val id : t -> string
 (** [id t] is [t]'s string identifier. *)
 
+val uid : t -> int
+(** [uid t] is a number of [t]'s own, unique among the nodes of its renderer,
+    for a table of nodes. *)
+
 val set_id : t -> string -> unit
 (** [set_id t id] replaces [t]'s string identifier. Hosts that address nodes by
     id (e.g. focus targeting) observe the new value immediately. *)
@@ -126,6 +148,41 @@ val parent : t -> t option
 val children : t -> t list
 (** [children t] is [t]'s children in insertion order. The list is a snapshot;
     subsequent mutations are not reflected. *)
+
+val child_at : t -> int -> t option
+(** [child_at t i] is [t]'s [i]th child, or [None] when [i] is out of bounds, in
+    constant time and allocating nothing, where {!children} makes a list. *)
+
+val set_viewport_cull : t -> bool -> unit
+(** [set_viewport_cull t v] enables or disables viewport culling of [t]'s
+    children. When enabled, the renderer traverses only the children whose
+    subtrees may paint inside the effective ancestor clip ; offscreen children
+    are neither updated ([on_frame], resize hooks) nor rendered nor hit-testable
+    until they scroll back into view. Scroll containers enable this on their
+    content node.
+
+    A culling node holds its children in the layout tree in {e chunks} when its
+    style is a flex column on one line, with no gap, no [justify_content] that
+    distributes space, and an automatic height with no maximum. Each run of
+    contained children, at most 256, sits under a layout node of its own; a
+    child is {e contained} when it is positioned relatively, does not grow, has
+    no [auto] top or bottom margin, and has no percentage in its size, minimum
+    or maximum size, flex basis, or top or bottom inset. Every other child sits
+    directly under the culling node. The chunks change no child's box. Laying
+    the node out again after a change to some children lays out the members of
+    their chunks, and answers every other child from its layout cache. The
+    renderer sets the layout tree's children of every culling node changed since
+    the last layout before it lays the tree out, so until then the layout tree
+    does not hold the children added since. *)
+
+val viewport_cull : t -> bool
+(** [viewport_cull t] is [true] iff viewport culling is enabled on [t]. *)
+
+val refresh_positions : t -> unit
+(** [refresh_positions t] caches, for every visible node below [t], the layout
+    the layout tree holds for it, as a paint that reached the node would. A
+    paint reaches only the nodes it draws, so a node below a culled child
+    otherwise keeps the layout of the last paint that reached it. *)
 
 val child_target : t -> t
 (** [child_target t] is the node that receives children on behalf of [t].
@@ -154,6 +211,12 @@ val set_measure : t -> measure option -> unit
 (** [set_measure t fn] assigns a custom measure function for intrinsic sizing
     and marks layout dirty. [None] clears it. *)
 
+val measure : t -> measure option
+(** [measure t] is [t]'s measure function, if any: a widget's intrinsic size
+    under given known dimensions and available space, as a program that wraps
+    the widget in a measure of its own, or asks it for its size as Flutter's
+    [getDryLayout] does, reads it. *)
+
 val mark_dirty : t -> unit
 (** [mark_dirty t] flags [t] for re-layout on the next frame. *)
 
@@ -171,6 +234,21 @@ val width : t -> int
     boundary, and a zero-width allocation remains zero. Translation does not
     affect the result. Returns [0] when [t] is hidden or layout has not yet been
     computed. *)
+
+val cell_size : t -> (int * int) option
+(** [cell_size t] is the size in pixels of the cells of the terminal [t]'s tree
+    renders into, [None] while it is not known, for a widget that draws pixels.
+    When it changes, the renderer marks every measured node dirty before the
+    next layout. *)
+
+val width_method : t -> Matrix.Text.width_method
+(** [width_method t] is the width computation method of the screen [t]'s tree
+    renders into, now. The screen owns it and can change it while the tree
+    lives, as when the terminal reports its method late, so a widget reads it at
+    every measurement and paint and keys what it caches by it: wrap points,
+    intrinsic widths, and cursor columns then agree with how the screen lays
+    down cells. When it changes, the renderer marks every measured node dirty
+    before the next layout. *)
 
 val height : t -> int
 (** [height t] is the distance between [t]'s rounded absolute vertical edges in
@@ -216,6 +294,12 @@ val set_child_clip : t -> (t -> Matrix_grid.region option) option -> unit
     children. When set, the renderer calls [fn t] to obtain a scissor rectangle
     before rendering children. Useful for scroll containers and bordered boxes.
     [None] clears the override. *)
+
+val child_clip : t -> Matrix_grid.region option
+(** [child_clip t] is the region [t]'s children are clipped to: the override's
+    result when one is set ({!set_child_clip}), otherwise [t]'s bounds. The
+    region may be empty; the renderer then skips [t]'s children rather than
+    painting them unclipped. *)
 
 (** {1:visual Visual properties} *)
 
@@ -263,8 +347,14 @@ val set_theme : t -> (Theme.t -> Theme.t) option -> unit
     the theme in scope around [t], as [Mosaic.themed f] does for an element;
     [set_theme t None] removes it. A node a reconciler made, or embeds, is also
     in the scope its place in the view declares, which the reconciler gives it
-    apart ({!Private.set_place_theme}): [f] is applied after that scope, as for
-    a node inside it, and the scope never replaces it. *)
+    apart ({!set_place_theme}): [f] is applied after that scope, as for a node
+    inside it, and the scope never replaces it. *)
+
+val set_place_theme : t -> (Theme.t -> Theme.t) option -> unit
+(** [set_place_theme t f] puts [t] and its descendants in the scope of [f],
+    which [t]'s place in a view declares, or in none. A reconciler sets it on
+    each node it places, and {!val-theme} applies it before the node's own
+    function ({!set_theme}). *)
 
 val theme : t -> Theme.t
 (** [theme t] is the theme in scope at [t] ({!Theme}): the renderer's theme
@@ -280,6 +370,11 @@ val set_focusable : t -> bool -> unit
 
 val focusable : t -> bool
 (** [focusable t] is [true] iff [t] can receive focus. *)
+
+val set_on_focus_request : t -> (unit -> unit) option -> unit
+(** [set_on_focus_request t callback] has a left press on [t], while it is not
+    focused, call [callback], with which the program decides to focus [t]: a
+    click never focuses a node by itself. [None] clears it. *)
 
 val focused : t -> bool
 (** [focused t] is [true] iff [t] currently holds focus. *)
@@ -343,6 +438,12 @@ val set_on_blur : t -> (t -> unit) option -> unit
 
 val on_mouse : t -> (Event.mouse -> unit) -> unit
 (** [on_mouse t handler] registers a mouse handler on [t]. *)
+
+val set_on_click : t -> (Event.mouse -> unit) option -> unit
+(** [set_on_click t handler] calls [handler] with the release of a press that
+    began on [t] and ends on it, as the node sees the release
+    ({!Event.Mouse.at_node}). The renderer checks the gesture: a press that
+    leaves [t], or a drag that selects text, is no click. [None] clears it. *)
 
 val on_key : t -> (Event.key -> unit) -> unit
 (** [on_key t handler] registers a key handler on [t]. *)
@@ -432,14 +533,28 @@ val set_on_frame : t -> (t -> dt:float -> unit) option -> unit
     [callback t ~dt] is called every frame with [dt] as the elapsed seconds, but
     only while [t] is live: pair the hook with {!set_live} to start and stop the
     animation it drives. The hook runs only when [t] is part of the frame: a
-    child culled by a scroll container's viewport (see
-    {!Private.set_viewport_cull}) receives no ticks until it scrolls back into
-    view. [None] clears the hook. *)
+    child culled by a scroll container's viewport (see {!set_viewport_cull})
+    receives no ticks until it scrolls back into view. [None] clears the hook.
+*)
 
 val set_on_resize : t -> (t -> unit) option -> unit
 (** [set_on_resize t callback] registers a size-change hook. The callback is
     called when {!width} or {!height} changes after layout. [None] clears the
     hook. *)
+
+val set_on_size : t -> (t -> unit) option -> unit
+(** [set_on_size t callback] reports [t]'s size to [callback] when it differs
+    from the size last reported, beside the widget's own {!set_on_resize}. A
+    renderer admits the reports of a frame in rounds, from the shallowest nodes
+    down, so that a report that changes the layout is acted on before deeper
+    ones: a report it does not admit is offered again at the next traversal.
+    [None] clears it. *)
+
+val set_on_lifecycle_pass : t -> (t -> unit) option -> unit
+(** [set_on_lifecycle_pass t callback] calls [callback t] at the start of each
+    frame while [t] is in a renderer's tree, before the layout, whether or not
+    [t] is shown: for a node that changes what lays it out before each frame.
+    [None] clears it. *)
 
 (** {1:fmt Formatting and inspecting} *)
 
@@ -452,10 +567,6 @@ val pp : Format.formatter -> t -> unit
     event dispatch. Widget authors must not call these directly. *)
 
 module Private : sig
-  val set_focus_request : t -> (unit -> unit) option -> unit
-  (** [set_focus_request t callback] sets the application-owned focus request.
-      It is separate from the focus lifecycle hook. *)
-
   val request_focus : t -> bool
   (** [request_focus t] invokes its request callback, if alive, and reports
       whether one was invoked. The callback may reconcile or destroy [t]. *)
@@ -469,10 +580,10 @@ module Private : sig
   val set_top_layer : t -> t option -> unit
   (** [set_top_layer t top] puts [top] in the top layer of [t]'s tree, or no
       node. The node in the top layer stays a child of its parent, and is placed
-      against the root: the positions it and its descendants report ({!x}, {!y},
-      {!refresh_positions}) count none of its ancestors' translations, and its
-      parent's paint region leaves it out. The renderer lays it out and paints
-      it apart ([Renderer.set_modal]). *)
+      against the root: the positions it and its descendants report ({!val-x},
+      {!val-y}, {!refresh_positions}) count none of its ancestors' translations,
+      and its parent's paint region leaves it out. The renderer lays it out and
+      paints it apart ([Renderer.set_modal]). *)
 
   (** {2:context Context} *)
 
@@ -523,12 +634,6 @@ module Private : sig
 
   (** {2:root Root construction} *)
 
-  val set_place_theme : t -> (Theme.t -> Theme.t) option -> unit
-  (** [set_place_theme t f] puts [t] and its descendants in the scope of [f],
-      which [t]'s place in a view declares, or in none. A reconciler sets it on
-      each node it places, and {!val-theme} applies it before the node's own
-      function ({!Renderable.set_theme}). *)
-
   val create_root : context -> ?id:string -> ?style:Toffee.Style.t -> unit -> t
   (** [create_root ctx ()] is a new root node backed by [ctx]'s layout tree.
 
@@ -544,47 +649,8 @@ module Private : sig
 
   (** {2:identity Identity} *)
 
-  val num : t -> int
-  (** [num t] is [t]'s numeric identifier, unique within the renderer. *)
-
-  val detach_all : t list -> unit
-  (** [detach_all nodes] detaches each of [nodes] as {!detach} does, in time
-      linear in the number of children their parents had. *)
-
-  val place_children : t -> int -> ((t -> unit) -> unit) -> unit
-  (** [place_children t i iter] makes the nodes [iter] gives the children of
-      [t]'s child target ({!child_target}) from index [i] on, in order,
-      attaching those that are not its children. The children from [i] on that
-      it leaves out follow them in their order. A node among the children before
-      [i], or one that [iter] gives twice, keeps its first place. [iter f] must
-      apply [f] to the nodes in order, and give the same nodes each time
-      [place_children] calls it. It takes time linear in the number of children,
-      whatever their order.
-
-      Raises [Invalid_argument] if [i] is negative or greater than the number of
-      children, or as {!attach} does for a node to attach. *)
-
-  val child_at : t -> int -> t option
-  (** [child_at t i] is [t]'s [i]th child, or [None] when [i] is out of bounds.
-      O(1) and allocation-free, unlike {!children} which materializes a fresh
-      list. *)
-
   val toffee_node : t -> Toffee.Node_id.t
   (** [toffee_node t] is [t]'s layout node identifier. *)
-
-  val width_method : t -> Matrix.Text.width_method
-  (** [width_method t] is the width computation method of the screen [t]'s tree
-      renders into, now. The screen owns it and can change it while the tree
-      lives, as when the terminal reports its method late, so a widget reads it
-      at every measurement and paint and keys what it caches by it: wrap points,
-      intrinsic widths, and cursor columns then agree with how the screen lays
-      down cells. When it changes, the renderer marks every measured node dirty
-      before the next layout. *)
-
-  val cell_size : t -> (int * int) option
-  (** [cell_size t] is the size in pixels of the cells of the terminal [t]'s
-      tree renders into, [None] while it is not known. When it changes, the
-      renderer marks every measured node dirty before the next layout. *)
 
   val set_is_root : t -> bool -> unit
   (** [set_is_root t v] marks or unmarks [t] as a root node. *)
@@ -602,15 +668,6 @@ module Private : sig
   (** [update_layout t ~x ~y ~width ~height] caches layout results for [t],
       enabling O(1) queries via {!val-x}, {!val-y}, {!val-width}, and
       {!val-height}. *)
-
-  val refresh_positions : t -> unit
-  (** [refresh_positions t] caches, for every visible node below [t], the layout
-      the layout tree holds for it, as a paint that reached the node would. A
-      paint reaches only the nodes it draws, so a node below a culled child
-      otherwise keeps the layout of the last paint that reached it. *)
-
-  val measure : t -> measure option
-  (** [measure t] is [t]'s measure function, if any. *)
 
   (** {2:render_pipeline Render pipeline} *)
 
@@ -660,29 +717,6 @@ module Private : sig
       changed (see {!set_viewport_cull}). When [parent] holds no chunk, the
       cached layouts of its children are then refreshed from the layout tree. *)
 
-  val set_viewport_cull : t -> bool -> unit
-  (** [set_viewport_cull t v] enables or disables viewport culling of [t]'s
-      children. When enabled, the renderer traverses only the children whose
-      subtrees may paint inside the effective ancestor clip (via
-      {!iter_children_in_viewport}); offscreen children are neither updated
-      ([on_frame], resize hooks) nor rendered nor hit-testable until they scroll
-      back into view. Scroll containers enable this on their content node.
-
-      A culling node holds its children in the layout tree in {e chunks} when
-      its style is a flex column on one line, with no gap, no [justify_content]
-      that distributes space, and an automatic height with no maximum. Each run
-      of contained children, at most 256, sits under a layout node of its own; a
-      child is {e contained} when it is positioned relatively, does not grow,
-      has no [auto] top or bottom margin, and has no percentage in its size,
-      minimum or maximum size, flex basis, or top or bottom inset. Every other
-      child sits directly under the culling node. The chunks change no child's
-      box. Laying the node out again after a change to some children lays out
-      the members of their chunks, and answers every other child from its layout
-      cache. The renderer sets the layout tree's children of every culling node
-      changed since the last layout ({!flush_regroups}) before it lays the tree
-      out, so until then the layout tree does not hold the children added since.
-  *)
-
   val flush_regroups : t -> unit
   (** [flush_regroups t] sets, for each culling node of [t]'s tree whose
       children or whose children's styles changed since, its children in the
@@ -696,9 +730,6 @@ module Private : sig
 
   val location_y : t -> Toffee.Layout.t -> float
   (** [location_y t layout] is [t]'s vertical position, as {!location_x}. *)
-
-  val viewport_cull : t -> bool
-  (** [viewport_cull t] is [true] iff viewport culling is enabled on [t]. *)
 
   (** {2:focus Focus} *)
 
@@ -715,28 +746,14 @@ module Private : sig
   (** [live_count t] is the total number of live-rendering nodes in [t]'s
       subtree, including [t] itself. *)
 
-  val set_size_observer : t -> (t -> unit) option -> unit
-  (** [set_size_observer t callback] observes size changes without replacing the
-      widget's internal resize hook. During a traversal, [callback] runs when
-      the node's size differs from the size it last reported and the context's
-      [admit_size_report] admits the report. *)
-
-  val set_on_live_count_change : t -> (t -> unit) option -> unit
+  val set_on_live_count_change : t -> (unit -> unit) option -> unit
   (** [set_on_live_count_change t cb] registers an observer called when
       [live_count t] changes. [None] clears it. *)
-
-  val set_lifecycle_pass : t -> (t -> unit) option -> unit
-  (** [set_lifecycle_pass t callback] registers a lifecycle pass hook for [t].
-      [None] clears it. *)
 
   val run_lifecycle_pass : t -> unit
   (** [run_lifecycle_pass t] invokes [t]'s lifecycle callback, if any. *)
 
   (** {2:event_emission Event emission} *)
-
-  val set_click_handler : t -> (Event.mouse -> unit) option -> unit
-  (** [set_click_handler t handler] installs the callback for completed clicks.
-      The renderer validates the press/release gesture before calling it. *)
 
   val emit_click : t -> Event.mouse -> unit
   (** [emit_click t event] calls [t]'s click handler without bubbling. *)
@@ -788,10 +805,4 @@ module Private : sig
       renderer's [report_scroll] context callback. See {!type-context}. *)
 
   (** {2:clipping Child clipping} *)
-
-  val child_clip : t -> Matrix_grid.region option
-  (** [child_clip t] is the clipping region for [t]'s children: the clip
-      override's result when one is set, otherwise [t]'s bounds. The region may
-      be empty; the renderer then skips [t]'s children entirely rather than
-      painting them unclipped. *)
 end

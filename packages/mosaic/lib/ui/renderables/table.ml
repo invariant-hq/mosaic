@@ -786,7 +786,7 @@ let render t _self grid ~dt:_ =
   let height = Renderable.height t.node in
   if width <= 0 || height <= 0 then ()
   else
-    let width_method = Renderable.Private.width_method t.node in
+    let width_method = Renderable.width_method t.node in
     let focused = Renderable.focused t.node in
     let border = t.props.border in
     let border_style = t.props.border_style in
@@ -1022,7 +1022,7 @@ let intrinsic_width t =
   let ncols = Array.length t.col_specs in
   if ncols = 0 then 0
   else
-    let width_method = Renderable.Private.width_method t.node in
+    let width_method = Renderable.width_method t.node in
     let auto_widths = auto_content_widths t ~width_method in
     let pad = t.props.cell_padding in
     let pad2 = 2 * pad in

@@ -243,7 +243,7 @@ let notify_selectables state sel =
   | container :: _ ->
       (* A selectable reads its position to find what the selection covers,
          and one out of view has not been painted where it now is. *)
-      Renderable.Private.refresh_positions container;
+      Renderable.refresh_positions container;
       let new_touched = ref [] in
       iter_selectables container (fun node ->
           ignore (Renderable.Private.emit_selection_changed node sel : bool);
@@ -380,9 +380,7 @@ let recheck_hover t =
         in
         let target_node = if hit_num > 0 then find_node t hit_num else None in
         let target_num =
-          match target_node with
-          | Some n -> Renderable.Private.num n
-          | None -> 0
+          match target_node with Some n -> Renderable.uid n | None -> 0
         in
         if target_num <> t.hover_num then (
           let modifiers = t.pointer.modifiers in
@@ -434,7 +432,7 @@ let query_input_hit t ~x ~y =
                 !outside = 0
                 && contains ~rx:(Renderable.x node) ~ry:(Renderable.y node)
                      ~rw:(Renderable.width node) ~rh:(Renderable.height node)
-              then hit := Renderable.Private.num node
+              then hit := Renderable.uid node
           | Push_scissor clip ->
               incr depth;
               if
@@ -506,7 +504,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
        row shift; either disqualifies the cycle outright. *)
     if dx <> 0 || region.height <= 1 then scroll_hint := Hint_disqualified
     else
-      let num = Renderable.Private.num node in
+      let num = Renderable.uid node in
       match !scroll_hint with
       | Hint_none -> scroll_hint := Hint_one { num; region; delta = dy }
       | Hint_one one when one.num = num && one.region = region ->
@@ -564,10 +562,9 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
         (fun () ->
           request_selection_update ~selection_state ~pointer ~screen ~node_map);
       register_lifecycle =
-        (fun node ->
-          Hashtbl.replace lifecycle_set (Renderable.Private.num node) node);
+        (fun node -> Hashtbl.replace lifecycle_set (Renderable.uid node) node);
       unregister_lifecycle =
-        (fun node -> Hashtbl.remove lifecycle_set (Renderable.Private.num node));
+        (fun node -> Hashtbl.remove lifecycle_set (Renderable.uid node));
       alloc_num =
         (fun () ->
           let n = !next_num in
@@ -575,14 +572,14 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
           n);
       register =
         (fun node ->
-          Hashtbl.replace node_map (Renderable.Private.num node) node;
+          Hashtbl.replace node_map (Renderable.uid node) node;
           let toffee_idx =
             Toffee.Node_id.index (Renderable.Private.toffee_node node)
           in
           Hashtbl.replace toffee_map toffee_idx node);
       unregister =
         (fun node ->
-          Hashtbl.remove node_map (Renderable.Private.num node);
+          Hashtbl.remove node_map (Renderable.uid node);
           let toffee_idx =
             Toffee.Node_id.index (Renderable.Private.toffee_node node)
           in
@@ -608,7 +605,7 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
     Renderable.Private.create_root ctx ~style:root_style ~id:"root" ()
   in
   Renderable.Private.set_is_root root true;
-  Hashtbl.replace node_map (Renderable.Private.num root) root;
+  Hashtbl.replace node_map (Renderable.uid root) root;
   Hashtbl.replace toffee_map
     (Toffee.Node_id.index (Renderable.Private.toffee_node root))
     root;
@@ -767,7 +764,7 @@ let measure_fn (t : t) (known_dimensions : float option Toffee.Geometry.Size.t)
   match Hashtbl.find_opt t.toffee_map (Toffee.Node_id.index node_id) with
   | None -> Toffee.Geometry.Sizef.zero
   | Some node -> (
-      match Renderable.Private.measure node with
+      match Renderable.measure node with
       | None -> Toffee.Geometry.Sizef.zero
       | Some m ->
           Toffee.Geometry.Sizef.of_size
@@ -811,9 +808,7 @@ let rec build_commands (t : t) (node : Renderable.t) ~parent_x ~parent_y
       overflow.x <> Toffee.Style.Overflow.Visible
       || overflow.y <> Toffee.Style.Overflow.Visible
     in
-    let child_clip =
-      if should_clip then Renderable.Private.child_clip node else None
-    in
+    let child_clip = if should_clip then Renderable.child_clip node else None in
     let render_children child_clip =
       (* Recurse into children in z-index order. Toffee's layout.location
          already positions children relative to the parent's border box (i.e.
@@ -829,7 +824,7 @@ let rec build_commands (t : t) (node : Renderable.t) ~parent_x ~parent_y
             build_commands t child ~parent_x:abs_x ~parent_y:abs_y
               ~clip:child_clip ~frame ~dt
       in
-      if Renderable.Private.viewport_cull node then
+      if Renderable.viewport_cull node then
         Renderable.Private.iter_children_in_viewport ~parent:node
           ~viewport:child_clip recurse
       else Renderable.Private.iter_children_z node recurse
@@ -856,8 +851,7 @@ let execute_commands (t : t) ~(grid : Grid.t) ~(hits : Screen.Hit_grid.t)
         Renderable.Private.render_full node ~grid ~dt;
         let bounds = Renderable.bounds node in
         Screen.Hit_grid.add hits ~x:bounds.x ~y:bounds.y ~width:bounds.width
-          ~height:bounds.height
-          ~id:(Renderable.Private.num node)
+          ~height:bounds.height ~id:(Renderable.uid node)
     | Push_scissor clip ->
         Grid.push_clip grid clip;
         Screen.Hit_grid.push_clip hits clip
@@ -888,7 +882,7 @@ let follow_width_method t =
     t.layout_cell_size <- cell_size;
     Hashtbl.iter
       (fun _ node ->
-        if Option.is_some (Renderable.Private.measure node) then
+        if Option.is_some (Renderable.measure node) then
           Renderable.mark_dirty node)
       t.node_map
   end
@@ -1077,6 +1071,11 @@ let render ?full t =
 let needs_render t =
   Atomic.get t.dirty || Renderable.Private.live_count t.root > 0
 
+let live t = Renderable.Private.live_count t.root > 0
+
+let set_on_live_change t callback =
+  Renderable.Private.set_on_live_count_change t.root callback
+
 let render_frame_until_settled ?(max_passes = 4) t ~width ~height ~dt =
   let max_passes = max 1 max_passes in
   let rec loop remaining =
@@ -1225,7 +1224,7 @@ let mouse_path t (mouse : Input.Mouse_report.t) =
     (no_path, event)
   in
   let on ?(path = no_path) ?(kind = kind) node =
-    let target = Option.map Renderable.Private.num node in
+    let target = Option.map Renderable.uid node in
     ( { path with nodes = Option.fold ~none:[] ~some:ancestry node },
       Event.Mouse.make ~x ~y ~modifiers ?target kind )
   in
@@ -1291,9 +1290,7 @@ let mouse_path t (mouse : Input.Mouse_report.t) =
                | None -> false ->
             on target
         | _ -> (
-            let target_num =
-              Option.fold ~none:0 ~some:Renderable.Private.num target
-            in
+            let target_num = Option.fold ~none:0 ~some:Renderable.uid target in
             update_hover t ~x ~y ~modifiers ~target_node:target ~target_num kind;
             (* A left drag captures the node it starts on until the release:
              every event but the wheel goes to it. An unmounted captured
@@ -1354,7 +1351,7 @@ let dispatch_click t pressed event =
 let start_selection t ~x ~y ~requested node event =
   let valid () =
     alive_visible node && Renderable.selectable node
-    && query_input_hit t ~x ~y = Renderable.Private.num node
+    && query_input_hit t ~x ~y = Renderable.uid node
     && focus_request_accepted requested (Some node)
   in
   let reject () =
@@ -1402,10 +1399,9 @@ let mouse_defaults t path event =
   | _ -> ());
   (match (kind, path.drag_end, path.drop) with
   | Event.Mouse.Up { button; _ }, Some source, Some node ->
-      let source = Some (Renderable.Private.num source) in
+      let source = Some (Renderable.uid source) in
       deliver_mouse (ancestry node)
-        (Event.Mouse.make ~x ~y ~modifiers
-           ~target:(Renderable.Private.num node)
+        (Event.Mouse.make ~x ~y ~modifiers ~target:(Renderable.uid node)
            (Event.Mouse.Drop { button; source }))
   | _ -> ());
   if not (Event.Mouse.default_prevented event) then
@@ -1428,7 +1424,7 @@ let dispatch_mouse t path event =
       deliver_mouse (ancestry captured)
         (Event.Mouse.make ~x:(Event.Mouse.x event) ~y:(Event.Mouse.y event)
            ~modifiers:(Event.Mouse.modifiers event)
-           ~target:(Renderable.Private.num captured)
+           ~target:(Renderable.uid captured)
            (Event.Mouse.Drag_end { button }))
   | _ -> ());
   deliver_mouse path.nodes event;

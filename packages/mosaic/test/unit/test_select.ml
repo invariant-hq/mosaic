@@ -542,7 +542,7 @@ let absent_selection_is_preserved () =
 let measure_select ?width ?height
     ?(available_width = Toffee.Available_space.Max_content)
     ?(available_height = Toffee.Available_space.Max_content) sel =
-  match Renderable.Private.measure (Select.node sel) with
+  match Renderable.measure (Select.node sel) with
   | None -> fail "Select has no intrinsic measurement"
   | Some measure ->
       let size =

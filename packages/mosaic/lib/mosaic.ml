@@ -750,9 +750,7 @@ let arm_wakeup runtime =
 
 (* Animation frames: a tick subscription or a live element asks for the next
    frame from each frame it draws. *)
-let animating runtime =
-  runtime.tick_sub <> []
-  || Renderable.Private.live_count (Renderer.root runtime.renderer) > 0
+let animating runtime = runtime.tick_sub <> [] || Renderer.live runtime.renderer
 
 (* The renderer's [animate] for the frame being drawn: constants, so that a
    frame allocates no option. *)
@@ -1193,10 +1191,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
   update_subscriptions runtime;
 
   (* A live element asks for frames while it is mounted. *)
-  let root = Renderer.root renderer in
-  Renderable.Private.set_on_live_count_change root
-    (Some
-       (fun _node -> if Renderable.Private.live_count root > 0 then redraw ()));
+  Renderer.set_on_live_change renderer
+    (Some (fun () -> if Renderer.live renderer then redraw ()));
 
   (* Seconds since the previous frame on the grid, which [on_tick] and the
      widgets' frame callbacks receive. An early frame, drawn for input before

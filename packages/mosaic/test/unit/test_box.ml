@@ -145,7 +145,7 @@ let child_clip_inside_border_width () =
   in
   let node = Box.node box in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:8;
-  match Renderable.Private.child_clip node with
+  match Renderable.child_clip node with
   | Some clip ->
       equal ~msg:"x" int 2 clip.x;
       equal ~msg:"y" int 2 clip.y;
@@ -292,7 +292,7 @@ let child_clip_all_borders () =
   let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   let node = Box.node box in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:8;
-  match Renderable.Private.child_clip node with
+  match Renderable.child_clip node with
   | Some clip ->
       equal ~msg:"x" int 1 clip.x;
       equal ~msg:"y" int 1 clip.y;
@@ -309,7 +309,7 @@ let child_clip_partial_borders () =
   in
   let node = Box.node box in
   layout_node node ~x:0 ~y:0 ~width:10 ~height:8;
-  match Renderable.Private.child_clip node with
+  match Renderable.child_clip node with
   | Some clip ->
       equal ~msg:"x" int 1 clip.x;
       equal ~msg:"y" int 1 clip.y;
@@ -323,7 +323,7 @@ let child_clip_no_borders () =
   let box = Box.create ~parent:root (Box.Props.make ()) in
   let node = Box.node box in
   layout_node node ~x:5 ~y:3 ~width:10 ~height:8;
-  match Renderable.Private.child_clip node with
+  match Renderable.child_clip node with
   | Some clip ->
       equal ~msg:"x" int 5 clip.x;
       equal ~msg:"y" int 3 clip.y;
@@ -337,7 +337,7 @@ let child_clip_clamps_zero () =
   let box = Box.create ~parent:root (Box.Props.make ~border:true ()) in
   let node = Box.node box in
   layout_node node ~x:0 ~y:0 ~width:1 ~height:1;
-  match Renderable.Private.child_clip node with
+  match Renderable.child_clip node with
   | Some clip ->
       equal ~msg:"width" int 0 clip.width;
       equal ~msg:"height" int 0 clip.height

@@ -105,7 +105,7 @@ let viewport_switch_selects_only_matching_branch () =
   do_frame ~width:79 renderer;
   equal ~msg:"only the narrow branch is mounted" int 1 (child_count renderer);
   equal ~msg:"hidden live branch inactive" int 0
-    (Renderable.Private.live_count (Renderer.root renderer));
+    (if Renderer.live renderer then 1 else 0);
   match Renderer.focused renderer with
   | Some focused ->
       is_true ~msg:"selected branch receives declared focus"
@@ -179,7 +179,7 @@ let viewport_switch_reconciles_selected_branch_on_resize () =
   is_true ~msg:"narrow branch destroyed" (Renderable.destroyed first_narrow);
   is_none ~msg:"focus cleared with narrow branch" (Renderer.focused renderer);
   equal ~msg:"only wide live branch active" int 1
-    (Renderable.Private.live_count (Renderer.root renderer));
+    (if Renderer.live renderer then 1 else 0);
   ignore (Test_harness.dispatch_mouse renderer mouse : Event.mouse);
   (match !last_scroll with
   | Some y ->
@@ -203,7 +203,7 @@ let viewport_switch_reconciles_selected_branch_on_resize () =
   is_true ~msg:"wide branch destroyed" (Renderable.destroyed wide_only);
   is_false ~msg:"narrow branch remounted" (first_narrow == second_narrow);
   equal ~msg:"hidden wide live branch stopped" int 0
-    (Renderable.Private.live_count (Renderer.root renderer));
+    (if Renderer.live renderer then 1 else 0);
   match Renderer.focused renderer with
   | Some focused ->
       is_true ~msg:"remounted narrow branch receives focus"
@@ -512,7 +512,7 @@ let keyed_orders ~cull () =
   let container =
     Renderable.create ~parent:(Renderer.root renderer) ~style:column ()
   in
-  if cull then Renderable.Private.set_viewport_cull container true;
+  if cull then Renderable.set_viewport_cull container true;
   let row =
     Toffee.Style.(
       default
@@ -573,7 +573,7 @@ let keyed_orders ~cull () =
       do_frame renderer;
       (* A culling column lays out the rows a frame does not show only when
          asked. *)
-      Renderable.Private.refresh_positions container;
+      Renderable.refresh_positions container;
       let children = Renderable.children container in
       let msg what = Printf.sprintf "order %d: %s" step what in
       equal ~msg:(msg "child count") int

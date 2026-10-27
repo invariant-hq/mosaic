@@ -232,7 +232,7 @@ let render_gutter t _self grid ~dt:_ =
         Matrix_grid.fill_rect grid ~x:gx ~y:gy ~width:gutter_w ~height:gutter_h
           ~color:bg
     | None -> ());
-    let width_method = Renderable.Private.width_method t.gutter in
+    let width_method = Renderable.width_method t.gutter in
     let lk = lookup t ~width_method in
     let bw = lk.max_before in
     (* [fg] first, then the [Muted] role; a sign's color first, then the
@@ -319,9 +319,7 @@ let render_content_colors t _self grid ~dt:_ =
       let cw = Renderable.width t.content in
       let ch = Renderable.height t.content in
       if cw > 0 && ch > 0 then
-        let lk =
-          lookup t ~width_method:(Renderable.Private.width_method t.content)
-        in
+        let lk = lookup t ~width_method:(Renderable.width_method t.content) in
         iter_clipped_rows rows grid ~y:cy ~height:ch
           (fun ~row ~logical_line ~continuation:_ ->
             match find_line_color lk logical_line with
@@ -339,7 +337,7 @@ let render_content_colors t _self grid ~dt:_ =
 
 let gutter_measure t ~known_dimensions ~available_space:_ ~style:_ =
   let line_count = line_count (find_text_rows_child t.content) in
-  let width_method = Renderable.Private.width_method t.gutter in
+  let width_method = Renderable.width_method t.gutter in
   let w = compute_gutter_width (lookup t ~width_method) t.props line_count in
   let width =
     match known_dimensions.Toffee.Geometry.Size.width with

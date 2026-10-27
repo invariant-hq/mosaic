@@ -56,7 +56,7 @@ let render t _self parent_grid ~dt =
     (* The grid lays cells down by the screen's method, which can change while
        the canvas lives; cells drawn before a change keep their widths until
        they are drawn again. *)
-    Matrix_grid.set_width_method t.grid (Renderable.Private.width_method t.node);
+    Matrix_grid.set_width_method t.grid (Renderable.width_method t.node);
     (* on_draw fires after resize so the callback sees up-to-date dimensions. *)
     (match t.on_draw with
     | None -> ()
@@ -84,7 +84,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity () =
      same way the parent grid does. *)
   let grid =
     Matrix_grid.create ~width:1 ~height:1
-      ~width_method:(Renderable.Private.width_method node)
+      ~width_method:(Renderable.width_method node)
       ()
   in
   let t = { node; grid; on_draw = None; on_resize = None; drawing = false } in

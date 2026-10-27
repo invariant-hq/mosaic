@@ -50,7 +50,7 @@ let effective_wrap_width t ?override () =
 (* The method is the screen's now: it can change while the text lives. *)
 let geometry_key t width =
   ( Text_buffer.version t.buffer,
-    Renderable.Private.width_method t.node,
+    Renderable.width_method t.node,
     match t.wrap with `None when not t.truncate -> 0 | _ -> max 0 width )
 
 (* Whether a cached geometry was built from the same text by the same method,
@@ -290,7 +290,7 @@ let render t _self grid ~dt:_ =
     let src = Layout.source geometry in
     let text = Layout.Source.text src in
     let tab_width = Text_buffer.tab_width t.buffer in
-    let width_method = Renderable.Private.width_method t.node in
+    let width_method = Renderable.width_method t.node in
     let sel_start, sel_end = Option.value ~default:(0, 0) t.selection in
     (* The text's paint, resolved against the theme in scope: the content's
        style merged over the [Plain] role, then that over the surface the
@@ -400,7 +400,7 @@ let measure t ~known_dimensions ~available_space ~style:_ =
            line cache. *)
         ( Text_buffer.line_count t.buffer,
           Text_buffer.max_line_width t.buffer
-            ~width_method:(Renderable.Private.width_method t.node) )
+            ~width_method:(Renderable.width_method t.node) )
     | (`Char | `Word), Some w ->
         (* Count-only probes share indexing and reuse an admitted layout. *)
         let width = Option.value ~default:w t.wrap_width in

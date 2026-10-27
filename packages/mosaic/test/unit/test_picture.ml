@@ -76,7 +76,7 @@ let grid width =
 let measured_and_laid_out node ~known_dimensions ~available_space ~parent_size
     ~sizing_mode =
   let measure =
-    match Renderable.Private.measure node with
+    match Renderable.measure node with
     | Some measure -> measure
     | None -> fail "a picture has a measure function"
   in

@@ -64,7 +64,7 @@ let compute_max_width ~width_method frames =
     0 frames
 
 let max_width t =
-  let width_method = Renderable.Private.width_method t.node in
+  let width_method = Renderable.width_method t.node in
   match t.max_width with
   | Some (cached, width) when cached = width_method -> width
   | Some _ | None ->

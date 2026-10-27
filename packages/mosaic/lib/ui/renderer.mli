@@ -89,13 +89,13 @@ val prepare_layout : t -> width:int -> height:int -> unit
     layout invalidations, including scrollbar visibility changes, settle before
     it returns. Raises [Invalid_argument] if layout callbacks do not converge.
 
-    Size observers (see {!Renderable.Private.set_size_observer}) report during
-    each call. Between two frames, once a call has delivered reports, later
-    calls deliver only reports of nodes deeper than the shallowest node it
-    reported; the others stay pending until the next {!layout_frame}, which
-    delivers every pending report and requests the render that does so. Depth
-    grows with each call that delivers, so repeated calls cannot report forever.
-    This is the depth rule of CSS Resize Observer
+    Size observers (see {!Renderable.set_on_size}) report during each call.
+    Between two frames, once a call has delivered reports, later calls deliver
+    only reports of nodes deeper than the shallowest node it reported; the
+    others stay pending until the next {!layout_frame}, which delivers every
+    pending report and requests the render that does so. Depth grows with each
+    call that delivers, so repeated calls cannot report forever. This is the
+    depth rule of CSS Resize Observer
     ({{:https://www.w3.org/TR/resize-observer/#gather-active-observations-h}
       §3.4.1}). *)
 
@@ -180,6 +180,17 @@ val needs_render : t -> bool
 (** [needs_render t] is [true] iff a renderable has requested a re-render or
     live nodes are active. *)
 
+val live : t -> bool
+(** [live t] is [true] iff a node of [t]'s tree is live
+    ({!Renderable.set_live}), so that a program keeps drawing frames while it
+    is. *)
+
+val set_on_live_change : t -> (unit -> unit) option -> unit
+(** [set_on_live_change t callback] calls [callback ()] whenever a node of [t]'s
+    tree becomes live or stops being live, as one is mounted or unmounted, so
+    that a program that draws only when asked reads {!live} and starts drawing
+    again. [None] clears it. *)
+
 val render_frame_until_settled :
   ?max_passes:int -> t -> width:int -> height:int -> dt:float -> settle_result
 (** [render_frame_until_settled t ~width ~height ~dt] renders bounded frame
@@ -237,13 +248,13 @@ val mouse_path : t -> Matrix_input.Mouse_report.t -> path * Event.mouse
 
     A primary press without Shift first invokes the focus request of the nearest
     focusable node under the pointer, if that node is unfocused and has one (see
-    {!Renderable.Private.set_focus_request}): a click never takes focus by
-    itself; the focus owner grants it. Hit geometry is refreshed after the
-    request, and the press proceeds only if the node is then focused and still
-    contains the hit target. A rejected press is returned prevented, with no
-    target, and the drag and release that follow it are rejected too. Without a
-    request handler the press proceeds without focus moving; a program that owns
-    focus imperatively gives the node a request that calls {!focus}.
+    {!Renderable.set_on_focus_request}): a click never takes focus by itself;
+    the focus owner grants it. Hit geometry is refreshed after the request, and
+    the press proceeds only if the node is then focused and still contains the
+    hit target. A rejected press is returned prevented, with no target, and the
+    drag and release that follow it are rejected too. Without a request handler
+    the press proceeds without focus moving; a program that owns focus
+    imperatively gives the node a request that calls {!val-focus}.
 
     The target is the node under the pointer, from the latest layout. A wheel
     event over dead space goes to the focused node, whose ancestors reach the
@@ -264,8 +275,8 @@ val dispatch_mouse : t -> path -> Event.mouse -> unit
       pointer;
     - a primary press and a release over the same node, without a drag between
       them, is a click: the node's click handler runs (see
-      {!Renderable.Private.set_click_handler}), then those of its ancestors the
-      release is also over.
+      {!Renderable.set_on_click}), then those of its ancestors the release is
+      also over.
 
     The release that ends a capturing drag first sends [Drag_end] to the
     captured node; the release of a selection ends it, prevented or not. *)
@@ -288,12 +299,11 @@ val request_focus : t -> [ `Next | `Prev ] -> bool
 (** [request_focus t direction] invokes the focus request of the stop after
     ([`Next]) or before ([`Prev]) the focused node, and is [true] iff it invoked
     one. A {e stop} is a node with a focus request
-    ({!Renderable.Private.set_focus_request}) that is shown, as its ancestors
-    are, and not inert. Stops come in tree order, a node before its children,
-    and the first stop follows the last. With nothing focused, the stop is the
-    first one, or the last for [`Prev]. The focused node is never its own next
-    stop. As for a press ({!mouse_path}), the request's owner grants focus or
-    not. *)
+    ({!Renderable.set_on_focus_request}) that is shown, as its ancestors are,
+    and not inert. Stops come in tree order, a node before its children, and the
+    first stop follows the last. With nothing focused, the stop is the first
+    one, or the last for [`Prev]. The focused node is never its own next stop.
+    As for a press ({!mouse_path}), the request's owner grants focus or not. *)
 
 val set_modal : t -> Renderable.t option -> unit
 (** [set_modal t m] makes [m] the {e modal} node, or sets none. The modal node

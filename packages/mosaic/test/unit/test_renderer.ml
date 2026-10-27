@@ -97,11 +97,11 @@ let width_method_reaches_widgets () =
     (fun width_method ->
       let t = Renderer.create ~width_method () in
       is_true ~msg:"owned screen's method"
-        (Renderable.Private.width_method (Renderer.root t) = width_method);
+        (Renderable.width_method (Renderer.root t) = width_method);
       let host = Matrix_screen.create ~width_method () in
       let adopted = Renderer.create ~screen:host () in
       is_true ~msg:"adopted screen's method"
-        (Renderable.Private.width_method (Renderer.root adopted) = width_method))
+        (Renderable.width_method (Renderer.root adopted) = width_method))
     [ `Wcwidth; `Unicode_wide ]
 
 let adopted_screen_render_is_guarded () =
@@ -138,7 +138,7 @@ let zero_sized_clipping_node_hides_children () =
     |> Toffee.Style.set_height (Toffee.Style.Dimension.length 1.)
   in
   let child = Renderable.create ~parent:container ~style:child_style () in
-  let child_num = Renderable.Private.num child in
+  let child_num = Renderable.uid child in
   do_frame t;
   equal ~msg:"honest zero width" int 0 (Renderable.width container);
   let hit = Matrix_screen.query_hit (Renderer.screen t) ~x:0 ~y:0 in
@@ -632,6 +632,56 @@ let culling_matches_a_scan =
         (List.length kept = List.length expected
         && List.for_all2 ( == ) kept expected))
 
+(* ── Node hooks and the tree's liveness ── *)
+
+(* A lifecycle pass runs at each frame while its node is attached, before
+   the layout, and stops once the node leaves the tree. *)
+let lifecycle_pass_runs_each_frame () =
+  let t = make_renderer () in
+  let node = Renderable.create ~parent:(Renderer.root t) () in
+  let passes = ref 0 in
+  Renderable.set_on_lifecycle_pass node (Some (fun _ -> incr passes));
+  do_frame t;
+  do_frame t;
+  equal ~msg:"each frame" int 2 !passes;
+  Renderable.detach node;
+  do_frame t;
+  equal ~msg:"not once detached" int 2 !passes
+
+(* The tree is live while one of its nodes is, and its observer hears each
+   node that starts or stops being live. *)
+let tree_liveness () =
+  let t = make_renderer () in
+  let heard = ref [] in
+  Renderer.set_on_live_change t
+    (Some (fun () -> heard := Renderer.live t :: !heard));
+  is_false ~msg:"not live" (Renderer.live t);
+  let a = Renderable.create ~parent:(Renderer.root t) ()
+  and b = Renderable.create ~parent:(Renderer.root t) () in
+  Renderable.set_live a true;
+  Renderable.set_live b true;
+  is_true ~msg:"live" (Renderer.live t);
+  Renderable.set_live a false;
+  Renderable.set_live b false;
+  is_false ~msg:"not live again" (Renderer.live t);
+  equal ~msg:"each change heard" (list bool) [ false; true; true; true ] !heard
+
+(* Nodes are reached by place and known by a number of their own. *)
+let child_at_and_uid () =
+  let t = make_renderer () in
+  let a = Renderable.create ~parent:(Renderer.root t) ()
+  and b = Renderable.create ~parent:(Renderer.root t) () in
+  is_true ~msg:"first"
+    (match Renderable.child_at (Renderer.root t) 0 with
+    | Some n -> n == a
+    | None -> false);
+  is_true ~msg:"second"
+    (match Renderable.child_at (Renderer.root t) 1 with
+    | Some n -> n == b
+    | None -> false);
+  is_true ~msg:"past the end" (Renderable.child_at (Renderer.root t) 2 = None);
+  is_true ~msg:"numbers of their own" (Renderable.uid a <> Renderable.uid b)
+
 (* ── Viewport culling: chunks ──
 
    A culling column holds its contained children in chunks in the layout
@@ -661,7 +711,7 @@ let chunks_keep_every_box =
         Renderable.create ~parent:(Renderer.root t) ~style:(column_style 30) ()
       in
       let chunked = column () and flat = column () in
-      Renderable.Private.set_viewport_cull chunked true;
+      Renderable.set_viewport_cull chunked true;
       let lpa = Toffee.Style.Length_percentage_auto.length in
       let one = Toffee.Style.Length_percentage.length 1. in
       let rect ?(left = lpa 0.) ?(top = lpa 0.) () : _ Toffee.Geometry.Rect.t =
@@ -719,7 +769,7 @@ let chunks_keep_every_box =
                 : Text.t))
           [ chunked; flat ]
       in
-      let row parent i = Option.get (Renderable.Private.child_at parent i) in
+      let row parent i = Option.get (Renderable.child_at parent i) in
       let count () = List.length (Renderable.children flat) in
       let kind () =
         if Random.State.int rng 4 > 0 then Random.State.int rng 5
@@ -737,7 +787,7 @@ let chunks_keep_every_box =
           :: List.concat_map boxes (Renderable.children node)
       in
       let relative parent =
-        Renderable.Private.refresh_positions parent;
+        Renderable.refresh_positions parent;
         let b = Renderable.bounds parent in
         List.map
           (fun (x, y, w, h) -> (x - b.x, y - b.y, w, h))
@@ -786,7 +836,7 @@ let chunks_keep_every_box =
                    (fun _ -> Random.State.int rng (count ())))
             in
             List.iter
-              (fun p -> Renderable.Private.detach_all (List.map (row p) picks))
+              (fun p -> Renderable.detach_all (List.map (row p) picks))
               [ chunked; flat ]
         | 6 ->
             (* The last row moves up to a random place. *)
@@ -797,8 +847,7 @@ let chunks_keep_every_box =
                 let tail = List.filteri (fun j _ -> j >= i) children in
                 let last = List.nth tail (List.length tail - 1) in
                 let order = last :: List.filter (fun c -> c != last) tail in
-                Renderable.Private.place_children p i (fun f ->
-                    List.iter f order))
+                Renderable.place_children p i (fun f -> List.iter f order))
               [ chunked; flat ]
         | _ ->
             let w =
@@ -829,8 +878,8 @@ let chunks_keep_every_box =
           Renderable.Private.children_in_viewport ~parent:chunked ~viewport
         in
         if
-          List.sort compare (List.map Renderable.Private.num kept)
-          <> List.sort compare (List.map Renderable.Private.num expected)
+          List.sort compare (List.map Renderable.uid kept)
+          <> List.sort compare (List.map Renderable.uid expected)
         then same := false
       done;
       is_true ~msg:"every box as in the flat column, culled as a scan" !same)
@@ -849,7 +898,7 @@ let member_leaves_its_chunk () =
       ()
   in
   let chunked = column () and flat = column () in
-  Renderable.Private.set_viewport_cull chunked true;
+  Renderable.set_viewport_cull chunked true;
   let row =
     Toffee.Style.default
     |> Toffee.Style.set_height (dim 1)
@@ -887,7 +936,7 @@ let chunk_follows_a_grown_member () =
         |> Toffee.Style.set_width (dim 10))
       ()
   in
-  Renderable.Private.set_viewport_cull column true;
+  Renderable.set_viewport_cull column true;
   let row h =
     Toffee.Style.default
     |> Toffee.Style.set_width (dim 10)
@@ -1384,7 +1433,7 @@ let focus_different_node_blurs_previous () =
 
 (* A click requests focus; an imperative owner grants it by focusing. *)
 let grant_focus_on_request t node =
-  Renderable.Private.set_focus_request node
+  Renderable.set_on_focus_request node
     (Some (fun () -> ignore (Renderer.focus t node : bool)))
 
 let left_click_requests_focus () =
@@ -1714,7 +1763,7 @@ let click_on_selectable_node () =
     ~clear:(fun () -> ())
     ~get_text:(fun () -> "");
   let clicks = ref 0 in
-  Renderable.Private.set_click_handler child (Some (fun _ -> incr clicks));
+  Renderable.set_on_click child (Some (fun _ -> incr clicks));
   do_frame t;
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
   dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
@@ -1743,8 +1792,7 @@ let mouse_events_carry_node_cells () =
           equal ~msg:"screen x" int 8 (Event.Mouse.x ev);
           equal ~msg:"screen y" int 6 (Event.Mouse.y ev)
       | _ -> ());
-  Renderable.Private.set_click_handler child
-    (Some (fun ev -> record "click" ev));
+  Renderable.set_on_click child (Some (fun ev -> record "click" ev));
   do_frame t;
   dispatch_mouse t (mouse_press ~x:8 ~y:6 ());
   dispatch_mouse t (mouse_release ~x:8 ~y:6 ());
@@ -2049,7 +2097,7 @@ let drop_source_identifies_origin () =
   let log_b = record_mouse b in
   do_frame t;
   dispatch_mouse t (mouse_motion ~left:true ~x:5 ~y:5 ());
-  let a_num = Renderable.Private.num a in
+  let a_num = Renderable.uid a in
   dispatch_mouse t (mouse_release ~x:25 ~y:5 ());
   let drop_source =
     List.find_map
@@ -2558,7 +2606,7 @@ let accepted_focus_does_not_retarget_press () =
   let underneath = make_child ~parent ~x:0 ~y:0 ~w:5 ~h:2 ~focusable:true () in
   let target = make_child ~parent ~x:0 ~y:0 ~w:5 ~h:2 ~focusable:true () in
   let received = record_mouse underneath in
-  Renderable.Private.set_focus_request target
+  Renderable.set_on_focus_request target
     (Some
        (fun () ->
          ignore (Renderer.focus renderer target : bool);
@@ -2617,7 +2665,7 @@ let selection_cleanup_revalidates_focus_target () =
         ~on_change:(fun _ -> true)
         ~clear:(fun () -> ())
         ~get_text:(fun () -> "");
-      Renderable.Private.set_focus_request target
+      Renderable.set_on_focus_request target
         (Some (fun () -> ignore (Renderer.focus renderer target : bool)));
       do_frame ~width:20 ~height:4 renderer;
       dispatch_mouse renderer (mouse_press ~x:1 ~y:1 ());
@@ -2651,7 +2699,7 @@ let selection_notification_revalidates_focus_target () =
       true)
     ~clear:(fun () -> ())
     ~get_text:(fun () -> "");
-  Renderable.Private.set_focus_request target
+  Renderable.set_on_focus_request target
     (Some (fun () -> ignore (Renderer.focus renderer target : bool)));
   let received = record_mouse target in
   do_frame ~width:20 ~height:4 renderer;
@@ -2711,6 +2759,9 @@ let () =
           test "callback receives delta" callback_receives_delta;
           test "remove callback stops it" remove_callback_stops_it;
           test "clear removes all callbacks" clear_removes_all_callbacks;
+          test "a lifecycle pass runs each frame" lifecycle_pass_runs_each_frame;
+          test "the tree's liveness" tree_liveness;
+          test "child_at and uid" child_at_and_uid;
         ];
       group "Viewport culling"
         [
