@@ -499,6 +499,26 @@ module Prompt : sig
       character on an empty line ends the input. The stars are erased once the
       line ends. On a dumb terminal, which cannot erase them, nothing shows. *)
 
+  val choose :
+    ?color:Ansi.Styling.choice ->
+    ?default:int ->
+    string ->
+    string list ->
+    (int, error) result
+  (** [choose ~color ~default question items] is the index of the item of
+      [items] the user picks from a menu, [question] above the items, drawn on
+      the controlling terminal in a {!val-live} region that redraws there
+      whatever [CI] or the program's [--progress] choice say. Up and Down, or
+      [k] and [j], move the selection, which starts at [default] ([0] by
+      default), Enter picks it, and Escape picks [default] when there is one.
+      Once picked, the question and the item stay in the scrollback. It is
+      [default], or [Error `Not_interactive] without one, writing nothing, when
+      the process has no controlling terminal. An item shows as text on one
+      line.
+
+      Raises [Invalid_argument] if [items] is empty or [default] is not an index
+      of [items]. *)
+
   val keys : (Matrix_input.Keystroke.t Seq.t -> 'a) -> ('a, error) result
   (** [keys f] is [Ok (f ks)] where [ks] is the keys typed at the controlling
       terminal, read as they are typed ({!Tty.keys}) while [f] runs, after which

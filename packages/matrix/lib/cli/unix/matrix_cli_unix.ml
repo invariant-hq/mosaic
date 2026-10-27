@@ -2092,6 +2092,84 @@ module Prompt = struct
     | (Error `Not_interactive | Ok ""), Some d -> Ok d
     | answer, _ -> answer
 
+  (* A menu drawn in a region on the controlling terminal, the terminal its
+     keys are typed at, made to redraw there whatever CI or the program's
+     --progress choice say. *)
+  let choose ?color ?default question items =
+    let items = Array.of_list items in
+    let n = Array.length items in
+    if n = 0 then invalid_arg "Matrix_cli_unix.Prompt.choose: no item";
+    (match default with
+    | Some d when d < 0 || d >= n ->
+        invalid_arg "Matrix_cli_unix.Prompt.choose: default out of range"
+    | _ -> ());
+    let accent = Ansi.Style.make ~fg:Ansi.Color.cyan ~bold:true ()
+    and faint = Ansi.Style.make ~dim:true () in
+    let menu selected ~width ~height:_ =
+      let g = Matrix_grid.create ~width:(max 1 width) ~height:(n + 1) () in
+      let draw y spans =
+        ignore (Matrix_grid.draw_spans g ~x:0 ~y spans : int)
+      in
+      draw 0
+        [
+          Ansi.span question;
+          Ansi.span ~style:faint "  (\u{2191}\u{2193} to move, Enter to pick)";
+        ];
+      Array.iteri
+        (fun i item ->
+          draw (i + 1)
+            (if i = selected then
+               [ Ansi.span ~style:accent ("\u{276F} " ^ item) ]
+             else [ Ansi.span ("  " ^ item) ]))
+        items;
+      [ g ]
+    in
+    let answered i ~width ~height:_ =
+      let g = Matrix_grid.create ~width:(max 1 width) ~height:1 () in
+      ignore
+        (Matrix_grid.draw_spans g ~x:0 ~y:0
+           [
+             Ansi.span question;
+             Ansi.span " ";
+             Ansi.span ~style:accent items.(i);
+           ]
+          : int);
+      [ g ]
+    in
+    let asked =
+      with_terminal @@ fun fd ->
+      let o = make ?color ~progress:`Tty fd in
+      live o @@ fun l ->
+      in_settings fd ~set:Tty.keys ~again:ignore @@ fun () ->
+      let rec pick i events =
+        show l (menu i);
+        match events () with
+        | Seq.Nil -> Error `End_of_input
+        | Seq.Cons (Matrix_input.Decoder.Key k, events) -> (
+            let plain = k.mods = Matrix_input.Keystroke.no_mods in
+            match k.key with
+            | Up -> pick (max 0 (i - 1)) events
+            | Down -> pick (min (n - 1) (i + 1)) events
+            | Char u when plain && Uchar.to_int u = Char.code 'k' ->
+                pick (max 0 (i - 1)) events
+            | Char u when plain && Uchar.to_int u = Char.code 'j' ->
+                pick (min (n - 1) (i + 1)) events
+            | Enter -> Ok i
+            | Escape when Option.is_some default -> Ok (Option.get default)
+            | _ -> pick i events)
+        | Seq.Cons (_, events) -> pick i events
+      in
+      let answer = pick (Option.value default ~default:0) (read_events fd) in
+      show l
+        (match answer with
+        | Ok i -> answered i
+        | Error _ -> fun ~width:_ ~height:_ -> []);
+      answer
+    in
+    match (asked, default) with
+    | Error `Not_interactive, Some d -> Ok d
+    | answer, _ -> answer
+
   let keys f =
     with_terminal @@ fun fd ->
     in_settings fd ~set:Tty.keys ~again:ignore @@ fun () ->

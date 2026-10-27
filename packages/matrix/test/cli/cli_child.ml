@@ -342,6 +342,16 @@ let () =
       | Ok p -> Printf.printf "GOT %S\n" p
       | Error `End_of_input -> print_string "EOF\n"
       | Error `Not_interactive -> print_string "NOT INTERACTIVE\n")
+  | ("choose" | "choose-nodefault" | "choose-detached") as mode -> (
+      if mode = "choose-detached" then ignore (Unix.setsid () : int);
+      let default = if mode = "choose-nodefault" then None else Some 1 in
+      match
+        C.Prompt.choose ?default "? License"
+          [ "ISC"; "MIT"; "Apache-2.0"; "LGPL-2.1-or-later" ]
+      with
+      | Ok i -> Printf.printf "PICKED %d\n" i
+      | Error `End_of_input -> print_string "EOF\n"
+      | Error `Not_interactive -> print_string "NOT INTERACTIVE\n")
   | "line-held" -> (
       (* Lines printed on a thread while a question is asked wait for the
          answer. *)

@@ -349,6 +349,38 @@ let test_secret_mask () =
   exited 0 (T.Child.exit c ~within:10.);
   is_true ~msg:"Ctrl+D on an empty line ends the input" (has_line "EOF" term)
 
+(* A menu on the controlling terminal: arrows, k and j move, Enter picks,
+   Escape gives the default, and the answered question stays. *)
+let test_choose () =
+  let pick ?(mode = "choose") ?(env = []) keys expected =
+    spawn ~env mode @@ fun term c ->
+    T.Child.wait c ~within:10. (shows "? License");
+    List.iter
+      (fun k ->
+        T.Child.send c k;
+        Unix.sleepf 0.15)
+      keys;
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:(String.concat "," keys) (has_line expected term);
+    term
+  in
+  let term = pick [ "\027[B"; "\r" ] "PICKED 2" in
+  is_true ~msg:"the answer stays" (has_line "? License Apache-2.0" term);
+  is_false ~msg:"the menu goes" (shows "LGPL" term);
+  ignore (pick [ "j"; "j"; "k"; "\r" ] "PICKED 2" : T.Terminal.t);
+  ignore (pick [ "\027[A"; "\027[A"; "\r" ] "PICKED 0" : T.Terminal.t);
+  ignore (pick [ "\027[B"; "\027" ] "PICKED 1" : T.Terminal.t);
+  ignore (pick ~mode:"choose-nodefault" [ "\r" ] "PICKED 0" : T.Terminal.t);
+  ( spawn ~env:[ ("CI", "true") ] "choose" @@ fun term c ->
+    T.Child.wait c ~within:10. (shows "\u{276F} MIT");
+    T.Child.send c "\027[B";
+    T.Child.wait c ~within:10. (shows "\u{276F} Apache-2.0");
+    T.Child.send c "\r";
+    exited 0 (T.Child.exit c ~within:10.);
+    is_true ~msg:"redrawn in CI" (has_line "PICKED 2" term) );
+  equal ~msg:"no controlling terminal: the default, and nothing written"
+    Testable.string "PICKED 1\n" (piped "choose-detached")
+
 (* A question is written at the styling of the terminal it is asked on. *)
 let test_secret_styled () =
   spawn ~env:[ ("NO_COLOR", "1") ] "secret-styled" @@ fun term c ->
@@ -858,6 +890,7 @@ let () =
           test "lines held while asked" test_line_held;
           test "a secret" test_secret;
           test "a masked secret" test_secret_mask;
+          test "a choice" test_choose;
           test "a styled question" test_secret_styled;
           test "Ctrl+C in a secret" test_secret_interrupted;
           test "Ctrl+Z in a secret" test_secret_stop;
