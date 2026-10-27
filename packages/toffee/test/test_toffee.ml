@@ -1058,6 +1058,328 @@ let test_grid_baseline_measurement_lays_out_items () =
         ])
     ()
 
+(* Every cache hit, a property. [Checked] lays out a toffee tree with caches
+   of its own and, at every hit, computes the result again without the
+   node's cache: a measurement must be the same on the axes it was asked, a
+   final layout the same in full. Random trees of every display are laid out,
+   changed (the root's height, a leaf's content or a node's style) and laid
+   out again. *)
+type checked = {
+  nodes : content Toffee.tree;
+  caches : (int, Cache.t) Hashtbl.t;
+  misses : (int, int) Hashtbl.t;
+      (* The final layouts each node computed on a cache miss. *)
+  seed : int;
+}
+
+module rec Checked :
+  (Toffee_compute.CACHE_LAYOUT_PARTIAL_TREE with type t = checked) = struct
+  type t = checked
+
+  let children t node = children t.nodes node |> Result.get_ok
+  let child_ids t node = List.to_seq (children t node)
+  let child_count t node = List.length (children t node)
+  let get_child_id t node index = List.nth (children t node) index
+  let get_core_container_style t node = style t.nodes node |> Result.get_ok
+  let set_unrounded_layout _ _ _ = ()
+  let resolve_calc_value _ _ _ = 0.
+
+  let cache t node =
+    let id = Node_id.to_int node in
+    match Hashtbl.find_opt t.caches id with
+    | Some cache -> cache
+    | None ->
+        let cache = Cache.make () in
+        Hashtbl.replace t.caches id cache;
+        cache
+
+  let cache_get t node inputs =
+    Cache.get (cache t node) (get_core_container_style t node) inputs
+
+  let cache_store t node inputs output =
+    Cache.store (cache t node) (get_core_container_style t node) inputs output
+
+  let cache_clear t node = ignore (Cache.clear (cache t node))
+
+  let uncached t node inputs =
+    let style = get_core_container_style t node in
+    let layout =
+      (module Checked : Toffee_tree.LAYOUT_PARTIAL_TREE with type t = checked)
+    in
+    match (Style.display style, child_count t node > 0) with
+    | None, _ -> Toffee_compute.compute_hidden_layout (module Checked) t node
+    | Block, true -> Toffee_compute.compute_block_layout layout t node inputs
+    | Flex, true -> Toffee_compute.compute_flexbox_layout layout t node inputs
+    | Grid, true ->
+        Toffee_compute.compute_grid_layout layout ~tree:t ~node ~inputs
+    | _, false ->
+        let content = get_node_context t.nodes node in
+        Toffee_compute.compute_leaf_layout ~inputs ~style
+          ~resolve_calc_value:(fun _ _ -> 0.)
+          ~measure_function:(fun known available ->
+            content_measure known available node content style)
+
+  let compute_child_layout t node inputs =
+    match Layout_input.run_mode inputs with
+    | Perform_hidden_layout ->
+        Toffee_compute.compute_hidden_layout (module Checked) t node
+    | Compute_size | Perform_layout -> (
+        match cache_get t node inputs with
+        | None ->
+            let output = uncached t node inputs in
+            cache_store t node inputs output;
+            if Layout_input.run_mode inputs = Perform_layout then
+              Hashtbl.replace t.misses (Node_id.to_int node)
+                (1
+                + Option.value ~default:0
+                    (Hashtbl.find_opt t.misses (Node_id.to_int node)));
+            output
+        | Some output ->
+            let fresh = uncached t node inputs in
+            let size = Layout_output.size and same = Float.equal in
+            let holds =
+              match
+                (Layout_input.run_mode inputs, Layout_input.axis inputs)
+              with
+              | Perform_layout, _ -> Layout_output.equal output fresh
+              | _, Horizontal -> same (size output).width (size fresh).width
+              | _, Vertical -> same (size output).height (size fresh).height
+              | _, Both -> Sizef.equal (size output) (size fresh)
+            in
+            if not holds then
+              failf
+                "seed %d, node %d: the cache gives %s for %s, a computation %s"
+                t.seed (Node_id.to_int node)
+                (Layout_output.to_string output)
+                (Layout_input.to_string inputs)
+                (Layout_output.to_string fresh);
+            output)
+end
+
+let random_any_style rng ~container =
+  let int n = Random.State.int rng n in
+  let chance p = Random.State.float rng 1. < p in
+  let pick a = a.(int (Array.length a)) in
+  let fraction () = Float.of_int (5 + int 90) /. 100. in
+  let dimension () =
+    if chance 0.3 then Style.Dimension.percent (fraction ())
+    else if chance 0.5 then Style.Dimension.length (Float.of_int (int 30))
+    else Style.Dimension.auto
+  in
+  let sometimes p f = if chance p then f () else Style.Dimension.auto in
+  let track () =
+    let module G = Style.Grid_template_component in
+    match int 5 with
+    | 0 -> G.percent (fraction ())
+    | 1 -> G.fr (Float.of_int (1 + int 2))
+    | 2 -> G.length (Float.of_int (int 20))
+    | 3 ->
+        G.minmax ~min:Style.Compact_length.auto
+          ~max:(Style.Compact_length.fr 1.)
+    | _ -> G.auto
+  in
+  Style.make
+    ~display:
+      (if chance 0.05 then Style.Display.None
+       else if container then pick [| Style.Display.Flex; Block; Grid |]
+       else Flex)
+    ~position:(if chance 0.15 then Style.Position.Absolute else Relative)
+    ~inset:
+      (Rect.all
+         (if chance 0.2 then Style.Length_percentage_auto.percent (fraction ())
+          else Style.Length_percentage_auto.auto))
+    ~flex_direction:
+      (pick [| Style.Flex_direction.Row; Column; Row_reverse; Column_reverse |])
+    ~flex_wrap:(if chance 0.2 then Style.Flex_wrap.Wrap else No_wrap)
+    ~flex_grow:(Float.of_int (int 3))
+    ~size:{ width = dimension (); height = dimension () }
+    ~min_size:
+      { width = sometimes 0.2 dimension; height = sometimes 0.3 dimension }
+    ~max_size:
+      { width = sometimes 0.2 dimension; height = sometimes 0.3 dimension }
+    ?aspect_ratio:(if chance 0.1 then Some (pick [| 0.5; 2. |]) else None)
+    ~margin:
+      (Rect.all
+         (if chance 0.2 then Style.Length_percentage_auto.auto
+          else Style.Length_percentage_auto.length (Float.of_int (int 3))))
+    ~padding:
+      (Rect.all
+         (if chance 0.2 then Style.Length_percentage.percent (fraction () /. 4.)
+          else Style.Length_percentage.length (Float.of_int (int 2))))
+    ~align_items:
+      (pick [| Style.Align_items.Stretch; Center; Baseline; Flex_end |])
+    ~grid_template_rows:(List.init (int 3) (fun _ -> track ()))
+    ~grid_template_columns:(List.init (int 3) (fun _ -> track ()))
+    ()
+
+let every_cache_hit_is_a_computation seed =
+  let rng = Random.State.make [| seed |] in
+  let int n = Random.State.int rng n in
+  let t =
+    {
+      nodes = new_tree ();
+      caches = Hashtbl.create 64;
+      misses = Hashtbl.create 64;
+      seed;
+    }
+  in
+  let leaves = ref [] and all = ref [] in
+  let rec build depth =
+    let node =
+      if depth = 0 || int 3 = 0 then (
+        let length = Float.of_int (1 + int 30) in
+        let content = if int 3 = 0 then Reader length else Text length in
+        let node =
+          new_leaf_with_context t.nodes
+            (random_any_style rng ~container:false)
+            content
+          |> Result.get_ok
+        in
+        leaves := node :: !leaves;
+        node)
+      else
+        new_with_children t.nodes
+          (random_any_style rng ~container:true)
+          (Array.init (1 + int 3) (fun _ -> build (depth - 1)))
+        |> Result.get_ok
+    in
+    all := node :: !all;
+    node
+  in
+  let root = build 3 in
+  let lay height =
+    Toffee_compute.compute_root_layout
+      (module Checked : Toffee_tree.LAYOUT_PARTIAL_TREE with type t = checked)
+      t root
+      Size.
+        {
+          width = Available_space.of_float (Float.of_int (20 + int 80));
+          height = Available_space.of_float height;
+        }
+  in
+  (* A change to a node clears its cache and its ancestors'. *)
+  let rec changed node =
+    Checked.cache_clear t node;
+    Option.iter changed (parent t.nodes node)
+  in
+  let pick l = List.nth l (int (List.length l)) in
+  let height = Float.of_int (5 + int 60) in
+  lay height;
+  (match int 3 with
+  | 0 -> lay (Float.of_int (5 + int 60))
+  | 1 ->
+      let leaf = pick !leaves in
+      set_node_context t.nodes leaf (Some (Text (Float.of_int (1 + int 60))))
+      |> Result.get_ok;
+      changed leaf;
+      lay height
+  | _ ->
+      let node = pick !all in
+      let container = children t.nodes node |> Result.get_ok <> [] in
+      set_style t.nodes node (random_any_style rng ~container) |> Result.get_ok;
+      changed node;
+      lay height);
+  lay height
+
+(* A chunk of lines, a column 100% wide and of automatic height, ahead of a
+   text that grows in a column: the column grows, and the chunk, which
+   resolves nothing against the column's height, keeps its final layout. *)
+let test_chunk_keeps_final_layout () =
+  let t =
+    {
+      nodes = new_tree ();
+      caches = Hashtbl.create 8;
+      misses = Hashtbl.create 8;
+      seed = 0;
+    }
+  in
+  let column =
+    Style.default |> Style.set_flex_direction Style.Flex_direction.Column
+  in
+  let chunk =
+    node t.nodes
+      (column |> Style.set_width (Style.Dimension.percent 1.))
+      [ leaf t.nodes (Text 10.); leaf t.nodes (Text 20.) ]
+  in
+  let tail = leaf t.nodes (Text 5.) in
+  let root = node t.nodes column [ chunk; tail ] in
+  let lay () =
+    Toffee_compute.compute_root_layout
+      (module Checked : Toffee_tree.LAYOUT_PARTIAL_TREE with type t = checked)
+      t root
+      Size.
+        {
+          width = Available_space.of_float 30.;
+          height = Available_space.of_float 40.;
+        }
+  in
+  let misses () = Hashtbl.find_opt t.misses (Node_id.to_int chunk) in
+  lay ();
+  equal ~msg:"first layout" (option int) (Some 1) (misses ());
+  set_node_context t.nodes tail (Some (Text 50.)) |> or_fail "context";
+  Checked.cache_clear t tail;
+  Checked.cache_clear t root;
+  lay ();
+  equal ~msg:"after the text grew" (option int) (Some 1) (misses ())
+
+(* Yoga's relayout cases (#2042): a child whose percentage padding, minimum
+   width or minimum height resolves against the root, laid out again after
+   the root resized, follows the root's new size. *)
+let test_percentages_follow_a_resized_root () =
+  let case ~msg ~row child_style ~before ~after field expected =
+    let tree = new_tree () in
+    let child = new_leaf tree child_style |> or_fail "child" in
+    let root =
+      new_with_children tree
+        (Style.default
+        |> Style.set_flex_direction
+             (if row then Style.Flex_direction.Row else Column)
+        |> Style.set_align_items (Some Style.Align_items.Start)
+        |> Style.set_size
+             Size.
+               {
+                 width = Style.Dimension.percent 1.;
+                 height = Style.Dimension.percent 1.;
+               })
+        [| child |]
+      |> or_fail "root"
+    in
+    let lay (width, height) =
+      compute_or_fail tree root
+        Size.
+          {
+            width = Available_space.of_float width;
+            height = Available_space.of_float height;
+          }
+        "layout"
+    in
+    lay before;
+    lay after;
+    equal ~msg float_exact expected (field (unrounded_layout tree child))
+  in
+  let fifty = Style.Dimension.length 50. in
+  case ~msg:"padding 50% of 60" ~row:false
+    (Style.default
+    |> Style.set_size Size.{ width = fifty; height = fifty }
+    |> Style.set_padding_left (Style.Length_percentage.percent 0.5))
+    ~before:(100., 100.) ~after:(60., 100.)
+    (fun l -> (Layout.padding l).left)
+    30.;
+  case ~msg:"min-width 100% of 200" ~row:true
+    (Style.default
+    |> Style.set_size Size.{ width = fifty; height = fifty }
+    |> Style.set_min_width (Style.Dimension.percent 1.))
+    ~before:(100., 100.) ~after:(200., 100.)
+    (fun l -> (Layout.size l).width)
+    200.;
+  case ~msg:"min-height 100% of 200" ~row:true
+    (Style.default
+    |> Style.set_size Size.{ width = fifty; height = fifty }
+    |> Style.set_min_height (Style.Dimension.percent 1.))
+    ~before:(100., 100.) ~after:(100., 200.)
+    (fun l -> (Layout.size l).height)
+    200.
+
 (* A percent-width item clamped by its own max-width must be measured at the
    clamped width when deriving content-based sizes, so wrapping content
    reports the height the final layout paints. Regression: the flex base size
@@ -1937,6 +2259,11 @@ let () =
             test_baseline_measurement_lays_out_items;
           test "Grid baseline measurement lays out the items"
             test_grid_baseline_measurement_lays_out_items;
+          prop ~count:1000 "Every cache hit is a computation" Gen.int
+            every_cache_hit_is_a_computation;
+          test "A chunk keeps its final layout" test_chunk_keeps_final_layout;
+          test "Percentages follow a resized root"
+            test_percentages_follow_a_resized_root;
         ];
       group "min_max_overrides"
         [

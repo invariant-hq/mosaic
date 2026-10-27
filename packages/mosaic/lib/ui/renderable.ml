@@ -641,10 +641,10 @@ let set_child_clip t fn =
    column. The renderable tree is unchanged. A clean chunk is measured from
    its layout cache and laid out from its members', so laying the column out
    again lays out the members of the chunks that changed and of no other
-   (Flutter's layout cut-off over CodeMirror's tree of line chunks). The
-   layout tree keys a final layout on the parent's size, so when the column's
-   height changes each clean chunk still runs its column pass, over its
-   members' cached layouts.
+   (Flutter's layout cut-off over CodeMirror's tree of line chunks). A chunk
+   resolves no percentage against the column's height, which the layout tree
+   then leaves out of the key of its cached layouts, so when the column's
+   height changes a clean chunk returns its cached final layout.
 
    Every child keeps the box it has in a flat column. The column has one line,
    no gap, no space distribution and an automatic height with no maximum, so

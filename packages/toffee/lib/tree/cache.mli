@@ -9,14 +9,15 @@
     {1 Keys}
 
     An entry is keyed on its {!Layout_input.t}: on each axis, the known
-    dimension when there is one and else the available space; the parent size;
-    and the requested axis. The final layout matches only the same key. A
-    measurement matches the same known dimensions or available space, the same
-    parent width and, when the node's style resolves a percentage or a [calc]
-    height, minimum height or maximum height against it, the same parent height.
-    A layout reads its parent's height through those properties alone. A
-    measurement answers a query for either axis only if it was computed for both
-    axes, since a measurement for one axis may hold garbage in the other.
+    dimension when there is one and else the available space; the requested
+    axis; the parent's width; and, when the node's style resolves a percentage
+    or a [calc] height, minimum height or maximum height against it, the
+    parent's height. A layout reads its parent's height through those properties
+    alone, so a node without them keeps its results when only its parent's
+    height changes. The final layout matches only the same key. A measurement
+    matches the same key except for the requested axis. One computed for a
+    single axis answers only queries for that axis, since it may hold garbage in
+    the other, and one computed for both axes answers any.
 
     The sizing mode and the collapsibility of the vertical margins are not in
     the key: they change for a node only when its parent's algorithm or its own

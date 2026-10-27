@@ -119,7 +119,7 @@ let same (a : float) (b : float) =
   Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
 [@@inline]
 
-(* The parent height a measurement is keyed on: the parent's height when
+(* The parent height an entry is keyed on: the parent's height when
    [style] resolves a percentage or calc height, minimum height or maximum
    height against it, and else negative infinity, which no parent height
    takes. A layout reads its parent's height through those properties
@@ -192,7 +192,7 @@ let get t style inputs =
           same e.width_key width_key
           && same e.height_key height_key
           && same e.parent_width parent_width
-          && same e.parent_height (parent_key parent.height)
+          && same e.parent_height (parent_height_key style parent)
           && e.axis = axis
         then Some t.final_layout
         else None
@@ -250,7 +250,8 @@ let store t style inputs output =
       match run_mode with
       | Perform_layout ->
           set t cache_size inputs
-            ~parent_height:(parent_key (Layout_input.parent_size inputs).height)
+            ~parent_height:
+              (parent_height_key style (Layout_input.parent_size inputs))
             ~width:0. ~height:0.;
           t.final_layout <- output
       | Compute_size ->
