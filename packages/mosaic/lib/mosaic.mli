@@ -882,6 +882,7 @@ module Cmd : sig
     | Copy_to_clipboard of string  (** {!val-copy_to_clipboard}. *)
     | Copy_selection  (** {!val-copy_selection}. *)
     | Query_color_scheme  (** {!val-query_color_scheme}. *)
+    | Query_terminal_colors  (** {!val-query_terminal_colors}. *)
     | Bell  (** {!val-bell}. *)
     | Notify of {
         title : string;  (** [notify]'s [~title]. *)
@@ -974,6 +975,12 @@ module Cmd : sig
   (** [query_color_scheme] asks the terminal for its color scheme
       ({!Matrix.Terminal.query_color_scheme}). A terminal that knows the query
       answers, and the answer comes to {!Sub.val-on_color_scheme}. *)
+
+  val query_terminal_colors : 'msg t
+  (** [query_terminal_colors] asks the terminal for its default foreground and
+      background and the first 16 entries of its palette (OSC 10, 11 and 4). A
+      terminal that knows the queries answers, and the answer comes to
+      {!Sub.val-on_terminal_colors}. *)
 
   val bell : 'msg t
   (** [bell] rings the terminal's bell (BEL). *)
@@ -1133,6 +1140,8 @@ module Sub : sig
         (** {!val-on_color_scheme}. *)
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)  (** {!val-worker}. *)
     | On_focus_lost of 'msg  (** {!val-on_focus_lost}. *)
+    | On_terminal_colors of (Ansi.Theme.colors -> 'msg option)
+        (** {!val-on_terminal_colors}. *)
 
   val none : 'msg t
   (** [none] is the subscription to nothing. *)
@@ -1260,6 +1269,18 @@ module Sub : sig
   (** [on_color_scheme f] calls [f] with the terminal's color scheme when the
       terminal answers {!Cmd.val-query_color_scheme} or reports a change (mode
       2031), and dispatches the message it returns. *)
+
+  val on_terminal_colors : (Ansi.Theme.colors -> 'msg option) -> 'msg t
+  (** [on_terminal_colors f] calls [f] with the colors the terminal reports, its
+      default foreground and background and the first 16 entries of its palette,
+      and dispatches the message it returns. The program asks for them as it
+      begins, after each report of the color scheme ({!val-on_color_scheme}),
+      with which the user may have changed them, and when the application asks
+      ({!Cmd.val-query_terminal_colors}); [f] is called once the terminal has
+      answered, with the entries it reported. A subscription declared after the
+      program began receives the colors from the next answer, so an application
+      that subscribes later asks once. A terminal that reports no foreground or
+      no background, or an output that is not a terminal, gives no call. *)
 
   val worker : id:string -> (Stop.t -> 'msg mailbox -> unit) -> 'msg t
   (** [worker ~id f] runs [f stop mailbox] off the loop, on {!val-run}'s

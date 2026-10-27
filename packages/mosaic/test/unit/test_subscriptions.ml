@@ -282,9 +282,9 @@ let cmd_copy_to_clipboard_maps_without_changing_payload () =
       failf "unexpected clipboard payload: %S" other
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Clear_selection | Cmd.Static_commit _
-  | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Query_color_scheme | Cmd.Bell
-  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ | Cmd.Focus_next
-  | Cmd.Focus_prev ->
+  | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Query_color_scheme
+  | Cmd.Query_terminal_colors | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
+  | Cmd.Keep_frame _ | Cmd.Focus_next | Cmd.Focus_prev ->
       fail "expected Copy_to_clipboard"
 
 let cmd_clear_selection_maps_to_itself () =
@@ -292,9 +292,9 @@ let cmd_clear_selection_maps_to_itself () =
   | Cmd.Clear_selection -> ()
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Static_commit _
-  | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Query_color_scheme | Cmd.Bell
-  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ | Cmd.Focus_next
-  | Cmd.Focus_prev ->
+  | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Query_color_scheme
+  | Cmd.Query_terminal_colors | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
+  | Cmd.Keep_frame _ | Cmd.Focus_next | Cmd.Focus_prev ->
       fail "expected Clear_selection"
 
 let cmd_copy_selection_maps_to_itself () =
@@ -302,9 +302,9 @@ let cmd_copy_selection_maps_to_itself () =
   | Cmd.Copy_selection -> ()
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Clear_selection
-  | Cmd.Static_commit _ | Cmd.Static_clear | Cmd.Query_color_scheme | Cmd.Bell
-  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ | Cmd.Focus_next
-  | Cmd.Focus_prev ->
+  | Cmd.Static_commit _ | Cmd.Static_clear | Cmd.Query_color_scheme
+  | Cmd.Query_terminal_colors | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
+  | Cmd.Keep_frame _ | Cmd.Focus_next | Cmd.Focus_prev ->
       fail "expected Copy_selection"
 
 let cmd_query_color_scheme_maps_to_itself () =
@@ -312,9 +312,9 @@ let cmd_query_color_scheme_maps_to_itself () =
   | Cmd.Query_color_scheme -> ()
   | Cmd.None | Cmd.Batch _ | Cmd.Perform _ | Cmd.Exec _ | Cmd.Suspend | Cmd.Quit
   | Cmd.Set_title _ | Cmd.Copy_to_clipboard _ | Cmd.Clear_selection
-  | Cmd.Static_commit _ | Cmd.Static_clear | Cmd.Copy_selection | Cmd.Bell
-  | Cmd.Notify _ | Cmd.Abort_paste | Cmd.Keep_frame _ | Cmd.Focus_next
-  | Cmd.Focus_prev ->
+  | Cmd.Static_commit _ | Cmd.Static_clear | Cmd.Copy_selection
+  | Cmd.Query_terminal_colors | Cmd.Bell | Cmd.Notify _ | Cmd.Abort_paste
+  | Cmd.Keep_frame _ | Cmd.Focus_next | Cmd.Focus_prev ->
       fail "expected Query_color_scheme"
 
 let sub_on_color_scheme_delivers_reports () =
@@ -337,6 +337,166 @@ let sub_on_color_scheme_maps_messages () =
   | Sub.On_color_scheme f -> (
       match f `Dark with Some Quit -> () | _ -> fail "expected mapped Quit")
   | _ -> fail "expected On_color_scheme"
+
+(* ── Terminal colors ── *)
+
+let palette =
+  let colors = Array.copy Vte.default_palette.colors in
+  colors.(1) <- (0xcd, 0, 0);
+  colors.(12) <- (0x5c, 0x5c, 0xff);
+  {
+    Vte.default_palette with
+    colors;
+    foreground = (0xe5, 0xe5, 0xe5);
+    background = (0x10, 0x20, 0x30);
+  }
+
+let reported (p : Vte.palette) =
+  {
+    Ansi.Theme.foreground = p.foreground;
+    background = p.background;
+    palette = Array.init 16 (fun i -> Some p.colors.(i));
+  }
+
+(* Runs a program that records the colors it is given, on a terminal of
+   [profile], through [steps]; the colors given, oldest first. *)
+let colors_given ?(profile = { Matrix_test.Profile.vte with palette }) steps =
+  let given = ref [] in
+  let app =
+    {
+      init = (fun () -> ((), Cmd.none));
+      update =
+        (fun colors () ->
+          given := colors :: !given;
+          ((), Cmd.none));
+      view = (fun () -> text "colors");
+      subscriptions = (fun () -> Sub.on_terminal_colors (fun c -> Some c));
+    }
+  in
+  let term = Matrix_test.Terminal.create ~profile ~cols:20 ~rows:2 () in
+  Mosaic_test.run term app (fun s -> steps s term);
+  List.rev !given
+
+let colors_testable =
+  Testable.make
+    ~pp:(fun ppf (c : Ansi.Theme.colors) ->
+      let rgb ppf (r, g, b) = Format.fprintf ppf "#%02x%02x%02x" r g b in
+      Format.fprintf ppf "{fg %a; bg %a; palette [%a]}" rgb c.foreground rgb
+        c.background
+        (Format.pp_print_array ~pp_sep:Format.pp_print_space
+           (Format.pp_print_option
+              ~none:(fun ppf () -> Format.pp_print_string ppf "-")
+              rgb))
+        c.palette)
+    ~equal:( = )
+
+(* The program asks as it begins, and the terminal's answer is the palette
+   its user configured. *)
+let terminal_colors_on_start () =
+  equal ~msg:"the colors" (list colors_testable)
+    [ reported palette ]
+    (colors_given (fun _ _ -> ()))
+
+(* The user picks another theme: the terminal reports its color scheme,
+   and the program asks again and is given the new colors. *)
+let light =
+  {
+    palette with
+    colors = Array.init 256 (fun i -> (i, i / 2, 0));
+    foreground = (0, 0, 0);
+    background = (0xff, 0xff, 0xff);
+  }
+
+let terminal_colors_after_scheme () =
+  let given =
+    colors_given (fun s term ->
+        Matrix_test.input s (Matrix_test.Terminal.set_colors term light))
+  in
+  equal ~msg:"the colors, then the new ones" (list colors_testable)
+    [ reported palette; reported light ]
+    given
+
+(* An application that subscribes after the program began asks once, and
+   the answer comes to its subscription. *)
+let terminal_colors_asked_late () =
+  let given = ref [] in
+  let app =
+    {
+      init = (fun () -> (false, Cmd.none));
+      update =
+        (fun msg subscribed ->
+          match msg with
+          | `Subscribe -> (true, Cmd.query_terminal_colors)
+          | `Colors c ->
+              given := c :: !given;
+              (subscribed, Cmd.none));
+      view = (fun _ -> text "colors");
+      subscriptions =
+        (fun subscribed ->
+          if subscribed then Sub.on_terminal_colors (fun c -> Some (`Colors c))
+          else Sub.on_key (fun _ -> Some `Subscribe));
+    }
+  in
+  let profile = { Matrix_test.Profile.vte with palette } in
+  let term = Matrix_test.Terminal.create ~profile ~cols:20 ~rows:2 () in
+  Mosaic_test.run term app (fun s ->
+      equal ~msg:"none before" int 0 (List.length !given);
+      Matrix_test.input s (Matrix_test.Terminal.text term "s"));
+  equal ~msg:"the colors, once" (list colors_testable)
+    [ reported palette ]
+    (List.rev !given)
+
+(* A terminal that reports its foreground and background and no palette
+   entry: its answer to DA1 ends the wait, at once, and the colors come
+   without entries. A terminal that reports neither gives none. The
+   terminal answers no query by itself, so the test answers the program's
+   once it has asked, after the run gave up on those it sent before. *)
+let terminal_colors_without_palette () =
+  let profile = { Matrix_test.Profile.vte with answers = false } in
+  let asked s term =
+    let output () = Matrix_test.Terminal.output term in
+    let query = "\027]4;15;?" in
+    let contains s sub =
+      let n = String.length sub in
+      let rec go i =
+        i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
+      in
+      go 0
+    in
+    let rec wait seconds =
+      if not (contains (output ()) query) then
+        if seconds = 0 then fail "the program never asked"
+        else (
+          Matrix_test.advance s 1_000_000_000;
+          wait (seconds - 1))
+    in
+    wait 30
+  in
+  let da1 = "\027[?62;22c" in
+  let given =
+    colors_given ~profile (fun s term ->
+        asked s term;
+        let before = Matrix_test.now s in
+        Matrix_test.input s
+          ("\027]10;rgb:e5e5/e5e5/e5e5\027\\\027]11;rgb:1010/2020/3030\027\\"
+         ^ da1);
+        equal ~msg:"no wait" int before (Matrix_test.now s))
+  in
+  equal ~msg:"foreground and background" (list colors_testable)
+    [
+      {
+        Ansi.Theme.foreground = (0xe5, 0xe5, 0xe5);
+        background = (0x10, 0x20, 0x30);
+        palette = Array.make 16 None;
+      };
+    ]
+    given;
+  let given =
+    colors_given ~profile (fun s term ->
+        asked s term;
+        Matrix_test.input s da1)
+  in
+  equal ~msg:"none" (list colors_testable) [] given
 
 let () =
   Windtrap.run "subscriptions"
@@ -370,4 +530,10 @@ let () =
       test "Sub.on_color_scheme delivers reports"
         sub_on_color_scheme_delivers_reports;
       test "Sub.on_color_scheme maps messages" sub_on_color_scheme_maps_messages;
+      test "terminal colors as the program begins" terminal_colors_on_start;
+      test "terminal colors after the user changes them"
+        terminal_colors_after_scheme;
+      test "terminal colors asked by a late subscriber"
+        terminal_colors_asked_late;
+      test "terminal colors without a palette" terminal_colors_without_palette;
     ]
