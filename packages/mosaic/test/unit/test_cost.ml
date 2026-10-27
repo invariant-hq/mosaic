@@ -240,6 +240,36 @@ let default_text () =
        13"
       (text - props)
 
+(* ───── Reconciling an unchanged list ─────
+
+   A view builds its elements anew on every render. When they equal the
+   ones mounted, the reconciler keeps each fiber's records and its parent's
+   child list, and matches unkeyed elements with no table, so reconciling
+   allocates nothing per element: a fresh but equal list of 1,000 and of
+   16,000 texts reconciles in the same words, its own words excepted. *)
+
+let reconcile_equal_list n =
+  let view () =
+    Mosaic.box (List.init n (fun i -> Mosaic.text (string_of_int i)))
+  in
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+  in
+  let render view =
+    Mosaic.Reconciler.render reconciler ~viewport_width:80 view
+  in
+  render (view ());
+  let views = Array.init 3 (fun _ -> view ()) and next = ref 0 in
+  words (fun () ->
+      render views.(!next);
+      incr next)
+
+let unchanged_list () =
+  same "reconciling a fresh but equal list of texts"
+    ~small:(reconcile_equal_list 1_000)
+    ~large:(reconcile_equal_list 16_000)
+
 (* ───── A shared layout ─────
 
    An element given [~layout] and no layout label uses that record itself,
@@ -588,6 +618,8 @@ let () =
         [ test "a scrolled transcript" hidden_transcript_rows ];
       group "An element that declares nothing shares its records"
         [ test "a text" default_text ];
+      group "An unchanged list costs nothing per element"
+        [ test "a fresh but equal list of texts" unchanged_list ];
       group "A shared layout costs nothing per element"
         [ test "a text given ~layout" shared_layout ];
       group "Keys follow the items moved over"

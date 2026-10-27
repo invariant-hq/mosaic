@@ -314,12 +314,19 @@ let set_instance_style (inst : instance) (style : Toffee.Style.t) : unit =
       apply_picture_style p
   | _ -> Renderable.set_style (node_of inst) style
 
+(* What [update_instance] found changed: the attributes, the kind, both or
+   neither. *)
+let attrs_changed = 1
+let kind_changed_bit = 2
+
 (* Accepted state only changes through declarations, so physical sharing is
-   a valid fast path for every widget. *)
+   a valid fast path for every widget. The result says which of the
+   element's records differ from the fiber's: a record that does not differ
+   equals the fiber's in every field, so the fiber keeps its own. *)
 let update_instance (inst : instance) ~(old_attrs : Vnode.attrs)
     ~(new_attrs : Vnode.attrs) ~(old_kind : Vnode.kind) ~(new_kind : Vnode.kind)
-    : bool =
-  if old_attrs == new_attrs && old_kind == new_kind then false
+    : int =
+  if old_attrs == new_attrs && old_kind == new_kind then 0
   else
     let common_changed =
       if old_attrs == new_attrs then false
@@ -459,7 +466,8 @@ let update_instance (inst : instance) ~(old_attrs : Vnode.attrs)
     (match inst with
     | Spinner_instance spinner -> set_spinner_live spinner new_attrs
     | _ -> ());
-    common_changed || style_changed || kind_changed
+    (if common_changed || style_changed then attrs_changed else 0)
+    lor if kind_changed then kind_changed_bit else 0
 
 let commit_update (inst : instance) : unit =
   Renderable.request_render (node_of inst)
@@ -496,15 +504,14 @@ and fiber = {
   mutable attrs : Vnode.attrs;
   instance : instance;
   mutable children : child list;
-  mouse_ref : (Event.mouse -> unit option) option ref;
-  key_ref : (Event.key -> unit option) option ref;
-  paste_ref : (Event.paste -> unit option) option ref;
-  click_ref : (Event.mouse -> unit option) option ref;
-  size_ref : (w:int -> h:int -> unit option) option ref;
+  handlers : unit Vnode.handlers ref;
+      (** The handlers the element declared last, which the node's handlers read
+          when an event comes. *)
   mutable declared_children : unit Vnode.t list;
   mutable viewport_width : int;
   mutable declared_focus : declared_focus;
   callback_refs : callback_refs;
+  mutable pass : int;  (** The last pass that matched it ({!next_pass}). *)
 }
 
 and span = {
@@ -520,6 +527,7 @@ and span = {
   mutable span_focus : declared_focus;
   mutable reused : bool;
       (** The current render kept the span's children unchanged. *)
+  mutable span_pass : int;  (** The last pass that matched it. *)
 }
 
 let fiber_node f = node_of f.instance
@@ -741,17 +749,14 @@ let create_fiber ~(parent : Renderable.t) (elem : unit Vnode.element) : fiber =
   let instance = create_instance ~parent elem.kind elem.attrs in
   let node = node_of instance in
   Renderable.Private.set_focus_request node elem.handlers.on_focus_request;
-  let mouse_ref = ref elem.handlers.on_mouse in
-  let key_ref = ref elem.handlers.on_key in
-  let paste_ref = ref elem.handlers.on_paste in
-  let click_ref = ref elem.handlers.on_click in
-  let size_ref = ref elem.handlers.on_size in
+  let handlers = ref elem.handlers in
   let callback_refs = create_callback_refs instance elem.callbacks in
   Renderable.on_mouse node (fun ev ->
-      Option.iter (fun f -> ignore (f ev : unit option)) !mouse_ref);
+      Option.iter (fun f -> ignore (f ev : unit option)) !handlers.on_mouse);
   Renderable.Private.set_click_handler node
     (Some
-       (fun ev -> Option.iter (fun f -> ignore (f ev : unit option)) !click_ref));
+       (fun ev ->
+         Option.iter (fun f -> ignore (f ev : unit option)) !handlers.on_click));
   Renderable.Private.set_size_observer node
     (Some
        (fun node ->
@@ -760,49 +765,53 @@ let create_fiber ~(parent : Renderable.t) (elem : unit Vnode.element) : fiber =
              ignore
                (f ~w:(Renderable.width node) ~h:(Renderable.height node)
                  : unit option))
-           !size_ref));
+           !handlers.on_size));
   Renderable.on_key node (fun ev ->
-      match !key_ref with Some h -> ignore (h ev : unit option) | None -> ());
+      match !handlers.on_key with
+      | Some h -> ignore (h ev : unit option)
+      | None -> ());
   Renderable.on_paste node (fun ev ->
-      match !paste_ref with Some h -> ignore (h ev : unit option) | None -> ());
+      match !handlers.on_paste with
+      | Some h -> ignore (h ev : unit option)
+      | None -> ());
   {
     kind = elem.kind;
     key = elem.key;
     attrs = elem.attrs;
     instance;
     children = [];
-    mouse_ref;
-    key_ref;
-    paste_ref;
-    click_ref;
-    size_ref;
+    handlers;
     declared_children = [];
     viewport_width = 0;
     declared_focus = Focus_none;
     callback_refs;
+    pass = 0;
   }
 
 let update_callback_refs refs callbacks =
-  refs.callbacks := callbacks;
-  refs.update_presence callbacks
+  if !(refs.callbacks) != callbacks then begin
+    refs.callbacks := callbacks;
+    refs.update_presence callbacks
+  end
 
+(* A fiber keeps its records while the element's equal them, so the
+   element's fresh records die young and an unchanged element writes
+   nothing into the fiber. *)
 let update_fiber (f : fiber) (elem : unit Vnode.element) : bool =
-  Renderable.Private.set_focus_request (fiber_node f)
-    elem.handlers.on_focus_request;
-  f.mouse_ref := elem.handlers.on_mouse;
-  f.key_ref := elem.handlers.on_key;
-  f.paste_ref := elem.handlers.on_paste;
-  f.click_ref := elem.handlers.on_click;
-  f.size_ref := elem.handlers.on_size;
+  if !(f.handlers) != elem.handlers then begin
+    Renderable.Private.set_focus_request (fiber_node f)
+      elem.handlers.on_focus_request;
+    f.handlers := elem.handlers
+  end;
   update_callback_refs f.callback_refs elem.callbacks;
   let changed =
     update_instance f.instance ~old_attrs:f.attrs ~new_attrs:elem.attrs
       ~old_kind:f.kind ~new_kind:elem.kind
   in
-  f.attrs <- elem.attrs;
-  f.kind <- elem.kind;
-  if changed then commit_update f.instance;
-  changed
+  if changed land attrs_changed <> 0 then f.attrs <- elem.attrs;
+  if changed land kind_changed_bit <> 0 then f.kind <- elem.kind;
+  if changed <> 0 then commit_update f.instance;
+  changed <> 0
 
 (* A fiber's descendants have their nodes under its node, except embedded
    nodes, which the application owns and which outlive the fiber. Fibers are
@@ -840,55 +849,9 @@ let fibers_and_embeds children =
 
 (* ───── Vnode Flattening ───── *)
 
-(* Fragments, themed vnodes and Empty nodes are structural -- they group
-   vnodes but don't correspond to real widgets. Flattening collapses them
-   into the list of concrete children: elements, embeds, and memos, whose
-   views are built only when they cannot be reused. A child inside [themed]
-   wrappers carries their functions composed, outermost first, which the
-   reconciler gives its node as its place's
-   ([Renderable.Private.set_place_theme]), apart from its own; a child outside every
-   one is not wrapped, so a view without [themed] allocates nothing for
-   them. *)
-type flattened =
-  | Flat_element of unit Vnode.element
-  | Flat_embed of Renderable.t
-  | Flat_memo of unit Vnode.memo
-  | Flat_themed of (Theme.t -> Theme.t) * flattened
-      (** Never holds another [Flat_themed]. *)
-
-let in_theme theme flat =
-  match theme with None -> flat | Some f -> Flat_themed (f, flat)
-
 (* [inner] applied to what [outer] gives. *)
 let compose outer inner =
   match outer with None -> inner | Some outer -> fun t -> inner (outer t)
-
-let rec flatten_vnode ~viewport_width ~theme (vnode : unit Vnode.t)
-    (acc : flattened list) : flattened list =
-  match vnode with
-  | Vnode.Empty -> acc
-  | Vnode.Memo memo -> in_theme theme (Flat_memo memo) :: acc
-  | Vnode.Embed node -> in_theme theme (Flat_embed node) :: acc
-  | Vnode.Element elem -> in_theme theme (Flat_element elem) :: acc
-  | Vnode.Themed (f, child) ->
-      flatten_vnode ~viewport_width ~theme:(Some (compose theme f)) child acc
-  | Vnode.Fragment children -> flatten_list ~viewport_width ~theme children acc
-  | Vnode.Viewport_switch { at_least_width; wide; narrow } ->
-      let selected =
-        if viewport_width >= at_least_width then wide else narrow
-      in
-      flatten_vnode ~viewport_width ~theme selected acc
-
-(* [List.fold_right] over [flatten_vnode], without the closure. *)
-and flatten_list ~viewport_width ~theme children acc =
-  match children with
-  | [] -> acc
-  | child :: rest ->
-      flatten_vnode ~viewport_width ~theme child
-        (flatten_list ~viewport_width ~theme rest acc)
-
-let flatten_children ~viewport_width children =
-  flatten_list ~viewport_width ~theme:None children []
 
 let same_theme a b =
   match (a, b) with
@@ -896,60 +859,141 @@ let same_theme a b =
   | Some f, Some g -> f == g
   | Some _, None | None, Some _ -> false
 
-(* ───── Fiber Maps ───── *)
+(* ───── Matching ───── *)
 
-(* Keyed lookup + positional array for O(1) matching during reconciliation. *)
-type fiber_maps = {
-  by_key : (string, fiber * int) Hashtbl.t;
-  by_index : fiber array;
-  used : bool array;
+(* Each reconciliation of one list of children is a pass with a number of its
+   own. The fibers and spans a pass matches carry its number, so the old
+   children nothing matched are found by one walk of the old list, with no
+   table and no array.
+
+   Keyed elements match by key, unkeyed elements by position among the
+   list's elements. This mirrors React's reconciliation heuristic: keys give
+   stable identity across reorders, positional matching is the fallback.
+   Memos match by position among the list's memos. A match is the cell of
+   the old list that holds the old child, so a kept child is the old list's
+   own value and the matcher allocates nothing for it. The key table is
+   built the first time an element with a key asks for it. *)
+let current_pass = ref 0
+
+type matcher = {
+  pass : int;
+  old_children : child list;
+  mutable next_element : child list;
+      (** The old children from the next element position on. *)
+  mutable next_memo : child list;
+      (** The old children from the next memo position on. *)
+  mutable keys : (string, child list) Hashtbl.t option;
 }
 
-let build_maps (children : child list) : fiber_maps =
-  let arr =
-    Array.of_list
-      (List.filter_map
-         (function Fiber f -> Some f | Embedded _ | Memo_span _ -> None)
-         children)
-  in
-  let len = Array.length arr in
-  let by_key = Hashtbl.create len in
-  Array.iteri
-    (fun i f ->
-      match f.key with
-      | Some k ->
-          (* First occurrence wins on duplicate keys, so when a view
-             accidentally emits duplicate-keyed siblings the first keeps its
-             identity across renders and only the later duplicates remount. *)
-          if not (Hashtbl.mem by_key k) then Hashtbl.add by_key k (f, i)
-      | None -> ())
-    arr;
-  { by_key; by_index = arr; used = Array.make len false }
+let matcher old_children =
+  incr current_pass;
+  {
+    pass = !current_pass;
+    old_children;
+    next_element = old_children;
+    next_memo = old_children;
+    keys = None;
+  }
 
-let can_reuse (f : fiber) (elem : unit Vnode.element) : bool =
-  kind_matches f.kind elem.kind && f.key = elem.key
+(* The cell of the old fiber at the next element position, or [], moving
+   the position past it. *)
+let rec take_element m =
+  match m.next_element with
+  | [] -> []
+  | Fiber _ :: rest as cell ->
+      m.next_element <- rest;
+      cell
+  | (Embedded _ | Memo_span _) :: rest ->
+      m.next_element <- rest;
+      take_element m
 
-(* Keyed elements match by key, unkeyed elements match by position among their
-   siblings. This mirrors React's reconciliation heuristic: keys give stable
-   identity across reorders, positional matching is the fallback. *)
-let find_match (maps : fiber_maps) (pos : int) (elem : unit Vnode.element) :
-    fiber option =
-  let old_len = Array.length maps.by_index in
-  match elem.key with
-  | Some k -> (
-      match Hashtbl.find_opt maps.by_key k with
-      | Some (f, idx) when can_reuse f elem && not maps.used.(idx) ->
-          maps.used.(idx) <- true;
-          Some f
-      | _ -> None)
+let rec take_memo m =
+  match m.next_memo with
+  | [] -> []
+  | Memo_span _ :: rest as cell ->
+      m.next_memo <- rest;
+      cell
+  | (Embedded _ | Fiber _) :: rest ->
+      m.next_memo <- rest;
+      take_memo m
+
+(* First occurrence wins on duplicate keys, so when a view accidentally
+   emits duplicate-keyed siblings the first keeps its identity across
+   renders and only the later duplicates remount. *)
+let keys m =
+  match m.keys with
+  | Some keys -> keys
   | None ->
-      if pos < old_len && not maps.used.(pos) then
-        let f = maps.by_index.(pos) in
-        if can_reuse f elem then (
-          maps.used.(pos) <- true;
-          Some f)
-        else None
-      else None
+      let keys = Hashtbl.create 16 in
+      let rec add cells =
+        match cells with
+        | [] -> ()
+        | Fiber { key = Some k; _ } :: rest ->
+            if not (Hashtbl.mem keys k) then Hashtbl.add keys k cells;
+            add rest
+        | _ :: rest -> add rest
+      in
+      add m.old_children;
+      m.keys <- Some keys;
+      keys
+
+(* The cell of the old fiber [elem] matches, or []. The fiber takes the
+   pass's number. *)
+let find_match m (elem : unit Vnode.element) : child list =
+  let positional = take_element m in
+  let cell =
+    match elem.key with
+    | None -> (
+        match positional with
+        | Fiber { key = None; _ } :: _ -> positional
+        | _ -> [])
+    | Some k -> (
+        match Hashtbl.find_opt (keys m) k with Some cell -> cell | None -> [])
+  in
+  match cell with
+  | Fiber f :: _ when f.pass <> m.pass && kind_matches f.kind elem.kind ->
+      f.pass <- m.pass;
+      cell
+  | _ -> []
+
+(* ───── Building the new list ───── *)
+
+(* The new children of a list, built as they are reconciled. While each
+   child is the old list's child at the same index, physically, nothing is
+   allocated, and a list whose children all stayed in place is the old list
+   itself. *)
+type builder = {
+  old : child list;
+  mutable rest : child list;  (** The old children after those kept. *)
+  mutable kept : int;
+  mutable diverged : bool;
+  mutable acc : child list;  (** Reversed, once [diverged]. *)
+}
+
+let builder old = { old; rest = old; kept = 0; diverged = false; acc = [] }
+
+let rec rev_prefix list n acc =
+  if n = 0 then acc
+  else
+    match list with
+    | [] -> acc
+    | child :: rest -> rev_prefix rest (n - 1) (child :: acc)
+
+let emit b child =
+  if b.diverged then b.acc <- child :: b.acc
+  else
+    match b.rest with
+    | c :: rest when c == child ->
+        b.rest <- rest;
+        b.kept <- b.kept + 1
+    | _ ->
+        b.diverged <- true;
+        b.acc <- child :: rev_prefix b.old b.kept []
+
+let finish b =
+  if b.diverged then List.rev b.acc
+  else
+    match b.rest with [] -> b.old | _ -> List.rev (rev_prefix b.old b.kept [])
 
 (* ───── Commit Placement ───── *)
 
@@ -1117,10 +1161,10 @@ and first_node = function
       | Some _ as node -> node
       | None -> first_node rest)
 
-let rec reconcile_element ~(parent_node : Renderable.t) (maps : fiber_maps)
-    (pos : int) ~viewport_width (elem : unit Vnode.element) : fiber =
-  match find_match maps pos elem with
-  | Some f ->
+let rec reconcile_element ~(parent_node : Renderable.t) m ~viewport_width
+    (elem : unit Vnode.element) : child =
+  match find_match m elem with
+  | (Fiber f as child) :: _ ->
       let was_modal = is_modal f in
       let focus_changed =
         f.attrs.focused <> elem.attrs.focused
@@ -1139,94 +1183,111 @@ let rec reconcile_element ~(parent_node : Renderable.t) (maps : fiber_maps)
       end;
       if focus_changed || children_changed || was_modal <> is_modal f then
         update_declared_focus f;
-      f
-  | None ->
+      child
+  | _ ->
       let f = create_fiber ~parent:parent_node elem in
+      f.pass <- m.pass;
       reconcile_children f ~viewport_width elem.children;
       f.declared_children <- elem.children;
       f.viewport_width <- viewport_width;
       update_declared_focus f;
-      f
+      Fiber f
 
 and reconcile_children f ~viewport_width children =
   let stale = ref [] in
-  let flattened = flatten_children ~viewport_width children in
   let children =
-    reconcile_list ~parent_node:(fiber_node f) ~viewport_width ~stale f.children
-      flattened
+    reconcile_list ~stale f.children (fun m b ->
+        walk_list ~parent_node:(fiber_node f) m b ~viewport_width ~stale
+          ~theme:None children)
   in
-  f.children <- children;
+  if children != f.children then f.children <- children;
   commit_placement (fiber_node f) ~stale:!stale children
 
-(* Reconciles one list of children: a parent's, or a memo span's. Elements
-   match the list's old fibers, memos its old spans by position among memos.
-   Embedded nodes that leave the list are collected in [stale]. *)
-and reconcile_list ~(parent_node : Renderable.t) ~viewport_width ~stale
-    (old_children : child list) (flattened : flattened list) : child list =
-  let maps = build_maps old_children in
-  let old_spans =
-    ref
-      (List.filter_map
-         (function Memo_span span -> Some span | Fiber _ | Embedded _ -> None)
-         old_children)
-  in
-  List.iter
-    (function
-      | Embedded n -> stale := n :: !stale | Fiber _ | Memo_span _ -> ())
-    old_children;
-  (* elem_idx tracks position among elements only -- embedded nodes and memos
-     are not managed by fiber maps, so they don't consume a positional slot. *)
-  let elem_idx = ref 0 in
-  let new_children =
-    List.map
-      (fun flat ->
-        reconcile_item ~parent_node maps elem_idx old_spans ~viewport_width
-          ~stale None flat)
-      flattened
-  in
+(* Reconciles one list of children, a parent's or a memo span's, against
+   [old_children]: [walk] reconciles the new children through a matcher and
+   gives them to a builder. Embedded nodes that leave the list are collected
+   in [stale]. *)
+and reconcile_list ~stale (old_children : child list) walk : child list =
+  let m = matcher old_children in
+  let b = builder old_children in
+  walk m b;
   (* A discarded span's embedded nodes may reappear elsewhere, so they are
      left to placement. *)
-  let unused = ref [] in
-  for i = Array.length maps.by_index - 1 downto 0 do
-    if not maps.used.(i) then unused := maps.by_index.(i) :: !unused
-  done;
-  (match (!unused, !old_spans) with
+  let unused = ref [] and spans = ref [] in
+  List.iter
+    (function
+      | Embedded n -> stale := n :: !stale
+      | Fiber f -> if f.pass <> m.pass then unused := f :: !unused
+      | Memo_span span ->
+          if span.span_pass <> m.pass then spans := Memo_span span :: !spans)
+    old_children;
+  (match (!unused, !spans) with
   | [], [] -> ()
   | unused, spans ->
-      let span_fibers, span_embeds =
-        fibers_and_embeds (List.map (fun span -> Memo_span span) spans)
-      in
+      let span_fibers, span_embeds = fibers_and_embeds (List.rev spans) in
       stale := List.rev_append span_embeds !stale;
-      destroy_fibers (unused @ span_fibers));
-  new_children
+      destroy_fibers (List.rev_append unused span_fibers));
+  finish b
 
-(* One child of [reconcile_list], under the theme its place declares. *)
-and reconcile_item ~parent_node maps elem_idx old_spans ~viewport_width ~stale
-    theme = function
-  | Flat_element elem ->
-      let idx = !elem_idx in
-      incr elem_idx;
-      let fiber =
-        reconcile_element ~parent_node maps idx ~viewport_width elem
-      in
-      Renderable.Private.set_place_theme (fiber_node fiber) theme;
-      Fiber fiber
-  | Flat_embed n ->
+(* Fragments, themed vnodes and Empty nodes are structural: they group
+   children but are no widgets. The walk goes through them to the concrete
+   children (elements, embeds, and memos, whose views are built only when
+   they cannot be reused) in order. A child inside [themed] wrappers takes
+   their functions composed, outermost first, as its place's theme
+   ([Renderable.Private.set_place_theme]); a view without [themed] allocates
+   nothing for them. *)
+and walk ~parent_node m b ~viewport_width ~stale ~theme (vnode : unit Vnode.t) =
+  match vnode with
+  | Vnode.Empty -> ()
+  | Vnode.Element elem ->
+      let child = reconcile_element ~parent_node m ~viewport_width elem in
+      (match child with
+      | Fiber f -> Renderable.Private.set_place_theme (fiber_node f) theme
+      | Embedded _ | Memo_span _ -> ());
+      emit b child
+  | Vnode.Embed n ->
       Renderable.Private.set_place_theme n theme;
-      Embedded n
-  | Flat_memo memo ->
-      let previous =
-        match !old_spans with
-        | span :: rest ->
-            old_spans := rest;
-            Some span
-        | [] -> None
+      let child =
+        match b.rest with
+        | (Embedded n' as child) :: _ when n' == n -> child
+        | _ -> Embedded n
       in
-      Memo_span
-        (reconcile_span ~parent_node ~viewport_width ~stale ~theme previous memo)
-  | Flat_themed (f, flat) ->
-      reconcile_item ~parent_node maps elem_idx old_spans ~viewport_width ~stale
-        (Some f) flat
+      emit b child
+  | Vnode.Memo memo ->
+      let child =
+        match take_memo m with
+        | (Memo_span span as child) :: _ ->
+            span.span_pass <- m.pass;
+            let span' =
+              reconcile_span ~parent_node ~viewport_width ~stale ~theme
+                (Some span) memo
+            in
+            if span' == span then child else Memo_span span'
+        | _ ->
+            let span =
+              reconcile_span ~parent_node ~viewport_width ~stale ~theme None
+                memo
+            in
+            span.span_pass <- m.pass;
+            Memo_span span
+      in
+      emit b child
+  | Vnode.Themed (f, child) ->
+      walk ~parent_node m b ~viewport_width ~stale
+        ~theme:(Some (compose theme f))
+        child
+  | Vnode.Fragment children ->
+      walk_list ~parent_node m b ~viewport_width ~stale ~theme children
+  | Vnode.Viewport_switch { at_least_width; wide; narrow } ->
+      walk ~parent_node m b ~viewport_width ~stale ~theme
+        (if viewport_width >= at_least_width then wide else narrow)
+
+and walk_list ~parent_node m b ~viewport_width ~stale ~theme children =
+  match children with
+  | [] -> ()
+  | child :: rest ->
+      walk ~parent_node m b ~viewport_width ~stale ~theme child;
+      walk_list ~parent_node m b ~viewport_width ~stale ~theme rest
 
 (* Like Elm's lazy nodes, an equal memo stops the diff: its span keeps its
    children untouched. Under another theme its view, kept, is reconciled
@@ -1260,6 +1321,7 @@ and reconcile_span ~parent_node ~viewport_width ~stale ~theme previous memo =
           first_node = None;
           span_focus = Focus_none;
           reused = false;
+          span_pass = 0;
         }
       in
       update_span ~parent_node ~viewport_width ~stale span;
@@ -1267,8 +1329,9 @@ and reconcile_span ~parent_node ~viewport_width ~stale ~theme previous memo =
 
 and update_span ~parent_node ~viewport_width ~stale span =
   let children =
-    reconcile_list ~parent_node ~viewport_width ~stale span.span_children
-      (flatten_vnode ~viewport_width ~theme:span.span_theme span.view [])
+    reconcile_list ~stale span.span_children (fun m b ->
+        walk ~parent_node m b ~viewport_width ~stale ~theme:span.span_theme
+          span.view)
   in
   span.span_children <- children;
   span.node_count <- node_count children;
@@ -1283,9 +1346,9 @@ let render (t : t) ~viewport_width (vnode : unit Vnode.t) : unit =
     invalid_arg "Reconciler.render: viewport_width must be positive";
   let stale = ref [] in
   let children =
-    reconcile_list ~parent_node:t.container ~viewport_width ~stale
-      t.root_children
-      (flatten_vnode ~viewport_width ~theme:None vnode [])
+    reconcile_list ~stale t.root_children (fun m b ->
+        walk ~parent_node:t.container m b ~viewport_width ~stale ~theme:None
+          vnode)
   in
   t.root_children <- children;
   commit_placement t.container ~stale:!stale children;
