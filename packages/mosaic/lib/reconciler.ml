@@ -545,7 +545,7 @@ and misplaced_in_span parent index span =
 and misplaced_in_bindings parent index k =
   let index = ref index and found = ref None in
   try
-    Keyed.Private.iter
+    Keyed.iter
       (fun _ binding ->
         match misplaced_in_span parent !index binding with
         | None -> index := !index + binding.node_count
@@ -588,9 +588,9 @@ and misplaced_in_touched parent index span k =
 (* The nodes of the bindings before [key], counted from the nearer end. *)
 and nodes_before span k key =
   let count _ binding nodes = nodes + binding.node_count in
-  let i = Keyed.Private.rank k.bindings key and n = Keyed.cardinal k.bindings in
-  if i <= n - i then Keyed.Private.fold_range count k.bindings 0 i 0
-  else span.node_count - Keyed.Private.fold_range count k.bindings i n 0
+  let i = Keyed.rank k.bindings key and n = Keyed.cardinal k.bindings in
+  if i <= n - i then Keyed.fold_range count k.bindings 0 i 0
+  else span.node_count - Keyed.fold_range count k.bindings i n 0
 
 and probe parent index node rest =
   match Renderable.Private.child_at parent index with
@@ -620,7 +620,7 @@ let iter_from from children f =
            match span.keyed with
            | None -> go span.span_children
            | Some k ->
-               Keyed.Private.iter
+               Keyed.iter
                  (fun _ binding ->
                    if !position + binding.node_count <= from then
                      position := !position + binding.node_count
@@ -967,7 +967,7 @@ and reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme previous
         k.item != item
         || span.span_viewport_width <> viewport_width
         || (not (same_theme span.span_theme theme))
-        || not (Keyed.Private.same_order k.declared map)
+        || Keyed.order k.declared != Keyed.order map
       in
       k.touched <- [];
       k.touched_all <- all;
@@ -978,10 +978,10 @@ and reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme previous
           true
         end
         else
-          Keyed.Private.diff k.declared map
+          Keyed.symmetric_diff k.declared map
             (fun key change _ ->
               (match change with
-              | Keyed.Private.Removed _ -> unbind ~stale span k key
+              | Keyed.Removed _ -> unbind ~stale span k key
               | Added value ->
                   k.touched <- key :: k.touched;
                   bind ~parent_node ~route ~viewport_width ~stale ~theme span k
@@ -1009,8 +1009,8 @@ and reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme previous
         {
           declared = map;
           item;
-          bindings = Keyed.Private.empty_like map;
-          focused = Keyed.Private.empty_like map;
+          bindings = Keyed.empty ~compare:(Keyed.order map);
+          focused = Keyed.empty ~compare:(Keyed.order map);
           touched = [];
           touched_all = true;
         }
@@ -1019,7 +1019,7 @@ and reconcile_keyed ~parent_node ~route ~viewport_width ~stale ~theme previous
         new_span ~keyed:k ~tagged:None ~memo:None ~route ~theme ~viewport_width
           Vnode.Empty
       in
-      Keyed.Private.iter
+      Keyed.iter
         (fun key value ->
           bind ~parent_node ~route ~viewport_width ~stale ~theme span k key
             (item key value))
@@ -1062,12 +1062,12 @@ and rebind ~parent_node ~viewport_width ~stale ~theme span k key binding view =
 and rebind_all ~parent_node ~route ~viewport_width ~stale ~theme span k map item
     =
   let old = k.bindings in
-  Keyed.Private.iter
+  Keyed.iter
     (fun key _ ->
       if Option.is_none (Keyed.find_opt key map) then unbind ~stale span k key)
     old;
   let same_item = k.item == item in
-  Keyed.Private.iter
+  Keyed.iter
     (fun key value ->
       match Keyed.find_opt key k.bindings with
       | Some binding ->
@@ -1085,8 +1085,8 @@ and rebind_all ~parent_node ~route ~viewport_width ~stale ~theme span k map item
           bind ~parent_node ~route ~viewport_width ~stale ~theme span k key
             (item key value))
     map;
-  if not (Keyed.Private.same_order old map) then begin
-    let bindings = Keyed.Private.empty_like map in
+  if Keyed.order old != Keyed.order map then begin
+    let bindings = Keyed.empty ~compare:(Keyed.order map) in
     k.bindings <-
       Keyed.fold
         (fun key binding acc -> Keyed.add key binding acc)
@@ -1095,7 +1095,7 @@ and rebind_all ~parent_node ~route ~viewport_width ~stale ~theme span k map item
       Keyed.fold
         (fun key binding acc -> Keyed.add key binding acc)
         k.focused
-        (Keyed.Private.empty_like map)
+        (Keyed.empty ~compare:(Keyed.order map))
   end
 
 and note_focus k key binding =
@@ -1110,7 +1110,7 @@ and keyed_summary span k =
     Keyed.fold
       (fun _ binding focus -> combine_focus focus binding.span_focus)
       k.focused Focus_none;
-  span.first_node <- Keyed.Private.find_map (fun b -> b.first_node) k.bindings
+  span.first_node <- Keyed.find_map (fun b -> b.first_node) k.bindings
 
 and update_span ~parent_node ~viewport_width ~stale span =
   let children =

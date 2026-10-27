@@ -41,8 +41,7 @@ let get s i =
   | Array (a, f) -> if i < Array.length a then f a.(i) else out_of_range ()
   | Make (n, f) -> if i < n then f i else out_of_range ()
   | Keyed (m, f) ->
-      if i < Keyed.cardinal m then f (snd (Keyed.Private.nth m i))
-      else out_of_range ()
+      if i < Keyed.cardinal m then f (snd (Keyed.nth m i)) else out_of_range ()
 
 let same s s' =
   match (s, s') with
@@ -70,7 +69,7 @@ let to_array = function
       | Some (_, x) ->
           let a = Array.make (Keyed.cardinal m) (f x) in
           let i = ref 0 in
-          Keyed.Private.iter
+          Keyed.iter
             (fun _ x ->
               a.(!i) <- f x;
               incr i)
@@ -111,4 +110,4 @@ let iter g = function
       for i = 0 to n - 1 do
         g (f i)
       done
-  | Keyed (m, f) -> Keyed.Private.iter (fun _ x -> g (f x)) m
+  | Keyed (m, f) -> Keyed.iter (fun _ x -> g (f x)) m

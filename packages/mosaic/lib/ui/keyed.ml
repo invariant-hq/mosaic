@@ -132,108 +132,102 @@ let fold f m acc =
 let of_list ~compare l =
   List.fold_left (fun m (k, v) -> add k v m) (empty ~compare) l
 
-module Private = struct
-  let iter f m =
-    let rec iter = function
-      | Leaf -> ()
-      | Node n ->
-          iter n.l;
-          f n.k n.v;
-          iter n.r
+let order m = m.compare
+
+let iter f m =
+  let rec iter = function
+    | Leaf -> ()
+    | Node n ->
+        iter n.l;
+        f n.k n.v;
+        iter n.r
+  in
+  iter m.tree
+
+let nth m i =
+  if i < 0 || i >= size m.tree then invalid_arg "Keyed.nth: no binding at i";
+  let rec nth t i =
+    match t with
+    | Leaf -> assert false
+    | Node n ->
+        let left = size n.l in
+        if i < left then nth n.l i
+        else if i = left then (n.k, n.v)
+        else nth n.r (i - left - 1)
+  in
+  nth m.tree i
+
+type ('a, 'b) change = Removed of 'a | Added of 'b | Changed of 'a * 'b
+
+(* Physical equality of two values of any types, as [==] compares two
+   values of one type. *)
+external same : 'a -> 'b -> bool = "%eq"
+
+(* In-order enumerations: the next binding, its right subtree, the rest. *)
+type ('k, 'v) enum = End | More of 'k * 'v * ('k, 'v) tree * ('k, 'v) enum
+
+let rec cons t e =
+  match t with Leaf -> e | Node n -> cons n.l (More (n.k, n.v, n.r, e))
+
+(* Two subtrees at the same place of two maps are shared when they are the
+   same block; the walk then skips them whole, as Base's [symmetric_diff]
+   does. *)
+let symmetric_diff a b f acc =
+  if a.compare != b.compare then
+    invalid_arg "Keyed: the maps were made with different orders";
+  if same a.tree b.tree then acc
+  else
+    let compare = a.compare in
+    let rec loop e1 e2 acc =
+      match (e1, e2) with
+      | End, End -> acc
+      | End, More (k, v, r, e) -> loop End (cons r e) (f k (Added v) acc)
+      | More (k, v, r, e), End -> loop (cons r e) End (f k (Removed v) acc)
+      | More (k1, v1, r1, e1'), More (k2, v2, r2, e2') ->
+          let c = compare k1 k2 in
+          if c = 0 then
+            let acc = if same v1 v2 then acc else f k1 (Changed (v1, v2)) acc in
+            if same r1 r2 then loop e1' e2' acc
+            else loop (cons r1 e1') (cons r2 e2') acc
+          else if c < 0 then loop (cons r1 e1') e2 (f k1 (Removed v1) acc)
+          else loop e1 (cons r2 e2') (f k2 (Added v2) acc)
     in
-    iter m.tree
+    loop (cons a.tree End) (cons b.tree End) acc
 
-  let nth m i =
-    if i < 0 || i >= size m.tree then invalid_arg "Keyed.nth: no binding at i";
-    let rec nth t i =
-      match t with
-      | Leaf -> assert false
-      | Node n ->
-          let left = size n.l in
-          if i < left then nth n.l i
-          else if i = left then (n.k, n.v)
-          else nth n.r (i - left - 1)
-    in
-    nth m.tree i
+let rank m k =
+  let rec go t before =
+    match t with
+    | Leaf -> before
+    | Node n ->
+        let c = m.compare k n.k in
+        if c = 0 then before + size n.l
+        else if c < 0 then go n.l before
+        else go n.r (before + size n.l + 1)
+  in
+  go m.tree 0
 
-  type ('a, 'b) change = Removed of 'a | Added of 'b | Changed of 'a * 'b
+let fold_range f m lo hi acc =
+  (* [first] is the position of the first binding of [t]. *)
+  let rec go t first acc =
+    match t with
+    | Leaf -> acc
+    | Node n ->
+        if first >= hi || first + n.s <= lo then acc
+        else
+          let at = first + size n.l in
+          let acc = go n.l first acc in
+          let acc = if at >= lo && at < hi then f n.k n.v acc else acc in
+          go n.r (at + 1) acc
+  in
+  go m.tree 0 acc
 
-  let empty_like m = { compare = m.compare; tree = Leaf }
-
-  (* Physical equality of two values of any types, as [==] compares two
-     values of one type. *)
-  external same : 'a -> 'b -> bool = "%eq"
-
-  let same_order a b = a.compare == b.compare
-
-  (* In-order enumerations: the next binding, its right subtree, the rest. *)
-  type ('k, 'v) enum = End | More of 'k * 'v * ('k, 'v) tree * ('k, 'v) enum
-
-  let rec cons t e =
-    match t with Leaf -> e | Node n -> cons n.l (More (n.k, n.v, n.r, e))
-
-  (* Two subtrees at the same place of two maps are shared when they are the
-     same block; the walk then skips them whole, as Base's [symmetric_diff]
-     does. *)
-  let diff a b f acc =
-    if not (same_order a b) then
-      invalid_arg "Keyed: the maps were made with different orders";
-    if same a.tree b.tree then acc
-    else
-      let compare = a.compare in
-      let rec loop e1 e2 acc =
-        match (e1, e2) with
-        | End, End -> acc
-        | End, More (k, v, r, e) -> loop End (cons r e) (f k (Added v) acc)
-        | More (k, v, r, e), End -> loop (cons r e) End (f k (Removed v) acc)
-        | More (k1, v1, r1, e1'), More (k2, v2, r2, e2') ->
-            let c = compare k1 k2 in
-            if c = 0 then
-              let acc =
-                if same v1 v2 then acc else f k1 (Changed (v1, v2)) acc
-              in
-              if same r1 r2 then loop e1' e2' acc
-              else loop (cons r1 e1') (cons r2 e2') acc
-            else if c < 0 then loop (cons r1 e1') e2 (f k1 (Removed v1) acc)
-            else loop e1 (cons r2 e2') (f k2 (Added v2) acc)
-      in
-      loop (cons a.tree End) (cons b.tree End) acc
-
-  let rank m k =
-    let rec go t before =
-      match t with
-      | Leaf -> before
-      | Node n ->
-          let c = m.compare k n.k in
-          if c = 0 then before + size n.l
-          else if c < 0 then go n.l before
-          else go n.r (before + size n.l + 1)
-    in
-    go m.tree 0
-
-  let fold_range f m lo hi acc =
-    (* [first] is the position of the first binding of [t]. *)
-    let rec go t first acc =
-      match t with
-      | Leaf -> acc
-      | Node n ->
-          if first >= hi || first + n.s <= lo then acc
-          else
-            let at = first + size n.l in
-            let acc = go n.l first acc in
-            let acc = if at >= lo && at < hi then f n.k n.v acc else acc in
-            go n.r (at + 1) acc
-    in
-    go m.tree 0 acc
-
-  let find_map f m =
-    let rec go = function
-      | Leaf -> None
-      | Node n -> (
-          match go n.l with
-          | Some _ as found -> found
-          | None -> (
-              match f n.v with Some _ as found -> found | None -> go n.r))
-    in
-    go m.tree
-end
+let find_map f m =
+  let rec go = function
+    | Leaf -> None
+    | Node n -> (
+        match go n.l with
+        | Some _ as found -> found
+        | None -> (
+            match f n.v with Some _ as found -> found | None -> go n.r))
+  in
+  go m.tree

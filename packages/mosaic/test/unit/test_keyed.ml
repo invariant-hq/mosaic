@@ -38,6 +38,96 @@ let duplicates () =
     [ (1, "b") ]
     (bindings (ints [ (1, "a"); (1, "b") ]))
 
+(* Positions: [nth], [rank], [fold_range] and [iter] agree with the list of
+   bindings. *)
+let positions () =
+  let m = ints (List.init 50 (fun i -> (i * 2, string_of_int i))) in
+  let l = bindings m in
+  List.iteri
+    (fun i (k, v) ->
+      equal ~msg:"nth" (pair int string) (k, v) (Keyed.nth m i);
+      equal ~msg:"rank of a key" int i (Keyed.rank m k);
+      equal ~msg:"rank of a key not bound" int (i + 1) (Keyed.rank m (k + 1)))
+    l;
+  raises_match ~msg:"nth past the end"
+    (function Invalid_argument _ -> true | _ -> false)
+    (fun () -> ignore (Keyed.nth m 50));
+  let range lo hi =
+    List.rev (Keyed.fold_range (fun k v acc -> (k, v) :: acc) m lo hi [])
+  in
+  equal ~msg:"a range"
+    (list (pair int string))
+    (List.filteri (fun i _ -> i >= 10 && i < 13) l)
+    (range 10 13);
+  equal ~msg:"an empty range" (list (pair int string)) [] (range 5 5);
+  equal ~msg:"the whole map" (list (pair int string)) l (range 0 50);
+  let seen = ref [] in
+  Keyed.iter (fun k v -> seen := (k, v) :: !seen) m;
+  equal ~msg:"iter" (list (pair int string)) l (List.rev !seen);
+  equal ~msg:"find_map, the first in order" (option int) (Some 42)
+    (Keyed.find_map
+       (fun v ->
+         if int_of_string v > 20 then Some (2 * int_of_string v) else None)
+       m)
+
+(* [symmetric_diff a b] is the naive difference of the two maps' bindings,
+   whatever they share, for maps of one order. *)
+let symmetric_diff_is_the_difference seed =
+  let rng = Random.State.make [| seed |] in
+  let base =
+    ints (List.init (Random.State.int rng 40) (fun i -> (i, string_of_int i)))
+  in
+  let edit m =
+    let m = ref m in
+    for _ = 1 to Random.State.int rng 6 do
+      let k = Random.State.int rng 50 in
+      m :=
+        if Random.State.bool rng then Keyed.add k (Printf.sprintf "%d'" k) !m
+        else Keyed.remove k !m
+    done;
+    !m
+  in
+  let a = edit base and b = edit base in
+  let naive =
+    let keys =
+      List.sort_uniq compare
+        (List.map fst (bindings a) @ List.map fst (bindings b))
+    in
+    List.filter_map
+      (fun k ->
+        match (Keyed.find_opt k a, Keyed.find_opt k b) with
+        | Some x, None -> Some (k, `Removed x)
+        | None, Some y -> Some (k, `Added y)
+        | Some x, Some y when x != y -> Some (k, `Changed (x, y))
+        | _ -> None)
+      keys
+  in
+  let diff =
+    Keyed.symmetric_diff a b
+      (fun k change acc ->
+        let c =
+          match change with
+          | Keyed.Removed x -> `Removed x
+          | Added y -> `Added y
+          | Changed (x, y) -> `Changed (x, y)
+        in
+        (k, c) :: acc)
+      []
+    |> List.rev
+  in
+  is_true ~msg:"the naive difference" (diff = naive)
+
+let orders () =
+  let a = ints [ (1, "a") ] and b = ints [ (2, "b") ] in
+  is_true ~msg:"one compare function, one order" (Keyed.order a == Keyed.order b);
+  let reversed = Keyed.of_list ~compare:(fun x y -> Int.compare y x) [] in
+  raises_match ~msg:"maps of two orders"
+    (function Invalid_argument _ -> true | _ -> false)
+    (fun () -> ignore (Keyed.symmetric_diff a reversed (fun _ _ n -> n + 1) 0));
+  let copy = Keyed.add 3 "c" (Keyed.empty ~compare:(Keyed.order a)) in
+  equal ~msg:"a map made in another's order" int 2
+    (Keyed.symmetric_diff a copy (fun _ _ n -> n + 1) 0)
+
 let items_of_keyed () =
   let m = ints [ (2, "b"); (1, "a"); (3, "c") ] in
   let items = Items.of_keyed m in
@@ -57,6 +147,10 @@ let () =
           test "ordered" ordered;
           test "add and remove" add_and_remove;
           test "duplicates" duplicates;
+          test "positions" positions;
+          prop ~count:300 "symmetric_diff is the difference" Gen.int
+            symmetric_diff_is_the_difference;
+          test "orders" orders;
         ];
       group "Items" [ test "of_keyed" items_of_keyed ];
     ]

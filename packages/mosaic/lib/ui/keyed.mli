@@ -65,49 +65,62 @@ val of_list : compare:('k -> 'k -> int) -> ('k * 'v) list -> ('k, 'v) t
     [compare]. Of two bindings of one key, the later one stays, as with {!add}.
 *)
 
-(**/**)
+val iter : ('k -> 'v -> unit) -> ('k, 'v) t -> unit
+(** [iter f m] applies [f] to the bindings of [m] in order, in time linear in
+    their number. *)
 
-module Private : sig
-  val iter : ('k -> 'v -> unit) -> ('k, 'v) t -> unit
-  (** [iter f m] applies [f] to the bindings of [m] in order. *)
+val find_map : ('v -> 'a option) -> ('k, 'v) t -> 'a option
+(** [find_map f m] is the first [Some] that [f] gives on the values of [m], in
+    order, if any. *)
 
-  val nth : ('k, 'v) t -> int -> 'k * 'v
-  (** [nth m i] is the binding at position [i] of [m], in its order.
+(** {1:positions Positions}
 
-      Raises [Invalid_argument] if [i] is not a position of [m]. *)
+    A binding's {e position} is the number of bindings before it in the map's
+    order. Each map holds the size of its subtrees, so reading by position takes
+    the logarithmic time of a lookup, as a list view does to show a page of a
+    long log. *)
 
-  type ('a, 'b) change = Removed of 'a | Added of 'b | Changed of 'a * 'b
+val nth : ('k, 'v) t -> int -> 'k * 'v
+(** [nth m i] is the binding at position [i] of [m].
 
-  val empty_like : ('k, 'v) t -> ('k, 'w) t
-  (** [empty_like m] is the map with no binding in [m]'s order. *)
+    Raises [Invalid_argument] if [i] is not in [0] to [cardinal m - 1]. *)
 
-  val same_order : ('k, 'a) t -> ('k, 'b) t -> bool
-  (** [same_order a b] is [true] iff [a] and [b] were made with the same
-      [compare] function, physically. *)
+val rank : ('k, 'v) t -> 'k -> int
+(** [rank m k] is the number of keys of [m] before [k] in its order: [k]'s
+    position when it is bound, else the position it would have. *)
 
-  val diff :
-    ('k, 'a) t ->
-    ('k, 'b) t ->
-    ('k -> ('a, 'b) change -> 'acc -> 'acc) ->
-    'acc ->
-    'acc
-  (** [diff a b f acc] folds [f] over the keys bound in one map and not the
-      other, and those whose values differ physically, in order. It skips the
-      subtrees the two maps share, so its time follows what changed from [a] to
-      [b].
+val fold_range :
+  ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> int -> int -> 'acc -> 'acc
+(** [fold_range f m lo hi acc] folds [f] over the bindings at positions [lo] to
+    [hi - 1], in order, in time logarithmic in the size of [m] and linear in
+    [hi - lo]. Positions outside [m] are none. *)
 
-      Raises [Invalid_argument] if [a] and [b] were made with different
-      [compare] functions. *)
+(** {1:changes Changes} *)
 
-  val rank : ('k, 'v) t -> 'k -> int
-  (** [rank m k] is the number of keys of [m] before [k] in its order. *)
+val order : ('k, 'v) t -> 'k -> 'k -> int
+(** [order m] is the [compare] function [m] was made with, which every map made
+    from [m] keeps. [empty ~compare:(order m)] is an empty map in [m]'s order.
+    Two maps have one order when their orders are the same function, physically.
+*)
 
-  val fold_range :
-    ('k -> 'v -> 'acc -> 'acc) -> ('k, 'v) t -> int -> int -> 'acc -> 'acc
-  (** [fold_range f m lo hi acc] folds [f] over the bindings of [m] at the
-      positions from [lo] to [hi - 1], in order, in time logarithmic in the size
-      of [m] and linear in [hi - lo]. *)
+(** The type for the change of a key from one map to another. *)
+type ('a, 'b) change =
+  | Removed of 'a  (** Bound in the first map only, to this value. *)
+  | Added of 'b  (** Bound in the second map only, to this value. *)
+  | Changed of 'a * 'b
+      (** Bound in both, to these values, which differ physically. *)
 
-  val find_map : ('v -> 'a option) -> ('k, 'v) t -> 'a option
-  (** [find_map f m] is the first [Some] [f] gives on [m]'s values in order. *)
-end
+val symmetric_diff :
+  ('k, 'a) t ->
+  ('k, 'b) t ->
+  ('k -> ('a, 'b) change -> 'acc -> 'acc) ->
+  'acc ->
+  'acc
+(** [symmetric_diff a b f acc] folds [f] over the keys whose bindings differ
+    from [a] to [b], in order: those bound in one map only, and those bound in
+    both to values that differ physically. It skips the subtrees the two maps
+    share, so when [b] was made from [a] by a few {!add}s and {!remove}s its
+    time follows them, not the size of the maps. This is how [Mosaic.keyed]
+    finds what changed in a map a view declares again.
+
+    Raises [Invalid_argument] if [a] and [b] do not have one {!order}. *)

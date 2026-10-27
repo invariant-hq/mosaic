@@ -190,6 +190,6 @@ val map : ('a -> 'b) -> 'a t -> 'b t
 val keyed : ('k, 'v) Keyed.t -> ('k -> 'v -> 'msg t) -> 'msg t
 (** [keyed m item] is [Keyed (m, item)], [Mosaic.keyed]. The reconciler keeps
     one span per binding and the map it declared last, and compares that map
-    with the next one ([Keyed.Private.diff]). The erasure of the keys' and
+    with the next one ([Keyed.symmetric_diff]). The erasure of the keys' and
     values' types is sound as [map]'s is: a kept binding's view is reused only
     while its value and [item] are physically those it was built from. *)
