@@ -5,16 +5,16 @@
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
 # ocaml: 5.5.1 · 64-bit · release
 
-element/box	alloc_words	exact	28
-element/button	alloc_words	exact	85
-element/map	alloc_words	exact	23
+element/box	alloc_words	exact	27
+element/button	alloc_words	exact	83
+element/map	alloc_words	exact	22
 element/memo	alloc_words	exact	11
-element/text	alloc_words	exact	20
-mount-and-empty/keyed-list-20000	alloc_words	exact	7760180
-mount-and-unmount/keyed-list-20000	alloc_words	exact	7666192
-mount-retype-and-empty/unkeyed-list-20000	alloc_words	exact	25120256
-reconcile/nested-map-3-over-1000	alloc_words	exact	23157
-reconcile/reorder-keyed-list-500	alloc_words	exact	23694
-reconcile/reorder-keyed-list-5000	alloc_words	exact	241610
-reconcile/steady-keyed-list-500	alloc_words	exact	16625
-reconcile/steady-keyed-list-5000	alloc_words	exact	171541
+element/text	alloc_words	exact	19
+mount-and-empty/keyed-list-20000	alloc_words	exact	7720180
+mount-and-unmount/keyed-list-20000	alloc_words	exact	7626190
+mount-retype-and-empty/unkeyed-list-20000	alloc_words	exact	25000256
+reconcile/nested-map-3-over-1000	alloc_words	exact	22156
+reconcile/reorder-keyed-list-500	alloc_words	exact	23193
+reconcile/reorder-keyed-list-5000	alloc_words	exact	236609
+reconcile/steady-keyed-list-500	alloc_words	exact	16124
+reconcile/steady-keyed-list-5000	alloc_words	exact	166540

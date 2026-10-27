@@ -11,74 +11,6 @@ type 'msg handlers = {
   on_size : (w:int -> h:int -> 'msg option) option;
 }
 
-(* ───── Element Kind ───── *)
-
-type kind =
-  | Box of Box.Props.t
-  | Text of Text.Props.t
-  | Slider of Slider.Props.t
-  | Text_input of Text_input.Props.t
-  | Select of Select.Props.t
-  | Tab_select of Tab_select.Props.t
-  | Canvas
-  | Picture of Matrix_grid.picture
-  | Spinner of Spinner.Props.t
-  | Progress_bar of Progress_bar.Props.t
-  | Scroll_bar of Scroll_bar.Props.t
-  | Scroll_box of Scroll_box.Props.t
-  | Textarea of Textarea.Props.t
-  | Table of Table.Props.t
-  | Code of Code.Props.t
-  | Line_number of Line_number.Props.t
-  | Markdown of Markdown.Props.t
-  | Diff of Diff.Props.t
-  | Tree of Tree.Props.t
-
-(* ───── Widget Callbacks ───── *)
-
-type 'msg widget_callbacks =
-  | No_callbacks
-  | Slider_callbacks of { on_value_change : (float -> 'msg) option }
-  | Input_callbacks of {
-      on_change : (Editor.t -> 'msg) option;
-      on_submit : (string -> 'msg) option;
-    }
-  | Select_callbacks of {
-      on_change : (int -> 'msg) option;
-      on_activate : (int -> 'msg) option;
-    }
-  | Tab_select_callbacks of {
-      on_change : (int -> 'msg) option;
-      on_activate : (int -> 'msg) option;
-    }
-  | Text_callbacks of {
-      on_selection : ((int * int) option -> 'msg option) option;
-    }
-  | Canvas_callbacks of { on_draw : (Canvas.t -> dt:float -> unit) option }
-  | Scroll_bar_callbacks of { on_change : (int -> 'msg) option }
-  | Scroll_box_callbacks of { on_scroll : (Scroll.t -> 'msg) option }
-  | Textarea_callbacks of {
-      on_change : (Editor.t -> 'msg) option;
-      on_submit : (string -> 'msg) option;
-    }
-  | Code_callbacks of {
-      on_selection : ((int * int) option -> 'msg option) option;
-    }
-  | Markdown_callbacks of {
-      on_selection : (string option -> 'msg option) option;
-    }
-  | Diff_callbacks of { on_line_click : (Diff.line_hit -> 'msg option) option }
-  | Table_callbacks of {
-      on_change : (int -> 'msg) option;
-      on_activate : (int -> 'msg) option;
-      on_hover : (int option -> 'msg option) option;
-    }
-  | Tree_callbacks of {
-      on_change : (Tree.State.t -> 'msg) option;
-      on_activate : (Tree.item -> 'msg) option;
-    }
-  | Modal_callbacks of { on_close : (unit -> 'msg) option }
-
 (* ───── Attributes ───── *)
 
 type attrs = {
@@ -107,14 +39,17 @@ type 'msg t =
 
 and 'msg memo = { key : Obj.t; view : Obj.t; build : unit -> 'msg t }
 
-and 'msg element = {
-  kind : kind;
-  key : string option;
-  attrs : attrs;
-  handlers : 'msg handlers;
-  callbacks : 'msg widget_callbacks;
-  children : 'msg t list;
-}
+and 'msg element =
+  | E : {
+      kind : ('props, 'event, 'w) Kind.t;
+      props : 'props;
+      on : 'event -> 'msg option;
+      key : string option;
+      attrs : attrs;
+      handlers : 'msg handlers;
+      children : 'msg t list;
+    }
+      -> 'msg element
 
 and 'msg viewport_switch = {
   at_least_width : int;
@@ -239,23 +174,23 @@ let no_handlers =
 (* Every element's attributes and handlers. [focusable] is the kind's
    default, and an element that asks for focus is focusable whatever its
    kind. *)
-let element ?key ~style ?visible ?z_index ?opacity ~focusable ?focused ?buffered
-    ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ~callbacks kind children =
+let element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
+    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ~kind
+    ?(on = Kind.no_handler) props children =
   let attrs =
     match
       (visible, z_index, opacity, focused, buffered, live, on_focus_request)
     with
     | None, None, None, None, None, None, None
       when style == Toffee.Style.default ->
-        if focusable then focusable_attrs else unfocusable_attrs
+        if kind.Kind.focusable then focusable_attrs else unfocusable_attrs
     | _ ->
         {
           style;
           visible = Option.value visible ~default:true;
           z_index = Option.value z_index ~default:0;
           opacity = Option.value opacity ~default:1.0;
-          focusable = focusable || Option.is_some on_focus_request;
+          focusable = kind.Kind.focusable || Option.is_some on_focus_request;
           focused = Option.value focused ~default:false;
           buffered = Option.value buffered ~default:false;
           live = Option.value live ~default:false;
@@ -275,9 +210,7 @@ let element ?key ~style ?visible ?z_index ?opacity ~focusable ?focused ?buffered
             Option.map (fun message () -> message) on_focus_request;
         }
   in
-  Element { kind; key; attrs; handlers; callbacks; children }
-
-(* ───── Transformation ───── *)
+  Element (E { kind; props; on; key; attrs; handlers; children })
 
 let map f vnode = Map (f, vnode)
 let keyed m item = Keyed (m, item)

@@ -7,8 +7,7 @@
 
     An element that declares no attribute or handler shares one record of each
     with every such element, and the reconciler compares an element's
-    {!type-attrs} and {!type-kind} physically before it compares them by value.
-*)
+    {!type-attrs} and props physically before it compares them by value. *)
 
 open Mosaic_ui
 
@@ -24,85 +23,8 @@ type 'msg handlers = {
 }
 (** The type for generic terminal event handlers, parameterised by the message
     type. Raw handlers return [None] to ignore an event. [on_focus_request] is
-    invoked lazily on a pointer focus request, never while mapping a view.
-    Widget-specific semantic callbacks, such as a slider's value changes, live
-    in {!type-widget_callbacks}. *)
-
-(** {1:kind Element kind} *)
-
-type kind =
-  | Box of Box.Props.t
-  | Text of Text.Props.t
-  | Slider of Slider.Props.t
-  | Text_input of Text_input.Props.t
-  | Select of Select.Props.t
-  | Tab_select of Tab_select.Props.t
-  | Canvas
-  | Picture of Matrix_grid.picture
-  | Spinner of Spinner.Props.t
-  | Progress_bar of Progress_bar.Props.t
-  | Scroll_bar of Scroll_bar.Props.t
-  | Scroll_box of Scroll_box.Props.t
-  | Textarea of Textarea.Props.t
-  | Table of Table.Props.t
-  | Code of Code.Props.t
-  | Line_number of Line_number.Props.t
-  | Markdown of Markdown.Props.t
-  | Diff of Diff.Props.t
-  | Tree of Tree.Props.t
-      (** The type for widget kind and visual configuration. Values are
-          monomorphic. They are shared by reference across {!val-map} and used
-          for physical-equality fast paths in the reconciler. *)
-
-(** {1:callbacks Widget callbacks} *)
-
-(** The type for per-widget semantic callbacks, parameterised by the message
-    type. Separated from {!type-handlers} so that adding new widget callbacks
-    does not pollute the generic handler record. Separated from {!type-kind} so
-    that visual props remain monomorphic. *)
-type 'msg widget_callbacks =
-  | No_callbacks
-  | Slider_callbacks of { on_value_change : (float -> 'msg) option }
-  | Input_callbacks of {
-      on_change : (Editor.t -> 'msg) option;
-      on_submit : (string -> 'msg) option;
-    }
-  | Select_callbacks of {
-      on_change : (int -> 'msg) option;
-      on_activate : (int -> 'msg) option;
-    }
-  | Tab_select_callbacks of {
-      on_change : (int -> 'msg) option;
-      on_activate : (int -> 'msg) option;
-    }
-  | Text_callbacks of {
-      on_selection : ((int * int) option -> 'msg option) option;
-    }
-  | Canvas_callbacks of { on_draw : (Canvas.t -> dt:float -> unit) option }
-  | Scroll_bar_callbacks of { on_change : (int -> 'msg) option }
-  | Scroll_box_callbacks of { on_scroll : (Scroll.t -> 'msg) option }
-  | Textarea_callbacks of {
-      on_change : (Editor.t -> 'msg) option;
-      on_submit : (string -> 'msg) option;
-    }
-  | Code_callbacks of {
-      on_selection : ((int * int) option -> 'msg option) option;
-    }
-  | Markdown_callbacks of {
-      on_selection : (string option -> 'msg option) option;
-    }
-  | Diff_callbacks of { on_line_click : (Diff.line_hit -> 'msg option) option }
-  | Table_callbacks of {
-      on_change : (int -> 'msg) option;
-      on_activate : (int -> 'msg) option;
-      on_hover : (int option -> 'msg option) option;
-    }
-  | Tree_callbacks of {
-      on_change : (Tree.State.t -> 'msg) option;
-      on_activate : (Tree.item -> 'msg) option;
-    }
-  | Modal_callbacks of { on_close : (unit -> 'msg) option }
-      (** A box with these callbacks is a modal ([Mosaic.modal]). *)
+    invoked lazily on a pointer focus request. A widget's own events, such as a
+    slider's value changes, go to the element's handler ([on]). *)
 
 (** {1:attrs Attributes} *)
 
@@ -142,7 +64,8 @@ type 'msg t =
   | Empty
       (** The type for a virtual node in the UI tree.
 
-          - [Element] is a widget with kind, attributes, handlers, and children.
+          - [Element] is a widget of a kind, with its props, attributes,
+            handlers and children.
           - [Fragment] groups multiple vnodes without a wrapper element.
           - [Viewport_switch] selects one branch from the current terminal
             viewport width before reconciliation and layout.
@@ -156,17 +79,21 @@ type 'msg t =
             ({!val-keyed}).
           - [Empty] renders nothing. *)
 
-and 'msg element = {
-  kind : kind;
-  key : string option;
-  attrs : attrs;
-  handlers : 'msg handlers;
-  callbacks : 'msg widget_callbacks;
-  children : 'msg t list;
-}
-(** The type for an element vnode, carrying its {!type-kind}, an optional
-    reconciliation key, {!type-attrs}, generic {!type-handlers}, widget-specific
-    {!type-widget_callbacks}, and children. *)
+and 'msg element =
+  | E : {
+      kind : ('props, 'event, 'w) Kind.t;
+      props : 'props;
+      on : 'event -> 'msg option;
+          (** The element's handler: what each event of its widget means. *)
+      key : string option;
+      attrs : attrs;
+      handlers : 'msg handlers;
+      children : 'msg t list;
+    }
+      -> 'msg element
+      (** The type for an element vnode: a widget of a kind ([Mosaic.Element])
+          with its props and handler, an optional reconciliation key,
+          {!type-attrs}, generic {!type-handlers}, and children. *)
 
 and 'msg viewport_switch = {
   at_least_width : int;
@@ -218,7 +145,6 @@ val element :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
-  focusable:bool ->
   ?focused:bool ->
   ?buffered:bool ->
   ?live:bool ->
@@ -228,14 +154,15 @@ val element :
   ?on_click:(Event.mouse -> 'msg option) ->
   ?on_focus_request:'msg ->
   ?on_size:(w:int -> h:int -> 'msg option) ->
-  callbacks:'msg widget_callbacks ->
-  kind ->
+  kind:('props, 'event, 'w) Kind.t ->
+  ?on:('event -> 'msg option) ->
+  'props ->
   'msg t list ->
   'msg t
-(** [element ~style ~focusable ~callbacks kind children] is an element of [kind]
-    laid out by [style]. [focusable] is the kind's default; the element is
-    focusable when it is or when it has [on_focus_request]. The other attributes
-    take [Mosaic]'s defaults. *)
+(** [element ~style ~kind props children] is an element of [kind] with [props],
+    laid out by [style]. It is focusable when its kind's elements are or when it
+    has [on_focus_request]. [on] defaults to [Kind.no_handler]. The other
+    attributes take [Mosaic]'s defaults. *)
 
 (** {1:transform Transformation} *)
 

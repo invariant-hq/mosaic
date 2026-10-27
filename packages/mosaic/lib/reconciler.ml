@@ -1,279 +1,6 @@
 open Mosaic_ui
 
-(* ───── Instance Operations ───── *)
-
-(* A picture's node, its picture, and the style its element declares. *)
-type picture = {
-  node : Renderable.t;
-  mutable picture : Matrix_grid.picture;
-  mutable style : Toffee.Style.t;
-}
-
-type instance =
-  | Box_instance of Box.t
-  | Text_instance of Text.t
-  | Slider_instance of Slider.t
-  | Text_input_instance of Text_input.t
-  | Select_instance of Select.t
-  | Tab_select_instance of Tab_select.t
-  | Canvas_instance of Canvas.t
-  | Picture_instance of picture
-  | Spinner_instance of Spinner.t
-  | Progress_bar_instance of Progress_bar.t
-  | Scroll_bar_instance of Scroll_bar.t
-  | Scroll_box_instance of Scroll_box.t
-  | Textarea_instance of Textarea.t
-  | Table_instance of Table.t
-  | Code_instance of Code.t
-  | Line_number_instance of Line_number.t
-  | Markdown_instance of Markdown.t
-  | Diff_instance of Diff.t
-  | Tree_instance of Tree.t
-
-let node_of = function
-  | Box_instance b -> Box.node b
-  | Text_instance t -> Text.node t
-  | Slider_instance s -> Slider.node s
-  | Text_input_instance i -> Text_input.node i
-  | Select_instance s -> Select.node s
-  | Tab_select_instance ts -> Tab_select.node ts
-  | Canvas_instance c -> Canvas.node c
-  | Picture_instance p -> p.node
-  | Spinner_instance s -> Spinner.node s
-  | Progress_bar_instance pb -> Progress_bar.node pb
-  | Scroll_bar_instance sb -> Scroll_bar.node sb
-  | Scroll_box_instance sb -> Scroll_box.node sb
-  | Textarea_instance ta -> Textarea.node ta
-  | Table_instance t -> Table.node t
-  | Code_instance c -> Code.node c
-  | Line_number_instance ln -> Line_number.node ln
-  | Markdown_instance md -> Markdown.node md
-  | Diff_instance d -> Diff.node d
-  | Tree_instance tr -> Tree.node tr
-
-(* A spinner's node is live while its element is declared live and its
-   frame set animates. The widget sets the node live from its frame set alone
-   whenever its props are applied, so this runs after it. *)
-let set_spinner_live spinner (attrs : Vnode.attrs) =
-  Renderable.set_live (Spinner.node spinner)
-    (attrs.live && Spinner.animates spinner)
-
-(* A picture's ratio of columns to rows, at the terminal's cell size. *)
-let picture_ratio p =
-  let pw, ph = Matrix_grid.picture_size p.picture in
-  let cw, ch =
-    Option.value (Renderable.Private.cell_size p.node) ~default:(10, 20)
-  in
-  float pw /. float cw /. (float ph /. float ch)
-
-(* A picture is a replaced element, as an image is in CSS: its parent's layout
-   decides whether it stretches (a flex container's does, a block's and a
-   grid's [normal] alignment do not), and its measure function gives its size
-   where nothing does. It keeps its ratio through layout: the style it
-   declares, with that ratio when it sets none. *)
-let picture_style p =
-  let style = Toffee.Style.set_item_is_replaced true p.style in
-  match Toffee.Style.aspect_ratio style with
-  | Some _ -> style
-  | None -> Toffee.Style.set_aspect_ratio (Some (picture_ratio p)) style
-
-let apply_picture_style p = Renderable.set_style p.node (picture_style p)
-
-(* Where the layout leaves its size to the content: the picture's size in
-   cells, cut to the space available, its ratio kept, as Flutter's RenderImage
-   fits an image's size into its constraints. A replaced element is given the
-   same known size when it is measured and when it is laid out, so the two
-   agree. *)
-let picture_measure p ~known_dimensions ~available_space ~style:_ =
-  let pw, _ = Matrix_grid.picture_size p.picture in
-  let cw =
-    Option.value (Renderable.Private.cell_size p.node) ~default:(10, 20) |> fst
-  in
-  let ratio = picture_ratio p in
-  let open Toffee.Geometry.Size in
-  let avail d = Toffee.Available_space.to_option d in
-  match (known_dimensions.width, known_dimensions.height) with
-  | Some width, Some height -> { width; height }
-  | Some width, None -> { width; height = Float.ceil (width /. ratio) }
-  | None, Some height -> { width = Float.ceil (height *. ratio); height }
-  | None, None -> (
-      let cols = Float.ceil (float pw /. float cw) in
-      (* Its content can shrink to a cell, as an image's in a column. *)
-      let width =
-        match available_space.width with
-        | Toffee.Available_space.Definite w when w > 0. -> Float.min cols w
-        | Min_content -> 1.
-        | _ -> cols
-      in
-      let height = Float.ceil (width /. ratio) in
-      match avail available_space.height with
-      | Some h when h > 0. && height > h ->
-          { width = Float.min width (Float.ceil (h *. ratio)); height = h }
-      | _ -> { width; height })
-
-(* A cell size learnt or changed since the style was set changes the ratio,
-   which the next layout takes. *)
-let picture_render p self grid ~dt:_ =
-  let style = picture_style p in
-  if
-    Toffee.Style.aspect_ratio style
-    <> Toffee.Style.aspect_ratio (Renderable.style p.node)
-  then (
-    Renderable.set_style p.node style;
-    Renderable.request_render p.node);
-  Matrix_grid.draw_picture grid ~x:(Renderable.x self) ~y:(Renderable.y self)
-    ~width:(Renderable.width self) ~height:(Renderable.height self) p.picture
-
-let create_instance ~(parent : Renderable.t) (kind : Vnode.kind)
-    (attrs : Vnode.attrs) : instance =
-  let inst =
-    match kind with
-    | Vnode.Box spec ->
-        let box =
-          Box.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Box.apply_props box spec;
-        Box_instance box
-    | Vnode.Text spec ->
-        let text =
-          Text.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Text.apply_props text spec;
-        Text_instance text
-    | Vnode.Slider spec ->
-        let slider =
-          Slider.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Slider.apply_props slider spec;
-        Slider_instance slider
-    | Vnode.Text_input spec ->
-        let input =
-          Text_input.create ~state:Editor.empty ~on_change:(Fun.const ())
-            ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Text_input.apply_props input spec;
-        Text_input_instance input
-    | Vnode.Canvas ->
-        let canvas =
-          Canvas.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Canvas_instance canvas
-    | Vnode.Picture p ->
-        let node =
-          Renderable.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        let p = { node; picture = p; style = attrs.style } in
-        apply_picture_style p;
-        Renderable.set_measure node (Some (picture_measure p));
-        Renderable.set_render node (picture_render p);
-        Picture_instance p
-    | Vnode.Select spec ->
-        let select =
-          Select.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Select.apply_props select spec;
-        Select_instance select
-    | Vnode.Tab_select spec ->
-        let tab_select =
-          Tab_select.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ~options:[] ()
-        in
-        Tab_select.apply_props tab_select spec;
-        Tab_select_instance tab_select
-    | Vnode.Spinner spec ->
-        let spinner =
-          Spinner.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Spinner.apply_props spinner spec;
-        Spinner_instance spinner
-    | Vnode.Progress_bar spec ->
-        let progress_bar =
-          Progress_bar.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Progress_bar.apply_props progress_bar spec;
-        Progress_bar_instance progress_bar
-    | Vnode.Scroll_bar spec ->
-        let scroll_bar =
-          Scroll_bar.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Scroll_bar.apply_props scroll_bar spec;
-        Scroll_bar_instance scroll_bar
-    | Vnode.Scroll_box spec ->
-        let scroll_box =
-          Scroll_box.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Scroll_box.apply_props scroll_box spec;
-        Scroll_box_instance scroll_box
-    | Vnode.Textarea spec ->
-        let textarea =
-          Textarea.create ~state:Editor.empty ~on_change:(Fun.const ()) ~parent
-            ~style:attrs.style ~visible:attrs.visible ~z_index:attrs.z_index
-            ~opacity:attrs.opacity ()
-        in
-        Textarea.apply_props textarea spec;
-        Textarea_instance textarea
-    | Vnode.Table spec ->
-        let table =
-          Table.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Table.apply_props table spec;
-        Table_instance table
-    | Vnode.Code spec ->
-        let code =
-          Code.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Code.apply_props code spec;
-        Code_instance code
-    | Vnode.Line_number spec ->
-        let ln =
-          Line_number.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Line_number.apply_props ln spec;
-        Line_number_instance ln
-    | Vnode.Markdown spec ->
-        let md =
-          Markdown.create ~parent ~layout_style:attrs.style
-            ~visible:attrs.visible ~z_index:attrs.z_index ~opacity:attrs.opacity
-            ()
-        in
-        Markdown.apply_props md spec;
-        Markdown_instance md
-    | Vnode.Diff spec ->
-        let d =
-          Diff.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity (Diff.Patch.make [])
-        in
-        Diff.apply_props d spec;
-        Diff_instance d
-    | Vnode.Tree spec ->
-        let tree =
-          Tree.create ~parent ~style:attrs.style ~visible:attrs.visible
-            ~z_index:attrs.z_index ~opacity:attrs.opacity ()
-        in
-        Tree.apply_props tree spec;
-        Tree_instance tree
-  in
-  let node = node_of inst in
-  Renderable.set_focusable node (attrs.focusable || attrs.focused);
-  if attrs.buffered then Renderable.set_buffered node true;
-  (match inst with
-  | Spinner_instance spinner -> set_spinner_live spinner attrs
-  | _ -> if attrs.live then Renderable.set_live node true);
-  inst
+(* ───── Common attributes ───── *)
 
 let update_common (node : Renderable.t) ~(old_attrs : Vnode.attrs)
     ~(new_attrs : Vnode.attrs) : bool =
@@ -303,174 +30,6 @@ let update_common (node : Renderable.t) ~(old_attrs : Vnode.attrs)
      Box.set_style adds border insets and Scroll_box.set_style its root
      overrides; Renderable.set_style does not. *)
   !changed
-
-let set_instance_style (inst : instance) (style : Toffee.Style.t) : unit =
-  match inst with
-  | Box_instance box -> Box.set_style box style
-  | Scroll_box_instance scroll_box -> Scroll_box.set_style scroll_box style
-  | Markdown_instance md -> Markdown.set_layout_style md style
-  | Picture_instance p ->
-      p.style <- style;
-      apply_picture_style p
-  | _ -> Renderable.set_style (node_of inst) style
-
-(* What [update_instance] found changed: the attributes, the kind, both or
-   neither. *)
-let attrs_changed = 1
-let kind_changed_bit = 2
-
-(* Accepted state only changes through declarations, so physical sharing is
-   a valid fast path for every widget. The result says which of the
-   element's records differ from the fiber's: a record that does not differ
-   equals the fiber's in every field, so the fiber keeps its own. *)
-let update_instance (inst : instance) ~(old_attrs : Vnode.attrs)
-    ~(new_attrs : Vnode.attrs) ~(old_kind : Vnode.kind) ~(new_kind : Vnode.kind)
-    : int =
-  if old_attrs == new_attrs && old_kind == new_kind then 0
-  else
-    let common_changed =
-      if old_attrs == new_attrs then false
-      else update_common (node_of inst) ~old_attrs ~new_attrs
-    in
-    (* A layout shared by many elements is the same record on every render,
-       and comparing it physically first costs nothing per field. *)
-    let style_changed =
-      if old_attrs == new_attrs || old_attrs.style == new_attrs.style then false
-      else if old_attrs.style <> new_attrs.style then (
-        set_instance_style inst new_attrs.style;
-        true)
-      else false
-    in
-    let kind_changed =
-      match (inst, old_kind, new_kind) with
-      | _ when old_kind == new_kind -> false
-      | _ -> (
-          match (inst, old_kind, new_kind) with
-          | ( Text_input_instance input,
-              Vnode.Text_input old_spec,
-              Vnode.Text_input new_spec ) ->
-              if Text_input.Props.equal old_spec new_spec then false
-              else (
-                Text_input.apply_props input new_spec;
-                true)
-          | ( Textarea_instance textarea,
-              Vnode.Textarea old_spec,
-              Vnode.Textarea new_spec ) ->
-              if Textarea.Props.equal old_spec new_spec then false
-              else (
-                Textarea.apply_props textarea new_spec;
-                true)
-          | Box_instance box, Vnode.Box old_spec, Vnode.Box new_spec ->
-              if Box.Props.equal old_spec new_spec then false
-              else (
-                Box.apply_props box new_spec;
-                true)
-          | Text_instance text, Vnode.Text old_spec, Vnode.Text new_spec ->
-              if Text.Props.equal old_spec new_spec then false
-              else (
-                Text.apply_props text new_spec;
-                true)
-          | Slider_instance slider, Vnode.Slider old_spec, Vnode.Slider new_spec
-            ->
-              if Slider.Props.equal old_spec new_spec then false
-              else (
-                Slider.apply_props slider new_spec;
-                true)
-          | Select_instance select, Vnode.Select old_spec, Vnode.Select new_spec
-            ->
-              if Select.Props.equal old_spec new_spec then false
-              else (
-                Select.apply_props select new_spec;
-                true)
-          | ( Tab_select_instance tab_select,
-              Vnode.Tab_select old_spec,
-              Vnode.Tab_select new_spec ) ->
-              if Tab_select.Props.equal old_spec new_spec then false
-              else (
-                Tab_select.apply_props tab_select new_spec;
-                true)
-          | Canvas_instance _, Vnode.Canvas, Vnode.Canvas -> false
-          | Picture_instance p, Vnode.Picture _, Vnode.Picture picture ->
-              if p.picture == picture then false
-              else (
-                p.picture <- picture;
-                apply_picture_style p;
-                Renderable.mark_dirty p.node;
-                true)
-          | ( Spinner_instance spinner,
-              Vnode.Spinner old_spec,
-              Vnode.Spinner new_spec ) ->
-              if Spinner.Props.equal old_spec new_spec then false
-              else (
-                Spinner.apply_props spinner new_spec;
-                true)
-          | ( Progress_bar_instance pb,
-              Vnode.Progress_bar old_spec,
-              Vnode.Progress_bar new_spec ) ->
-              if Progress_bar.Props.equal old_spec new_spec then false
-              else (
-                Progress_bar.apply_props pb new_spec;
-                true)
-          | ( Scroll_bar_instance scroll_bar,
-              Vnode.Scroll_bar old_spec,
-              Vnode.Scroll_bar new_spec ) ->
-              if Scroll_bar.Props.equal old_spec new_spec then false
-              else (
-                Scroll_bar.apply_props scroll_bar new_spec;
-                true)
-          | ( Scroll_box_instance scroll_box,
-              Vnode.Scroll_box old_spec,
-              Vnode.Scroll_box new_spec ) ->
-              if Scroll_box.Props.equal old_spec new_spec then false
-              else (
-                Scroll_box.apply_props scroll_box new_spec;
-                true)
-          | Table_instance table, Vnode.Table old_spec, Vnode.Table new_spec ->
-              if Table.Props.equal old_spec new_spec then false
-              else (
-                Table.apply_props table new_spec;
-                true)
-          | Code_instance code, Vnode.Code old_spec, Vnode.Code new_spec ->
-              if Code.Props.equal old_spec new_spec then false
-              else (
-                Code.apply_props code new_spec;
-                true)
-          | ( Line_number_instance ln,
-              Vnode.Line_number old_spec,
-              Vnode.Line_number new_spec ) ->
-              if Line_number.Props.equal old_spec new_spec then false
-              else (
-                Line_number.apply_props ln new_spec;
-                true)
-          | ( Markdown_instance md,
-              Vnode.Markdown old_spec,
-              Vnode.Markdown new_spec ) ->
-              if Markdown.Props.equal old_spec new_spec then false
-              else (
-                Markdown.apply_props md new_spec;
-                true)
-          | Diff_instance d, Vnode.Diff old_spec, Vnode.Diff new_spec ->
-              if Diff.Props.equal old_spec new_spec then false
-              else (
-                Diff.apply_props d new_spec;
-                true)
-          | Tree_instance tree, Vnode.Tree old_spec, Vnode.Tree new_spec ->
-              if Tree.Props.equal old_spec new_spec then false
-              else (
-                Tree.apply_props tree new_spec;
-                true)
-          | _ ->
-              invalid_arg "Reconciler: instance and kind mismatch during update"
-          )
-    in
-    (match inst with
-    | Spinner_instance spinner -> set_spinner_live spinner new_attrs
-    | _ -> ());
-    (if common_changed || style_changed then attrs_changed else 0)
-    lor if kind_changed then kind_changed_bit else 0
-
-let commit_update (inst : instance) : unit =
-  Renderable.request_render (node_of inst)
 
 (* ───── Messages and routes ───── *)
 
@@ -516,16 +75,24 @@ and modal = {
   inside : declared_focus;  (** Never [Modal]. *)
 }
 
-(* A parent's children: elements, embedded nodes, and memo spans. A span owns
-   the children its memo's view produced, so an unchanged memo keeps them
-   without visiting them. *)
-type child = Fiber of fiber | Embedded of Renderable.t | Span of span
+(* A parent's children: elements, embedded nodes, and spans. A fiber is an
+   element's widget of some kind, with the props, handler and attributes the
+   element declared last; its constructor hides the kind's types, which only
+   the kind's own operations need. *)
+type child =
+  | Fiber : ('props, 'event, 'w) fiber -> child
+  | Embedded of Renderable.t
+  | Span of span
 
-and fiber = {
-  mutable kind : Vnode.kind;
+and ('props, 'event, 'w) fiber = {
+  kind : ('props, 'event, 'w) Kind.t;
+  widget : 'w;
+  mutable props : 'props;
+  mutable on : 'event -> msg option;
+      (** The handler the element declared last, which the widget's events read
+          when they come. *)
   key : string option;
   mutable attrs : Vnode.attrs;
-  instance : instance;
   mutable children : child list;
   route : route;  (** Fixed for its life: a fiber never changes lists. *)
   mutable handlers : msg Vnode.handlers;
@@ -534,9 +101,6 @@ and fiber = {
   mutable declared_children : msg Vnode.t list;
   mutable viewport_width : int;
   mutable declared_focus : declared_focus;
-  mutable callbacks : msg Vnode.widget_callbacks;
-      (** The callbacks the element declared last, which the widget's own
-          callbacks read and send through [route]. *)
   mutable pass : int;  (** The last matching pass that matched it. *)
 }
 
@@ -574,237 +138,64 @@ and keyed = {
   mutable focused : (Obj.t, span) Keyed.t;
 }
 
-let fiber_node f = node_of f.instance
+let fiber_node f = f.kind.Kind.node f.widget
 
-(* Two kinds match when they are the same widget variant (Box/Text), regardless
-   of their props. *)
-let kind_matches (a : Vnode.kind) (b : Vnode.kind) : bool =
-  match (a, b) with
-  | Vnode.Box _, Vnode.Box _
-  | Vnode.Text _, Vnode.Text _
-  | Vnode.Slider _, Vnode.Slider _
-  | Vnode.Text_input _, Vnode.Text_input _
-  | Vnode.Select _, Vnode.Select _
-  | Vnode.Tab_select _, Vnode.Tab_select _
-  | Vnode.Canvas, Vnode.Canvas
-  | Vnode.Picture _, Vnode.Picture _
-  | Vnode.Spinner _, Vnode.Spinner _
-  | Vnode.Progress_bar _, Vnode.Progress_bar _
-  | Vnode.Scroll_bar _, Vnode.Scroll_bar _
-  | Vnode.Scroll_box _, Vnode.Scroll_box _
-  | Vnode.Textarea _, Vnode.Textarea _
-  | Vnode.Table _, Vnode.Table _
-  | Vnode.Code _, Vnode.Code _
-  | Vnode.Line_number _, Vnode.Line_number _
-  | Vnode.Markdown _, Vnode.Markdown _
-  | Vnode.Diff _, Vnode.Diff _
-  | Vnode.Tree _, Vnode.Tree _ ->
-      true
-  | _ -> false
+(* A spinner's node is live while its element is declared live and its
+   frame set animates. The widget sets the node live from its frame set alone
+   whenever its props are applied, so this runs after it. *)
+let apply_live : type p e w. (p, e, w) fiber -> unit =
+ fun f ->
+  match Type.Id.provably_equal f.kind.id Kinds.spinner.id with
+  | Some Type.Equal ->
+      Renderable.set_live (fiber_node f)
+        (f.attrs.live && Spinner.animates f.widget)
+  | None -> Renderable.set_live (fiber_node f) f.attrs.live
 
-(* Most widgets take stable callbacks that read the fiber's current callbacks
-   and send through its route. *)
-let install_callbacks (f : fiber) =
-  match f.instance with
-  | Slider_instance widget ->
-      Slider.set_on_change widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Slider_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_value_change
-             | _ -> ()));
-      ()
-  | Text_input_instance widget ->
-      Text_input.set_on_change widget (fun value ->
-          match f.callbacks with
-          | Vnode.Input_callbacks c ->
-              Option.iter (fun g -> send f.route (g value)) c.on_change
-          | _ -> ());
-      Text_input.set_on_submit widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Input_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_submit
-             | _ -> ()));
-      ()
-  | Textarea_instance widget ->
-      Textarea.set_on_change widget (fun value ->
-          match f.callbacks with
-          | Vnode.Textarea_callbacks c ->
-              Option.iter (fun g -> send f.route (g value)) c.on_change
-          | _ -> ());
-      Textarea.set_on_submit widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Textarea_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_submit
-             | _ -> ()));
-      ()
-  | Select_instance widget ->
-      Select.set_on_change widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Select_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_change
-             | _ -> ()));
-      Select.set_on_activate widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Select_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_activate
-             | _ -> ()));
-      ()
-  | Tab_select_instance widget ->
-      Tab_select.set_on_change widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Tab_select_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_change
-             | _ -> ()));
-      Tab_select.set_on_activate widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Tab_select_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_activate
-             | _ -> ()));
-      ()
-  | Scroll_bar_instance widget ->
-      Scroll_bar.set_on_change widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Scroll_bar_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_change
-             | _ -> ()));
-      ()
-  | Scroll_box_instance widget ->
-      Scroll_box.set_on_scroll widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Scroll_box_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_scroll
-             | _ -> ()));
-      ()
-  | Code_instance widget ->
-      Code.set_on_selection widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Code_callbacks c ->
-                 Option.iter
-                   (fun g -> send_option f.route (g value))
-                   c.on_selection
-             | _ -> ()));
-      ()
-  | Markdown_instance widget ->
-      Markdown.set_on_selection widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Markdown_callbacks c ->
-                 Option.iter
-                   (fun g -> send_option f.route (g value))
-                   c.on_selection
-             | _ -> ()));
-      ()
-  | Tree_instance widget ->
-      Tree.set_on_change widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Tree_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_change
-             | _ -> ()));
-      Tree.set_on_activate widget
-        (Some
-           (fun value ->
-             match f.callbacks with
-             | Vnode.Tree_callbacks c ->
-                 Option.iter (fun g -> send f.route (g value)) c.on_activate
-             | _ -> ()));
-      ()
-  | Canvas_instance widget ->
-      Canvas.set_on_draw widget
-        (Some
-           (fun canvas ~dt ->
-             match f.callbacks with
-             | Vnode.Canvas_callbacks c ->
-                 Option.iter (fun f -> f canvas ~dt) c.on_draw
-             | _ -> ()));
-      ()
-  | Table_instance _ | Diff_instance _ | Text_instance _ | Box_instance _
-  | Spinner_instance _ | Progress_bar_instance _ | Line_number_instance _
-  | Picture_instance _ ->
-      ()
+(* The handler a kind's [handler] hook takes: none for an element that
+   declares none, else one that sends through the handler [on] declared,
+   which a widget keeps for an event that outlives a reconciliation. *)
+let give_handler f =
+  match f.kind.handler with
+  | None -> ()
+  | Some handler ->
+      let on = f.on in
+      handler f.widget
+        (if on == Kind.no_handler then None
+         else Some (fun event -> send_option f.route (on event)))
 
-(* A table, a text and a diff take their callbacks when they are declared,
-   present or absent: a press snapshots a table's callbacks before user code
-   can reconcile a different domain-to-row mapping, and a text or a diff
-   without them selects and clicks as a plain one. *)
-let apply_presence (f : fiber) =
-  match (f.instance, f.callbacks) with
-  | Table_instance widget, Vnode.Table_callbacks c ->
-      Table.set_on_change widget
-        (Option.map (fun g value -> send f.route (g value)) c.on_change);
-      Table.set_on_activate widget
-        (Option.map (fun g value -> send f.route (g value)) c.on_activate);
-      Table.set_on_hover widget
-        (Option.map (fun g value -> send_option f.route (g value)) c.on_hover)
-  | Table_instance widget, _ ->
-      Table.set_on_change widget None;
-      Table.set_on_activate widget None;
-      Table.set_on_hover widget None
-  | Text_instance widget, Vnode.Text_callbacks c ->
-      Text.set_on_selection widget
-        (Option.map
-           (fun g value -> send_option f.route (g value))
-           c.on_selection)
-  | Text_instance widget, _ -> Text.set_on_selection widget None
-  | Diff_instance widget, Vnode.Diff_callbacks c ->
-      Diff.set_on_line_click widget
-        (Option.map
-           (fun _ hit ->
-             match f.callbacks with
-             | Vnode.Diff_callbacks c ->
-                 Option.iter
-                   (fun g -> send_option f.route (g hit))
-                   c.on_line_click
-             | _ -> ())
-           c.on_line_click)
-  | Diff_instance widget, _ -> Diff.set_on_line_click widget None
-  | _ -> ()
-
-(* The node's handlers read the fiber's current handlers and route when an
-   event comes, so each closure holds the fiber alone. *)
+(* The widget, its node's handlers and its events read the fiber's current
+   handlers, handler and route when an event comes, so each closure holds the
+   fiber alone. *)
 let create_fiber ~(parent : Renderable.t) ~route (elem : msg Vnode.element) :
-    fiber =
-  let instance = create_instance ~parent elem.kind elem.attrs in
-  let node = node_of instance in
-  Renderable.Private.set_focus_request node (focus_request route elem.handlers);
+    child =
+  let (E e) = elem in
+  let attrs = e.attrs in
+  let widget = e.kind.create ~parent ~layout:attrs.style e.props in
   let f =
     {
-      kind = elem.kind;
-      key = elem.key;
-      attrs = elem.attrs;
-      instance;
+      kind = e.kind;
+      widget;
+      props = e.props;
+      on = e.on;
+      key = e.key;
+      attrs;
       children = [];
       route;
-      handlers = elem.handlers;
+      handlers = e.handlers;
       declared_children = [];
       viewport_width = 0;
       declared_focus = Focus_none;
-      callbacks = elem.callbacks;
       pass = 0;
     }
   in
+  let node = fiber_node f in
+  if not attrs.visible then Renderable.set_visible node false;
+  if attrs.z_index <> 0 then Renderable.set_z_index node attrs.z_index;
+  if attrs.opacity <> 1.0 then Renderable.set_opacity node attrs.opacity;
+  Renderable.set_focusable node (attrs.focusable || attrs.focused);
+  if attrs.buffered then Renderable.set_buffered node true;
+  if attrs.live || Kind.same e.kind Kinds.spinner then apply_live f;
+  Renderable.Private.set_focus_request node (focus_request route e.handlers);
   Renderable.on_mouse node (fun ev ->
       Option.iter (fun g -> send_option f.route (g ev)) f.handlers.on_mouse);
   Renderable.Private.set_click_handler node
@@ -827,31 +218,58 @@ let create_fiber ~(parent : Renderable.t) ~route (elem : msg Vnode.element) :
       match f.handlers.on_paste with
       | Some h -> send_option f.route (h ev)
       | None -> ());
-  install_callbacks f;
-  apply_presence f;
-  f
+  Option.iter
+    (fun events ->
+      events widget (fun event -> send_option f.route (f.on event)))
+    e.kind.events;
+  give_handler f;
+  Fiber f
 
 (* A fiber keeps its records while the element's equal them, so the
    element's fresh records die young and an unchanged element writes
-   nothing into the fiber. *)
-let update_fiber (f : fiber) (elem : msg Vnode.element) : bool =
-  if f.handlers != elem.handlers then begin
-    Renderable.Private.set_focus_request (fiber_node f)
-      (focus_request f.route elem.handlers);
-    f.handlers <- elem.handlers
-  end;
-  if f.callbacks != elem.callbacks then begin
-    f.callbacks <- elem.callbacks;
-    apply_presence f
-  end;
-  let changed =
-    update_instance f.instance ~old_attrs:f.attrs ~new_attrs:elem.attrs
-      ~old_kind:f.kind ~new_kind:elem.kind
-  in
-  if changed land attrs_changed <> 0 then f.attrs <- elem.attrs;
-  if changed land kind_changed_bit <> 0 then f.kind <- elem.kind;
-  if changed <> 0 then commit_update f.instance;
-  changed <> 0
+   nothing into the fiber. [elem] must be of the fiber's kind. *)
+let update_fiber : type p e w. (p, e, w) fiber -> msg Vnode.element -> bool =
+ fun f (E e) ->
+  match Type.Id.provably_equal f.kind.id e.kind.id with
+  | None -> invalid_arg "Reconciler: an element of another kind"
+  | Some Type.Equal ->
+      if f.handlers != e.handlers then begin
+        Renderable.Private.set_focus_request (fiber_node f)
+          (focus_request f.route e.handlers);
+        f.handlers <- e.handlers
+      end;
+      if f.on != e.on then begin
+        f.on <- e.on;
+        give_handler f
+      end;
+      let old_attrs = f.attrs and new_attrs = e.attrs in
+      let attrs_changed =
+        old_attrs != new_attrs
+        &&
+        let common = update_common (fiber_node f) ~old_attrs ~new_attrs in
+        (* A layout shared by many elements is the same record on every
+           render, and comparing it physically first costs nothing per
+           field. *)
+        let style =
+          old_attrs.style != new_attrs.style
+          && old_attrs.style <> new_attrs.style
+        in
+        if style then f.kind.layout f.widget new_attrs.style;
+        common || style
+      in
+      let props_changed =
+        f.props != e.props && not (f.kind.equal f.props e.props)
+      in
+      if attrs_changed then f.attrs <- new_attrs;
+      if props_changed then begin
+        f.kind.update f.widget e.props;
+        f.props <- e.props
+      end;
+      if (attrs_changed || props_changed) && Kind.same f.kind Kinds.spinner then
+        apply_live f;
+      let changed = attrs_changed || props_changed in
+      if changed then Renderable.request_render (fiber_node f);
+      changed
 
 (* A fiber's descendants have their nodes under its node, except embedded
    nodes, which the application owns and which outlive the fiber. Fibers are
@@ -875,22 +293,32 @@ let rec embeds_under acc = function
   | Embedded n -> n :: acc
   | Span span -> fold_children embeds_under acc span
 
-(* Destroys [fibers], in order, and detaches [embeds] with them. *)
-let destroy_fibers ?(embeds = []) fibers =
+let child_node = function
+  | Fiber f -> fiber_node f
+  | Embedded n -> n
+  | Span _ -> invalid_arg "Reconciler: a span has no node"
+
+(* Destroys [fibers], each a [Fiber], in order, and detaches [embeds] with
+   them. *)
+let destroy_fibers ?(embeds = []) (fibers : child list) =
   let embeds =
     List.fold_left
-      (fun acc f -> List.fold_left embeds_under acc f.children)
+      (fun acc -> function
+        | Fiber f -> List.fold_left embeds_under acc f.children
+        | Embedded _ | Span _ -> acc)
       (List.rev embeds) fibers
   in
   Renderable.Private.detach_all
-    (List.rev_append embeds (List.map fiber_node fibers));
-  List.iter (fun f -> Renderable.destroy_recursively (fiber_node f)) fibers
+    (List.rev_append embeds (List.map child_node fibers));
+  List.iter
+    (fun fiber -> Renderable.destroy_recursively (child_node fiber))
+    fibers
 
 (* The fibers among [children], spans flattened, and the embedded nodes, both
    in order. *)
 let fibers_and_embeds children =
   let rec go (fibers, embeds) = function
-    | Fiber f -> (f :: fibers, embeds)
+    | Fiber _ as fiber -> (fiber :: fibers, embeds)
     | Embedded n -> (fibers, n :: embeds)
     | Span span -> fold_children go (fibers, embeds) span
   in
@@ -992,10 +420,10 @@ let keys m =
 
 (* The cell of the old fiber [elem] matches, or []. The fiber takes the
    pass's number. *)
-let find_match m (elem : msg Vnode.element) : child list =
+let find_match m (E e : msg Vnode.element) : child list =
   let positional = take_element m in
   let cell =
-    match elem.key with
+    match e.key with
     | None -> (
         match positional with
         | Fiber { key = None; _ } :: _ -> positional
@@ -1004,7 +432,7 @@ let find_match m (elem : msg Vnode.element) : child list =
         match Hashtbl.find_opt (keys m) k with Some cell -> cell | None -> [])
   in
   match cell with
-  | Fiber f :: _ when f.pass <> m.pass && kind_matches f.kind elem.kind ->
+  | Fiber f :: _ when f.pass <> m.pass && Kind.same f.kind e.kind ->
       f.pass <- m.pass;
       cell
   | _ -> []
@@ -1194,12 +622,14 @@ let combine_focus left right =
   | _ -> Focus_many
 
 (* Only a box holds children, so only a box is inert. *)
-let inert_kind = function
-  | Vnode.Box props -> Box.Props.inert props
-  | _ -> false
+let inert : type p e w. (p, e, w) Kind.t -> p -> bool =
+ fun kind props ->
+  match Type.Id.provably_equal kind.id Kinds.box.id with
+  | Some Type.Equal -> Box.Props.inert props
+  | None -> false
 
-let is_modal fiber =
-  match fiber.callbacks with Vnode.Modal_callbacks _ -> true | _ -> false
+let inert_element (E e : msg Vnode.element) = inert e.kind e.props
+let is_modal fiber = Kind.same fiber.kind Kinds.modal
 
 let children_focus children =
   List.fold_left
@@ -1209,9 +639,22 @@ let children_focus children =
       | Span span -> combine_focus focus span.span_focus)
     Focus_none children
 
+(* A modal's request to close it: its handler's message, if it gives one. *)
+let close : type p e w. (p, e, w) fiber -> unit -> bool =
+ fun fiber () ->
+  match Type.Id.provably_equal fiber.kind.id Kinds.modal.id with
+  | Some Type.Equal -> (
+      match fiber.on () with
+      | Some message ->
+          send fiber.route message;
+          true
+      | None -> false)
+  | None -> false
+
 let update_declared_focus fiber =
   fiber.declared_focus <-
-    (if (not fiber.attrs.visible) || inert_kind fiber.kind then Focus_none
+    (if (not fiber.attrs.visible) || inert fiber.kind fiber.props then
+       Focus_none
      else
        let focus =
          combine_focus
@@ -1224,17 +667,7 @@ let update_declared_focus fiber =
        | (Focus_none | Focus_one _ | Focus_many) as inside ->
            if is_modal fiber then
              Modal
-               {
-                 modal_node = fiber_node fiber;
-                 close =
-                   (fun () ->
-                     match fiber.callbacks with
-                     | Vnode.Modal_callbacks { on_close = Some close } ->
-                         send fiber.route (close ());
-                         true
-                     | _ -> false);
-                 inside;
-               }
+               { modal_node = fiber_node fiber; close = close fiber; inside }
            else focus)
 
 let rec node_count children =
@@ -1252,39 +685,44 @@ and first_node = function
       | Some _ as node -> node
       | None -> first_node rest)
 
+let element_attrs (E e : msg Vnode.element) = e.attrs
+let element_children (E e : msg Vnode.element) = e.children
+
 let rec reconcile_element ~(parent_node : Renderable.t) ~route m ~viewport_width
     (elem : msg Vnode.element) : child =
+  let attrs = element_attrs elem and children = element_children elem in
   match find_match m elem with
   | (Fiber f as child) :: _ ->
-      let was_modal = is_modal f in
       let focus_changed =
-        f.attrs.focused <> elem.attrs.focused
-        || f.attrs.visible <> elem.attrs.visible
-        || inert_kind f.kind <> inert_kind elem.kind
+        f.attrs.focused <> attrs.focused
+        || f.attrs.visible <> attrs.visible
+        || inert f.kind f.props <> inert_element elem
       in
       let children_changed =
-        f.declared_children != elem.children
-        || f.viewport_width <> viewport_width
+        f.declared_children != children || f.viewport_width <> viewport_width
       in
       ignore (update_fiber f elem : bool);
       if children_changed then begin
-        reconcile_children f ~viewport_width elem.children;
-        f.declared_children <- elem.children;
+        reconcile_children f ~viewport_width children;
+        f.declared_children <- children;
         f.viewport_width <- viewport_width
       end;
-      if focus_changed || children_changed || was_modal <> is_modal f then
-        update_declared_focus f;
+      if focus_changed || children_changed then update_declared_focus f;
       child
-  | _ ->
-      let f = create_fiber ~parent:parent_node ~route elem in
-      f.pass <- m.pass;
-      reconcile_children f ~viewport_width elem.children;
-      f.declared_children <- elem.children;
-      f.viewport_width <- viewport_width;
-      update_declared_focus f;
-      Fiber f
+  | _ -> (
+      match create_fiber ~parent:parent_node ~route elem with
+      | Fiber f as child ->
+          f.pass <- m.pass;
+          reconcile_children f ~viewport_width children;
+          f.declared_children <- children;
+          f.viewport_width <- viewport_width;
+          update_declared_focus f;
+          child
+      | Embedded _ | Span _ -> assert false)
 
-and reconcile_children f ~viewport_width children =
+and reconcile_children : type p e w.
+    (p, e, w) fiber -> viewport_width:int -> msg Vnode.t list -> unit =
+ fun f ~viewport_width children ->
   let stale = ref [] in
   let children =
     reconcile_list ~parent_node:(fiber_node f) ~route:f.route ~viewport_width
@@ -1309,7 +747,7 @@ and reconcile_list ~parent_node ~route ~viewport_width ~stale ~theme
   List.iter
     (function
       | Embedded n -> stale := n :: !stale
-      | Fiber f -> if f.pass <> m.pass then unused := f :: !unused
+      | Fiber f as fiber -> if f.pass <> m.pass then unused := fiber :: !unused
       | Span span ->
           if span.span_pass <> m.pass then spans := Span span :: !spans)
     old_children;

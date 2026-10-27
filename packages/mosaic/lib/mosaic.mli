@@ -3294,6 +3294,138 @@ val tree :
     its defaults; {!Mosaic_ui.Tree} lists the keys the tree acts on when
     focused. Layout and paint use the other labelled arguments. *)
 
+(** {1:element_kinds Element kinds} *)
+
+(** Kinds of elements: how a widget is made, updated and laid out for a view.
+
+    The elements above are built-in kinds of widget. A program adds a kind of
+    its own for a widget that paints, measures or takes input in a way no
+    composition of elements does, and declares its elements with {!val-element}.
+    A {e kind} is the contract between such a widget and the reconciler: how to
+    create the widget under a parent node from an element's props, its node, how
+    to apply new props, when two props need no update, how to lay it out, and
+    how its events reach the element's handler.
+
+    Two elements match only when they have the same kind, compared physically,
+    as two HTML elements match only when they have one local name. A kind must
+    therefore be made once, at a module's top level: a kind made by each call of
+    the view is another kind every render, so its element never matches and its
+    widget is made again on every render, losing its state.
+
+    The life cycle of a widget: when an element of a kind mounts, [create] makes
+    the widget, under the parent's node, with the element's layout and props,
+    and [events], if given, connects its events. When a later element matches
+    it, [update] applies the element's props unless [equal] finds them equal to
+    the ones applied last, and [layout] applies its layout when it changed. When
+    no element matches it, its node is destroyed. *)
+module Element : sig
+  type ('props, 'event, 'w) kind
+  (** The type for kinds whose elements have props ['props], whose widgets are
+      ['w] and report events ['event]. *)
+
+  val kind :
+    name:string ->
+    create:
+      (parent:Mosaic_ui.Renderable.t -> layout:Toffee.Style.t -> 'props -> 'w) ->
+    node:('w -> Mosaic_ui.Renderable.t) ->
+    ?layout:('w -> Toffee.Style.t -> unit) ->
+    update:('w -> 'props -> unit) ->
+    equal:('props -> 'props -> bool) ->
+    ?focusable:bool ->
+    ?events:('w -> ('event -> unit) -> unit) ->
+    ?handler:('w -> ('event -> unit) option -> unit) ->
+    unit ->
+    ('props, 'event, 'w) kind
+  (** [kind ~name ~create ~node ~update ~equal ()] is a new kind, which no other
+      kind equals. [name] names it in messages.
+      - [create ~parent ~layout props] makes a widget under [parent], laid out
+        by [layout], showing [props]. [node w] is [w]'s node.
+      - [layout w style] applies a new layout. It defaults to setting [node w]'s
+        style ({!Mosaic_ui.Renderable.set_style}).
+      - [update w props] applies new props. [equal] must hold only for props
+        that [update] would change nothing for.
+      - [focusable] is whether its elements take focus without
+        [on_focus_request], as an input's do. It defaults to [false].
+      - [events w emit] connects the widget's events to [emit], once, after
+        [create]. [emit] gives an event to the handler of the element declared
+        last, at the time of the event.
+      - [handler w emit] is given [None] after [create] when the element
+        declares no handler, and the handler of each element that declares
+        another one, bound to that element. A widget whose event outlives a
+        reconciliation, as a table's press reports its change after its hover,
+        or whose work depends on whether anything listens, takes it here. *)
+
+  val name : ('props, 'event, 'w) kind -> string
+  (** [name k] is [k]'s name. *)
+
+  val props : ('props, 'event, 'w) kind -> 'msg t -> 'props option
+  (** [props k view] is the props of [view] when [view] is an element of [k],
+      under any {!val-map} or {!themed}, so a test reads what a view declares.
+  *)
+end
+
+val element :
+  ?key:string ->
+  ?layout:Toffee.Style.t ->
+  ?display:Display.t ->
+  ?box_sizing:Box_sizing.t ->
+  ?position:Position.t ->
+  ?overflow:Overflow.t point ->
+  ?scrollbar_width:float ->
+  ?text_align:Text_align.t ->
+  ?inset:length_percentage_auto rect ->
+  ?flex_direction:Flex_direction.t ->
+  ?flex_wrap:Flex_wrap.t ->
+  ?justify_content:Justify.t ->
+  ?align_items:Align.t ->
+  ?size:dimension size ->
+  ?min_size:dimension size ->
+  ?max_size:dimension size ->
+  ?aspect_ratio:float ->
+  ?gap:length_percentage size ->
+  ?padding:length_percentage rect ->
+  ?margin:length_percentage_auto rect ->
+  ?border_width:length_percentage rect ->
+  ?align_self:Align.t ->
+  ?align_content:Justify.t ->
+  ?justify_items:Align.t ->
+  ?justify_self:Align.t ->
+  ?flex_grow:float ->
+  ?flex_shrink:float ->
+  ?flex_basis:dimension ->
+  ?grid_template_rows:Grid.template list ->
+  ?grid_template_columns:Grid.template list ->
+  ?grid_auto_rows:Grid.track list ->
+  ?grid_auto_columns:Grid.track list ->
+  ?grid_auto_flow:Grid_auto_flow.t ->
+  ?grid_template_areas:Grid.area list ->
+  ?grid_template_column_names:string list list ->
+  ?grid_template_row_names:string list list ->
+  ?grid_row:Grid.placement line ->
+  ?grid_column:Grid.placement line ->
+  ?visible:bool ->
+  ?z_index:int ->
+  ?opacity:float ->
+  ?buffered:bool ->
+  ?live:bool ->
+  ?on_mouse:(Event.mouse -> 'msg option) ->
+  ?on_key:(Event.key -> 'msg option) ->
+  ?on_paste:(Event.paste -> 'msg option) ->
+  ?on_click:(Event.mouse -> 'msg option) ->
+  ?on_focus_request:'msg ->
+  ?on_size:(w:int -> h:int -> 'msg option) ->
+  ?focused:bool ->
+  ('props, 'event, 'w) Element.kind ->
+  ?on:('event -> 'msg option) ->
+  'props ->
+  'msg t list ->
+  'msg t
+(** [element kind ~on props children] is an element of [kind] with [props],
+    whose widget's events [on] turns into messages; an event [on] maps to
+    [None], or every event without [on], gives none. [children] are placed under
+    the widget's node. The labels are every element's, as
+    {{!elements}UI elements} describes. *)
+
 (** {1:reconciler Reconciling without a program} *)
 
 (** Views reconciled into a renderable tree by a runtime of its own.

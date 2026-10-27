@@ -271,6 +271,104 @@ let memo_under_capturing_map () =
     [ "item/3"; "item/2"; "item/1" ]
     !delivered
 
+(* ── Element kinds ── *)
+
+(* A meter: a widget of its own, with a level for props, that reports a
+   click on it as an event. The counters say how often the reconciler made
+   and updated meters. *)
+type meter = { node : Renderable.t; mutable level : int }
+
+let created = ref 0
+let updated = ref 0
+
+let meter_kind ?(name = "meter") () =
+  Mosaic.Element.kind ~name
+    ~create:(fun ~parent ~layout level ->
+      incr created;
+      { node = Renderable.create ~parent ~style:layout (); level })
+    ~node:(fun m -> m.node)
+    ~update:(fun m level ->
+      incr updated;
+      m.level <- level)
+    ~equal:Int.equal
+    ~events:(fun m emit ->
+      Renderable.Private.set_click_handler m.node (Some (fun _ -> emit m.level)))
+    ()
+
+let meter = meter_kind ()
+
+let meter_mounted_updated_and_skipped () =
+  created := 0;
+  updated := 0;
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
+  let render level =
+    Mosaic.Reconciler.render reconciler ~viewport_width:80
+      (Mosaic.element meter level [])
+  in
+  render 1;
+  render 1;
+  render 2;
+  equal ~msg:"mounted once" int 1 !created;
+  equal ~msg:"updated once, skipped on equal props" int 1 !updated;
+  match Renderable.children (Renderer.root renderer) with
+  | [ node ] ->
+      is_false ~msg:"not focusable by default" (Renderable.focusable node)
+  | _ -> fail "expected the meter alone in the root"
+
+(* A kind made per call is another kind every render: its element never
+   matches, and its widget is made again each time. *)
+let kind_per_call_remounts () =
+  created := 0;
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer) ~deliver:ignore
+  in
+  for _ = 1 to 3 do
+    Mosaic.Reconciler.render reconciler ~viewport_width:80
+      (Mosaic.element (meter_kind ()) 1 [])
+  done;
+  equal ~msg:"made every render" int 3 !created
+
+let meter_events_reach_the_handler () =
+  let delivered = ref [] in
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+      ~deliver:(fun message -> delivered := message :: !delivered)
+  in
+  let render level =
+    Mosaic.Reconciler.render reconciler ~viewport_width:80
+      (Mosaic.element
+         ~size:(Mosaic.size ~width:4 ~height:1)
+         meter
+         ~on:(fun level -> Some (Printf.sprintf "level %d" level))
+         level [])
+  in
+  render 3;
+  Renderer.render_frame renderer ~width:10 ~height:2 ~dt:0.;
+  ignore (Renderer.render ~full:true renderer : string);
+  let click () =
+    ignore (dispatch_mouse renderer (mouse_report ~x:0 ~y:0 (Press Left)));
+    ignore
+      (dispatch_mouse renderer (mouse_report ~x:0 ~y:0 (Release (Some Left))))
+  in
+  click ();
+  render 5;
+  click ();
+  equal ~msg:"through the newest handler" (list string) [ "level 5"; "level 3" ]
+    !delivered
+
+let props_of_a_view () =
+  let view : int Mosaic.t = Mosaic.element meter 7 [] in
+  equal ~msg:"its props" (option int) (Some 7) (Mosaic.Element.props meter view);
+  equal ~msg:"under a map" (option int) (Some 7)
+    (Mosaic.Element.props meter (Mosaic.map string_of_int view));
+  equal ~msg:"another kind" (option int) None
+    (Mosaic.Element.props (meter_kind ()) view)
+
 (* ── Viewport Switch ── *)
 
 let viewport_switch_rejects_nonpositive_threshold () =
@@ -333,6 +431,13 @@ let () =
         ];
       group "Map node"
         [ test "a memo under a capturing map" memo_under_capturing_map ];
+      group "Element kinds"
+        [
+          test "mounted, updated and skipped" meter_mounted_updated_and_skipped;
+          test "a kind made per call remounts" kind_per_call_remounts;
+          test "events reach the handler" meter_events_reach_the_handler;
+          test "props of a view" props_of_a_view;
+        ];
       group "Viewport switch"
         [
           test "rejects nonpositive threshold"
