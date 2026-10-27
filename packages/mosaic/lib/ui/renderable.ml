@@ -1079,8 +1079,8 @@ let create ~parent ?index ?id ?(style = Toffee.Style.default) ?(visible = true)
   attach_impl ~parent ~index:(Option.value index ~default:parent.child_count) t;
   t
 
-let attach ~parent ?index t =
-  let parent = child_target parent in
+(* Attaches [t] to [parent] itself, whatever its child target. *)
+let attach_to parent ~index t =
   check_alive parent;
   check_alive t;
   if parent == t then
@@ -1088,7 +1088,11 @@ let attach ~parent ?index t =
   if not (parent.ctx.tree == t.ctx.tree) then
     invalid_arg "Renderable.attach: nodes belong to different trees";
   if Option.is_some t.parent then detach_impl t;
-  attach_impl ~parent ~index:(Option.value index ~default:parent.child_count) t
+  attach_impl ~parent ~index t
+
+let attach ~parent ?index t =
+  let parent = child_target parent in
+  attach_to parent ~index:(Option.value index ~default:parent.child_count) t
 
 let detach t =
   blur_focused_subtree t;
@@ -1148,6 +1152,71 @@ let detach_all = function
           adjust_live_count parent (- !live);
           parent.ctx.schedule ())
         parents
+
+(* Moving the nodes one by one would shift the children between each node's
+   old place and its new one, which is quadratic for a rotation; this is one
+   pass over the children, whatever their order.
+
+   Once every node is a child, each is unparented while it waits for its
+   place, as [detach_all] marks the departing children, so a child whose
+   parent is set is one to keep. Those from [index] on move, in their order,
+   to the end of the array, and the nodes are written before them. A node
+   written where it already was keeps its option, so that a run of children
+   in place allocates nothing. In the layout tree the children from [index]
+   on are removed and added again in their new order; a culling node
+   regroups them instead. *)
+let place_children t index iter =
+  let parent = child_target t in
+  check_alive parent;
+  if index < 0 || index > parent.child_count then
+    invalid_arg "Renderable.place_children: index out of bounds";
+  iter (fun n ->
+      match n.parent with
+      | Some p when p == parent -> ()
+      | Some _ | None -> attach_to parent ~index:parent.child_count n);
+  iter (fun n -> n.parent <- None);
+  let placed = Some parent in
+  for i = 0 to index - 1 do
+    match parent.children.(i) with
+    | Some c when Option.is_none c.parent -> c.parent <- placed
+    | Some _ | None -> ()
+  done;
+  let count = parent.child_count in
+  let last = ref (count - 1) in
+  for i = count - 1 downto index do
+    match parent.children.(i) with
+    | Some c as child when Option.is_some c.parent ->
+        if !last <> i then (
+          parent.children.(!last) <- child;
+          c.layout_valid <- false);
+        decr last
+    | Some _ | None -> ()
+  done;
+  let next = ref index in
+  iter (fun n ->
+      if Option.is_none n.parent then (
+        n.parent <- placed;
+        (match parent.children.(!next) with
+        | Some c when c == n -> ()
+        | Some _ | None ->
+            parent.children.(!next) <- Some n;
+            n.layout_valid <- false);
+        incr next));
+  if parent.viewport_cull then note_regroup parent index
+  else if index < count then (
+    let tree = parent.ctx.tree in
+    toffee_exn
+      (Toffee.remove_children_range tree parent.toffee_node (index, count - 1));
+    for i = index to count - 1 do
+      match parent.children.(i) with
+      | Some c ->
+          toffee_exn (Toffee.add_child tree parent.toffee_node c.toffee_node)
+      | None -> ()
+    done);
+  parent.z_dirty <- true;
+  parent.cull_dirty <- true;
+  parent.layout_dirty <- true;
+  parent.ctx.schedule ()
 
 (* Detaches every child of [t] in one pass. Detaching them one by one would
    shift the children that follow each one, in [t] and in the layout tree,
@@ -1834,6 +1903,7 @@ module Private = struct
   let num t = t.num
   let toffee_node t = t.toffee_node
   let detach_all = detach_all
+  let place_children = place_children
 
   let child_at t i =
     if i < 0 || i >= t.child_count then None else t.children.(i)

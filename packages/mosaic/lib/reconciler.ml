@@ -954,15 +954,18 @@ let find_match (maps : fiber_maps) (pos : int) (elem : unit Vnode.element) :
 (* Placement of a parent's children happens after all of them are reconciled.
    Unmatched fibers were destroyed, which detaches them; an embedded node that
    left its list is detached unless it reappears elsewhere among the parent's
-   children. Then each child is placed at its target index.
+   children. Then the children are placed in order from index 0.
 
    We intentionally avoid scanning all concrete Renderable children under
    [parent], because some widgets (e.g. Markdown) manage internal children
-   outside the reconciler. Position probes go through the O(1) [child_at]
-   accessor, and node sets are keyed by [Renderable.Private.num] -- hashing raw
-   nodes would apply polymorphic hash and compare to cyclic records of
-   closures. A reused span whose first node is in place is skipped whole: its
-   nodes were placed contiguously, and placement before it only shifts them. *)
+   outside the reconciler. A first pass compares each child with the node at
+   its index through the O(1) [child_at] probe, and a reused span whose first
+   node is in place is skipped whole: its nodes were placed contiguously, and
+   placement before it only shifts them. From the first child out of place,
+   the children are placed in one pass ([Renderable.Private.place_children]), so
+   any order costs time linear in the number of children. Node sets are keyed
+   by [Renderable.Private.num] -- hashing raw nodes would apply polymorphic
+   hash and compare to cyclic records of closures. *)
 let rec iter_embeds f = function
   | Fiber _ -> ()
   | Embedded n -> f n
@@ -980,20 +983,13 @@ let detach_stale_embeds ~stale (new_children : child list) =
          stale)
   end
 
-let place_node parent index node =
-  match Renderable.Private.child_at parent index with
-  | Some n when n == node -> ()
-  | Some _ | None -> Renderable.attach ~parent ~index node
-
-let rec place parent index = function
-  | [] -> index
-  | Fiber f :: rest ->
-      place_node parent index (fiber_node f);
-      place parent (index + 1) rest
-  | Embedded n :: rest ->
-      place_node parent index n;
-      place parent (index + 1) rest
-  | Memo_span span :: rest ->
+(* The index of the first of [children] that is not at its index among
+   [parent]'s children, counting from [index], if any. *)
+let rec first_misplaced parent index = function
+  | [] -> None
+  | Fiber f :: rest -> probe parent index (fiber_node f) rest
+  | Embedded n :: rest -> probe parent index n rest
+  | Memo_span span :: rest -> (
       let in_place =
         span.reused
         &&
@@ -1002,15 +998,51 @@ let rec place parent index = function
         | None, _ -> true
         | Some _, None -> false
       in
-      let index =
-        if in_place then index + span.node_count
-        else place parent index span.span_children
+      let misplaced =
+        if in_place then None
+        else first_misplaced parent index span.span_children
       in
-      place parent index rest
+      match misplaced with
+      | None -> first_misplaced parent (index + span.node_count) rest
+      | Some _ -> misplaced)
+
+and probe parent index node rest =
+  match Renderable.Private.child_at parent index with
+  | Some n when n == node -> first_misplaced parent (index + 1) rest
+  | Some _ | None -> Some index
+
+(* [iter_from from children f] applies [f] to the nodes of [children] from
+   the [from]th on, in order. *)
+let iter_from from children f =
+  let position = ref 0 in
+  let visit node =
+    if !position >= from then f node;
+    incr position
+  in
+  let rec go = function
+    | [] -> ()
+    | Fiber fiber :: rest ->
+        visit (fiber_node fiber);
+        go rest
+    | Embedded n :: rest ->
+        visit n;
+        go rest
+    | Memo_span span :: rest ->
+        if !position + span.node_count <= from then
+          position := !position + span.node_count
+        else go span.span_children;
+        go rest
+  in
+  go children
 
 let commit_placement parent_node ~stale new_children =
   detach_stale_embeds ~stale new_children;
-  ignore (place (Renderable.child_target parent_node) 0 new_children : int)
+  let parent = Renderable.child_target parent_node in
+  match first_misplaced parent 0 new_children with
+  | None -> ()
+  | Some index ->
+      Renderable.Private.place_children parent index
+        (iter_from index new_children)
 
 (* ───── Reconciliation ───── *)
 

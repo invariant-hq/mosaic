@@ -1,7 +1,9 @@
 (* What repeated work costs, against what the view hides. A check counts the
    words one call allocates at two sizes, in one process: equal counts show
    that the work follows what is visible, on any machine, compiler and
-   profile, with no baseline. The memory checks are fixed caps. *)
+   profile, with no baseline. Where words cannot tell linear work from
+   quadratic, a check compares the time of one call at two sizes. The memory
+   checks are fixed caps. *)
 
 open Windtrap
 open Mosaic_ui
@@ -217,6 +219,70 @@ let cursor_keys () =
       same (what ^ ", comparisons") ~small:compared ~large:compared')
     [ (100, 98); (100_000, 50_000); (100_000, 99_998) ]
 
+(* ───── Placing reordered children ─────
+
+   Rotating a keyed list by one moves every child, so placement must cost
+   time linear in the children whatever their order. Allocation cannot show
+   it, as a rotation allocates in proportion to the children whether placement
+   is linear or quadratic. The check compares the time of a rotation at 1,000
+   and at 16,000 children. Linear placement measures a ratio of 16 to 40,
+   more than 16 as the larger tree leaves the processor's caches, and
+   quadratic placement about 260. The threshold, 96, leaves each a margin of
+   2.4 or more.
+
+   It reads the process's CPU time, which other processes do not inflate as
+   they do the wall clock when tests run in parallel. A sample repeats the
+   rotation for at least 50 ms, so that a clock that advances by a
+   millisecond or more, as on Windows, still reads it, and the check keeps
+   the best of five. It catches a change of complexity only. A constant
+   factor leaves the ratio as it is; the reconciler benchmark's time
+   baselines, per machine, catch those. *)
+
+let cpu_time_per f =
+  let start = Sys.time () in
+  let rec repeat runs =
+    f ();
+    let elapsed = Sys.time () -. start in
+    if elapsed < 0.05 then repeat (runs + 1) else elapsed /. Float.of_int runs
+  in
+  repeat 1
+
+(* A step renders the list rotated by one, then in order again, both views
+   built before it is timed. *)
+let rotation_time n =
+  let view offset =
+    Mosaic.box
+      (List.init n (fun i ->
+           let key = string_of_int ((i + offset) mod n) in
+           Mosaic.text ~key key))
+  in
+  let renderer = Renderer.create () in
+  let reconciler =
+    Mosaic.Reconciler.create ~container:(Renderer.root renderer)
+  in
+  let render view = Mosaic.Reconciler.render reconciler ~viewport_width:80 view
+  and in_order = view 0
+  and rotated = view 1 in
+  render in_order;
+  let step () =
+    render rotated;
+    render in_order
+  in
+  let best = ref infinity in
+  for _ = 1 to 5 do
+    best := Float.min !best (cpu_time_per step)
+  done;
+  !best
+
+let rotated_children () =
+  let small = rotation_time 1_000 and large = rotation_time 16_000 in
+  let ratio = large /. small in
+  if ratio > 96. then
+    failf
+      "rotating 16,000 children takes %.0f times as long as 1,000 (%.3f ms, \
+       %.3f ms), over 96"
+      ratio (large *. 1e3) (small *. 1e3)
+
 (* ───── Memory ───── *)
 
 let mib = 1024 * 1024
@@ -366,4 +432,6 @@ let () =
         [ test "a scrolled transcript" hidden_transcript_rows ];
       group "Keys follow the items moved over"
         [ test "a cursor's Down and Up" cursor_keys ];
+      group "Placement is linear in the children"
+        [ test "rotated keyed children" rotated_children ];
     ]

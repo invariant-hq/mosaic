@@ -77,7 +77,7 @@ it.
 - A focused `scroll_box` took the arrows and h/j/k/l along an axis it does not scroll; those keys pass on to shortcuts
 - The wheel over a part of the screen with no scrollable element reaches the focused scrollable
 - `tree` and `select` read the mouse in the widget's coordinates, and `scroll_bar` applies changes of its orientation and arrow color
-- The reconciler keeps the first of two children with the same key, places children in linear time, and no longer detaches and attaches again the nodes it reuses when keyed elements are reordered, so focus survives the reorder
+- The reconciler keeps the first of two children with the same key, places children in time linear in their number whatever their order, and no longer detaches and attaches again the nodes it reuses when keyed elements are reordered, so focus survives the reorder. Rotating 8,000 keyed children by one, which moved each child alone, took 308 ms and takes 5.5 ms
 - Text measurement fed back on the previous frame's width: text that does not wrap measures untruncated, and wrapped text measures at its natural width under max-content, so a node can grow back after a shrink
 - Adjacent flex children painted over each other; a node's cells follow its rounded absolute edges, and a clipping container keeps at least one cell
 - Render work scheduled during a frame waited for unrelated input; it settles on the next frame, and a superseded render pass no longer leaves cells in adjacent widgets

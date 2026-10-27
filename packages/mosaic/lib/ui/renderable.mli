@@ -551,6 +551,19 @@ module Private : sig
   (** [detach_all nodes] detaches each of [nodes] as {!detach} does, in time
       linear in the number of children their parents had. *)
 
+  val place_children : t -> int -> ((t -> unit) -> unit) -> unit
+  (** [place_children t i iter] makes the nodes [iter] gives the children of
+      [t]'s child target ({!child_target}) from index [i] on, in order,
+      attaching those that are not its children. The children from [i] on that
+      it leaves out follow them in their order. A node among the children before
+      [i], or one that [iter] gives twice, keeps its first place. [iter f] must
+      apply [f] to the nodes in order, and give the same nodes each time
+      [place_children] calls it. It takes time linear in the number of children,
+      whatever their order.
+
+      Raises [Invalid_argument] if [i] is negative or greater than the number of
+      children, or as {!attach} does for a node to attach. *)
+
   val child_at : t -> int -> t option
   (** [child_at t i] is [t]'s [i]th child, or [None] when [i] is out of bounds.
       O(1) and allocation-free, unlike {!children} which materializes a fresh

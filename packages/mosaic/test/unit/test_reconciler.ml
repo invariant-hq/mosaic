@@ -498,6 +498,101 @@ let duplicate_keys_first_occurrence_stays_stable () =
   is_false ~msg:"later duplicate remounts"
     (List.nth (children_of renderer) 1 == second)
 
+(* Orders of a pool of keyed rows and embedded nodes, with rows dropped and
+   added between them, in a plain column and in a culling one, whose children
+   the layout tree holds in chunks. After each render the rows that stayed
+   keep their nodes, the children follow the view's order with the
+   container's own child after them, and each is laid out at its index. *)
+let keyed_orders ~cull () =
+  let renderer = Renderer.create () in
+  let column =
+    Toffee.Style.(default |> set_flex_direction Flex_direction.Column)
+  in
+  let container =
+    Renderable.create ~parent:(Renderer.root renderer) ~style:column ()
+  in
+  if cull then Renderable.Private.set_viewport_cull container true;
+  let row =
+    Toffee.Style.(
+      default
+      |> set_size { width = Dimension.length 4.; height = Dimension.length 1. })
+  in
+  let own = Renderable.create ~parent:container ~style:row () in
+  let embedded =
+    List.init 3 (fun i ->
+        let node =
+          Renderable.create ~parent:(Renderer.root renderer) ~style:row ()
+        in
+        (Printf.sprintf "e%d" i, node))
+  in
+  let reconciler = Reconciler.create ~container in
+  let random = Random.State.make [| 17 |] in
+  let pool =
+    List.init 600 (fun i ->
+        match i with
+        | 5 -> "e0"
+        | 250 -> "e1"
+        | 599 -> "e2"
+        | i -> string_of_int i)
+  in
+  let element key =
+    match List.assoc_opt key embedded with
+    | Some node -> Vnode.embed node
+    | None -> Vnode.text ~key key
+  in
+  let shuffle keys =
+    List.map (fun k -> (Random.State.bits random, k)) keys
+    |> List.sort compare |> List.map snd
+  in
+  let rec rotate n = function
+    | x :: rest when n > 0 -> rotate (n - 1) (rest @ [ x ])
+    | keys -> keys
+  in
+  let orders =
+    [
+      pool;
+      rotate 1 pool;
+      pool;
+      List.rev pool;
+      rotate 300 pool;
+      List.filteri (fun i _ -> i mod 2 = 0) pool;
+      pool;
+      shuffle pool;
+      "new" :: pool;
+      List.filter (fun _ -> Random.State.int random 10 > 0) (shuffle pool);
+      shuffle pool;
+      [];
+      pool;
+    ]
+  in
+  let nodes = ref (Hashtbl.create 0) in
+  List.iteri
+    (fun step keys ->
+      render_view reconciler (Vnode.fragment (List.map element keys));
+      do_frame renderer;
+      (* A culling column lays out the rows a frame does not show only when
+         asked. *)
+      Renderable.Private.refresh_positions container;
+      let children = Renderable.children container in
+      let msg what = Printf.sprintf "order %d: %s" step what in
+      equal ~msg:(msg "child count") int
+        (List.length keys + 1)
+        (List.length children);
+      let placed = Hashtbl.create 64 in
+      List.iteri
+        (fun i node ->
+          equal ~msg:(msg (Printf.sprintf "row %d" i)) int i (Renderable.y node);
+          match List.nth_opt keys i with
+          | None -> is_true ~msg:(msg "own child last") (node == own)
+          | Some key ->
+              (match Hashtbl.find_opt !nodes key with
+              | Some old -> is_true ~msg:(msg ("node of " ^ key)) (old == node)
+              | None -> ());
+              Hashtbl.replace placed key node)
+        children;
+      nodes := placed)
+    orders
+
 let unkeyed_positional () =
   let renderer, reconciler = make () in
   render_view reconciler (Vnode.fragment [ Vnode.box []; Vnode.text "x" ]);
@@ -1307,6 +1402,8 @@ let () =
           test "unkeyed positional" unkeyed_positional;
           test "duplicate keys keep the first occurrence stable"
             duplicate_keys_first_occurrence_stays_stable;
+          test "any order in a column" (keyed_orders ~cull:false);
+          test "any order in a culling column" (keyed_orders ~cull:true);
         ];
       group "Kind mismatch"
         [
