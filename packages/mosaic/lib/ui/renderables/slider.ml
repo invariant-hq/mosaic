@@ -25,6 +25,12 @@ module Props = struct
     let value = Option.value value ~default:min in
     { orientation; value; min; max; viewport_size; track_color; thumb_color }
 
+  let make_k k ?orientation ?value ?min ?max ?viewport_size ?track_color
+      ?thumb_color () =
+    k
+      (make ?orientation ?value ?min ?max ?viewport_size ?track_color
+         ?thumb_color ())
+
   let default = make ()
 
   let equal a b =
@@ -322,14 +328,10 @@ let setup_mouse t =
 
 (* Construction *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?orientation
-    ?value ?min ?max ?viewport_size ?track_color ?thumb_color ?on_change () =
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+    (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
-  in
-  let props =
-    Props.make ?orientation ?value ?min ?max ?viewport_size ?track_color
-      ?thumb_color ()
   in
   let initial_value =
     clamp_value ~min:props.Props.min ~max:props.max props.value
@@ -348,6 +350,11 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?orientation
   Renderable.set_render node (render t);
   setup_mouse t;
   t
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+        props)
 
 (* Setters *)
 
@@ -414,3 +421,7 @@ let pp ppf t =
   in
   Format.fprintf ppf "Slider(%s, %s, %.1f/[%.1f..%.1f])" (Renderable.id t.node)
     orient t.value t.props.min t.props.max
+
+module Private = struct
+  let of_props = of_props
+end

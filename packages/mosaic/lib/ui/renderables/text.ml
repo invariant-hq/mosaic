@@ -112,6 +112,12 @@ module Props = struct
     presentation "make" plain content ?text_style ?wrap ?selectable
       ?selection_bg ?selection_fg ?tab_width ?truncate ()
 
+  let make_k k ?content ?text_style ?wrap ?selectable ?selection_bg
+      ?selection_fg ?tab_width ?truncate () =
+    k
+      (make ?content ?text_style ?wrap ?selectable ?selection_bg ?selection_fg
+         ?tab_width ?truncate ())
+
   let make_rich ?text_style ?wrap ?selectable ?selection_bg ?selection_fg
       ?tab_width ?truncate fragments =
     presentation "make_rich" rich fragments ?text_style ?wrap ?selectable
@@ -370,13 +376,8 @@ let apply_props t (props : Props.t) =
 
 (* Construction *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
-    ?text_style ?wrap ?selectable ?selection_bg ?selection_fg ?tab_width
-    ?on_selection ?truncate () =
-  let props =
-    Props.make ?content ?text_style ?wrap ?selectable ?selection_bg
-      ?selection_fg ?tab_width ?truncate ()
-  in
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_selection
+    (props : Props.t) =
   let text =
     Text_renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       ~text_style:(Props.text_style props) ~wrap:(Props.wrap props)
@@ -389,6 +390,11 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
   let t = { text; content = Props.content props; flat_cache = None } in
   if t.content <> Plain "" then rebuild_buffer t;
   t
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_selection =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+        ?on_selection props)
 
 (* Content *)
 
@@ -477,3 +483,7 @@ let pp ppf t =
       | `Word -> "word"
       | `None -> "none");
   Format.pp_print_char ppf ')'
+
+module Private = struct
+  let of_props = of_props
+end

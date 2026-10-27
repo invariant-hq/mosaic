@@ -171,6 +171,31 @@ module Props : sig
       {!val-create} takes these labels with these defaults, and so does
       [Mosaic.select] for the labels it has. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?options:item list ->
+    ?selected_index:int ->
+    ?background:Ansi.Color.t ->
+    ?text_color:Ansi.Color.t ->
+    ?focused_background:Ansi.Color.t ->
+    ?focused_text_color:Ansi.Color.t ->
+    ?selected_background:Ansi.Color.t ->
+    ?selected_text_color:Ansi.Color.t ->
+    ?description_color:Ansi.Color.t ->
+    ?selected_description_color:Ansi.Color.t ->
+    ?show_description:bool ->
+    ?show_scroll_indicator:bool ->
+    ?wrap_selection:bool ->
+    ?item_spacing:int ->
+    ?fast_scroll_step:int ->
+    ?key_bindings:(Shortcut.t * action) list ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is [make ()]. *)
 
@@ -291,3 +316,20 @@ val set_style : t -> Toffee.Style.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

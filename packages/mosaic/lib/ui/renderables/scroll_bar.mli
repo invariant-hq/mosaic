@@ -93,6 +93,24 @@ module Props : sig
       {!val-create} takes these labels with these defaults, and so does
       [Mosaic.scroll_bar] for the labels it has. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?position:int ->
+    ?scroll_size:int ->
+    ?viewport_size:int ->
+    ?orientation:orientation ->
+    ?show_arrows:bool ->
+    ?track_color:Ansi.Color.t ->
+    ?thumb_color:Ansi.Color.t ->
+    ?arrow_fg:Ansi.Color.t ->
+    ?arrow_bg:Ansi.Color.t ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is [make ()]. *)
 
@@ -116,6 +134,7 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
+  ?on_change:(int -> unit) ->
   ?position:int ->
   ?scroll_size:int ->
   ?viewport_size:int ->
@@ -125,7 +144,6 @@ val create :
   ?thumb_color:Ansi.Color.t ->
   ?arrow_fg:Ansi.Color.t ->
   ?arrow_bg:Ansi.Color.t ->
-  ?on_change:(int -> unit) ->
   unit ->
   t
 (** [create ~parent ()] is a scroll bar attached to [parent]. The labels from
@@ -248,3 +266,21 @@ val handle_key : t -> Event.key -> bool
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a scroll bar value for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    ?on_change:(int -> unit) ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

@@ -43,6 +43,14 @@ module Props = struct
       hidden_line_numbers;
     }
 
+  let make_k k ?fg ?bg ?min_width ?padding_right ?show_line_numbers
+      ?line_number_offset ?line_colors ?line_signs ?line_numbers
+      ?hidden_line_numbers () =
+    k
+      (make ?fg ?bg ?min_width ?padding_right ?show_line_numbers
+         ?line_number_offset ?line_colors ?line_signs ?line_numbers
+         ?hidden_line_numbers ())
+
   let default = make ()
 
   let equal_line_color a b =
@@ -355,9 +363,8 @@ let gutter_measure t ~known_dimensions ~available_space:_ ~style:_ =
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?fg ?bg
-    ?min_width ?padding_right ?show_line_numbers ?line_number_offset
-    ?line_colors ?line_signs ?line_numbers ?hidden_line_numbers () =
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+    (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -386,11 +393,6 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?fg ?bg
   Renderable.set_style content content_style;
   (* Route children to content node *)
   Renderable.set_child_target node (Some content);
-  let props =
-    Props.make ?fg ?bg ?min_width ?padding_right ?show_line_numbers
-      ?line_number_offset ?line_colors ?line_signs ?line_numbers
-      ?hidden_line_numbers ()
-  in
   let t = { node; gutter; content; props; lookup = None } in
   (* Register gutter measure function *)
   Renderable.set_measure gutter (Some (gutter_measure t));
@@ -408,6 +410,10 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?fg ?bg
   if not props.show_line_numbers then Renderable.set_visible gutter false;
   t
 
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
+
 (* ───── Apply Props ───── *)
 
 let apply_props t (props : Props.t) =
@@ -423,3 +429,7 @@ let apply_props t (props : Props.t) =
     Renderable.mark_dirty t.gutter;
     Renderable.request_render t.node
   end
+
+module Private = struct
+  let of_props = of_props
+end

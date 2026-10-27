@@ -172,6 +172,22 @@ module Props = struct
       fast_scroll_step = max 1 fast_scroll_step;
     }
 
+  let make_k k ?columns ?rows ?selected_row ?border ?border_style ?show_header
+      ?show_column_separator ?show_row_separator ?cell_padding ?header_color
+      ?header_background ?text_color ?background ?selected_text_color
+      ?selected_background ?focused_selected_text_color
+      ?focused_selected_background ?selection_visible ?show_scroll_indicator
+      ?activate_on_click ?wheel_navigation ?row_styles ?wrap_selection
+      ?key_bindings ?fast_scroll_step () =
+    k
+      (make ?columns ?rows ?selected_row ?border ?border_style ?show_header
+         ?show_column_separator ?show_row_separator ?cell_padding ?header_color
+         ?header_background ?text_color ?background ?selected_text_color
+         ?selected_background ?focused_selected_text_color
+         ?focused_selected_background ?selection_visible ?show_scroll_indicator
+         ?activate_on_click ?wheel_navigation ?row_styles ?wrap_selection
+         ?key_bindings ?fast_scroll_step ())
+
   let default = make ()
 
   let rec styles_equal xs ys =
@@ -1080,24 +1096,10 @@ let measure t ~known_dimensions ~available_space:_ ~style:_ =
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?columns ?rows
-    ?selected_row ?border ?border_style ?show_header ?show_column_separator
-    ?show_row_separator ?cell_padding ?header_color ?header_background
-    ?text_color ?background ?selected_text_color ?selected_background
-    ?focused_selected_text_color ?focused_selected_background ?selection_visible
-    ?show_scroll_indicator ?activate_on_click ?wheel_navigation ?row_styles
-    ?wrap_selection ?key_bindings ?fast_scroll_step () =
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+    (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
-  in
-  let props =
-    Props.make ?columns ?rows ?selected_row ?border ?border_style ?show_header
-      ?show_column_separator ?show_row_separator ?cell_padding ?header_color
-      ?header_background ?text_color ?background ?selected_text_color
-      ?selected_background ?focused_selected_text_color
-      ?focused_selected_background ?selection_visible ?show_scroll_indicator
-      ?activate_on_click ?wheel_navigation ?row_styles ?wrap_selection
-      ?key_bindings ?fast_scroll_step ()
   in
   let col_specs = Array.of_list props.columns in
   let data_rows = Items.to_array props.rows in
@@ -1130,6 +1132,10 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?columns ?rows
   Renderable.set_on_resize node (Some (on_resize t));
   request t;
   t
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
 
 (* ───── Layout ───── *)
 
@@ -1208,3 +1214,7 @@ let pp ppf t =
   if t.props.border then Format.pp_print_string ppf ", border";
   if t.props.wrap_selection then Format.pp_print_string ppf ", wrap";
   Format.pp_print_char ppf ')'
+
+module Private = struct
+  let of_props = of_props
+end

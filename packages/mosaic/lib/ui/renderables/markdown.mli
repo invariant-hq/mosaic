@@ -130,7 +130,7 @@ module Props : sig
       - [selection_bg] and [selection_fg]: selection colors applied to internal
         text children. Default to none.
       - [render_node]: a custom block renderer called for every
-        {!Cmarkit.Block.t} before default rendering. Return [Some r] to replace
+        [Cmarkit.Block.t] before default rendering. Return [Some r] to replace
         default rendering with renderable [r], or [None] to fall through to the
         default. The returned renderable must be attached to [parent]. Defaults
         to none.
@@ -158,6 +158,34 @@ module Props : sig
       {!create} and [Mosaic.markdown] take these labels with these defaults.
       [Mosaic.markdown] names [style] [md_style]. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?content:string ->
+    ?conceal:bool ->
+    ?streaming:bool ->
+    ?style:Style.t ->
+    ?selectable:bool ->
+    ?selection_bg:Ansi.Color.t ->
+    ?selection_fg:Ansi.Color.t ->
+    ?render_node:
+      (Cmarkit.Block.t ->
+      parent:Renderable.t ->
+      is_last:bool ->
+      Renderable.t option) ->
+    ?render_code:
+      (parent:Renderable.t ->
+      language:string option ->
+      content:string ->
+      Renderable.t) ->
+    ?highlighter:Code.Highlighter.t ->
+    ?syntax_style:Syntax_style.t ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is the default props value, equivalent to [make ()]. *)
 
@@ -175,14 +203,14 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
+  ?on_selection:(string option -> unit) ->
   ?content:string ->
-  ?style:Style.t ->
   ?conceal:bool ->
   ?streaming:bool ->
+  ?style:Style.t ->
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
-  ?on_selection:(string option -> unit) ->
   ?render_node:
     (Cmarkit.Block.t ->
     parent:Renderable.t ->
@@ -219,7 +247,7 @@ val set_content : t -> string -> unit
     renderables, making this efficient for streaming appends. No-op when [s]
     equals the current content.
 
-    See also {!content}. *)
+    See also {!val-content}. *)
 
 val content : t -> string
 (** [content t] is the current markdown source of [t].
@@ -286,3 +314,21 @@ val apply_props : t -> Props.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a markdown widget for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?layout_style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    ?on_selection:(string option -> unit) ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

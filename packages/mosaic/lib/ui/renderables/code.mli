@@ -271,6 +271,25 @@ module Props : sig
 
       Raises [Invalid_argument] if [tab_width < 1]. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?content:string ->
+    ?syntax:syntax ->
+    ?conceal:bool ->
+    ?text_style:Ansi.Style.t ->
+    ?wrap:Text_surface.wrap ->
+    ?tab_width:int ->
+    ?truncate:bool ->
+    ?selectable:bool ->
+    ?selection_bg:Ansi.Color.t ->
+    ?selection_fg:Ansi.Color.t ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is the default props value. *)
 
@@ -288,6 +307,7 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
+  ?on_selection:((int * int) option -> unit) ->
   ?content:string ->
   ?syntax:syntax ->
   ?conceal:bool ->
@@ -298,7 +318,6 @@ val create :
   ?selectable:bool ->
   ?selection_bg:Ansi.Color.t ->
   ?selection_fg:Ansi.Color.t ->
-  ?on_selection:((int * int) option -> unit) ->
   unit ->
   t
 (** [create ~parent ()] is a new code display renderable attached to [parent].
@@ -335,7 +354,7 @@ val set_on_selection : t -> ((int * int) option -> unit) option -> unit
 val set_on_rows_change : t -> (unit -> unit) option -> unit
 (** [set_on_rows_change t f] sets the callback called when content,
     highlighting, or layout configuration may have changed [t]'s
-    {!Renderable.text_rows}. [None] clears it. *)
+    {!Renderable.val-text_rows}. [None] clears it. *)
 
 (** {1:props_application Props application} *)
 
@@ -358,3 +377,21 @@ val is_highlighting : t -> bool
 val display_line_count : t -> int
 (** [display_line_count t] is the number of display lines in [t] after wrapping.
 *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    ?on_selection:((int * int) option -> unit) ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

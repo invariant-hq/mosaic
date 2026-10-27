@@ -2,8 +2,8 @@
 
     A composite container that pairs a line number gutter with a content area.
     Children are routed to the content area via {!Renderable.child_target}. On
-    render, the gutter discovers the first child with a {!Renderable.text_rows}
-    provider and draws line numbers accordingly.
+    render, the gutter discovers the first child with a
+    {!Renderable.val-text_rows} provider and draws line numbers accordingly.
 
     The gutter renders line numbers, optional signs, and per-line background
     colors. Content area colors are applied via a [render_before] callback on
@@ -74,6 +74,25 @@ module Props : sig
       {!val-create} and [Mosaic.line_number] take these labels with these
       defaults. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?fg:Ansi.Color.t ->
+    ?bg:Ansi.Color.t ->
+    ?min_width:int ->
+    ?padding_right:int ->
+    ?show_line_numbers:bool ->
+    ?line_number_offset:int ->
+    ?line_colors:(int * line_color) list ->
+    ?line_signs:(int * line_sign) list ->
+    ?line_numbers:(int * int) list ->
+    ?hidden_line_numbers:int list ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is [make ()]. *)
 
@@ -117,3 +136,20 @@ val node : t -> Renderable.t
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] replaces all properties of [t] with [props] and
     schedules a re-render. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

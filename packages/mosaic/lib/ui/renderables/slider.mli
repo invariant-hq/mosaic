@@ -31,6 +31,7 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
+  ?on_change:(float -> unit) ->
   ?orientation:orientation ->
   ?value:float ->
   ?min:float ->
@@ -38,7 +39,6 @@ val create :
   ?viewport_size:float ->
   ?track_color:Ansi.Color.t ->
   ?thumb_color:Ansi.Color.t ->
-  ?on_change:(float -> unit) ->
   unit ->
   t
 (** [create ~parent ()] is a slider attached to [parent]. The labels from
@@ -79,6 +79,22 @@ module Props : sig
 
       {!val-create} takes these labels with these defaults, and so does
       [Mosaic.slider] for the labels it has. *)
+
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?orientation:orientation ->
+    ?value:float ->
+    ?min:float ->
+    ?max:float ->
+    ?viewport_size:float ->
+    ?track_color:Ansi.Color.t ->
+    ?thumb_color:Ansi.Color.t ->
+    unit ->
+    'a
+
+  (**/**)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -143,3 +159,21 @@ val set_on_change : t -> (float -> unit) option -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a slider for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    ?on_change:(float -> unit) ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

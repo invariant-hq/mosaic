@@ -73,6 +73,21 @@ module Props : sig
       {!val-create} and [Mosaic.progress_bar] take these labels with these
       defaults. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?value:float ->
+    ?min:float ->
+    ?max:float ->
+    ?orientation:orientation ->
+    ?filled_color:Ansi.Color.t ->
+    ?empty_color:Ansi.Color.t ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is [make ()]. *)
 
@@ -127,3 +142,20 @@ val set_empty_color : t -> Ansi.Color.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a progress bar for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

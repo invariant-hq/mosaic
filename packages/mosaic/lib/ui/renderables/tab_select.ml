@@ -73,6 +73,18 @@ module Props = struct
       wrap_selection;
     }
 
+  let make_k k ~options ?selected ?tab_width ?background ?text_color
+      ?focused_background ?focused_text_color ?selected_background
+      ?selected_text_color ?description_color ?selected_description_color
+      ?show_underline ?show_description ?show_scroll_arrows ?wrap_selection
+      ?key_bindings () =
+    k
+      (make ~options ?selected ?tab_width ?background ?text_color
+         ?focused_background ?focused_text_color ?selected_background
+         ?selected_text_color ?description_color ?selected_description_color
+         ?show_underline ?show_description ?show_scroll_arrows ?wrap_selection
+         ?key_bindings ())
+
   let default = make ~options:[] ()
   let equal_item a b = a.label = b.label && a.description = b.description
 
@@ -354,25 +366,13 @@ let handle_key t (event : Event.key) =
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~options
-    ?selected ?tab_width ?background ?text_color ?focused_background
-    ?focused_text_color ?selected_background ?selected_text_color
-    ?description_color ?selected_description_color ?show_underline
-    ?show_description ?show_scroll_arrows ?wrap_selection ?key_bindings
-    ?on_change ?on_activate () =
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+    ?on_activate (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
-  let props =
-    Props.make ~options ?selected ?tab_width ?background ?text_color
-      ?focused_background ?focused_text_color ?selected_background
-      ?selected_text_color ?description_color ?selected_description_color
-      ?show_underline ?show_description ?show_scroll_arrows ?wrap_selection
-      ?key_bindings ()
-  in
-  let selected_index =
-    clamp_selected options (Option.value ~default:0 selected)
-  in
+  let options = Items.to_list props.Props.options in
+  let selected_index = clamp_selected options props.selected in
   let t =
     {
       node;
@@ -391,6 +391,12 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ~options
   Renderable.set_key_behavior node (Some (handle_key t));
   Renderable.set_on_resize node (Some (fun _node -> request_render t));
   t
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+    ?on_activate =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+        ?on_activate props)
 
 (* ───── Setters ───── *)
 
@@ -554,3 +560,7 @@ let pp ppf t =
   if t.props.show_underline then Format.pp_print_string ppf ", underline";
   if t.props.show_description then Format.pp_print_string ppf ", desc";
   Format.pp_print_char ppf ')'
+
+module Private = struct
+  let of_props = of_props
+end

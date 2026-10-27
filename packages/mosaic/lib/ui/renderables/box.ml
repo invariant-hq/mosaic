@@ -57,6 +57,14 @@ module Props = struct
       inert;
     }
 
+  let make_k k ?border ?border_style ?border_sides ?border_width ?border_color
+      ?focused_border_color ?background ?fill ?title ?title_alignment ?inert ()
+      =
+    k
+      (make ?border ?border_style ?border_sides ?border_width ?border_color
+         ?focused_border_color ?background ?fill ?title ?title_alignment ?inert
+         ())
+
   let default = make ()
   let inert p = p.inert
 
@@ -173,15 +181,10 @@ let render t _self grid ~dt:_ =
 
 (* Construction *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?border
-    ?border_style ?border_sides ?border_width ?border_color
-    ?focused_border_color ?background ?fill ?title ?title_alignment ?inert () =
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+    (props : Props.t) =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
-  in
-  let props =
-    Props.make ?border ?border_style ?border_sides ?border_width ?border_color
-      ?focused_border_color ?background ?fill ?title ?title_alignment ?inert ()
   in
   let t = { node; props } in
   Renderable.set_inert node props.inert;
@@ -189,6 +192,10 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?border
   Renderable.set_child_clip node (Some (child_clip t));
   apply_border_style t;
   t
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
 
 (* Setters *)
 
@@ -269,3 +276,7 @@ let pp ppf t =
   if Option.is_some t.props.background then Format.pp_print_string ppf ", bg";
   Option.iter (Format.fprintf ppf ", title=%S") t.props.title;
   Format.pp_print_char ppf ')'
+
+module Private = struct
+  let of_props = of_props
+end

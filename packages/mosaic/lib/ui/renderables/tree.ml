@@ -333,6 +333,18 @@ module Props = struct
       fast_scroll_step = max 1 fast_scroll_step;
     }
 
+  let make_k k ?items ?state ?indent_size ?show_guides ?guide_style ?expand_icon
+      ?collapse_icon ?leaf_icon ?background ?text_color ?selected_background
+      ?selected_text_color ?focused_selected_background
+      ?focused_selected_text_color ?guide_color ?icon_color ?wrap_selection
+      ?key_bindings ?fast_scroll_step () =
+    k
+      (make ?items ?state ?indent_size ?show_guides ?guide_style ?expand_icon
+         ?collapse_icon ?leaf_icon ?background ?text_color ?selected_background
+         ?selected_text_color ?focused_selected_background
+         ?focused_selected_text_color ?guide_color ?icon_color ?wrap_selection
+         ?key_bindings ?fast_scroll_step ())
+
   let default = make ()
 
   let equal a b =
@@ -886,20 +898,9 @@ let on_resize t _node = request t
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?items ?state
-    ?indent_size ?show_guides ?guide_style ?expand_icon ?collapse_icon
-    ?leaf_icon ?background ?text_color ?selected_background ?selected_text_color
-    ?focused_selected_background ?focused_selected_text_color ?guide_color
-    ?icon_color ?wrap_selection ?key_bindings ?fast_scroll_step () =
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props =
   let rnode =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
-  in
-  let props =
-    Props.make ?items ?state ?indent_size ?show_guides ?guide_style ?expand_icon
-      ?collapse_icon ?leaf_icon ?background ?text_color ?selected_background
-      ?selected_text_color ?focused_selected_background
-      ?focused_selected_text_color ?guide_color ?icon_color ?wrap_selection
-      ?key_bindings ?fast_scroll_step ()
   in
   let t =
     {
@@ -921,6 +922,10 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?items ?state
   Renderable.set_on_resize rnode (Some (on_resize t));
   request t;
   t
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity props)
 
 (* ───── Layout ───── *)
 
@@ -988,3 +993,7 @@ let pp ppf t =
   if t.props.show_guides then Format.pp_print_string ppf ", guides";
   if t.props.wrap_selection then Format.pp_print_string ppf ", wrap";
   Format.pp_print_char ppf ')'
+
+module Private = struct
+  let of_props = of_props
+end

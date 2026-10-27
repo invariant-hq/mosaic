@@ -70,6 +70,8 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
+  ?on_change:(int -> unit) ->
+  ?on_activate:(int -> unit) ->
   options:item list ->
   ?selected:int ->
   ?tab_width:int ->
@@ -86,8 +88,6 @@ val create :
   ?show_scroll_arrows:bool ->
   ?wrap_selection:bool ->
   ?key_bindings:key_binding list ->
-  ?on_change:(int -> unit) ->
-  ?on_activate:(int -> unit) ->
   unit ->
   t
 (** [create ~parent ~options ()] is a tab selector attached to [parent]. The
@@ -154,6 +154,31 @@ module Props : sig
 
       {!val-create} takes these labels with these defaults, and so does
       [Mosaic.tab_select] for the labels it has. *)
+
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    options:item list ->
+    ?selected:int ->
+    ?tab_width:int ->
+    ?background:Ansi.Color.t ->
+    ?text_color:Ansi.Color.t ->
+    ?focused_background:Ansi.Color.t ->
+    ?focused_text_color:Ansi.Color.t ->
+    ?selected_background:Ansi.Color.t ->
+    ?selected_text_color:Ansi.Color.t ->
+    ?description_color:Ansi.Color.t ->
+    ?selected_description_color:Ansi.Color.t ->
+    ?show_underline:bool ->
+    ?show_description:bool ->
+    ?show_scroll_arrows:bool ->
+    ?wrap_selection:bool ->
+    ?key_bindings:key_binding list ->
+    unit ->
+    'a
+
+  (**/**)
 
   val default : t
   (** [default] is [make ~options:[] ()]. *)
@@ -284,3 +309,22 @@ val select_current : t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a tab selector for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    ?on_change:(int -> unit) ->
+    ?on_activate:(int -> unit) ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

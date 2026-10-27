@@ -251,6 +251,34 @@ module Props : sig
 
       {!val-create} and [Mosaic.tree] take these labels with these defaults. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?items:item list ->
+    ?state:State.t ->
+    ?indent_size:int ->
+    ?show_guides:bool ->
+    ?guide_style:Matrix_grid.Border.t ->
+    ?expand_icon:string ->
+    ?collapse_icon:string ->
+    ?leaf_icon:string ->
+    ?background:Ansi.Color.t ->
+    ?text_color:Ansi.Color.t ->
+    ?selected_background:Ansi.Color.t ->
+    ?selected_text_color:Ansi.Color.t ->
+    ?focused_selected_background:Ansi.Color.t ->
+    ?focused_selected_text_color:Ansi.Color.t ->
+    ?guide_color:Ansi.Color.t ->
+    ?icon_color:Ansi.Color.t ->
+    ?wrap_selection:bool ->
+    ?key_bindings:key_binding list ->
+    ?fast_scroll_step:int ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is [make ()]. *)
 
@@ -390,3 +418,20 @@ val set_style : t -> Toffee.Style.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

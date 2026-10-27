@@ -4,9 +4,9 @@
 
 (** Focusable data table with column headers and row selection.
 
-    A table widget that displays rows of {!cell} values in typed {!column}s. The
-    widget is keyboard- and mouse-navigable and automatically scrolls to keep
-    the selected row visible.
+    A table widget that displays rows of {!type-cell} values in typed
+    {!type-column}s. The widget is keyboard- and mouse-navigable and
+    automatically scrolls to keep the selected row visible.
 
     The table draws by the roles of the theme in scope ({!Renderable.theme}):
     its lines in the [Border] role, the header in the [Emphasis] role, cells in
@@ -80,7 +80,7 @@ type width = [ `Fixed of int | `Auto | `Flex of float ]
 
 type overflow = [ `Ellipsis | `Crop ]
 (** The type for cell content overflow strategies. See
-    {{!overflow}text overflow}. *)
+    {{!type-overflow}text overflow}. *)
 
 type column = {
   header : string;
@@ -94,7 +94,7 @@ type column = {
 
     [header] is the column header text displayed in the header row. [width],
     [alignment], and [overflow] govern sizing and rendering. [min_width] and
-    [max_width] constrain {!width} values of [`Auto] and [`Flex]; they are
+    [max_width] constrain {!type-width} values of [`Auto] and [`Flex]; they are
     ignored for [`Fixed] columns. *)
 
 val column :
@@ -281,6 +281,40 @@ module Props : sig
       {!val-create} takes these labels with these defaults, and so does
       [Mosaic.table] for the labels it has. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?columns:column list ->
+    ?rows:cell array list ->
+    ?selected_row:int ->
+    ?border:bool ->
+    ?border_style:Matrix_grid.Border.t ->
+    ?show_header:bool ->
+    ?show_column_separator:bool ->
+    ?show_row_separator:bool ->
+    ?cell_padding:int ->
+    ?header_color:Ansi.Color.t ->
+    ?header_background:Ansi.Color.t ->
+    ?text_color:Ansi.Color.t ->
+    ?background:Ansi.Color.t ->
+    ?selected_text_color:Ansi.Color.t ->
+    ?selected_background:Ansi.Color.t ->
+    ?focused_selected_text_color:Ansi.Color.t ->
+    ?focused_selected_background:Ansi.Color.t ->
+    ?selection_visible:bool ->
+    ?show_scroll_indicator:bool ->
+    ?activate_on_click:bool ->
+    ?wheel_navigation:bool ->
+    ?row_styles:Ansi.Style.t list ->
+    ?wrap_selection:bool ->
+    ?key_bindings:key_binding list ->
+    ?fast_scroll_step:int ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is [make ()]. *)
 
@@ -444,3 +478,20 @@ val set_style : t -> Toffee.Style.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

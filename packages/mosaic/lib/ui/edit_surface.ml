@@ -214,6 +214,18 @@ module Props = struct
       key_bindings;
     }
 
+  let make_k k ~state ?annotations ?syntax ?ghost_text ?ghost_text_color
+      ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
+      ?focused_background_color ?placeholder_color ?selection_color
+      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+      ?show_cursor ?key_bindings () =
+    k
+      (make ~state ?annotations ?syntax ?ghost_text ?ghost_text_color
+         ?placeholder ?wrap ?text_color ?background_color ?focused_text_color
+         ?focused_background_color ?placeholder_color ?selection_color
+         ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+         ?show_cursor ?key_bindings ())
+
   let default = make ~state:Editor.empty ()
 
   let equal a b =

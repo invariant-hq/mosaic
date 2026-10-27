@@ -139,6 +139,12 @@ module Props = struct
       arrow_bg;
     }
 
+  let make_k k ?position ?scroll_size ?viewport_size ?orientation ?show_arrows
+      ?track_color ?thumb_color ?arrow_fg ?arrow_bg () =
+    k
+      (make ?position ?scroll_size ?viewport_size ?orientation ?show_arrows
+         ?track_color ?thumb_color ?arrow_fg ?arrow_bg ())
+
   let default = make ()
 
   let equal a b =
@@ -336,13 +342,8 @@ let orientation_style style orientation ~auto_width ~auto_height =
   in
   Toffee.Style.set_size size style
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?position
-    ?scroll_size ?viewport_size ?orientation ?show_arrows ?track_color
-    ?thumb_color ?arrow_fg ?arrow_bg ?on_change () =
-  let props =
-    Props.make ?position ?scroll_size ?viewport_size ?orientation ?show_arrows
-      ?track_color ?thumb_color ?arrow_fg ?arrow_bg ()
-  in
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+    (props : Props.t) =
   let ({
          position;
          scroll_size;
@@ -399,8 +400,9 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?position
   Renderable.set_visible (Arrow.node start_arrow) show_arrows;
   (* Create slider *)
   let slider =
-    Slider.create ~parent:node ~orientation ~min:0. ~max:0. ~value:0.
-      ~viewport_size:1. ?track_color ?thumb_color ()
+    Slider.Private.of_props ~parent:node
+      (Slider.Props.make ~orientation ~min:0. ~max:0. ~value:0.
+         ~viewport_size:1. ?track_color ?thumb_color ())
   in
   let slider_style =
     let s = Renderable.style (Slider.node slider) in
@@ -483,6 +485,11 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?position
   sync_slider t;
   recalc_visibility t;
   t
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
+        props)
 
 (* ───── Accessors & Setters ───── *)
 
@@ -595,3 +602,7 @@ let pp ppf t =
   Format.fprintf ppf "ScrollBar(%s, %s, pos=%d, size=%d, vp=%d)"
     (Renderable.id t.node) orient t.scroll_position t.scroll_size
     t.viewport_size
+
+module Private = struct
+  let of_props = of_props
+end

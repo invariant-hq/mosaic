@@ -165,6 +165,12 @@ module Props = struct
       syntax_style;
     }
 
+  let make_k k ?content ?conceal ?streaming ?style ?selectable ?selection_bg
+      ?selection_fg ?render_node ?render_code ?highlighter ?syntax_style () =
+    k
+      (make ?content ?conceal ?streaming ?style ?selectable ?selection_bg
+         ?selection_fg ?render_node ?render_code ?highlighter ?syntax_style ())
+
   let default = make ()
 
   let equal a b =
@@ -287,10 +293,11 @@ let configure_text (env : render_env) text =
 
 let create_text ~(env : render_env) ~parent ?index ?id ?style ?visible ?z_index
     ?opacity ?content ?text_style ?(wrap = `None) ?tab_width ?truncate () =
-  Text.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
-    ?text_style ~wrap ~selectable:env.selectable ?selection_bg:env.selection_bg
-    ?selection_fg:env.selection_fg ?on_selection:env.on_text_selection
-    ?tab_width ?truncate ()
+  Text.Private.of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+    ?on_selection:env.on_text_selection
+    (Text.Props.make ?content ?text_style ~wrap ~selectable:env.selectable
+       ?selection_bg:env.selection_bg ?selection_fg:env.selection_fg ?tab_width
+       ?truncate ())
 
 (* ───── Inline Rendering ───── *)
 
@@ -536,9 +543,9 @@ let render_code_block_default ~(env : render_env) ~parent ?index ~is_last
   let title = code_block_language cb in
   let code_style = env.style Code_block in
   let box =
-    Box.create ~parent ?index
+    Box.Private.of_props ~parent ?index
       ~style:(bordered_block_style ~is_last)
-      ~border:true ~border_sides:[ `Left ] ?title ()
+      (Box.Props.make ~border:true ~border_sides:[ `Left ] ?title ())
   in
   let text =
     create_text ~env ~parent:(Box.node box) ~content:code_text
@@ -571,7 +578,8 @@ let render_code_highlighted ~env ~parent ?index ~is_last highlighter
   let content = code_block_text cb in
   let syntax = fence_syntax ~env highlighter cb in
   let code =
-    Code.create ~parent ?index ~content ?syntax ~style:(block_style ~is_last) ()
+    Code.Private.of_props ~parent ?index ~style:(block_style ~is_last)
+      (Code.Props.make ~content ?syntax ())
   in
   { tag = Code_tag; widget = Code_widget code; ast = empty_ast }
 
@@ -696,9 +704,10 @@ and render_blockquote ~(env : render_env) ~parent ?index ~is_last
     (bq : Cmarkit.Block.Block_quote.t) =
   let bq_style = env.style Blockquote in
   let box =
-    Box.create ~parent ?index
+    Box.Private.of_props ~parent ?index
       ~style:(bordered_column_block_style ~is_last)
-      ~border:true ~border_sides:[ `Left ] ?border_color:bq_style.fg ()
+      (Box.Props.make ~border:true ~border_sides:[ `Left ]
+         ?border_color:bq_style.fg ())
   in
   let inner_block = Cmarkit.Block.Block_quote.block bq in
   let children =
@@ -775,8 +784,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
             else [ `Top; `Bottom; `Left ]
           in
           let col_box =
-            Box.create ~parent:table_box ~border:true ~border_style:border_chars
-              ~border_sides ?border_color
+            Box.Private.of_props ~parent:table_box
               ~style:
                 (Toffee.Style.make
                    ~flex_direction:Toffee.Style.Flex_direction.Column
@@ -785,7 +793,8 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                      (Toffee.Geometry.Size.make Toffee.Style.Dimension.auto
                         Toffee.Style.Dimension.auto)
                    ())
-              ()
+              (Box.Props.make ~border:true ~border_style:border_chars
+                 ~border_sides ?border_color ())
           in
           let get_cell cells =
             if col_idx < List.length cells then
@@ -808,8 +817,9 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                   | None -> []
                 in
                 let header_box =
-                  Box.create ~parent:(Box.node col_box) ~border:true
-                    ~border_sides:[ `Bottom ] ?border_color ()
+                  Box.Private.of_props ~parent:(Box.node col_box)
+                    (Box.Props.make ~border:true ~border_sides:[ `Bottom ]
+                       ?border_color ())
                 in
                 let text =
                   create_text ~env ~parent:(Box.node header_box)
@@ -843,8 +853,9 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                 end
                 else begin
                   let cell_box =
-                    Box.create ~parent:(Box.node col_box) ~border:true
-                      ~border_sides:[ `Bottom ] ?border_color ()
+                    Box.Private.of_props ~parent:(Box.node col_box)
+                      (Box.Props.make ~border:true ~border_sides:[ `Bottom ]
+                         ?border_color ())
                   in
                   let text =
                     create_text ~env ~parent:(Box.node cell_box)
@@ -1296,10 +1307,8 @@ let follow_theme t =
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
-    ?opacity ?content ?style ?conceal ?streaming ?selectable ?selection_bg
-    ?selection_fg ?on_selection ?render_node ?render_code ?highlighter
-    ?syntax_style () =
+let of_props ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
+    ?opacity ?on_selection (props : Props.t) =
   let ({
          content;
          conceal;
@@ -1314,8 +1323,7 @@ let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
          syntax_style;
        }
         : Props.t) =
-    Props.make ?content ?conceal ?streaming ?style ?selectable ?selection_bg
-      ?selection_fg ?render_node ?render_code ?highlighter ?syntax_style ()
+    props
   in
   let node =
     Renderable.create ~parent ?index ?id ~style:layout_style ?visible ?z_index
@@ -1352,6 +1360,12 @@ let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
   Renderable.set_on_update node (Some (fun _ ~dt:_ -> follow_theme t));
   if content <> "" then update_blocks t;
   t
+
+let create ~parent ?index ?id ?layout_style ?visible ?z_index ?opacity
+    ?on_selection =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?layout_style ?visible ?z_index ?opacity
+        ?on_selection props)
 
 (* ───── Layout Style ───── *)
 
@@ -1488,3 +1502,7 @@ let pp ppf t =
     Format.fprintf ppf ", %S" display
   end;
   Format.fprintf ppf ", blocks=%d)" (List.length t.blocks)
+
+module Private = struct
+  let of_props = of_props
+end

@@ -159,7 +159,7 @@ val set_uchar :
 (** [set_uchar t ~x ~y ~uchar:cell ~fg ~bg ~attrs ()] writes a single cell at
     column [x], row [y].
 
-    See {!Matrix_grid.set_uchar} for full semantics.
+    See {!Matrix_grid.val-set_uchar} for full semantics.
 
     Optional parameters:
     - [link] is a hyperlink URI attached to the cell. Defaults to no link.

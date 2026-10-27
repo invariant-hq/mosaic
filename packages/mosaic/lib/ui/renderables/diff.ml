@@ -1067,10 +1067,11 @@ let code_props (props : Props.t) ~content ?syntax () =
     ~selectable:props.selectable ()
 
 let make_code ~parent (props : Props.t) ~content ?syntax () =
-  Code.create ~parent ~style:full_style ~content
-    ?syntax:(Option.map code_syntax syntax)
-    ~conceal:(code_conceal syntax) ~text_style:props.text_style ~wrap:props.wrap
-    ~selectable:props.selectable ()
+  Code.Private.of_props ~parent ~style:full_style
+    (Code.Props.make ~content
+       ?syntax:(Option.map code_syntax syntax)
+       ~conceal:(code_conceal syntax) ~text_style:props.text_style
+       ~wrap:props.wrap ~selectable:props.selectable ())
 
 let make_or_update_code existing ~parent (props : Props.t) ~content ?syntax () =
   match existing with
@@ -1086,8 +1087,9 @@ let new_syntax = function Some { new_; _ } -> Some new_ | None -> None
 let make_or_update_side existing ~parent ~style ~theme =
   match existing with
   | None ->
-      Line_number.create ~parent ~style ~fg:theme.line_number_fg
-        ?bg:theme.line_number_bg ()
+      Line_number.Private.of_props ~parent ~style
+        (Line_number.Props.make ~fg:theme.line_number_fg
+           ?bg:theme.line_number_bg ())
   | Some side ->
       Renderable.set_style (Line_number.node side) style;
       side

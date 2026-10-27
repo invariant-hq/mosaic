@@ -40,6 +40,12 @@ module Props = struct
       selection_fg;
     }
 
+  let make_k k ?content ?syntax ?conceal ?text_style ?wrap ?tab_width ?truncate
+      ?selectable ?selection_bg ?selection_fg () =
+    k
+      (make ?content ?syntax ?conceal ?text_style ?wrap ?tab_width ?truncate
+         ?selectable ?selection_bg ?selection_fg ())
+
   let default = make ()
 
   let equal a b =
@@ -188,13 +194,8 @@ let render_before t _node grid ~dt:_ =
 
 (* Construction *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?syntax
-    ?conceal ?text_style ?wrap ?tab_width ?truncate ?selectable ?selection_bg
-    ?selection_fg ?on_selection () =
-  let props =
-    Props.make ?content ?syntax ?conceal ?text_style ?wrap ?tab_width ?truncate
-      ?selectable ?selection_bg ?selection_fg ()
-  in
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_selection
+    (props : Props.t) =
   let text =
     Text_renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       ~text_style:props.text_style ~wrap:props.wrap ~tab_width:props.tab_width
@@ -224,6 +225,11 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content ?syntax
   Renderable.Private.set_cleanup node (fun () -> Syntax_session.cancel session);
   render_content t props;
   t
+
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_selection =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity
+        ?on_selection props)
 
 (* Content *)
 
@@ -281,3 +287,7 @@ let apply_props t (props : Props.t) =
 let is_highlighting t = Syntax_session.is_highlighting t.session
 let line_count t = Text_renderable.line_count t.text
 let display_line_count t = Text_renderable.display_line_count t.text
+
+module Private = struct
+  let of_props = of_props
+end

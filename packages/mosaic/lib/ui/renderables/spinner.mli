@@ -84,6 +84,13 @@ module Props : sig
       {!val-create} and [Mosaic.spinner] take these labels with these defaults.
   *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) -> ?frame_set:frame_set -> ?color:Ansi.Color.t -> unit -> 'a
+
+  (**/**)
+
   val default : t
   (** [default] is [make ()]. *)
 
@@ -123,3 +130,20 @@ val set_color : t -> Ansi.Color.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

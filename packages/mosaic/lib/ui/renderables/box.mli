@@ -96,6 +96,26 @@ module Props : sig
       Raises [Invalid_argument] if a border width is not a length of a whole
       number of cells, [0] or more. *)
 
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?border:bool ->
+    ?border_style:Matrix_grid.Border.t ->
+    ?border_sides:Matrix_grid.Border.side list ->
+    ?border_width:Toffee.Style.Length_percentage.t Toffee.Geometry.Rect.t ->
+    ?border_color:Ansi.Color.t ->
+    ?focused_border_color:Ansi.Color.t ->
+    ?background:Ansi.Color.t ->
+    ?fill:bool ->
+    ?title:string ->
+    ?title_alignment:[ `Left | `Center | `Right ] ->
+    ?inert:bool ->
+    unit ->
+    'a
+
+  (**/**)
+
   val default : t
   (** [default] is [make ()]. *)
 
@@ -161,3 +181,20 @@ val set_style : t -> Toffee.Style.t -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp] formats a box for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

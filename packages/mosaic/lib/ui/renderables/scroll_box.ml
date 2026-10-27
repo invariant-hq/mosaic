@@ -96,6 +96,14 @@ module Props = struct
       horizontal_bar_style;
     }
 
+  let make_k k ?scroll_x ?scroll_y ?scroll ?background ?scroll_accel
+      ?show_scrollbars ?scrollbar_style ?vertical_bar_style
+      ?horizontal_bar_style () =
+    k
+      (make ?scroll_x ?scroll_y ?scroll ?background ?scroll_accel
+         ?show_scrollbars ?scrollbar_style ?vertical_bar_style
+         ?horizontal_bar_style ())
+
   let default = make ()
 
   let equal a b =
@@ -534,14 +542,8 @@ let set_style t style = Renderable.set_style t.node (root_style style)
 
 (* ───── Construction ───── *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?scroll_x
-    ?scroll_y ?scroll ?background ?scroll_accel ?show_scrollbars
-    ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ?on_scroll () =
-  let props =
-    Props.make ?scroll_x ?scroll_y ?scroll ?background ?scroll_accel
-      ?show_scrollbars ?scrollbar_style ?vertical_bar_style
-      ?horizontal_bar_style ()
-  in
+let of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
+    (props : Props.t) =
   let ({
          scroll_x;
          scroll_y;
@@ -608,14 +610,20 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?scroll_x
   Renderable.Private.set_viewport_cull content_node true;
   (* Horizontal scroll bar: inside wrapper, below viewport *)
   let horizontal_bar =
-    let bar = Scroll_bar.create ~parent:wrapper ~orientation:`Horizontal () in
+    let bar =
+      Scroll_bar.Private.of_props ~parent:wrapper
+        (Scroll_bar.Props.make ~orientation:`Horizontal ())
+    in
     Scroll_bar.apply_style bar
       (resolve_bar_style scrollbar_style horizontal_bar_style);
     bar
   in
   (* Vertical scroll bar: inside root, right of wrapper *)
   let vertical_bar =
-    let bar = Scroll_bar.create ~parent:node ~orientation:`Vertical () in
+    let bar =
+      Scroll_bar.Private.of_props ~parent:node
+        (Scroll_bar.Props.make ~orientation:`Vertical ())
+    in
     Scroll_bar.apply_style bar
       (resolve_bar_style scrollbar_style vertical_bar_style);
     bar
@@ -678,9 +686,18 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?scroll_x
   Renderable.request_render node;
   t
 
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll =
+  Props.make_k (fun props ->
+      of_props ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
+        props)
+
 (* ───── Pretty-printing ───── *)
 
 let pp ppf t =
   Format.fprintf ppf "ScrollBox(%s, x=%d, y=%d, cw=%d, ch=%d, vw=%d, vh=%d)"
     (Renderable.id t.node) t.scroll_x t.scroll_y t.content_w t.content_h
     (viewport_width t) (viewport_height t)
+
+module Private = struct
+  let of_props = of_props
+end

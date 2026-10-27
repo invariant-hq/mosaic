@@ -76,10 +76,28 @@ module Props : sig
 
       [scrollbar_style] applies to both bars. A [vertical_bar_style] or
       [horizontal_bar_style] replaces the shared style for that axis in full.
-      Without either override, the bar uses {!Scroll_bar.style}'s defaults.
+      Without either override, the bar uses {!Scroll_bar.val-style}'s defaults.
       Removing an axis-specific style restores the shared style; removing all
       styles restores the defaults. The viewport owns each bar's orientation,
       position, range and automatic visibility. *)
+
+  (**/**)
+
+  val make_k :
+    (t -> 'a) ->
+    ?scroll_x:bool ->
+    ?scroll_y:bool ->
+    ?scroll:Scroll.t ->
+    ?background:Ansi.Color.t ->
+    ?scroll_accel:Scroll_accel.t ->
+    ?show_scrollbars:bool ->
+    ?scrollbar_style:Scroll_bar.style ->
+    ?vertical_bar_style:Scroll_bar.style ->
+    ?horizontal_bar_style:Scroll_bar.style ->
+    unit ->
+    'a
+
+  (**/**)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -98,6 +116,7 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
+  ?on_scroll:(Scroll.t -> unit) ->
   ?scroll_x:bool ->
   ?scroll_y:bool ->
   ?scroll:Scroll.t ->
@@ -107,7 +126,6 @@ val create :
   ?scrollbar_style:Scroll_bar.style ->
   ?vertical_bar_style:Scroll_bar.style ->
   ?horizontal_bar_style:Scroll_bar.style ->
-  ?on_scroll:(Scroll.t -> unit) ->
   unit ->
   t
 (** [create ~parent ()] attaches a viewport. User children are routed to its
@@ -155,3 +173,21 @@ val apply_props : t -> Props.t -> unit
     viewport; following and reveal remain active after content changes. *)
 
 val pp : Format.formatter -> t -> unit
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    ?on_scroll:(Scroll.t -> unit) ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end

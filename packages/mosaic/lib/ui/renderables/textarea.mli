@@ -99,9 +99,11 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
+  on_change:(Editor.t -> unit) ->
+  ?on_submit:(string -> unit) ->
   state:Editor.t ->
   ?annotations:Text_buffer.Annotations.t ->
-  ?syntax:Code.syntax ->
+  ?syntax:Syntax_session.syntax ->
   ?ghost_text:string ->
   ?ghost_text_color:Ansi.Color.t ->
   ?placeholder:string ->
@@ -119,8 +121,6 @@ val create :
   ?selectable:bool ->
   ?show_cursor:bool ->
   ?key_bindings:key_binding list ->
-  on_change:(Editor.t -> unit) ->
-  ?on_submit:(string -> unit) ->
   unit ->
   t
 (** [create ~parent ~state ~on_change ()] renders the accepted [state]. Default
@@ -231,8 +231,8 @@ module Props : sig
 
   val equal : t -> t -> bool
   (** [equal a b] is [true] iff [a] and [b] refer to the same editor value and
-      the same annotations, and have equal syntax settings (see {!Code.syntax})
-      and visual properties. *)
+      the same annotations, and have equal syntax settings (see
+      {!Code.type-syntax}) and visual properties. *)
 end
 
 val apply_props : t -> Props.t -> unit
@@ -270,3 +270,22 @@ val handle_paste : t -> string -> unit
 
 val pp : Format.formatter -> t -> unit
 (** [pp ppf t] formats [t] on [ppf] for debugging. *)
+
+(**/**)
+
+module Private : sig
+  val of_props :
+    parent:Renderable.t ->
+    ?index:int ->
+    ?id:string ->
+    ?style:Toffee.Style.t ->
+    ?visible:bool ->
+    ?z_index:int ->
+    ?opacity:float ->
+    on_change:(Editor.t -> unit) ->
+    ?on_submit:(string -> unit) ->
+    Props.t ->
+    t
+  (** [of_props ~parent props] is a widget showing [props], made as [create]
+      makes one. *)
+end
