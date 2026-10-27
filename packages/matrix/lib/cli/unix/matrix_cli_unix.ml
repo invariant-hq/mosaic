@@ -238,9 +238,12 @@ let reraise l =
   | None -> ()
 
 (* One write with [above], the complete lines printed since the last, then
-   the frame; called with the device's lock held. A region that cannot be
-   drawn now, while it is suspended, while the job is in the background or
-   on a terminal of no size, lets the lines go out as they are. *)
+   the frame, the cursor hidden until the region ends or goes off the
+   screen, as Rich's Live hides it ("self.console.show_cursor(False)" in
+   [Live.start], rich/live.py) and log-update does; called with the
+   device's lock held. A region that cannot be drawn now, while it is
+   suspended, while the job is in the background or on a terminal of no
+   size, lets the lines go out as they are. *)
 let draw l ~above =
   flush_std ();
   l.pending <- false;
@@ -248,7 +251,9 @@ let draw l ~above =
   match size with
   | Some (cols, rows) when l.suspended = 0 && not (Tty.background l.out.fd) ->
       let frame = frame_at l ~width:(Region.width l.region ~cols) in
-      let bytes = Region.draw l.region ~cols ~rows ~above frame in
+      let bytes =
+        Region.draw l.region ~cols ~rows ~above ~cursor:Hidden frame
+      in
       if bytes <> "" then (
         write l bytes;
         l.on_screen <- true;

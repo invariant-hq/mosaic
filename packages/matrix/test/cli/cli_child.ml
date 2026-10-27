@@ -80,6 +80,12 @@ let () =
               ignore
                 (Sys.command "printf 'from child\\n'; printf 'unended'" : int));
           C.show live (text_frame "R2"))
+  | "suspend-wait" ->
+      C.live err (fun live ->
+          C.show live (text_frame "R1");
+          C.suspend live (fun () ->
+              ignore (Sys.command "printf 'IN CHILD\\n'; sleep 1" : int));
+          C.show live (text_frame "R2"))
   | "raw" ->
       C.live err (fun live ->
           C.show live (text_frame "R");

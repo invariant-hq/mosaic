@@ -68,9 +68,12 @@ let test_partial () =
   equal ~msg:"a line shows whole once its end comes" strings
     [ "half whole"; "R end" ] (lines term)
 
+let cursor_visible term = (T.Terminal.modes term).cursor_visible
+
 let test_sigint () =
   spawn "wait" @@ fun term c ->
   T.Child.wait c ~within:10. (shows "TWO");
+  is_false ~msg:"the cursor hidden while the region shows" (cursor_visible term);
   T.Child.send c "\003";
   signaled Sys.sigint (T.Child.exit c ~within:10.);
   usable term;
@@ -140,11 +143,16 @@ let test_resize () =
   is_false ~msg:"no stale width shown" (shows "W=40" term || shows "W=25" term)
 
 let test_suspend () =
-  spawn "suspend" @@ fun term c ->
+  ( spawn "suspend" @@ fun term c ->
+    exited 0 (T.Child.exit c ~within:10.);
+    equal ~msg:"the child's lines above, the region below" strings
+      [ "from child"; "unended"; "R2" ]
+      (lines term) );
+  spawn "suspend-wait" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "IN CHILD");
+  is_true ~msg:"the cursor shown for the child" (cursor_visible term);
   exited 0 (T.Child.exit c ~within:10.);
-  equal ~msg:"the child's lines above, the region below" strings
-    [ "from child"; "unended"; "R2" ]
-    (lines term)
+  usable term
 
 let test_raw () =
   spawn "raw" @@ fun term c ->
@@ -202,6 +210,7 @@ let test_secret () =
   spawn "secret" @@ fun term c ->
   T.Child.wait c ~within:10. (shows "Password:");
   is_false ~msg:"the region is off the screen" (shows "BUSY" term);
+  is_true ~msg:"the cursor shown at the question" (cursor_visible term);
   T.Child.send c "hunter2\r";
   exited 0 (T.Child.exit c ~within:10.);
   is_true ~msg:"the answer" (has_line "GOT hunter2" term);
@@ -235,6 +244,7 @@ let test_stop () =
   T.Child.send c "\026";
   T.Child.wait c ~within:10. (shows "JOB-STOPPED TSTP");
   is_false ~msg:"the region is off the screen" (shows "LIVE" term);
+  is_true ~msg:"the cursor shown while the job is stopped" (cursor_visible term);
   T.Child.send c "f\r";
   T.Child.wait c ~within:10. (shows "LIVE");
   T.Child.send c "\003";

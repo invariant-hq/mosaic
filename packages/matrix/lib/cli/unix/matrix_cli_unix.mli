@@ -22,6 +22,8 @@
     {!Matrix_screen.Region}, whose model says what a redraw may and may not
     erase. Its rows show below a blank row, its origin, where the cursor rests
     between two draws, so that what another process prints there stays whole.
+    The cursor is hidden while the region shows, and shown again when the region
+    goes off the screen, for {!suspend}, a prompt or a stop, and when it ends.
     While it lives, the lines printed through any output on its terminal go
     above it, each in the write that redraws the rows below, and a line printed
     without its end waits for its end, or for the region to be suspended or
