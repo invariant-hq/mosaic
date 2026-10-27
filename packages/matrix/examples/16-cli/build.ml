@@ -67,7 +67,7 @@ let unused_variable =
     ]
 
 (* The live row: a bar of the crates compiled, and those being compiled. *)
-let building ~finished ~running ~width =
+let building ~finished ~running ~width ~height:_ =
   let total = List.length crates and cells = 25 in
   let full = cells * finished / total in
   let bar =
@@ -118,7 +118,7 @@ let () =
           (List.length crates - 1)));
   Out.live err (fun live ->
       compile err live;
-      Out.show live (fun ~width:_ -> None));
+      Out.show live (fun ~width:_ ~height:_ -> None));
   Out.print err
     (status green "Finished"
        (Printf.sprintf

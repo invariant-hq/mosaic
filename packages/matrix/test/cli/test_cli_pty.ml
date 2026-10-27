@@ -38,6 +38,20 @@ let signaled s = function
 
 let strings = Testable.(list string)
 
+(* What [mode] writes on its standard outputs, both on one pipe. *)
+let piped mode =
+  let r, w = Unix.pipe ~cloexec:true () in
+  let pid =
+    Unix.create_process_env child [| child; mode |]
+      [| "TERM=xterm-256color" |]
+      Unix.stdin w w
+  in
+  Unix.close w;
+  let out = In_channel.input_all (Unix.in_channel_of_descr r) in
+  Unix.close r;
+  ignore (Unix.waitpid [] pid : int * Unix.process_status);
+  out
+
 (* What every ending leaves: autowrap on, the cursor shown, no update open. *)
 let usable term =
   let m = T.Terminal.modes term in
@@ -82,6 +96,19 @@ let test_tick () =
   in
   T.Child.wait c ~within:10. (fun t -> calls t >= 4);
   exited 0 (T.Child.exit c ~within:10.)
+
+(* A frame is given the rows the region shows of it: the terminal's height
+   less the origin's row, less the rows of the scopes above. On a pipe each
+   scope's last frame is given 24 rows. *)
+let test_height () =
+  ( spawn ~rows:10 "height" @@ fun term c ->
+    T.Child.wait c ~within:10. (fun t -> shows "H=9" t && shows "IH=8" t);
+    T.Child.resize c ~cols:40 ~rows:6;
+    T.Child.wait c ~within:10. (fun t -> shows "H=5" t && shows "IH=4" t);
+    T.Child.send c "\003";
+    signaled Sys.sigint (T.Child.exit c ~within:10.);
+    usable term );
+  equal ~msg:"on a pipe" Testable.string "IH=24\nH=24\n" (piped "height")
 
 let test_partial () =
   spawn "partial" @@ fun term c ->
@@ -348,20 +375,6 @@ let test_flow_control () =
   is_true ~msg:"ended within 2 s" (Unix.gettimeofday () -. t0 < 2.);
   ignore term
 
-(* What [mode] writes on its standard outputs, both on one pipe. *)
-let piped mode =
-  let r, w = Unix.pipe ~cloexec:true () in
-  let pid =
-    Unix.create_process_env child [| child; mode |]
-      [| "TERM=xterm-256color" |]
-      Unix.stdin w w
-  in
-  Unix.close w;
-  let out = In_channel.input_all (Unix.in_channel_of_descr r) in
-  Unix.close r;
-  ignore (Unix.waitpid [] pid : int * Unix.process_status);
-  out
-
 (* Whether a region redraws its rows: on a terminal, outside CI, and not on
    a pipe. *)
 let test_redraws () =
@@ -411,6 +424,7 @@ let () =
           test "a frame taller than the screen" test_tall;
           test "a line waits for its end" test_partial;
           test "a tick" test_tick;
+          test "the height of a frame" test_height;
           test "SIGINT" test_sigint;
           test "exit" test_exit;
           test "a live inside a live" test_nested;

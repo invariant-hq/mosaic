@@ -22,7 +22,7 @@ let dim = Ansi.Style.make ~dim:true ()
 
 (* The menu: the question, then a row for each choice, the selected one
    marked. *)
-let menu selected ~width =
+let menu selected ~width ~height:_ =
   let g = Grid.create ~width ~height:(Array.length licenses + 1) () in
   Grid.draw_text g ~x:0 ~y:0 ~text:"? License";
   Grid.draw_text g ~x:10 ~y:0 ~style:dim ~text:"(arrows to move, Enter to pick)";
@@ -35,7 +35,7 @@ let menu selected ~width =
   Some g
 
 (* The question once answered, which stays in the scrollback. *)
-let picked i ~width =
+let picked i ~width ~height:_ =
   let g = Grid.create ~width ~height:1 () in
   Grid.draw_text g ~x:0 ~y:0 ~text:"? License";
   Grid.draw_text g ~x:10 ~y:0 ~style:accent ~text:licenses.(i);

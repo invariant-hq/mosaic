@@ -82,7 +82,7 @@ let row g ~y ~name_width ~turn t =
 
 (* The rows of the tasks' states as they are when the region draws, the
    spinners turning ten times a second. *)
-let rows slots ~started ~width =
+let rows slots ~started ~width ~height:_ =
   let tasks = List.map Atomic.get slots in
   let turn = Float.to_int ((Unix.gettimeofday () -. started) *. 10.) in
   let name_width =

@@ -99,7 +99,8 @@ and state = {
   mutable parts : part list;
       (** The scopes that show rows in it, in the order they began: a [live]
           inside another on the same terminal joins its region. *)
-  mutable cached : (int * Matrix_grid.t option) option;
+  mutable cached : (int * int * Matrix_grid.t option) option;
+      (** The rows of the parts at a width and a height. *)
   mutable failed : (exn * Printexc.raw_backtrace) option;
   mutable on_screen : bool;
   mutable suspended : int;
@@ -112,7 +113,7 @@ and state = {
 
 (* The rows of one [live] scope, below those of the scopes before it. *)
 and part = {
-  mutable frame : width:int -> Matrix_grid.t option;
+  mutable frame : width:int -> height:int -> Matrix_grid.t option;
   mutable ended : bool;
   tick : int option;  (** The time between two draws it asks for. *)
 }
@@ -127,6 +128,7 @@ and t = {
   styling : Ansi.Styling.t;
   live_ok : bool;
   columns : int option;
+  lines : int option;
   adapter : Matrix_cli.adapter;
   out_device : device;
 }
@@ -192,11 +194,11 @@ let write l bytes =
       Signal.write s.holder l.out.fd b 0 (Bytes.length b)
   | None -> write_all l.out.fd bytes 0 (String.length bytes)
 
-(* A part's rows at [width], from the program's function, which runs on
-   whichever thread draws: one that raises is dropped, and raised again at
-   the program's next call. *)
-let part_frame l p ~width =
-  match p.frame ~width with
+(* A part's rows at [width] and [height], from the program's function, which
+   runs on whichever thread draws: one that raises is dropped, and raised
+   again at the program's next call. *)
+let part_frame l p ~width ~height =
+  match p.frame ~width ~height with
   | g -> g
   | exception e ->
       if l.failed = None then l.failed <- Some (e, Printexc.get_raw_backtrace ());
@@ -223,14 +225,28 @@ let stack = function
           : int);
       Some dst
 
-let frame_at l ~width =
+(* The region's rows, [height] of which show: each part is given the rows
+   left below the parts before it, at least one. *)
+let frame_at l ~width ~height =
   match l.cached with
-  | Some (w, g) when w = width -> g
+  | Some (w, h, g) when w = width && h = height -> g
   | _ when width < 1 -> None
   | _ ->
-      let g = stack (List.filter_map (part_frame l ~width) l.parts) in
-      l.cached <- Some (width, g);
+      let _, gs =
+        List.fold_left
+          (fun (above, gs) p ->
+            match part_frame l p ~width ~height:(max 1 (height - above)) with
+            | Some g -> (above + Matrix_grid.height g, g :: gs)
+            | None -> (above, gs))
+          (0, []) l.parts
+      in
+      let g = stack (List.rev gs) in
+      l.cached <- Some (width, height, g);
       g
+
+(* The size of the region's rows on a terminal [cols] by [rows]: [rows - 1]
+   show below the origin. *)
+let region_size l ~cols ~rows = (Region.width l.region ~cols, max 1 (rows - 1))
 
 let reraise l =
   match l.failed with
@@ -252,7 +268,8 @@ let draw l ~above =
   let size = window l in
   match size with
   | Some (cols, rows) when l.suspended = 0 && not (Tty.background l.out.fd) ->
-      let frame = frame_at l ~width:(Region.width l.region ~cols) in
+      let width, height = region_size l ~cols ~rows in
+      let frame = frame_at l ~width ~height in
       let bytes =
         Region.draw l.region ~cols ~rows ~above ~cursor:Hidden frame
       in
@@ -507,6 +524,11 @@ let make ?color fd =
     | Some n when n > 0 -> Some (min n Matrix_grid.max_width)
     | _ -> None
   in
+  let lines =
+    match Option.bind (getenv "LINES") int_of_string_opt with
+    | Some n when n > 0 -> Some n
+    | _ -> None
+  in
   let styling =
     Ansi.Styling.decide ?color getenv ~tty ~dumb:caps.dumb caps.colors
   in
@@ -517,6 +539,7 @@ let make ?color fd =
     styling;
     live_ok = Policy.live getenv ~tty ~dumb:caps.dumb;
     columns;
+    lines;
     adapter = Matrix_cli.adapter styling;
     out_device = device fd;
   }
@@ -616,10 +639,10 @@ let bell t = control t Matrix_terminal.bell
 type live = {
   state : state option;  (** [None] where no region may be drawn. *)
   part : part;
-  mutable last : width:int -> Matrix_grid.t option;
+  mutable last : width:int -> height:int -> Matrix_grid.t option;
 }
 
-let no_frame ~width:_ = None
+let no_frame ~width:_ ~height:_ = None
 
 (* A scope's rows join the region that lives on the terminal, or begin
    one. *)
@@ -663,6 +686,14 @@ let join t p =
 
 let plain_width t = max 1 (Option.value (width t) ~default:80)
 
+(* The height of the last rows printed where no region is drawn: [LINES],
+   POSIX's "user's preferred number of lines on a page or in a window",
+   else the terminal's, else the 24 rows that pair with 80 columns. *)
+let plain_height t =
+  match t.lines with
+  | Some n -> n
+  | None -> Option.fold ~none:24 ~some:snd (Tty.window t.fd)
+
 (* Rows as lines, each ended where it shows nothing more. *)
 let lines t = function
   | Some g -> Matrix_grid.to_ansi ~styling:t.styling ~trim:true g ^ "\n"
@@ -678,9 +709,12 @@ let closing l frame =
   let drawable = l.suspended = 0 && not (Tty.background l.out.fd) in
   match window l with
   | Some (cols, rows) when drawable ->
-      Region.close l.region ~cols ~rows ~above:held
-        (frame ~width:(Region.width l.region ~cols))
-  | _ -> held ^ lines l.out (frame ~width:(plain_width l.out))
+      let width, height = region_size l ~cols ~rows in
+      Region.close l.region ~cols ~rows ~above:held (frame ~width ~height)
+  | _ ->
+      held
+      ^ lines l.out
+          (frame ~width:(plain_width l.out) ~height:(plain_height l.out))
 
 (* A scope ends. While other scopes show rows, its own last rows go above
    the region, which stays for them. The last scope to end closes the
@@ -696,12 +730,12 @@ let finish t l p =
         let drawable = l.suspended = 0 && not (Tty.background l.out.fd) in
         match (l.parts, window l) with
         | _ :: _, size ->
-            let width =
+            let width, height =
               match size with
-              | Some (cols, _) -> Region.width l.region ~cols
-              | None -> plain_width t
+              | Some (cols, rows) -> region_size l ~cols ~rows
+              | None -> (plain_width t, plain_height t)
             in
-            let above = lines t (part_frame l p ~width) in
+            let above = lines t (part_frame l p ~width ~height) in
             if l.on_screen && drawable then draw l ~above
             else if above <> "" then write l above;
             false
@@ -720,7 +754,9 @@ let plain_lock = Mutex.create ()
 let print_last t v =
   flush_formatters ();
   Mutex.protect t.out_device.lock (fun () ->
-      let lines = lines t (v.last ~width:(plain_width t)) in
+      let lines =
+        lines t (v.last ~width:(plain_width t) ~height:(plain_height t))
+      in
       if lines <> "" then emit t lines)
 
 let live ?tick t f =

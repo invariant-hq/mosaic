@@ -4,12 +4,12 @@
 
 module C = Matrix_cli_unix
 
-let text_frame text ~width =
+let text_frame text ~width ~height:_ =
   let g = Matrix_grid.create ~width:(max 1 width) ~height:1 () in
   Matrix_grid.draw_text g ~x:0 ~y:0 ~text;
   Some g
 
-let rows_frame rows ~width =
+let rows_frame rows ~width ~height:_ =
   let g =
     Matrix_grid.create ~width:(max 1 width) ~height:(List.length rows) ()
   in
@@ -70,8 +70,8 @@ let () =
       with Failure _ -> C.print err "CAUGHT\n")
   | "resize" ->
       C.live err (fun live ->
-          C.show live (fun ~width ->
-              text_frame (Printf.sprintf "W=%d" width) ~width);
+          C.show live (fun ~width ~height ->
+              text_frame (Printf.sprintf "W=%d" width) ~width ~height);
           forever ())
   | "suspend" ->
       C.live err (fun live ->
@@ -140,11 +140,21 @@ let () =
          draws on a clock calls it more than at its show and its end. *)
       let calls = Atomic.make 0 in
       C.live ~tick:0.1 err (fun live ->
-          C.show live (fun ~width ->
+          C.show live (fun ~width ~height ->
               text_frame
                 (Printf.sprintf "CALLS %d" (Atomic.fetch_and_add calls 1 + 1))
-                ~width);
+                ~width ~height);
           Unix.sleepf 1.5)
+  | "height" ->
+      (* Each frame shows the height it is given; the inner scope's is what
+         the outer's row leaves. *)
+      C.live err (fun outer ->
+          C.show outer (fun ~width ~height ->
+              text_frame (Printf.sprintf "H=%d" height) ~width ~height);
+          C.live err (fun inner ->
+              C.show inner (fun ~width ~height ->
+                  text_frame (Printf.sprintf "IH=%d" height) ~width ~height);
+              if Unix.isatty Unix.stderr then forever ()))
   | "line-thread" -> (
       (* A prompt asked on a thread of its own, as Eio_unix.run_in_systhread
          asks it, while this thread keeps printing. *)
