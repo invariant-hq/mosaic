@@ -179,11 +179,19 @@ val reset : t -> unit
 
     Characters are placed by {e display unit}, as {!Matrix_text.Segmenter} cuts
     them under the width method {!val-create} was given. A display unit is a
-    grapheme cluster, or a wcwidth unit. A control function ends the unit in
-    progress. The terminal places a unit as soon as it has a width, before it
-    knows that the unit is complete, and places it again from the same position
-    when later characters extend it. A unit never narrows. So that the screen
-    does not depend on where the output was split, placement follows four rules:
+    grapheme cluster, or a wcwidth unit. A control function that sets the cursor
+    position or changes cells ends the unit in progress. Any other, such as SGR,
+    leaves it open, and the characters after it continue the unit as they would
+    without it. So a style change between a letter and its mark, inside a ZWJ
+    sequence or between two regional indicators leaves one grapheme, as wide as
+    without it. A grapheme has one rendition, so the unit keeps the pen of its
+    first character, in each of its cells and in the blanks its placement
+    leaves, and the pen a control function sets applies from the next unit.
+
+    The terminal places a unit as soon as it has a width, before it knows that
+    the unit is complete, and places it again from the same position when later
+    characters extend it. A unit never narrows. So that the screen does not
+    depend on where the output was split, placement follows four rules:
     + with autowrap on, a unit that does not fit before the right margin first
       erases the cells from its position to the margin, then moves to the next
       line. A unit placed narrow and then widened past the margin vacates the
@@ -196,12 +204,12 @@ val reset : t -> unit
     + a unit wider than the line is narrowed to it.
 
     A unit of no width that continues nothing, such as U+200B or a combining
-    mark after a control function, joins the character in the cell before the
+    mark after a cursor motion, joins the character in the cell before the
     cursor, or in the cursor's cell when the Last Column Flag is set
     ({!section-cursor}). It changes neither that character's width nor its
     rendition. At the first column, with no cell before the cursor, it is
-    dropped. The cell is found from the cursor alone, so a mark after an SGR
-    change joins the character before the cursor whatever came before. No cell
+    dropped. The cell is found from the cursor alone, so a mark after a cursor
+    motion joins the character before the cursor whatever came before. No cell
     holds a control character, and the code points U+0080 to U+009F never reach
     a cell ({!Ansi.Parser}).
 

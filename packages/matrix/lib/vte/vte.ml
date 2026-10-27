@@ -107,11 +107,13 @@ type line = {
 type history = { lines : line array; mutable head : int; mutable count : int }
 
 (* The display unit in progress, the text printed since the last unit boundary
-   or control function: its bytes after translation, its width as the
-   segmenter measures it, and whether it [grew] since it was last placed.
-   Placed, it covers [cells] cells from [(row, col)]; joined, having no width,
-   its bytes follow those of the grapheme at [(row, col)], whose text was
-   [prev]. *)
+   or the control function that ended the last unit: its bytes after
+   translation, its width as the segmenter measures it, the pen of its first
+   character, and whether it [grew] since it was last placed. Placed, it covers
+   [cells] cells from [(row, col)]; joined, having no width, its bytes follow
+   those of the grapheme at [(row, col)], whose text was [prev]. It is
+   [repeatable] while nothing came after its last character, which REP
+   needs. *)
 type placement = Nowhere | Cells | Joined
 
 type cluster = {
@@ -119,12 +121,14 @@ type cluster = {
   mutable text : Bytes.t;
   mutable len : int;
   mutable width : int;
+  mutable pen : pen;
   mutable grown : bool;
   mutable at : placement;
   mutable row : int;
   mutable col : int;
   mutable cells : int;
   mutable prev : string;
+  mutable repeatable : bool;
 }
 
 (* An OSC is kept only when the VTE performs it: [Osc_number n] while its
@@ -168,6 +172,10 @@ type t = {
   mutable tabs : bool array;
   mutable title : string;
   cluster : cluster;
+  (* A count of the settings of the cursor and the changes of cells. A
+     control function that leaves it as it was leaves the unit in progress
+     open. *)
+  mutable edits : int;
   (* The palette its user configured, [create]'s or [set_palette]'s, and
      the one programs set, each with 256 entries. Neither's entries are ever
      written: a change makes a new array. *)
@@ -268,11 +276,11 @@ let resolve ~default = function
   | Some c -> (
       match Ansi.Color.intent c with Default -> default | Indexed _ | Rgb -> c)
 
-let fg t = resolve ~default:default_fg t.pen.style.fg
+let pen_fg p = resolve ~default:default_fg p.style.fg
 
 (* The background of what is printed, and of every blank. *)
-let bg t = resolve ~default:default_bg t.pen.style.bg
-let protection t = if t.pen.protected then Some true else None
+let pen_bg p = resolve ~default:default_bg p.style.bg
+let bg t = pen_bg t.pen
 
 (* {1:dirty Changes} *)
 
@@ -295,6 +303,7 @@ let set_cursor t ~row ~col ~last_column =
   if row <> c.row || col <> c.col then (
     t.dirty.any <- true;
     t.dirty.cursor <- true);
+  t.edits <- t.edits + 1;
   c.row <- row;
   c.col <- col;
   c.last_column <- last_column
@@ -436,6 +445,7 @@ let clear_history t =
 (* Rows [top] to [bottom] changed: they are dirty, and the Last Column Flag
    goes. *)
 let cells_changed t ~top ~bottom =
+  t.edits <- t.edits + 1;
   touch_rows t top bottom;
   t.cursor.last_column <- false
 
@@ -450,12 +460,14 @@ let erase_with f t ~x ~y ~width ~height =
     if x + width = t.cols then unwrap t ~top:y ~bottom:(y + height - 1);
     cells_changed t ~top:y ~bottom:(y + height - 1))
 
-let erase t =
+(* An erase whose blanks are on [color]. *)
+let erase_on color t ~x ~y ~width ~height =
   erase_with
     (fun g { Grid.x; y; width; height } ->
-      Grid.clear_rect ~color:(bg t) g ~x ~y ~width ~height)
-    t
+      Grid.clear_rect ~color g ~x ~y ~width ~height)
+    t ~x ~y ~width ~height
 
+let erase t ~x ~y ~width ~height = erase_on (bg t) t ~x ~y ~width ~height
 let erase_unprotected = erase_with Grid.erase_unprotected
 
 (* Move rows [top] to [bottom] up by [n] rows, or down for [n < 0], with
@@ -475,13 +487,14 @@ let shift_rows t ~top ~bottom n =
     Bytes.fill marks top k '\000');
   cells_changed t ~top ~bottom
 
-(* Move the cells of rows [top] to [bottom] from column [x] by [dx] columns.
-   The rows' last cells change, so their marks go. *)
-let shift_cols t ~x ~top ~bottom dx =
+(* Move the cells of rows [top] to [bottom] from column [x] by [dx] columns,
+   leaving blanks on [color]. The rows' last cells change, so their marks
+   go. *)
+let shift_cols t ~color ~x ~top ~bottom dx =
   if dx <> 0 then (
     Grid.shift (grid t)
       { Grid.x; y = top; width = t.cols - x; height = bottom - top + 1 }
-      ~dx ~dy:0 ~color:(bg t);
+      ~dx ~dy:0 ~color;
     unwrap t ~top ~bottom;
     cells_changed t ~top ~bottom)
 
@@ -632,6 +645,8 @@ let placeholder = "\xF4\x8E\xBB\xAE"
 
 let write_cluster t ~row ~col ~width =
   let cl = t.cluster in
+  let p = cl.pen in
+  let fg = pen_fg p in
   let text, len =
     if
       has t Kitty_graphics && cl.len >= 4
@@ -639,20 +654,23 @@ let write_cluster t ~row ~col ~width =
       && Bytes.get cl.text 1 = placeholder.[1]
       && Bytes.get cl.text 2 = placeholder.[2]
       && Bytes.get cl.text 3 = placeholder.[3]
-    then ((if holds t (fg t) then "\u{FFFC}" else "\u{FFFD}"), 3)
+    then ((if holds t fg then "\u{FFFC}" else "\u{FFFD}"), 3)
     else (Bytes.unsafe_to_string cl.text, cl.len)
   in
-  Grid.set_grapheme (grid t) ~x:col ~y:row ~width ~fg:(fg t) ~bg:(bg t)
-    ~attrs:t.pen.style.attrs ?link:t.pen.link ?protected:(protection t) text
-    ~pos:0 ~len;
+  Grid.set_grapheme (grid t) ~x:col ~y:row ~width ~fg ~bg:(pen_bg p)
+    ~attrs:p.style.attrs ?link:p.link
+    ?protected:(if p.protected then Some true else None)
+    text ~pos:0 ~len;
   touch_row t row
 
-(* Place the cluster from its position, by the four rules of vte.mli. With
-   autowrap off it ends at the margin; otherwise, if it does not fit, the rest
-   of the line is erased and it moves to the next. In insert mode the line
-   moves right by the cells it gains. xterm, a datapoint, leaves the skipped
-   cells alone; erasing them leaves the same screen whether a unit arrived
-   whole or was placed narrow and then widened. *)
+(* Place the cluster from its position, by the four rules of vte.mli, with its
+   pen. With autowrap off it ends at the margin; otherwise, if it does not
+   fit, the rest of the line is erased and it moves to the next. In insert
+   mode the line moves right by the cells it gains. The blanks it leaves are
+   on its pen's background.
+   xterm, a datapoint, leaves the skipped cells alone; erasing them leaves the
+   same screen whether a unit arrived whole or was placed narrow and then
+   widened, with or without an SGR inside it. *)
 let place t =
   let cl = t.cluster and m = t.modes in
   let width = min cl.width t.cols in
@@ -662,15 +680,16 @@ let place t =
     set_cursor t ~row:cl.row ~col:(t.cols - 1) ~last_column:false)
   else begin
     if cl.col + width > t.cols then begin
-      erase t ~x:cl.col ~y:cl.row ~width:(t.cols - cl.col) ~height:1;
+      erase_on (pen_bg cl.pen) t ~x:cl.col ~y:cl.row ~width:(t.cols - cl.col)
+        ~height:1;
       wrap t;
       cl.row <- t.cursor.row;
       cl.col <- 0;
       cl.cells <- 0
     end;
     if m.insert then
-      shift_cols t ~x:(cl.col + cl.cells) ~top:cl.row ~bottom:cl.row
-        (width - cl.cells);
+      shift_cols t ~color:(pen_bg cl.pen) ~x:(cl.col + cl.cells) ~top:cl.row
+        ~bottom:cl.row (width - cl.cells);
     write_cluster t ~row:cl.row ~col:cl.col ~width;
     cl.cells <- width;
     let last = cl.col + width - 1 in
@@ -748,11 +767,21 @@ let end_unit t =
   cl.width <- 0;
   cl.at <- Nowhere
 
-(* A control function ends the unit and the segmentation context: the next
-   character starts a unit. *)
+(* The unit and the segmentation context end: the next character starts a
+   unit. *)
 let break_text t =
   end_unit t;
   Text.Segmenter.reset t.cluster.seg
+
+(* The unit in progress is complete, and the next keeps the pen of its first
+   character (vte.mli), the pen being compared first since it rarely changes.
+   kitty and Ghostty, datapoints, give the cell VS16 adds after an SGR the
+   pen, and contour the base's; here a grapheme has one rendition, as the
+   scrollback keeps it. *)
+let start_unit t =
+  end_unit t;
+  let cl = t.cluster in
+  if cl.pen != t.pen then cl.pen <- t.pen
 
 let append cl u =
   let n = Uchar.utf_8_byte_length u in
@@ -768,7 +797,7 @@ let append cl u =
    character, so a run of marks is written once. *)
 let print_scalar t u =
   let cl = t.cluster in
-  if Text.Segmenter.add cl.seg u then end_unit t;
+  if Text.Segmenter.add cl.seg u then start_unit t;
   append cl u;
   cl.width <- Text.Segmenter.width cl.seg;
   cl.grown <- true
@@ -779,7 +808,7 @@ let print_scalar t u =
 let print_run t s pos k =
   let cl = t.cluster in
   for i = pos to pos + k - 1 do
-    end_unit t;
+    start_unit t;
     Bytes.unsafe_set cl.text 0 (String.unsafe_get s i);
     cl.len <- 1;
     cl.width <- 1;
@@ -787,6 +816,7 @@ let print_run t s pos k =
   done
 
 let print t s =
+  t.cluster.repeatable <- true;
   let len = String.length s in
   let i = ref 0 in
   while !i < len do
@@ -825,7 +855,7 @@ let repetitions t n width =
 let rep t n =
   place_if_grown t;
   let cl = t.cluster in
-  if cl.at = Cells then
+  if cl.at = Cells && cl.repeatable then
     for _ = 1 to repetitions t n (min cl.width t.cols) do
       cl.at <- Nowhere;
       cl.grown <- true;
@@ -1002,17 +1032,17 @@ let dl t n =
 
 let ich t n =
   let ({ row; col; _ } : cursor) = t.cursor in
-  shift_cols t ~x:col ~top:row ~bottom:row (min n (t.cols - col))
+  shift_cols t ~color:(bg t) ~x:col ~top:row ~bottom:row (min n (t.cols - col))
 
 let dch t n =
   let ({ row; col; _ } : cursor) = t.cursor in
-  shift_cols t ~x:col ~top:row ~bottom:row (-min n (t.cols - col))
+  shift_cols t ~color:(bg t) ~x:col ~top:row ~bottom:row (-min n (t.cols - col))
 
 (* SL, SR, DECIC and DECDC shift the columns of the region's rows, from a
    cursor inside it. *)
 let shift_region_cols t ~x dx =
   if in_region t then
-    shift_cols t ~x ~top:t.margins.top ~bottom:t.margins.bottom dx
+    shift_cols t ~color:(bg t) ~x ~top:t.margins.top ~bottom:t.margins.bottom dx
 
 let sl t n = shift_region_cols t ~x:0 (-min n t.cols)
 let sr t n = shift_region_cols t ~x:0 (min n t.cols)
@@ -1104,6 +1134,7 @@ let decscusr t = function
 let switch_screen t ~alternate =
   if t.modes.alternate_screen <> alternate then (
     t.modes <- { t.modes with alternate_screen = alternate };
+    t.edits <- t.edits + 1;
     touch_rows t 0 (t.rows - 1))
 
 let erase_screen t = erase t ~x:0 ~y:0 ~width:t.cols ~height:t.rows
@@ -1259,13 +1290,16 @@ let create ?(identity = vt100) ?(extensions = extensions) ?(scrollback = 10000)
           text = Bytes.create 16;
           len = 0;
           width = 0;
+          pen = plain_pen;
           grown = false;
           at = Nowhere;
           row = 0;
           col = 0;
           cells = 0;
           prev = "";
+          repeatable = false;
         };
+      edits = 0;
       initial;
       palette = initial;
       parser = Ansi.Parser.create ();
@@ -1470,6 +1504,7 @@ let decsca t = function
 (* SUB shows the error character (vte.mli). xterm, a datapoint, shows a
    checkerboard for CAN and SUB at VT100 level, and a SUB symbol above it. *)
 let sub t =
+  break_text t;
   print t "\u{2E2E}";
   break_text t
 
@@ -1798,6 +1833,7 @@ let forget_image t id =
             ~attrs:(Ansi.Attr.unpack (Grid.get_attrs g idx))
             ?link:(if link = "" then None else Some link)
             "\u{FFFD}" ~pos:0 ~len:3;
+          t.edits <- t.edits + 1;
           touch_row t (idx / t.cols)
       | _ -> ()
   done
@@ -1901,7 +1937,20 @@ let malformed (s : Ansi.Parser.sequence) =
 let stop_at_update t was =
   if t.modes.synchronized_output <> was then Ansi.Parser.stop t.parser
 
-(* Every token but text ends the unit in progress. REP reads it first. *)
+(* A control function that sets the cursor position or changes cells, which
+   [edits] counts, ends the unit in progress; any other leaves it open, so
+   that the text after it continues the unit (vte.mli). The unit has been
+   placed by then, since [print] places it at the end of each text. kitty
+   and Ghostty, datapoints, join the text after any control function to the
+   cell before the cursor, and contour the text after an SGR; foot keeps the
+   segmentation state across all but cursor motions and line feeds. An edit
+   ends the unit here, since the cells it would be placed again on may no
+   longer hold it. *)
+let after_control t edits =
+  if t.edits <> edits then break_text t else t.cluster.repeatable <- false
+
+(* REP reads the unit in progress before it ends it. A string's function acts
+   where the string closes. *)
 let handle_token t = function
   | Ansi.Parser.Text s -> print t s
   | Csi s when malformed s -> ()
@@ -1909,23 +1958,27 @@ let handle_token t = function
       rep t (Params.pn params 0 ~default:1);
       break_text t
   | Csi s ->
-      break_text t;
-      let was = t.modes.synchronized_output in
+      let edits = t.edits and was = t.modes.synchronized_output in
       csi t s;
+      after_control t edits;
       stop_at_update t was
   | Control c ->
-      break_text t;
-      control t c
+      let edits = t.edits in
+      control t c;
+      after_control t edits
   | Esc { intermediates; final } ->
-      break_text t;
-      let was = t.modes.synchronized_output in
+      let edits = t.edits and was = t.modes.synchronized_output in
       esc t intermediates final;
+      after_control t edits;
       stop_at_update t was
   | Open o ->
-      break_text t;
+      t.cluster.repeatable <- false;
       open_string t o
   | Data s -> string_data t s
-  | Close ending -> close_string t ending
+  | Close ending ->
+      let edits = t.edits in
+      close_string t ending;
+      after_control t edits
 
 let advance t bytes off len =
   Ansi.Parser.feed t.parser bytes ~off ~len (handle_token t)

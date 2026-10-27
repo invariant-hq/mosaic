@@ -2152,6 +2152,118 @@ let zero_width_units () =
     [ "x"; "\u{0600}a"; "b"; " "; " "; " "; " "; " " ]
     (cells [ "x"; "\u{0600}"; "ab" ])
 
+(* An SGR inside a unit leaves it open: the cells and the cursor are those of
+   the unit without the SGR, and the unit keeps the pen of its first
+   character, as if the SGR came after it. *)
+let units_across_sgr () =
+  let sgr = "\x1b[1;41m" in
+  let renditions vte =
+    let g = Vte.grid vte in
+    List.init
+      (Grid.width g * Grid.height g)
+      (fun i ->
+        Printf.sprintf "%d/%b" (Grid.get_attrs g i)
+          (Ansi.Color.equal (Grid.get_bg g i) Ansi.Color.default_bg))
+  in
+  List.iter
+    (fun (width_method, method_name) ->
+      List.iter
+        (fun (name, a, b) ->
+          List.iter
+            (fun place ->
+              List.iter
+                (fun after ->
+                  let msg =
+                    Printf.sprintf "%s, %s, after %S, then %S" method_name name
+                      place after
+                  in
+                  let screen s =
+                    screen_of ~rows:2 ~cols:6 ~width_method
+                      [ place ^ s ^ after ]
+                  in
+                  let cut = screen (a ^ sgr ^ b) in
+                  equal ~msg state_t (state (screen (a ^ b))) (state cut);
+                  (* Under wcwidth some of these are two units, and the
+                     second takes the new pen. *)
+                  if width_method <> `Wcwidth then
+                    equal ~msg:(msg ^ ", renditions") (list string)
+                      (renditions (screen (a ^ b ^ sgr)))
+                      (renditions cut))
+                [ ""; "x" ])
+            [
+              "";
+              "abcde";
+              "\x1b[?7labcde";
+              "uvwxyz\r\x1b[4h";
+              "uvw\u{4E2D}x\r\x1b[4h";
+            ])
+        [
+          ("a combining mark", "e", "\u{0301}");
+          ("a ZWJ sequence cut before the ZWJ", "\u{1F468}", "\u{200D}\u{1F469}");
+          ("a ZWJ sequence cut after the ZWJ", "\u{1F468}\u{200D}", "\u{1F469}");
+          ("VS16", "\u{2764}", "\u{FE0F}");
+          ("a flag", "\u{1F1EB}", "\u{1F1F7}");
+          ("Hangul jamo", "\u{1100}", "\u{1161}\u{11A8}");
+          ("a conjunct cut after the virama", "\u{0915}\u{094D}", "\u{0937}");
+          ("a conjunct cut before the virama", "\u{0915}", "\u{094D}\u{0937}");
+        ])
+    [
+      (`Unicode, "unicode");
+      (`Unicode_wide, "unicode-wide");
+      (`Wcwidth, "wcwidth");
+    ];
+  (* The cell VS16 adds to the heart is the heart's, with its pen. *)
+  let g = Vte.grid (screen_of [ "\u{2764}" ^ sgr ^ "\u{FE0F}x" ]) in
+  equal ~msg:"VS16 widens the heart" int 2 (Grid.cell_width g 0);
+  is_true ~msg:"whose second cell has the heart's pen"
+    (Grid.get_attrs g 1 = 0
+    && Ansi.Color.equal (Grid.get_bg g 1) Ansi.Color.default_bg);
+  is_true ~msg:"and x has the new pen"
+    (Grid.get_attrs g 2 <> 0
+    && not (Ansi.Color.equal (Grid.get_bg g 2) Ansi.Color.default_bg))
+
+(* A control function that sets the cursor position or changes cells ends the
+   unit in progress; any other leaves it open. *)
+let units_across_controls () =
+  let cells s =
+    let vte = screen_of ~cols:8 [ "\u{1F468}" ^ s ^ "\u{200D}\u{1F469}x" ] in
+    let g = Vte.grid vte in
+    (List.init 8 (Grid.get_text g), Vte.cursor_pos vte)
+  in
+  let cells_t = pair (list string) (pair int int) in
+  let whole = cells "" in
+  List.iter
+    (fun (name, s) ->
+      equal ~msg:(name ^ " leaves it open") cells_t whole (cells s))
+    [
+      ("SGR", "\x1b[1m");
+      ("OSC 8", "\x1b]8;;https://example.test\x1b\\");
+      ("a title", "\x1b]2;t\x07");
+      ("BEL", "\x07");
+      ("DECSC", "\x1b7");
+      ("DECTCEM", "\x1b[?25l");
+      ("a report", "\x1b[6n");
+      ("DECSCA", "\x1b[1\"q");
+      ("a malformed sequence", "\x1b[2:3H");
+    ];
+  let ended =
+    ([ "\u{1F468}\u{200D}"; ""; "\u{1F469}"; ""; "x"; " "; " "; " " ], (0, 5))
+  in
+  List.iter
+    (fun (name, s) -> equal ~msg:(name ^ " ends it") cells_t ended (cells s))
+    [
+      ("CUB and CUF", "\x1b[D\x1b[C");
+      ("CUP to the cursor", "\x1b[1;3H");
+      ("DECRC", "\x1b7\x1b8");
+      ("EL", "\x1b[K");
+      ("ECH", "\x1b[X");
+    ];
+  equal ~msg:"REP after an SGR repeats nothing" string "a     "
+    (Vte.to_string (screen_of ~rows:1 [ "a\x1b[1m\x1b[3b" ]));
+  let g = Vte.grid (screen_of ~rows:1 [ "a\u{0600}\x1a" ]) in
+  equal ~msg:"SUB starts a unit" (pair string string) ("a\u{0600}", "\u{2E2E}")
+    (Grid.get_text g 0, Grid.get_text g 1)
+
 (* Placement does not depend on how the output was split. *)
 let split_counterexamples () =
   List.iter
@@ -2659,6 +2771,8 @@ let tests =
     test "REP repeats exactly" repeat_exactly;
     test "one blank" one_blank;
     test "zero-width units" zero_width_units;
+    test "units across an SGR" units_across_sgr;
+    test "units across control functions" units_across_controls;
     test "split counterexamples" split_counterexamples;
     test "placement rules" placement_rules;
     test "wrap marks" wrap_marks;
