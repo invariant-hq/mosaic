@@ -240,8 +240,14 @@ val suspend : live -> (unit -> 'a) -> 'a
     is cancelled, once. Tasks form a tree under a {e root}, the work as a whole,
     which {!val-tasks} makes for the scope of a function and shows on an output
     in the output's mode ({!progress}):
-    - [`Tty] draws a live region whose last row is the {e summary}, the line
-      that says how far the work is, and prints the lines of [`Plain] above it.
+    - [`Tty] draws a live region ({!Task.rows}): a row for each running task,
+      with the latest lines of its output under it, in its {e window}, and the
+      tasks under it behind guides, a task that ended staying there, marked,
+      while its top task runs. The last row is the {e summary}, the line that
+      says how far the work is. When a task of the root ends, its rows go above
+      the region as it ended, with every task under it, then the whole output of
+      each of them that failed. So the scrollback keeps the order of what
+      happened by top task, as [`Plain] prints it.
     - [`Plain] prints a line when a task starts, one for each line of its output
       and one when it ends, which says [failed] or [cancelled] in words when it
       did not succeed. Each line names its task by its {e path}, the labels from
@@ -254,12 +260,13 @@ val suspend : live -> (unit -> 'a) -> 'a
     The lines are for people and their format may change. A program reads
     [`Json].
 
-    A {e transient} task prints its lines only when it fails. A task's label and
-    lines show as text ({!Ansi.sanitize}), a label on one line. A task is told
-    from any thread, domain or fiber, and the lines of the changes are written
-    in the order of the changes. A task that ended ignores what it is told. A
-    task keeps its output until the work ends. Times are seconds since the root
-    started, by the clock {!val-tasks} is given.
+    A {e transient} task prints its lines only when it fails, and leaves nothing
+    above the region when it succeeds. A task's label and lines show as text
+    ({!Ansi.sanitize}), a label on one line. A task is told from any thread,
+    domain or fiber, and the lines of the changes are written in the order of
+    the changes. A task that ended ignores what it is told. A task keeps its
+    output until the work ends. Times are seconds since the root started, by the
+    clock {!val-tasks} is given.
 
     An Eio fiber cancelled inside {!Task.run} fails its task, and inside
     {!val-tasks} fails the work. A program shows them cancelled with
@@ -287,16 +294,19 @@ module Task : sig
   type status = [ `Running | `Succeeded | `Failed | `Cancelled ]
   (** The type for where a task is: running or how it ended. *)
 
-  val start : ?transient:bool -> t -> string -> t
-  (** [start ~transient parent label] is a task named [label], started under
-      [parent], transient iff [transient] ([false] by default). A task started
-      under one that ended is cancelled at once and prints nothing. *)
+  val start : ?transient:bool -> ?lines:int -> t -> string -> t
+  (** [start ~transient ~lines parent label] is a task named [label], started
+      under [parent], transient iff [transient] ([false] by default), whose
+      window shows its latest [lines] lines of output ([8] by default). A task
+      started under one that ended is cancelled at once and prints nothing.
 
-  val run : ?transient:bool -> t -> string -> (t -> 'a) -> 'a
-  (** [run ~transient parent label f] is [f t] for the task [t] that [start]
-      starts. [t] succeeds when [f] returns and fails when [f] raises, with the
-      exception as its message, which is raised again. An ending [f] gave [t]
-      counts. *)
+      Raises [Invalid_argument] if [lines] is negative. *)
+
+  val run : ?transient:bool -> ?lines:int -> t -> string -> (t -> 'a) -> 'a
+  (** [run ~transient ~lines parent label f] is [f t] for the task [t] that
+      [start] starts. [t] succeeds when [f] returns and fails when [f] raises,
+      with the exception as its message, which is raised again. An ending [f]
+      gave [t] counts. *)
 
   val items : t -> ?total:int -> int -> unit
   (** [items t ~total n] says that [t] has done [n] items, out of [total] when
@@ -343,6 +353,16 @@ module Task : sig
 
   val state : t -> state
   (** [state t] is [t] as it is now. *)
+
+  val rows : t -> width:int -> height:int -> Matrix_grid.t
+  (** [rows t ~width ~height] is the rows of the running tasks under [t], and
+      the summary under them if [t] is the root, [width] cells wide, as [`Tty]
+      draws them, for a [frame] of {!val-tasks} to show with other grids. A
+      task's row is its mark, its label, a bar when it has a total, its message,
+      its count, its rate when it counts bytes, and its time, each in a column
+      as wide as its widest cell. Rows taller than [height] give way: first the
+      tasks that ended under each running task fold into one line, such as
+      [10 done, 2 failed], then the windows shrink. *)
 end
 
 val tasks :
@@ -358,10 +378,10 @@ val tasks :
     raises, which is raised again, unless [f] ended it, and its ending ends the
     tasks still running as {!Task.succeed} and {!Task.fail} do. [now] is the
     clock in seconds, monotonic by default. With [frame], the region of [`Tty]
-    shows [frame root] in place of the summary, and [`Plain] prints its last
-    frame once, at the end. [frame] must not tell a task anything and must not
-    print. A [tasks] inside another on one output numbers its tasks apart
-    ({!section-events}). *)
+    shows [frame root] in place of {!Task.rows}[ root], and [`Plain] prints its
+    last frame once, at the end, the summary by default. [frame] must not tell a
+    task anything and must not print. A [tasks] inside another on one output
+    numbers its tasks apart ({!section-events}). *)
 
 (** {2:events JSON events}
 

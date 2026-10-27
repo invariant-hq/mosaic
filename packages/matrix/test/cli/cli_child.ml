@@ -20,7 +20,7 @@ let rows_frame rows ~width ~height:_ =
    layer under it that downloads 2 GiB and fails when [fail]. *)
 let build ~fail root =
   let module T = C.Task in
-  let step = T.start root "RUN make" in
+  let step = T.start ~lines:4 root "RUN make" in
   for i = 0 to 5 do
     T.items step ~total:5 (min i 5);
     T.log step (Printf.sprintf "  CC src/file%d.c" i)
@@ -92,6 +92,31 @@ let () =
       C.tasks ~label:"Building" ~now:still err
         (build ~fail:(mode = "tasks-fail"));
       print_string "DONE\n"
+  | "tasks-tree" ->
+      (* A suite whose first test fails while the second runs, with a window
+         of two lines; it waits for a key on its input before it ends. *)
+      C.tasks ~label:"Testing" err (fun root ->
+          C.Task.run ~lines:2 root "suite" (fun suite ->
+              List.iter (C.Task.log suite) [ "a"; "b"; "c" ];
+              (try
+                 C.Task.run suite "one" (fun t ->
+                     C.Task.log t "expected 1";
+                     failwith "one")
+               with Failure _ -> ());
+              C.Task.run ~transient:true suite "quick" ignore;
+              C.Task.run suite "two" (fun _ ->
+                  ignore (input_line stdin : string))));
+      print_string "DONE\n"
+  | "tasks-fold" ->
+      (* Twelve tests ended under a suite on a short terminal. *)
+      C.tasks err (fun root ->
+          C.Task.run root "suite" (fun suite ->
+              for i = 1 to 12 do
+                let t = C.Task.start suite (Printf.sprintf "test %d" i) in
+                if i mod 6 = 0 then C.Task.fail t else C.Task.succeed t
+              done;
+              C.Task.run suite "last" (fun _ ->
+                  ignore (input_line stdin : string))))
   | "tasks-nested" ->
       C.tasks ~now:still err (fun root ->
           C.Task.run root "outer" (fun _ ->

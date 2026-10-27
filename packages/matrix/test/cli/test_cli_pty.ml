@@ -17,6 +17,13 @@ let lines term =
   let rec drop = function "" :: rest -> drop rest | l -> l in
   List.rev (drop (List.rev all))
 
+let contains s sub =
+  let n = String.length sub in
+  let rec at i =
+    i + n <= String.length s && (String.sub s i n = sub || at (i + 1))
+  in
+  at 0
+
 let shows text term = T.Screen.find (T.Terminal.screen term) text <> []
 let has_line l term = List.mem l (lines term)
 
@@ -646,6 +653,56 @@ let test_tasks_endings () =
     (List.mem "RATE true false"
        (String.split_on_char '\n' (progress "plain" "tasks-back")))
 
+(* The index of the first line of [term] that starts with [prefix]. *)
+let line_index term prefix =
+  let rec go i = function
+    | [] -> failf "no line starts with %S" prefix
+    | l :: _ when String.starts_with ~prefix l -> i
+    | _ :: rest -> go (i + 1) rest
+  in
+  go 0 (lines term)
+
+let test_tasks_tty () =
+  ( spawn ~cols:80 ~rows:24 "tasks-fail" @@ fun term c ->
+    exited 0 (T.Child.exit c ~within:10.);
+    let at = line_index term in
+    let order =
+      [
+        at "\u{2717} RUN make ";
+        at "\u{2514}\u{2500}\u{2500} \u{2717} sha256:abcd ";
+        at "  RUN make \u{203A}   CC src/file0.c";
+        at "  RUN make \u{203A}   CC src/file5.c";
+        at "  RUN make \u{25B8} sha256:abcd \u{203A} checksum mismatch";
+        at "\u{2717} Building";
+        at "DONE";
+      ]
+    in
+    equal ~msg:"the tree, then each failure's output, then the summary"
+      (list int) (List.sort compare order) order;
+    usable term );
+  spawn ~cols:60 ~rows:12 "tasks-tree" @@ fun term c ->
+  T.Child.wait c ~within:10. (fun t ->
+      shows "\u{2717} one" t && shows " two" t && shows "Testing" t);
+  is_true ~msg:"the window shows the latest lines" (shows "\u{203A} c" term);
+  is_false ~msg:"and no older one" (shows "\u{203A} a" term);
+  is_false ~msg:"no transient task" (shows "quick" term);
+  T.Child.send c "\n";
+  exited 0 (T.Child.exit c ~within:10.);
+  let at = line_index term in
+  is_true ~msg:"the suite above its summary"
+    (at "\u{2713} suite" < at "\u{2713} Testing");
+  is_true ~msg:"a failed test's output after it"
+    (at "  suite \u{25B8} one \u{203A} expected 1" > at "\u{2713} suite");
+  is_false ~msg:"no transient task"
+    (List.exists (fun l -> contains l "quick") (lines term))
+
+let test_tasks_fold () =
+  spawn ~cols:60 ~rows:6 "tasks-fold" @@ fun term c ->
+  T.Child.wait c ~within:10. (shows "10 done, 2 failed");
+  is_true ~msg:"the running test" (shows " last" term);
+  T.Child.send c "\n";
+  exited 0 (T.Child.exit c ~within:10.)
+
 let () =
   run "matrix.cli.pty"
     [
@@ -686,6 +743,8 @@ let () =
           test "ids of nested works" test_tasks_ids;
           test "lines from threads" test_tasks_threads;
           test "endings" test_tasks_endings;
+          test "rows" test_tasks_tty;
+          test "a fold" test_tasks_fold;
         ];
       group "prompts"
         [

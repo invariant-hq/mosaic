@@ -1008,6 +1008,23 @@ module Glyph = struct
   let cancelled = "-"
   let path = " \u{25B8} "
   let output = "\u{203A}"
+
+  let spinner =
+    [|
+      "\u{280B}";
+      "\u{2819}";
+      "\u{2839}";
+      "\u{2838}";
+      "\u{283C}";
+      "\u{2834}";
+      "\u{2826}";
+      "\u{2827}";
+      "\u{2807}";
+      "\u{280F}";
+    |]
+
+  let bar_full = "\u{2501}"
+  let bar_empty = "\u{2500}"
 end
 
 module Task = struct
@@ -1019,6 +1036,7 @@ module Task = struct
     parent : t option;
     mutable label : string;
     transient : bool;
+    lines : int;  (** The lines of output its window shows. *)
     started : float;
     mutable count : int;
     mutable total : int option;
@@ -1184,11 +1202,261 @@ module Task = struct
           (Printf.sprintf "%d/%d" (List.length ended) (List.length all));
       ]
 
-  let summary_frame (root : t) ~width ~height:_ =
-    let spans = Mutex.protect root.work.lock (fun () -> summary root) in
-    let g = Matrix_grid.create ~width:(max 1 width) ~height:1 () in
-    ignore (Matrix_grid.draw_spans g ~x:0 ~y:0 spans : int);
-    [ g ]
+  (* The rows of [`Tty]. A task's row is its mark, its label behind its
+     guide, a bar when it has a total, then its message, counts, rate and
+     time, each column as wide as its widest cell, so the rows line up.
+     Under a running task come its latest lines of output, in its window,
+     and the rows of the tasks under it. *)
+
+  type row = {
+    head : Ansi.span list;
+    fraction : float option;
+    columns : (Ansi.span * [ `Left | `Right ]) list;
+  }
+
+  type item = Row of row | Text of Ansi.span list
+
+  let mark_at now = function
+    | `Running ->
+        let n = Array.length Glyph.spinner in
+        Ansi.span ~style:accent
+          Glyph.spinner.(((Float.to_int (now *. 10.) mod n) + n) mod n)
+    | status -> mark status
+
+  let worst ts =
+    if List.exists (fun (t : t) -> t.status = `Failed) ts then `Failed
+    else if List.exists (fun (t : t) -> t.status = `Cancelled) ts then
+      `Cancelled
+    else `Succeeded
+
+  (* The tasks that ended under a task, as one line, such as [10 done,
+     2 failed]. *)
+  let folded ended =
+    let n status =
+      List.length (List.filter (fun (t : t) -> t.status = status) ended)
+    in
+    String.concat ", "
+      (List.filter_map
+         (fun (k, word) ->
+           if k > 0 then Some (Printf.sprintf "%d %s" k word) else None)
+         [
+           (n `Succeeded, "done");
+           (n `Failed, "failed");
+           (n `Cancelled, "cancelled");
+         ])
+
+  (* [t]'s rows behind the guide of [lasts], its window at most [window]
+     lines, and the tasks that ended under a running one folded when
+     [fold]. *)
+  let rec tree ~fold ~window lasts (t : t) =
+    let guide = Matrix_cli.Tree.single and now = t.work.now () in
+    let running = t.status = `Running in
+    let row =
+      Row
+        {
+          head =
+            [
+              Ansi.span ~style:faint (Matrix_cli.Tree.prefix guide lasts);
+              mark_at now t.status;
+              Ansi.span " ";
+              Ansi.span ~style:strong t.label;
+            ];
+          fraction =
+            (match t.total with
+            | Some total when running && total > 0 ->
+                Some (Float.of_int (min t.count total) /. Float.of_int total)
+            | _ -> None);
+          columns =
+            [
+              (Ansi.span (Option.value t.message ~default:""), `Left);
+              (Ansi.span ~style:faint (counts t), `Right);
+              ( Ansi.span ~style:faint
+                  (match t.rate with
+                  | Some r when running && t.bytes ->
+                      bytes_text (Float.to_int r) ^ "/s"
+                  | _ -> ""),
+                `Right );
+              (Ansi.span ~style:faint (seconds (elapsed t)), `Right);
+            ];
+        }
+    in
+    let rails = Matrix_cli.Tree.rails guide lasts in
+    let lines =
+      if not running then []
+      else
+        List.rev_map
+          (fun l ->
+            Text
+              [
+                Ansi.span ~style:faint (rails ^ "  " ^ Glyph.output ^ " ");
+                Ansi.span l;
+              ])
+          (List.filteri (fun i _ -> i < min t.lines window) t.output)
+    in
+    (* A transient task that succeeded leaves nothing. *)
+    let kids =
+      List.filter
+        (fun (c : t) -> not (c.transient && c.status = `Succeeded))
+        (List.rev t.children)
+    in
+    let ended, kids =
+      if fold && running then
+        ( List.filter (fun (c : t) -> c.status <> `Running) kids,
+          List.filter (fun (c : t) -> c.status = `Running) kids )
+      else ([], kids)
+    in
+    let last = List.length kids - 1 in
+    let fold_line =
+      if ended = [] then []
+      else
+        [
+          Text
+            [
+              Ansi.span ~style:faint
+                (Matrix_cli.Tree.prefix guide ((kids = []) :: lasts));
+              mark (worst ended);
+              Ansi.span ~style:faint (" " ^ folded ended);
+            ];
+        ]
+    in
+    (row :: lines) @ fold_line
+    @ List.concat
+        (List.mapi (fun i c -> tree ~fold ~window ((i = last) :: lasts) c) kids)
+
+  let cells_of spans =
+    List.fold_left
+      (fun w (s : Ansi.span) ->
+        w + Matrix_text.measure ~width_method:`Unicode ~tab_width:2 s.text)
+      0 spans
+
+  (* Draws [items] into [g], one a row from [y], in [width] cells: each
+     column as wide as its widest cell, the labels giving way to a bar of 10
+     cells, and the bar growing to 30 with the room they leave. *)
+  let draw_items g ~y ~width items =
+    let ncols = 4 in
+    let widths = Array.make (ncols + 1) 0 in
+    List.iter
+      (function
+        | Row r ->
+            widths.(0) <- max widths.(0) (cells_of r.head);
+            List.iteri
+              (fun i (c, _) ->
+                widths.(i + 1) <- max widths.(i + 1) (cells_of [ c ]))
+              r.columns
+        | Text _ -> ())
+      items;
+    let bars =
+      List.exists
+        (function Row { fraction = Some _; _ } -> true | _ -> false)
+        items
+    in
+    let others =
+      Array.fold_left (fun a w -> if w > 0 then a + w + 2 else a) 0 widths
+      - if widths.(0) > 0 then widths.(0) + 2 else 0
+    in
+    let head =
+      max 8 (min widths.(0) (width - others - if bars then 12 else 0))
+    in
+    let cells =
+      if bars then max 0 (min 30 (width - others - head - 2)) else 0
+    in
+    let repeat n s = String.concat "" (List.init (max 0 n) (fun _ -> s)) in
+    List.iteri
+      (fun i item ->
+        let y = y + i in
+        match item with
+        | Text spans ->
+            ignore (Matrix_grid.draw_spans ~width g ~x:0 ~y spans : int)
+        | Row r ->
+            ignore (Matrix_grid.draw_spans ~width:head g ~x:0 ~y r.head : int);
+            let x = ref (head + 2) in
+            (match r.fraction with
+            | Some f ->
+                let full = Float.to_int (f *. Float.of_int cells) in
+                ignore
+                  (Matrix_grid.draw_spans g ~x:!x ~y
+                     [
+                       Ansi.span ~style:accent (repeat full Glyph.bar_full);
+                       Ansi.span ~style:faint
+                         (repeat (cells - full) Glyph.bar_empty);
+                     ]
+                    : int)
+            | None -> ());
+            if cells > 0 then x := !x + cells + 2;
+            List.iteri
+              (fun i (c, align) ->
+                let w = widths.(i + 1) in
+                if w > 0 then (
+                  let pad = w - cells_of [ c ] in
+                  let at = if align = `Right then !x + max 0 pad else !x in
+                  ignore (Matrix_grid.draw_spans g ~x:at ~y [ c ] : int);
+                  x := !x + w + 2))
+              r.columns)
+      items
+
+  let grid ~width items =
+    let g =
+      Matrix_grid.create ~width:(max 1 width)
+        ~height:(max 1 (List.length items))
+        ()
+    in
+    draw_items g ~y:0 ~width items;
+    g
+
+  (* The rows of the running tasks under [t], and the summary under them if
+     [t] is the root, which give way in [height] rows: first the tasks that
+     ended under each task fold into one line, then the windows shrink, the
+     longest first. *)
+  let rows (t : t) ~width ~height =
+    Mutex.protect t.work.lock @@ fun () ->
+    let running =
+      List.filter (fun (c : t) -> c.status = `Running) (List.rev t.children)
+    in
+    let summary = if t.id < 0 then [ Text (summary t) ] else [] in
+    let items ~fold ~window =
+      List.concat_map (tree ~fold ~window []) running @ summary
+    in
+    let longest =
+      List.fold_left
+        (fun a (c : t) -> max a (min c.lines (List.length c.output)))
+        0
+        (List.concat_map (fun c -> c :: all c) running)
+    in
+    let rec fit window =
+      let items = items ~fold:true ~window in
+      if List.length items <= height || window = 0 then items
+      else fit (window - 1)
+    in
+    let whole = items ~fold:false ~window:max_int in
+    grid ~width (if List.length whole <= height then whole else fit longest)
+
+  (* The lines a top task that ended leaves above the region: its rows as it
+     ended, then the whole output of each task in it that failed. *)
+  let leaves (t : t) =
+    let width = Option.value (width t.work.out) ~default:80 in
+    let rec failed (t : t) =
+      (if t.status = `Failed then
+         List.rev_map
+           (fun l ->
+             Ansi.render
+               [
+                 Ansi.span ~style:faint
+                   ("  "
+                   ^ String.concat Glyph.path (path t)
+                   ^ " " ^ Glyph.output ^ " ");
+                 Ansi.span l;
+               ]
+             ^ "\n")
+           t.output
+       else [])
+      @ List.concat_map failed (List.rev t.children)
+    in
+    if t.transient && t.status = `Succeeded then ""
+    else
+      Matrix_grid.to_ansi ~styling:`Truecolor ~trim:true
+        (grid ~width (tree ~fold:false ~window:0 [] t))
+      ^ "\n"
+      ^ String.concat "" (failed t)
 
   (* JSON events. *)
 
@@ -1225,10 +1493,11 @@ module Task = struct
 
   let shows_lines (t : t) =
     match t.work.out.progress with
-    | `Tty | `Plain -> not t.transient
-    | `Quiet | `Json -> false
+    | `Plain -> not t.transient
+    | `Tty | `Quiet | `Json -> false
 
-  let start ?(transient = false) parent label =
+  let start ?(transient = false) ?(lines = 8) parent label =
+    if lines < 0 then invalid_arg "Matrix_cli_unix.Task.start: negative lines";
     let w = parent.work in
     let label = one_line label in
     let made = ref None in
@@ -1241,6 +1510,7 @@ module Task = struct
             parent = Some parent;
             label;
             transient;
+            lines;
             started = now;
             count = 0;
             total = None;
@@ -1327,6 +1597,7 @@ module Task = struct
         String.concat "" (List.map (output_line ~of_task:t) ls)
       else
         match t.work.out.progress with
+        | `Tty when t.id < 0 -> String.concat "" (List.map output_line ls)
         | `Json ->
             String.concat ""
               (List.map
@@ -1377,8 +1648,10 @@ module Task = struct
         match t.work.out.progress with
         | `Json -> end_event []
         | _ when t.id < 0 -> ""
-        | (`Tty | `Plain) when not t.transient -> ending t
-        | `Tty | `Plain | `Quiet -> failure ()
+        | `Tty -> (
+            match t.parent with Some p when p.id < 0 -> leaves t | _ -> "")
+        | `Plain when not t.transient -> ending t
+        | `Plain | `Quiet -> failure ()
       in
       first ^ own
 
@@ -1386,8 +1659,8 @@ module Task = struct
   let fail ?message t = change t.work (fun () -> close t `Failed message)
   let cancel ?message t = change t.work (fun () -> close t `Cancelled message)
 
-  let run ?transient parent label f =
-    let t = start ?transient parent label in
+  let run ?transient ?lines parent label f =
+    let t = start ?transient ?lines parent label in
     match f t with
     | result ->
         succeed t;
@@ -1423,6 +1696,7 @@ let tasks ?(label = "") ?now ?frame out f =
       parent = None;
       label = Task.one_line label;
       transient = false;
+      lines = 0;
       started = now ();
       count = 0;
       total = None;
@@ -1439,7 +1713,7 @@ let tasks ?(label = "") ?now ?frame out f =
   w.frame <-
     (match frame with
     | Some frame -> frame root
-    | None -> Task.summary_frame root);
+    | None -> fun ~width ~height -> [ Task.rows root ~width ~height ]);
   (* What the program prints on a [`Json] output while the work runs is
      timed by the work's clock, as its tasks are. *)
   let d = out.out_device in
