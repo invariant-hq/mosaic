@@ -61,7 +61,7 @@ type t = {
   mutable crosses_intrinsic_column : bool;
   (* Whether the item crosses a intrinsic column *)
   (* Caches for intrinsic size computation. These caches are only valid for a single run of the track-sizing algorithm. *)
-  mutable available_space_cache : float option size option;
+  mutable grid_area_size_cache : float option size option;
       (* Cache for the known_dimensions input to intrinsic sizing computation *)
   mutable min_content_contribution_cache : float option size;
       (* Cache for the min-content size *)
@@ -122,7 +122,7 @@ let new_with_placement_style_and_order ~node ~col_span ~row_span ~style
     (* Properly initialised later *)
     crosses_intrinsic_column = false;
     (* Properly initialised later *)
-    available_space_cache = None;
+    grid_area_size_cache = None;
     min_content_contribution_cache = Size.none;
     max_content_contribution_cache = Size.none;
     minimum_contribution_cache = Size.none;
@@ -445,43 +445,40 @@ let grid_area_size t axis axis_tracks other_axis_tracks
   let other_axis = Abstract_axis.other axis in
   let axis_available = Size.get axis available in
   let start_idx, end_idx = track_range_excluding_lines t axis in
-  let axis_size = ref (Some 0.0) in
-  for i = start_idx to end_idx - 1 do
-    match !axis_size with
-    | None -> ()
-    | Some sum -> (
-        let track = axis_tracks.(i) in
-        let fn = track.Grid_track.track_sizing_function in
-        axis_size :=
-          match
-            ( Track_sizing_function.Min.definite_value_with_calc fn
-                axis_available calc,
-              Track_sizing_function.Max.definite_value_with_calc fn
-                axis_available calc )
-          with
-          | Some min, Some max when min = max ->
-              Some (sum +. track.Grid_track.base_size)
-          | _ -> None)
+  let axis_size = ref 0.0 and axis_known = ref true in
+  let i = ref start_idx in
+  while !axis_known && !i < end_idx do
+    let track = axis_tracks.(!i) in
+    let fn = track.Grid_track.track_sizing_function in
+    (match
+       ( Track_sizing_function.Min.definite_value_with_calc fn axis_available
+           calc,
+         Track_sizing_function.Max.definite_value_with_calc fn axis_available
+           calc )
+     with
+    | Some min, Some max when min = max ->
+        axis_size := !axis_size +. track.Grid_track.base_size
+    | _ -> axis_known := false);
+    incr i
   done;
   let start_idx, end_idx = track_range_excluding_lines t other_axis in
-  let other_size = ref (Some 0.0) in
-  for i = start_idx to end_idx - 1 do
-    match !other_size with
-    | None -> ()
-    | Some sum -> (
-        let track = other_axis_tracks.(i) in
+  let other_available = Size.get other_axis available in
+  let other_size = ref 0.0 and other_known = ref true in
+  let i = ref start_idx in
+  while !other_known && !i < end_idx do
+    let track = other_axis_tracks.(!i) in
+    (match get_track_size_estimate track other_available with
+    | Some size ->
         other_size :=
-          match
-            get_track_size_estimate track (Size.get other_axis available)
-          with
-          | None -> None
-          | Some size ->
-              Some (sum +. size +. track.Grid_track.content_alignment_adjustment)
-        )
+          !other_size +. size +. track.Grid_track.content_alignment_adjustment
+    | None -> other_known := false);
+    incr i
   done;
+  let axis_size = if !axis_known then Some !axis_size else None
+  and other_size = if !other_known then Some !other_size else None in
   match axis with
-  | Abstract_axis.Inline -> Size.{ width = !axis_size; height = !other_size }
-  | Abstract_axis.Block -> Size.{ width = !other_size; height = !axis_size }
+  | Abstract_axis.Inline -> Size.{ width = axis_size; height = other_size }
+  | Abstract_axis.Block -> Size.{ width = other_size; height = axis_size }
 
 let participates_in_baseline_alignment t =
   t.align_self = Align_items.Baseline

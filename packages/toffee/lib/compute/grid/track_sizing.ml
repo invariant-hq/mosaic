@@ -52,11 +52,18 @@ module Intrinsic_size_measurer = struct
       (item : Grid_item.t) : float option size =
     (* Other-axis tracks are estimates: their maximum sizing function or their
        provisional base size. https://www.w3.org/TR/css-grid-1/#algo-overview *)
-    Grid_item.grid_area_size item measurer.axis measurer.axis_tracks
-      measurer.other_axis_tracks measurer.inner_node_size
-      (fun track size ->
-        measurer.get_track_size_estimate track size measurer.tree)
-      (Tree.resolve_calc_value measurer.tree)
+    match item.grid_area_size_cache with
+    | Some size -> size
+    | None ->
+        let size =
+          Grid_item.grid_area_size item measurer.axis measurer.axis_tracks
+            measurer.other_axis_tracks measurer.inner_node_size
+            (fun track size ->
+              measurer.get_track_size_estimate track size measurer.tree)
+            (Tree.resolve_calc_value measurer.tree)
+        in
+        item.grid_area_size_cache <- Some size;
+        size
 
   (* The space the item is measured in: its grid area, unknown in the axis
      being sized *)

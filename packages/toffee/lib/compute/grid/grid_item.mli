@@ -10,8 +10,9 @@
       remain valid throughout layout.
     - All contribution caches ([min_content_contribution_cache], etc.) are valid
       only for a single track-sizing run.
-    - [available_space_cache] must match the current known_dimensions input or
-      be [None].
+    - [grid_area_size_cache] holds the item's grid area for the current
+      track-sizing run (the tracks of the other axis as estimated for it), or is
+      [None].
     - [baseline_shim] acts as additional top margin for baseline alignment.
 
     {1 Coordinate Systems}
@@ -24,9 +25,9 @@
 
     {1 Cache Invalidation}
 
-    Intrinsic size caches are tied to [available_space_cache]. When the
-    available space changes, all caches must be cleared by setting
-    [available_space_cache] to [None]. *)
+    Intrinsic size caches are tied to [grid_area_size_cache]. When the grid area
+    changes, all caches must be cleared by setting [grid_area_size_cache] to
+    [None]. *)
 
 open Toffee_geometry
 open Toffee_style
@@ -60,7 +61,7 @@ type t = {
   mutable crosses_flexible_column : bool;
   mutable crosses_intrinsic_row : bool;
   mutable crosses_intrinsic_column : bool;
-  mutable available_space_cache : float option size option;
+  mutable grid_area_size_cache : float option size option;
   mutable min_content_contribution_cache : float option size;
   mutable minimum_contribution_cache : float option size;
   mutable max_content_contribution_cache : float option size;
@@ -198,7 +199,7 @@ val min_content_contribution_cached :
 (** [min_content_contribution_cached t axis tree grid_area_size available_space]
     retrieves the cached min-content contribution or computes it.
 
-    Cache is invalidated when [available_space_cache] changes. *)
+    Cache is invalidated when [grid_area_size_cache] changes. *)
 
 val max_content_contribution :
   (module Toffee_tree.LAYOUT_PARTIAL_TREE with type t = 'tree) ->
@@ -225,7 +226,7 @@ val max_content_contribution_cached :
 (** [max_content_contribution_cached t axis tree grid_area_size available_space]
     retrieves the cached max-content contribution or computes it.
 
-    Cache is invalidated when [available_space_cache] changes. *)
+    Cache is invalidated when [grid_area_size_cache] changes. *)
 
 val grid_area_size :
   t ->

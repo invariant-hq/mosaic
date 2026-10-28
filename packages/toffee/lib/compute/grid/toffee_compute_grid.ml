@@ -362,9 +362,7 @@ let compute_grid_layout (type t)
       in
 
       (* Clear caches before block axis sizing *)
-      Array.iter
-        (fun item -> item.Grid_item.available_space_cache <- None)
-        items;
+      Array.iter (fun item -> item.Grid_item.grid_area_size_cache <- None) items;
 
       (* Run track sizing algorithm for Block axis *)
       Track_sizing.track_sizing_algorithm
@@ -467,7 +465,7 @@ let compute_grid_layout (type t)
           Some contribution
           <> Size.get axis item.Grid_item.min_content_contribution_cache
         in
-        item.Grid_item.available_space_cache <- Some grid_area_size;
+        item.Grid_item.grid_area_size_cache <- Some grid_area_size;
         item.Grid_item.min_content_contribution_cache <-
           Size.set axis (Some contribution)
             item.Grid_item.min_content_contribution_cache;
@@ -498,7 +496,7 @@ let compute_grid_layout (type t)
       let clear_caches axis =
         Array.iter
           (fun item ->
-            item.Grid_item.available_space_cache <- None;
+            item.Grid_item.grid_area_size_cache <- None;
             item.Grid_item.min_content_contribution_cache <-
               Size.set axis None item.Grid_item.min_content_contribution_cache;
             item.Grid_item.max_content_contribution_cache <-
