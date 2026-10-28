@@ -113,6 +113,65 @@ let () =
             [| 0.; 0.; 50.; 50. |];
             [| 0.; 50.; 50.; 20. |];
           ];
+      case "gap_between_items_with_auto_margins"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 100.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 56.; height = Dimension.auto }
+                   ~gap:
+                     {
+                       width = Length_percentage.percent 0.1;
+                       height = Length_percentage.length 0.;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 11.;
+                           height = Dimension.auto;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 2.;
+                           height = Dimension.auto;
+                         }
+                       ~margin:
+                         {
+                           left = Length_percentage_auto.auto;
+                           right = Length_percentage_auto.length 0.;
+                           top = Length_percentage_auto.length 0.;
+                           bottom = Length_percentage_auto.length 0.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 0. |];
+            [| 0.; 0.; 56.; 0. |];
+            [| 0.; 0.; 11.; 0. |];
+            [| 54.; 0.; 2.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 0. |];
+            [| 0.; 0.; 56.; 0. |];
+            [| 0.; 0.; 11.; 0. |];
+            [| 54.; 0.; 2.; 0. |];
+          ];
       case "margin_y_collapse_through_blocked_by_flex"
         (fun box_sizing ->
           node

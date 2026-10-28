@@ -12946,6 +12946,58 @@ let () =
             [| 30.; 0.; 20.; 20. |];
             [| 60.; 0.; 20.; 20. |];
           ];
+      case "gap_column_gap_with_auto_margins"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.length 100.; height = Dimension.auto }
+               ~gap:
+                 {
+                   width = Length_percentage.length 10.;
+                   height = Length_percentage.length 0.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.auto;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 0. |];
+            [| 0.; 0.; 10.; 0. |];
+            [| 70.; 0.; 10.; 0. |];
+            [| 90.; 0.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 0. |];
+            [| 0.; 0.; 10.; 0. |];
+            [| 70.; 0.; 10.; 0. |];
+            [| 90.; 0.; 10.; 0. |];
+          ];
       case "gap_column_gap_wrap_align_center"
         (fun box_sizing ->
           node

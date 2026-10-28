@@ -2169,43 +2169,45 @@ let distribute_remaining_free_space (flex_lines : flex_line list)
         if margin_is_auto child bottom then incr num_auto_margins)
     done;
 
-    if free_space > 0.0 && !num_auto_margins > 0 then
-      (* Distribute free space to auto margins *)
-      let margin = free_space /. float_of_int !num_auto_margins in
-      for i = 0 to num_items - 1 do
-        let child = items.(i) in
-        if is_row then (
-          if margin_is_auto child left then
-            child.margin <- { child.margin with left = margin };
-          if margin_is_auto child right then
-            child.margin <- { child.margin with right = margin })
-        else (
-          if margin_is_auto child top then
-            child.margin <- { child.margin with top = margin };
-          if margin_is_auto child bottom then
-            child.margin <- { child.margin with bottom = margin })
-      done
-    else
-      (* Apply justify-content alignment *)
-      let layout_reverse = Flex_direction_ext.is_reverse constants.dir in
-      let is_safe = false in
-      (* TODO: Implement safe alignment *)
-      let raw_justify_content_mode =
-        match constants.justify_content with
-        | Some jc -> jc
-        | None -> Flex_start
-      in
-      let justify_content_mode =
-        apply_alignment_fallback free_space num_items raw_justify_content_mode
-          is_safe
-      in
-      for i = 0 to num_items - 1 do
-        (* In reverse, the first item to justify is the last one *)
-        let child = items.(if layout_reverse then num_items - 1 - i else i) in
-        child.s.offset_main <-
-          compute_alignment_offset free_space num_items main_gap
-            justify_content_mode layout_reverse (i = 0)
-      done
+    (* Positive free space goes to the auto margins, which leave none to
+       justify-content; the gaps still separate the items *)
+    let free_space =
+      if free_space > 0.0 && !num_auto_margins > 0 then (
+        let margin = free_space /. float_of_int !num_auto_margins in
+        for i = 0 to num_items - 1 do
+          let child = items.(i) in
+          if is_row then (
+            if margin_is_auto child left then
+              child.margin <- { child.margin with left = margin };
+            if margin_is_auto child right then
+              child.margin <- { child.margin with right = margin })
+          else (
+            if margin_is_auto child top then
+              child.margin <- { child.margin with top = margin };
+            if margin_is_auto child bottom then
+              child.margin <- { child.margin with bottom = margin })
+        done;
+        0.0)
+      else free_space
+    in
+    (* Apply justify-content alignment *)
+    let layout_reverse = Flex_direction_ext.is_reverse constants.dir in
+    let is_safe = false in
+    (* TODO: Implement safe alignment *)
+    let raw_justify_content_mode =
+      match constants.justify_content with Some jc -> jc | None -> Flex_start
+    in
+    let justify_content_mode =
+      apply_alignment_fallback free_space num_items raw_justify_content_mode
+        is_safe
+    in
+    for i = 0 to num_items - 1 do
+      (* In reverse, the first item to justify is the last one *)
+      let child = items.(if layout_reverse then num_items - 1 - i else i) in
+      child.s.offset_main <-
+        compute_alignment_offset free_space num_items main_gap
+          justify_content_mode layout_reverse (i = 0)
+    done
   done
 
 (* Helper function to align flex items along cross axis *)
