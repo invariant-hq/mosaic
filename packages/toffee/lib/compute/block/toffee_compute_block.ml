@@ -227,7 +227,8 @@ let perform_final_layout_on_in_flow_children (type t)
     (items : block_item list) (container_outer_width : float)
     (container_percentage_resolution_height : float option)
     (content_box_inset : Rectf.t) (resolved_content_box_inset : Rectf.t)
-    (text_align : Text_align.t) (own_margins_collapse_with_children : bool line)
+    (text_align : Text_align.t) (justify_items : Align_items.t option)
+    (own_margins_collapse_with_children : bool line)
     (overflow_acc : Toffee_compute_helpers.overflow_acc)
     (overflow_flags : Toffee_compute_helpers.overflow_flags)
     (overflow_origin : Rectf.t) (overflow_padding : Rectf.t) :
@@ -302,8 +303,26 @@ let perform_final_layout_on_in_flow_children (type t)
           Rectf.horizontal_axis_sum item_non_auto_margin
         in
 
+        (* justify-self, or the container's justify-items, on a block-level
+           box (CSS Box Alignment 3, 6.1; Taffy #1250). Normal and stretch lay
+           it out by the default rules, except that stretch also stretches a
+           table or replaced box; any other value sizes an auto width as
+           fit-content and aligns the margin box *)
+        let justify_self =
+          match
+            Style.justify_self (Tree.get_core_container_style tree item.node_id)
+          with
+          | Some _ as justify_self -> justify_self
+          | None -> justify_items
+        in
+        let aligned =
+          match justify_self with
+          | None | Some Align_items.Stretch -> false
+          | Some _ -> true
+        in
         let known_dimensions =
-          if not item.is_stretched then Size.none
+          if not (item.is_stretched || justify_self = Some Align_items.Stretch)
+          then Size.none
           else
             item.size
             |> Size.map_width (fun width ->
@@ -316,8 +335,31 @@ let perform_final_layout_on_in_flow_children (type t)
                     let stretched_width =
                       container_inner_width -. item_non_auto_x_margin_sum
                     in
+                    let width =
+                      if not aligned then stretched_width
+                      else
+                        (* fit-content: the width the box takes in the
+                           stretched width *)
+                        (Layout_output.size
+                           (Tree.compute_child_layout tree item.node_id
+                              (Layout_input.make ~run_mode:Run_mode.Compute_size
+                                 ~sizing_mode:Sizing_mode.Inherent_size
+                                 ~axis:Requested_axis.Horizontal
+                                 ~known_dimensions:Size.none ~parent_size
+                                 ~available_space:
+                                   Size.
+                                     {
+                                       width =
+                                         Available_space.of_float
+                                           stretched_width;
+                                       height = Available_space.max_content;
+                                     }
+                                 ~vertical_margins_are_collapsible:
+                                   Line.both_true)))
+                          .width
+                    in
                     Some
-                      (Helpers.maybe_clamp stretched_width item.min_size.width
+                      (Helpers.maybe_clamp width item.min_size.width
                          item.max_size.width))
             |> Size.clamp_option item.min_size item.max_size
         in
@@ -443,7 +485,23 @@ let perform_final_layout_on_in_flow_children (type t)
           final_size.width +. Rectf.horizontal_axis_sum resolved_margin
         in
         let location =
-          if item_outer_width < container_inner_width then
+          if
+            aligned
+            && Option.is_some item_margin.left
+            && Option.is_some item_margin.right
+          then
+            (* justify-self takes precedence over text-align (stretch too, as
+               in Chromium), auto margins over justify-self *)
+            let free_x_space = container_inner_width -. item_outer_width in
+            match justify_self with
+            | Some Align_items.Center ->
+                Pointf.{ location with x = location.x +. (free_x_space /. 2.0) }
+            | Some (Align_items.End | Align_items.Flex_end) ->
+                Pointf.{ location with x = location.x +. free_x_space }
+            | _ -> location
+          else if
+            justify_self = None && item_outer_width < container_inner_width
+          then
             match text_align with
             | Text_align.Auto -> location
             | Text_align.Legacy_left -> location (* Left aligned by default *)
@@ -1107,6 +1165,7 @@ let compute_inner (type t)
           tree items container_outer_width
           container_percentage_resolution_height content_box_inset
           resolved_content_box_inset text_align
+          (Style.justify_items style)
           own_margins_collapse_with_children overflow_acc overflow_flags
           resolved_border resolved_padding
       in

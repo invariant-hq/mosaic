@@ -3845,6 +3845,149 @@ let () =
             [| 100.; 0.; 100.; 50. |];
             [| 0.; 50.; 200.; 50. |];
           ];
+      case "justify_self_aligns_fit_content_boxes"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ~justify_items:End
+               ~size:{ width = Dimension.length 50.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 10. }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 5.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 10.;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                ];
+              node
+                (Style.make ~box_sizing ~justify_self:Center ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 10.;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                ];
+              node
+                (Style.make ~box_sizing ~justify_self:Start
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing ~justify_self:Center
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.auto;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 50.; 20. |];
+            [| 40.; 0.; 10.; 10. |];
+            [| 0.; 0.; 10.; 10. |];
+            [| 20.; 10.; 10.; 10. |];
+            [| 0.; 0.; 10.; 10. |];
+            [| 0.; 20.; 10.; 0. |];
+            [| 40.; 20.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 50.; 20. |];
+            [| 40.; 0.; 10.; 10. |];
+            [| 0.; 0.; 10.; 10. |];
+            [| 20.; 10.; 10.; 10. |];
+            [| 0.; 0.; 10.; 10. |];
+            [| 0.; 20.; 10.; 0. |];
+            [| 40.; 20.; 10.; 0. |];
+          ];
+      case "justify_self_takes_precedence_over_text_align"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 50.; height = Dimension.auto }
+               ~text_align:Legacy_center ())
+            [
+              node
+                (Style.make ~box_sizing ~justify_self:End
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing ~justify_self:Center
+                   ~size:
+                     { width = Dimension.length 60.; height = Dimension.auto }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing ~justify_self:Flex_end
+                   ~max_size:
+                     { width = Dimension.length 5.; height = Dimension.auto }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 30.;
+                           height = Dimension.auto;
+                         }
+                       ())
+                    [];
+                ];
+              node
+                (Style.make ~box_sizing ~justify_self:Stretch
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 50.; 0. |];
+            [| 40.; 0.; 10.; 0. |];
+            [| -5.; 0.; 60.; 0. |];
+            [| 45.; 0.; 5.; 0. |];
+            [| 0.; 0.; 5.; 0. |];
+            [| 0.; 0.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 50.; 0. |];
+            [| 40.; 0.; 10.; 0. |];
+            [| -5.; 0.; 60.; 0. |];
+            [| 45.; 0.; 5.; 0. |];
+            [| 0.; 0.; 5.; 0. |];
+            [| 0.; 0.; 10.; 0. |];
+          ];
       case "margin_auto_bottom"
         (fun box_sizing ->
           node

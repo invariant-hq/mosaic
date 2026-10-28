@@ -283,7 +283,7 @@ function style(s, boxSizing, scrollbarWidth) {
     ['justify_content',
       display === 'block' ? undefined : keyword(alignContent, s['justify-content'])],
     ['align_content', display === 'block' ? undefined : keyword(alignContent, s['align-content'])],
-    ['justify_items', display === 'grid' ? keyword(alignItems, s['justify-items']) : undefined],
+    ['justify_items', display === 'grid' || display === 'block' ? keyword(alignItems, s['justify-items']) : undefined],
     ['justify_self', keyword(alignSelf, s['justify-self'])],
     ['flex_grow', number(s['flex-grow'])],
     ['flex_shrink', number(s['flex-shrink'])],
