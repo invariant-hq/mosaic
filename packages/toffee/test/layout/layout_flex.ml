@@ -23774,6 +23774,27 @@ let () =
             [| 135.; 60.; 30.; 40. |];
             [| 35.; 0.; 30.; 50. |];
           ];
+      case "wrap_reverse_overflowing_line_packs_to_cross_start"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_wrap:Wrap_reverse
+               ~size:{ width = Dimension.auto; height = Dimension.length 0. }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~border:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 20.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 0.; 0. |]; [| 0.; -20.; 0.; 20. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 0. |]; [| 0.; -20.; 0.; 20. |] ];
       case "wrap_reverse_row"
         (fun box_sizing ->
           node

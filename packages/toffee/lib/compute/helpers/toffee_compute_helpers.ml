@@ -30,13 +30,15 @@ let compute_content_size_contribution ~(location : Pointf.t) ~(size : Sizef.t)
 let apply_alignment_fallback ~free_space ~num_items ~alignment_mode ~is_safe =
   (* Fallback occurs in two cases: *)
 
-  (* 1. If there is only a single item being aligned and alignment is a
-     distributed alignment keyword
-     https://www.w3.org/TR/css-align-3/#distribution-values *)
+  (* 1. If there is only a single item being aligned or the items overflow,
+     the distributed alignment keywords fall back to a positional one
+     (https://www.w3.org/TR/css-align-3/#distribution-values): the space-*
+     ones safely, so that step 2 turns them to Start when the items overflow,
+     and stretch to plain flex-start. *)
   let alignment_mode, is_safe =
     if num_items <= 1 || free_space <= 0.0 then
       match alignment_mode with
-      | Align_content.Stretch -> (Align_content.Flex_start, true)
+      | Align_content.Stretch -> (Align_content.Flex_start, is_safe)
       | Align_content.Space_between -> (Align_content.Flex_start, true)
       | Align_content.Space_around -> (Align_content.Center, true)
       | Align_content.Space_evenly -> (Align_content.Center, true)
