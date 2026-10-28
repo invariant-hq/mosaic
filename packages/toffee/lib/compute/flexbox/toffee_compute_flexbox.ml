@@ -840,7 +840,29 @@ let measure_automatic_minimum (type t)
 
   let min_content_main_size =
     let measured_size = Layout_output.size layout_output in
-    if constants.is_row then measured_size.width else measured_size.height
+    if not constants.is_row then measured_size.height
+    else if not constants.has_definite_main_size then measured_size.width
+    else
+      (* Measured without a main size, the item resolved the percentages of
+         its horizontal padding and border against nothing; in a container
+         of definite width they resolve against it once the item is laid
+         out, so its content size lacks them *)
+      let padding = Style.padding child.style
+      and border = Style.border child.style in
+      let lp = Length_percentage.uses_percentage in
+      if
+        not
+          (lp padding.left || lp padding.right || lp border.left
+         || lp border.right)
+      then measured_size.width
+      else
+        let calc = Tree.resolve_calc_value tree in
+        measured_size.width +. child.padding.left +. child.padding.right
+        +. child.border.left +. child.border.right
+        -. Length_percentage.resolve_or_zero padding.left None calc
+        -. Length_percentage.resolve_or_zero padding.right None calc
+        -. Length_percentage.resolve_or_zero border.left None calc
+        -. Length_percentage.resolve_or_zero border.right None calc
   in
 
   (* Apply automatic minimum size clamping *)

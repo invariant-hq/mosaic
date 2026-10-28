@@ -15054,6 +15054,43 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 10.; 10. |]; [| 0.; 0.; 10.; 10. |] ]
         ~content_box:[ [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |] ];
+      case "item_automatic_minimum_includes_percentage_padding"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.percent 0.1;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~border:
+                         {
+                           left = Length_percentage.length 10.;
+                           right = Length_percentage.length 0.;
+                           top = Length_percentage.length 0.;
+                           bottom = Length_percentage.length 0.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 10.; 0. |]; [| 0.; 0.; 11.; 0. |]; [| 0.; 0.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 10.; 0. |]; [| 0.; 0.; 11.; 0. |]; [| 0.; 0.; 10.; 0. |];
+          ];
       case "item_contribution_clamps_size_before_margins"
         (fun box_sizing ->
           node
