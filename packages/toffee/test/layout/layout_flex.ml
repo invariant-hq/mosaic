@@ -17061,6 +17061,89 @@ let () =
             [| 50.; 75.; 50.; 50. |];
             [| 100.; 0.; 50.; 50. |];
           ];
+      case "margin_auto_cross_overflowing_item_starts_at_cross_start"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.auto; height = Dimension.length 20. }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.auto;
+                       bottom = Length_percentage_auto.length 50.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 30. }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.auto;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [ [| 0.; 0.; 0.; 20. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 30. |] ]
+        ~content_box:
+          [ [| 0.; 0.; 0.; 20. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 30. |] ];
+      case "margin_auto_cross_overflowing_item_starts_at_cross_start_column"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_direction:Column
+               ~size:{ width = Dimension.length 20.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.auto;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 50.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 30.; height = Dimension.auto }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.auto;
+                       right = Length_percentage_auto.auto;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 30.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 30.; 0. |];
+          ];
       case "margin_auto_left"
         (fun box_sizing ->
           node

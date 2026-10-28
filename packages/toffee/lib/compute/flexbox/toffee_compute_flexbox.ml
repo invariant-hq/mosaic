@@ -2279,7 +2279,18 @@ let resolve_cross_axis_auto_margins (flex_lines : flex_line list)
         else margin_is_auto child right
       in
 
-      if cross_start_auto && cross_end_auto then
+      if (cross_start_auto || cross_end_auto) && free_space < 0.0 then (
+        (* The item overflows its line: an auto start margin is zero and an
+           auto end margin takes the (negative) rest, so the item stays at the
+           line's cross-start edge (CSS Flexbox 9.6, step 13) *)
+        if cross_start_auto then
+          if is_row then child.margin <- { child.margin with top = 0.0 }
+          else child.margin <- { child.margin with left = 0.0 };
+        if cross_end_auto then
+          if is_row then
+            child.margin <- { child.margin with bottom = free_space }
+          else child.margin <- { child.margin with right = free_space })
+      else if cross_start_auto && cross_end_auto then
         (* Both margins are auto - distribute free space equally *)
         if is_row then (
           child.margin <- { child.margin with top = free_space /. 2.0 };
