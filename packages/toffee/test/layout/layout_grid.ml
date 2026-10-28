@@ -15568,4 +15568,54 @@ let () =
             [| 100.; 0.; 40.; 30. |];
             [| 0.; 50.; 120.; 20. |];
           ];
+      case "without_children_sized_by_explicit_tracks"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing
+                   ~grid_template_columns:
+                     [
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.length 20.);
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.length 10.);
+                     ]
+                   ~grid_template_rows:
+                     [
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.length 10.);
+                     ]
+                   ~padding:
+                     {
+                       left = Length_percentage.length 5.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~display:Grid ~box_sizing
+                   ~grid_template_rows:
+                     [
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.length 15.);
+                     ]
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 35.; 15. |];
+            [| 0.; 0.; 35.; 15. |];
+            [| 35.; 0.; 0.; 15. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 35.; 15. |];
+            [| 0.; 0.; 35.; 15. |];
+            [| 35.; 0.; 0.; 15. |];
+          ];
     ]

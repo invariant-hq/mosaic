@@ -768,6 +768,9 @@ module View = struct
     | Block, true -> compute_block_layout tree.layout_tree tree node inputs
     | Flex, true -> compute_flexbox_layout tree.layout_tree tree node inputs
     | Grid, true -> compute_grid_layout tree.layout_tree ~tree ~node ~inputs
+    | Grid, false when not node_data.has_context ->
+        (* An empty grid still has its explicit tracks *)
+        compute_grid_layout tree.layout_tree ~tree ~node ~inputs
     | _, false ->
         (* Leaf node *)
         let style = node_data.style in

@@ -102,6 +102,9 @@
     It returns the measured {!Geometry.Sizef.t}. The default measure function
     (used by {!compute_layout}) returns zero size.
 
+    A grid container without children or context is not measured: its explicit
+    tracks size it, as they size a grid that has items.
+
     Example with text measurement:
 
     {[
