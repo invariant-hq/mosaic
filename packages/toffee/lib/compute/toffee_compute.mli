@@ -166,7 +166,8 @@ val compute_root_layout :
     For Block display, the root node automatically stretches its width to fill
     definite available space after accounting for margins.
 
-    The root node is always placed at the origin [(0, 0)] with [order = 0].
+    The root's margin box is placed at the origin, so the root is at its left
+    and top margins, with [order = 0].
 
     Call this function once per layout pass to begin top-down layout traversal.
 *)

@@ -153,7 +153,10 @@ let compute_root_layout (type t)
   in
 
   Tree.set_unrounded_layout tree root
-    (Layout.make ~order:0 ~location:Pointf.zero
+    (Layout.make ~order:0
+       ~location:
+         (if margin.left = 0.0 && margin.top = 0.0 then Pointf.zero
+          else Pointf.{ x = margin.left; y = margin.top })
        ~size:(Layout_output.size output)
        ~content_size:(Layout_output.content_size output)
        ~scrollbar_size ~padding

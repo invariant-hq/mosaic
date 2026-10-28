@@ -10027,4 +10027,21 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 200. |]; [| 10.; 100.; 20.; 20. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 200. |]; [| 10.; 100.; 20.; 20. |] ];
+      case ~width:100. ~height:100. "root_location_includes_margin"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 { width = Dimension.length 20.; height = Dimension.length 10. }
+               ~margin:
+                 {
+                   left = Length_percentage_auto.length 10.;
+                   right = Length_percentage_auto.length 0.;
+                   top = Length_percentage_auto.length 5.;
+                   bottom = Length_percentage_auto.length 0.;
+                 }
+               ())
+            [])
+        ~border_box:[ [| 10.; 5.; 20.; 10. |] ]
+        ~content_box:[ [| 10.; 5.; 20.; 10. |] ];
     ]
