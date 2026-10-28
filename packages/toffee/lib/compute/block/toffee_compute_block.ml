@@ -757,120 +757,40 @@ let perform_absolute_layout_on_absolute_children (type t)
                  ~vertical_margins_are_collapsible:Line.both_false)
           in
 
-          let non_auto_margin =
-            Rectf.
-              {
-                left =
-                  (if Option.is_some left then
-                     Option.value margin.left ~default:0.0
-                   else 0.0);
-                right =
-                  (if Option.is_some right then
-                     Option.value margin.right ~default:0.0
-                   else 0.0);
-                top =
-                  (if Option.is_some top then
-                     Option.value margin.top ~default:0.0
-                   else 0.0);
-                bottom =
-                  (if Option.is_some bottom then
-                     Option.value margin.bottom ~default:0.0
-                   else 0.0);
-              }
+          (* Auto margins (CSS Position 3, abspos margins): zero unless both
+             insets of their axis are set; then they share the free space
+             between the insets, and in the inline axis a negative free space
+             falls to the end margin alone *)
+          let resolve_auto_margins start_inset end_inset start_margin end_margin
+              cb_size size ~inline =
+            match (start_inset, end_inset) with
+            | Some start_inset, Some end_inset -> (
+                let free_space = cb_size -. start_inset -. end_inset -. size in
+                match (start_margin, end_margin) with
+                | Some start, Some end_ -> (start, end_)
+                | Some start, None -> (start, free_space -. start)
+                | None, Some end_ -> (free_space -. end_, end_)
+                | None, None ->
+                    if free_space < 0.0 && inline then (0.0, free_space)
+                    else (free_space /. 2.0, free_space /. 2.0))
+            | _ ->
+                ( Option.value start_margin ~default:0.0,
+                  Option.value end_margin ~default:0.0 )
           in
-
-          (* Expand auto margins to fill available space *)
-          (* https://www.w3.org/TR/CSS21/visudet.html#abs-non-replaced-width *)
-          let auto_margin =
-            (* Auto margins for absolutely positioned elements in block
-               containers only resolve if inset is set. Otherwise they resolve
-               to 0. *)
-            let absolute_auto_margin_space =
-              Pointf.
-                {
-                  x =
-                    (match right with
-                    | Some r ->
-                        area_size.width -. r -. Option.value left ~default:0.0
-                    | None -> final_size.width);
-                  y =
-                    (match bottom with
-                    | Some b ->
-                        area_size.height -. b -. Option.value top ~default:0.0
-                    | None -> final_size.height);
-                }
-            in
-            let free_space =
-              Sizef.
-                {
-                  width =
-                    absolute_auto_margin_space.x -. final_size.width
-                    -. Rectf.horizontal_axis_sum non_auto_margin;
-                  height =
-                    absolute_auto_margin_space.y -. final_size.height
-                    -. Rectf.vertical_axis_sum non_auto_margin;
-                }
-            in
-
-            let auto_margin_size =
-              let width_auto_margin_count =
-                (if Option.is_none margin.left then 1 else 0)
-                + if Option.is_none margin.right then 1 else 0
-              in
-              let height_auto_margin_count =
-                (if Option.is_none margin.top then 1 else 0)
-                + if Option.is_none margin.bottom then 1 else 0
-              in
-              Sizef.
-                {
-                  width =
-                    (if
-                       width_auto_margin_count = 2
-                       && (Option.is_none style_size.width
-                          || Option.value style_size.width ~default:0.0
-                             >= free_space.width)
-                     then 0.0
-                     else if width_auto_margin_count > 0 then
-                       free_space.width /. float_of_int width_auto_margin_count
-                     else 0.0);
-                  height =
-                    (if
-                       height_auto_margin_count = 2
-                       && (Option.is_none style_size.height
-                          || Option.value style_size.height ~default:0.0
-                             >= free_space.height)
-                     then 0.0
-                     else if height_auto_margin_count > 0 then
-                       free_space.height
-                       /. float_of_int height_auto_margin_count
-                     else 0.0);
-                }
-            in
-
-            Rectf.
-              {
-                left =
-                  (if Option.is_some margin.left then 0.0
-                   else auto_margin_size.width);
-                right =
-                  (if Option.is_some margin.right then 0.0
-                   else auto_margin_size.width);
-                top =
-                  (if Option.is_some margin.top then 0.0
-                   else auto_margin_size.height);
-                bottom =
-                  (if Option.is_some margin.bottom then 0.0
-                   else auto_margin_size.height);
-              }
-          in
-
           let resolved_margin =
+            let left_margin, right_margin =
+              resolve_auto_margins left right margin.left margin.right
+                area_size.width final_size.width ~inline:true
+            and top_margin, bottom_margin =
+              resolve_auto_margins top bottom margin.top margin.bottom
+                area_size.height final_size.height ~inline:false
+            in
             Rectf.
               {
-                left = Option.value margin.left ~default:auto_margin.left;
-                right = Option.value margin.right ~default:auto_margin.right;
-                top = Option.value margin.top ~default:auto_margin.top;
-                bottom = Option.value margin.bottom ~default:auto_margin.bottom;
+                left = left_margin;
+                right = right_margin;
+                top = top_margin;
+                bottom = bottom_margin;
               }
           in
 
