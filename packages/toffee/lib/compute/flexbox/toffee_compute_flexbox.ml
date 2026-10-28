@@ -3533,8 +3533,11 @@ let compute_preliminary (type t)
         +. Flex_direction_ext.main_axis_sum constants.content_box_inset
              constants.dir
       in
+      (* A scrollbar wider than the space the padding and border leave
+         leaves a content box zero wide, not less (as in Taffy #1178); in
+         the block axis Chromium lets it go negative *)
       if constants.is_row then (
-        constants.n.inner_width <- inner_main_size;
+        constants.n.inner_width <- Float.max 0.0 inner_main_size;
         constants.n.width <- outer_main_size)
       else (
         constants.n.inner_height <- inner_main_size;

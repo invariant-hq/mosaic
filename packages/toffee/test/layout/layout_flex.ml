@@ -23243,6 +23243,15 @@ let () =
           [ [| 0.; 0.; 50.; 50.; 65.; 65. |]; [| 0.; 0.; 100.; 100. |] ]
         ~content_box:
           [ [| 0.; 0.; 50.; 50.; 65.; 65. |]; [| 0.; 0.; 100.; 100. |] ];
+      case "scrollbar_wider_than_content_box_floors_it_at_zero"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_direction:Row_reverse
+               ~size:{ width = Dimension.length 10.; height = Dimension.auto }
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
+            [ node (Style.make ~box_sizing ()) [] ])
+        ~border_box:[ [| 0.; 0.; 10.; 15.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 10.; 15.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "shrink_by_outer_margin_with_max_size"
         (fun box_sizing ->
           node
