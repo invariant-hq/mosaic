@@ -36,6 +36,7 @@ module Requested_axis = Requested_axis
 module Available_space = Available_space
 module Layout_input = Layout_input
 module Layout_output = Layout_output
+module Scrollable_overflow = Scrollable_overflow
 module Layout = Layout
 module Cache = Cache
 
@@ -191,10 +192,11 @@ val print_tree : (module PRINT_TREE with type t = 'a) -> 'a -> Node_id.t -> unit
     Output format:
     {v
     TREE
-    └── Flex [x: 0 y: 0 w: 800 h: 600 content_w: 780 content_h: 580 ...] (Node 0)
+    └── Flex [x: 0 y: 0 w: 800 h: 600 overflow: l:0 r:780 t:0 b:580 ...] (Node 0)
         ├── Block [x: 10 y: 10 w: 200 h: 100 ...] (Node 1)
         └── Text [x: 10 y: 120 w: 150 h: 20 ...] (Node 2)
     v}
 
-    Each line shows the node's label, location, size, content_size, border,
-    padding, and node ID. Children are indented with tree drawing characters. *)
+    Each line shows the node's label, location, size, scrollable overflow,
+    border, padding, and node ID. Children are indented with tree drawing
+    characters. *)

@@ -4,20 +4,20 @@ type t = {
   order : int;
   location : Geometry.Pointf.t;
   size : Geometry.Sizef.t;
-  content_size : Geometry.Sizef.t;
+  scrollable_overflow : Scrollable_overflow.t;
   scrollbar_size : Geometry.Sizef.t;
   border : Geometry.Rectf.t;
   padding : Geometry.Rectf.t;
   margin : Geometry.Rectf.t;
 }
 
-let make ~order ~location ~size ~content_size ~scrollbar_size ~border ~padding
-    ~margin =
+let make ~order ~location ~size ~scrollable_overflow ~scrollbar_size ~border
+    ~padding ~margin =
   {
     order;
     location;
     size;
-    content_size;
+    scrollable_overflow;
     scrollbar_size;
     border;
     padding;
@@ -27,7 +27,7 @@ let make ~order ~location ~size ~content_size ~scrollbar_size ~border ~padding
 let order t = t.order
 let location t = t.location
 let size t = t.size
-let content_size t = t.content_size
+let scrollable_overflow t = t.scrollable_overflow
 let scrollbar_size t = t.scrollbar_size
 let border t = t.border
 let padding t = t.padding
@@ -38,7 +38,7 @@ let default =
     order = 0;
     location = Geometry.Pointf.zero;
     size = Geometry.Sizef.zero;
-    content_size = Geometry.Sizef.zero;
+    scrollable_overflow = Scrollable_overflow.zero;
     scrollbar_size = Geometry.Sizef.zero;
     border = Geometry.Rectf.zero;
     padding = Geometry.Rectf.zero;
@@ -75,23 +75,37 @@ let content_box_y layout =
   +. layout.padding.top
 
 let scroll_width layout =
-  Float.max 0.0
-    (layout.content_size.width
-    +. Float.min layout.scrollbar_size.width layout.size.width
-    -. layout.size.width +. layout.border.right)
+  let overflow = layout.scrollable_overflow in
+  if Scrollable_overflow.reversed_x overflow then
+    -.Scrollable_overflow.left overflow
+  else
+    (* The padding box less the scrollbar, never below zero *)
+    let client_width =
+      Float.max 0.0
+        (layout.size.width -. layout.border.left -. layout.border.right
+        -. Float.min layout.scrollbar_size.width layout.size.width)
+    in
+    Float.max 0.0 (Scrollable_overflow.right overflow -. client_width)
 
 let scroll_height layout =
-  Float.max 0.0
-    (layout.content_size.height
-    +. Float.min layout.scrollbar_size.height layout.size.height
-    -. layout.size.height +. layout.border.bottom)
+  let overflow = layout.scrollable_overflow in
+  if Scrollable_overflow.reversed_y overflow then
+    -.Scrollable_overflow.top overflow
+  else
+    let client_height =
+      Float.max 0.0
+        (layout.size.height -. layout.border.top -. layout.border.bottom
+        -. Float.min layout.scrollbar_size.height layout.size.height)
+    in
+    Float.max 0.0 (Scrollable_overflow.bottom overflow -. client_height)
 
 let to_string t =
   Printf.sprintf
-    "Layout { order: %d; location: %s; size: %s; content_size: %s }" t.order
+    "Layout { order: %d; location: %s; size: %s; scrollable_overflow: %s }"
+    t.order
     (Geometry.Pointf.to_string t.location)
     (Geometry.Sizef.to_string t.size)
-    (Geometry.Sizef.to_string t.content_size)
+    (Scrollable_overflow.to_string t.scrollable_overflow)
 
 let compare a b =
   let cmp = Int.compare a.order b.order in
@@ -103,7 +117,10 @@ let compare a b =
       let cmp = Geometry.Sizef.compare a.size b.size in
       if cmp <> 0 then cmp
       else
-        let cmp = Geometry.Sizef.compare a.content_size b.content_size in
+        let cmp =
+          Scrollable_overflow.compare a.scrollable_overflow
+            b.scrollable_overflow
+        in
         if cmp <> 0 then cmp
         else
           let cmp = Geometry.Sizef.compare a.scrollbar_size b.scrollbar_size in

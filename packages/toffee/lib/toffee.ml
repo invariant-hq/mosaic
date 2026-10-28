@@ -8,6 +8,7 @@ module Style = Toffee_style
 
 (* Tree submodule exports *)
 module Node_id = Node_id
+module Scrollable_overflow = Scrollable_overflow
 module Layout = Layout
 module Available_space = Available_space
 module Layout_input = Layout_input
@@ -302,7 +303,9 @@ let same_layout a b =
   && same_float (location a).x (location b).x
   && same_float (location a).y (location b).y
   && same_size (size a) (size b)
-  && same_size (content_size a) (content_size b)
+  && same_rect
+       (Scrollable_overflow.packed (scrollable_overflow a))
+       (Scrollable_overflow.packed (scrollable_overflow b))
   && same_size (scrollbar_size a) (scrollbar_size b)
   && same_rect (border a) (border b)
   && same_rect (padding a) (padding b)
@@ -840,7 +843,8 @@ module View = struct
         (whole x && whole y
         && whole_point (Layout.location u)
         && whole_size (Layout.size u)
-        && whole_size (Layout.content_size u)
+        && whole_rect
+             (Scrollable_overflow.packed (Layout.scrollable_overflow u))
         && whole_size (Layout.scrollbar_size u)
         && whole_rect (Layout.border u)
         && whole_rect (Layout.padding u))

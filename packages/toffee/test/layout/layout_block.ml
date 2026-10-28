@@ -10138,4 +10138,81 @@ let () =
             [| 0.; 0.; 20.; 10. |];
             [| 0.; 10.; 40.; 10. |];
           ];
+      case "scroll_container_end_padding_after_content"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.auto; height = Dimension.length 20. }
+               ~padding:
+                 {
+                   left = Length_percentage.length 0.;
+                   right = Length_percentage.length 20.;
+                   top = Length_percentage.length 0.;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~min_size:
+                     { width = Dimension.auto; height = Dimension.length 50. }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 35.; 20.; 0.; 45. |]; [| 0.; 0.; 0.; 50. |] ]
+        ~content_box:[ [| 0.; 0.; 35.; 20.; 0.; 45. |]; [| 0.; 0.; 0.; 50. |] ];
+      case "scroll_container_reaches_empty_child"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 { width = Dimension.length 10.; height = Dimension.length 10. }
+               ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.length 0.;
+                       height = Dimension.length 0.;
+                     }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 30.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 10.; 10.; 20.; 0. |]; [| 30.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 10.; 10.; 20.; 0. |]; [| 30.; 0.; 0.; 0. |] ];
+      case "scroll_container_with_leading_border"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 { width = Dimension.length 20.; height = Dimension.length 20. }
+               ~border:
+                 {
+                   left = Length_percentage.length 10.;
+                   right = Length_percentage.length 0.;
+                   top = Length_percentage.length 0.;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.length 50.;
+                       height = Dimension.length 5.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 20.; 20.; 50.; 0. |]; [| 10.; 0.; 50.; 5. |] ]
+        ~content_box:[ [| 0.; 0.; 30.; 20.; 45.; 0. |]; [| 10.; 0.; 50.; 5. |] ];
     ]

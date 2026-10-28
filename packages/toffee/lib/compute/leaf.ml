@@ -153,7 +153,7 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
         | None -> size
       in
       let size = Sizef.max size pb_sum in
-      Layout_output.make ~size ~content_size:Sizef.zero
+      Layout_output.make ~size ~scrollable_overflow:Scrollable_overflow.zero
         ~first_baselines:Point.none ~top_margin:Collapsible_margin_set.zero
         ~bottom_margin:Collapsible_margin_set.zero
         ~margins_can_collapse_through:false
@@ -299,9 +299,44 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
 
       let size = Sizef.max size pb_sum in
 
-      Layout_output.make ~size
-        ~content_size:(Sizef.add measured_size (Rectf.sum_axes padding))
-        ~first_baselines:Point.none ~top_margin:Collapsible_margin_set.zero
+      (* The content's overflow area, from the padding-box origin; a scroll
+         container's end padding is part of it *)
+      let scrollable_overflow =
+        let overflow = Style.overflow style in
+        let is_scroll_container =
+          Style.Overflow.is_container overflow.x
+          || Style.Overflow.is_container overflow.y
+        in
+        (* Content, if any, is followed by the end padding of a scroll
+           container *)
+        let has_content = is_scroll_container in
+        let right =
+          padding.left +. measured_size.width
+          +. if has_content then padding.right else 0.0
+        and bottom =
+          padding.top +. measured_size.height
+          +. if has_content then padding.bottom else 0.0
+        in
+        if
+          (* Content within the padding box overflows nothing *)
+          (not is_scroll_container)
+          && right <= size.width -. border.left -. border.right
+          && bottom <= size.height -. border.top -. border.bottom
+          || (right <= 0.0 && bottom <= 0.0)
+        then Scrollable_overflow.zero
+        else
+          Scrollable_overflow.make
+            Rectf.
+              {
+                left = 0.0;
+                right = Float.max right 0.0;
+                top = 0.0;
+                bottom = Float.max bottom 0.0;
+              }
+            ~reversed_x:false ~reversed_y:false
+      in
+      Layout_output.make ~size ~scrollable_overflow ~first_baselines:Point.none
+        ~top_margin:Collapsible_margin_set.zero
         ~bottom_margin:Collapsible_margin_set.zero
         ~margins_can_collapse_through:
           ((not has_styles_preventing_being_collapsed_through)

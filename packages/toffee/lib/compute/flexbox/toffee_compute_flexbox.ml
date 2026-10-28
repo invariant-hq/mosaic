@@ -2568,7 +2568,10 @@ let inset_offset ~start ~end_ context calc =
 (* Final layout pass *)
 let final_layout_pass (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (flex_lines : flex_line list) (constants : algo_constants) : Sizef.t =
+    (flex_lines : flex_line list) (constants : algo_constants)
+    (overflow_acc : Toffee_compute_helpers.overflow_acc)
+    (overflow_flags : Toffee_compute_helpers.overflow_flags)
+    (overflow_padding : Rectf.t) : unit =
   let is_row = constants.is_row in
   let calc = Tree.resolve_calc_value tree in
   let node_inner_size = constants.node_inner_size in
@@ -2582,7 +2585,6 @@ let final_layout_pass (type t)
       height = Available_space.of_float constants.n.height;
     }
   in
-  let content_width = ref 0.0 and content_height = ref 0.0 in
   let known_dimensions = ref Size.none in
   let total_offset_cross =
     ref
@@ -2639,7 +2641,7 @@ let final_layout_pass (type t)
       in
 
       let size = Layout_output.size layout_output in
-      let content_size_output = Layout_output.content_size layout_output in
+      let overflow_area = Layout_output.scrollable_overflow layout_output in
       let inner_baseline =
         match (Layout_output.first_baselines layout_output).y with
         | Some baseline -> baseline
@@ -2708,8 +2710,8 @@ let final_layout_pass (type t)
       (* Set layout on tree *)
       Tree.set_unrounded_layout tree item.node
         (Layout.make ~order:item.order ~location ~size
-           ~content_size:content_size_output ~scrollbar_size ~border:item.border
-           ~padding:item.padding ~margin:item.margin);
+           ~scrollable_overflow:overflow_area ~scrollbar_size
+           ~border:item.border ~padding:item.padding ~margin:item.margin);
 
       (* Update main offset *)
       total_offset_main :=
@@ -2718,42 +2720,22 @@ let final_layout_pass (type t)
             else item.margin.top +. item.margin.bottom)
         +. if is_row then size.width else size.height;
 
-      (* Update content size *)
-      let contribution_width =
-        match overflow.x with
-        | Overflow.Visible -> fmax size.width content_size_output.width
-        | _ -> size.width
-      in
-      let contribution_height =
-        match overflow.y with
-        | Overflow.Visible -> fmax size.height content_size_output.height
-        | _ -> size.height
-      in
-      if contribution_width > 0.0 || contribution_height > 0.0 then (
-        content_width := fmax !content_width (location.x +. contribution_width);
-        content_height :=
-          fmax !content_height (location.y +. contribution_height))
+      (* Add the item to the container's scrollable overflow *)
+      Toffee_compute_helpers.add_overflow_contribution overflow_acc
+        ~flags:overflow_flags ~padding:overflow_padding ~location ~size
+        ~overflow_area ~border:item.border ~overflow ~margin:item.margin
     done;
 
     total_offset_cross :=
       !total_offset_cross +. line_offset_cross +. line.cross_size
-  done;
-
-  (* Add final adjustments to content size *)
-  Sizef.
-    {
-      width =
-        !content_width +. constants.content_box_inset.right
-        -. constants.border.right -. constants.n.scrollbar_gutter_x;
-      height =
-        !content_height +. constants.content_box_inset.bottom
-        -. constants.border.bottom -. constants.n.scrollbar_gutter_y;
-    }
+  done
 
 (* Perform absolute layout on absolutely positioned children *)
 let perform_absolute_layout_on_absolute_children (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (node : Node_id.t) (constants : algo_constants) : Sizef.t =
+    (node : Node_id.t) (constants : algo_constants)
+    (overflow_acc : Toffee_compute_helpers.overflow_acc)
+    (overflow_flags : Toffee_compute_helpers.overflow_flags) : unit =
   let has_absolute = ref false in
   for order = 0 to Tree.child_count tree node - 1 do
     let style =
@@ -2764,7 +2746,7 @@ let perform_absolute_layout_on_absolute_children (type t)
       && Style.position style = Position.Absolute
     then has_absolute := true
   done;
-  if not !has_absolute then Sizef.zero
+  if not !has_absolute then ()
   else
     let container_width = constants.n.width in
     let container_height = constants.n.height in
@@ -2782,7 +2764,6 @@ let perform_absolute_layout_on_absolute_children (type t)
         }
     in
 
-    let content_size = ref Sizef.zero in
     let calc = Tree.resolve_calc_value tree in
 
     for order = 0 to Tree.child_count tree node - 1 do
@@ -3314,50 +3295,16 @@ let perform_absolute_layout_on_absolute_children (type t)
         (* Set layout on tree *)
         Tree.set_unrounded_layout tree child
           (Layout.make ~order ~location ~size:final_size
-             ~content_size:(Layout_output.content_size layout_output)
+             ~scrollable_overflow:
+               (Layout_output.scrollable_overflow layout_output)
              ~scrollbar_size ~border ~padding ~margin:resolved_margin);
 
-        (* Update content size *)
-        let content_size_output = Layout_output.content_size layout_output in
-        let size_content_size_contribution =
-          Sizef.
-            {
-              width =
-                (match overflow.x with
-                | Overflow.Visible ->
-                    Float.max final_size.width content_size_output.width
-                | _ -> final_size.width);
-              height =
-                (match overflow.y with
-                | Overflow.Visible ->
-                    Float.max final_size.height content_size_output.height
-                | _ -> final_size.height);
-            }
-        in
-
-        if
-          size_content_size_contribution.width > 0.0
-          || size_content_size_contribution.height > 0.0
-        then
-          let content_size_contribution =
-            Sizef.
-              {
-                width = location.x +. size_content_size_contribution.width;
-                height = location.y +. size_content_size_contribution.height;
-              }
-          in
-          let current_size = !content_size in
-          content_size :=
-            Sizef.
-              {
-                width =
-                  Float.max current_size.width content_size_contribution.width;
-                height =
-                  Float.max current_size.height content_size_contribution.height;
-              }
-    done;
-
-    !content_size
+        (* Add the item to the container's scrollable overflow *)
+        Toffee_compute_helpers.add_overflow_contribution overflow_acc
+          ~flags:overflow_flags ~padding:Rectf.zero ~location ~size:final_size
+          ~overflow_area:(Layout_output.scrollable_overflow layout_output)
+          ~border ~overflow ~margin:resolved_margin
+    done
 
 (* Compute a preliminary size for an item *)
 let compute_preliminary (type t)
@@ -3525,18 +3472,58 @@ let compute_preliminary (type t)
     align_flex_lines_per_align_content flex_lines constants
       total_line_cross_size;
 
-    (* Do a final layout pass and gather the resulting layouts *)
-    let inflow_content_size =
-      final_layout_pass (module Tree) tree flex_lines constants
+    (* The container's scrollable overflow, gathered in its padding-box
+       frame. Its scroll origin is at the flex-start of a reversed axis. *)
+    let overflow = Style.overflow (Tree.get_core_container_style tree node) in
+    let is_scroll_container =
+      Overflow.is_container overflow.x || Overflow.is_container overflow.y
     in
+    let reverse = Flex_direction_ext.is_reverse constants.dir in
+    let reversed_x =
+      if constants.is_row then reverse else constants.is_wrap_reverse
+    and reversed_y =
+      if constants.is_row then constants.is_wrap_reverse else reverse
+    in
+    let border = constants.border and inset = constants.content_box_inset in
+    let overflow_acc =
+      Toffee_compute_helpers.overflow_acc ~origin_x:border.left
+        ~origin_y:border.top
+        ~client_width:
+          (constants.n.width -. border.left -. border.right
+         -. constants.n.scrollbar_gutter_x)
+        ~client_height:
+          (constants.n.height -. border.top -. border.bottom
+         -. constants.n.scrollbar_gutter_y)
+    in
+    let overflow_flags =
+      Toffee_compute_helpers.overflow_flags ~is_scroll_container ~reversed_x
+        ~reversed_y ~margins:Full_margins
+    in
+    let padding =
+      if inset == Rectf.zero then Rectf.zero
+      else
+        Rectf.
+          {
+            left = inset.left -. border.left;
+            right =
+              inset.right -. border.right -. constants.n.scrollbar_gutter_x;
+            top = inset.top -. border.top;
+            bottom =
+              inset.bottom -. border.bottom -. constants.n.scrollbar_gutter_y;
+          }
+    in
+
+    (* Do a final layout pass and gather the resulting layouts *)
+    final_layout_pass
+      (module Tree)
+      tree flex_lines constants overflow_acc overflow_flags padding;
 
     (* Before returning we perform absolute layout on all absolutely positioned
        children *)
-    let absolute_content_size =
-      perform_absolute_layout_on_absolute_children
-        (module Tree)
-        tree node constants
-    in
+    perform_absolute_layout_on_absolute_children
+      (module Tree)
+      tree node constants overflow_acc
+      (Toffee_compute_helpers.with_margins overflow_flags No_margins);
 
     (* Perform hidden layout on hidden children *)
     let len = Tree.child_count tree node in
@@ -3605,11 +3592,20 @@ let compute_preliminary (type t)
               Some (offset_cross +. item.s.baseline))
     in
 
+    (* A scroll container's own end padding is part of its scrollable
+       overflow *)
+    if is_scroll_container then
+      Toffee_compute_helpers.union overflow_acc ~left:0.0 ~right:padding.right
+        ~top:0.0 ~bottom:padding.bottom;
+    let scrollable_overflow =
+      Toffee_compute_helpers.finalize_overflow overflow_acc
+        ~flags:overflow_flags
+    in
+
     (* Return final layout output *)
-    let content_size = Sizef.max inflow_content_size absolute_content_size in
     Layout_output.make
       ~size:Sizef.{ width = constants.n.width; height = constants.n.height }
-      ~content_size
+      ~scrollable_overflow
       ~first_baselines:Point.{ x = None; y = first_vertical_baseline }
       ~top_margin:Collapsible_margin_set.zero
       ~bottom_margin:Collapsible_margin_set.zero

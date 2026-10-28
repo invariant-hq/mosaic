@@ -22837,6 +22837,28 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 100. |]; [| 10.; 10.; 40.; 100. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 100. |]; [| 10.; 10.; 40.; 100. |] ];
+      case "row_reverse_scroll_container_scrolls_before_origin"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Flex ~box_sizing ~flex_direction:Row_reverse
+               ~size:
+                 { width = Dimension.length 20.; height = Dimension.length 20. }
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_shrink:0.
+                   ~size:
+                     {
+                       width = Dimension.length 50.;
+                       height = Dimension.length 10.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [ [| 0.; 0.; 20.; 20.; 45.; 5. |]; [| -45.; 0.; 50.; 10. |] ]
+        ~content_box:
+          [ [| 0.; 0.; 20.; 20.; 45.; 5. |]; [| -45.; 0.; 50.; 10. |] ];
       case "scroll_size"
         (fun box_sizing ->
           node

@@ -228,7 +228,10 @@ let perform_final_layout_on_in_flow_children (type t)
     (container_percentage_resolution_height : float option)
     (content_box_inset : Rectf.t) (resolved_content_box_inset : Rectf.t)
     (text_align : Text_align.t) (own_margins_collapse_with_children : bool line)
-    : Sizef.t * float * Collapsible_margin_set.t * Collapsible_margin_set.t =
+    (overflow_acc : Toffee_compute_helpers.overflow_acc)
+    (overflow_flags : Toffee_compute_helpers.overflow_flags)
+    (overflow_padding : Rectf.t) :
+    float * Collapsible_margin_set.t * Collapsible_margin_set.t =
   (* Resolve container_inner_width for sizing child nodes using initial
      content_box_inset *)
   let container_inner_width =
@@ -263,7 +266,6 @@ let perform_final_layout_on_in_flow_children (type t)
       }
   in
 
-  let inflow_content_size = ref Sizef.zero in
   let committed_y_offset = ref resolved_content_box_inset.top in
   let y_offset_for_absolute = ref resolved_content_box_inset.top in
   let first_child_top_margin_set = ref Collapsible_margin_set.zero in
@@ -477,17 +479,17 @@ let perform_final_layout_on_in_flow_children (type t)
         item.final_layout <-
           Some
             (Layout.make ~order:item.order ~size:final_size
-               ~content_size:(Layout_output.content_size item_layout)
+               ~scrollable_overflow:
+                 (Layout_output.scrollable_overflow item_layout)
                ~scrollbar_size ~location ~padding:item.padding
                ~border:item.border ~margin:resolved_margin);
 
-        (* Update inflow_content_size *)
-        inflow_content_size :=
-          Sizef.max !inflow_content_size
-            (Toffee_compute_helpers.compute_content_size_contribution ~location
-               ~size:final_size
-               ~content_size:(Layout_output.content_size item_layout)
-               ~overflow:item.overflow);
+        (* Add the item to the container's scrollable overflow *)
+        Toffee_compute_helpers.add_overflow_contribution overflow_acc
+          ~flags:overflow_flags ~padding:overflow_padding ~location
+          ~size:final_size
+          ~overflow_area:(Layout_output.scrollable_overflow item_layout)
+          ~border:item.border ~overflow:item.overflow ~margin:resolved_margin;
 
         (* Update first_child_top_margin_set *)
         if !is_collapsing_with_first_margin_set then
@@ -530,20 +532,17 @@ let perform_final_layout_on_in_flow_children (type t)
     !committed_y_offset +. resolved_content_box_inset.bottom
     +. bottom_y_margin_offset;
   let content_height = Float.max 0.0 !committed_y_offset in
-  ( !inflow_content_size,
-    content_height,
-    !first_child_top_margin_set,
-    last_child_bottom_margin_set )
+  (content_height, !first_child_top_margin_set, last_child_bottom_margin_set)
 
 (* Perform absolute layout on absolutely positioned children *)
 let perform_absolute_layout_on_absolute_children (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (items : block_item list) (area_size : Sizef.t) (area_offset : Pointf.t) :
-    Sizef.t =
+    (items : block_item list) (area_size : Sizef.t) (area_offset : Pointf.t)
+    (overflow_acc : Toffee_compute_helpers.overflow_acc)
+    (overflow_flags : Toffee_compute_helpers.overflow_flags) : unit =
   let area_width = area_size.width in
   let area_height = area_size.height in
 
-  let absolute_content_size = ref Sizef.zero in
   let calc = Tree.resolve_calc_value tree in
 
   List.iter
@@ -916,20 +915,17 @@ let perform_absolute_layout_on_absolute_children (type t)
 
           Tree.set_unrounded_layout tree item.node_id
             (Layout.make ~order:item.order ~size:final_size
-               ~content_size:(Layout_output.content_size layout_output)
+               ~scrollable_overflow:
+                 (Layout_output.scrollable_overflow layout_output)
                ~scrollbar_size ~location ~padding ~border
                ~margin:resolved_margin);
 
-          (* Update absolute_content_size *)
-          absolute_content_size :=
-            Sizef.max !absolute_content_size
-              (Toffee_compute_helpers.compute_content_size_contribution
-                 ~location ~size:final_size
-                 ~content_size:(Layout_output.content_size layout_output)
-                 ~overflow:item.overflow)))
-    items;
-
-  !absolute_content_size
+          (* Add the item to the container's scrollable overflow *)
+          Toffee_compute_helpers.add_overflow_contribution overflow_acc
+            ~flags:overflow_flags ~padding:Rectf.zero ~location ~size:final_size
+            ~overflow_area:(Layout_output.scrollable_overflow layout_output)
+            ~border ~overflow:item.overflow ~margin:resolved_margin))
+    items
 
 (* Inner computation function - continues after initial setup *)
 let compute_inner (type t)
@@ -1149,8 +1145,22 @@ let compute_inner (type t)
       let resolved_content_box_inset =
         Rectf.add (Rectf.add resolved_padding resolved_border) scrollbar_gutter
       in
-      let ( inflow_content_size,
-            intrinsic_outer_height,
+      let is_scroll_container =
+        let overflow = Style.overflow style in
+        Overflow.is_container overflow.x || Overflow.is_container overflow.y
+      in
+      (* The container's scrollable overflow, gathered in its padding-box
+         frame. A block container's scroll origins are never reversed, so its
+         client size waits for its own. *)
+      let overflow_acc =
+        Toffee_compute_helpers.overflow_acc ~origin_x:resolved_border.left
+          ~origin_y:resolved_border.top ~client_width:0.0 ~client_height:0.0
+      in
+      let overflow_flags =
+        Toffee_compute_helpers.overflow_flags ~is_scroll_container
+          ~reversed_x:false ~reversed_y:false ~margins:Negative_margins
+      in
+      let ( intrinsic_outer_height,
             first_child_top_margin_set,
             last_child_bottom_margin_set ) =
         perform_final_layout_on_in_flow_children
@@ -1158,7 +1168,8 @@ let compute_inner (type t)
           tree items container_outer_width
           container_percentage_resolution_height content_box_inset
           resolved_content_box_inset text_align
-          own_margins_collapse_with_children
+          own_margins_collapse_with_children overflow_acc overflow_flags
+          resolved_padding
       in
       let container_outer_height =
         known_dimensions.height
@@ -1197,11 +1208,11 @@ let compute_inner (type t)
               y = absolute_position_inset.top;
             }
         in
-        let absolute_content_size =
-          perform_absolute_layout_on_absolute_children
-            (module Tree)
-            tree items absolute_position_area absolute_position_offset
-        in
+        perform_absolute_layout_on_absolute_children
+          (module Tree)
+          tree items absolute_position_area absolute_position_offset
+          overflow_acc
+          (Toffee_compute_helpers.with_margins overflow_flags No_margins);
 
         (* 5. Perform hidden layout on hidden children *)
         let len = Tree.child_count tree node_id in
@@ -1239,9 +1250,21 @@ let compute_inner (type t)
           && all_in_flow_children_can_be_collapsed_through
         in
 
-        (* 8. Compute final content size *)
-        let content_size =
-          Sizef.max inflow_content_size absolute_content_size
+        (* 8. The container's scrollable overflow: a scroll container's own
+           end padding is part of it *)
+        if is_scroll_container then
+          Toffee_compute_helpers.union overflow_acc ~left:0.0
+            ~right:resolved_padding.right ~top:0.0
+            ~bottom:resolved_padding.bottom;
+        overflow_acc.client_width <-
+          final_outer_size.width
+          -. Rectf.horizontal_axis_sum absolute_position_inset;
+        overflow_acc.client_height <-
+          final_outer_size.height
+          -. Rectf.vertical_axis_sum absolute_position_inset;
+        let scrollable_overflow =
+          Toffee_compute_helpers.finalize_overflow overflow_acc
+            ~flags:overflow_flags
         in
 
         (* 9. Return final outputs *)
@@ -1265,7 +1288,7 @@ let compute_inner (type t)
             in
             Collapsible_margin_set.from_margin margin_bottom
         in
-        Layout_output.make ~size:final_outer_size ~content_size
+        Layout_output.make ~size:final_outer_size ~scrollable_overflow
           ~first_baselines:Point.none ~top_margin ~bottom_margin
           ~margins_can_collapse_through:can_be_collapsed_through)
 

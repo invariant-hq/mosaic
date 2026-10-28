@@ -636,7 +636,28 @@ let compute_grid_layout (type t)
           ~tracks:rows ~track_alignment_style:align_content;
 
         (* 9. Size, Align, and Position Grid Items *)
-        let item_content_size_contribution = ref Sizef.zero in
+        (* The container's scrollable overflow, gathered in its padding-box
+           frame *)
+        let is_scroll_container =
+          let overflow = Style.overflow style in
+          Overflow.is_container overflow.x || Overflow.is_container overflow.y
+        in
+        let overflow_acc =
+          Toffee_compute_helpers.overflow_acc ~origin_x:border.left
+            ~origin_y:border.top
+            ~client_width:
+              (container_border_box.width -. border.left -. border.right
+             -. scrollbar_gutter.x)
+            ~client_height:
+              (container_border_box.height -. border.top -. border.bottom
+             -. scrollbar_gutter.y)
+        in
+        (* A grid's padding extends its track area, not its items: no margin
+           extends an item's box *)
+        let overflow_flags =
+          Toffee_compute_helpers.overflow_flags ~is_scroll_container
+            ~reversed_x:false ~reversed_y:false ~margins:No_margins
+        in
 
         (* Sort items back into original order to allow them to be matched up
            with styles *)
@@ -668,19 +689,16 @@ let compute_grid_layout (type t)
                     .Grid_track.offset;
               }
             in
-            let content_size_contribution, y_position, height =
+            let y_position, height =
               Alignment.align_and_position_item
                 (module Tree)
                 ~tree ~node:item.Grid_item.node ~order:index ~grid_area
                 ~container_alignment_styles
-                ~baseline_shim:item.Grid_item.baseline_shim
+                ~baseline_shim:item.Grid_item.baseline_shim ~overflow_acc
+                ~overflow_flags
             in
             item.Grid_item.y_position <- y_position;
-            item.Grid_item.height <- height;
-            item_content_size_contribution :=
-              Sizef.max
-                !item_content_size_contribution
-                content_size_contribution)
+            item.Grid_item.height <- height)
           items;
 
         (* Position hidden and absolutely positioned children *)
@@ -707,7 +725,7 @@ let compute_grid_layout (type t)
                    ~vertical_margins_are_collapsible:Line.both_false)
             in
             incr order (* Position absolutely positioned child *)
-          else if Style.position child_style = Position.Absolute then (
+          else if Style.position child_style = Position.Absolute then
             (* Convert grid-col-{start/end} into Option's of indexes into the
                columns vector *)
             let maybe_col_indexes =
@@ -777,25 +795,48 @@ let compute_grid_layout (type t)
 
             (* TODO: Baseline alignment support for absolutely positioned
                items *)
-            let content_size_contribution, _, _ =
+            let _ =
               Alignment.align_and_position_item
                 (module Tree)
                 ~tree ~node:child ~order:!order ~grid_area
-                ~container_alignment_styles ~baseline_shim:0.0
+                ~container_alignment_styles ~baseline_shim:0.0 ~overflow_acc
+                ~overflow_flags
             in
-            item_content_size_contribution :=
-              Sizef.max
-                !item_content_size_contribution
-                content_size_contribution;
-            incr order)
+            incr order
         done;
 
         (* TODO: Set detailed grid information if needed *)
 
-        (* If there are no items then return just the container size (no
-           baseline) *)
+        (* A scroll container's own end padding is part of its scrollable
+           overflow *)
+        (if is_scroll_container then
+           (* A scroll container's track area and its padding past it are
+             part of its scrollable overflow *)
+           let track_end tracks start =
+             let n = Array.length tracks in
+             if n = 0 then start
+             else
+               let last = tracks.(n - 1) in
+               last.Grid_track.offset +. last.Grid_track.base_size
+           in
+           Toffee_compute_helpers.union overflow_acc ~left:0.0
+             ~right:
+               (track_end columns (border.left +. padding.left)
+               -. border.left +. padding.right)
+             ~top:0.0
+             ~bottom:
+               (track_end rows (border.top +. padding.top)
+               -. border.top +. padding.bottom));
+        let scrollable_overflow =
+          Toffee_compute_helpers.finalize_overflow overflow_acc
+            ~flags:overflow_flags
+        in
+
+        (* If there are no items then return just the container size and its
+           overflow (no baseline) *)
         if Array.length items = 0 then
-          Layout_output.from_outer_size container_border_box
+          Layout_output.from_sizes_and_baselines container_border_box
+            scrollable_overflow Point.none
         else
           (* Determine the grid container baseline(s) (currently we only compute
              the first baseline) *)
@@ -837,5 +878,5 @@ let compute_grid_layout (type t)
           in
 
           Layout_output.from_sizes_and_baselines container_border_box
-            !item_content_size_contribution
+            scrollable_overflow
             Point.{ x = None; y = Some grid_container_baseline })

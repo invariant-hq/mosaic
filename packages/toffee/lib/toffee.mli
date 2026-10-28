@@ -205,6 +205,9 @@ module Node_id = Node_id
 
     Uses generational indices to detect stale references to removed nodes. *)
 
+module Scrollable_overflow = Scrollable_overflow
+(** A box's scrollable overflow area and its scroll origins. *)
+
 module Layout = Layout
 (** Computed layout data.
 

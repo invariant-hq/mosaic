@@ -14127,6 +14127,38 @@ let () =
             [| 0.; 0.; 50.; 0. |];
             [| 0.; 0.; 50.; 0.; 0.; 0. |];
           ];
+      case "scroll_container_track_area_and_padding"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~grid_template_columns:
+                 [
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.length 30.);
+                 ]
+               ~size:
+                 { width = Dimension.length 10.; height = Dimension.length 10. }
+               ~padding:
+                 {
+                   left = Length_percentage.length 0.;
+                   right = Length_percentage.length 5.;
+                   top = Length_percentage.length 0.;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.length 5.;
+                       height = Dimension.length 5.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 10.; 10.; 25.; 0. |]; [| 0.; 0.; 5.; 5. |] ]
+        ~content_box:[ [| 0.; 0.; 15.; 10.; 20.; 0. |]; [| 0.; 0.; 5.; 5. |] ];
       case "size_child_fixed_tracks"
         (fun box_sizing ->
           node

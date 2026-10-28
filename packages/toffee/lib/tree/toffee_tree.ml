@@ -9,6 +9,7 @@ module Requested_axis = Requested_axis
 module Available_space = Available_space
 module Layout_input = Layout_input
 module Layout_output = Layout_output
+module Scrollable_overflow = Scrollable_overflow
 module Layout = Layout
 module Cache = Cache
 
@@ -72,15 +73,17 @@ let print_tree (type a) (module Tree : PRINT_TREE with type t = a) tree root =
 
     (* Print the node info *)
     Printf.printf
-      "%s%s %s [x: %-4g y: %-4g w: %-4g h: %-4g content_w: %-4g content_h: \
-       %-4g border: l:%g r:%g t:%g b:%g, padding: l:%g r:%g t:%g b:%g] (Node \
-       %d)\n"
+      "%s%s %s [x: %-4g y: %-4g w: %-4g h: %-4g overflow: l:%g r:%g t:%g b:%g, \
+       border: l:%g r:%g t:%g b:%g, padding: l:%g r:%g t:%g b:%g] (Node %d)\n"
       lines_string fork_string display layout.location.x layout.location.y
-      layout.size.width layout.size.height layout.content_size.width
-      layout.content_size.height layout.border.left layout.border.right
-      layout.border.top layout.border.bottom layout.padding.left
-      layout.padding.right layout.padding.top layout.padding.bottom
-      (Node_id.to_int node_id);
+      layout.size.width layout.size.height
+      (Scrollable_overflow.left layout.scrollable_overflow)
+      (Scrollable_overflow.right layout.scrollable_overflow)
+      (Scrollable_overflow.top layout.scrollable_overflow)
+      (Scrollable_overflow.bottom layout.scrollable_overflow)
+      layout.border.left layout.border.right layout.border.top
+      layout.border.bottom layout.padding.left layout.padding.right
+      layout.padding.top layout.padding.bottom (Node_id.to_int node_id);
 
     let bar = if has_sibling then "│   " else "    " in
     let new_string = lines_string ^ bar in

@@ -202,7 +202,7 @@ let compute_root_layout (type t)
          (if margin.left = 0.0 && margin.top = 0.0 then Pointf.zero
           else Pointf.{ x = margin.left; y = margin.top })
        ~size:(Layout_output.size output)
-       ~content_size:(Layout_output.content_size output)
+       ~scrollable_overflow:(Layout_output.scrollable_overflow output)
        ~scrollbar_size ~padding
        ~border (* TODO: support auto margins for root node? *)
        ~margin)
@@ -275,20 +275,29 @@ let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
                   round (cumulative_y +. (Layout.size unrounded_layout).height)
                   -. round cumulative_y;
               }
-          ~content_size:
-            Sizef.
-              {
-                width =
-                  round
-                    (cumulative_x
-                   +. (Layout.content_size unrounded_layout).width)
-                  -. round cumulative_x;
-                height =
-                  round
-                    (cumulative_y
-                   +. (Layout.content_size unrounded_layout).height)
-                  -. round cumulative_y;
-              }
+          ~scrollable_overflow:
+            (let overflow = Layout.scrollable_overflow unrounded_layout in
+             if overflow == Scrollable_overflow.zero then overflow
+             else
+               (* Each edge snaps as the position it reaches does; a zero
+                  keeps the sign of its edge *)
+               let edge cumulative e =
+                 let rounded = round (cumulative +. e) -. round cumulative in
+                 if rounded = 0.0 then Float.copy_sign rounded e else rounded
+               in
+               Scrollable_overflow.make
+                 Rectf.
+                   {
+                     left =
+                       edge cumulative_x (Scrollable_overflow.left overflow);
+                     right =
+                       edge cumulative_x (Scrollable_overflow.right overflow);
+                     top = edge cumulative_y (Scrollable_overflow.top overflow);
+                     bottom =
+                       edge cumulative_y (Scrollable_overflow.bottom overflow);
+                   }
+                 ~reversed_x:(Scrollable_overflow.reversed_x overflow)
+                 ~reversed_y:(Scrollable_overflow.reversed_y overflow))
           ~scrollbar_size:
             Sizef.
               {

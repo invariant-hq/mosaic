@@ -2,18 +2,18 @@ module Geometry = Toffee_geometry
 
 type t = {
   size : Geometry.Sizef.t;
-  content_size : Geometry.Sizef.t;
+  scrollable_overflow : Scrollable_overflow.t;
   first_baselines : float option Geometry.point;
   top_margin : Collapsible_margin_set.t;
   bottom_margin : Collapsible_margin_set.t;
   margins_can_collapse_through : bool;
 }
 
-let make ~size ~content_size ~first_baselines ~top_margin ~bottom_margin
+let make ~size ~scrollable_overflow ~first_baselines ~top_margin ~bottom_margin
     ~margins_can_collapse_through =
   {
     size;
-    content_size;
+    scrollable_overflow;
     first_baselines;
     top_margin;
     bottom_margin;
@@ -21,7 +21,7 @@ let make ~size ~content_size ~first_baselines ~top_margin ~bottom_margin
   }
 
 let size t = t.size
-let content_size t = t.content_size
+let scrollable_overflow t = t.scrollable_overflow
 let first_baselines t = t.first_baselines
 let top_margin t = t.top_margin
 let bottom_margin t = t.bottom_margin
@@ -30,7 +30,7 @@ let margins_can_collapse_through t = t.margins_can_collapse_through
 let hidden =
   {
     size = Geometry.Sizef.zero;
-    content_size = Geometry.Sizef.zero;
+    scrollable_overflow = Scrollable_overflow.zero;
     first_baselines = Geometry.(Point.none);
     top_margin = Collapsible_margin_set.zero;
     bottom_margin = Collapsible_margin_set.zero;
@@ -40,7 +40,7 @@ let hidden =
 let default =
   {
     size = Geometry.Sizef.zero;
-    content_size = Geometry.Sizef.zero;
+    scrollable_overflow = Scrollable_overflow.zero;
     first_baselines = Geometry.(Point.none);
     top_margin = Collapsible_margin_set.zero;
     bottom_margin = Collapsible_margin_set.zero;
@@ -51,17 +51,17 @@ let from_outer_size size =
   {
     size;
     (* Match Taffy: when only the outer size is known, content size is zero. *)
-    content_size = Geometry.Sizef.zero;
+    scrollable_overflow = Scrollable_overflow.zero;
     first_baselines = Geometry.(Point.none);
     top_margin = Collapsible_margin_set.zero;
     bottom_margin = Collapsible_margin_set.zero;
     margins_can_collapse_through = false;
   }
 
-let from_sizes_and_baselines size content_size first_baselines =
+let from_sizes_and_baselines size scrollable_overflow first_baselines =
   {
     size;
-    content_size;
+    scrollable_overflow;
     first_baselines;
     top_margin = Collapsible_margin_set.zero;
     bottom_margin = Collapsible_margin_set.zero;
@@ -70,17 +70,19 @@ let from_sizes_and_baselines size content_size first_baselines =
 
 let to_string t =
   Printf.sprintf
-    "LayoutOutput { size: %s; content_size: %s; margins_can_collapse_through: \
-     %b }"
+    "LayoutOutput { size: %s; scrollable_overflow: %s; \
+     margins_can_collapse_through: %b }"
     (Geometry.Sizef.to_string t.size)
-    (Geometry.Sizef.to_string t.content_size)
+    (Scrollable_overflow.to_string t.scrollable_overflow)
     t.margins_can_collapse_through
 
 let compare a b =
   let cmp = Geometry.Sizef.compare a.size b.size in
   if cmp <> 0 then cmp
   else
-    let cmp = Geometry.Sizef.compare a.content_size b.content_size in
+    let cmp =
+      Scrollable_overflow.compare a.scrollable_overflow b.scrollable_overflow
+    in
     if cmp <> 0 then cmp
     else
       let cmp =

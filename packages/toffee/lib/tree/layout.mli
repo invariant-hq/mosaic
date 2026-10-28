@@ -15,9 +15,10 @@
     - Content box: innermost, holds the actual content
 
     The [size] field represents the border box dimensions. Use
-    [content_box_size] to compute the content box dimensions. The [content_size]
-    field may exceed [size] when content overflows, which is important for
-    computing scroll dimensions.
+    [content_box_size] to compute the content box dimensions. The
+    [scrollable_overflow] field is the area the content reaches, relative to the
+    padding box; it exceeds the box when content overflows, which gives the
+    scroll extents.
 
     {1 Coordinate System}
 
@@ -39,9 +40,10 @@ type t = {
   size : Toffee_geometry.Sizef.t;
       (** Width and height of the border box (includes padding and border, but
           not margin). *)
-  content_size : Toffee_geometry.Sizef.t;
-      (** Width and height of the content inside the node. May exceed [size]
-          when content overflows, useful for computing scroll dimensions. *)
+  scrollable_overflow : Scrollable_overflow.t;
+      (** The area the node's content reaches, relative to its padding box, with
+          its scroll origins. Exceeds the box when content overflows; see
+          {!Scrollable_overflow}. *)
   scrollbar_size : Toffee_geometry.Sizef.t;
       (** Size of scrollbars in each dimension. Zero when no scrollbar is
           present. *)
@@ -58,14 +60,14 @@ val make :
   order:int ->
   location:Toffee_geometry.Pointf.t ->
   size:Toffee_geometry.Sizef.t ->
-  content_size:Toffee_geometry.Sizef.t ->
+  scrollable_overflow:Scrollable_overflow.t ->
   scrollbar_size:Toffee_geometry.Sizef.t ->
   border:Toffee_geometry.Rectf.t ->
   padding:Toffee_geometry.Rectf.t ->
   margin:Toffee_geometry.Rectf.t ->
   t
-(** [make ~order ~location ~size ~content_size ~scrollbar_size ~border ~padding
-     ~margin] creates a layout with all fields specified. *)
+(** [make ~order ~location ~size ~scrollable_overflow ~scrollbar_size ~border
+     ~padding ~margin] creates a layout with all fields specified. *)
 
 val default : t
 (** [default] is a zero layout with all dimensions and spacing set to zero and
@@ -86,8 +88,8 @@ val location : t -> Toffee_geometry.Pointf.t
 val size : t -> Toffee_geometry.Sizef.t
 (** [size layout] returns the border box dimensions. *)
 
-val content_size : t -> Toffee_geometry.Sizef.t
-(** [content_size layout] returns the content dimensions. *)
+val scrollable_overflow : t -> Scrollable_overflow.t
+(** [scrollable_overflow layout] returns the scrollable overflow area. *)
 
 val scrollbar_size : t -> Toffee_geometry.Sizef.t
 (** [scrollbar_size layout] returns the scrollbar dimensions. *)
@@ -139,31 +141,24 @@ val content_box_y : t -> float
 val scroll_width : t -> float
 (** [scroll_width layout] computes the horizontal scroll extent.
 
-    Returns the amount by which content overflows horizontally, accounting for
-    scrollbar width. Result is always non-negative. Returns [0.0] when content
-    fits within the border box.
-
-    Formula:
-    [max 0.0 (content_size.width + min scrollbar_size.width size.width -
-     size.width + border.right)]. *)
+    Returns how far the content can be scrolled horizontally: the extent of the
+    scrollable overflow past the padding box less the scrollbar (its client
+    box), never negative. Returns [0.0] when the content fits. With a reversed
+    horizontal scroll origin, the content extends left of the origin instead,
+    and the extent is how far. *)
 
 val scroll_height : t -> float
 (** [scroll_height layout] computes the vertical scroll extent.
 
-    Returns the amount by which content overflows vertically, accounting for
-    scrollbar height. Result is always non-negative. Returns [0.0] when content
-    fits within the border box.
-
-    Formula:
-    [max 0.0 (content_size.height + min scrollbar_size.height size.height -
-     size.height + border.bottom)]. *)
+    Returns how far the content can be scrolled vertically, as {!scroll_width}
+    does horizontally. *)
 
 (** {1 Comparison and Formatting} *)
 
 val compare : t -> t -> int
 (** [compare a b] compares layouts lexicographically.
 
-    Fields are compared in order: order, location, size, content_size,
+    Fields are compared in order: order, location, size, scrollable_overflow,
     scrollbar_size, border, padding, margin. *)
 
 val equal : t -> t -> bool
@@ -171,7 +166,7 @@ val equal : t -> t -> bool
 
 val to_string : t -> string
 (** [to_string layout] converts [layout] to a string representation showing
-    order, location, size, and content_size. *)
+    order, location, size, and scrollable_overflow. *)
 
 val pp : Format.formatter -> t -> unit
 (** [pp fmt layout] formats [layout] for printing. *)

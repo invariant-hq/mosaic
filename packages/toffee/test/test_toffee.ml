@@ -754,7 +754,7 @@ let test_cache_margin_collapse_not_cached () =
   let with_margins ~through ~top width =
     Layout_output.make
       ~size:Sizef.{ width; height = width }
-      ~content_size:Sizef.{ width = 0.; height = 0. }
+      ~scrollable_overflow:Toffee.Scrollable_overflow.zero
       ~first_baselines:Point.none ~top_margin:top
       ~bottom_margin:Toffee_tree.Collapsible_margin_set.zero
       ~margins_can_collapse_through:through
