@@ -954,55 +954,58 @@ let determine_flex_base_size (type t)
       else if not (Float.is_nan main_size) then (
         child.flex_basis_is_definite <- true;
         main_size)
-      else (
+      else
         (* B. With an aspect ratio and a definite cross size, the flex base
-           size comes from that cross size through the ratio, and is as
-           definite *)
-        if
-          Option.is_some (Style.aspect_ratio child_style)
-          && Option.is_some
-               (if is_row then child.measure_known_dimensions.height
-                else child.measure_known_dimensions.width)
-          && ((not
-                 (Float.is_nan
-                    (if is_row then child.s.size_height else child.s.size_width)))
-             || (not constants.is_wrap) && constants.has_definite_cross_size
-                && is_stretched child constants)
-        then child.flex_basis_is_definite <- true;
-        (* E. Otherwise, size the item into the available space *)
-        let child_available_space =
-          if child.measure_available_cross == !measure_cross then !measure_space
-          else (
-            measure_cross := child.measure_available_cross;
-            (measure_space :=
-               if is_row then
-                 Size.
-                   {
-                     width = main_available;
-                     height = child.measure_available_cross;
-                   }
-               else
-                 Size.
-                   {
-                     width = child.measure_available_cross;
-                     height = main_available;
-                   });
-            !measure_space)
-        in
-        let layout_output =
-          Tree.compute_child_layout tree child.node
-            (Layout_input.make ~run_mode:Run_mode.Compute_size
-               ~sizing_mode:Sizing_mode.Content_size
-               ~axis:
-                 (if is_row then Requested_axis.Horizontal
-                  else Requested_axis.Vertical)
-               ~known_dimensions:child.measure_known_dimensions
-               ~parent_size:constants.item_parent_size
-               ~available_space:child_available_space
-               ~vertical_margins_are_collapsible:Line.both_false)
-        in
-        let measured_size = Layout_output.size layout_output in
-        if is_row then measured_size.width else measured_size.height)
+           size is that cross size through the ratio, and is as definite *)
+        match
+          ( Style.aspect_ratio child_style,
+            if is_row then child.measure_known_dimensions.height
+            else child.measure_known_dimensions.width )
+        with
+        | Some ratio, Some cross
+          when (not
+                  (Float.is_nan
+                     (if is_row then child.s.size_height else child.s.size_width)))
+               || (not constants.is_wrap) && constants.has_definite_cross_size
+                  && is_stretched child constants ->
+            child.flex_basis_is_definite <- true;
+            if is_row then cross *. ratio else cross /. ratio
+        | _ ->
+            (* E. Otherwise, size the item into the available space *)
+            let child_available_space =
+              if child.measure_available_cross == !measure_cross then
+                !measure_space
+              else (
+                measure_cross := child.measure_available_cross;
+                (measure_space :=
+                   if is_row then
+                     Size.
+                       {
+                         width = main_available;
+                         height = child.measure_available_cross;
+                       }
+                   else
+                     Size.
+                       {
+                         width = child.measure_available_cross;
+                         height = main_available;
+                       });
+                !measure_space)
+            in
+            let layout_output =
+              Tree.compute_child_layout tree child.node
+                (Layout_input.make ~run_mode:Run_mode.Compute_size
+                   ~sizing_mode:Sizing_mode.Content_size
+                   ~axis:
+                     (if is_row then Requested_axis.Horizontal
+                      else Requested_axis.Vertical)
+                   ~known_dimensions:child.measure_known_dimensions
+                   ~parent_size:constants.item_parent_size
+                   ~available_space:child_available_space
+                   ~vertical_margins_are_collapsible:Line.both_false)
+            in
+            let measured_size = Layout_output.size layout_output in
+            if is_row then measured_size.width else measured_size.height
     in
 
     (* Floor flex-basis by the padding_border_sum *)

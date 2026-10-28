@@ -9087,6 +9087,38 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 100. |]; [| 0.; 0.; 80.; 40. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 100. |]; [| 0.; 0.; 80.; 40. |] ];
+      case "aspect_ratio_stretched_item_takes_main_size_from_cross"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.auto; height = Dimension.length 50. }
+               ())
+            [
+              node (Style.make ~box_sizing ~aspect_ratio:1. ()) [];
+              node
+                (Style.make ~box_sizing ~aspect_ratio:2.
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 10.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 130.; 50. |];
+            [| 0.; 0.; 50.; 50. |];
+            [| 50.; 10.; 80.; 40. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 130.; 50. |];
+            [| 0.; 0.; 50.; 50. |];
+            [| 50.; 10.; 80.; 40. |];
+          ];
       case "basis_and_main_dimen_set_when_flexing"
         (fun box_sizing ->
           node
