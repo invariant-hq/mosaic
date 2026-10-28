@@ -524,6 +524,59 @@ let () =
             [| 10.; 10.; 60.; 60. |];
             [| 0.; 0.; 60.; 60. |];
           ];
+      case "absolute_container_sized_by_clamped_item_bases"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:
+                 {
+                   width = Dimension.length 200.;
+                   height = Dimension.length 200.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~position:Absolute ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 50.;
+                           height = Dimension.auto;
+                         }
+                       ~max_size:
+                         {
+                           width = Dimension.length 20.;
+                           height = Dimension.auto;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 10.;
+                           height = Dimension.auto;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 200.; 200. |];
+            [| 0.; 0.; 30.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 20.; 0.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 200.; 200. |];
+            [| 0.; 0.; 30.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 20.; 0.; 10.; 0. |];
+          ];
       case "absolute_correct_cross_child_size_with_percentage"
         (fun box_sizing ->
           node
@@ -11130,35 +11183,6 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 100. |]; [| 10.; 10.; 40.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 100. |]; [| 10.; 10.; 40.; 0. |] ];
-      case ~width:128. ~height:110.
-        "container_in_definite_space_sized_by_clamped_item_bases"
-        (fun box_sizing ->
-          node
-            (Style.make ~box_sizing ())
-            [
-              node
-                (Style.make ~box_sizing
-                   ~size:
-                     { width = Dimension.length 50.; height = Dimension.auto }
-                   ~max_size:
-                     { width = Dimension.length 20.; height = Dimension.auto }
-                   ())
-                [];
-              node
-                (Style.make ~box_sizing
-                   ~size:
-                     { width = Dimension.length 10.; height = Dimension.auto }
-                   ())
-                [];
-            ])
-        ~border_box:
-          [
-            [| 0.; 0.; 30.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 20.; 0.; 10.; 0. |];
-          ]
-        ~content_box:
-          [
-            [| 0.; 0.; 30.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 20.; 0.; 10.; 0. |];
-          ];
       case "container_with_unsized_child"
         (fun box_sizing ->
           node
