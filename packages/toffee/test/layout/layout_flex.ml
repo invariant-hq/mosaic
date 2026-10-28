@@ -22929,6 +22929,58 @@ let () =
             [| 0.; 0.; 70.; 50.; 0.; 0. |];
             [| 0.; 0.; 50.; 0. |];
           ];
+      case "scroll_container_extends_margin_box_before_origin"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.auto; height = Dimension.length 10. }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~justify_content:Flex_end
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.percent 0.1 }
+                   ~max_size:
+                     { width = Dimension.length 0.; height = Dimension.auto }
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 10.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 10.;
+                         }
+                       ~border:
+                         {
+                           left = Length_percentage.length 0.;
+                           right = Length_percentage.length 20.;
+                           top = Length_percentage.length 0.;
+                           bottom = Length_percentage.length 0.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 10.; 10. |];
+            [| 0.; 0.; 10.; 1.; 0.; 9. |];
+            [| -20.; 0.; 20.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 10.; 10. |];
+            [| 0.; 0.; 10.; 1.; 0.; 9. |];
+            [| -20.; 0.; 20.; 10. |];
+          ];
       case "scroll_container_item_target_floored_at_padding"
         (fun box_sizing ->
           node

@@ -117,48 +117,50 @@ let add_overflow_contribution (acc : overflow_acc) ~(flags : overflow_flags)
     else
       let reversed_x = flags land reversed_x_bit <> 0
       and reversed_y = flags land reversed_y_bit <> 0 in
+      (* A box wholly before the scroll origin is unreachable, with its own
+         overflow; an empty box at the origin is not before it *)
       if
-        (* A box wholly before the scroll origin is unreachable; an empty box
-           at the origin is not before it *)
-        (if reversed_x then
-           left > client.width || (left = client.width && right > left)
-         else right < 0.0 || (right = 0.0 && left < 0.0))
-        ||
-        if reversed_y then
-          top > client.height || (top = client.height && bottom > top)
-        else bottom < 0.0 || (bottom = 0.0 && top < 0.0)
-      then ()
-      else
-        (* A scroll container's end padding extends past its children's
-           margin boxes *)
+        not
+          ((if reversed_x then
+              left > client.width || (left = client.width && right > left)
+            else right < 0.0 || (right = 0.0 && left < 0.0))
+          ||
+          if reversed_y then
+            top > client.height || (top = client.height && bottom > top)
+          else bottom < 0.0 || (bottom = 0.0 && top < 0.0))
+      then (
+        if left < acc.left then acc.left <- left;
+        if right > acc.right then acc.right <- right;
+        if top < acc.top then acc.top <- top;
+        if bottom > acc.bottom then acc.bottom <- bottom);
+      (* The container's end padding extends its children's margin boxes,
+         even those it cannot scroll to, as in Chromium; a container that
+         extends none (a grid's items, absolutely positioned boxes) adds
+         nothing more *)
+      if flags land no_margins_bit = 0 || padding != Rectf.zero then (
         let left =
           if reversed_x then
-            Float.min left
-              (x -. Float.max 0.0 (padding.left +. margin_of flags margin.left))
-          else left
+            x -. Float.max 0.0 (padding.left +. margin_of flags margin.left)
+          else x
         and right =
-          if reversed_x then right
+          if reversed_x then x +. size.width
           else
-            Float.max right
-              (x +. size.width
-              +. Float.max 0.0 (padding.right +. margin_of flags margin.right))
+            x +. size.width
+            +. Float.max 0.0 (padding.right +. margin_of flags margin.right)
         and top =
           if reversed_y then
-            Float.min top
-              (y -. Float.max 0.0 (padding.top +. margin_of flags margin.top))
-          else top
+            y -. Float.max 0.0 (padding.top +. margin_of flags margin.top)
+          else y
         and bottom =
-          if reversed_y then bottom
+          if reversed_y then y +. size.height
           else
-            Float.max bottom
-              (y +. size.height
-              +. Float.max 0.0 (padding.bottom +. margin_of flags margin.bottom)
-              )
+            y +. size.height
+            +. Float.max 0.0 (padding.bottom +. margin_of flags margin.bottom)
         in
         if left < acc.left then acc.left <- left;
         if right > acc.right then acc.right <- right;
         if top < acc.top then acc.top <- top;
-        if bottom > acc.bottom then acc.bottom <- bottom)
+        if bottom > acc.bottom then acc.bottom <- bottom))
 
 let finalize_overflow (acc : overflow_acc) ~(flags : overflow_flags)
     ~(size : Sizef.t) ~(border : Rectf.t) ~(client : Sizef.t) =
@@ -177,27 +179,24 @@ let finalize_overflow (acc : overflow_acc) ~(flags : overflow_flags)
        else size.height -. border.top -. border.bottom)
   in
   if is_scroll_container then
+    (* What scrolling can reach: past the origin's side *)
+    let left = if reversed_x then acc.left else 0.0
+    and right =
+      if reversed_x then Float.min acc.right client_width else acc.right
+    and top = if reversed_y then acc.top else 0.0
+    and bottom =
+      if reversed_y then Float.min acc.bottom client_height else acc.bottom
+    in
     if
-      Float.max acc.right client_width -. Float.min acc.left 0.0 <= 0.0
-      || Float.max acc.bottom client_height -. Float.min acc.top 0.0 <= 0.0
+      Float.max right client_width -. Float.min left 0.0 <= 0.0
+      || Float.max bottom client_height -. Float.min top 0.0 <= 0.0
     then
       (* A scroll container whose padding box and content cover no area has
          nothing to scroll *)
       Scrollable_overflow.make Rectf.zero ~reversed_x ~reversed_y
     else
-      (* Only what scrolling can reach: past the origin's side *)
       Scrollable_overflow.make
-        Rectf.
-          {
-            left = (if reversed_x then acc.left else 0.0);
-            right =
-              (if reversed_x then Float.min acc.right client_width
-               else acc.right);
-            top = (if reversed_y then acc.top else 0.0);
-            bottom =
-              (if reversed_y then Float.min acc.bottom client_height
-               else acc.bottom);
-          }
+        Rectf.{ left; right; top; bottom }
         ~reversed_x ~reversed_y
   else if
     (* Content within the padding box overflows nothing *)
