@@ -225,6 +225,9 @@ val round_layout :
     - Compute width/height by rounding left/right and top/bottom edges, then
       taking the difference, rather than rounding width/height directly. This
       prevents accumulated rounding errors from creating gaps.
+    - A coordinate rounds to the nearest integer, and one halfway between two
+      rounds up whatever its sign, so [-0.5] rounds to [0]. Rounding then gives
+      the same result for a subtree moved by whole pixels.
 
     The function reads from [Toffee_tree.get_unrounded_layout] and writes to
     [Toffee_tree.set_final_layout] to avoid re-rounding already-rounded values.

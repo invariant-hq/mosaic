@@ -195,12 +195,10 @@ let compute_cached_layout (type t)
     we read from `unrounded_layout` and write to `final_layout`. *)
 let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
     (tree : t) (node_id : Node_id.t) : unit =
-  (* Helper for rounding - matches Rust's round function behavior *)
-  let[@inline] round f =
-    let epsilon = 1e-6 in
-    if f >= 0.0 then Float.floor (f +. 0.5 +. epsilon)
-    else Float.ceil (f -. 0.5 -. epsilon)
-  in
+  (* The nearest integer, a half rounding up for either sign (-0.5 to 0), as
+     Chromium snaps to pixels: rounding then commutes with a shift by whole
+     pixels. *)
+  let[@inline] round f = Float.floor (f +. 0.5 +. 1e-6) in
 
   (* Recursive function to apply rounding to all descendants. A subtree whose
      unrounded layouts and parent position are unchanged keeps its result. *)

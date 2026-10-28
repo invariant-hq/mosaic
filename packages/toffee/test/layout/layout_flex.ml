@@ -22232,6 +22232,22 @@ let () =
             [| 0.; 0.; 10.; 106. |];
             [| 0.; 213.; 10.; 107. |];
           ];
+      case "rounding_negative_half_pixel_rounds_up"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~justify_content:Center
+               ~size:{ width = Dimension.length 10.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_shrink:0.
+                   ~size:
+                     { width = Dimension.length 11.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 10.; 0. |]; [| 0.; 0.; 11.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 10.; 0. |]; [| 0.; 0.; 11.; 0. |] ];
       case "rounding_total_fractial"
         (fun box_sizing ->
           node
