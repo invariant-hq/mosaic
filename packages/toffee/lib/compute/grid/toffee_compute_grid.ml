@@ -17,6 +17,12 @@ module Named = Named
 (* Grid layout algorithm This consists of a few phases: - Resolving the explicit
    grid - Placing items (which also resolves the implicit grid) - Track
    (row/column) sizing - Alignment & Final item placement *)
+(* [size], a border-box size, less [inset] where it is known. *)
+let content_box_size (inset : Rectf.t) (size : float option size) =
+  match size with
+  | { width = None; height = None } -> size
+  | _ -> Sizef.maybe_sub (Rectf.sum_axes inset) size
+
 let compute_grid_layout (type t)
     (module Tree : LAYOUT_PARTIAL_TREE with type t = t) ~tree ~node ~inputs =
   let known_dimensions = Layout_input.known_dimensions inputs in
@@ -104,6 +110,10 @@ let compute_grid_layout (type t)
       bottom = content_box_inset.bottom +. scrollbar_gutter.y;
     }
   in
+  (* Track sizing works in the content box, so the border-box minimum and
+     maximum sizes it stretches and limits the tracks by lose the inset *)
+  let inner_min_size = content_box_size content_box_inset min_size
+  and inner_max_size = content_box_size content_box_inset max_size in
 
   let align_content =
     Option.value (Style.align_content style) ~default:Align_content.Stretch
@@ -329,8 +339,8 @@ let compute_grid_layout (type t)
       Track_sizing.track_sizing_algorithm
         (module Tree)
         tree Abstract_axis.Inline
-        (Size.get Abstract_axis.Inline min_size)
-        (Size.get Abstract_axis.Inline max_size)
+        (Size.get Abstract_axis.Inline inner_min_size)
+        (Size.get Abstract_axis.Inline inner_max_size)
         justify_content align_content available_grid_space inner_node_size
         columns rows items
         (fun track parent_size tree ->
@@ -362,8 +372,8 @@ let compute_grid_layout (type t)
       Track_sizing.track_sizing_algorithm
         (module Tree)
         tree Abstract_axis.Block
-        (Size.get Abstract_axis.Block min_size)
-        (Size.get Abstract_axis.Block max_size)
+        (Size.get Abstract_axis.Block inner_min_size)
+        (Size.get Abstract_axis.Block inner_max_size)
         align_content justify_content available_grid_space inner_node_size rows
         columns items
         (fun track _ _ -> Some track.Grid_track.base_size)
@@ -572,8 +582,8 @@ let compute_grid_layout (type t)
           Track_sizing.track_sizing_algorithm
             (module Tree)
             tree Abstract_axis.Inline
-            (Size.get Abstract_axis.Inline min_size)
-            (Size.get Abstract_axis.Inline max_size)
+            (Size.get Abstract_axis.Inline inner_min_size)
+            (Size.get Abstract_axis.Inline inner_max_size)
             justify_content align_content available_grid_space inner_node_size
             columns rows items
             (fun track _ _ -> Some track.Grid_track.base_size)
@@ -664,8 +674,8 @@ let compute_grid_layout (type t)
             Track_sizing.track_sizing_algorithm
               (module Tree)
               tree Abstract_axis.Block
-              (Size.get Abstract_axis.Block min_size)
-              (Size.get Abstract_axis.Block max_size)
+              (Size.get Abstract_axis.Block inner_min_size)
+              (Size.get Abstract_axis.Block inner_max_size)
               align_content justify_content available_grid_space inner_node_size
               rows columns items
               (fun track _ _ -> Some track.Grid_track.base_size)

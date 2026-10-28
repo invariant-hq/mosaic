@@ -11497,6 +11497,35 @@ let () =
             [| 40.; 80.; 20.; 40. |];
             [| 60.; 80.; 40.; 40. |];
           ];
+      case "min_height_with_border_stretches_rows_by_content_box"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing
+                   ~min_size:
+                     { width = Dimension.auto; height = Dimension.length 50. }
+                   ~border:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 50.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [ node (Style.make ~box_sizing ()) [] ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 0.; 50. |]; [| 0.; 0.; 0.; 50. |]; [| 0.; 50.; 0.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 0.; 100. |];
+            [| 0.; 0.; 0.; 100. |];
+            [| 0.; 50.; 0.; 50. |];
+          ];
       case "minmax_auto_fixed_10px"
         (fun box_sizing ->
           node
