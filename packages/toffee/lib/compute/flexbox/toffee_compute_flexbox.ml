@@ -3318,10 +3318,12 @@ let perform_absolute_layout_on_absolute_children (type t)
                   if constants.is_row then resolved_margin.right
                   else resolved_margin.bottom
               | None -> (
-                  (* Handle justify_content alignment *)
+                  (* Handle justify_content alignment: flex-start, also
+                     what normal is, is the main end of a reversed
+                     direction *)
                   match
-                    ( Option.value constants.justify_content ~default:Start,
-                      constants.is_wrap_reverse )
+                    ( Option.value constants.justify_content ~default:Flex_start,
+                      Flex_direction_ext.is_reverse constants.dir )
                   with
                   | Space_between, _
                   | Start, _

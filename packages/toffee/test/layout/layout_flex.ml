@@ -1923,6 +1923,22 @@ let () =
             [| 50.; 50.; 0.; 0. |];
             [| 20.; 20.; 215.; 215. |];
           ];
+      case "absolute_static_position_in_row_reverse"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_direction:Row_reverse
+               ~size:{ width = Dimension.length 50.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~position:Absolute
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 50.; 0. |]; [| 40.; 0.; 10.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 0. |]; [| 40.; 0.; 10.; 0. |] ];
       case "align_baseline"
         (fun box_sizing ->
           node
