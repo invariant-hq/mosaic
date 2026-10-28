@@ -7663,6 +7663,38 @@ let () =
           [
             [| 0.; 0.; 0.; 50. |]; [| 0.; 0.; 0.; 50. |]; [| 0.; 0.; 0.; 13. |];
           ];
+      case "item_percentage_min_width_cyclic_resolves_against_zero"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~size:{ width = Dimension.length 40.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~min_size:
+                     { width = Dimension.percent 0.1; height = Dimension.auto }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 50.;
+                           height = Dimension.auto;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 40.; 0. |]; [| 0.; 0.; 40.; 0. |]; [| 0.; 0.; 40.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 40.; 0. |]; [| 0.; 0.; 40.; 0. |]; [| 0.; 0.; 40.; 0. |];
+          ];
       case "justify_content_center"
         (fun box_sizing ->
           node

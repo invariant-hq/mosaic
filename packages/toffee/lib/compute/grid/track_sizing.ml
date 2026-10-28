@@ -278,10 +278,15 @@ module Intrinsic_size_measurer = struct
               match v_opt with
               | Some _ -> v_opt
               | None -> (
-                  (* Try min_size if size is not available *)
+                  (* Try min_size if size is not available. A percentage
+                     min size is cyclic where the grid area's size is
+                     unknown and then resolves against zero
+                     (https://www.w3.org/TR/css-sizing-3/#cyclic-percentage-contribution) *)
                   Dimension.maybe_resolve
                     (Size.get measurer.axis item.min_size)
-                    (Size.get measurer.axis grid_area_size)
+                    (Some
+                       (Option.value ~default:0.0
+                          (Size.get measurer.axis grid_area_size)))
                     calc
                   |> fun s_opt ->
                   match s_opt with
@@ -296,8 +301,14 @@ module Intrinsic_size_measurer = struct
                       |> fun v_opt ->
                       match v_opt with
                       | Some v ->
+                          (* The box is never smaller than its padding and
+                             border *)
                           Some
-                            (v +. Sizef.get measurer.axis box_sizing_adjustment)
+                            (Float.max
+                               (v
+                               +. Sizef.get measurer.axis box_sizing_adjustment
+                               )
+                               (Sizef.get measurer.axis padding_border_size))
                       | None -> None)
                   | None -> None) )
           |> fun v_opt ->
