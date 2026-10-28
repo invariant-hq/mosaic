@@ -460,6 +460,26 @@ let compute_grid_layout (type t)
           }
       in
 
+      (* A re-run for percentage tracks sizes them into the container's
+         content box, which its content just sized *)
+      let rerun_space =
+        Size.
+          {
+            width =
+              (if
+                 Option.is_none outer_node_size.width
+                 && Array.exists Grid_track.uses_percentage columns
+               then Available_space.Definite container_content_box.width
+               else available_grid_space.width);
+            height =
+              (if
+                 Option.is_none outer_node_size.height
+                 && Array.exists Grid_track.uses_percentage rows
+               then Available_space.Definite container_content_box.height
+               else available_grid_space.height);
+          }
+      in
+
       (* An item's min-content contribution in [axis], measured in its grid
          area now that the tracks of the other axis are sized. It replaces the
          item's cached contributions in [axis] and tells whether it changed. *)
@@ -548,8 +568,8 @@ let compute_grid_layout (type t)
           tree Abstract_axis.Inline
           (Size.get Abstract_axis.Inline inner_min_size)
           (Size.get Abstract_axis.Inline inner_max_size)
-          justify_content align_content available_grid_space inner_node_size
-          columns rows items
+          justify_content align_content rerun_space inner_node_size columns rows
+          items
           (fun track _ _ -> Some track.Grid_track.base_size)
           has_baseline_aligned_item);
       let rerun_row_sizing =
@@ -567,8 +587,8 @@ let compute_grid_layout (type t)
           tree Abstract_axis.Block
           (Size.get Abstract_axis.Block inner_min_size)
           (Size.get Abstract_axis.Block inner_max_size)
-          align_content justify_content available_grid_space inner_node_size
-          rows columns items
+          align_content justify_content rerun_space inner_node_size rows columns
+          items
           (fun track _ _ -> Some track.Grid_track.base_size)
           false (* TODO: Support baseline alignment in vertical axis *));
 

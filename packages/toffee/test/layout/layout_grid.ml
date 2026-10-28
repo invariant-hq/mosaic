@@ -13720,6 +13720,68 @@ let () =
             [| 0.; 0.; 0.; 100. |];
             [| 0.; 0.; 0.; 50. |];
           ];
+      case "percentage_row_rerun_sizes_into_content_box"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~grid_template_columns:
+                 [
+                   Grid.Template_component.single
+                     Grid.Track_sizing_function.max_content;
+                 ]
+               ~grid_template_rows:
+                 [
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.percent 0.5);
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.minmax
+                        ~min:(Compact_length.length 10.)
+                        ~max:Compact_length.auto);
+                 ]
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.percent 0.1 }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~border:
+                         {
+                           left = Length_percentage.length 0.;
+                           right = Length_percentage.length 0.;
+                           top = Length_percentage.length 0.;
+                           bottom = Length_percentage.length 20.;
+                         }
+                       ())
+                    [];
+                ];
+              node
+                (Style.make ~box_sizing
+                   ~grid_row:
+                     {
+                       start = Grid.Placement.line 1;
+                       end_ = Grid.Placement.auto;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 0.; 20. |];
+            [| 0.; 10.; 0.; 1. |];
+            [| 0.; 0.; 0.; 20. |];
+            [| 0.; 0.; 0.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 0.; 20. |];
+            [| 0.; 10.; 0.; 1. |];
+            [| 0.; 0.; 0.; 20. |];
+            [| 0.; 0.; 0.; 10. |];
+          ];
       case "placement_auto_negative"
         (fun box_sizing ->
           node
