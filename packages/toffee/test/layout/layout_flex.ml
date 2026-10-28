@@ -23119,6 +23119,18 @@ let () =
             [| 0.; 0.; 70.; 50.; 0.; 0. |];
             [| 0.; 0.; 50.; 0. |];
           ];
+      case "scroll_container_contributes_content_capped_by_basis"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_basis:(Dimension.length 10.)
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0.; 0.; 0. |] ];
       case "scroll_container_extends_margin_box_before_origin"
         (fun box_sizing ->
           node

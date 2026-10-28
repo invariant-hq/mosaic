@@ -1345,9 +1345,6 @@ let content_contribution (type t)
     Float.max (Float.min style_preferred max_main_size) min_main_size
     +. margin_sum
   else if max_main_size <= min_main_size then min_main_size +. margin_sum
-  else if is_scroll_container flex_item then
-    (* Scroll containers use their flex basis but still honour min/max *)
-    contribution flex_basis
   else if not (Float.is_nan style_preferred) then
     (* A definite preferred main size is the item's content contribution (an
        inherent-size measure would return it), floored by its main-axis
@@ -1450,6 +1447,13 @@ let content_contribution (type t)
             (if is_row then known_cross *. ratio else known_cross /. ratio)
       | None -> measured_main_size
       | Some _ -> ratio_floored_main constants flex_item measured_main_size
+    in
+    (* A scroll container contributes its content, but no more than its
+       flex base size, as in Chromium *)
+    let content_main_size =
+      if is_scroll_container flex_item then
+        Float.min content_main_size flex_basis
+      else content_main_size
     in
 
     (* Apply different clamping based on row vs column. The container's own
