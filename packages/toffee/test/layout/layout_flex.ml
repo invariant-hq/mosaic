@@ -14739,6 +14739,33 @@ let () =
             [| 0.; 0.; 40.; 10. |];
             [| 40.; 0.; 40.; 10. |];
           ];
+      case "intrinsic_sizing_ungrowable_item_contributes_its_flex_basis"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_basis:(Dimension.length 20.)
+                   ~size:
+                     { width = Dimension.length 50.; height = Dimension.auto }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing ~flex_grow:1.
+                   ~flex_basis:(Dimension.length 10.)
+                   ~size:
+                     { width = Dimension.length 30.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 20.; 0.; 30.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 20.; 0.; 30.; 0. |];
+          ];
       case "justify_content_column_center"
         (fun box_sizing ->
           node

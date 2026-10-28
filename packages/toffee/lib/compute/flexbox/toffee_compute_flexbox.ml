@@ -1052,22 +1052,16 @@ let content_contribution (type t)
   in
   let flex_basis = flex_item.s.flex_basis in
 
-  (* The clamping basis: for a row container, the flex base size or the
-     preferred size, whichever is larger, as Chrome and Firefox do; for a
-     column container, the flex base size alone, as the spec says, so that an
-     item's height does not grow the container's max-content size past the
-     item's flex basis. *)
-  let clamping_basis =
-    if is_row && not (Float.is_nan style_preferred) then
-      Float.max flex_basis style_preferred
-    else flex_basis
-  in
+  (* An item that cannot grow (shrink) contributes at most (least) its flex
+     base size (CSS Flexbox 9.9.3), in both directions, as Chromium does: a
+     row item with flex-basis: 20px and width: 50px that cannot grow
+     contributes 20px. Taffy clamps a row item by the larger of its flex base
+     size and its width instead. *)
   let flex_basis_min =
-    if Style.flex_shrink flex_item.style = 0.0 then clamping_basis
-    else Float.nan
+    if Style.flex_shrink flex_item.style = 0.0 then flex_basis else Float.nan
   in
   let flex_basis_max =
-    if Style.flex_grow flex_item.style = 0.0 then clamping_basis else Float.nan
+    if Style.flex_grow flex_item.style = 0.0 then flex_basis else Float.nan
   in
 
   let min_main_size =
