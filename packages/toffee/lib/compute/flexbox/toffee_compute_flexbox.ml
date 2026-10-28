@@ -459,7 +459,7 @@ type style_size = Preferred | Minimum | Maximum
    inner size, with a missing axis transferred through [aspect_ratio], plus
    the box sizing adjustment ([Size.apply_aspect_ratio], [Sizef.maybe_add]):
    the padding and border when [content_box]. *)
-let set_style_size sizes kind (dims : Dimension.t size) aspect_ratio
+let set_style_size sizes kind ~is_row (dims : Dimension.t size) aspect_ratio
     ~inner_width ~inner_height ~(padding : Rectf.t) ~(border : Rectf.t)
     ~content_box calc =
   let width = resolve_dimension dims.width inner_width calc in
@@ -477,7 +477,13 @@ let set_style_size sizes kind (dims : Dimension.t size) aspect_ratio
             (padding.top +. border.top +. padding.bottom +. border.bottom)
           *. ratio,
           height )
-    | Some ratio when Float.is_nan height && not (Float.is_nan width) ->
+    | Some ratio
+      when Float.is_nan height
+           && (not (Float.is_nan width))
+           (* In a row, a preferred height is not transferred from the width:
+              the height follows the flexed width through the ratio, as in
+              Chromium, which sizes the block axis after the inline one *)
+           && not (kind = Preferred && is_row) ->
         ( width,
           floor width
             (padding.left +. border.left +. padding.right +. border.right)
@@ -607,14 +613,14 @@ let generate_anonymous_flex_items (type t)
             };
         }
       in
-      set_style_size item.s Preferred (Style.size child_style) aspect_ratio
-        ~inner_width:size_basis_width ~inner_height:size_basis_height ~padding
-        ~border ~content_box calc;
-      set_style_size item.s Minimum
+      set_style_size item.s Preferred ~is_row:constants.is_row
+        (Style.size child_style) aspect_ratio ~inner_width:size_basis_width
+        ~inner_height:size_basis_height ~padding ~border ~content_box calc;
+      set_style_size item.s Minimum ~is_row:constants.is_row
         (Style.min_size child_style)
         aspect_ratio ~inner_width:size_basis_width
         ~inner_height:size_basis_height ~padding ~border ~content_box calc;
-      set_style_size item.s Maximum
+      set_style_size item.s Maximum ~is_row:constants.is_row
         (Style.max_size child_style)
         aspect_ratio ~inner_width:size_basis_width
         ~inner_height:size_basis_height ~padding ~border ~content_box calc;

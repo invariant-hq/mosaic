@@ -23127,6 +23127,22 @@ let () =
             [| 0.; 59.; 87.; 30. |];
             [| 0.; 89.; 87.; 24. |];
           ];
+      case "row_item_ratio_height_follows_flexed_width"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.length 20.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 50.; height = Dimension.auto }
+                   ~aspect_ratio:0.3333333333333333 ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 20.; 60. |]; [| 0.; 0.; 20.; 60. |] ]
+        ~content_box:[ [| 0.; 0.; 20.; 60. |]; [| 0.; 0.; 20.; 60. |] ];
       case "row_relative_all_sides"
         (fun box_sizing ->
           node
