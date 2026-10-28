@@ -1324,9 +1324,7 @@ let content_contribution (type t)
   else if max_main_size <= min_main_size then min_main_size +. margin_sum
   else if is_scroll_container flex_item then
     (* Scroll containers use their flex basis but still honour min/max *)
-    let content_main_size = flex_basis +. margin_sum in
-    if is_row then clamp content_main_size
-    else clamp (Float.max content_main_size flex_basis)
+    clamp flex_basis +. margin_sum
   else if not (Float.is_nan style_preferred) then
     (* A definite preferred main size is the item's content contribution (an
        inherent-size measure would return it), floored by its main-axis
@@ -1334,10 +1332,10 @@ let content_contribution (type t)
        as they clamp a measured contribution. *)
     let content_main_size =
       Float.max style_preferred (main_padding_border constants flex_item)
-      +. margin_sum
     in
-    if is_row then clamp content_main_size
-    else clamp (Float.max content_main_size flex_basis)
+    (if is_row then clamp content_main_size
+     else clamp (Float.max content_main_size flex_basis))
+    +. margin_sum
   else
     (* Need to compute content size *)
     let cross_axis_parent_size =
@@ -1424,20 +1422,22 @@ let content_contribution (type t)
       in
       (* A known cross size, transferred through the item's aspect ratio,
          floors the measured content size. *)
-      (match Style.aspect_ratio flex_item.style with
-        | Some ratio when not (Float.is_nan known_cross) ->
-            Float.max measured_main_size
-              (if is_row then known_cross *. ratio else known_cross /. ratio)
-        | None -> measured_main_size
-        | Some _ -> ratio_floored_main constants flex_item measured_main_size)
-      +. margin_sum
+      match Style.aspect_ratio flex_item.style with
+      | Some ratio when not (Float.is_nan known_cross) ->
+          Float.max measured_main_size
+            (if is_row then known_cross *. ratio else known_cross /. ratio)
+      | None -> measured_main_size
+      | Some _ -> ratio_floored_main constants flex_item measured_main_size
     in
 
     (* Apply different clamping based on row vs column. The container's own
        padding and border do not floor an item's contribution: the container
-       adds them once, to the sum of its items. *)
-    if is_row then clamp content_main_size
-    else clamp (Float.max content_main_size flex_basis)
+       adds them once, to the sum of its items. The minimum and maximum clamp
+       the item's size, which its margins then add to, as in Chromium (Taffy
+       clamps the margin box) *)
+    (if is_row then clamp content_main_size
+     else clamp (Float.max content_main_size flex_basis))
+    +. margin_sum
 
 let determine_container_main_size (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)

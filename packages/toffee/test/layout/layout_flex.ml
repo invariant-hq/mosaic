@@ -15054,6 +15054,27 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 10.; 10. |]; [| 0.; 0.; 10.; 10. |] ]
         ~content_box:[ [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |] ];
+      case "item_contribution_clamps_size_before_margins"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_grow:1.
+                   ~min_size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 10.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 10.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 10.; 0. |] ];
       case "justify_content_column_center"
         (fun box_sizing ->
           node
