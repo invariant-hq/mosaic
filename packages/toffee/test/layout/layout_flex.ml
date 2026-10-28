@@ -22878,6 +22878,57 @@ let () =
           [ [| 0.; 0.; 20.; 20.; 45.; 5. |]; [| -45.; 0.; 50.; 10. |] ]
         ~content_box:
           [ [| 0.; 0.; 20.; 20.; 45.; 5. |]; [| -45.; 0.; 50.; 10. |] ];
+      case "scroll_container_auto_margin_past_content"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ())
+            [
+              node
+                (Style.make ~display:Flex ~box_sizing ~flex_direction:Column
+                   ~size:
+                     {
+                       width = Dimension.length 50.;
+                       height = Dimension.length 50.;
+                     }
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 20.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 50.;
+                           height = Dimension.auto;
+                         }
+                       ~margin:
+                         {
+                           left = Length_percentage_auto.length 0.;
+                           right = Length_percentage_auto.auto;
+                           top = Length_percentage_auto.length 0.;
+                           bottom = Length_percentage_auto.length 0.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 50.; 50. |];
+            [| 0.; 0.; 50.; 50.; 20.; 0. |];
+            [| 0.; 0.; 50.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 70.; 50. |];
+            [| 0.; 0.; 70.; 50.; 0.; 0. |];
+            [| 0.; 0.; 50.; 0. |];
+          ];
       case "scroll_size"
         (fun box_sizing ->
           node

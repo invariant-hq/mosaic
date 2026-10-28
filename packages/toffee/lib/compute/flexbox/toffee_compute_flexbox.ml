@@ -2764,7 +2764,26 @@ let final_layout_pass (type t)
       Toffee_compute_helpers.add_overflow_contribution overflow_acc
         ~flags:overflow_flags ~origin:constants.border ~client:overflow_client
         ~padding:overflow_padding ~location ~size ~overflow_area
-        ~border:item.border ~overflow ~margin:item.margin
+        ~border:item.border ~overflow
+        ~margin:
+          (let margin = item.margin in
+           (* An auto margin that took negative free space is zero to the
+              end padding, as it is to Chromium *)
+           let side value get =
+             if value < 0.0 && margin_is_auto item get then 0.0 else value
+           in
+           if
+             margin.left >= 0.0 && margin.right >= 0.0 && margin.top >= 0.0
+             && margin.bottom >= 0.0
+           then margin
+           else
+             Rectf.
+               {
+                 left = side margin.left left;
+                 right = side margin.right right;
+                 top = side margin.top top;
+                 bottom = side margin.bottom bottom;
+               })
     done;
 
     total_offset_cross :=
