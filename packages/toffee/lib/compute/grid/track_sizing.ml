@@ -1121,13 +1121,12 @@ let flex_scaled_contribution item axis axis_tracks space =
   +. (Float.max (space -. !inflexible) 0.0 *. Float.min !flex_factors 1.0)
 
 let resolve_intrinsic_track_sizes (type t)
-    (module Tree : LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (axis : abstract_axis) (axis_tracks : Grid_track.t array)
-    (other_axis_tracks : Grid_track.t array) (items : Grid_item.t array)
-    (axis_available_grid_space : Available_space.t)
-    (inner_node_size : float option size)
-    (get_track_size_estimate :
-      Grid_track.t -> float option -> t -> float option) : unit =
+    (module Tree : LAYOUT_PARTIAL_TREE with type t = t)
+    (item_sizer : t Intrinsic_size_measurer.t) (items : Grid_item.t array)
+    (axis_available_grid_space : Available_space.t) : unit =
+  let Intrinsic_size_measurer.{ tree; axis; axis_tracks; inner_node_size; _ } =
+    item_sizer
+  in
   (* Step 1. Shim baseline-aligned items - already done in
      resolve_item_baselines *)
 
@@ -1142,19 +1141,6 @@ let resolve_intrinsic_track_sizes (type t)
     Array.fold_left
       (fun sum track -> sum +. Grid_track.flex_factor track)
       0.0 axis_tracks
-  in
-
-  (* Create intrinsic size measurer *)
-  let item_sizer =
-    Intrinsic_size_measurer.
-      {
-        tree;
-        axis_tracks;
-        other_axis_tracks;
-        get_track_size_estimate;
-        axis;
-        inner_node_size;
-      }
   in
 
   (* Process items in batches *)
@@ -1738,12 +1724,11 @@ let find_size_of_fr (tracks : Grid_track.t array) (space_to_fill : float) :
    largest value it can assign to an fr without exceeding the available
    space. *)
 let expand_flexible_tracks (type t)
-    (module Tree : LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (axis : abstract_axis) (axis_tracks : Grid_track.t array)
-    (items : Grid_item.t array) (axis_min_size : float option)
-    (axis_max_size : float option)
+    (module Tree : LAYOUT_PARTIAL_TREE with type t = t) (axis : abstract_axis)
+    (axis_tracks : Grid_track.t array) (items : Grid_item.t array)
+    (axis_min_size : float option) (axis_max_size : float option)
     (axis_available_space_for_expansion : Available_space.t)
-    (inner_node_size : float option size) : unit =
+    (item_sizer : t Intrinsic_size_measurer.t) : unit =
   (* First, find the grid's used flex fraction *)
   let flex_fraction =
     match axis_available_space_for_expansion with
@@ -1806,13 +1791,12 @@ let expand_flexible_tracks (type t)
                      let tracks =
                        Array.sub axis_tracks start_idx (end_idx - start_idx)
                      in
-                     (* TODO: plumb estimate of other axis size
-                        (known_dimensions) in here rather than just passing
-                        (Size.none)? *)
+                     (* Measured in the item's grid area, as while resolving
+                        the intrinsic track sizes *)
                      let max_content_contribution =
-                       Grid_item.max_content_contribution
+                       Intrinsic_size_measurer.max_content_contribution
                          (module Tree)
-                         item axis tree Size.none inner_node_size
+                         item_sizer item
                      in
                      let value =
                        find_size_of_fr tracks max_content_contribution
@@ -1984,11 +1968,21 @@ let track_sizing_algorithm (type t)
        done);
 
     (* 11.5 Resolve Intrinsic Track Sizes *)
+    let item_sizer =
+      Intrinsic_size_measurer.
+        {
+          tree;
+          axis_tracks;
+          other_axis_tracks;
+          get_track_size_estimate;
+          axis;
+          inner_node_size;
+        }
+    in
     resolve_intrinsic_track_sizes
       (module Tree)
-      tree axis axis_tracks other_axis_tracks items
-      (Size.get axis available_grid_space)
-      inner_node_size get_track_size_estimate;
+      item_sizer items
+      (Size.get axis available_grid_space);
 
     (* 11.6. Maximise Tracks Distributes free space (if any) to tracks with
        FINITE growth limits, up to their limits. *)
@@ -2018,8 +2012,8 @@ let track_sizing_algorithm (type t)
        space. *)
     expand_flexible_tracks
       (module Tree)
-      tree axis axis_tracks items axis_min_size axis_max_size
-      axis_available_space_for_expansion inner_node_size;
+      axis axis_tracks items axis_min_size axis_max_size
+      axis_available_space_for_expansion item_sizer;
 
     (* 11.8. Stretch auto Tracks This step expands tracks that have an auto max
        track sizing function by dividing any remaining positive, definite free

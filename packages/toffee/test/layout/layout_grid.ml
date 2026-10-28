@@ -6969,6 +6969,104 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 30.; 40. |]; [| 0.; 0.; 30.; 40.; 10.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 30.; 40. |]; [| 0.; 0.; 30.; 40.; 10.; 0. |] ];
+      case "flexible_row_sized_from_item_measured_in_grid_area"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~grid_template_columns:
+                 [
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.fr 1.);
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.length 20.);
+                 ]
+               ~grid_template_rows:
+                 [
+                   Grid.Template_component.single
+                     Grid.Track_sizing_function.auto;
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.minmax
+                        ~min:(Compact_length.length 0.)
+                        ~max:(Compact_length.fr 1.));
+                 ]
+               ())
+            [
+              node (Style.make ~box_sizing ()) [];
+              node (Style.make ~box_sizing ()) [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.percent 0.1; height = Dimension.auto }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing ~flex_wrap:Wrap
+                       ~max_size:
+                         {
+                           width = Dimension.percent 0.1;
+                           height = Dimension.auto;
+                         }
+                       ~padding:
+                         {
+                           left = Length_percentage.length 10.;
+                           right = Length_percentage.length 0.;
+                           top = Length_percentage.length 0.;
+                           bottom = Length_percentage.length 0.;
+                         }
+                       ())
+                    [
+                      node
+                        (Style.make ~box_sizing
+                           ~padding:
+                             {
+                               left = Length_percentage.length 10.;
+                               right = Length_percentage.length 0.;
+                               top = Length_percentage.length 0.;
+                               bottom = Length_percentage.length 0.;
+                             }
+                           ~border:
+                             {
+                               left = Length_percentage.length 0.;
+                               right = Length_percentage.length 0.;
+                               top = Length_percentage.length 20.;
+                               bottom = Length_percentage.length 0.;
+                             }
+                           ())
+                        [];
+                      node
+                        (Style.make ~box_sizing
+                           ~border:
+                             {
+                               left = Length_percentage.length 0.;
+                               right = Length_percentage.length 0.;
+                               top = Length_percentage.length 50.;
+                               bottom = Length_percentage.length 0.;
+                             }
+                           ())
+                        [];
+                    ];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 40.; 70. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 20.; 0.; 20.; 0. |];
+            [| 0.; 0.; 2.; 70. |];
+            [| 0.; 0.; 10.; 70. |];
+            [| 10.; 0.; 10.; 20. |];
+            [| 10.; 20.; 0.; 50. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 40.; 70. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 20.; 0.; 20.; 0. |];
+            [| 0.; 0.; 2.; 70. |];
+            [| 0.; 0.; 10.; 70. |];
+            [| 10.; 0.; 10.; 20. |];
+            [| 10.; 20.; 0.; 50. |];
+          ];
       case "fr_fixed_size_no_content_proportions"
         (fun box_sizing ->
           node
