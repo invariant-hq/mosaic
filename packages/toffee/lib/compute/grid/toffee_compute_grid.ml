@@ -642,16 +642,7 @@ let compute_grid_layout (type t)
           let overflow = Style.overflow style in
           Overflow.is_container overflow.x || Overflow.is_container overflow.y
         in
-        let overflow_acc =
-          Toffee_compute_helpers.overflow_acc ~origin_x:border.left
-            ~origin_y:border.top
-            ~client_width:
-              (container_border_box.width -. border.left -. border.right
-             -. scrollbar_gutter.x)
-            ~client_height:
-              (container_border_box.height -. border.top -. border.bottom
-             -. scrollbar_gutter.y)
-        in
+        let overflow_acc = Toffee_compute_helpers.overflow_acc () in
         (* A grid's padding extends its track area, not its items: no margin
            extends an item's box *)
         let overflow_flags =
@@ -695,7 +686,7 @@ let compute_grid_layout (type t)
                 ~tree ~node:item.Grid_item.node ~order:index ~grid_area
                 ~container_alignment_styles
                 ~baseline_shim:item.Grid_item.baseline_shim ~overflow_acc
-                ~overflow_flags
+                ~overflow_flags ~overflow_origin:border
             in
             item.Grid_item.y_position <- y_position;
             item.Grid_item.height <- height)
@@ -800,7 +791,7 @@ let compute_grid_layout (type t)
                 (module Tree)
                 ~tree ~node:child ~order:!order ~grid_area
                 ~container_alignment_styles ~baseline_shim:0.0 ~overflow_acc
-                ~overflow_flags
+                ~overflow_flags ~overflow_origin:border
             in
             incr order
         done;
@@ -829,7 +820,19 @@ let compute_grid_layout (type t)
                -. border.top +. padding.bottom));
         let scrollable_overflow =
           Toffee_compute_helpers.finalize_overflow overflow_acc
-            ~flags:overflow_flags
+            ~flags:overflow_flags ~size:container_border_box ~border
+            ~client:
+              (if is_scroll_container then
+                 Sizef.
+                   {
+                     width =
+                       container_border_box.width -. border.left -. border.right
+                       -. scrollbar_gutter.x;
+                     height =
+                       container_border_box.height -. border.top
+                       -. border.bottom -. scrollbar_gutter.y;
+                   }
+               else Sizef.zero)
         in
 
         (* If there are no items then return just the container size and its

@@ -88,11 +88,12 @@ val align_and_position_item :
   baseline_shim:float ->
   overflow_acc:Toffee_compute_helpers.overflow_acc ->
   overflow_flags:Toffee_compute_helpers.overflow_flags ->
+  overflow_origin:Rectf.t ->
   float * float
 (** [align_and_position_item (module Tree) ~tree ~node ~order ~grid_area
-     ~container_alignment_styles ~baseline_shim ~overflow_acc ~overflow_flags]
-    aligns and positions a grid item within its assigned grid area, and adds it
-    to the container's scrollable overflow in [overflow_acc].
+     ~container_alignment_styles ~baseline_shim ~overflow_acc ~overflow_flags
+     ~overflow_origin] aligns and positions a grid item within its assigned grid
+    area, and adds it to the container's scrollable overflow in [overflow_acc].
 
     Returns [(y_position, height)] for baseline alignment computation.
 

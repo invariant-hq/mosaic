@@ -146,7 +146,7 @@ let align_and_position_item (type t)
     (module Tree : LAYOUT_PARTIAL_TREE with type t = t) ~tree ~node ~order
     ~grid_area
     ~(container_alignment_styles : align_items option in_both_abs_axis)
-    ~baseline_shim ~overflow_acc ~overflow_flags =
+    ~baseline_shim ~overflow_acc ~overflow_flags ~overflow_origin =
   let grid_area_size =
     Sizef.
       {
@@ -489,7 +489,8 @@ let align_and_position_item (type t)
 
   (* Add the item to the container's scrollable overflow *)
   Toffee_compute_helpers.add_overflow_contribution overflow_acc
-    ~flags:overflow_flags ~padding:Rectf.zero
+    ~flags:overflow_flags ~origin:overflow_origin ~client:Sizef.zero
+    ~padding:Rectf.zero
     ~location:Pointf.{ x; y }
     ~size:final_size
     ~overflow_area:(Layout_output.scrollable_overflow layout_output)

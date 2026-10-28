@@ -280,21 +280,23 @@ let round_layout (type t) (module Tree : Tree.ROUND_TREE with type t = t)
              if overflow == Scrollable_overflow.zero then overflow
              else
                (* Each edge snaps as the position it reaches does; a zero
-                  keeps the sign of its edge *)
-               let edge cumulative e =
-                 let rounded = round (cumulative +. e) -. round cumulative in
-                 if rounded = 0.0 then Float.copy_sign rounded e else rounded
-               in
+                  keeps the sign of its edge. Spelled out, so that no edge is
+                  boxed. *)
+               let l = Scrollable_overflow.left overflow
+               and r = Scrollable_overflow.right overflow
+               and t = Scrollable_overflow.top overflow
+               and b = Scrollable_overflow.bottom overflow in
+               let rl = round (cumulative_x +. l) -. round cumulative_x
+               and rr = round (cumulative_x +. r) -. round cumulative_x
+               and rt = round (cumulative_y +. t) -. round cumulative_y
+               and rb = round (cumulative_y +. b) -. round cumulative_y in
                Scrollable_overflow.make
                  Rectf.
                    {
-                     left =
-                       edge cumulative_x (Scrollable_overflow.left overflow);
-                     right =
-                       edge cumulative_x (Scrollable_overflow.right overflow);
-                     top = edge cumulative_y (Scrollable_overflow.top overflow);
-                     bottom =
-                       edge cumulative_y (Scrollable_overflow.bottom overflow);
+                     left = (if rl = 0.0 then Float.copy_sign rl l else rl);
+                     right = (if rr = 0.0 then Float.copy_sign rr r else rr);
+                     top = (if rt = 0.0 then Float.copy_sign rt t else rt);
+                     bottom = (if rb = 0.0 then Float.copy_sign rb b else rb);
                    }
                  ~reversed_x:(Scrollable_overflow.reversed_x overflow)
                  ~reversed_y:(Scrollable_overflow.reversed_y overflow))

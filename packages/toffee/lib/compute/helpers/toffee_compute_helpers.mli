@@ -15,32 +15,12 @@ type overflow_acc = {
   mutable right : float;
   mutable top : float;
   mutable bottom : float;
-      (** The union of the contributions so far, a rectangle containing the
-          origin. *)
-  origin_x : float;
-      (** The horizontal position of the container's padding-box origin in the
-          frame its children are located in. *)
-  origin_y : float;
-      (** The vertical position of the container's padding-box origin in the
-          frame its children are located in. *)
-  mutable client_width : float;
-      (** The width of the container's padding box, less its scrollbar: where a
-          reversed horizontal scroll origin is. *)
-  mutable client_height : float;
-      (** The height of the container's padding box, less its scrollbar. *)
 }
-(** A container's scrollable overflow as its children's contributions build it,
-    with the container's geometry. Its fields are all floats, so that it is a
-    single block. *)
+(** The union of a container's children's contributions so far, a rectangle
+    containing the origin. *)
 
-val overflow_acc :
-  origin_x:float ->
-  origin_y:float ->
-  client_width:float ->
-  client_height:float ->
-  overflow_acc
-(** [overflow_acc ~origin_x ~origin_y ~client_width ~client_height] is an empty
-    union for a container of that geometry. *)
+val overflow_acc : unit -> overflow_acc
+(** [overflow_acc ()] is an empty union, the origin. *)
 
 (** Which of a child's margins extend its margin box for a scroll container's
     end padding. *)
@@ -75,6 +55,8 @@ val union :
 val add_overflow_contribution :
   overflow_acc ->
   flags:overflow_flags ->
+  origin:Toffee_geometry.Rectf.t ->
+  client:Toffee_geometry.Sizef.t ->
   padding:Toffee_geometry.Rectf.t ->
   location:Toffee_geometry.Pointf.t ->
   size:Toffee_geometry.Sizef.t ->
@@ -83,11 +65,14 @@ val add_overflow_contribution :
   overflow:Toffee_style.Overflow.t Toffee_geometry.Point.t ->
   margin:Toffee_geometry.Rectf.t ->
   unit
-(** [add_overflow_contribution acc ~flags ~padding ~location ~size
-     ~overflow_area ~border ~overflow ~margin] adds to [acc] what a child at
-    [location], with border-box [size], scrollable overflow [overflow_area],
+(** [add_overflow_contribution acc ~flags ~origin ~client ~padding ~location
+     ~size ~overflow_area ~border ~overflow ~margin] adds to [acc] what a child
+    at [location], with border-box [size], scrollable overflow [overflow_area],
     [border], [overflow] and [margin], contributes to the scrollable overflow of
-    a container with [flags] and [padding].
+    a container with [flags] and [padding]. The container's padding-box origin
+    is at the top left of [origin] (its border) in the frame [location] is in;
+    [client], its client box (its padding box less its scrollbar), is read only
+    for a reversed scroll container.
 
     The child contributes its border box, and its own overflow area in each axis
     where it lets it escape: a scroll container lets none, and another box lets
@@ -97,13 +82,19 @@ val add_overflow_contribution :
     end [padding] contributes as well. *)
 
 val finalize_overflow :
-  overflow_acc -> flags:overflow_flags -> Toffee_tree.Scrollable_overflow.t
-(** [finalize_overflow acc ~flags] is the scrollable overflow area of a
-    container whose children's contributions [acc] gathered. A scroll container
-    keeps only what scrolling from its origin can reach, with that origin's
-    directions, and has none if it and its content cover no area; another box
-    keeps all of [acc], with normal origins, or none if [acc] is within its
-    padding box. *)
+  overflow_acc ->
+  flags:overflow_flags ->
+  size:Toffee_geometry.Sizef.t ->
+  border:Toffee_geometry.Rectf.t ->
+  client:Toffee_geometry.Sizef.t ->
+  Toffee_tree.Scrollable_overflow.t
+(** [finalize_overflow acc ~flags ~size ~border ~client] is the scrollable
+    overflow area of a container with border-box [size] and [border] whose
+    children's contributions [acc] gathered; [client], its client box, is read
+    only for a scroll container. A scroll container keeps only what scrolling
+    from its origin can reach, with that origin's directions, and has none if it
+    and its content cover no area; another box keeps all of [acc], with normal
+    origins, or none if [acc] is within its padding box. *)
 
 val apply_alignment_fallback :
   free_space:float ->

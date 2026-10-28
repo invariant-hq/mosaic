@@ -12,23 +12,9 @@ type overflow_acc = {
   mutable right : float;
   mutable top : float;
   mutable bottom : float;
-  origin_x : float;
-  origin_y : float;
-  mutable client_width : float;
-  mutable client_height : float;
 }
 
-let overflow_acc ~origin_x ~origin_y ~client_width ~client_height =
-  {
-    left = 0.0;
-    right = 0.0;
-    top = 0.0;
-    bottom = 0.0;
-    origin_x;
-    origin_y;
-    client_width;
-    client_height;
-  }
+let overflow_acc () = { left = 0.0; right = 0.0; top = 0.0; bottom = 0.0 }
 
 type overflow_margins = Full_margins | Negative_margins | No_margins
 
@@ -75,7 +61,8 @@ let margin_of flags side =
 [@@inline]
 
 let add_overflow_contribution (acc : overflow_acc) ~(flags : overflow_flags)
-    ~(padding : Rectf.t) ~(location : Pointf.t) ~(size : Sizef.t)
+    ~(origin : Rectf.t) ~(client : Sizef.t) ~(padding : Rectf.t)
+    ~(location : Pointf.t) ~(size : Sizef.t)
     ~(overflow_area : Scrollable_overflow.t) ~(border : Rectf.t)
     ~(overflow : Overflow.t Point.t) ~(margin : Rectf.t) =
   let parent_is_scroll_container = flags land scroll_container_bit <> 0 in
@@ -100,8 +87,8 @@ let add_overflow_contribution (acc : overflow_acc) ~(flags : overflow_flags)
   in
   (* An empty box contributes nothing, but to a scroll container, which
      scrolls to its position *)
-  if (end_width > 0.0 && end_height > 0.0) || parent_is_scroll_container then
-    let x = location.x -. acc.origin_x and y = location.y -. acc.origin_y in
+  if (end_width > 0.0 && end_height > 0.0) || parent_is_scroll_container then (
+    let x = location.x -. origin.left and y = location.y -. origin.top in
     let left =
       x
       +.
@@ -116,7 +103,11 @@ let add_overflow_contribution (acc : overflow_acc) ~(flags : overflow_flags)
       else 0.0
     and right = x +. end_width
     and bottom = y +. end_height in
-    if not parent_is_scroll_container then union acc ~left ~right ~top ~bottom
+    if not parent_is_scroll_container then (
+      if left < acc.left then acc.left <- left;
+      if right > acc.right then acc.right <- right;
+      if top < acc.top then acc.top <- top;
+      if bottom > acc.bottom then acc.bottom <- bottom)
     else
       let reversed_x = flags land reversed_x_bit <> 0
       and reversed_y = flags land reversed_y_bit <> 0 in
@@ -124,11 +115,11 @@ let add_overflow_contribution (acc : overflow_acc) ~(flags : overflow_flags)
         (* A box wholly before the scroll origin is unreachable; an empty box
            at the origin is not before it *)
         (if reversed_x then
-           left > acc.client_width || (left = acc.client_width && right > left)
+           left > client.width || (left = client.width && right > left)
          else right < 0.0 || (right = 0.0 && left < 0.0))
         ||
         if reversed_y then
-          top > acc.client_height || (top = acc.client_height && bottom > top)
+          top > client.height || (top = client.height && bottom > top)
         else bottom < 0.0 || (bottom = 0.0 && top < 0.0)
       then ()
       else
@@ -158,14 +149,27 @@ let add_overflow_contribution (acc : overflow_acc) ~(flags : overflow_flags)
               +. Float.max 0.0 (padding.bottom +. margin_of flags margin.bottom)
               )
         in
-        union acc ~left ~right ~top ~bottom
+        if left < acc.left then acc.left <- left;
+        if right > acc.right then acc.right <- right;
+        if top < acc.top then acc.top <- top;
+        if bottom > acc.bottom then acc.bottom <- bottom)
 
-let finalize_overflow (acc : overflow_acc) ~(flags : overflow_flags) =
+let finalize_overflow (acc : overflow_acc) ~(flags : overflow_flags)
+    ~(size : Sizef.t) ~(border : Rectf.t) ~(client : Sizef.t) =
   let is_scroll_container = flags land scroll_container_bit <> 0
   and reversed_x = flags land reversed_x_bit <> 0
   and reversed_y = flags land reversed_y_bit <> 0 in
-  let client_width = Float.max acc.client_width 0.0
-  and client_height = Float.max acc.client_height 0.0 in
+  (* Only a scroll container has a scrollbar: another box's client box is
+     its padding box *)
+  let client_width =
+    Float.max 0.0
+      (if is_scroll_container then client.width
+       else size.width -. border.left -. border.right)
+  and client_height =
+    Float.max 0.0
+      (if is_scroll_container then client.height
+       else size.height -. border.top -. border.bottom)
+  in
   if is_scroll_container then
     if
       Float.max acc.right client_width -. Float.min acc.left 0.0 <= 0.0
