@@ -907,6 +907,39 @@ let item_definiteness (constants : algo_constants) (child : flex_item) ~leaf =
     | true, false, true | false, true, false -> height_definite
     | _, false, false -> none_definite
 
+(* [measured], an item's content main size, at least what its aspect ratio
+   gives from the smallest cross size the box can take: its padding and
+   border, or its minimum; on the box its box-sizing names *)
+let ratio_floored_main constants (child : flex_item) measured =
+  match Style.aspect_ratio child.style with
+  | None -> measured
+  | Some ratio ->
+      let is_row = constants.is_row in
+      let cross_pb =
+        if is_row then
+          child.padding.top +. child.padding.bottom +. child.border.top
+          +. child.border.bottom
+        else
+          child.padding.left +. child.padding.right +. child.border.left
+          +. child.border.right
+      in
+      let min_cross =
+        if is_row then child.s.min_height else child.s.min_width
+      in
+      let cross =
+        if Float.is_nan min_cross then cross_pb
+        else Float.max cross_pb min_cross
+      in
+      let transferred =
+        if Style.box_sizing child.style = Box_sizing.Content_box then
+          (if is_row then (cross -. cross_pb) *. ratio
+           else (cross -. cross_pb) /. ratio)
+          +. main_padding_border constants child
+        else if is_row then cross *. ratio
+        else cross /. ratio
+      in
+      Float.max measured transferred
+
 (* The input for laying out an item of a flexbox *)
 let item_input ~run_mode ~axis ~known_dimensions ~known_dimensions_are_definite
     ~parent_size ~available_space : Layout_input.t =
@@ -1026,7 +1059,11 @@ let determine_flex_base_size (type t)
                    ~vertical_margins_are_collapsible:Line.both_false)
             in
             let measured_size = Layout_output.size layout_output in
-            if is_row then measured_size.width else measured_size.height
+            let measured =
+              if is_row then measured_size.width else measured_size.height
+            in
+            if Option.is_none (Style.aspect_ratio child.style) then measured
+            else ratio_floored_main constants child measured
     in
 
     (* Floor flex-basis by the padding_border_sum *)
@@ -1391,7 +1428,8 @@ let content_contribution (type t)
         | Some ratio when not (Float.is_nan known_cross) ->
             Float.max measured_main_size
               (if is_row then known_cross *. ratio else known_cross /. ratio)
-        | _ -> measured_main_size)
+        | None -> measured_main_size
+        | Some _ -> ratio_floored_main constants flex_item measured_main_size)
       +. margin_sum
     in
 
@@ -2526,6 +2564,37 @@ let resolve_cross_axis_auto_margins (flex_lines : flex_line list)
   done
 
 (* Determine container cross size *)
+(* The outer cross size [style]'s aspect ratio gives the container from its
+   outer main size, on the box its box-sizing names, clamped by its minimum
+   and maximum and floored by its padding and border; NaN without a ratio *)
+let ratio_cross_size constants style =
+  match Style.aspect_ratio style with
+  | None -> Float.nan
+  | Some ratio ->
+      let is_row = constants.is_row in
+      let inset = constants.content_box_inset in
+      let main_inset =
+        if is_row then Rectf.horizontal_axis_sum inset
+        else Rectf.vertical_axis_sum inset
+      and cross_inset =
+        if is_row then Rectf.vertical_axis_sum inset
+        else Rectf.horizontal_axis_sum inset
+      in
+      let main = if is_row then constants.n.width else constants.n.height in
+      let content_box = Style.box_sizing style = Box_sizing.Content_box in
+      let main =
+        if content_box then Float.max 0.0 (main -. main_inset) else main
+      in
+      let cross = if is_row then main /. ratio else main *. ratio in
+      let cross = if content_box then cross +. cross_inset else cross in
+      let min = if is_row then constants.n.min_height else constants.n.min_width
+      and max =
+        if is_row then constants.n.max_height else constants.n.max_width
+      in
+      let cross = if Float.is_nan max then cross else Float.min cross max in
+      let cross = if Float.is_nan min then cross else Float.max cross min in
+      Float.max cross cross_inset
+
 let determine_container_cross_size (flex_lines : flex_line list)
     (known_dimensions : float option size) (constants : algo_constants) : float
     =
@@ -3530,6 +3599,70 @@ let compute_preliminary (type t)
 
   (* 8. Calculate the cross size of each flex line *)
   calculate_cross_size flex_lines known_dimensions constants;
+
+  (* With an aspect ratio and an auto cross size, the container's cross size
+     is what the ratio gives from its main size, at least as large as its
+     lines, unless it is a scroll container (CSS Sizing 4, the automatic
+     minimum size of a box with a ratio): definite, so a single line takes
+     it and its items stretch to it *)
+  let known_dimensions =
+    let ratio_cross =
+      let style = Tree.get_core_container_style tree node in
+      if
+        Option.is_some
+          (if constants.is_row then known_dimensions.height
+           else known_dimensions.width)
+        || Option.is_none (Style.aspect_ratio style)
+      then Float.nan
+      else ratio_cross_size constants style
+    in
+    if Float.is_nan ratio_cross then known_dimensions
+    else
+      let cross_inset =
+        if constants.is_row then
+          Rectf.vertical_axis_sum constants.content_box_inset
+        else Rectf.horizontal_axis_sum constants.content_box_inset
+      in
+      let overflow = Style.overflow (Tree.get_core_container_style tree node) in
+      let outer =
+        if Overflow.is_container overflow.x || Overflow.is_container overflow.y
+        then ratio_cross
+        else
+          let cross_gap =
+            if constants.is_row then constants.n.gap_height
+            else constants.n.gap_width
+          in
+          let content =
+            total_cross_size flex_lines
+            +. sum_axis_gaps cross_gap (List.length flex_lines)
+            +. cross_inset
+          in
+          let max =
+            if constants.is_row then constants.n.max_height
+            else constants.n.max_width
+          in
+          let content =
+            if Float.is_nan max then content else Float.min content max
+          in
+          Float.max ratio_cross content
+      in
+      let inner = Float.max 0.0 (outer -. cross_inset) in
+      (match flex_lines with
+      | [ line ] when not constants.is_wrap -> line.cross_size <- inner
+      | _ -> ());
+      if constants.is_row then (
+        constants.node_inner_size <-
+          { constants.node_inner_size with height = Some inner };
+        constants.node_outer_size <-
+          { constants.node_outer_size with height = Some outer };
+        { known_dimensions with height = Some outer })
+      else (
+        constants.node_inner_size <-
+          { constants.node_inner_size with width = Some inner };
+        constants.node_outer_size <-
+          { constants.node_outer_size with width = Some outer };
+        { known_dimensions with width = Some outer })
+  in
 
   (* 9. Handle 'align-content: stretch' *)
   handle_align_content_stretch flex_lines known_dimensions constants;

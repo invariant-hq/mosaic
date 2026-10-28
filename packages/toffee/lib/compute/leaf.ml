@@ -12,6 +12,14 @@ let ratio_height style ratio (pb_sum : Sizef.t) width =
     ((width -. pb_sum.width) /. ratio) +. pb_sum.height
   else width /. ratio
 
+(* The width [ratio] gives from [height], as [ratio_height] does the other
+   way *)
+let ratio_width style ratio (pb_sum : Sizef.t) height =
+  let height = Float.max height pb_sum.height in
+  if Style.box_sizing style = Style.Box_sizing.Content_box then
+    ((height -. pb_sum.height) *. ratio) +. pb_sum.width
+  else height *. ratio
+
 (** Compute the size of a leaf node (node with no children) *)
 let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
     ~(resolve_calc_value : Style.calc_resolver)
@@ -301,11 +309,24 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
             let aspect_height =
               ratio_height style ratio pb_sum clamped_size.width
             in
-            Sizef.
-              {
-                width = clamped_size.width;
-                height = Float.max clamped_size.height aspect_height;
-              }
+            let height = Float.max clamped_size.height aspect_height in
+            (* An auto width is at least what the ratio gives from the height
+               the box takes, floored by its padding and border *)
+            let width =
+              match (Size.choose_first known_dimensions node_size).width with
+              | Some _ -> clamped_size.width
+              | None ->
+                  let width_from_height =
+                    ratio_width style ratio pb_sum height
+                  in
+                  let width_from_height =
+                    match node_max_size.width with
+                    | Some max -> Float.min width_from_height max
+                    | None -> width_from_height
+                  in
+                  Float.max clamped_size.width width_from_height
+            in
+            Sizef.{ width; height }
         | None -> clamped_size
       in
 

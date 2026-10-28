@@ -11215,6 +11215,20 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 100. |]; [| 10.; 10.; 40.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 100. |]; [| 10.; 10.; 40.; 0. |] ];
+      case "container_aspect_ratio_height_from_content_width"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~aspect_ratio:0.3333333333333333 ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 20.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 20.; 60. |]; [| 0.; 0.; 20.; 60. |] ]
+        ~content_box:[ [| 0.; 0.; 20.; 60. |]; [| 0.; 0.; 20.; 60. |] ];
       case "container_with_unsized_child"
         (fun box_sizing ->
           node
@@ -14922,6 +14936,25 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 50.; 25. |]; [| 0.; 0.; 50.; 25. |] ]
         ~content_box:[ [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 50.; 0. |] ];
+      case "item_aspect_ratio_width_from_padding_height"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing ~aspect_ratio:1.
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 10.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 10.; 10. |]; [| 0.; 0.; 10.; 10. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |] ];
       case "justify_content_column_center"
         (fun box_sizing ->
           node

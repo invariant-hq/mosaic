@@ -7,6 +7,21 @@ open Layout_case
 let () =
   run "leaf"
     [
+      case "aspect_ratio_width_from_padding_height"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~aspect_ratio:2.
+               ~padding:
+                 {
+                   left = Length_percentage.length 0.;
+                   right = Length_percentage.length 0.;
+                   top = Length_percentage.length 0.;
+                   bottom = Length_percentage.length 10.;
+                 }
+               ())
+            [])
+        ~border_box:[ [| 0.; 0.; 20.; 10. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 10. |] ];
       case "overflow_scrollbars_affect_available_space_x_axis"
         (fun box_sizing ->
           text
