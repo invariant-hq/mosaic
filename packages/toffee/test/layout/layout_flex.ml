@@ -7,6 +7,28 @@ open Layout_case
 let () =
   run "flex"
     [
+      case "absolute_aligned_item_not_sized_by_insets"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.auto; height = Dimension.length 50. }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~position:Absolute
+                   ~align_self:Flex_start
+                   ~inset:
+                     {
+                       left = Length_percentage_auto.auto;
+                       right = Length_percentage_auto.auto;
+                       top = Length_percentage_auto.length 20.;
+                       bottom = Length_percentage_auto.percent 0.25;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 0.; 50. |]; [| 0.; 20.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 50. |]; [| 0.; 20.; 0.; 0. |] ];
       case "absolute_aspect_ratio_aspect_ratio_overrides_height_of_full_inset"
         (fun box_sizing ->
           node

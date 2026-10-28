@@ -3127,7 +3127,13 @@ let perform_absolute_layout_on_absolute_children (type t)
          set *)
         let known_dimensions =
           match (known_dimensions.height, top, bottom) with
-          | None, Some t, Some b ->
+          | None, Some t, Some b
+          (* Only a box that stretches, as align-self normal or stretch
+             does, takes its height from its insets (CSS Position 3,
+             abspos auto sizes) *)
+            when match Style.align_self child_style with
+                 | None | Some Align_items.Stretch -> true
+                 | Some _ -> false ->
               let new_height_raw =
                 inset_relative_size.height
                 -. Option.value margin.top ~default:0.0
