@@ -1027,7 +1027,14 @@ let determine_flex_base_size (type t)
       if not (Float.is_nan flex_basis_style) then (
         child.flex_basis_is_definite <- true;
         flex_basis_style)
-      else if not (Float.is_nan main_size) then (
+      else if
+        (not (Float.is_nan main_size))
+        (* In a column, a percentage against an indefinite height is
+           content, which does not take the item's height (CSS Flexbox
+           7.2.3), as in Chromium; in a row Chromium takes the width *)
+        && (is_row
+           || not (Dimension.uses_percentage (Style.flex_basis child_style)))
+      then (
         child.flex_basis_is_definite <- true;
         main_size)
       else
@@ -1345,7 +1352,11 @@ let content_contribution (type t)
     Float.max (Float.min style_preferred max_main_size) min_main_size
     +. margin_sum
   else if max_main_size <= min_main_size then min_main_size +. margin_sum
-  else if (not is_row) && Style.flex_grow flex_item.style > 0.0 then
+  else if
+    (not is_row)
+    && (Style.flex_grow flex_item.style > 0.0
+       || Dimension.uses_percentage (Style.flex_basis flex_item.style))
+  then
     (* A growing item of a column contributes its hypothetical main size: its
        flex base size clamped by its minimum, automatic or not, and maximum,
        as in Chromium; its preferred height alone does not count *)

@@ -11306,6 +11306,29 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
+      case "column_percentage_basis_in_auto_height_is_content"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_direction:Column ())
+                [
+                  node
+                    (Style.make ~box_sizing ~flex_basis:(Dimension.percent 0.5)
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:
+          [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "column_relative_all_sides"
         (fun box_sizing ->
           node
