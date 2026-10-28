@@ -161,6 +161,12 @@ module Min : sig
   val uses_percentage : t -> bool
   (** [uses_percentage t] returns [true] if the min component depends on parent
       size. *)
+
+  val behaves_as_auto : t -> float option -> bool
+  (** [behaves_as_auto t parent_size] returns [true] if the min component is
+      [auto], or depends on [parent_size] and [parent_size] is [None]: a
+      percentage min track sizing function against an indefinite container
+      behaves as [auto]. *)
 end
 
 (** {1 Maximum Sizing Function Helpers} *)

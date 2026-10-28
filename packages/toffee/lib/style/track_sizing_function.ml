@@ -103,6 +103,9 @@ module Min = struct
     Compact_length.resolved_percentage_size t.min parent_size
 
   let uses_percentage t = Compact_length.uses_percentage t.min
+
+  let behaves_as_auto t parent_size =
+    is_auto t || (Option.is_none parent_size && uses_percentage t)
 end
 
 (* Max track sizing function helpers *)

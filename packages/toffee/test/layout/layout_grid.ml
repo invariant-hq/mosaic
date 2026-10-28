@@ -13464,6 +13464,60 @@ let () =
             [| 10.; 30.; 20.; 60. |];
             [| 30.; 30.; 30.; 60. |];
           ];
+      case "percentage_min_track_in_indefinite_container_behaves_as_auto"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.length 20.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing
+                   ~grid_template_columns:
+                     [
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.percent 0.5);
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.minmax
+                            ~min:Compact_length.min_content
+                            ~max:Compact_length.max_content);
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.length 25.);
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.fr 1.);
+                     ]
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing ~overflow:{ x = Hidden; y = Hidden }
+                       ~scrollbar_width:15. ())
+                    [
+                      node
+                        (Style.make ~box_sizing
+                           ~size:
+                             {
+                               width = Dimension.length 20.;
+                               height = Dimension.auto;
+                             }
+                           ())
+                        [];
+                    ];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 25.; 0. |];
+            [| 0.; 0.; 13.; 0.; 0.; 0. |];
+            [| 0.; 0.; 13.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 25.; 0. |];
+            [| 0.; 0.; 13.; 0.; 0.; 0. |];
+            [| 0.; 0.; 13.; 0. |];
+          ];
       case "percentage_row_in_auto_height_container"
         (fun box_sizing ->
           node

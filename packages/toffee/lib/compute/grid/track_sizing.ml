@@ -374,8 +374,9 @@ module Intrinsic_size_measurer = struct
               let spans_auto_min_track =
                 Array.exists
                   (fun track ->
-                    Grid.Track_sizing_function.Min.is_auto
-                      track.Grid_track.track_sizing_function)
+                    Grid.Track_sizing_function.Min.behaves_as_auto
+                      track.Grid_track.track_sizing_function
+                      (Size.get measurer.axis measurer.inner_node_size))
                   item_axis_tracks
               in
 
@@ -1153,18 +1154,6 @@ let resolve_intrinsic_track_sizes (type t)
                        (module Tree)
                        item_sizer item)
                 else if
-                  Style.Grid.Track_sizing_function.Min.uses_percentage
-                    track.Grid_track.track_sizing_function
-                  && Option.is_none axis_inner_node_size
-                then
-                  (* If the container size is indefinite and has not yet been
-                     resolved then percentage sized tracks should be treated as
-                     min-content *)
-                  max track.Grid_track.base_size
-                    (Intrinsic_size_measurer.min_content_contribution
-                       (module Tree)
-                       item_sizer item)
-                else if
                   Style.Grid.Track_sizing_function.Min.is_max_content
                     track.Grid_track.track_sizing_function
                 then
@@ -1173,8 +1162,10 @@ let resolve_intrinsic_track_sizes (type t)
                        (module Tree)
                        item_sizer item)
                 else if
-                  Style.Grid.Track_sizing_function.Min.is_auto
-                    track.Grid_track.track_sizing_function
+                  (* A percentage track in a container whose size is
+                     indefinite and not yet resolved behaves as auto *)
+                  Style.Grid.Track_sizing_function.Min.behaves_as_auto
+                    track.Grid_track.track_sizing_function axis_inner_node_size
                 then
                   let space =
                     match axis_available_grid_space with
