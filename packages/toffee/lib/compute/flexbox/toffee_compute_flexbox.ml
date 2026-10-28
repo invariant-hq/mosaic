@@ -1299,18 +1299,19 @@ let content_contribution (type t)
     | true, false -> flex_basis_max
     | true, true -> Float.infinity
   in
-  (* The style's minimum and maximum clamp a contribution *)
-  let clamp size =
-    match (Float.is_nan style_min, Float.is_nan style_max) with
-    | false, false -> Float.max style_min (Float.min size style_max)
-    | false, true -> Float.max style_min size
-    | true, false -> Float.min size style_max
-    | true, true -> size
-  in
-
   let margin_sum =
     if is_row then flex_item.margin.left +. flex_item.margin.right
     else flex_item.margin.top +. flex_item.margin.bottom
+  in
+  (* The style's minimum and maximum clamp the item's size, which its
+     margins then add to; one function, so the result is boxed once *)
+  let contribution size =
+    (match (Float.is_nan style_min, Float.is_nan style_max) with
+      | false, false -> Float.max style_min (Float.min size style_max)
+      | false, true -> Float.max style_min size
+      | true, false -> Float.min size style_max
+      | true, true -> size)
+    +. margin_sum
   in
 
   if
@@ -1324,7 +1325,7 @@ let content_contribution (type t)
   else if max_main_size <= min_main_size then min_main_size +. margin_sum
   else if is_scroll_container flex_item then
     (* Scroll containers use their flex basis but still honour min/max *)
-    clamp flex_basis +. margin_sum
+    contribution flex_basis
   else if not (Float.is_nan style_preferred) then
     (* A definite preferred main size is the item's content contribution (an
        inherent-size measure would return it), floored by its main-axis
@@ -1333,9 +1334,8 @@ let content_contribution (type t)
     let content_main_size =
       Float.max style_preferred (main_padding_border constants flex_item)
     in
-    (if is_row then clamp content_main_size
-     else clamp (Float.max content_main_size flex_basis))
-    +. margin_sum
+    if is_row then contribution content_main_size
+    else contribution (Float.max content_main_size flex_basis)
   else
     (* Need to compute content size *)
     let cross_axis_parent_size =
@@ -1435,9 +1435,8 @@ let content_contribution (type t)
        adds them once, to the sum of its items. The minimum and maximum clamp
        the item's size, which its margins then add to, as in Chromium (Taffy
        clamps the margin box) *)
-    (if is_row then clamp content_main_size
-     else clamp (Float.max content_main_size flex_basis))
-    +. margin_sum
+    if is_row then contribution content_main_size
+    else contribution (Float.max content_main_size flex_basis)
 
 let determine_container_main_size (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
