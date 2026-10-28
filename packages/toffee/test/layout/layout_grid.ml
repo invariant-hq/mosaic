@@ -7629,6 +7629,40 @@ let () =
             [| 40.; 40.; 40.; 40. |];
             [| 80.; 40.; 40.; 40. |];
           ];
+      case "item_percentage_height_resolves_against_grid_area"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.percent 0.25;
+                         }
+                       ~margin:
+                         {
+                           left = Length_percentage_auto.length 0.;
+                           right = Length_percentage_auto.length 0.;
+                           top = Length_percentage_auto.length 0.;
+                           bottom = Length_percentage_auto.length 50.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 0.; 50. |]; [| 0.; 0.; 0.; 50. |]; [| 0.; 0.; 0.; 13. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 0.; 50. |]; [| 0.; 0.; 0.; 50. |]; [| 0.; 0.; 0.; 13. |];
+          ];
       case "justify_content_center"
         (fun box_sizing ->
           node

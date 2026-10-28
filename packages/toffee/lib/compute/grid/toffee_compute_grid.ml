@@ -441,130 +441,103 @@ let compute_grid_layout (type t)
           }
       in
 
-      (* If only the container's size has been requested *)
-      if run_mode = Run_mode.Compute_size then
-        Layout_output.from_outer_size container_border_box
-      else (
-        (* 7. Resolve percentage track base sizes *)
-        (* In the case of an indefinitely sized container these resolve to zero during the "Initialise Tracks" step
+      (* Whether an item's min-content contribution changed when the tracks
+         of the other axis were sized, which re-runs the sizing of its axis
+         and sizes a container sized by its content again *)
+      let column_contribution_changed = ref false
+      and row_contribution_changed = ref false in
+      (* 7. Resolve percentage track base sizes *)
+      (* In the case of an indefinitely sized container these resolve to zero during the "Initialise Tracks" step
            and therefore need to be re-resolved here based on the content-sized content box of the container *)
-        if not (Available_space.is_definite available_grid_space.width) then
-          Array.iter
-            (fun column ->
-              let min =
-                Grid.Track_sizing_function.Min.resolved_percentage_size
-                  column.Grid_track.track_sizing_function
-                  container_content_box.width
-              in
-              let max =
-                Grid.Track_sizing_function.Max.resolved_percentage_size
-                  column.Grid_track.track_sizing_function
-                  container_content_box.width
-              in
-              column.Grid_track.base_size <-
-                (match (min, max) with
-                | Some min_v, Some max_v ->
-                    Float.max min_v
-                      (Float.min max_v column.Grid_track.base_size)
-                | Some min_v, None ->
-                    Float.max min_v column.Grid_track.base_size
-                | None, Some max_v ->
-                    Float.min max_v column.Grid_track.base_size
-                | None, None -> column.Grid_track.base_size))
-            columns;
+      if not (Available_space.is_definite available_grid_space.width) then
+        Array.iter
+          (fun column ->
+            let min =
+              Grid.Track_sizing_function.Min.resolved_percentage_size
+                column.Grid_track.track_sizing_function
+                container_content_box.width
+            in
+            let max =
+              Grid.Track_sizing_function.Max.resolved_percentage_size
+                column.Grid_track.track_sizing_function
+                container_content_box.width
+            in
+            column.Grid_track.base_size <-
+              (match (min, max) with
+              | Some min_v, Some max_v ->
+                  Float.max min_v (Float.min max_v column.Grid_track.base_size)
+              | Some min_v, None -> Float.max min_v column.Grid_track.base_size
+              | None, Some max_v -> Float.min max_v column.Grid_track.base_size
+              | None, None -> column.Grid_track.base_size))
+          columns;
 
-        if not (Available_space.is_definite available_grid_space.height) then
-          Array.iter
-            (fun row ->
-              let min =
-                Grid.Track_sizing_function.Min.resolved_percentage_size
-                  row.Grid_track.track_sizing_function
-                  container_content_box.height
-              in
-              let max =
-                Grid.Track_sizing_function.Max.resolved_percentage_size
-                  row.Grid_track.track_sizing_function
-                  container_content_box.height
-              in
-              row.Grid_track.base_size <-
-                (match (min, max) with
-                | Some min_v, Some max_v ->
-                    Float.max min_v (Float.min max_v row.Grid_track.base_size)
-                | Some min_v, None -> Float.max min_v row.Grid_track.base_size
-                | None, Some max_v -> Float.min max_v row.Grid_track.base_size
-                | None, None -> row.Grid_track.base_size))
-            rows;
+      if not (Available_space.is_definite available_grid_space.height) then
+        Array.iter
+          (fun row ->
+            let min =
+              Grid.Track_sizing_function.Min.resolved_percentage_size
+                row.Grid_track.track_sizing_function
+                container_content_box.height
+            in
+            let max =
+              Grid.Track_sizing_function.Max.resolved_percentage_size
+                row.Grid_track.track_sizing_function
+                container_content_box.height
+            in
+            row.Grid_track.base_size <-
+              (match (min, max) with
+              | Some min_v, Some max_v ->
+                  Float.max min_v (Float.min max_v row.Grid_track.base_size)
+              | Some min_v, None -> Float.max min_v row.Grid_track.base_size
+              | None, Some max_v -> Float.min max_v row.Grid_track.base_size
+              | None, None -> row.Grid_track.base_size))
+          rows;
 
-        (* Column sizing must be re-run (once) if: - The grid container's width
+      (* Column sizing must be re-run (once) if: - The grid container's width
            was initially indefinite and there are any columns with percentage
            track sizing functions - Any grid item crossing an intrinsically
            sized track's min content contribution width has changed TODO: Only
            rerun sizing for tracks that actually require it rather than for all
            tracks if any need it. *)
-        let rerun_column_sizing =
-          let has_percentage_column =
-            Array.exists (fun track -> Grid_track.uses_percentage track) columns
-          in
-          let parent_width_indefinite =
-            not (Available_space.is_definite available_space.width)
-          in
-          let initial = parent_width_indefinite && has_percentage_column in
-          if initial then true
-          else
-            (* Check if any intrinsic column item min-content contribution
-               changed *)
-            let changed = ref false in
-            let len = Array.length items in
-            let i = ref 0 in
-            while (not !changed) && !i < len do
-              let item = items.(!i) in
-              if item.Grid_item.crosses_intrinsic_column then (
-                let available_space =
-                  Grid_item.available_space item Abstract_axis.Inline rows
-                    inner_node_size.height (fun track _ ->
-                      Some track.Grid_track.base_size)
-                in
-                let new_min_content_contribution =
-                  Grid_item.min_content_contribution
-                    (module Tree)
-                    item Abstract_axis.Inline tree available_space
-                    inner_node_size
-                in
-                let has_changed =
-                  Some new_min_content_contribution
-                  <> item.Grid_item.min_content_contribution_cache.width
-                in
-                item.Grid_item.available_space_cache <- Some available_space;
-                item.Grid_item.min_content_contribution_cache <-
-                  {
-                    item.Grid_item.min_content_contribution_cache with
-                    width = Some new_min_content_contribution;
-                  };
-                item.Grid_item.max_content_contribution_cache <-
-                  {
-                    item.Grid_item.max_content_contribution_cache with
-                    width = None;
-                  };
-                item.Grid_item.minimum_contribution_cache <-
-                  {
-                    item.Grid_item.minimum_contribution_cache with
-                    width = None;
-                  };
-                if has_changed then changed := true);
-              incr i
-            done;
-            !changed
+      let rerun_column_sizing =
+        let has_percentage_column =
+          Array.exists (fun track -> Grid_track.uses_percentage track) columns
         in
-        if not rerun_column_sizing then ()
+        let parent_width_indefinite =
+          not (Available_space.is_definite available_space.width)
+        in
+        let initial = parent_width_indefinite && has_percentage_column in
+        if initial then true
         else
-          (* Clear intrinsic width caches *)
-          Array.iter
-            (fun item ->
-              item.Grid_item.available_space_cache <- None;
+          (* Check if any intrinsic column item min-content contribution
+               changed *)
+          let changed = ref false in
+          let len = Array.length items in
+          let i = ref 0 in
+          while (not !changed) && !i < len do
+            let item = items.(!i) in
+            if item.Grid_item.crosses_intrinsic_column then (
+              let grid_area_size =
+                Grid_item.grid_area_size item Abstract_axis.Inline columns rows
+                  inner_node_size
+                  (fun track _ -> Some track.Grid_track.base_size)
+                  (Tree.resolve_calc_value tree)
+              in
+              let available_space = { grid_area_size with width = None } in
+              let new_min_content_contribution =
+                Grid_item.min_content_contribution
+                  (module Tree)
+                  item Abstract_axis.Inline tree grid_area_size available_space
+              in
+              let has_changed =
+                Some new_min_content_contribution
+                <> item.Grid_item.min_content_contribution_cache.width
+              in
+              item.Grid_item.available_space_cache <- Some grid_area_size;
               item.Grid_item.min_content_contribution_cache <-
                 {
                   item.Grid_item.min_content_contribution_cache with
-                  width = None;
+                  width = Some new_min_content_contribution;
                 };
               item.Grid_item.max_content_contribution_cache <-
                 {
@@ -572,89 +545,88 @@ let compute_grid_layout (type t)
                   width = None;
                 };
               item.Grid_item.minimum_contribution_cache <-
-                { item.Grid_item.minimum_contribution_cache with width = None })
-            items;
+                { item.Grid_item.minimum_contribution_cache with width = None };
+              if has_changed then changed := true);
+            incr i
+          done;
+          column_contribution_changed := !changed;
+          !changed
+      in
+      if not rerun_column_sizing then ()
+      else
+        (* Clear intrinsic width caches *)
+        Array.iter
+          (fun item ->
+            item.Grid_item.available_space_cache <- None;
+            item.Grid_item.min_content_contribution_cache <-
+              {
+                item.Grid_item.min_content_contribution_cache with
+                width = None;
+              };
+            item.Grid_item.max_content_contribution_cache <-
+              {
+                item.Grid_item.max_content_contribution_cache with
+                width = None;
+              };
+            item.Grid_item.minimum_contribution_cache <-
+              { item.Grid_item.minimum_contribution_cache with width = None })
+          items;
 
-        if rerun_column_sizing then (
-          (* Re-run track sizing algorithm for Inline axis *)
-          Track_sizing.track_sizing_algorithm
-            (module Tree)
-            tree Abstract_axis.Inline
-            (Size.get Abstract_axis.Inline inner_min_size)
-            (Size.get Abstract_axis.Inline inner_max_size)
-            justify_content align_content available_grid_space inner_node_size
-            columns rows items
-            (fun track _ _ -> Some track.Grid_track.base_size)
-            has_baseline_aligned_item;
+      if rerun_column_sizing then (
+        (* Re-run track sizing algorithm for Inline axis *)
+        Track_sizing.track_sizing_algorithm
+          (module Tree)
+          tree Abstract_axis.Inline
+          (Size.get Abstract_axis.Inline inner_min_size)
+          (Size.get Abstract_axis.Inline inner_max_size)
+          justify_content align_content available_grid_space inner_node_size
+          columns rows items
+          (fun track _ _ -> Some track.Grid_track.base_size)
+          has_baseline_aligned_item;
 
-          (* Row sizing must be re-run (once) if: - The grid container's height
+        (* Row sizing must be re-run (once) if: - The grid container's height
              was initially indefinite and there are any rows with percentage
              track sizing functions - Any grid item crossing an intrinsically
              sized track's min content contribution height has changed TODO:
              Only rerun sizing for tracks that actually require it rather than
              for all tracks if any need it. *)
-          let rerun_row_sizing =
-            let has_percentage_row =
-              Array.exists (fun track -> Grid_track.uses_percentage track) rows
-            in
-            let parent_height_indefinite =
-              not (Available_space.is_definite available_space.height)
-            in
-            let initial = parent_height_indefinite && has_percentage_row in
-            if initial then true
-            else
-              let changed = ref false in
-              let len = Array.length items in
-              let i = ref 0 in
-              while (not !changed) && !i < len do
-                let item = items.(!i) in
-                if item.Grid_item.crosses_intrinsic_row then (
-                  let available_space =
-                    Grid_item.available_space item Abstract_axis.Block columns
-                      inner_node_size.width (fun track _ ->
-                        Some track.Grid_track.base_size)
-                  in
-                  let new_min_content_contribution =
-                    Grid_item.min_content_contribution
-                      (module Tree)
-                      item Abstract_axis.Block tree available_space
-                      inner_node_size
-                  in
-                  let has_changed =
-                    Some new_min_content_contribution
-                    <> item.Grid_item.min_content_contribution_cache.height
-                  in
-                  item.Grid_item.available_space_cache <- Some available_space;
-                  item.Grid_item.min_content_contribution_cache <-
-                    {
-                      item.Grid_item.min_content_contribution_cache with
-                      height = Some new_min_content_contribution;
-                    };
-                  item.Grid_item.max_content_contribution_cache <-
-                    {
-                      item.Grid_item.max_content_contribution_cache with
-                      height = None;
-                    };
-                  item.Grid_item.minimum_contribution_cache <-
-                    {
-                      item.Grid_item.minimum_contribution_cache with
-                      height = None;
-                    };
-                  if has_changed then changed := true);
-                incr i
-              done;
-              !changed
+        let rerun_row_sizing =
+          let has_percentage_row =
+            Array.exists (fun track -> Grid_track.uses_percentage track) rows
           in
-          if not rerun_row_sizing then ()
-          else (
-            (* Clear intrinsic height caches *)
-            Array.iter
-              (fun item ->
-                item.Grid_item.available_space_cache <- None;
+          let parent_height_indefinite =
+            not (Available_space.is_definite available_space.height)
+          in
+          let initial = parent_height_indefinite && has_percentage_row in
+          if initial then true
+          else
+            let changed = ref false in
+            let len = Array.length items in
+            let i = ref 0 in
+            while (not !changed) && !i < len do
+              let item = items.(!i) in
+              if item.Grid_item.crosses_intrinsic_row then (
+                let grid_area_size =
+                  Grid_item.grid_area_size item Abstract_axis.Block rows columns
+                    inner_node_size
+                    (fun track _ -> Some track.Grid_track.base_size)
+                    (Tree.resolve_calc_value tree)
+                in
+                let available_space = { grid_area_size with height = None } in
+                let new_min_content_contribution =
+                  Grid_item.min_content_contribution
+                    (module Tree)
+                    item Abstract_axis.Block tree grid_area_size available_space
+                in
+                let has_changed =
+                  Some new_min_content_contribution
+                  <> item.Grid_item.min_content_contribution_cache.height
+                in
+                item.Grid_item.available_space_cache <- Some grid_area_size;
                 item.Grid_item.min_content_contribution_cache <-
                   {
                     item.Grid_item.min_content_contribution_cache with
-                    height = None;
+                    height = Some new_min_content_contribution;
                   };
                 item.Grid_item.max_content_contribution_cache <-
                   {
@@ -665,21 +637,105 @@ let compute_grid_layout (type t)
                   {
                     item.Grid_item.minimum_contribution_cache with
                     height = None;
-                  })
-              items;
+                  };
+                if has_changed then changed := true);
+              incr i
+            done;
+            row_contribution_changed := !changed;
+            !changed
+        in
+        if not rerun_row_sizing then ()
+        else (
+          (* Clear intrinsic height caches *)
+          Array.iter
+            (fun item ->
+              item.Grid_item.available_space_cache <- None;
+              item.Grid_item.min_content_contribution_cache <-
+                {
+                  item.Grid_item.min_content_contribution_cache with
+                  height = None;
+                };
+              item.Grid_item.max_content_contribution_cache <-
+                {
+                  item.Grid_item.max_content_contribution_cache with
+                  height = None;
+                };
+              item.Grid_item.minimum_contribution_cache <-
+                { item.Grid_item.minimum_contribution_cache with height = None })
+            items;
 
-            (* Re-run track sizing algorithm for Block axis *)
-            Track_sizing.track_sizing_algorithm
-              (module Tree)
-              tree Abstract_axis.Block
-              (Size.get Abstract_axis.Block inner_min_size)
-              (Size.get Abstract_axis.Block inner_max_size)
-              align_content justify_content available_grid_space inner_node_size
-              rows columns items
-              (fun track _ _ -> Some track.Grid_track.base_size)
-              false)
-          (* TODO: Support baseline alignment in vertical axis *));
+          (* Re-run track sizing algorithm for Block axis *)
+          Track_sizing.track_sizing_algorithm
+            (module Tree)
+            tree Abstract_axis.Block
+            (Size.get Abstract_axis.Block inner_min_size)
+            (Size.get Abstract_axis.Block inner_max_size)
+            align_content justify_content available_grid_space inner_node_size
+            rows columns items
+            (fun track _ _ -> Some track.Grid_track.base_size)
+            false)
+        (* TODO: Support baseline alignment in vertical axis *));
 
+      (* A container sized by its content takes the tracks' new sizes
+           where an item's contribution changed them (without percentage
+           tracks, which its old size resolved) *)
+      let resize changed tracks style_size min max padding_border inset_sum size
+          =
+        if
+          !changed
+          && (not (Array.exists Grid_track.uses_percentage tracks))
+          && Option.is_none style_size
+        then
+          let sum =
+            Array.fold_left
+              (fun acc track -> acc +. track.Grid_track.base_size)
+              0.0 tracks
+            +. inset_sum
+          in
+          let sum =
+            match max with Some max -> Float.min max sum | None -> sum
+          in
+          let sum =
+            match min with Some min -> Float.max min sum | None -> sum
+          in
+          Float.max sum padding_border
+        else size
+      in
+      let container_border_box =
+        Sizef.
+          {
+            width =
+              resize column_contribution_changed columns
+                (Size.get Abstract_axis.Inline resolved_style_size)
+                min_size.width max_size.width padding_border_size.width
+                (Rectf.horizontal_axis_sum content_box_inset)
+                container_border_box.width;
+            height =
+              resize row_contribution_changed rows
+                (Size.get Abstract_axis.Block resolved_style_size)
+                min_size.height max_size.height padding_border_size.height
+                (Rectf.vertical_axis_sum content_box_inset)
+                container_border_box.height;
+          }
+      in
+      let container_content_box =
+        Sizef.
+          {
+            width =
+              Float.max 0.0
+                (container_border_box.width
+                -. Rectf.horizontal_axis_sum content_box_inset);
+            height =
+              Float.max 0.0
+                (container_border_box.height
+                -. Rectf.vertical_axis_sum content_box_inset);
+          }
+      in
+
+      (* If only the container's size has been requested *)
+      if run_mode = Run_mode.Compute_size then
+        Layout_output.from_outer_size container_border_box
+      else (
         (* 8. Track Alignment *)
 
         (* Align columns *)

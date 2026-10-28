@@ -33,6 +33,7 @@ type intrinsic_contribution_type =
 module Intrinsic_size_measurer = struct
   type 'tree t = {
     tree : 'tree; (* The layout tree *)
+    axis_tracks : Grid_track.t array; (* The tracks being sized *)
     other_axis_tracks : Grid_track.t array;
         (* The tracks in the opposite axis to the one we are currently sizing *)
     get_track_size_estimate :
@@ -44,57 +45,35 @@ module Intrinsic_size_measurer = struct
   (* Struct that captures variables used to compute intrinsic sizes of
      children *)
 
-  (* Compute the available_space to be passed to the child sizing functions *)
-  let available_space (type tree) (measurer : tree t) (item : Grid_item.t) :
-      float option size =
-    (* These are estimates based on either the max track sizing function or the
-       provisional base size in the opposite axis to the one currently being
-       sized. https://www.w3.org/TR/css-grid-1/#algo-overview *)
-    let item_other_axis_size =
-      let track_range =
-        Grid_item.track_range_excluding_lines item
-          (Abstract_axis.other measurer.axis)
-      in
-      let start_idx = fst track_range in
-      let end_idx = snd track_range in
-      let tracks =
-        Array.sub measurer.other_axis_tracks start_idx (end_idx - start_idx)
-      in
+  (* The size of the item's grid area, against which its percentages resolve
+     while the tracks are sized *)
+  let grid_area_size (type tree)
+      (module Tree : LAYOUT_PARTIAL_TREE with type t = tree) (measurer : tree t)
+      (item : Grid_item.t) : float option size =
+    (* Other-axis tracks are estimates: their maximum sizing function or their
+       provisional base size. https://www.w3.org/TR/css-grid-1/#algo-overview *)
+    Grid_item.grid_area_size item measurer.axis measurer.axis_tracks
+      measurer.other_axis_tracks measurer.inner_node_size
+      (fun track size ->
+        measurer.get_track_size_estimate track size measurer.tree)
+      (Tree.resolve_calc_value measurer.tree)
 
-      Array.fold_left
-        (fun acc track ->
-          match acc with
-          | None -> None
-          | Some sum -> (
-              match
-                measurer.get_track_size_estimate track
-                  (Size.get
-                     (Abstract_axis.other measurer.axis)
-                     measurer.inner_node_size)
-                  measurer.tree
-              with
-              | None -> None
-              | Some size ->
-                  Some
-                    (sum +. size
-                   +. track.Grid_track.content_alignment_adjustment)))
-        (Some 0.0) tracks
-    in
-
-    let size = Size.none in
-    match measurer.axis with
-    | Abstract_axis.Inline -> { size with height = item_other_axis_size }
-    | Abstract_axis.Block -> { size with width = item_other_axis_size }
+  (* The space the item is measured in: its grid area, unknown in the axis
+     being sized *)
+  let without_axis axis (size : float option size) =
+    match axis with
+    | Abstract_axis.Inline -> { size with width = None }
+    | Abstract_axis.Block -> { size with height = None }
 
   (* Compute the item's resolved margins for size contributions *)
   let margins_axis_sums_with_baseline_shims (type tree)
       (module Tree : LAYOUT_PARTIAL_TREE with type t = tree) (measurer : tree t)
-      (item : Grid_item.t) : Sizef.t =
-    (* Horizontal percentage margins always resolve to zero if the container
-       size is indefinite as otherwise this would introduce a cyclic
-       dependency. *)
+      (item : Grid_item.t) inner_node_width : Sizef.t =
+    (* Vertical percentage margins resolve against [inner_node_width], the
+       width of the item's grid area where it is known; horizontal ones
+       resolve to zero, as they would otherwise depend on the size being
+       found. *)
     let calc = Tree.resolve_calc_value measurer.tree in
-    let inner_node_width = measurer.inner_node_size.width in
 
     let margin_rect =
       Rectf.
@@ -122,9 +101,12 @@ module Intrinsic_size_measurer = struct
   let min_content_contribution (type tree)
       (module Tree : LAYOUT_PARTIAL_TREE with type t = tree) (measurer : tree t)
       (item : Grid_item.t) : float =
-    let available_space = available_space measurer item in
+    let grid_area_size = grid_area_size (module Tree) measurer item in
+    let available_space = without_axis measurer.axis grid_area_size in
     let margin_axis_sums =
-      margins_axis_sums_with_baseline_shims (module Tree) measurer item
+      margins_axis_sums_with_baseline_shims
+        (module Tree)
+        measurer item available_space.width
     in
 
     (* Check cache first *)
@@ -136,7 +118,7 @@ module Intrinsic_size_measurer = struct
         let known_dimensions =
           Grid_item.known_dimensions
             (module Tree)
-            item measurer.tree measurer.inner_node_size available_space
+            item measurer.tree grid_area_size
         in
 
         (* Measure the child *)
@@ -148,7 +130,7 @@ module Intrinsic_size_measurer = struct
                  (match measurer.axis with
                  | Abstract_axis.Inline -> Requested_axis.Horizontal
                  | Abstract_axis.Block -> Requested_axis.Vertical)
-               ~known_dimensions ~parent_size:measurer.inner_node_size
+               ~known_dimensions ~parent_size:grid_area_size
                ~available_space:
                  (Size.map
                     (fun opt ->
@@ -176,9 +158,12 @@ module Intrinsic_size_measurer = struct
   let max_content_contribution (type tree)
       (module Tree : LAYOUT_PARTIAL_TREE with type t = tree) (measurer : tree t)
       (item : Grid_item.t) : float =
-    let available_space = available_space measurer item in
+    let grid_area_size = grid_area_size (module Tree) measurer item in
+    let available_space = without_axis measurer.axis grid_area_size in
     let margin_axis_sums =
-      margins_axis_sums_with_baseline_shims (module Tree) measurer item
+      margins_axis_sums_with_baseline_shims
+        (module Tree)
+        measurer item available_space.width
     in
 
     (* Check cache first *)
@@ -190,7 +175,7 @@ module Intrinsic_size_measurer = struct
         let known_dimensions =
           Grid_item.known_dimensions
             (module Tree)
-            item measurer.tree measurer.inner_node_size available_space
+            item measurer.tree grid_area_size
         in
 
         (* Measure the child *)
@@ -202,7 +187,7 @@ module Intrinsic_size_measurer = struct
                  (match measurer.axis with
                  | Abstract_axis.Inline -> Requested_axis.Horizontal
                  | Abstract_axis.Block -> Requested_axis.Vertical)
-               ~known_dimensions ~parent_size:measurer.inner_node_size
+               ~known_dimensions ~parent_size:grid_area_size
                ~available_space:
                  (Size.map
                     (fun opt ->
@@ -231,10 +216,11 @@ module Intrinsic_size_measurer = struct
       (module Tree : LAYOUT_PARTIAL_TREE with type t = tree) (measurer : tree t)
       (item : Grid_item.t) (axis_tracks : Grid_track.t array) : float =
     let calc = Tree.resolve_calc_value measurer.tree in
-    let known_dimensions = available_space measurer item in
-    let inner_node_size = measurer.inner_node_size in
+    let grid_area_size = grid_area_size (module Tree) measurer item in
     let margin_axis_sums =
-      margins_axis_sums_with_baseline_shims (module Tree) measurer item
+      margins_axis_sums_with_baseline_shims
+        (module Tree)
+        measurer item (without_axis measurer.axis grid_area_size).width
     in
 
     (* Check cache first *)
@@ -244,11 +230,11 @@ module Intrinsic_size_measurer = struct
     | None ->
         (* Resolve padding and border *)
         let padding =
-          Length_percentage.resolve_rect_or_zero inner_node_size.width calc
+          Length_percentage.resolve_rect_or_zero grid_area_size.width calc
             item.padding
         in
         let border =
-          Length_percentage.resolve_rect_or_zero inner_node_size.width calc
+          Length_percentage.resolve_rect_or_zero grid_area_size.width calc
             item.border
         in
         let padding_border_size = Rectf.sum_axes (Rectf.add padding border) in
@@ -270,7 +256,7 @@ module Intrinsic_size_measurer = struct
           (* Try to get size from explicit size *)
           ( ( ( Dimension.maybe_resolve
                   (Size.get measurer.axis item.size)
-                  (Size.get measurer.axis inner_node_size)
+                  (Size.get measurer.axis grid_area_size)
                   calc
               |> fun s_opt ->
                 match s_opt with
@@ -295,7 +281,7 @@ module Intrinsic_size_measurer = struct
                   (* Try min_size if size is not available *)
                   Dimension.maybe_resolve
                     (Size.get measurer.axis item.min_size)
-                    (Size.get measurer.axis inner_node_size)
+                    (Size.get measurer.axis grid_area_size)
                     calc
                   |> fun s_opt ->
                   match s_opt with
@@ -370,11 +356,9 @@ module Intrinsic_size_measurer = struct
                 let minimum_contribution =
                   (* Pass known_dimensions to min_content_contribution_cached in
                      grid_item *)
-                  let available_space_for_contribution = known_dimensions in
                   Grid_item.min_content_contribution_cached item measurer.axis
                     (module Tree)
-                    measurer.tree available_space_for_contribution
-                    inner_node_size
+                    measurer.tree grid_area_size grid_area_size
                 in
 
                 (* If the item is a compressible replaced element, and has a
@@ -406,7 +390,7 @@ module Intrinsic_size_measurer = struct
            size in the same way as a fixed max track sizing function. *)
         let limit =
           Grid_item.spanned_fixed_track_limit item measurer.axis axis_tracks
-            (Size.get measurer.axis inner_node_size)
+            (Size.get measurer.axis measurer.inner_node_size)
             calc
         in
         let final_size =
@@ -1080,6 +1064,7 @@ let resolve_intrinsic_track_sizes (type t)
     Intrinsic_size_measurer.
       {
         tree;
+        axis_tracks;
         other_axis_tracks;
         get_track_size_estimate;
         axis;

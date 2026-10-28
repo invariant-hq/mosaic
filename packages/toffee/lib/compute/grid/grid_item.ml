@@ -208,13 +208,12 @@ let spanned_track_limit t axis axis_tracks axis_parent_size resolve_calc_value =
    in some cases *)
 let known_dimensions (type tree)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = tree) (t : t)
-    (tree : tree) (inner_node_size : float option size)
-    (grid_area_size : float option size) : float option size =
+    (tree : tree) (grid_area_size : float option size) : float option size =
   let calc = Tree.resolve_calc_value tree in
 
-  (* Compute margins *)
+  (* Compute margins: percentages of the grid area's width *)
   let margins =
-    let inner_node_width = inner_node_size.width in
+    let inner_node_width = grid_area_size.width in
     let margin_rect =
       Rectf.
         {
@@ -353,12 +352,10 @@ let spanned_fixed_track_limit t axis axis_tracks axis_parent_size
 (* Compute the item's min content contribution from the provided parameters *)
 let min_content_contribution (type tree)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = tree) t axis tree
-    available_space inner_node_size =
-  let known_dimensions =
-    known_dimensions (module Tree) t tree inner_node_size available_space
-  in
+    grid_area_size available_space =
+  let known_dimensions = known_dimensions (module Tree) t tree grid_area_size in
   Tree.compute_child_layout tree t.node
-    (Layout_input.make ~known_dimensions ~parent_size:inner_node_size
+    (Layout_input.make ~known_dimensions ~parent_size:grid_area_size
        ~available_space:
          (Size.map
             (fun opt ->
@@ -382,14 +379,14 @@ let min_content_contribution (type tree)
    using the provided parameters *)
 let min_content_contribution_cached t axis (type tree)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = tree) tree
-    available_space inner_node_size =
+    grid_area_size available_space =
   match Size.get axis t.min_content_contribution_cache with
   | Some cached_value -> cached_value
   | None ->
       let contribution =
         min_content_contribution
           (module Tree)
-          t axis tree available_space inner_node_size
+          t axis tree grid_area_size available_space
       in
       t.min_content_contribution_cache <-
         Size.set axis (Some contribution) t.min_content_contribution_cache;
@@ -398,12 +395,10 @@ let min_content_contribution_cached t axis (type tree)
 (* Compute the item's max content contribution from the provided parameters *)
 let max_content_contribution (type tree)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = tree) t axis tree
-    available_space inner_node_size =
-  let known_dimensions =
-    known_dimensions (module Tree) t tree inner_node_size available_space
-  in
+    grid_area_size available_space =
+  let known_dimensions = known_dimensions (module Tree) t tree grid_area_size in
   Tree.compute_child_layout tree t.node
-    (Layout_input.make ~known_dimensions ~parent_size:inner_node_size
+    (Layout_input.make ~known_dimensions ~parent_size:grid_area_size
        ~available_space:
          (Size.map
             (fun opt ->
@@ -427,43 +422,66 @@ let max_content_contribution (type tree)
    using the provided parameters *)
 let max_content_contribution_cached t axis (type tree)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = tree) tree
-    available_space inner_node_size =
+    grid_area_size available_space =
   match Size.get axis t.max_content_contribution_cache with
   | Some cached_value -> cached_value
   | None ->
       let contribution =
         max_content_contribution
           (module Tree)
-          t axis tree available_space inner_node_size
+          t axis tree grid_area_size available_space
       in
       t.max_content_contribution_cache <-
         Size.set axis (Some contribution) t.max_content_contribution_cache;
       contribution
 
-(* Compute the available space for an item in a given axis based on the tracks
-   it spans *)
-let available_space t axis other_axis_tracks other_axis_available_space
-    get_track_size_estimate =
+(* The size of the item's grid area: in [axis], the sum of the spanned tracks
+   where each has a fixed size (its minimum and maximum the same definite
+   value), else unknown; in the other axis, the sum of the spanned tracks'
+   estimated sizes. During track sizing, an item's percentages resolve against
+   its grid area, not the grid container (CSS Grid 6.5, 11.1). *)
+let grid_area_size t axis axis_tracks other_axis_tracks
+    (available : float option size) get_track_size_estimate calc =
   let other_axis = Abstract_axis.other axis in
+  let axis_available = Size.get axis available in
+  let start_idx, end_idx = track_range_excluding_lines t axis in
+  let axis_size = ref (Some 0.0) in
+  for i = start_idx to end_idx - 1 do
+    match !axis_size with
+    | None -> ()
+    | Some sum -> (
+        let track = axis_tracks.(i) in
+        let fn = track.Grid_track.track_sizing_function in
+        axis_size :=
+          match
+            ( Track_sizing_function.Min.definite_value_with_calc fn
+                axis_available calc,
+              Track_sizing_function.Max.definite_value_with_calc fn
+                axis_available calc )
+          with
+          | Some min, Some max when min = max ->
+              Some (sum +. track.Grid_track.base_size)
+          | _ -> None)
+  done;
   let start_idx, end_idx = track_range_excluding_lines t other_axis in
-  let spanned_tracks =
-    Array.sub other_axis_tracks start_idx (end_idx - start_idx)
-  in
-  let item_other_axis_size =
-    Array.fold_left
-      (fun acc track ->
-        match acc with
-        | None -> None
-        | Some sum -> (
-            match get_track_size_estimate track other_axis_available_space with
-            | None -> None
-            | Some size ->
-                Some
-                  (sum +. size +. track.Grid_track.content_alignment_adjustment)
-            ))
-      (Some 0.0) spanned_tracks
-  in
-  Size.set other_axis item_other_axis_size Size.none
+  let other_size = ref (Some 0.0) in
+  for i = start_idx to end_idx - 1 do
+    match !other_size with
+    | None -> ()
+    | Some sum -> (
+        let track = other_axis_tracks.(i) in
+        other_size :=
+          match
+            get_track_size_estimate track (Size.get other_axis available)
+          with
+          | None -> None
+          | Some size ->
+              Some (sum +. size +. track.Grid_track.content_alignment_adjustment)
+        )
+  done;
+  match axis with
+  | Abstract_axis.Inline -> Size.{ width = !axis_size; height = !other_size }
+  | Abstract_axis.Block -> Size.{ width = !other_size; height = !axis_size }
 
 let participates_in_baseline_alignment t =
   t.align_self = Align_items.Baseline

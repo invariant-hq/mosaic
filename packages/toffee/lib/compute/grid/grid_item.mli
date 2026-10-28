@@ -142,10 +142,9 @@ val known_dimensions :
   t ->
   'tree ->
   float option size ->
-  float option size ->
   float option size
-(** [known_dimensions tree t inner_node_size grid_area_size] computes the
-    known_dimensions for child sizing.
+(** [known_dimensions tree t grid_area_size] computes the known_dimensions for
+    child sizing, its percentages resolved against [grid_area_size].
 
     Applies stretch alignment to resolve percentage sizes correctly. Algorithm:
 
@@ -182,10 +181,11 @@ val min_content_contribution :
   float option size ->
   float option size ->
   float
-(** [min_content_contribution tree t axis available_space inner_node_size]
+(** [min_content_contribution tree t axis grid_area_size available_space]
     computes the item's min-content contribution in [axis].
 
-    Measures the child with min-content available space in [axis]. *)
+    Measures the child with min-content available space where [available_space]
+    is unknown, its percentages resolved against [grid_area_size]. *)
 
 val min_content_contribution_cached :
   t ->
@@ -195,9 +195,8 @@ val min_content_contribution_cached :
   float option size ->
   float option size ->
   float
-(** [min_content_contribution_cached t axis tree available_space
-     inner_node_size] retrieves the cached min-content contribution or computes
-    it.
+(** [min_content_contribution_cached t axis tree grid_area_size available_space]
+    retrieves the cached min-content contribution or computes it.
 
     Cache is invalidated when [available_space_cache] changes. *)
 
@@ -209,10 +208,11 @@ val max_content_contribution :
   float option size ->
   float option size ->
   float
-(** [max_content_contribution tree t axis available_space inner_node_size]
+(** [max_content_contribution tree t axis grid_area_size available_space]
     computes the item's max-content contribution in [axis].
 
-    Measures the child with max-content available space in [axis]. *)
+    Measures the child with max-content available space where [available_space]
+    is unknown, its percentages resolved against [grid_area_size]. *)
 
 val max_content_contribution_cached :
   t ->
@@ -222,22 +222,22 @@ val max_content_contribution_cached :
   float option size ->
   float option size ->
   float
-(** [max_content_contribution_cached t axis tree available_space
-     inner_node_size] retrieves the cached max-content contribution or computes
-    it.
+(** [max_content_contribution_cached t axis tree grid_area_size available_space]
+    retrieves the cached max-content contribution or computes it.
 
     Cache is invalidated when [available_space_cache] changes. *)
 
-val available_space :
+val grid_area_size :
   t ->
   abstract_axis ->
   Grid_track.t array ->
-  float option ->
+  Grid_track.t array ->
+  float option size ->
   (Grid_track.t -> float option -> float option) ->
+  (int -> float -> float) ->
   float option size
-(** [available_space t axis other_axis_tracks other_axis_available_space
-     get_track_size_estimate] computes the available space for sizing in [axis].
-
-    Uses track size estimates from the opposite axis to determine cross-axis
-    constraints. The result has the opposite axis dimension set and the sizing
-    axis set to [None]. *)
+(** [grid_area_size t axis axis_tracks other_axis_tracks available
+     get_track_size_estimate calc] is the size of [t]'s grid area while [axis]
+    is sized: in [axis], the sum of the spanned tracks when each has a fixed
+    size, else [None]; in the other axis, the sum of the spanned tracks' sizes
+    as [get_track_size_estimate] estimates them. *)
