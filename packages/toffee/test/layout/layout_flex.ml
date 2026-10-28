@@ -20913,6 +20913,57 @@ let () =
             [| 0.; 0.; 120.; 400. |];
             [| 120.; 0.; 80.; 400. |];
           ];
+      case "percentage_height_in_item_not_stretched_is_indefinite"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.auto; height = Dimension.length 100. }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~align_self:Flex_end ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 10.;
+                           height = Dimension.percent 0.5;
+                         }
+                       ~padding:
+                         {
+                           left = Length_percentage.length 0.;
+                           right = Length_percentage.length 0.;
+                           top = Length_percentage.length 15.;
+                           bottom = Length_percentage.length 0.;
+                         }
+                       ())
+                    [];
+                ];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.length 10.;
+                       height = Dimension.length 40.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 100. |];
+            [| 0.; 85.; 10.; 15. |];
+            [| 0.; 0.; 10.; 15. |];
+            [| 10.; 0.; 10.; 40. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 100. |];
+            [| 0.; 85.; 10.; 15. |];
+            [| 0.; 0.; 10.; 15. |];
+            [| 10.; 0.; 10.; 40. |];
+          ];
       case "percentage_main_max_height"
         (fun box_sizing ->
           node

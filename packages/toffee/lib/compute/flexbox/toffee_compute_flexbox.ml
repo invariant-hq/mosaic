@@ -92,6 +92,9 @@ type flex_item = {
   padding : Rectf.t; (* The padding of this item *)
   border : Rectf.t; (* The border of this item *)
   mutable frozen : bool; (* Is the size of this item locked *)
+  mutable flex_basis_is_definite : bool;
+      (* Whether the item's used flex basis is definite rather than derived
+         from its content *)
   s : item_sizes; (* The item's sizes *)
 }
 
@@ -148,6 +151,20 @@ type algo_constants = {
   initial_node_inner_size : float option size;
       (* The content-box size of the node as its style and its known
          dimensions give it, against which the items' insets resolve *)
+  known_main_size_is_definite : bool;
+      (* Whether the container's known main size, if any, is definite: a
+         main size its parent derived from its content is not, so its items
+         resolve no percentage against it and it does not wrap them *)
+  known_cross_size_is_definite : bool;
+      (* Whether the container's known cross size, if any, is definite *)
+  has_definite_main_size : bool;
+      (* Whether the container has a known main size that is definite *)
+  has_definite_cross_size : bool;
+      (* Whether the container has a known cross size that is definite *)
+  cross_axis_available_space_is_definite : bool;
+      (* Whether the cross-axis space a non-stretched item is fit into is
+         definite: the container's cross size is, or the available cross
+         space is *)
   item_parent_size : float option size;
       (* The parent size the items are measured with: the container's inner
          cross size, and no main size, as a percentage size in an axis must
@@ -251,7 +268,9 @@ let no_space : Available_space.t size =
 let compute_constants (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (style : Style.t) (known_dimensions : float option size)
-    (parent_size : float option size) : algo_constants =
+    (known_dimensions_are_definite : bool size)
+    (available_space : Available_space.t size) (parent_size : float option size)
+    : algo_constants =
   let dir = Style.flex_direction style in
   let is_row = Flex_direction_ext.is_row dir in
   let is_wrap =
@@ -351,6 +370,35 @@ let compute_constants (type t)
     node_outer_size;
     node_inner_size;
     initial_node_inner_size = node_inner_size;
+    known_main_size_is_definite =
+      (if is_row then known_dimensions_are_definite.width
+       else known_dimensions_are_definite.height);
+    known_cross_size_is_definite =
+      (if is_row then known_dimensions_are_definite.height
+       else known_dimensions_are_definite.width);
+    has_definite_main_size =
+      (if is_row then
+         known_dimensions_are_definite.width
+         && Option.is_some known_dimensions.width
+       else
+         known_dimensions_are_definite.height
+         && Option.is_some known_dimensions.height);
+    has_definite_cross_size =
+      (if is_row then
+         known_dimensions_are_definite.height
+         && Option.is_some known_dimensions.height
+       else
+         known_dimensions_are_definite.width
+         && Option.is_some known_dimensions.width);
+    cross_axis_available_space_is_definite =
+      (if is_row then
+         known_dimensions_are_definite.height
+         && Option.is_some known_dimensions.height
+         || Available_space.is_definite available_space.height
+       else
+         known_dimensions_are_definite.width
+         && Option.is_some known_dimensions.width
+         || Available_space.is_definite available_space.width);
     item_parent_size =
       (if is_row then { width = None; height = node_inner_size.height }
        else { width = node_inner_size.width; height = None });
@@ -450,6 +498,20 @@ let generate_anonymous_flex_items (type t)
   let insert_at = ref 0 in
   let inner_width = constants.node_inner_size.width in
   let inner_height = constants.node_inner_size.height in
+  (* The items' percentage sizes resolve against the container's inner size
+     where it is definite: a size its parent derived from the container's
+     content is not *)
+  let main_definite = constants.known_main_size_is_definite
+  and cross_definite = constants.known_cross_size_is_definite in
+  let size_basis_width =
+    if if constants.is_row then main_definite else cross_definite then
+      inner_width
+    else None
+  and size_basis_height =
+    if if constants.is_row then cross_definite else main_definite then
+      inner_height
+    else None
+  in
   for index = 0 to child_count - 1 do
     let child_node = Tree.get_child_id tree node index in
     let child_style = Tree.get_core_container_style tree child_node in
@@ -487,6 +549,7 @@ let generate_anonymous_flex_items (type t)
           padding;
           border;
           frozen = false;
+          flex_basis_is_definite = false;
           s =
             {
               size_width = Float.nan;
@@ -512,15 +575,16 @@ let generate_anonymous_flex_items (type t)
         }
       in
       set_style_size item.s Preferred (Style.size child_style) aspect_ratio
-        ~inner_width ~inner_height ~padding ~border ~content_box calc;
+        ~inner_width:size_basis_width ~inner_height:size_basis_height ~padding
+        ~border ~content_box calc;
       set_style_size item.s Minimum
         (Style.min_size child_style)
-        aspect_ratio ~inner_width ~inner_height ~padding ~border ~content_box
-        calc;
+        aspect_ratio ~inner_width:size_basis_width
+        ~inner_height:size_basis_height ~padding ~border ~content_box calc;
       set_style_size item.s Maximum
         (Style.max_size child_style)
-        aspect_ratio ~inner_width ~inner_height ~padding ~border ~content_box
-        calc;
+        aspect_ratio ~inner_width:size_basis_width
+        ~inner_height:size_basis_height ~padding ~border ~content_box calc;
       items.(!insert_at) <- item;
       incr insert_at)
   done;
@@ -781,15 +845,72 @@ let resolve_minimum_main_size (type t)
   if Float.is_nan child.s.resolved_minimum_main_size then
     measure_automatic_minimum (module Tree) tree constants child
 
+let is_stretched child (constants : algo_constants) =
+  child.align_self = Style.Align_items.Stretch
+  && (not (margin_is_auto child (if constants.is_row then top else left)))
+  && (not (margin_is_auto child (if constants.is_row then bottom else right)))
+  && Style.Dimension.is_auto
+       (let size = Style.size child.style in
+        if constants.is_row then size.height else size.width)
+
+(* Which of the known dimensions [child] is laid out at are definite (CSS
+   Flexbox 9.8): its main size where the container's main size is definite or
+   its flex basis is; its cross size where it is stretched, where its style
+   sets it, or, for the width of an item in a column, where the space it is
+   fit into is definite. *)
+let both_definite : bool size = { width = true; height = true }
+let width_definite : bool size = { width = true; height = false }
+let height_definite : bool size = { width = false; height = true }
+let none_definite : bool size = { width = false; height = false }
+
+let item_definiteness (constants : algo_constants) (child : flex_item) ~leaf =
+  (* A leaf has no children to resolve percentages against its size, and
+     keeps one cache entry for its size whichever way it is definite *)
+  if leaf then both_definite
+  else
+    let main =
+      constants.has_definite_main_size || child.flex_basis_is_definite
+    in
+    let cross =
+      is_stretched child constants
+      || (not
+            (Float.is_nan
+               (if constants.is_row then child.s.size_height
+                else child.s.size_width)))
+      || (not constants.is_row)
+         && constants.cross_axis_available_space_is_definite
+    in
+    match (constants.is_row, main, cross) with
+    | _, true, true -> both_definite
+    | true, true, false | false, false, true -> width_definite
+    | true, false, true | false, true, false -> height_definite
+    | _, false, false -> none_definite
+
+(* The input for laying out an item of a flexbox *)
+let item_input ~run_mode ~axis ~known_dimensions ~known_dimensions_are_definite
+    ~parent_size ~available_space : Layout_input.t =
+  {
+    run_mode;
+    sizing_mode = Sizing_mode.Content_size;
+    axis;
+    known_dimensions;
+    known_dimensions_are_definite;
+    parent_size;
+    available_space;
+    vertical_margins_are_collapsible = Line.both_false;
+  }
+
 let determine_flex_base_size (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (constants : algo_constants) (available_space : Available_space.t size)
     (flex_items : flex_item array) : unit =
   let calc = Tree.resolve_calc_value tree in
   let is_row = constants.is_row in
-  (* Get container width for resolving flex basis *)
+  (* A percentage flex basis resolves against the container's inner main
+     size where it is definite *)
   let container_width =
-    if is_row then constants.node_inner_size.width
+    if not constants.known_main_size_is_definite then None
+    else if is_row then constants.node_inner_size.width
     else constants.node_inner_size.height
   in
   (* E. An item sized into the available space treats a value of content as
@@ -827,9 +948,27 @@ let determine_flex_base_size (type t)
     let flex_basis =
       (* A. If the item has a definite used flex basis, that's the flex base
          size. *)
-      if not (Float.is_nan flex_basis_style) then flex_basis_style
-      else if not (Float.is_nan main_size) then main_size
-      else
+      if not (Float.is_nan flex_basis_style) then (
+        child.flex_basis_is_definite <- true;
+        flex_basis_style)
+      else if not (Float.is_nan main_size) then (
+        child.flex_basis_is_definite <- true;
+        main_size)
+      else (
+        (* B. With an aspect ratio and a definite cross size, the flex base
+           size comes from that cross size through the ratio, and is as
+           definite *)
+        if
+          Option.is_some (Style.aspect_ratio child_style)
+          && Option.is_some
+               (if is_row then child.measure_known_dimensions.height
+                else child.measure_known_dimensions.width)
+          && ((not
+                 (Float.is_nan
+                    (if is_row then child.s.size_height else child.s.size_width)))
+             || (not constants.is_wrap) && constants.has_definite_cross_size
+                && is_stretched child constants)
+        then child.flex_basis_is_definite <- true;
         (* E. Otherwise, size the item into the available space *)
         let child_available_space =
           if child.measure_available_cross == !measure_cross then !measure_space
@@ -863,7 +1002,7 @@ let determine_flex_base_size (type t)
                ~vertical_margins_are_collapsible:Line.both_false)
         in
         let measured_size = Layout_output.size layout_output in
-        if is_row then measured_size.width else measured_size.height
+        if is_row then measured_size.width else measured_size.height)
     in
 
     (* Floor flex-basis by the padding_border_sum *)
@@ -914,8 +1053,16 @@ let determine_flex_base_size (type t)
 let collect_flex_lines (constants : algo_constants)
     (available_space : Available_space.t size) (flex_items : flex_item array) :
     flex_line list =
-  if not constants.is_wrap then
-    (* Single line - all items go in one line *)
+  let max_main =
+    if constants.is_row then constants.n.max_width else constants.n.max_height
+  in
+  if
+    (not constants.is_wrap)
+    || ((not constants.known_main_size_is_definite) && Float.is_nan max_main)
+  then
+    (* Single line - all items go in one line. Wrapping needs a definite
+       main size, or a maximum: a main size derived from the container's
+       content puts the items on the one line the content was measured on. *)
     [ { items = flex_items; cross_size = 0.0; offset_cross = 0.0 } ]
   else
     (* Multi-line wrapping *)
@@ -933,7 +1080,9 @@ let collect_flex_lines (constants : algo_constants)
           let resolved =
             let v =
               match available_main with
-              | Available_space.Definite v -> v
+              | Available_space.Definite v
+                when constants.known_main_size_is_definite ->
+                  v
               | _ -> max_size
             in
             let min_main =
@@ -1597,14 +1746,6 @@ let resolve_flexible_lengths (type t)
 (* Whether the used cross size of [child] is the cross size of its flex line:
    it has an auto cross size and align-self: stretch, and neither of its
    cross-axis margins is auto. *)
-let is_stretched child (constants : algo_constants) =
-  child.align_self = Style.Align_items.Stretch
-  && (not (margin_is_auto child (if constants.is_row then top else left)))
-  && (not (margin_is_auto child (if constants.is_row then bottom else right)))
-  && Style.Dimension.is_auto
-       (let size = Style.size child.style in
-        if constants.is_row then size.height else size.width)
-
 (* Determine hypothetical cross size *)
 let determine_hypothetical_cross_size (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
@@ -1690,15 +1831,16 @@ let determine_hypothetical_cross_size (type t)
           in
           let layout_output =
             Tree.compute_child_layout tree child.node
-              (Layout_input.make ~run_mode:Run_mode.Compute_size
-                 ~sizing_mode:Sizing_mode.Content_size
+              (item_input ~run_mode:Run_mode.Compute_size
                  ~axis:
                    (if is_row then Requested_axis.Vertical
                     else Requested_axis.Horizontal)
                  ~known_dimensions:child_known_dimensions
+                 ~known_dimensions_are_definite:
+                   (item_definiteness constants child
+                      ~leaf:(Tree.child_count tree child.node = 0))
                  ~parent_size:constants.node_inner_size
-                 ~available_space:child_available_space
-                 ~vertical_margins_are_collapsible:Line.both_false)
+                 ~available_space:child_available_space)
           in
           let measured_size =
             let size = Layout_output.size layout_output in
@@ -1740,14 +1882,16 @@ let calculate_children_base_lines (type t)
           if participates_in_baseline child ~is_row:true then
             let measured_size_and_baselines =
               Tree.compute_child_layout tree child.node
-                (Layout_input.make ~run_mode:Run_mode.Perform_layout
-                   ~sizing_mode:Sizing_mode.Content_size
+                (item_input ~run_mode:Run_mode.Perform_layout
                    ~axis:Requested_axis.Both
                    ~known_dimensions:
                      {
                        Size.width = Some child.s.target_width;
                        height = Some child.s.hypothetical_inner_height;
                      }
+                   ~known_dimensions_are_definite:
+                     (item_definiteness constants child
+                        ~leaf:(Tree.child_count tree child.node = 0))
                    ~parent_size:constants.node_inner_size
                    ~available_space:
                      {
@@ -1755,8 +1899,7 @@ let calculate_children_base_lines (type t)
                        height =
                          Available_space.set_or_self available_space.height
                            known_dimensions.height;
-                     }
-                   ~vertical_margins_are_collapsible:Line.both_false)
+                     })
             in
 
             let baseline =
@@ -2484,10 +2627,12 @@ let final_layout_pass (type t)
       in
       let layout_output =
         Tree.compute_child_layout tree item.node
-          (Layout_input.make ~run_mode:Run_mode.Perform_layout
-             ~sizing_mode:Sizing_mode.Content_size ~axis:Requested_axis.Both
-             ~known_dimensions ~parent_size:node_inner_size ~available_space
-             ~vertical_margins_are_collapsible:Line.both_false)
+          (item_input ~run_mode:Run_mode.Perform_layout
+             ~axis:Requested_axis.Both ~known_dimensions
+             ~known_dimensions_are_definite:
+               (item_definiteness constants item
+                  ~leaf:(Tree.child_count tree item.node = 0))
+             ~parent_size:node_inner_size ~available_space)
       in
 
       let size = Layout_output.size layout_output in
@@ -3214,8 +3359,9 @@ let perform_absolute_layout_on_absolute_children (type t)
 (* Compute a preliminary size for an item *)
 let compute_preliminary (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (node : Node_id.t) ~run_mode ~known_dimensions ~parent_size ~available_space
-    : Layout_output.t =
+    (node : Node_id.t) ~run_mode ~known_dimensions
+    ~known_dimensions_are_definite ~parent_size ~available_space :
+    Layout_output.t =
   (* Define some general constants we will need for the remainder of the
      algorithm *)
   let constants =
@@ -3223,7 +3369,7 @@ let compute_preliminary (type t)
       (module Tree)
       tree
       (Tree.get_core_container_style tree node)
-      known_dimensions parent_size
+      known_dimensions known_dimensions_are_definite available_space parent_size
   in
 
   (* 9. Flex Layout Algorithm *)
@@ -3575,8 +3721,21 @@ let compute_flexbox_layout (type t)
     && Layout_input.axis inputs = Requested_axis.Horizontal
   then Layout_output.from_outer_size Sizef.{ width; height = 0.0 }
   else
+    (* A dimension the style resolved, rather than the parent, is definite *)
+    let known_dimensions_are_definite =
+      let given = Layout_input.known_dimensions_are_definite inputs in
+      if
+        (given.width || Option.is_none known_dimensions.width)
+        && (given.height || Option.is_none known_dimensions.height)
+      then both_definite
+      else if given.width || Option.is_none known_dimensions.width then
+        width_definite
+      else if given.height || Option.is_none known_dimensions.height then
+        height_definite
+      else none_definite
+    in
     compute_preliminary
       (module Tree)
       tree node ~run_mode ~known_dimensions:styled_based_known_dimensions
-      ~parent_size
+      ~known_dimensions_are_definite ~parent_size
       ~available_space:(Layout_input.available_space inputs)

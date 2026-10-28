@@ -29,6 +29,14 @@ type t = {
           computes the height accordingly. When both are [Some], this represents
           final layout with exact dimensions, and the node performs positioning
           without further size computation. *)
+  known_dimensions_are_definite : bool Toffee_geometry.size;
+      (** Whether each known dimension is {e definite}: a size the node's
+          content can resolve percentages against (CSS Sizing 3, 2.1). A parent
+          that fixes a dimension from the node's own content, as a flex
+          container fixes the cross size of an item it does not stretch, makes
+          it [false]: the node is that size, but its children's percentages of
+          it resolve as if it were unknown. An axis without a known dimension
+          ignores its flag. *)
   parent_size : float option Toffee_geometry.size;
       (** Parent container dimensions for resolving percentage-based sizes.
 
@@ -57,8 +65,8 @@ val make :
   vertical_margins_are_collapsible:bool Toffee_geometry.line ->
   t
 (** [make ~run_mode ~sizing_mode ~axis ~known_dimensions ~parent_size
-     ~available_space ~vertical_margins_are_collapsible] creates a layout input.
-*)
+     ~available_space ~vertical_margins_are_collapsible] creates a layout input
+    whose known dimensions are definite. *)
 
 val run_mode : t -> Run_mode.t
 (** [run_mode t] returns the execution mode. *)
@@ -71,6 +79,10 @@ val axis : t -> Requested_axis.t
 
 val known_dimensions : t -> float option Toffee_geometry.size
 (** [known_dimensions t] returns the known dimensions. *)
+
+val known_dimensions_are_definite : t -> bool Toffee_geometry.size
+(** [known_dimensions_are_definite t] is whether each known dimension of [t] is
+    definite. *)
 
 val parent_size : t -> float option Toffee_geometry.size
 (** [parent_size t] returns the parent size. *)
@@ -96,9 +108,10 @@ val compare : t -> t -> int
 (** [compare a b] compares layout inputs lexicographically.
 
     Compares fields in order: [run_mode], [sizing_mode], [axis],
-    [known_dimensions], [parent_size], [available_space], and
-    [vertical_margins_are_collapsible]. Returns a negative integer if [a < b],
-    zero if [a = b], and a positive integer if [a > b]. *)
+    [known_dimensions], [known_dimensions_are_definite], [parent_size],
+    [available_space], and [vertical_margins_are_collapsible]. Returns a
+    negative integer if [a < b], zero if [a = b], and a positive integer if
+    [a > b]. *)
 
 val equal : t -> t -> bool
 (** [equal a b] tests equality of layout inputs. *)

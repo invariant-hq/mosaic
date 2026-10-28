@@ -1027,8 +1027,18 @@ let compute_inner (type t)
       |> Size.apply_aspect_ratio aspect_ratio
       |> Size.clamp_option min_size max_size)
   in
+  (* A known height that is not definite, as the content height a flex
+     container gives an item it does not stretch, is no basis for the
+     children's percentages *)
+  let percentage_basis =
+    if
+      (Layout_input.known_dimensions_are_definite inputs).height
+      || Option.is_none known_dimensions.height
+    then known_dimensions
+    else { known_dimensions with height = None }
+  in
   let container_content_box_size =
-    Sizef.maybe_sub (Rectf.sum_axes content_box_inset) known_dimensions
+    Sizef.maybe_sub (Rectf.sum_axes content_box_inset) percentage_basis
   in
 
   (* Determine margin collapsing behaviour *)
@@ -1110,7 +1120,7 @@ let compute_inner (type t)
          ignored, so they are no basis either: the content size of a flex item
          must not depend on its specified height. *)
       let container_percentage_resolution_height =
-        match (known_dimensions.height, size.height, min_size.height) with
+        match (percentage_basis.height, size.height, min_size.height) with
         | (Some _ as height), _, _ -> height
         | None, _, _
           when Layout_input.sizing_mode inputs <> Sizing_mode.Inherent_size ->

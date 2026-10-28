@@ -114,9 +114,16 @@ let mixed_key known (available : Available_space.t) =
       | Max_content -> infinity)
 [@@inline]
 
-let known_key (known : float option Geometry.size) =
-  (match known.width with Some _ -> 1. | None -> 0.)
-  +. match known.height with Some _ -> 2. | None -> 0.
+(* Which dimensions are known, and which of those are not definite. *)
+let known_key (known : float option Geometry.size)
+    (definite : bool Geometry.size) =
+  (match known.width with
+    | Some _ -> if definite.width then 1. else 5.
+    | None -> 0.)
+  +.
+  match known.height with
+  | Some _ -> if definite.height then 2. else 10.
+  | None -> 0.
 [@@inline]
 
 let parent_key = function Some value -> value | None -> infinity [@@inline]
@@ -151,7 +158,7 @@ let entry inputs ~parent_height =
   {
     width_key = mixed_key known.width available.width;
     height_key = mixed_key known.height available.height;
-    known = known_key known;
+    known = known_key known (Layout_input.known_dimensions_are_definite inputs);
     parent_width = parent_key parent.width;
     parent_height;
     axis = axis_key (Layout_input.axis inputs);
@@ -172,7 +179,8 @@ let set t index inputs ~parent_height =
      let parent = Layout_input.parent_size inputs in
      e.width_key <- mixed_key known.width available.width;
      e.height_key <- mixed_key known.height available.height;
-     e.known <- known_key known;
+     e.known <-
+       known_key known (Layout_input.known_dimensions_are_definite inputs);
      e.parent_width <- parent_key parent.width;
      e.parent_height <- parent_height;
      e.axis <- axis_key (Layout_input.axis inputs));
@@ -186,7 +194,9 @@ let get t style inputs =
     let parent = Layout_input.parent_size inputs in
     let width_key = mixed_key known.width available.width in
     let height_key = mixed_key known.height available.height in
-    let known = known_key known in
+    let known =
+      known_key known (Layout_input.known_dimensions_are_definite inputs)
+    in
     let parent_width = parent_key parent.width in
     let axis = axis_key (Layout_input.axis inputs) in
     match Layout_input.run_mode inputs with
@@ -269,7 +279,10 @@ let store t style inputs output =
             let parent = Layout_input.parent_size inputs in
             let width_key = mixed_key known.width available.width in
             let height_key = mixed_key known.height available.height in
-            let known = known_key known in
+            let known =
+              known_key known
+                (Layout_input.known_dimensions_are_definite inputs)
+            in
             let parent_width = parent_key parent.width in
             let parent_height = parent_height_key style parent in
             let axis = axis_key (Layout_input.axis inputs) in
