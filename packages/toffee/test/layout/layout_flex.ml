@@ -15188,6 +15188,38 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 10.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 10.; 0. |] ];
+      case "item_ratio_transfers_padding_floor_to_automatic_minimum"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 0.; height = Dimension.auto }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing ~aspect_ratio:1.5
+                       ~padding:
+                         {
+                           left = Length_percentage.length 0.;
+                           right = Length_percentage.length 0.;
+                           top = Length_percentage.length 0.;
+                           bottom = Length_percentage.length 10.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 15.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |];
+          ];
       case "justify_content_column_center"
         (fun box_sizing ->
           node

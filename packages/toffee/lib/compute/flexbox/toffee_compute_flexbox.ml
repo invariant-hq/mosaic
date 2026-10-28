@@ -464,12 +464,24 @@ let set_style_size sizes kind (dims : Dimension.t size) aspect_ratio
     ~content_box calc =
   let width = resolve_dimension dims.width inner_width calc in
   let height = resolve_dimension dims.height inner_height calc in
+  (* A border box below its padding and border is that size, which the ratio
+     transfers, as in Chromium; a content box's ratio has no floor *)
+  let floor size pb =
+    if content_box || kind <> Preferred then size else Float.max size pb
+      [@@inline]
+  in
   let width, height =
     match aspect_ratio with
     | Some ratio when Float.is_nan width && not (Float.is_nan height) ->
-        (height *. ratio, height)
+        ( floor height
+            (padding.top +. border.top +. padding.bottom +. border.bottom)
+          *. ratio,
+          height )
     | Some ratio when Float.is_nan height && not (Float.is_nan width) ->
-        (width, width /. ratio)
+        ( width,
+          floor width
+            (padding.left +. border.left +. padding.right +. border.right)
+          /. ratio )
     | _ -> (width, height)
   in
   (* [Rectf.sum_axes (Rectf.add padding border)], summed in its order *)
@@ -799,6 +811,50 @@ let automatic_minimum_bound (constants : algo_constants) (child : flex_item) =
 
 (* Measures [child]'s automatic minimum and keeps it as its resolved minimum
    main size. *)
+let is_stretched child (constants : algo_constants) =
+  child.align_self = Style.Align_items.Stretch
+  && (not (margin_is_auto child (if constants.is_row then top else left)))
+  && (not (margin_is_auto child (if constants.is_row then bottom else right)))
+  && Style.Dimension.is_auto
+       (let size = Style.size child.style in
+        if constants.is_row then size.height else size.width)
+
+(* [measured], an item's content main size, at least what its aspect ratio
+   gives from the smallest cross size the box can take: its padding and
+   border, or its minimum, or [known_cross] where it is not NaN; on the box
+   its box-sizing names *)
+let ratio_floored_main ?(known_cross = Float.nan) constants (child : flex_item)
+    measured =
+  match Style.aspect_ratio child.style with
+  | None -> measured
+  | Some ratio ->
+      let is_row = constants.is_row in
+      let cross_pb =
+        if is_row then
+          child.padding.top +. child.padding.bottom +. child.border.top
+          +. child.border.bottom
+        else
+          child.padding.left +. child.padding.right +. child.border.left
+          +. child.border.right
+      in
+      let min_cross =
+        if is_row then child.s.min_height else child.s.min_width
+      in
+      let cross =
+        if not (Float.is_nan known_cross) then Float.max cross_pb known_cross
+        else if Float.is_nan min_cross then cross_pb
+        else Float.max cross_pb min_cross
+      in
+      let transferred =
+        if Style.box_sizing child.style = Box_sizing.Content_box then
+          (if is_row then (cross -. cross_pb) *. ratio
+           else (cross -. cross_pb) /. ratio)
+          +. main_padding_border constants child
+        else if is_row then cross *. ratio
+        else cross /. ratio
+      in
+      Float.max measured transferred
+
 let measure_automatic_minimum (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (constants : algo_constants) (child : flex_item) =
@@ -865,6 +921,29 @@ let measure_automatic_minimum (type t)
         -. Length_percentage.resolve_or_zero border.right None calc
   in
 
+  (* An aspect ratio transfers the cross size to the content size *)
+  let min_content_main_size =
+    match Style.aspect_ratio child.style with
+    | None -> min_content_main_size
+    | Some _ ->
+        (* A cross size the style sets transfers; a stretched one does not
+           count, as Chromium measures the minimum before stretching *)
+        let known_cross =
+          match
+            if constants.is_row then child.measure_known_dimensions.height
+            else child.measure_known_dimensions.width
+          with
+          | Some cross
+            when not
+                   (Float.is_nan
+                      (if constants.is_row then child.s.size_height
+                       else child.s.size_width)) ->
+              cross
+          | _ -> Float.nan
+        in
+        ratio_floored_main ~known_cross constants child min_content_main_size
+  in
+
   (* Apply automatic minimum size clamping *)
   let size =
     if constants.is_row then child.s.size_width else child.s.size_height
@@ -887,14 +966,6 @@ let resolve_minimum_main_size (type t)
     (constants : algo_constants) (child : flex_item) =
   if Float.is_nan child.s.resolved_minimum_main_size then
     measure_automatic_minimum (module Tree) tree constants child
-
-let is_stretched child (constants : algo_constants) =
-  child.align_self = Style.Align_items.Stretch
-  && (not (margin_is_auto child (if constants.is_row then top else left)))
-  && (not (margin_is_auto child (if constants.is_row then bottom else right)))
-  && Style.Dimension.is_auto
-       (let size = Style.size child.style in
-        if constants.is_row then size.height else size.width)
 
 (* Which of the known dimensions [child] is laid out at are definite (CSS
    Flexbox 9.8): its main size where the container's main size is definite or
@@ -928,39 +999,6 @@ let item_definiteness (constants : algo_constants) (child : flex_item) ~leaf =
     | true, true, false | false, false, true -> width_definite
     | true, false, true | false, true, false -> height_definite
     | _, false, false -> none_definite
-
-(* [measured], an item's content main size, at least what its aspect ratio
-   gives from the smallest cross size the box can take: its padding and
-   border, or its minimum; on the box its box-sizing names *)
-let ratio_floored_main constants (child : flex_item) measured =
-  match Style.aspect_ratio child.style with
-  | None -> measured
-  | Some ratio ->
-      let is_row = constants.is_row in
-      let cross_pb =
-        if is_row then
-          child.padding.top +. child.padding.bottom +. child.border.top
-          +. child.border.bottom
-        else
-          child.padding.left +. child.padding.right +. child.border.left
-          +. child.border.right
-      in
-      let min_cross =
-        if is_row then child.s.min_height else child.s.min_width
-      in
-      let cross =
-        if Float.is_nan min_cross then cross_pb
-        else Float.max cross_pb min_cross
-      in
-      let transferred =
-        if Style.box_sizing child.style = Box_sizing.Content_box then
-          (if is_row then (cross -. cross_pb) *. ratio
-           else (cross -. cross_pb) /. ratio)
-          +. main_padding_border constants child
-        else if is_row then cross *. ratio
-        else cross /. ratio
-      in
-      Float.max measured transferred
 
 (* The input for laying out an item of a flexbox *)
 let item_input ~run_mode ~axis ~known_dimensions ~known_dimensions_are_definite
@@ -1458,11 +1496,9 @@ let content_contribution (type t)
       (* A known cross size, transferred through the item's aspect ratio,
          floors the measured content size. *)
       match Style.aspect_ratio flex_item.style with
-      | Some ratio when not (Float.is_nan known_cross) ->
-          Float.max measured_main_size
-            (if is_row then known_cross *. ratio else known_cross /. ratio)
       | None -> measured_main_size
-      | Some _ -> ratio_floored_main constants flex_item measured_main_size
+      | Some _ ->
+          ratio_floored_main ~known_cross constants flex_item measured_main_size
     in
     (* A scroll container contributes its content, but no more than its
        flex base size, as in Chromium *)
