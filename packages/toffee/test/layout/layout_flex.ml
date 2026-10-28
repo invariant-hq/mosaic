@@ -294,6 +294,33 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 400.; 300. |]; [| 40.; 15.; 160.; 53. |] ]
         ~content_box:[ [| 0.; 0.; 400.; 300. |]; [| 40.; 15.; 160.; 53. |] ];
+      case "absolute_auto_margin_without_both_insets_is_zero"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~padding:
+                 {
+                   left = Length_percentage.length 0.;
+                   right = Length_percentage.length 0.;
+                   top = Length_percentage.length 10.;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~position:Absolute
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.auto;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 0.; 10. |]; [| 0.; 10.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 10. |]; [| 0.; 10.; 0.; 0. |] ];
       case "absolute_child_with_cross_margin"
         (fun box_sizing ->
           node

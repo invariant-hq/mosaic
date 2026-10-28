@@ -3220,67 +3220,40 @@ let perform_absolute_layout_on_absolute_children (type t)
                ~vertical_margins_are_collapsible:Line.both_false)
         in
 
-        (* Calculate non-auto margins *)
-        let non_auto_margin =
-          Rectf.
-            {
-              left = Option.value margin.left ~default:0.0;
-              right = Option.value margin.right ~default:0.0;
-              top = Option.value margin.top ~default:0.0;
-              bottom = Option.value margin.bottom ~default:0.0;
-            }
+        (* Auto margins (CSS Position 3, abspos margins): zero unless both
+           insets of their axis are set; then they share the free space of
+           the inset-modified containing block, and in the inline axis a
+           negative free space falls to the end margin alone *)
+        let resolve_auto_margins start_inset end_inset start_margin end_margin
+            cb_size size ~inline =
+          match (start_inset, end_inset) with
+          | Some start_inset, Some end_inset -> (
+              let free_space = cb_size -. start_inset -. end_inset -. size in
+              match (start_margin, end_margin) with
+              | Some start, Some end_ -> (start, end_)
+              | Some start, None -> (start, free_space -. start)
+              | None, Some end_ -> (free_space -. end_, end_)
+              | None, None ->
+                  if free_space < 0.0 && inline then (0.0, free_space)
+                  else (free_space /. 2.0, free_space /. 2.0))
+          | _ ->
+              ( Option.value start_margin ~default:0.0,
+                Option.value end_margin ~default:0.0 )
         in
-
-        (* Calculate free space *)
-        let free_space =
-          Sizef.
-            {
-              width =
-                constants.n.width -. final_size.width
-                -. (non_auto_margin.left +. non_auto_margin.right);
-              height =
-                constants.n.height -. final_size.height
-                -. (non_auto_margin.top +. non_auto_margin.bottom);
-            }
-        in
-        let free_space =
-          Sizef.
-            {
-              width = Float.max free_space.width 0.0;
-              height = Float.max free_space.height 0.0;
-            }
-        in
-
-        (* Expand auto margins to fill available space *)
         let resolved_margin =
-          let auto_margin_count_width =
-            (if Option.is_none margin.left then 1 else 0)
-            + if Option.is_none margin.right then 1 else 0
-          in
-          let auto_margin_count_height =
-            (if Option.is_none margin.top then 1 else 0)
-            + if Option.is_none margin.bottom then 1 else 0
-          in
-          let auto_margin_size =
-            Sizef.
-              {
-                width =
-                  (if auto_margin_count_width > 0 then
-                     free_space.width /. float_of_int auto_margin_count_width
-                   else 0.0);
-                height =
-                  (if auto_margin_count_height > 0 then
-                     free_space.height /. float_of_int auto_margin_count_height
-                   else 0.0);
-              }
+          let left_margin, right_margin =
+            resolve_auto_margins left right margin.left margin.right
+              inset_relative_size.width final_size.width ~inline:true
+          and top_margin, bottom_margin =
+            resolve_auto_margins top bottom margin.top margin.bottom
+              inset_relative_size.height final_size.height ~inline:false
           in
           Rectf.
             {
-              left = Option.value margin.left ~default:auto_margin_size.width;
-              right = Option.value margin.right ~default:auto_margin_size.width;
-              top = Option.value margin.top ~default:auto_margin_size.height;
-              bottom =
-                Option.value margin.bottom ~default:auto_margin_size.height;
+              left = left_margin;
+              right = right_margin;
+              top = top_margin;
+              bottom = bottom_margin;
             }
         in
 
