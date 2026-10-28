@@ -11272,6 +11272,40 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 20.; 60. |]; [| 0.; 0.; 20.; 60. |] ]
         ~content_box:[ [| 0.; 0.; 20.; 60. |]; [| 0.; 0.; 20.; 60. |] ];
+      case "container_aspect_ratio_with_min_height_ignores_content"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~min_size:
+                     { width = Dimension.auto; height = Dimension.length 20. }
+                   ~aspect_ratio:1. ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~min_size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 50.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 20. |];
+            [| 0.; 0.; 20.; 20. |];
+            [| 0.; 0.; 0.; 50. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 20. |];
+            [| 0.; 0.; 20.; 20. |];
+            [| 0.; 0.; 0.; 50. |];
+          ];
       case "container_with_unsized_child"
         (fun box_sizing ->
           node

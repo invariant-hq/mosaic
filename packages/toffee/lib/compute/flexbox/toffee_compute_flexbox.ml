@@ -3577,8 +3577,9 @@ let compute_preliminary (type t)
 
   (* With an aspect ratio and an auto cross size, the container's cross size
      is what the ratio gives from its main size, at least as large as its
-     lines, unless it is a scroll container (CSS Sizing 4, the automatic
-     minimum size of a box with a ratio): definite, so a single line takes
+     lines where its minimum cross size is automatic and it is not a scroll
+     container (CSS Sizing 4, the automatic minimum size of a box with a
+     ratio): definite, so a single line takes
      it and its items stretch to it *)
   let known_dimensions =
     let ratio_cross =
@@ -3600,7 +3601,13 @@ let compute_preliminary (type t)
       in
       let overflow = Style.overflow (Tree.get_core_container_style tree node) in
       let outer =
-        if Overflow.is_container overflow.x || Overflow.is_container overflow.y
+        if
+          Overflow.is_container overflow.x
+          || Overflow.is_container overflow.y
+          || not
+               (Float.is_nan
+                  (if constants.is_row then constants.n.min_height
+                   else constants.n.min_width))
         then ratio_cross
         else
           let cross_gap =
