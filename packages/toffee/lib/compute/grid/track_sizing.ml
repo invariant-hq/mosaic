@@ -1088,6 +1088,23 @@ let distribute_item_space_to_base_size (is_flex : bool)
       tracks
 
 (* 11.5 Resolve Intrinsic Track Sizes *)
+(* An item crossing flexible tracks hands the part of a content-derived
+   contribution beyond its spanned inflexible tracks to the flexible ones in
+   proportion to their flex factor sum, clamped at one (CSS Grid 2, 12.5: "if
+   the sum is less than one, distribute that proportion of space"). A 0fr
+   track holding an item with min-height: 0 thus collapses to zero. *)
+let flex_scaled_contribution item axis axis_tracks space =
+  let start_idx, end_idx = Grid_item.track_range_excluding_lines item axis in
+  let inflexible = ref 0.0 and flex_factors = ref 0.0 in
+  for i = start_idx to end_idx - 1 do
+    let track = axis_tracks.(i) in
+    if Grid_track.is_flexible track then
+      flex_factors := !flex_factors +. Grid_track.flex_factor track
+    else inflexible := !inflexible +. track.Grid_track.base_size
+  done;
+  !inflexible
+  +. (Float.max (space -. !inflexible) 0.0 *. Float.min !flex_factors 1.0)
+
 let resolve_intrinsic_track_sizes (type t)
     (module Tree : LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (axis : abstract_axis) (axis_tracks : Grid_track.t array)
@@ -1329,7 +1346,17 @@ let resolve_intrinsic_track_sizes (type t)
                         | Some lim -> min axis_min_content_size lim
                         | None -> axis_min_content_size
                       in
-                      max limited_min_content axis_minimum_size
+                      let limited_min_content =
+                        max limited_min_content axis_minimum_size
+                      in
+                      (* The item's minimum contribution floors the scaled
+                         contribution: a definite size still spreads over 0fr
+                         tracks in full *)
+                      if is_flex then
+                        max axis_minimum_size
+                          (flex_scaled_contribution item axis axis_tracks
+                             limited_min_content)
+                      else limited_min_content
                   | _ ->
                       Intrinsic_size_measurer.minimum_contribution
                         (module Tree)
@@ -1440,6 +1467,14 @@ let resolve_intrinsic_track_sizes (type t)
                   match limit with
                   | Some lim -> min axis_max_content_size lim
                   | None -> axis_max_content_size
+                in
+                (* Scaled as the intrinsic minimums are, from the spanned
+                   inflexible tracks' sizes rather than the current base
+                   sizes, so the two scalings do not compound *)
+                let space =
+                  if is_flex then
+                    flex_scaled_contribution item axis axis_tracks space
+                  else space
                 in
                 let track_range =
                   Grid_item.track_range_excluding_lines item axis

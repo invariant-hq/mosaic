@@ -15850,4 +15850,49 @@ let () =
             [| 0.; 0.; 35.; 15. |];
             [| 35.; 0.; 0.; 15. |];
           ];
+      case "zero_fr_row_collapses_item_without_min_height"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~grid_template_columns:
+                 [
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.length 20.);
+                 ]
+               ~grid_template_rows:
+                 [
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.fr 0.);
+                 ]
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~min_size:
+                     { width = Dimension.auto; height = Dimension.length 0. }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 20.;
+                           height = Dimension.length 100.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 100. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 100. |];
+          ];
     ]
