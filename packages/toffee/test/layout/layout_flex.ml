@@ -24406,6 +24406,24 @@ let () =
             [| 0.; 0.; 100.; 100. |];
             [| 0.; 0.; 100.; 100. |];
           ];
+      case "wrap_min_content_is_largest_item_contribution"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_wrap:Wrap ())
+                [
+                  node
+                    (Style.make ~box_sizing ~flex_basis:(Dimension.length 20.)
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:
+          [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "wrap_nodes_with_content_sizing_margin_cross"
         (fun box_sizing ->
           node

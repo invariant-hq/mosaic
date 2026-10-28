@@ -1515,14 +1515,22 @@ let determine_container_main_size (type t)
               Float.max size main_axis_available_space
             else size
         | Available_space.Min_content when constants.is_wrap ->
-            (* Min content with wrapping *)
-            let longest_line_length =
-              List.fold_left
-                (fun max_length line ->
-                  Float.max max_length (line_base_length constants line))
-                0.0 flex_lines
-            in
-            longest_line_length +. main_content_box_inset
+            (* The min-content size of a multi-line container is the largest
+               min-content contribution of its items (CSS Flexbox 9.9.1), as
+               in Chromium, not their flex base sizes *)
+            let largest = ref 0.0 in
+            List.iter
+              (fun line ->
+                Array.iter
+                  (fun item ->
+                    largest :=
+                      Float.max !largest
+                        (content_contribution
+                           (module Tree)
+                           tree available_space constants item))
+                  line.items)
+              flex_lines;
+            !largest +. main_content_box_inset
         | Available_space.Min_content | Available_space.Max_content ->
             (* Content-based sizing *)
             let main_size = ref 0.0 in
