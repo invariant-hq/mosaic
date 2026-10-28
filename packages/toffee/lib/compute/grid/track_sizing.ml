@@ -1449,11 +1449,9 @@ let resolve_intrinsic_track_sizes (type t)
             let max_content_constraint =
               axis_available_grid_space = Available_space.Max_content
             in
-            let auto_minimums_take_item = ref true in
             let has_auto_min_track_sizing_function track =
-              !auto_minimums_take_item
-              && Style.Grid.Track_sizing_function.Min.is_auto
-                   track.Grid_track.track_sizing_function
+              Style.Grid.Track_sizing_function.Min.is_auto
+                track.Grid_track.track_sizing_function
               && not
                    (Style.Grid.Track_sizing_function.Max.is_min_content
                       track.Grid_track.track_sizing_function)
@@ -1465,11 +1463,6 @@ let resolve_intrinsic_track_sizes (type t)
 
             Array.iter
               (fun item ->
-                auto_minimums_take_item :=
-                  max_content_constraint
-                  || not
-                       (Overflow.is_container
-                          (Point.get axis item.Grid_item.overflow));
                 let axis_max_content_size =
                   Intrinsic_size_measurer.max_content_contribution
                     (module Tree)
@@ -1514,7 +1507,12 @@ let resolve_intrinsic_track_sizes (type t)
                       has_max_content_min_track_sizing_function
                       (fun _ -> Float.infinity)
                       Maximum
-                  else
+                  else if
+                    max_content_constraint
+                    || not
+                         (Overflow.is_container
+                            (Point.get axis item.Grid_item.overflow))
+                  then
                     let fit_content_limited_growth_limit track =
                       Grid_track.fit_content_limited_growth_limit track
                         axis_inner_node_size
