@@ -646,8 +646,9 @@ let compute_grid_layout (type t)
         (* A grid's padding extends its track area, not its items: no margin
            extends an item's box *)
         let overflow_flags =
-          Toffee_compute_helpers.overflow_flags ~is_scroll_container
-            ~reversed_x:false ~reversed_y:false ~margins:No_margins
+          Toffee_compute_helpers.overflow_flags ~reaches_empty_boxes:false
+            ~is_scroll_container ~reversed_x:false ~reversed_y:false
+            ~margins:No_margins ()
         in
 
         (* Sort items back into original order to allow them to be matched up

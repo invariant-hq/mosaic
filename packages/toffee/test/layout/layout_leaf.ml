@@ -162,6 +162,58 @@ let () =
             [])
         ~border_box:[ [| 0.; 0.; 22.; 14. |] ]
         ~content_box:[ [| 0.; 0.; 34.; 26. |] ];
+      case "scroll_container_block_end_padding_without_content"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.length 50.;
+                       height = Dimension.length 10.;
+                     }
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 5.;
+                       bottom = Length_percentage.length 10.;
+                     }
+                   ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 50.; 15. |]; [| 0.; 0.; 50.; 15.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 25. |]; [| 0.; 0.; 50.; 25.; 0.; 0. |] ];
+      case "scroll_container_with_no_client_area"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 10.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ~border:
+                     {
+                       left = Length_percentage.length 50.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 60.; 15. |]; [| 0.; 0.; 60.; 15.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 70.; 15. |]; [| 0.; 0.; 70.; 15.; 0.; 0. |] ];
       case "with_content_and_border"
         (fun box_sizing ->
           text

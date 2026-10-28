@@ -1156,7 +1156,7 @@ let compute_inner (type t)
       let overflow_acc = Toffee_compute_helpers.overflow_acc () in
       let overflow_flags =
         Toffee_compute_helpers.overflow_flags ~is_scroll_container
-          ~reversed_x:false ~reversed_y:false ~margins:Negative_margins
+          ~reversed_x:false ~reversed_y:false ~margins:Negative_margins ()
       in
       let ( intrinsic_outer_height,
             first_child_top_margin_set,
@@ -1249,12 +1249,12 @@ let compute_inner (type t)
           && all_in_flow_children_can_be_collapsed_through
         in
 
-        (* 8. The container's scrollable overflow: a scroll container's own
-           end padding is part of it *)
+        (* 8. The container's scrollable overflow: a scroll container's inline
+           padding is part of it, even without content *)
         if is_scroll_container then
           Toffee_compute_helpers.union overflow_acc ~left:0.0
-            ~right:resolved_padding.right ~top:0.0
-            ~bottom:resolved_padding.bottom;
+            ~right:(resolved_padding.left +. resolved_padding.right)
+            ~top:0.0 ~bottom:0.0;
         let scrollable_overflow =
           Toffee_compute_helpers.finalize_overflow overflow_acc
             ~flags:overflow_flags ~size:final_outer_size ~border:resolved_border

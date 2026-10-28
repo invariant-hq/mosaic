@@ -299,23 +299,23 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
 
       let size = Sizef.max size pb_sum in
 
-      (* The content's overflow area, from the padding-box origin; a scroll
-         container's end padding is part of it *)
+      (* The content's overflow area, from the padding-box origin. A scroll
+         container's inline-end padding is part of it, and its block-end
+         padding follows its content, if it has any, as in Chromium *)
       let scrollable_overflow =
         let overflow = Style.overflow style in
         let is_scroll_container =
           Style.Overflow.is_container overflow.x
           || Style.Overflow.is_container overflow.y
         in
-        (* Content, if any, is followed by the end padding of a scroll
-           container *)
-        let has_content = is_scroll_container in
         let right =
           padding.left +. measured_size.width
-          +. if has_content then padding.right else 0.0
+          +. if is_scroll_container then padding.right else 0.0
         and bottom =
-          padding.top +. measured_size.height
-          +. if has_content then padding.bottom else 0.0
+          if is_scroll_container && measured_size.height <= 0.0 then 0.0
+          else
+            padding.top +. measured_size.height
+            +. if is_scroll_container then padding.bottom else 0.0
         in
         if
           (* Content within the padding box overflows nothing *)
@@ -323,6 +323,18 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
           && right <= size.width -. border.left -. border.right
           && bottom <= size.height -. border.top -. border.bottom
           || (right <= 0.0 && bottom <= 0.0)
+          (* A scroll container whose client box and content cover no area
+             has nothing to scroll *)
+          || is_scroll_container
+             && (Float.max right
+                   (size.width -. border.left -. border.right
+                  -. content_box_inset.right +. padding.right +. border.right)
+                 <= 0.0
+                || Float.max bottom
+                     (size.height -. border.top -. border.bottom
+                    -. content_box_inset.bottom +. padding.bottom
+                    +. border.bottom)
+                   <= 0.0)
         then Scrollable_overflow.zero
         else
           Scrollable_overflow.make

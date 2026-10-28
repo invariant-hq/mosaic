@@ -27,9 +27,12 @@ let reversed_x_bit = 2
 let reversed_y_bit = 4
 let negative_margins_bit = 8
 let no_margins_bit = 16
+let skips_empty_boxes_bit = 32
 
-let overflow_flags ~is_scroll_container ~reversed_x ~reversed_y ~margins =
+let overflow_flags ?(reaches_empty_boxes = true) ~is_scroll_container
+    ~reversed_x ~reversed_y ~margins () =
   (if is_scroll_container then scroll_container_bit else 0)
+  lor (if reaches_empty_boxes then 0 else skips_empty_boxes_bit)
   lor (if reversed_x then reversed_x_bit else 0)
   lor (if reversed_y then reversed_y_bit else 0)
   lor
@@ -87,7 +90,10 @@ let add_overflow_contribution (acc : overflow_acc) ~(flags : overflow_flags)
   in
   (* An empty box contributes nothing, but to a scroll container, which
      scrolls to its position *)
-  if (end_width > 0.0 && end_height > 0.0) || parent_is_scroll_container then (
+  if
+    (end_width > 0.0 && end_height > 0.0)
+    || (parent_is_scroll_container && flags land skips_empty_boxes_bit = 0)
+  then (
     let x = location.x -. origin.left and y = location.y -. origin.top in
     let left =
       x

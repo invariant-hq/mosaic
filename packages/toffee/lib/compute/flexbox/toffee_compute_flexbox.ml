@@ -3491,7 +3491,7 @@ let compute_preliminary (type t)
     let overflow_acc = Toffee_compute_helpers.overflow_acc () in
     let overflow_flags =
       Toffee_compute_helpers.overflow_flags ~is_scroll_container ~reversed_x
-        ~reversed_y ~margins:Full_margins
+        ~reversed_y ~margins:Full_margins ()
     in
     (* Only a scroll container reads its client box and extends its
        children's margin boxes by its padding *)
@@ -3601,11 +3601,12 @@ let compute_preliminary (type t)
               Some (offset_cross +. item.s.baseline))
     in
 
-    (* A scroll container's own end padding is part of its scrollable
-       overflow *)
+    (* A scroll container's inline padding is part of its scrollable
+       overflow, even without content *)
     if is_scroll_container then
-      Toffee_compute_helpers.union overflow_acc ~left:0.0 ~right:padding.right
-        ~top:0.0 ~bottom:padding.bottom;
+      Toffee_compute_helpers.union overflow_acc ~left:0.0
+        ~right:(padding.left +. padding.right)
+        ~top:0.0 ~bottom:0.0;
     let size =
       Sizef.{ width = constants.n.width; height = constants.n.height }
     in

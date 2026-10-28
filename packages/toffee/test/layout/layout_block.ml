@@ -10161,6 +10161,30 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 35.; 20.; 0.; 45. |]; [| 0.; 0.; 0.; 50. |] ]
         ~content_box:[ [| 0.; 0.; 35.; 20.; 0.; 45. |]; [| 0.; 0.; 0.; 50. |] ];
+      case "scroll_container_inline_padding_without_content"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:
+                 { width = Dimension.length 0.; height = Dimension.length 50. }
+               ~padding:
+                 {
+                   left = Length_percentage.length 5.;
+                   right = Length_percentage.length 0.;
+                   top = Length_percentage.length 0.;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ~border:
+                 {
+                   left = Length_percentage.length 0.;
+                   right = Length_percentage.length 6.;
+                   top = Length_percentage.length 0.;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15. ())
+            [ node (Style.make ~display:None ~box_sizing ()) [] ])
+        ~border_box:[ [| 0.; 0.; 11.; 50.; 5.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 11.; 50.; 5.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "scroll_container_reaches_empty_child"
         (fun box_sizing ->
           node

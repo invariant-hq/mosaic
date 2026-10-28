@@ -14127,6 +14127,27 @@ let () =
             [| 0.; 0.; 50.; 0. |];
             [| 0.; 0.; 50.; 0.; 0.; 0. |];
           ];
+      case "scroll_container_skips_empty_item"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~size:{ width = Dimension.auto; height = Dimension.length 10. }
+               ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~inset:
+                     {
+                       left = Length_percentage_auto.length 10.;
+                       right = Length_percentage_auto.auto;
+                       top = Length_percentage_auto.auto;
+                       bottom = Length_percentage_auto.auto;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 0.; 10.; 0.; 0. |]; [| 10.; 0.; 0.; 10. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 10.; 0.; 0. |]; [| 10.; 0.; 0.; 10. |] ];
       case "scroll_container_track_area_and_padding"
         (fun box_sizing ->
           node

@@ -33,10 +33,12 @@ type overflow_flags = int
 (** A container's flags, packed in an int. *)
 
 val overflow_flags :
+  ?reaches_empty_boxes:bool ->
   is_scroll_container:bool ->
   reversed_x:bool ->
   reversed_y:bool ->
   margins:overflow_margins ->
+  unit ->
   overflow_flags
 (** [overflow_flags ~is_scroll_container ~reversed_x ~reversed_y ~margins] are
     the flags of a container: whether it is a scroll container (which then clips
