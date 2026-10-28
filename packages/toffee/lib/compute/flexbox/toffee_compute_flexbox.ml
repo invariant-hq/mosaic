@@ -1711,14 +1711,17 @@ let resolve_flexible_lengths (type t)
           (* A minimum no larger than the capped size leaves it as it is, so
              an automatic minimum is measured only for a size below its
              bound. *)
+          (* The content box is floored at zero (CSS Flexbox 9.7, step d):
+             the border box at the padding and border *)
+          let floor = main_padding_border constants child in
           let clamped =
             if
               Float.is_nan child.s.resolved_minimum_main_size
               && capped >= automatic_minimum_bound constants child
-            then Float.max 0.0 capped
+            then Float.max floor capped
             else (
               resolve_minimum_main_size (module Tree) tree constants child;
-              Float.max 0.0
+              Float.max floor
                 (Float.max child.s.resolved_minimum_main_size capped))
           in
           child.s.violation <- clamped -. current_size;

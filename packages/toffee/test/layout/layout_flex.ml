@@ -22929,6 +22929,29 @@ let () =
             [| 0.; 0.; 70.; 50.; 0.; 0. |];
             [| 0.; 0.; 50.; 0. |];
           ];
+      case "scroll_container_item_target_floored_at_padding"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_direction:Row_reverse
+               ~size:{ width = Dimension.length 2.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.percent 0.1; height = Dimension.auto }
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 10.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 2.; 0. |]; [| -8.; 0.; 10.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 2.; 0. |]; [| -8.; 0.; 10.; 0.; 0.; 0. |] ];
       case "scroll_size"
         (fun box_sizing ->
           node
