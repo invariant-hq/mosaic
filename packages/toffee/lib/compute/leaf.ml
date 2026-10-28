@@ -4,6 +4,14 @@ module Style = Toffee_style
 open Toffee_geometry
 open Toffee_tree
 
+(* The height [ratio] gives from [width], taken as the box takes it (floored
+   by its padding and border [pb_sum]) and on the box its box-sizing names *)
+let ratio_height style ratio (pb_sum : Sizef.t) width =
+  let width = Float.max width pb_sum.width in
+  if Style.box_sizing style = Style.Box_sizing.Content_box then
+    ((width -. pb_sum.width) /. ratio) +. pb_sum.height
+  else width /. ratio
+
 (** Compute the size of a leaf node (node with no children) *)
 let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
     ~(resolve_calc_value : Style.calc_resolver)
@@ -42,18 +50,6 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
   let box_sizing_adjustment =
     if Style.box_sizing style = Style.Box_sizing.Content_box then pb_sum
     else Sizef.zero
-  in
-  (* The height an aspect ratio gives from a width, taken as the box takes it
-     (floored by its padding and border) and on the box its box-sizing
-     names *)
-  let ratio_height width =
-    match Style.aspect_ratio style with
-    | None -> 0.0
-    | Some ratio ->
-        let width = Float.max width pb_sum.width in
-        if Style.box_sizing style = Style.Box_sizing.Content_box then
-          ((width -. pb_sum.width) /. ratio) +. pb_sum.height
-        else width /. ratio
   in
 
   (* Resolve node's preferred/min/max sizes (width/heights) against the
@@ -160,10 +156,12 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
       in
       let size =
         match aspect_ratio with
-        | Some _ ->
+        | Some ratio ->
             {
               size with
-              height = Float.max size.height (ratio_height size.width);
+              height =
+                Float.max size.height
+                  (ratio_height style ratio pb_sum size.width);
             }
         | None -> size
       in
@@ -299,8 +297,10 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
       (* Apply aspect ratio AFTER clamping, matching Taffy's logic exactly *)
       let size =
         match aspect_ratio with
-        | Some _ ->
-            let aspect_height = ratio_height clamped_size.width in
+        | Some ratio ->
+            let aspect_height =
+              ratio_height style ratio pb_sum clamped_size.width
+            in
             Sizef.
               {
                 width = clamped_size.width;

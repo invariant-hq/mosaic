@@ -2772,9 +2772,6 @@ let final_layout_pass (type t)
           (let margin = item.margin in
            (* An auto margin that took negative free space is zero to the
               end padding, as it is to Chromium *)
-           let side value get =
-             if value < 0.0 && margin_is_auto item get then 0.0 else value
-           in
            if
              margin.left >= 0.0 && margin.right >= 0.0 && margin.top >= 0.0
              && margin.bottom >= 0.0
@@ -2782,10 +2779,19 @@ let final_layout_pass (type t)
            else
              Rectf.
                {
-                 left = side margin.left left;
-                 right = side margin.right right;
-                 top = side margin.top top;
-                 bottom = side margin.bottom bottom;
+                 left =
+                   (if margin.left < 0.0 && margin_is_auto item left then 0.0
+                    else margin.left);
+                 right =
+                   (if margin.right < 0.0 && margin_is_auto item right then 0.0
+                    else margin.right);
+                 top =
+                   (if margin.top < 0.0 && margin_is_auto item top then 0.0
+                    else margin.top);
+                 bottom =
+                   (if margin.bottom < 0.0 && margin_is_auto item bottom then
+                      0.0
+                    else margin.bottom);
                })
     done;
 
