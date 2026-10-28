@@ -128,6 +128,21 @@ let compute_grid_layout (type t)
      this can cause an expensive-ish computation In OCaml, we pass the style
      directly to functions that need it rather than extracting these values
      early *)
+  (* A grid whose height is auto sizes its rows under a max-content
+     constraint, as Chromium does: the space its parent has below it does not
+     bound them, and in the block axis its min-content size is its
+     max-content size (CSS Sizing 3, 5.1). A maximum height still bounds
+     them. *)
+  let available_space =
+    match
+      ( (Size.choose_first known_dimensions preferred_size).height,
+        available_space.height )
+    with
+    | None, (Available_space.Definite _ | Available_space.Min_content)
+      when Option.is_none max_size.height ->
+        { available_space with height = Available_space.Max_content }
+    | _ -> available_space
+  in
   let constrained_available_space =
     ( Size.map2
         (fun opt_size space ->

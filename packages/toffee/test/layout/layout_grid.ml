@@ -6031,6 +6031,59 @@ let () =
             [| 13.; 0.; 40.; 40. |];
             [| 67.; 0.; 40.; 40. |];
           ];
+      case "auto_height_grid_item_sizes_rows_under_max_content"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~grid_template_rows:
+                 [
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.percent 0.5);
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.fit_content
+                        (Compact_length.fit_content_px 20.));
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.minmax
+                        ~min:(Compact_length.length 0.)
+                        ~max:(Compact_length.fr 1.));
+                 ]
+               ())
+            [
+              node (Style.make ~box_sizing ()) [];
+              node
+                (Style.make ~display:Grid ~box_sizing
+                   ~grid_template_rows:
+                     [
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.minmax
+                            ~min:Compact_length.auto
+                            ~max:(Compact_length.length 30.));
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.minmax
+                            ~min:Compact_length.min_content
+                            ~max:Compact_length.max_content);
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.minmax
+                            ~min:Compact_length.min_content
+                            ~max:Compact_length.max_content);
+                     ]
+                   ())
+                [ node (Style.make ~box_sizing ()) [] ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 0.; 30. |];
+            [| 0.; 0.; 0.; 15. |];
+            [| 0.; 15.; 0.; 30. |];
+            [| 0.; 0.; 0.; 30. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 0.; 30. |];
+            [| 0.; 0.; 0.; 15. |];
+            [| 0.; 15.; 0.; 30. |];
+            [| 0.; 0.; 0.; 30. |];
+          ];
       case "auto_rows"
         (fun box_sizing ->
           node
