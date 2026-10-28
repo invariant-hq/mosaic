@@ -14138,6 +14138,52 @@ let () =
             [| 40.; 80.; 40.; 40. |];
             [| 80.; 80.; 40.; 40. |];
           ];
+      case "scroll_container_max_content_skips_auto_minimum"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing
+                   ~grid_template_columns:
+                     [
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.fr 1.);
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.fr 1.);
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.minmax
+                            ~min:(Compact_length.length 0.)
+                            ~max:(Compact_length.fr 1.));
+                     ]
+                   ~size:
+                     { width = Dimension.length 20.; height = Dimension.auto }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.percent 0.25;
+                           height = Dimension.auto;
+                         }
+                       ~overflow:{ x = Scroll; y = Scroll } ~scrollbar_width:15.
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 15. |];
+            [| 0.; 0.; 20.; 15. |];
+            [| 0.; 0.; 2.; 15.; 0.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 15. |];
+            [| 0.; 0.; 20.; 15. |];
+            [| 0.; 0.; 2.; 15.; 0.; 0. |];
+          ];
       case "scroll_container_minimum_contribution_floored_at_padding"
         (fun box_sizing ->
           node

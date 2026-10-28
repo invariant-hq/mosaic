@@ -1190,7 +1190,7 @@ let resolve_intrinsic_track_sizes (type t)
                     | (Available_space.Min_content | Available_space.Max_content)
                       when not
                              (Overflow.is_container
-                                (Point.get axis item.overflow)) ->
+                                (Point.get axis item.Grid_item.overflow)) ->
                         let axis_minimum_size =
                           Intrinsic_size_measurer.minimum_contribution
                             (module Tree)
@@ -1232,7 +1232,10 @@ let resolve_intrinsic_track_sizes (type t)
               then (
                 (* If item is not a scroll container, then increase the growth
                    limit to at least the size of the min-content contribution *)
-                if not (Overflow.is_container (Point.get axis item.overflow))
+                if
+                  not
+                    (Overflow.is_container
+                       (Point.get axis item.Grid_item.overflow))
                 then
                   track.Grid_track.growth_limit_planned_increase <-
                     max track.Grid_track.growth_limit_planned_increase
@@ -1326,7 +1329,7 @@ let resolve_intrinsic_track_sizes (type t)
                   | (Available_space.Min_content | Available_space.Max_content)
                     when not
                            (Overflow.is_container
-                              (Point.get axis item.overflow)) ->
+                              (Point.get axis item.Grid_item.overflow)) ->
                       let axis_minimum_size =
                         Intrinsic_size_measurer.minimum_contribution
                           (module Tree)
@@ -1440,9 +1443,17 @@ let resolve_intrinsic_track_sizes (type t)
             || Available_space.is_definite axis_available_grid_space
           then (
             (* Helper functions matching Rust implementation *)
+            (* Under a definite constraint, a scroll container's max-content
+               contribution does not reach an auto minimum: its automatic
+               minimum size is zero, as in Chromium *)
+            let max_content_constraint =
+              axis_available_grid_space = Available_space.Max_content
+            in
+            let auto_minimums_take_item = ref true in
             let has_auto_min_track_sizing_function track =
-              Style.Grid.Track_sizing_function.Min.is_auto
-                track.Grid_track.track_sizing_function
+              !auto_minimums_take_item
+              && Style.Grid.Track_sizing_function.Min.is_auto
+                   track.Grid_track.track_sizing_function
               && not
                    (Style.Grid.Track_sizing_function.Max.is_min_content
                       track.Grid_track.track_sizing_function)
@@ -1454,6 +1465,11 @@ let resolve_intrinsic_track_sizes (type t)
 
             Array.iter
               (fun item ->
+                auto_minimums_take_item :=
+                  max_content_constraint
+                  || not
+                       (Overflow.is_container
+                          (Point.get axis item.Grid_item.overflow));
                 let axis_max_content_size =
                   Intrinsic_size_measurer.max_content_contribution
                     (module Tree)
