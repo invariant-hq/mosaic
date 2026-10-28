@@ -1807,49 +1807,89 @@ let determine_hypothetical_cross_size (type t)
         if not (Float.is_nan cross_size) then
           Float.max padding_border_sum (clamp cross_size)
         else
-          (* Need to measure the child *)
-          let child_available_cross =
-            match available_cross with
-            | Available_space.Definite value ->
-                Available_space.of_float
-                  (Float.max padding_border_sum (clamp value))
-            | _ -> available_cross
+          (* The cross size the aspect ratio gives from the item's main size,
+             floored by its padding and border, on the box its box-sizing
+             names; NaN without a ratio *)
+          let transferred =
+            match Style.aspect_ratio child.style with
+            | None -> Float.nan
+            | Some ratio ->
+                let main_pb =
+                  if is_row then
+                    child.padding.left +. child.padding.right
+                    +. child.border.left +. child.border.right
+                  else
+                    child.padding.top +. child.padding.bottom
+                    +. child.border.top +. child.border.bottom
+                in
+                let main =
+                  Float.max main_pb
+                    (if is_row then child.s.target_width
+                     else child.s.target_height)
+                in
+                let content_box =
+                  Style.box_sizing child.style = Box_sizing.Content_box
+                in
+                let main = if content_box then main -. main_pb else main in
+                let cross = if is_row then main /. ratio else main *. ratio in
+                if content_box then cross +. padding_border_sum else cross
           in
-          let child_known_dimensions =
-            if is_row then
-              { Size.width = Some child.s.target_width; height = None }
-            else { Size.width = None; height = Some child.s.target_height }
-          in
-          let child_available_space =
-            if is_row then
-              {
-                Size.width = Available_space.of_float child_known_main;
-                height = child_available_cross;
-              }
-            else
-              {
-                Size.width = child_available_cross;
-                height = Available_space.of_float child_known_main;
-              }
-          in
-          let layout_output =
-            Tree.compute_child_layout tree child.node
-              (item_input ~run_mode:Run_mode.Compute_size
-                 ~axis:
-                   (if is_row then Requested_axis.Vertical
-                    else Requested_axis.Horizontal)
-                 ~known_dimensions:child_known_dimensions
-                 ~known_dimensions_are_definite:
-                   (item_definiteness constants child
-                      ~leaf:(Tree.child_count tree child.node = 0))
-                 ~parent_size:constants.node_inner_size
-                 ~available_space:child_available_space)
-          in
-          let measured_size =
-            let size = Layout_output.size layout_output in
-            if is_row then size.height else size.width
-          in
-          Float.max padding_border_sum (clamp measured_size)
+          if
+            (not (Float.is_nan transferred))
+            && ((not (Float.is_nan min_cross)) || is_scroll_container child)
+          then
+            (* Without an automatic minimum to floor it by its content *)
+            Float.max padding_border_sum (clamp transferred)
+          else
+            let measured_size =
+              (* Need to measure the child *)
+              let child_available_cross =
+                match available_cross with
+                | Available_space.Definite value ->
+                    Available_space.of_float
+                      (Float.max padding_border_sum (clamp value))
+                | _ -> available_cross
+              in
+              let child_known_dimensions =
+                if is_row then
+                  { Size.width = Some child.s.target_width; height = None }
+                else { Size.width = None; height = Some child.s.target_height }
+              in
+              let child_available_space =
+                if is_row then
+                  {
+                    Size.width = Available_space.of_float child_known_main;
+                    height = child_available_cross;
+                  }
+                else
+                  {
+                    Size.width = child_available_cross;
+                    height = Available_space.of_float child_known_main;
+                  }
+              in
+              let layout_output =
+                Tree.compute_child_layout tree child.node
+                  (item_input ~run_mode:Run_mode.Compute_size
+                     ~axis:
+                       (if is_row then Requested_axis.Vertical
+                        else Requested_axis.Horizontal)
+                     ~known_dimensions:child_known_dimensions
+                     ~known_dimensions_are_definite:
+                       (item_definiteness constants child
+                          ~leaf:(Tree.child_count tree child.node = 0))
+                     ~parent_size:constants.node_inner_size
+                     ~available_space:child_available_space)
+              in
+              let measured_size =
+                let size = Layout_output.size layout_output in
+                if is_row then size.height else size.width
+              in
+              measured_size
+            in
+            Float.max padding_border_sum
+              (clamp
+                 (if Float.is_nan transferred then measured_size
+                  else Float.max transferred measured_size))
       in
 
       if is_row then child.s.hypothetical_inner_height <- child_inner_cross

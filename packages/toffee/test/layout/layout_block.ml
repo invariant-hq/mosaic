@@ -2905,6 +2905,28 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 100. |]; [| 0.; 0.; 80.; 40. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 100. |]; [| 0.; 0.; 80.; 40. |] ];
+      case "aspect_ratio_from_width_floored_at_padding"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 0.; height = Dimension.auto }
+                   ~aspect_ratio:2.
+                   ~padding:
+                     {
+                       left = Length_percentage.length 50.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 50.; 25. |]; [| 0.; 0.; 50.; 25. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 50.; 0. |] ];
       case "aspect_ratio_stretch_width"
         (fun box_sizing ->
           node

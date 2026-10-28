@@ -14903,6 +14903,25 @@ let () =
           [
             [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 20.; 0.; 30.; 0. |];
           ];
+      case "item_aspect_ratio_from_main_size_floored_at_padding"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing ~aspect_ratio:2.
+                   ~padding:
+                     {
+                       left = Length_percentage.length 50.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 50.; 25. |]; [| 0.; 0.; 50.; 25. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 50.; 0. |] ];
       case "justify_content_column_center"
         (fun box_sizing ->
           node
