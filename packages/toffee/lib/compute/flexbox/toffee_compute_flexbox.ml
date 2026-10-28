@@ -1994,8 +1994,21 @@ let calculate_children_base_lines (type t)
     (known_dimensions : float option size)
     (available_space : Available_space.t size) (flex_lines : flex_line list)
     (constants : algo_constants) : unit =
-  (* Only compute baselines for flex rows because we only support baseline
-     alignment in the cross axis where that axis is also the inline axis *)
+  (* In a column, whose cross axis is horizontal, an item's baseline is
+     synthesized from its border-box left edge (CSS Box Alignment 3, 9.1), as
+     Chromium does: its distance from the margin box is the left margin *)
+  if (not constants.is_row) && not constants.is_wrap_reverse then
+    List.iter
+      (fun line ->
+        Array.iter
+          (fun child ->
+            child.s.baseline <-
+              (if participates_in_baseline child ~is_row:false then
+                 child.margin.left
+               else 0.0))
+          line.items)
+      flex_lines;
+  (* Compute the baselines of a row's items *)
   if constants.is_row then
     let lines = ref flex_lines in
     while !lines != [] do
@@ -2508,12 +2521,11 @@ let[@inline] align_flex_items_along_cross_axis (child : flex_item)
         line_cross_size -. max_baseline_to_bottom -. child.s.baseline
       else if constants.is_row then max_baseline -. child.s.baseline
       else if
-        (* Until we support vertical writing modes, baseline alignment only
-           makes sense if the direction is row, so we treat it as flex-start
-           alignment in columns. *)
+        (* A wrap-reverse column's cross start is its right edge, where no
+           synthesized baseline is taken: flex-start alignment *)
         constants.is_wrap_reverse
       then free_space
-      else 0.0
+      else max_baseline -. child.s.baseline
   | Style.Align_items.Stretch ->
       if constants.is_wrap_reverse then free_space else 0.0
 

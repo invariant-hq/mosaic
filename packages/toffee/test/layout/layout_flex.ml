@@ -11253,6 +11253,44 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 200.; 200. |]; [| 100.; 100.; 100.; 100. |] ]
         ~content_box:[ [| 0.; 0.; 200.; 200. |]; [| 60.; 60.; 140.; 140. |] ];
+      case "column_baseline_aligns_synthesized_left_edges"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_direction:Column ~align_items:Baseline
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 20.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 30.; 0. |];
+            [| 20.; 0.; 10.; 0. |];
+            [| 20.; 0.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 30.; 0. |];
+            [| 20.; 0.; 10.; 0. |];
+            [| 20.; 0.; 10.; 0. |];
+          ];
       case "column_growing_item_contributes_hypothetical_size"
         (fun box_sizing ->
           node
