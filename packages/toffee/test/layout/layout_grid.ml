@@ -13987,6 +13987,48 @@ let () =
             [| 40.; 80.; 40.; 40. |];
             [| 80.; 80.; 40.; 40. |];
           ];
+      case "scroll_container_minimum_contribution_floored_at_padding"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.length 20.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing
+                   ~grid_template_columns:
+                     [
+                       Grid.Template_component.single
+                         (Grid.Track_sizing_function.percent 0.2);
+                     ]
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~padding:
+                         {
+                           left = Length_percentage.length 0.;
+                           right = Length_percentage.length 50.;
+                           top = Length_percentage.length 0.;
+                           bottom = Length_percentage.length 0.;
+                         }
+                       ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15.
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 50.; 0. |];
+            [| 0.; 0.; 50.; 0.; 0.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 50.; 0. |];
+            [| 0.; 0.; 50.; 0.; 0.; 0. |];
+          ];
       case "size_child_fixed_tracks"
         (fun box_sizing ->
           node

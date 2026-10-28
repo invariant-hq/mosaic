@@ -354,15 +354,23 @@ module Intrinsic_size_measurer = struct
           |> fun v_opt ->
             match v_opt with
             | Some _ -> v_opt
-            | None ->
-                (* Try automatic minimum size from overflow property *)
+            | None -> (
+                (* A scroll container's automatic minimum size is zero; its
+                   box is still no smaller than its padding and border *)
                 let overflow_val =
                   match measurer.axis with
                   | Abstract_axis.Inline -> item.overflow.x
                   | Abstract_axis.Block -> item.overflow.y
                 in
-                Dimension.to_option
-                  (Overflow.to_automatic_min_size overflow_val) )
+                match
+                  Dimension.to_option
+                    (Overflow.to_automatic_min_size overflow_val)
+                with
+                | Some v ->
+                    Some
+                      (Float.max v
+                         (Sizef.get measurer.axis padding_border_size))
+                | None -> None) )
           |> fun v_opt ->
           match v_opt with
           | Some v -> v
