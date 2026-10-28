@@ -7629,6 +7629,39 @@ let () =
             [| 40.; 40.; 40.; 40. |];
             [| 80.; 40.; 40.; 40. |];
           ];
+      case "item_contribution_floored_at_padding_border"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing ~align_items:Center
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 0. }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 0.;
+                         }
+                       ~padding:
+                         {
+                           left = Length_percentage.length 0.;
+                           right = Length_percentage.length 0.;
+                           top = Length_percentage.length 10.;
+                           bottom = Length_percentage.length 0.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 10. |] ]
+        ~content_box:
+          [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 10. |] ];
       case "item_percentage_height_resolves_against_grid_area"
         (fun box_sizing ->
           node
@@ -7695,6 +7728,34 @@ let () =
           [
             [| 0.; 0.; 40.; 0. |]; [| 0.; 0.; 40.; 0. |]; [| 0.; 0.; 40.; 0. |];
           ];
+      case "item_preferred_size_clamped_by_max_size"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~display:Grid ~box_sizing ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 10.;
+                         }
+                       ~max_size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 0.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:
+          [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "justify_content_center"
         (fun box_sizing ->
           node

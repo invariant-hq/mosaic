@@ -252,6 +252,31 @@ module Intrinsic_size_measurer = struct
           | Some v, Some lim -> Some (min v lim)
         in
 
+        (* A definite preferred size is clamped by the min and max sizes. For
+           a compressible replaced element, an indefinite percentage max size
+           resolves against zero. *)
+        let clamp_by_min_max size =
+          let min_size = Size.get measurer.axis item.min_size
+          and max_size = Size.get measurer.axis item.max_size in
+          if Dimension.is_auto min_size && Dimension.is_auto max_size then size
+          else
+            let basis = Size.get measurer.axis grid_area_size in
+            let max_basis =
+              if item.is_compressible_replaced && Option.is_none basis then
+                Some 0.0
+              else basis
+            in
+            let adjustment = Sizef.get measurer.axis box_sizing_adjustment in
+            let size =
+              match Dimension.maybe_resolve max_size max_basis calc with
+              | Some max -> Float.min size (max +. adjustment)
+              | None -> size
+            in
+            match Dimension.maybe_resolve min_size basis calc with
+            | Some min -> Float.max size (min +. adjustment)
+            | None -> size
+        in
+
         let size =
           (* Try to get size from explicit size *)
           ( ( ( Dimension.maybe_resolve
@@ -271,7 +296,15 @@ module Intrinsic_size_measurer = struct
                     |> fun v_opt ->
                     match v_opt with
                     | Some v ->
-                        Some (v +. Sizef.get measurer.axis box_sizing_adjustment)
+                        (* The box is never smaller than its padding and
+                           border *)
+                        Some
+                          (Float.max
+                             (clamp_by_min_max
+                                (v
+                                +. Sizef.get measurer.axis box_sizing_adjustment
+                                ))
+                             (Sizef.get measurer.axis padding_border_size))
                     | None -> None)
                 | None -> None )
             |> fun v_opt ->
@@ -377,36 +410,44 @@ module Intrinsic_size_measurer = struct
                    the size suggestion is capped by those sizes; for this
                    purpose, any indefinite percentages in these sizes are
                    resolved against zero (and considered definite). *)
-                if item.is_compressible_replaced then
-                  let size_cap =
-                    Dimension.maybe_resolve
-                      (Size.get measurer.axis item.size)
-                      (Some 0.0) calc
-                  in
-                  let max_size_cap =
-                    Dimension.maybe_resolve
-                      (Size.get measurer.axis item.max_size)
-                      (Some 0.0) calc
-                  in
-                  maybe_min (Some minimum_contribution) size_cap
-                  |> (fun v -> maybe_min v max_size_cap)
-                  |> Option.value ~default:minimum_contribution
-                else minimum_contribution
+                let minimum_contribution =
+                  if item.is_compressible_replaced then
+                    let size_cap =
+                      Dimension.maybe_resolve
+                        (Size.get measurer.axis item.size)
+                        (Some 0.0) calc
+                    in
+                    let max_size_cap =
+                      Dimension.maybe_resolve
+                        (Size.get measurer.axis item.max_size)
+                        (Some 0.0) calc
+                    in
+                    maybe_min (Some minimum_contribution) size_cap
+                    |> (fun v -> maybe_min v max_size_cap)
+                    |> Option.value ~default:minimum_contribution
+                  else minimum_contribution
+                in
+                (* The content-based minimum size is additionally clamped by
+                   the sum of the fixed max track sizing functions of the
+                   tracks the item spans; not an explicit preferred or min
+                   size, and not by the argument of fit-content(). The clamp
+                   fits the item into the limit, so it never shrinks the item
+                   below its padding and border. *)
+                match
+                  Grid_item.spanned_fixed_track_limit item measurer.axis
+                    axis_tracks
+                    (Size.get measurer.axis measurer.inner_node_size)
+                    calc
+                with
+                | Some limit ->
+                    Float.min minimum_contribution
+                      (Float.max limit
+                         (Sizef.get measurer.axis padding_border_size))
+                | None -> minimum_contribution
               else 0.0
         in
 
-        (* In all cases, the size suggestion is additionally clamped by the
-           maximum size in the affected axis, if it's definite. Note: The
-           argument to fit-content() does not clamp the content-based minimum
-           size in the same way as a fixed max track sizing function. *)
-        let limit =
-          Grid_item.spanned_fixed_track_limit item measurer.axis axis_tracks
-            (Size.get measurer.axis measurer.inner_node_size)
-            calc
-        in
-        let final_size =
-          maybe_min (Some size) limit |> Option.value ~default:size
-        in
+        let final_size = size in
 
         (* Update cache *)
         item.minimum_contribution_cache <-
