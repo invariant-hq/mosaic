@@ -7907,6 +7907,23 @@ let () =
           [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
         ~content_box:
           [ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
+      case "item_with_both_sizes_ignores_aspect_ratio"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.length 50.;
+                       height = Dimension.length 10.;
+                     }
+                   ~aspect_ratio:1.5 ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 50.; 10. |]; [| 0.; 0.; 50.; 10. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 10. |]; [| 0.; 0.; 50.; 10. |] ];
       case "justify_content_center"
         (fun box_sizing ->
           node

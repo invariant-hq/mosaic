@@ -68,7 +68,16 @@ let compute_leaf_layout ~(inputs : Layout_input.t) ~(style : Style.t)
     match sizing_mode with
     | Sizing_mode.Content_size -> (known_dimensions, Size.none, Size.none, None)
     | Sizing_mode.Inherent_size ->
-        let aspect_ratio = Style.aspect_ratio style in
+        (* A box whose width and height are both set ignores its ratio
+           (CSS Sizing 4, 5.1) *)
+        let aspect_ratio =
+          let size = Style.size style in
+          if
+            (not (Style.Dimension.is_auto size.width))
+            && not (Style.Dimension.is_auto size.height)
+          then None
+          else Style.aspect_ratio style
+        in
 
         let style_size =
           Style.size style |> fun dims ->
