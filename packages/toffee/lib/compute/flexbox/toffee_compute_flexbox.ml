@@ -2211,8 +2211,8 @@ let distribute_remaining_free_space (flex_lines : flex_line list)
 
 (* Helper function to align flex items along cross axis *)
 let[@inline] align_flex_items_along_cross_axis (child : flex_item)
-    (free_space : float) (max_baseline : float) (constants : algo_constants) :
-    float =
+    (free_space : float) (max_baseline : float) (max_baseline_to_bottom : float)
+    (constants : algo_constants) : float =
   match child.align_self with
   | Style.Align_items.Start -> 0.0
   | Style.Align_items.Flex_start ->
@@ -2222,7 +2222,12 @@ let[@inline] align_flex_items_along_cross_axis (child : flex_item)
       if constants.is_wrap_reverse then 0.0 else free_space
   | Style.Align_items.Center -> free_space /. 2.0
   | Style.Align_items.Baseline ->
-      if constants.is_row then max_baseline -. child.s.baseline
+      if constants.is_row && constants.is_wrap_reverse then
+        (* The cross axis runs bottom to top: the group sits at the line's
+           cross-start edge, its bottom *)
+        let line_cross_size = free_space +. child.s.outer_target_height in
+        line_cross_size -. max_baseline_to_bottom -. child.s.baseline
+      else if constants.is_row then max_baseline -. child.s.baseline
       else if
         (* Until we support vertical writing modes, baseline alignment only
            makes sense if the direction is row, so we treat it as flex-start
@@ -2243,6 +2248,20 @@ let resolve_cross_axis_auto_margins (flex_lines : flex_line list)
     lines := List.tl !lines;
     let line_cross_size = line.cross_size in
     let max_baseline = max_baseline line in
+    (* In a wrap-reverse row, the largest distance from an item's baseline to
+       its bottom margin edge among those in baseline alignment *)
+    let max_baseline_to_bottom =
+      if is_row && constants.is_wrap_reverse then (
+        let max = ref 0.0 in
+        Array.iter
+          (fun child ->
+            if participates_in_baseline child ~is_row then
+              max :=
+                Float.max !max (child.s.outer_target_height -. child.s.baseline))
+          line.items;
+        !max)
+      else 0.0
+    in
     for i = 0 to Array.length line.items - 1 do
       let child = line.items.(i) in
       let free_space =
@@ -2280,7 +2299,7 @@ let resolve_cross_axis_auto_margins (flex_lines : flex_line list)
         (* No auto margins - align according to align-self *)
         child.s.offset_cross <-
           align_flex_items_along_cross_axis child free_space max_baseline
-            constants
+            max_baseline_to_bottom constants
     done
   done
 
@@ -3382,9 +3401,17 @@ let compute_preliminary (type t)
 
     (* Calculate flex container baselines *)
     let first_vertical_baseline =
+      (* The cross-start-most line: the last of a wrap-reverse container *)
+      let rec last line = function
+        | [] -> line
+        | line :: rest -> last line rest
+      in
       match flex_lines with
       | [] -> None
-      | first_line :: _ -> (
+      | line :: rest -> (
+          let first_line =
+            if constants.is_wrap_reverse then last line rest else line
+          in
           (* For row containers: find item with baseline alignment or fallback
              to first item For column containers: always use first item *)
           let items = first_line.items in

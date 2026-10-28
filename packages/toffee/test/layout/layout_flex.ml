@@ -23694,6 +23694,46 @@ let () =
             [| 0.; 40.; 40.; 40. |];
             [| 0.; 0.; 40.; 40. |];
           ];
+      case "wrap_reverse_align_baseline_aligns_to_cross_start"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_wrap:Wrap_reverse
+               ~align_items:Baseline
+               ~size:{ width = Dimension.auto; height = Dimension.length 50. }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 10. }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 20. }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 5.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 0.; 50. |];
+            [| 0.; 40.; 0.; 10. |];
+            [| 0.; 30.; 0.; 20. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 0.; 50. |];
+            [| 0.; 40.; 0.; 10. |];
+            [| 0.; 30.; 0.; 20. |];
+          ];
       case "wrap_reverse_column"
         (fun box_sizing ->
           node
@@ -23834,6 +23874,59 @@ let () =
             [| 135.; 30.; 30.; 30. |];
             [| 135.; 60.; 30.; 40. |];
             [| 35.; 0.; 30.; 50. |];
+          ];
+      case "wrap_reverse_container_baseline_from_cross_start_line"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~align_items:Baseline ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_wrap:Wrap_reverse
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 10.;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 10.;
+                           height = Dimension.length 20.;
+                         }
+                       ())
+                    [];
+                ];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 5. }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 10.; 30. |];
+            [| 0.; 0.; 10.; 30. |];
+            [| 0.; 20.; 10.; 10. |];
+            [| 0.; 0.; 10.; 20. |];
+            [| 10.; 15.; 0.; 5. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 10.; 30. |];
+            [| 0.; 0.; 10.; 30. |];
+            [| 0.; 20.; 10.; 10. |];
+            [| 0.; 0.; 10.; 20. |];
+            [| 10.; 15.; 0.; 5. |];
           ];
       case "wrap_reverse_overflowing_line_packs_to_cross_start"
         (fun box_sizing ->
