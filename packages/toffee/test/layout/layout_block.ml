@@ -2927,6 +2927,39 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 50.; 25. |]; [| 0.; 0.; 50.; 25. |] ]
         ~content_box:[ [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 50.; 0. |] ];
+      case "aspect_ratio_height_grows_to_content"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 20.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~display:Block ~box_sizing ~aspect_ratio:2. ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.auto;
+                           height = Dimension.length 30.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 30. |];
+            [| 0.; 0.; 20.; 30. |];
+            [| 0.; 0.; 20.; 30. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 30. |];
+            [| 0.; 0.; 20.; 30. |];
+            [| 0.; 0.; 20.; 30. |];
+          ];
       case "aspect_ratio_stretch_width"
         (fun box_sizing ->
           node

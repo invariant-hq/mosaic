@@ -1019,11 +1019,32 @@ let compute_inner (type t)
      measuring the intrinsic size, so the transfer applies to real constraints
      only. Only an unknown axis takes the derived size, clamped: a known size
      stays as the parent resolved it. *)
-  let known_dimensions =
+  let ratio_known_dimensions =
     Size.choose_first known_dimensions
       (known_dimensions
       |> Size.apply_aspect_ratio aspect_ratio
       |> Size.clamp_option min_size max_size)
+  in
+  (* A height the ratio gives is a definite basis for the children's
+     percentages, but with an automatic minimum height the box still grows
+     to its content (css-sizing-4, the automatic minimum size of a box with
+     a ratio), unless it is a scroll container: it then floors the height
+     the content gives rather than fixing it. NaN where it does not apply. *)
+  let ratio_height_floor =
+    match (known_dimensions.height, ratio_known_dimensions.height) with
+    | None, Some height
+      when Option.is_none min_size.height
+           &&
+           let overflow = Style.overflow style in
+           not
+             (Overflow.is_container overflow.x
+             || Overflow.is_container overflow.y) ->
+        height
+    | _ -> Float.nan
+  in
+  let known_dimensions =
+    if Float.is_nan ratio_height_floor then ratio_known_dimensions
+    else { ratio_known_dimensions with height = None }
   in
   (* A known height that is not definite, as the content height a flex
      container gives an item it does not stretch, is no basis for the
@@ -1031,9 +1052,9 @@ let compute_inner (type t)
   let percentage_basis =
     if
       (Layout_input.known_dimensions_are_definite inputs).height
-      || Option.is_none known_dimensions.height
-    then known_dimensions
-    else { known_dimensions with height = None }
+      || Option.is_none ratio_known_dimensions.height
+    then ratio_known_dimensions
+    else { ratio_known_dimensions with height = None }
   in
   let container_content_box_size =
     Sizef.maybe_sub (Rectf.sum_axes content_box_inset) percentage_basis
@@ -1173,8 +1194,10 @@ let compute_inner (type t)
         known_dimensions.height
         |> Option.value
              ~default:
-               ( intrinsic_outer_height |> fun h ->
-                 Helpers.maybe_clamp h min_size.height max_size.height )
+               ( (if Float.is_nan ratio_height_floor then intrinsic_outer_height
+                  else Float.max intrinsic_outer_height ratio_height_floor)
+               |> fun h -> Helpers.maybe_clamp h min_size.height max_size.height
+               )
         |> Float.max padding_border_size.height
       in
       let final_outer_size =
