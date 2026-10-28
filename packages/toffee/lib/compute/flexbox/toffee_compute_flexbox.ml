@@ -316,11 +316,10 @@ let compute_constants (type t)
 
   (* Resolve gap *)
   let gap = Style.gap style in
-  let gap_base_width, gap_base_height =
-    match node_inner_size with
-    | { width = Some w; height = Some h } -> (w, h)
-    | _ -> (0.0, 0.0)
-  in
+  (* Each gap resolves against the inner size in its own axis, zero where
+     that is unknown *)
+  let gap_base_width = Option.value node_inner_size.width ~default:0.0 in
+  let gap_base_height = Option.value node_inner_size.height ~default:0.0 in
 
   (* Resolve min/max sizes, adjusted by the padding and border for a content
      box ([Rectf.sum_axes (Rectf.add padding border)], summed in its order) *)

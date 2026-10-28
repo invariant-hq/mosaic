@@ -397,4 +397,54 @@ let () =
             [| 0.; 0.; 50.; 25. |];
             [| 0.; 0.; 50.; 50. |];
           ];
+      case "wrap_percentage_column_gap_in_known_width"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:{ width = Dimension.length 100.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_wrap:Wrap
+                   ~gap:
+                     {
+                       width = Length_percentage.percent 0.5;
+                       height = Length_percentage.length 0.;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 30.;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 30.;
+                           height = Dimension.length 10.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 100.; 20. |];
+            [| 0.; 0.; 100.; 20. |];
+            [| 0.; 0.; 30.; 10. |];
+            [| 0.; 10.; 30.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 100.; 20. |];
+            [| 0.; 0.; 100.; 20. |];
+            [| 0.; 0.; 30.; 10. |];
+            [| 0.; 10.; 30.; 10. |];
+          ];
     ]
