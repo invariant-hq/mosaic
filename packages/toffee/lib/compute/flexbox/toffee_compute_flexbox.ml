@@ -1345,6 +1345,11 @@ let content_contribution (type t)
     Float.max (Float.min style_preferred max_main_size) min_main_size
     +. margin_sum
   else if max_main_size <= min_main_size then min_main_size +. margin_sum
+  else if (not is_row) && Style.flex_grow flex_item.style > 0.0 then
+    (* A growing item of a column contributes its hypothetical main size: its
+       flex base size clamped by its minimum, automatic or not, and maximum,
+       as in Chromium; its preferred height alone does not count *)
+    flex_item.s.hypothetical_inner_height +. margin_sum
   else if not (Float.is_nan style_preferred) then
     (* A definite preferred main size is the item's content contribution (an
        inherent-size measure would return it), floored by its main-axis

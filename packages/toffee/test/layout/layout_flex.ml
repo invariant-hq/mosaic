@@ -11253,6 +11253,21 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 200.; 200. |]; [| 100.; 100.; 100.; 100. |] ]
         ~content_box:[ [| 0.; 0.; 200.; 200. |]; [| 60.; 60.; 140.; 140. |] ];
+      case "column_growing_item_contributes_hypothetical_size"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_direction:Column ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_grow:2.
+                   ~flex_basis:(Dimension.length 0.)
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 50. }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "column_relative_all_sides"
         (fun box_sizing ->
           node
