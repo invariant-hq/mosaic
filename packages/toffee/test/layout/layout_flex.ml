@@ -14541,6 +14541,21 @@ let () =
           text (Style.make ~box_sizing ~flex_direction:Column ()) [ "HH"; "HH" ])
         ~border_box:[ [| 0.; 0.; 40.; 10. |] ]
         ~content_box:[ [| 0.; 0.; 40.; 10. |] ];
+      case "intrinsic_sizing_item_contribution_excludes_container_border"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~border:
+                 {
+                   left = Length_percentage.length 0.;
+                   right = Length_percentage.length 50.;
+                   top = Length_percentage.length 0.;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ())
+            [ node (Style.make ~box_sizing ~flex_grow:2. ()) [] ])
+        ~border_box:[ [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
       case "intrinsic_sizing_main_size_column"
         (fun box_sizing ->
           text ~vertical:true

@@ -1031,7 +1031,7 @@ let line_base_length (constants : algo_constants) (line : flex_line) =
 let content_contribution (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (available_space : Available_space.t size) (constants : algo_constants)
-    ~main_content_box_inset (flex_item : flex_item) =
+    (flex_item : flex_item) =
   let is_row = constants.is_row in
   let style_min =
     if is_row then flex_item.s.min_width else flex_item.s.min_height
@@ -1106,14 +1106,10 @@ let content_contribution (type t)
     +. margin_sum
   else if max_main_size <= min_main_size then min_main_size +. margin_sum
   else if is_scroll_container flex_item then
-    (* Scroll containers use their flex basis but still honour min/max and
-       padding/border insets *)
+    (* Scroll containers use their flex basis but still honour min/max *)
     let content_main_size = flex_basis +. margin_sum in
-    if is_row then Float.max (clamp content_main_size) main_content_box_inset
-    else
-      Float.max
-        (clamp (Float.max content_main_size flex_basis))
-        main_content_box_inset
+    if is_row then clamp content_main_size
+    else clamp (Float.max content_main_size flex_basis)
   else if not (Float.is_nan style_preferred) then
     (* A definite preferred main size is the item's content contribution (an
        inherent-size measure would return it), floored by its main-axis
@@ -1219,12 +1215,11 @@ let content_contribution (type t)
       +. margin_sum
     in
 
-    (* Apply different clamping based on row vs column *)
-    if is_row then Float.max (clamp content_main_size) main_content_box_inset
-    else
-      Float.max
-        (clamp (Float.max content_main_size flex_basis))
-        main_content_box_inset
+    (* Apply different clamping based on row vs column. The container's own
+       padding and border do not floor an item's contribution: the container
+       adds them once, to the sum of its items. *)
+    if is_row then clamp content_main_size
+    else clamp (Float.max content_main_size flex_basis)
 
 let determine_container_main_size (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
@@ -1282,8 +1277,7 @@ let determine_container_main_size (type t)
                   let content_contribution =
                     content_contribution
                       (module Tree)
-                      tree available_space constants ~main_content_box_inset
-                      flex_item
+                      tree available_space constants flex_item
                   in
                   flex_item.s.content_flex_fraction <-
                     (let diff =
