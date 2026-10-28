@@ -3533,6 +3533,46 @@ let () =
             [| 0.; 0.; 50.; 10. |];
             [| 0.; 10.; 50.; 10. |];
           ];
+      case "intrinsic_width_includes_margins_of_sized_children"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 20.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 5.; height = Dimension.auto }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 30.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 35.; 0. |]; [| 0.; 0.; 10.; 0. |]; [| 30.; 0.; 5.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 35.; 0. |]; [| 0.; 0.; 10.; 0. |]; [| 30.; 0.; 5.; 0. |];
+          ];
       case "item_max_width"
         (fun box_sizing ->
           node

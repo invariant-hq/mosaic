@@ -178,27 +178,18 @@ let determine_content_based_container_width (type t)
           Size.clamp_option item.min_size item.max_size item.size
         in
 
+        let calc = Tree.resolve_calc_value tree in
+        let parent_width = Available_space.to_option available_space.width in
+        let item_x_margin_sum =
+          Length_percentage_auto.resolve_or_zero item.margin.left parent_width
+            calc
+          +. Length_percentage_auto.resolve_or_zero item.margin.right
+               parent_width calc
+        in
         let width =
           match known_dimensions.width with
           | Some w -> w
           | None ->
-              (* Get calc resolver from tree *)
-              let calc = Tree.resolve_calc_value tree in
-              let item_x_margin_sum =
-                let parent_width =
-                  Available_space.to_option available_space.width
-                in
-                let margin_left =
-                  Length_percentage_auto.resolve_or_zero item.margin.left
-                    parent_width calc
-                in
-                let margin_right =
-                  Length_percentage_auto.resolve_or_zero item.margin.right
-                    parent_width calc
-                in
-                margin_left +. margin_right
-              in
-
               let available_space_for_child =
                 Size.
                   {
@@ -208,7 +199,6 @@ let determine_content_based_container_width (type t)
                     height = available_space.height;
                   }
               in
-
               let size_and_baselines =
                 Tree.compute_child_layout tree item.node_id
                   (Layout_input.make ~run_mode:Run_mode.Compute_size
@@ -219,11 +209,13 @@ let determine_content_based_container_width (type t)
                      ~vertical_margins_are_collapsible:
                        { start = true; end_ = true })
               in
-
-              (Layout_output.size size_and_baselines).width +. item_x_margin_sum
+              (Layout_output.size size_and_baselines).width
         in
-
-        let width = Float.max width item.padding_border_sum.width in
+        (* A child contributes its margin box, whether its width is known or
+           measured *)
+        let width =
+          Float.max width item.padding_border_sum.width +. item_x_margin_sum
+        in
         max_child_width := Float.max !max_child_width width)
     items;
 
