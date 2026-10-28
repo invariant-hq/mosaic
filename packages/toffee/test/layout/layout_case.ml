@@ -87,6 +87,9 @@ let check ~rounding ~available root expected () =
   compute_layout_with_measure tree root available measure |> Result.get_ok;
   print_tree tree root;
   let float = Windtrap.Testable.float (if rounding then 0.001 else 0.1) in
+  (* Chromium's scroll extents are whole pixels (scrollWidth and clientWidth
+     are rounded), so an unrounded one is within a pixel. *)
+  let scroll = if rounding then float else Windtrap.Testable.float 1.0 in
   List.iteri
     (fun i (id, row) ->
       let layout = layout tree id |> Result.get_ok in
@@ -107,7 +110,8 @@ let check ~rounding ~available root expected () =
           let what, actual = actual.(j) in
           Windtrap.equal
             ~msg:(Printf.sprintf "%s of node%d" what i)
-            float expected actual)
+            (if j < 4 then float else scroll)
+            expected actual)
         row)
     (List.combine ids expected)
 

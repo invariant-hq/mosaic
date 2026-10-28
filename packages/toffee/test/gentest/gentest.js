@@ -26,10 +26,22 @@ const out = path.join(here, '../layout');
 // once with every box content-box.
 function describe() {
   const layout = (e) => {
+    const computed = getComputedStyle(e);
+    // A box of display none has no layout, which toffee gives as zeros:
+    // Chromium's rect for it is at the viewport's origin, not at its parent.
+    if (computed.display === 'none') {
+      return {
+        boxSizing: computed.boxSizing,
+        unrounded: [0, 0, 0, 0],
+        rounded: [0, 0, 0, 0],
+        scroll: [0, 0],
+        children: Array.from(e.children, layout),
+      };
+    }
     const r = e.getBoundingClientRect();
     const p = e.parentNode.getBoundingClientRect();
     return {
-      boxSizing: getComputedStyle(e).boxSizing,
+      boxSizing: computed.boxSizing,
       unrounded: [r.x - p.x, r.y - p.y, r.width, r.height],
       rounded: [
         Math.round(r.x) - Math.round(p.x),
@@ -232,7 +244,11 @@ const ratio = (s) => {
   return w > 0 && h > 0 ? float(w / h) : fail(`unsupported aspect ratio ${s}`);
 };
 
-const overflowKeyword = { visible: 'Visible', hidden: 'Hidden', scroll: 'Scroll', auto: 'Auto' };
+// The inline overflow: an axis left visible beside one that scrolls computes
+// to auto in Chromium, which toffee does not have, and is translated as
+// visible: the two differ where that axis overflows and Chromium adds a
+// scrollbar to it.
+const overflowKeyword = { visible: 'Visible', clip: 'Clip', hidden: 'Hidden', scroll: 'Scroll' };
 
 // The arguments of Style.make for an element's inline style [s]. [boxSizing]
 // is the OCaml expression for its box-sizing; a scroll container's scrollbars
@@ -324,7 +340,7 @@ function node(input, border, content, scrollbarWidth) {
 // extent of a scroll container.
 function expected(input, layout, rounding) {
   const s = input.style;
-  const scrolls = [s['overflow-x'], s['overflow-y']].some((v) => v && v !== 'visible');
+  const scrolls = [s['overflow-x'], s['overflow-y']].some((v) => v === 'hidden' || v === 'scroll');
   const row = [
     ...(rounding ? layout.rounded : layout.unrounded),
     ...(scrolls ? layout.scroll : []),
