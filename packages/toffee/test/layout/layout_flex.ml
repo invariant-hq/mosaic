@@ -11130,6 +11130,35 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 100. |]; [| 10.; 10.; 40.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 100. |]; [| 10.; 10.; 40.; 0. |] ];
+      case ~width:128. ~height:110.
+        "container_in_definite_space_sized_by_clamped_item_bases"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 50.; height = Dimension.auto }
+                   ~max_size:
+                     { width = Dimension.length 20.; height = Dimension.auto }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 30.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 20.; 0.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 30.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 20.; 0.; 10.; 0. |];
+          ];
       case "container_with_unsized_child"
         (fun box_sizing ->
           node

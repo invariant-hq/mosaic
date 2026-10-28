@@ -1018,15 +1018,21 @@ let line_base_length (constants : algo_constants) (line : flex_line) =
     let child = line.items.(i) in
     let padding_border_sum = main_padding_border constants child in
     let min_main = if is_row then child.s.min_width else child.s.min_height in
+    let max_main = if is_row then child.s.max_width else child.s.max_height in
+    (* The hypothetical main size: the flex base size clamped by the item's
+       minimum and maximum, the minimum winning *)
     let base_size =
-      if Float.is_nan min_main then child.s.flex_basis
-      else Float.max child.s.flex_basis min_main
+      if Float.is_nan max_main then child.s.flex_basis
+      else Float.min child.s.flex_basis max_main
+    in
+    let base_size =
+      if Float.is_nan min_main then base_size else Float.max base_size min_main
     in
     let margin_sum =
       if is_row then child.margin.left +. child.margin.right
       else child.margin.top +. child.margin.bottom
     in
-    total := !total +. Float.max (base_size +. margin_sum) padding_border_sum
+    total := !total +. Float.max base_size padding_border_sum +. margin_sum
   done;
   !total
   +. sum_axis_gaps
