@@ -464,3 +464,8 @@ let available_space t axis other_axis_tracks other_axis_available_space
       (Some 0.0) spanned_tracks
   in
   Size.set other_axis item_other_axis_size Size.none
+
+let participates_in_baseline_alignment t =
+  t.align_self = Align_items.Baseline
+  && (not (Length_percentage_auto.is_auto t.margin.top))
+  && not (Length_percentage_auto.is_auto t.margin.bottom)

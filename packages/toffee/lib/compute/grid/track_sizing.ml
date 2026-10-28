@@ -744,53 +744,57 @@ let resolve_item_baselines (type t)
       let row_baseline_item_count =
         Array.fold_left
           (fun count item ->
-            if item.Grid_item.align_self = Align_items.Baseline then count + 1
+            if Grid_item.participates_in_baseline_alignment item then count + 1
             else count)
           0 row_items
       in
 
       if row_baseline_item_count > 1 then (
-        (* Compute the baselines of all items in the row *)
+        (* Compute the baselines of the row's items in baseline alignment *)
         Array.iter
           (fun item ->
-            let layout_output =
-              Tree.compute_child_layout tree item.Grid_item.node
-                (Layout_input.make ~known_dimensions:Size.none
-                   ~parent_size:inner_node_size
-                   ~available_space:
-                     (Size.map (fun _ -> Available_space.Min_content) Size.none)
-                   ~sizing_mode:Sizing_mode.Inherent_size
-                   ~run_mode:Run_mode.Perform_layout ~axis:Requested_axis.Both
-                   ~vertical_margins_are_collapsible:Line.both_false)
-            in
-            let baseline = (Layout_output.first_baselines layout_output).y in
-            let height = (Layout_output.size layout_output).height in
-            let calc = Tree.resolve_calc_value tree in
+            if Grid_item.participates_in_baseline_alignment item then
+              let layout_output =
+                Tree.compute_child_layout tree item.Grid_item.node
+                  (Layout_input.make ~known_dimensions:Size.none
+                     ~parent_size:inner_node_size
+                     ~available_space:
+                       (Size.map
+                          (fun _ -> Available_space.Min_content)
+                          Size.none)
+                     ~sizing_mode:Sizing_mode.Inherent_size
+                     ~run_mode:Run_mode.Perform_layout ~axis:Requested_axis.Both
+                     ~vertical_margins_are_collapsible:Line.both_false)
+              in
+              let baseline = (Layout_output.first_baselines layout_output).y in
+              let height = (Layout_output.size layout_output).height in
+              let calc = Tree.resolve_calc_value tree in
 
-            item.Grid_item.baseline <-
-              Some
-                (Option.value baseline ~default:height
-                +. Length_percentage_auto.resolve_or_zero
-                     item.Grid_item.margin.top inner_node_size.width calc))
+              item.Grid_item.baseline <-
+                Some
+                  (Option.value baseline ~default:height
+                  +. Length_percentage_auto.resolve_or_zero
+                       item.Grid_item.margin.top inner_node_size.width calc))
           row_items;
 
-        (* Compute the max baseline of all items in the row *)
+        (* The largest baseline of the row's items in baseline alignment *)
         let row_max_baseline =
           Array.fold_left
             (fun max_baseline item ->
-              let baseline =
-                Option.value item.Grid_item.baseline ~default:0.0
-              in
-              max max_baseline baseline)
+              if Grid_item.participates_in_baseline_alignment item then
+                max max_baseline
+                  (Option.value item.Grid_item.baseline ~default:0.0)
+              else max_baseline)
             0.0 row_items
         in
 
-        (* Compute the baseline shim for each item in the row *)
+        (* Shim each item in baseline alignment down to the row's baseline *)
         Array.iter
           (fun item ->
-            item.Grid_item.baseline_shim <-
-              row_max_baseline
-              -. Option.value item.Grid_item.baseline ~default:0.0)
+            if Grid_item.participates_in_baseline_alignment item then
+              item.Grid_item.baseline_shim <-
+                row_max_baseline
+                -. Option.value item.Grid_item.baseline ~default:0.0)
           row_items);
 
       (* Process next row *)

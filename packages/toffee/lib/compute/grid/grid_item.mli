@@ -114,6 +114,12 @@ val crosses_intrinsic_track : t -> abstract_axis -> bool
 (** [crosses_intrinsic_track t axis] returns the pre-computed flag indicating
     whether the item crosses an intrinsic track in [axis]. *)
 
+val participates_in_baseline_alignment : t -> bool
+(** [participates_in_baseline_alignment t] is [true] when [t] is aligned to the
+    baseline and neither of its block-axis margins is auto. An item with an auto
+    margin there is aligned as start instead, outside its row's baseline group.
+*)
+
 val spanned_track_limit :
   t ->
   abstract_axis ->

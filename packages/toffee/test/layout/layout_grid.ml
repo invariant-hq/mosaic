@@ -2170,6 +2170,58 @@ let () =
             [| 120.; 50.; 40.; 40. |];
             [| 40.; 90.; 40.; 40. |];
           ];
+      case "align_baseline_item_with_auto_margin_does_not_participate"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~grid_template_columns:
+                 [
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.length 10.);
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.length 20.);
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.minmax
+                        ~min:(Compact_length.length 0.)
+                        ~max:(Compact_length.fr 1.));
+                 ]
+               ~align_items:Baseline ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.auto;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~border:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 10.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 30.; 10. |];
+            [| 0.; 0.; 10.; 0. |];
+            [| 10.; 0.; 20.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 30.; 10. |];
+            [| 0.; 0.; 10.; 0. |];
+            [| 10.; 0.; 20.; 10. |];
+          ];
       case "align_content_center"
         (fun box_sizing ->
           node

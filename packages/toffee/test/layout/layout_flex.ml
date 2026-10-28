@@ -2654,6 +2654,51 @@ let () =
             [| 50.; 5.; 50.; 20. |];
             [| 0.; 0.; 50.; 15. |];
           ];
+      case "align_baseline_item_with_auto_cross_margin_does_not_participate"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~align_items:Baseline ())
+            [
+              node (Style.make ~box_sizing ()) [];
+              node
+                (Style.make ~box_sizing
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.auto;
+                     }
+                   ~padding:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 20.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 10. }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 0.; 20. |];
+            [| 0.; 10.; 0.; 0. |];
+            [| 0.; 0.; 0.; 20. |];
+            [| 0.; 0.; 0.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 0.; 20. |];
+            [| 0.; 10.; 0.; 0. |];
+            [| 0.; 0.; 0.; 20. |];
+            [| 0.; 0.; 0.; 10. |];
+          ];
       case "align_baseline_multiline"
         (fun box_sizing ->
           node

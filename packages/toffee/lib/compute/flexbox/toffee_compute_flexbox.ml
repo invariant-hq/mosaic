@@ -182,6 +182,14 @@ let bottom (rect : _ rect) = rect.bottom [@@inline]
 let left (rect : _ rect) = rect.left [@@inline]
 let right (rect : _ rect) = rect.right [@@inline]
 
+(* Whether [item] takes part in baseline alignment: it is aligned to the
+   baseline and neither of its cross-axis margins is auto (CSS Box Alignment
+   3, 9.3). *)
+let participates_in_baseline (item : flex_item) ~is_row =
+  item.align_self = Style.Align_items.Baseline
+  && (not (margin_is_auto item (if is_row then top else left)))
+  && not (margin_is_auto item (if is_row then bottom else right))
+
 (* [d] resolved against [context] as [Dimension.maybe_resolve] resolves it,
    NaN where that gives [None]. *)
 let resolve_dimension (d : Dimension.t) (context : float option) calc =
@@ -1722,14 +1730,15 @@ let calculate_children_base_lines (type t)
          alignment then baseline alignment is a no-op so we skip *)
       let line_baseline_child_count = ref 0 in
       for i = 0 to Array.length items - 1 do
-        if items.(i).align_self = Baseline then incr line_baseline_child_count
+        if participates_in_baseline items.(i) ~is_row:true then
+          incr line_baseline_child_count
       done;
       if !line_baseline_child_count > 1 then
         for i = 0 to Array.length items - 1 do
           let child = items.(i) in
           (* Only calculate baselines for children participating in baseline
              alignment *)
-          if child.align_self = Baseline then
+          if participates_in_baseline child ~is_row:true then
             let measured_size_and_baselines =
               Tree.compute_child_layout tree child.node
                 (Layout_input.make ~run_mode:Run_mode.Perform_layout
@@ -1842,15 +1851,7 @@ let calculate_cross_size (flex_lines : flex_line list)
        for i = 0 to Array.length line.items - 1 do
          let child = line.items.(i) in
          let child_cross_size =
-           if
-             child.align_self = Baseline
-             && (not
-                   (if constants.is_row then margin_is_auto child top
-                    else margin_is_auto child left))
-             && not
-                  (if constants.is_row then margin_is_auto child bottom
-                   else margin_is_auto child right)
-           then
+           if participates_in_baseline child ~is_row:constants.is_row then
              (* Baseline aligned items with non-auto margins *)
              max_baseline -. child.s.baseline
              +. hypothetical_outer_cross_size constants child
@@ -3394,7 +3395,8 @@ let compute_preliminary (type t)
                 if i >= len then None
                 else
                   let item = items.(i) in
-                  if item.align_self = Baseline then Some item else find (i + 1)
+                  if participates_in_baseline item ~is_row:true then Some item
+                  else find (i + 1)
               in
               find 0
             else None

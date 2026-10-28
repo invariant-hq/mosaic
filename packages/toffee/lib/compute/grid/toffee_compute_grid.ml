@@ -330,9 +330,7 @@ let compute_grid_layout (type t)
 
       (* Determine if the grid has any baseline aligned items *)
       let has_baseline_aligned_item =
-        Array.exists
-          (fun item -> item.Grid_item.align_self = Align_items.Baseline)
-          items
+        Array.exists Grid_item.participates_in_baseline_alignment items
       in
 
       (* Run track sizing algorithm for Inline axis *)
@@ -885,20 +883,15 @@ let compute_grid_layout (type t)
               |> Array.of_list
             in
 
-            (* Check if any items in this row are baseline aligned *)
-            let row_has_baseline_item =
-              Array.exists
-                (fun item -> item.Grid_item.align_self = Align_items.Baseline)
-                first_row_items
-            in
-
+            (* The first item of the row in baseline alignment, else the
+               row's first item *)
             let item =
-              if row_has_baseline_item then
-                first_row_items
-                |> Array.find_opt (fun item ->
-                    item.Grid_item.align_self = Align_items.Baseline)
-                |> Option.get
-              else first_row_items.(0)
+              match
+                Array.find_opt Grid_item.participates_in_baseline_alignment
+                  first_row_items
+              with
+              | Some item -> item
+              | None -> first_row_items.(0)
             in
 
             item.Grid_item.y_position
