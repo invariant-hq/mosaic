@@ -3878,9 +3878,44 @@ let compute_preliminary (type t)
       ~margins_can_collapse_through:false)
 
 (* Main entry point for flexbox layout computation *)
-let compute_flexbox_layout (type t)
+(* Whether a child in flow sizes or spaces itself horizontally by a
+   percentage, which resolves against the container's content width *)
+let children_use_horizontal_percentages (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
-    (node : Node_id.t) (inputs : Layout_input.t) : Layout_output.t =
+    (node : Node_id.t) ~is_row =
+  let lp = Length_percentage.uses_percentage
+  and lpa = Length_percentage_auto.uses_percentage
+  and d = Dimension.uses_percentage in
+  let count = Tree.child_count tree node in
+  let rec go i =
+    i < count
+    &&
+    let style =
+      Tree.get_core_container_style tree (Tree.get_child_id tree node i)
+    in
+    Style.position style <> Position.Absolute
+    && (d (Style.size style).width
+       || d (Style.min_size style).width
+       || d (Style.max_size style).width
+       || (is_row && d (Style.flex_basis style))
+       || lpa (Style.margin style).left
+       || lpa (Style.margin style).right
+       || lp (Style.padding style).left
+       || lp (Style.padding style).right
+       || lp (Style.border style).left
+       || lp (Style.border style).right)
+    || go (i + 1)
+  in
+  go 0
+
+let rec compute_flexbox_layout : type t.
+    (module Tree.LAYOUT_PARTIAL_TREE with type t = t) ->
+    t ->
+    Node_id.t ->
+    Layout_input.t ->
+    Layout_output.t =
+ fun (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) tree node
+     inputs ->
   let known_dimensions = Layout_input.known_dimensions inputs in
   let parent_size = Layout_input.parent_size inputs in
   let run_mode = Layout_input.run_mode inputs in
@@ -3999,8 +4034,41 @@ let compute_flexbox_layout (type t)
         height_definite
       else none_definite
     in
-    compute_preliminary
-      (module Tree)
-      tree node ~run_mode ~known_dimensions:styled_based_known_dimensions
-      ~known_dimensions_are_definite ~parent_size
-      ~available_space:(Layout_input.available_space inputs)
+    if
+      run_mode = Run_mode.Perform_layout
+      && Float.is_nan width
+      && children_use_horizontal_percentages
+           (module Tree)
+           tree node
+           ~is_row:(Flex_direction.is_row (Style.flex_direction style))
+    then
+      (* A box's width is found before its children are laid out, so their
+         horizontal percentages resolve against it, as in Chromium; when the
+         parent leaves it to the container's content, size it first *)
+      let width =
+        (Layout_output.size
+           (compute_flexbox_layout
+              (module Tree)
+              tree node
+              (Layout_input.make ~run_mode:Run_mode.Compute_size ~sizing_mode
+                 ~axis:Requested_axis.Horizontal ~known_dimensions ~parent_size
+                 ~available_space:(Layout_input.available_space inputs)
+                 ~vertical_margins_are_collapsible:
+                   (Layout_input.vertical_margins_are_collapsible inputs))))
+          .width
+      in
+      compute_preliminary
+        (module Tree)
+        tree node ~run_mode
+        ~known_dimensions:
+          { styled_based_known_dimensions with width = Some width }
+        ~known_dimensions_are_definite:
+          { known_dimensions_are_definite with width = true }
+        ~parent_size
+        ~available_space:(Layout_input.available_space inputs)
+    else
+      compute_preliminary
+        (module Tree)
+        tree node ~run_mode ~known_dimensions:styled_based_known_dimensions
+        ~known_dimensions_are_definite ~parent_size
+        ~available_space:(Layout_input.available_space inputs)

@@ -54,6 +54,46 @@ let () =
             [| 0.; 10.; 20.; 10. |];
             [| 20.; 10.; 20.; 10. |];
           ];
+      case "fit_content_flex_item_resolves_child_percentages"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.auto;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~size:
+                         {
+                           width = Dimension.length 20.;
+                           height = Dimension.auto;
+                         }
+                       ~max_size:
+                         {
+                           width = Dimension.percent 0.5;
+                           height = Dimension.auto;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 20.; 0. |]; [| 0.; 0.; 10.; 0. |];
+          ];
       case "kitchen_sink"
         (fun box_sizing ->
           node
