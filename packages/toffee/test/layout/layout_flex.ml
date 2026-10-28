@@ -21536,6 +21536,56 @@ let () =
             [| 0.; 15.; 100.; 10. |];
             [| 0.; 25.; 100.; 10. |];
           ];
+      case ~width:100. ~height:50. "root_fills_definite_width_less_margins"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~margin:
+                 {
+                   left = Length_percentage_auto.length 10.;
+                   right = Length_percentage_auto.length 0.;
+                   top = Length_percentage_auto.length 0.;
+                   bottom = Length_percentage_auto.length 0.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.percent 0.5;
+                       height = Dimension.length 10.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 10.; 0.; 90.; 10. |]; [| 0.; 0.; 45.; 10. |] ]
+        ~content_box:[ [| 10.; 0.; 90.; 10. |]; [| 0.; 0.; 45.; 10. |] ];
+      case ~width:46. ~height:56. "root_fills_definite_width_within_its_maximum"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~size:{ width = Dimension.auto; height = Dimension.length 10. }
+               ~max_size:
+                 { width = Dimension.length 21.; height = Dimension.auto }
+               ~padding:
+                 {
+                   left = Length_percentage.length 7.;
+                   right = Length_percentage.length 0.;
+                   top = Length_percentage.length 0.;
+                   bottom = Length_percentage.length 0.;
+                 }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.percent 0.5; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 21.; 10. |]; [| 7.; 0.; 7.; 10. |] ]
+        ~content_box:[ [| 0.; 0.; 28.; 10. |]; [| 7.; 0.; 11.; 10. |] ];
       case "root_ignored"
         (fun box_sizing ->
           node
@@ -21569,6 +21619,46 @@ let () =
             [| 0.; 0.; 100.; 300. |];
             [| 0.; 0.; 100.; 200. |];
             [| 0.; 200.; 100.; 100. |];
+          ];
+      case "root_sized_by_content_resolves_child_percentages_against_its_width"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 20.; height = Dimension.auto }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.percent 0.05;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 0.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ~padding:
+                     {
+                       left = Length_percentage.percent 0.1;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 30.; 0. |]; [| 0.; 0.; 19.; 0. |]; [| 20.; 0.; 10.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 30.; 0. |]; [| 0.; 0.; 17.; 0. |]; [| 19.; 0.; 11.; 0. |];
           ];
       case "rounding_flex_basis_flex_grow_row_prime_number_width"
         (fun box_sizing ->

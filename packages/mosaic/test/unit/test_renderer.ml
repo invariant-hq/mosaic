@@ -2502,9 +2502,11 @@ let fresh_hits_respect_stacking_and_scissors () =
 let width_method_change_remeasures () =
   let renderer = Renderer.create ~width_method:`Unicode () in
   let root = Renderer.root renderer in
+  (* The root fills the screen's width; its children keep their own *)
   Renderable.set_style root
     (Toffee.Style.default
-    |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column);
+    |> Toffee.Style.set_flex_direction Toffee.Style.Flex_direction.Column
+    |> Toffee.Style.set_align_items (Some Toffee.Style.Align_items.Start));
   let emoji = "\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x92\xbb" in
   let text = Text.create ~parent:root (Text.Props.make ~content:emoji ()) in
   let spinner =

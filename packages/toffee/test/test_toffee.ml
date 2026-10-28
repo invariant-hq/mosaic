@@ -1702,7 +1702,13 @@ let test_chunk_keeps_final_layout () =
       [ leaf t.nodes (Text 10.); leaf t.nodes (Text 20.) ]
   in
   let tail = leaf t.nodes (Text 5.) in
-  let root = node t.nodes column [ chunk; tail ] in
+  (* The root's width is fixed: a root sized by its content would grow with
+     the tail, and the chunk's percentage width with it. *)
+  let root =
+    node t.nodes
+      (column |> Style.set_width (Style.Dimension.length 30.))
+      [ chunk; tail ]
+  in
   let lay () =
     Toffee_compute.compute_root_layout
       (module Checked : Toffee_tree.LAYOUT_PARTIAL_TREE with type t = checked)
@@ -2422,7 +2428,7 @@ let test_root_with_no_size () =
   | Ok () -> ()
   | Error e -> failf "Failed to compute layout: %s" (Error.to_string e));
   let layout = Result.get_ok (layout tree node) in
-  equal ~msg:"Default width is zero" (float 0.001) 0.0
+  equal ~msg:"Default width fills the available width" (float 0.001) 100.0
     (Layout.size layout).width;
   equal ~msg:"Default height is zero" (float 0.001) 0.0
     (Layout.size layout).height

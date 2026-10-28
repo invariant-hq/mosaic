@@ -15,11 +15,24 @@ let compute_root_layout (type t)
     (root : Node_id.t) (available_space : Available_space.t size) : unit =
   let mut_known_dimensions = ref Size.none in
 
-  (* Block layout specific setup *)
+  (* The root is a block-level box, whatever its inner display: with an auto
+     width it fills the available width less its margins (CSS 2 10.3.3),
+     which is definite. A block root also takes its style's height. *)
   let parent_size = Size.map Available_space.to_option available_space in
   let style = Tree.get_core_container_style tree root in
 
-  (if Style.display style = Display.Block then
+  (* A flex or grid root whose style sets a definite width needs nothing
+     here: its algorithm resolves that width itself *)
+  let style_width = (Style.size style).width in
+  let style_sets_width =
+    Dimension.is_length style_width
+    || (Dimension.is_percent style_width || Dimension.is_calc style_width)
+       && Option.is_some parent_size.width
+  in
+  (if
+     Style.display style = Display.Block
+     || ((not (Display.is_none (Style.display style))) && not style_sets_width)
+   then
      (* Pull these out earlier to avoid borrowing issues *)
      let aspect_ratio = Style.aspect_ratio style in
      let calc = Tree.resolve_calc_value tree in
@@ -85,15 +98,24 @@ let compute_root_layout (type t)
          min_size max_size
      in
 
-     (* Block nodes automatically stretch fit their width to fit available space
-        if available space is definite *)
+     (* An auto width fills a definite available width, less the margins,
+        within the minimum and maximum widths *)
      let available_space_based_size =
        Size.
          {
            width =
              (match available_space.width with
              | Available_space.Definite w ->
-                 Some (w -. Rectf.horizontal_axis_sum margin)
+                 let w = w -. Rectf.horizontal_axis_sum margin in
+                 let w =
+                   match max_size.width with
+                   | Some max -> Float.min w max
+                   | None -> w
+                 in
+                 Some
+                   (match min_size.width with
+                   | Some min -> Float.max w min
+                   | None -> w)
              | _ -> None);
            height = None;
          }
@@ -107,14 +129,36 @@ let compute_root_layout (type t)
        Sizef.maybe_max padding_border_size dims
      in
 
-     mut_known_dimensions := styled_based_known_dimensions);
+     mut_known_dimensions :=
+       if Style.display style = Display.Block then styled_based_known_dimensions
+       else { styled_based_known_dimensions with height = None });
+
+  (* Under a min- or max-content constraint, a root with an auto width is
+     sized shrink-to-fit (CSS 2 10.3.7): it is measured first and laid out at
+     that width, as a parent lays out a child at the size it measured, so the
+     root's descendants resolve their percentages against it. *)
+  let known_dimensions =
+    match !mut_known_dimensions with
+    | { width = Some _; _ } as known -> known
+    | known when style_sets_width -> known
+    | known ->
+        let measured =
+          Tree.compute_child_layout tree root
+            (Layout_input.make ~run_mode:Run_mode.Compute_size
+               ~sizing_mode:Sizing_mode.Inherent_size
+               ~axis:Requested_axis.Horizontal ~known_dimensions:known
+               ~parent_size ~available_space
+               ~vertical_margins_are_collapsible:Line.both_false)
+        in
+        { known with width = Some (Layout_output.size measured).width }
+  in
 
   (* Recursively compute node layout *)
   let output =
     Tree.compute_child_layout tree root
       (Layout_input.make ~run_mode:Run_mode.Perform_layout
          ~sizing_mode:Sizing_mode.Inherent_size ~axis:Requested_axis.Both
-         ~known_dimensions:!mut_known_dimensions ~parent_size ~available_space
+         ~known_dimensions ~parent_size ~available_space
          ~vertical_margins_are_collapsible:Line.both_false)
   in
 

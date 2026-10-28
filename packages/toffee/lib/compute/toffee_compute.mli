@@ -163,8 +163,11 @@ val compute_root_layout :
     final layout (including padding, border, margin, scrollbar size) via
     [Toffee_tree.set_unrounded_layout].
 
-    For Block display, the root node automatically stretches its width to fill
-    definite available space after accounting for margins.
+    The root is laid out as a block-level box whatever its display. Without a
+    width of its own, it fills a definite available width less its margins; in a
+    min-content or max-content available width it is measured first and laid out
+    at the measured width, so its descendants resolve their percentages against
+    that width in either case.
 
     The root's margin box is placed at the origin, so the root is at its left
     and top margins, with [order = 0].

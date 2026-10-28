@@ -10067,6 +10067,24 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 100.; 200. |]; [| 10.; 100.; 20.; 20. |] ]
         ~content_box:[ [| 0.; 0.; 100.; 200. |]; [| 10.; 100.; 20.; 20. |] ];
+      case ~width:36. ~height:64. "root_fills_definite_width_within_its_minimum"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ~flex_direction:Row_reverse
+               ~size:{ width = Dimension.auto; height = Dimension.length 10. }
+               ~min_size:
+                 { width = Dimension.length 50.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.length 10.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 50.; 10. |]; [| 0.; 0.; 10.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 50.; 10. |]; [| 0.; 0.; 10.; 0. |] ];
       case ~width:100. ~height:100. "root_location_includes_margin"
         (fun box_sizing ->
           node
@@ -10084,4 +10102,40 @@ let () =
             [])
         ~border_box:[ [| 10.; 5.; 20.; 10. |] ]
         ~content_box:[ [| 10.; 5.; 20.; 10. |] ];
+      case "root_sized_by_content_resolves_child_percentages_against_its_width"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.percent 0.5;
+                       height = Dimension.length 10.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.length 40.;
+                       height = Dimension.length 10.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 40.; 20. |];
+            [| 0.; 0.; 20.; 10. |];
+            [| 0.; 10.; 40.; 10. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 40.; 20. |];
+            [| 0.; 0.; 20.; 10. |];
+            [| 0.; 10.; 40.; 10. |];
+          ];
     ]

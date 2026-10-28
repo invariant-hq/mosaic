@@ -41,10 +41,11 @@ body > * {
   border-color: red;
 }
 
+/* The viewport is the root's containing block: a block, as a terminal is to
+   Mosaic's root, so a root with an auto width fills it and is never shrunk to
+   fit it. */
 .viewport {
-  display: flex;
-  align-items: start;
-  justify-content: start;
+  display: block;
   /* Defaults: can be overridden in individual tests */
   width: max-content;
   height: max-content;
