@@ -23408,6 +23408,18 @@ let () =
             [| 0.; 0.; 100.; 100. |];
             [| 0.; 0.; 100.; 100. |];
           ];
+      case "stretched_item_in_min_max_sized_container_transfers_no_ratio"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing
+               ~min_size:
+                 { width = Dimension.auto; height = Dimension.length 10. }
+               ~max_size:
+                 { width = Dimension.auto; height = Dimension.length 10. }
+               ())
+            [ node (Style.make ~box_sizing ~aspect_ratio:2. ()) [] ])
+        ~border_box:[ [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 10. |]; [| 0.; 0.; 0.; 10. |] ];
       case "taffy_issue_696"
         (fun box_sizing ->
           node

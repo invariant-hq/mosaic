@@ -160,7 +160,8 @@ type algo_constants = {
   has_definite_main_size : bool;
       (* Whether the container has a known main size that is definite *)
   has_definite_cross_size : bool;
-      (* Whether the container has a known cross size that is definite *)
+      (* Whether the container has a known cross size that is definite, and
+         not only its minimum and maximum give *)
   cross_axis_available_space_is_definite : bool;
       (* Whether the cross-axis space a non-stretched item is fit into is
          definite: the container's cross size is, or the available cross
@@ -354,6 +355,32 @@ let compute_constants (type t)
     else 0.0
   in
   let min_size = Style.min_size style and max_size = Style.max_size style in
+  let min_width =
+    resolve_container_size min_size ~width:true parent_size aspect_ratio
+      ~adjustment:adjustment_width calc
+  and min_height =
+    resolve_container_size min_size ~width:false parent_size aspect_ratio
+      ~adjustment:adjustment_height calc
+  and max_width =
+    resolve_container_size max_size ~width:true parent_size aspect_ratio
+      ~adjustment:adjustment_width calc
+  and max_height =
+    resolve_container_size max_size ~width:false parent_size aspect_ratio
+      ~adjustment:adjustment_height calc
+  in
+  (* A cross size that only a minimum no smaller than the maximum gives, the
+     style size being auto, is not definite, as an auto size clamped is not:
+     an item stretched to it transfers nothing through its aspect ratio, as
+     in Chromium *)
+  let cross_size_from_min_max =
+    let min = if is_row then min_height else min_width
+    and max = if is_row then max_height else max_width in
+    (not (Float.is_nan min))
+    && (not (Float.is_nan max))
+    && max <= min
+    && Dimension.is_auto
+         (if is_row then (Style.size style).height else (Style.size style).width)
+  in
 
   {
     dir;
@@ -384,12 +411,14 @@ let compute_constants (type t)
          known_dimensions_are_definite.height
          && Option.is_some known_dimensions.height);
     has_definite_cross_size =
-      (if is_row then
-         known_dimensions_are_definite.height
-         && Option.is_some known_dimensions.height
-       else
-         known_dimensions_are_definite.width
-         && Option.is_some known_dimensions.width);
+      ((not cross_size_from_min_max)
+      &&
+      if is_row then
+        known_dimensions_are_definite.height
+        && Option.is_some known_dimensions.height
+      else
+        known_dimensions_are_definite.width
+        && Option.is_some known_dimensions.width);
     cross_axis_available_space_is_definite =
       (if is_row then
          known_dimensions_are_definite.height
@@ -415,18 +444,10 @@ let compute_constants (type t)
             calc;
         scrollbar_gutter_x;
         scrollbar_gutter_y;
-        min_width =
-          resolve_container_size min_size ~width:true parent_size aspect_ratio
-            ~adjustment:adjustment_width calc;
-        min_height =
-          resolve_container_size min_size ~width:false parent_size aspect_ratio
-            ~adjustment:adjustment_height calc;
-        max_width =
-          resolve_container_size max_size ~width:true parent_size aspect_ratio
-            ~adjustment:adjustment_width calc;
-        max_height =
-          resolve_container_size max_size ~width:false parent_size aspect_ratio
-            ~adjustment:adjustment_height calc;
+        min_width;
+        min_height;
+        max_width;
+        max_height;
       };
     min_content_space = no_space;
   }
