@@ -10416,6 +10416,34 @@ let () =
             [ node (Style.make ~display:None ~box_sizing ()) [] ])
         ~border_box:[ [| 0.; 0.; 11.; 50.; 5.; 0. |]; [| 0.; 0.; 0.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 11.; 50.; 5.; 0. |]; [| 0.; 0.; 0.; 0. |] ];
+      case "scroll_container_overflow_includes_child_margins"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 { width = Dimension.length 20.; height = Dimension.length 10. }
+               ~overflow:{ x = Hidden; y = Hidden } ~scrollbar_width:15. ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     {
+                       width = Dimension.length 20.;
+                       height = Dimension.length 10.;
+                     }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 10.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.length 10.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 20.; 10.; 10.; 10. |]; [| 0.; 0.; 20.; 10. |] ]
+        ~content_box:
+          [ [| 0.; 0.; 20.; 10.; 10.; 10. |]; [| 0.; 0.; 20.; 10. |] ];
       case "scroll_container_reaches_empty_child"
         (fun box_sizing ->
           node

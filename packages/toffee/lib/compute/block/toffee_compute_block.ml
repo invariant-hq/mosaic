@@ -1155,7 +1155,7 @@ let compute_inner (type t)
       let overflow_acc = Toffee_compute_helpers.overflow_acc () in
       let overflow_flags =
         Toffee_compute_helpers.overflow_flags ~is_scroll_container
-          ~reversed_x:false ~reversed_y:false ~margins:Negative_margins ()
+          ~reversed_x:false ~reversed_y:false ~margins:Full_margins ()
       in
       let ( intrinsic_outer_height,
             first_child_top_margin_set,
