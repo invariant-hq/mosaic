@@ -327,6 +327,44 @@ let () =
             ])
         ~border_box:[ [| 0.; 0.; 0.; 0. |]; [| -50.; 0.; 50.; 0. |] ]
         ~content_box:[ [| 0.; 0.; 0.; 0. |]; [| -50.; 0.; 50.; 0. |] ];
+      case "absolute_child_aligns_around_static_position"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing
+               ~size:
+                 { width = Dimension.length 50.; height = Dimension.length 50. }
+               ())
+            [
+              node
+                (Style.make ~box_sizing ~position:Absolute ~align_self:Center
+                   ~border:
+                     {
+                       left = Length_percentage.length 0.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 20.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [];
+              node
+                (Style.make ~box_sizing ~position:Absolute ~justify_self:Center
+                   ~size:
+                     { width = Dimension.length 20.; height = Dimension.auto }
+                   ())
+                [];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 50.; 50. |];
+            [| 0.; -10.; 0.; 20. |];
+            [| 15.; 0.; 20.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 50.; 50. |];
+            [| 0.; -10.; 0.; 20. |];
+            [| 15.; 0.; 20.; 0. |];
+          ];
       case "absolute_child_with_margin_x"
         (fun box_sizing ->
           node

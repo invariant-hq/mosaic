@@ -596,6 +596,7 @@ let perform_final_layout_on_in_flow_children (type t)
 let perform_absolute_layout_on_absolute_children (type t)
     (module Tree : Tree.LAYOUT_PARTIAL_TREE with type t = t) (tree : t)
     (items : block_item list) (area_size : Sizef.t) (area_offset : Pointf.t)
+    (outer_size : Sizef.t) (content_box_inset : Rectf.t)
     (overflow_acc : Toffee_compute_helpers.overflow_acc)
     (overflow_flags : Toffee_compute_helpers.overflow_flags)
     (overflow_origin : Rectf.t) : unit =
@@ -863,7 +864,24 @@ let perform_absolute_layout_on_absolute_children (type t)
                       | Some r ->
                           area_size.width -. final_size.width -. r
                           -. resolved_margin.right +. area_offset.x
-                      | None -> item.static_position.x +. resolved_margin.left));
+                      | None -> (
+                          (* justify-self aligns the margin box within the
+                             containing block's content width, as in
+                             Chromium *)
+                          item.static_position.x +. resolved_margin.left
+                          +.
+                          match Style.justify_self child_style with
+                          | Some
+                              (( Align_items.Center | Align_items.End
+                               | Align_items.Flex_end ) as justify) ->
+                              let free =
+                                outer_size.width -. content_box_inset.left
+                                -. content_box_inset.right -. final_size.width
+                                -. resolved_margin.left -. resolved_margin.right
+                              in
+                              if justify = Align_items.Center then free /. 2.0
+                              else free
+                          | _ -> 0.0)));
                 y =
                   (match top with
                   | Some t -> t +. resolved_margin.top +. area_offset.y
@@ -872,7 +890,21 @@ let perform_absolute_layout_on_absolute_children (type t)
                       | Some b ->
                           area_size.height -. final_size.height -. b
                           -. resolved_margin.bottom +. area_offset.y
-                      | None -> item.static_position.y +. resolved_margin.top));
+                      | None -> (
+                          (* align-self aligns the margin box around its
+                             static position, an area of no height, as in
+                             Chromium *)
+                          item.static_position.y +. resolved_margin.top
+                          -.
+                          let outer_height =
+                            final_size.height +. resolved_margin.top
+                            +. resolved_margin.bottom
+                          in
+                          match Style.align_self child_style with
+                          | Some Align_items.Center -> outer_height /. 2.0
+                          | Some (Align_items.End | Align_items.Flex_end) ->
+                              outer_height
+                          | _ -> 0.0)));
               }
           in
 
@@ -1211,7 +1243,7 @@ let compute_inner (type t)
         perform_absolute_layout_on_absolute_children
           (module Tree)
           tree items absolute_position_area absolute_position_offset
-          overflow_acc
+          final_outer_size resolved_content_box_inset overflow_acc
           (Toffee_compute_helpers.with_margins overflow_flags No_margins)
           resolved_border;
 
