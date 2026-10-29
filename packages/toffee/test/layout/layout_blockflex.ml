@@ -506,4 +506,51 @@ let () =
             [| 0.; 0.; 30.; 10. |];
             [| 0.; 10.; 30.; 10. |];
           ];
+      case "wrapped_column_of_auto_height_is_one_line"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Block ~box_sizing ())
+            [
+              node
+                (Style.make ~box_sizing ~flex_direction:Column ~flex_wrap:Wrap
+                   ())
+                [
+                  node
+                    (Style.make ~box_sizing
+                       ~border:
+                         {
+                           left = Length_percentage.length 0.;
+                           right = Length_percentage.length 10.;
+                           top = Length_percentage.length 0.;
+                           bottom = Length_percentage.length 0.;
+                         }
+                       ())
+                    [];
+                  node
+                    (Style.make ~box_sizing
+                       ~border:
+                         {
+                           left = Length_percentage.length 20.;
+                           right = Length_percentage.length 0.;
+                           top = Length_percentage.length 0.;
+                           bottom = Length_percentage.length 0.;
+                         }
+                       ())
+                    [];
+                ];
+            ])
+        ~border_box:
+          [
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+          ]
+        ~content_box:
+          [
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+            [| 0.; 0.; 20.; 0. |];
+          ];
     ]

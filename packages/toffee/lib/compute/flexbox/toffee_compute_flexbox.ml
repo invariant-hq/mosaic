@@ -1192,7 +1192,12 @@ let collect_flex_lines (constants : algo_constants)
   in
   if
     (not constants.is_wrap)
-    || ((not constants.known_main_size_is_definite) && Float.is_nan max_main)
+    || ((not constants.known_main_size_is_definite)
+       (* A column of unknown height is one line: its height comes from its
+          content, which Chromium lays out in a single column *)
+       || (not constants.is_row)
+          && Option.is_none constants.node_inner_size.height)
+       && Float.is_nan max_main
   then
     (* Single line - all items go in one line. Wrapping needs a definite
        main size, or a maximum: a main size derived from the container's
