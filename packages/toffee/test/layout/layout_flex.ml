@@ -23743,6 +23743,28 @@ let () =
             [| 0.; 0.; 100.; 100. |];
             [| 0.; 0.; 100.; 100. |];
           ];
+      case "space_between_overflow_falls_back_to_flex_start"
+        (fun box_sizing ->
+          node
+            (Style.make ~box_sizing ~flex_direction:Row_reverse
+               ~justify_content:Space_between
+               ~size:{ width = Dimension.length 0.; height = Dimension.auto }
+               ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~padding:
+                     {
+                       left = Length_percentage.length 10.;
+                       right = Length_percentage.length 0.;
+                       top = Length_percentage.length 0.;
+                       bottom = Length_percentage.length 0.;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 0.; 0. |]; [| -10.; 0.; 10.; 0. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 0. |]; [| -10.; 0.; 10.; 0. |] ];
       case "stretched_item_in_min_max_sized_container_transfers_no_ratio"
         (fun box_sizing ->
           node
