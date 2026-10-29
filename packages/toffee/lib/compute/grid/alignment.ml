@@ -102,18 +102,24 @@ let align_item_within_area ~grid_area ~(alignment_style : Align_items.t)
 
   (* Compute offset in the axis *)
   let alignment_based_offset =
-    match alignment_style with
-    | Align_items.Start | Align_items.Flex_start -> resolved_margin.Line.start
-    | Align_items.End | Align_items.Flex_end ->
-        grid_area_size -. resolved_size -. resolved_margin.Line.end_
-    | Align_items.Center ->
-        (grid_area_size -. resolved_size +. resolved_margin.Line.start
-       -. resolved_margin.Line.end_)
-        /. 2.0
-    (* TODO: Add support for baseline alignment. For now we treat it as
+    (* Auto margins take precedence over the alignment, and are zero when
+       the item overflows its area, which it then overflows at the end (CSS
+       Grid 11.2), as in Chromium *)
+    if auto_margin_count > 0 && position <> Position.Absolute then
+      resolved_margin.Line.start
+    else
+      match alignment_style with
+      | Align_items.Start | Align_items.Flex_start -> resolved_margin.Line.start
+      | Align_items.End | Align_items.Flex_end ->
+          grid_area_size -. resolved_size -. resolved_margin.Line.end_
+      | Align_items.Center ->
+          (grid_area_size -. resolved_size +. resolved_margin.Line.start
+         -. resolved_margin.Line.end_)
+          /. 2.0
+      (* TODO: Add support for baseline alignment. For now we treat it as
        "start". *)
-    | Align_items.Baseline -> resolved_margin.Line.start
-    | Align_items.Stretch -> resolved_margin.Line.start
+      | Align_items.Baseline -> resolved_margin.Line.start
+      | Align_items.Stretch -> resolved_margin.Line.start
   in
 
   let offset_within_area =

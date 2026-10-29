@@ -7780,6 +7780,33 @@ let () =
             [| 40.; 40.; 40.; 40. |];
             [| 80.; 40.; 40.; 40. |];
           ];
+      case "item_auto_margin_overrides_alignment_when_overflowing"
+        (fun box_sizing ->
+          node
+            (Style.make ~display:Grid ~box_sizing
+               ~grid_template_rows:
+                 [
+                   Grid.Template_component.single
+                     (Grid.Track_sizing_function.length 20.);
+                 ]
+               ~align_items:Center ())
+            [
+              node
+                (Style.make ~box_sizing
+                   ~size:
+                     { width = Dimension.auto; height = Dimension.length 50. }
+                   ~margin:
+                     {
+                       left = Length_percentage_auto.length 0.;
+                       right = Length_percentage_auto.length 0.;
+                       top = Length_percentage_auto.length 0.;
+                       bottom = Length_percentage_auto.auto;
+                     }
+                   ())
+                [];
+            ])
+        ~border_box:[ [| 0.; 0.; 0.; 20. |]; [| 0.; 0.; 0.; 50. |] ]
+        ~content_box:[ [| 0.; 0.; 0.; 20. |]; [| 0.; 0.; 0.; 50. |] ];
       case "item_contribution_floored_at_padding_border"
         (fun box_sizing ->
           node
