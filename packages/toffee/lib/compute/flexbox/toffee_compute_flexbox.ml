@@ -466,15 +466,14 @@ let set_style_size sizes kind ~is_row (dims : Dimension.t size) aspect_ratio
   let height = resolve_dimension dims.height inner_height calc in
   (* A border box below its padding and border is that size, which the ratio
      transfers, as in Chromium; a content box's ratio has no floor *)
-  let floor size pb =
-    if content_box || kind <> Preferred then size else Float.max size pb
-      [@@inline]
-  in
+  let floors = (not content_box) && kind = Preferred in
   let width, height =
     match aspect_ratio with
     | Some ratio when Float.is_nan width && not (Float.is_nan height) ->
-        ( floor height
-            (padding.top +. border.top +. padding.bottom +. border.bottom)
+        ( (if floors then
+             Float.max height
+               (padding.top +. border.top +. padding.bottom +. border.bottom)
+           else height)
           *. ratio,
           height )
     | Some ratio
@@ -485,8 +484,10 @@ let set_style_size sizes kind ~is_row (dims : Dimension.t size) aspect_ratio
               Chromium, which sizes the block axis after the inline one *)
            && not (kind = Preferred && is_row) ->
         ( width,
-          floor width
-            (padding.left +. border.left +. padding.right +. border.right)
+          (if floors then
+             Float.max width
+               (padding.left +. border.left +. padding.right +. border.right)
+           else width)
           /. ratio )
     | _ -> (width, height)
   in
