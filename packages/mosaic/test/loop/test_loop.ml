@@ -3820,3 +3820,59 @@ let%expect_test "a stop requested before the start ends the program" =
       is_true ~msg:"ended at its first step" (Matrix_test.ended t.s));
   Printf.printf "updates: %d\n" !updates;
   [%expect {| updates: 0 |}]
+
+(* The mouse events a box saw, hover aside, as they print, in the order
+   [update] received them, with [steps] driven at the session's clock. The
+   box's text is its first cell only, so a press past it starts no
+   selection. *)
+let pointer_events steps =
+  let seen = ref [] in
+  let application =
+    {
+      Mosaic.init = (fun () -> ((), Mosaic.Cmd.none));
+      update =
+        (fun event () ->
+          seen := event :: !seen;
+          ((), Mosaic.Cmd.none));
+      view =
+        (fun () ->
+          Mosaic.box
+            ~size:(Mosaic.size ~width:10 ~height:1)
+            ~on_mouse:(fun ev ->
+              match Mosaic.Event.Mouse.kind ev with
+              | Over _ | Out -> None
+              | kind ->
+                  Some (Format.asprintf "%a" Mosaic.Event.Mouse.pp_kind kind))
+            [ Mosaic.text "w" ]);
+      subscriptions = (fun () -> Mosaic.Sub.none);
+    }
+  in
+  drive ~width:10 ~height:1 application steps;
+  List.rev !seen
+
+(* RFC 0006, §3.5: a press is timed by the turn that reads it. *)
+let%expect_test "presses are timed by the session's clock" =
+  let click = `Feed "\027[<0;3;1M\027[<0;3;1m" in
+  equal ~msg:"a second press within 500 ms is a double click" (list string)
+    [
+      "Down(Left)";
+      "Up(Left)";
+      "Down(Left, clicks=2)";
+      "Up(Left)";
+      "Down(Left)";
+      "Up(Left)";
+    ]
+    (pointer_events [ click; `Advance 0.3; click; `Advance 0.6; click ]);
+  [%expect {| |}]
+
+(* RFC 0006, §3.5: a held press's release does not come once the window
+   loses focus. Its drag ends there, with no drop, and the release that comes
+   later ends nothing. *)
+let%expect_test "a focus loss ends the held press" =
+  equal ~msg:"Drag_end at the focus loss" (list string)
+    [ "Down(Left)"; "Drag(Left)"; "Drag_end(Left)"; "Up(Left)" ]
+    (pointer_events
+       [
+         `Feed "\027[<0;3;1M\027[<32;6;1M"; `Feed "\027[O"; `Feed "\027[<0;6;1m";
+       ]);
+  [%expect {| |}]

@@ -79,7 +79,7 @@ module Arrow = struct
     Renderable.set_style node style;
     Renderable.on_mouse node (fun ev ->
         match Event.Mouse.kind ev with
-        | Down { button = Left } ->
+        | Down { button = Left; _ } ->
             on_click ();
             Event.Mouse.prevent_default ev;
             Event.Mouse.stop_propagation ev

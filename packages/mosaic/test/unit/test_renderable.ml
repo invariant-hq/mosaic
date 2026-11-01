@@ -279,7 +279,7 @@ let destroy_clears_handlers () =
   Renderable.on_paste child (fun _ -> paste_fired := true);
   let focus_path = Renderer.focus_path t.renderer in
   let mouse_path, mouse =
-    Renderer.mouse_path t.renderer
+    Renderer.mouse_path t.renderer ~now:0
       (Test_harness.mouse_report ~x:1 ~y:0 (Press Left))
   in
   Renderable.destroy child;
@@ -1310,7 +1310,7 @@ let mouse_unmount_stops_remaining_handlers () =
   Renderable.on_mouse child (fun _ -> Renderable.destroy child);
   Test_harness.emit_mouse child
     (Event.Mouse.make ~x:0 ~y:0 ~modifiers:Event.Mouse.no_modifier
-       (Down { button = Left }));
+       (Down { button = Left; clicks = 1 }));
   is_false ~msg:"remaining handlers cannot mutate an unmounted widget"
     !default_ran
 

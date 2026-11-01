@@ -315,8 +315,8 @@ let handle_mouse_up t ev =
 let setup_mouse t =
   Renderable.on_mouse t.node (fun ev ->
       match Event.Mouse.kind ev with
-      | Down { button = Left } -> handle_mouse_down t ev
-      | Drag { button = Left; _ } -> handle_mouse_drag t ev
+      | Down { button = Left; _ } -> handle_mouse_down t ev
+      | Drag { button = Left } -> handle_mouse_drag t ev
       | Up { button = Left; _ } -> handle_mouse_up t ev
       | _ -> ())
 

@@ -1040,7 +1040,11 @@ let handle_input runtime (input : Matrix.event) =
   synchronize runtime;
   (match input with
   | Focus_in -> List.iter (deliver runtime) runtime.focus_sub
-  | Focus_out -> List.iter (deliver runtime) runtime.blur_sub
+  | Focus_out ->
+      (* The release of a press held as the window loses focus does not
+         come. *)
+      Renderer.pointer_lost runtime.renderer;
+      List.iter (deliver runtime) runtime.blur_sub
   | Color_scheme scheme ->
       (* The user may have changed the palette with the scheme. *)
       Matrix.query_palette runtime.matrix_app;
@@ -1070,7 +1074,11 @@ let handle_input runtime (input : Matrix.event) =
         (fun f -> Option.iter (deliver runtime) (f release))
         runtime.key_release_subs
   | Mouse mouse ->
-      let path, event = Renderer.mouse_path runtime.renderer mouse in
+      let path, event =
+        Renderer.mouse_path runtime.renderer
+          ~now:(Matrix.now runtime.matrix_app)
+          mouse
+      in
       listen runtime ~stopped:Event.Mouse.propagation_stopped runtime.mouse_subs
         (Renderer.dispatch_mouse runtime.renderer path)
         event

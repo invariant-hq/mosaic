@@ -217,8 +217,17 @@ let dispatch_paste renderer text =
   Renderer.dispatch_paste renderer (Renderer.focus_path renderer) event;
   event
 
-let dispatch_mouse renderer report =
-  let path, event = Renderer.mouse_path renderer report in
+(* The time a report is read at: each one a second after the one before,
+   so that two presses make one series of clicks only when a test times them
+   itself, with [~now]. *)
+let clock = ref 0
+
+let tick () =
+  clock := !clock + 1_000_000_000;
+  !clock
+
+let dispatch_mouse ?(now = tick ()) renderer report =
+  let path, event = Renderer.mouse_path renderer ~now report in
   Renderer.dispatch_mouse renderer path event;
   event
 
@@ -246,9 +255,9 @@ let emit_mouse node (event : Event.mouse) =
   let x = Event.Mouse.x event and y = Event.Mouse.y event in
   let kind : Matrix_input.Mouse_report.kind =
     match Event.Mouse.kind event with
-    | Down { button } -> Press (report_button button)
+    | Down { button; _ } -> Press (report_button button)
     | Up { button; _ } -> Release (Some (report_button button))
-    | Drag { button; _ } -> Motion (Some (report_button button))
+    | Drag { button } -> Motion (Some (report_button button))
     | Scroll { direction = Scroll_up; _ } -> Scroll `Up
     | Scroll { direction = Scroll_down; _ } -> Scroll `Down
     | Scroll { direction = Scroll_left; _ } -> Scroll `Left
@@ -257,7 +266,7 @@ let emit_mouse node (event : Event.mouse) =
   in
   let modifiers = Event.Mouse.modifiers event in
   let path, _ =
-    Renderer.mouse_path r
+    Renderer.mouse_path r ~now:(tick ())
       {
         kind;
         x;
@@ -295,15 +304,14 @@ let emit_paste node event =
 let no_mod = Event.Mouse.no_modifier
 
 let mouse_down ~x ~y =
-  Event.Mouse.make ~x ~y ~modifiers:no_mod (Down { button = Left })
+  Event.Mouse.make ~x ~y ~modifiers:no_mod (Down { button = Left; clicks = 1 })
 
 let mouse_up ~x ~y =
   Event.Mouse.make ~x ~y ~modifiers:no_mod
-    (Up { button = Left; is_dragging = false })
+    (Up { button = Left; dragged = false })
 
 let mouse_drag ~x ~y =
-  Event.Mouse.make ~x ~y ~modifiers:no_mod
-    (Drag { button = Left; is_dragging = true })
+  Event.Mouse.make ~x ~y ~modifiers:no_mod (Drag { button = Left })
 
 let mouse_move ~x ~y = Event.Mouse.make ~x ~y ~modifiers:no_mod Move
 let mouse_out ~x ~y = Event.Mouse.make ~x ~y ~modifiers:no_mod Out

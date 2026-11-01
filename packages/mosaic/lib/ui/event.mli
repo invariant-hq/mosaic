@@ -173,14 +173,21 @@ module Mouse : sig
 
   (** The type for mouse event kinds. *)
   type kind =
-    | Down of { button : button }  (** Button pressed. *)
-    | Up of { button : button; is_dragging : bool }
-        (** Button released. [is_dragging] is [true] iff a drag was in progress
-            when the button was released. *)
+    | Down of { button : button; clicks : int }
+        (** [button] pressed, the [clicks]th press of a series. A press
+            continues the series of the previous press, of any button, when it
+            is of the same button, at most 500 ms later, and within one cell of
+            the series' first press on each axis; otherwise it starts a series,
+            at [1]. A drag between two presses does not end their series, and
+            the count is not capped. *)
+    | Up of { button : button; dragged : bool }
+        (** [button] released. [dragged] is [true] iff the pointer left the
+            pressed cell between the press and the release. *)
     | Move  (** Cursor moved with no button pressed. *)
-    | Drag of { button : button; is_dragging : bool }
-        (** Cursor moved with [button] held. [is_dragging] is [true] iff the
-            drag threshold has been exceeded. *)
+    | Drag of { button : button }
+        (** Cursor moved with [button] held. A motion reported at the pressed
+            cell before the pointer has left it, which some terminals send, is
+            no drag. *)
     | Drag_end of { button : button }
         (** Drag gesture ended; [button] was the dragging button. *)
     | Drop of { button : button; source : int option }

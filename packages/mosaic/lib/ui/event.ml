@@ -108,27 +108,27 @@ module Mouse = struct
       | Scroll_right -> "Scroll_right")
 
   type kind =
-    | Down of { button : button }
-    | Up of { button : button; is_dragging : bool }
+    | Down of { button : button; clicks : int }
+    | Up of { button : button; dragged : bool }
     | Move
-    | Drag of { button : button; is_dragging : bool }
+    | Drag of { button : button }
     | Drag_end of { button : button }
     | Drop of { button : button; source : int option }
     | Over of { source : int option }
     | Out
     | Scroll of { direction : scroll_direction; delta : int }
 
-  let pp_button_drag ppf name button is_dragging =
-    if is_dragging then
-      Format.fprintf ppf "%s(%a, dragging)" name pp_button button
-    else Format.fprintf ppf "%s(%a)" name pp_button button
-
   let pp_kind ppf = function
-    | Down { button } -> Format.fprintf ppf "Down(%a)" pp_button button
-    | Up { button; is_dragging } -> pp_button_drag ppf "Up" button is_dragging
+    | Down { button; clicks = 1 } ->
+        Format.fprintf ppf "Down(%a)" pp_button button
+    | Down { button; clicks } ->
+        Format.fprintf ppf "Down(%a, clicks=%d)" pp_button button clicks
+    | Up { button; dragged = false } ->
+        Format.fprintf ppf "Up(%a)" pp_button button
+    | Up { button; dragged = true } ->
+        Format.fprintf ppf "Up(%a, dragged)" pp_button button
     | Move -> Format.pp_print_string ppf "Move"
-    | Drag { button; is_dragging } ->
-        pp_button_drag ppf "Drag" button is_dragging
+    | Drag { button } -> Format.fprintf ppf "Drag(%a)" pp_button button
     | Drag_end { button } -> Format.fprintf ppf "Drag_end(%a)" pp_button button
     | Drop { button; source = Some s } ->
         Format.fprintf ppf "Drop(%a, source=%d)" pp_button button s
@@ -142,12 +142,12 @@ module Mouse = struct
 
   let equal_kind a b =
     match (a, b) with
-    | Down a, Down b -> equal_button a.button b.button
+    | Down a, Down b ->
+        equal_button a.button b.button && Int.equal a.clicks b.clicks
     | Up a, Up b ->
-        equal_button a.button b.button && Bool.equal a.is_dragging b.is_dragging
+        equal_button a.button b.button && Bool.equal a.dragged b.dragged
     | Move, Move -> true
-    | Drag a, Drag b ->
-        equal_button a.button b.button && Bool.equal a.is_dragging b.is_dragging
+    | Drag a, Drag b -> equal_button a.button b.button
     | Drag_end a, Drag_end b -> equal_button a.button b.button
     | Drop a, Drop b ->
         equal_button a.button b.button

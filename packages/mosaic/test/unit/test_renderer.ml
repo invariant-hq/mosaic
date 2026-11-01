@@ -1563,7 +1563,7 @@ let prevent_default_mouse_down_blocks_auto_focus () =
   in
   Renderable.on_mouse target (fun ev ->
       match Event.Mouse.kind ev with
-      | Event.Mouse.Down { button = Left } -> Event.Mouse.prevent_default ev
+      | Event.Mouse.Down { button = Left; _ } -> Event.Mouse.prevent_default ev
       | _ -> ());
   do_frame t;
   ignore (Renderer.focus t composer : bool);
@@ -1845,7 +1845,7 @@ let click_dispatches_to_positioned_child () =
     (List.length !log);
   let ev = List.hd (List.rev !log) in
   match Event.Mouse.kind ev with
-  | Event.Mouse.Down { button = Left } -> ()
+  | Event.Mouse.Down { button = Left; _ } -> ()
   | _ -> fail "expected Down Left"
 
 let click_on_empty_area_does_not_crash () =
@@ -1894,7 +1894,7 @@ let press_and_release_sequence () =
   equal ~msg:"two events" int 2 (List.length !log);
   let events = List.rev !log in
   (match Event.Mouse.kind (List.nth events 0) with
-  | Event.Mouse.Down { button = Left } -> ()
+  | Event.Mouse.Down { button = Left; _ } -> ()
   | _ -> fail "expected Down");
   match Event.Mouse.kind (List.nth events 1) with
   | Event.Mouse.Up { button = Left; _ } -> ()
@@ -2050,7 +2050,8 @@ let drag_sets_captured () =
   let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   do_frame t;
   (* Drag = motion with left button pressed *)
-  dispatch_mouse t (mouse_motion ~left:true ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:8 ~y:7 ());
   match Renderer.captured t with
   | Some n -> is_true ~msg:"captured child" (n == child)
   | None -> fail "expected drag capture"
@@ -2062,7 +2063,8 @@ let captured_receives_all_mouse_events () =
   let log_a = record_mouse a in
   do_frame t;
   (* Start drag on a *)
-  dispatch_mouse t (mouse_motion ~left:true ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_press ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:6 ~y:5 ());
   is_some ~msg:"captured" (Renderer.captured t);
   let count_before = List.length !log_a in
   (* Move to b's area — a should still receive *)
@@ -2079,9 +2081,10 @@ let release_clears_capture () =
   let t = make_renderer () in
   let _child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   do_frame t;
-  dispatch_mouse t (mouse_motion ~left:true ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:8 ~y:7 ());
   is_some ~msg:"captured" (Renderer.captured t);
-  dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_release ~x:8 ~y:7 ());
   is_none ~msg:"released" (Renderer.captured t)
 
 let drag_end_fires_on_release () =
@@ -2089,8 +2092,9 @@ let drag_end_fires_on_release () =
   let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   let log = record_mouse child in
   do_frame t;
-  dispatch_mouse t (mouse_motion ~left:true ~x:7 ~y:7 ());
-  dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:8 ~y:7 ());
+  dispatch_mouse t (mouse_release ~x:8 ~y:7 ());
   let found_drag_end =
     List.exists
       (fun ev ->
@@ -2106,7 +2110,8 @@ let drop_fires_on_target () =
   let log_b = record_mouse b in
   do_frame t;
   (* Start drag on a *)
-  dispatch_mouse t (mouse_motion ~left:true ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_press ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:6 ~y:5 ());
   is_some ~msg:"captured a" (Renderer.captured t);
   ignore a;
   (* Release over b *)
@@ -2124,7 +2129,8 @@ let drop_source_identifies_origin () =
   let b = make_child ~parent:(Renderer.root t) ~x:20 ~y:0 ~w:10 ~h:10 () in
   let log_b = record_mouse b in
   do_frame t;
-  dispatch_mouse t (mouse_motion ~left:true ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_press ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:6 ~y:5 ());
   let a_num = Renderable.uid a in
   dispatch_mouse t (mouse_release ~x:25 ~y:5 ());
   let drop_source =
@@ -2369,7 +2375,7 @@ let selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors () =
   let released = ref false in
   Renderable.on_mouse (Scroll_box.node sb) (fun event ->
       match Event.Mouse.kind event with
-      | Up { button = Left; is_dragging = true } -> released := true
+      | Up { button = Left; dragged = true } -> released := true
       | _ -> ());
   Renderable.set_selection content
     ~should_start:(fun ~x:_ ~y:_ -> true)
@@ -2431,6 +2437,383 @@ let click_on_non_selectable_clears_selection () =
   (* Click on non-selectable area *)
   dispatch_mouse t (mouse_press ~x:25 ~y:5 ());
   is_none ~msg:"selection cleared" (Renderer.selection t)
+
+(* ── Pointer gestures (RFC 0006, §3.5) ── *)
+
+(* The kinds of the events a node's handlers saw, oldest first, as they
+   print. *)
+let seen log =
+  List.rev_map
+    (fun ev -> Format.asprintf "%a" Event.Mouse.pp_kind (Event.Mouse.kind ev))
+    !log
+
+let drop_from node =
+  Printf.sprintf "Drop(Left, source=%d)" (Renderable.uid node)
+
+let count_clicks node =
+  let clicks = ref 0 in
+  Renderable.set_on_click node (Some (fun _ -> incr clicks));
+  clicks
+
+let make_selectable node =
+  Renderable.set_selection node
+    ~should_start:(fun ~x:_ ~y:_ -> true)
+    ~on_change:(fun _ -> true)
+    ~clear:(fun () -> ())
+    ~get_text:(fun () -> "")
+
+let selection_focus t =
+  match Renderer.selection t with
+  | Some sel -> ((Selection.focus sel).x, (Selection.focus sel).y)
+  | None -> fail "expected a selection"
+
+(* Some terminals report motion at the pressed cell, where xterm reports
+   motion only to another cell: before the pointer leaves the cell, it is a
+   tremor, and the click stays a click. *)
+let motion_at_the_pressed_cell_is_no_drag () =
+  let t = make_renderer () in
+  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
+  let log = record_mouse child in
+  let clicks = count_clicks child in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  let tremor =
+    Test_harness.dispatch_mouse t (mouse_motion ~left:true ~x:7 ~y:7 ())
+  in
+  is_true ~msg:"the tremor is returned prevented"
+    (Event.Mouse.default_prevented tremor);
+  is_none ~msg:"the tremor captures nothing" (Renderer.captured t);
+  dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
+  equal ~msg:"the node sees a press and a release in place" (list string)
+    [ "Down(Left)"; "Up(Left)" ]
+    (seen log);
+  equal ~msg:"the release clicks" int 1 !clicks
+
+(* Once the pointer has left the pressed cell, motion back over it is a
+   drag. *)
+let motion_back_over_the_pressed_cell_is_a_drag () =
+  let t = make_renderer () in
+  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
+  let log = record_mouse child in
+  let clicks = count_clicks child in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:8 ~y:7 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
+  equal ~msg:"two drags, then the release" (list string)
+    [
+      "Down(Left)";
+      "Drag(Left)";
+      "Drag(Left)";
+      "Drag_end(Left)";
+      "Up(Left, dragged)";
+      drop_from child;
+    ]
+    (seen log);
+  equal ~msg:"a drag is no click" int 0 !clicks
+
+(* [dragged] says whether the pointer left the pressed cell, reported in
+   motion or not: normal tracking (mode 1000) reports no motion. *)
+let release_says_whether_the_pointer_left () =
+  let t = make_renderer () in
+  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
+  let log = record_mouse child in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_release ~x:9 ~y:8 ());
+  equal ~msg:"in place, then elsewhere" (list string)
+    [ "Down(Left)"; "Up(Left)"; "Down(Left)"; "Up(Left, dragged)" ]
+    (seen log)
+
+(* A fast pointer can leave the pressed node between two reports: the drag
+   captures the node pressed, not the node under its first report. *)
+let drag_captures_the_node_pressed () =
+  let t = make_renderer () in
+  let a = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:10 () in
+  let b = make_child ~parent:(Renderer.root t) ~x:20 ~y:0 ~w:10 ~h:10 () in
+  let log_b = record_mouse b in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:25 ~y:5 ());
+  (match Renderer.captured t with
+  | Some node -> is_true ~msg:"the pressed node is captured" (node == a)
+  | None -> fail "expected a capture");
+  equal ~msg:"the node under the pointer sees nothing" (list string) []
+    (seen log_b)
+
+(* An X10 or URXVT release names no button: it is the held button's. *)
+let unnamed_release_is_the_held_buttons () =
+  let t = make_renderer () in
+  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
+  let log = record_mouse child in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~button:Right ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse ~x:7 ~y:7 (Release None));
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:8 ~y:7 ());
+  dispatch_mouse t (mouse ~x:8 ~y:7 (Release None));
+  equal ~msg:"each release is its press's" (list string)
+    [
+      "Down(Right)";
+      "Up(Right)";
+      "Down(Left)";
+      "Drag(Left)";
+      "Drag_end(Left)";
+      "Up(Left, dragged)";
+      drop_from child;
+    ]
+    (seen log);
+  is_none ~msg:"the left release ends the capture" (Renderer.captured t)
+
+(* Chording: while a drag is held, another button's press and release go to
+   the captured node and leave the drag alone. *)
+let another_buttons_release_keeps_the_drag () =
+  let t = make_renderer () in
+  let a = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:10 () in
+  let log = record_mouse a in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:6 ~y:5 ());
+  dispatch_mouse t (mouse_press ~button:Right ~x:6 ~y:5 ());
+  dispatch_mouse t (mouse_release ~button:Right ~x:6 ~y:5 ());
+  (match Renderer.captured t with
+  | Some node -> is_true ~msg:"the drag still captures a" (node == a)
+  | None -> fail "the right release ended the drag");
+  dispatch_mouse t (mouse_release ~x:6 ~y:5 ());
+  equal ~msg:"the left release ends the drag" (list string)
+    [
+      "Down(Left)";
+      "Drag(Left)";
+      "Down(Right)";
+      "Up(Right)";
+      "Drag_end(Left)";
+      "Up(Left, dragged)";
+      drop_from a;
+    ]
+    (seen log)
+
+(* A press of the held button says its release was lost outside the window:
+   the drag ends where it was last reported, with [Drag_end] and no [Drop],
+   before the press goes on. *)
+let press_of_the_held_button_is_a_lost_release () =
+  let t = make_renderer () in
+  let a = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:10 () in
+  let b = make_child ~parent:(Renderer.root t) ~x:20 ~y:0 ~w:10 ~h:10 () in
+  let log_a = record_mouse a and log_b = record_mouse b in
+  let clicks_b = count_clicks b in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:25 ~y:5 ());
+  dispatch_mouse t (mouse_press ~x:26 ~y:6 ());
+  equal ~msg:"a's drag ends" (list string)
+    [ "Down(Left)"; "Drag(Left)"; "Drag_end(Left)" ]
+    (seen log_a);
+  (match !log_a with
+  | drag_end :: _ ->
+      equal ~msg:"at the last held report" (pair int int) (25, 5)
+        (Event.Mouse.x drag_end, Event.Mouse.y drag_end)
+  | [] -> fail "expected Drag_end");
+  is_none ~msg:"the capture ends" (Renderer.captured t);
+  dispatch_mouse t (mouse_release ~x:26 ~y:6 ());
+  equal ~msg:"b sees the new press and no drop" (list string)
+    [ "Down(Left)"; "Up(Left)" ]
+    (seen log_b);
+  equal ~msg:"the new press clicks" int 1 !clicks_b
+
+(* A motion with no button held says the release was lost too. *)
+let motion_without_a_button_is_a_lost_release () =
+  let t = make_renderer () in
+  let a = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:10 () in
+  let b = make_child ~parent:(Renderer.root t) ~x:20 ~y:0 ~w:10 ~h:10 () in
+  let log_a = record_mouse a and log_b = record_mouse b in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:5 ~y:5 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:25 ~y:5 ());
+  dispatch_mouse t (mouse_motion ~x:26 ~y:5 ());
+  equal ~msg:"a's drag ends" (list string)
+    [ "Down(Left)"; "Drag(Left)"; "Drag_end(Left)" ]
+    (seen log_a);
+  is_none ~msg:"the capture ends" (Renderer.captured t);
+  equal ~msg:"the motion goes on, and hovers b" (list string) [ "Over"; "Move" ]
+    (seen log_b)
+
+(* A host calls [pointer_lost] as its window loses focus: the gesture
+   settles where the pointer was last reported, and nothing clicks. *)
+let pointer_lost_settles_the_held_press () =
+  let t = make_renderer () in
+  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
+  make_selectable child;
+  let log = record_mouse child in
+  let clicks = count_clicks child in
+  do_frame t;
+  Renderer.pointer_lost t;
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:12 ~y:8 ());
+  Renderer.pointer_lost t;
+  (match Renderer.selection t with
+  | Some sel ->
+      is_false ~msg:"the selection settles" (Selection.is_dragging sel)
+  | None -> fail "expected a selection");
+  is_none ~msg:"the capture ends" (Renderer.captured t);
+  equal ~msg:"the captured node gets Drag_end and no drop" (list string)
+    [ "Down(Left)"; "Drag(Left)"; "Drag_end(Left)" ]
+    (seen log);
+  dispatch_mouse t (mouse_motion ~left:true ~x:13 ~y:9 ());
+  equal ~msg:"a later motion selects nothing" (pair int int) (12, 8)
+    (selection_focus t);
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  Renderer.pointer_lost t;
+  dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
+  equal ~msg:"a lost release clicks nothing" int 0 !clicks
+
+(* A clear during a drag ends the gesture's selection: its later motion
+   selects nothing, and its release settles nothing. *)
+let clear_during_a_drag_ends_its_selection () =
+  let t = make_renderer () in
+  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
+  make_selectable child;
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:9 ~y:7 ());
+  Renderer.clear_selection t;
+  dispatch_mouse t (mouse_motion ~left:true ~x:12 ~y:8 ());
+  is_none ~msg:"the motion selects nothing" (Renderer.selection t);
+  dispatch_mouse t (mouse_release ~x:12 ~y:8 ());
+  is_none ~msg:"the release settles nothing" (Renderer.selection t);
+  is_none ~msg:"the release ends the drag" (Renderer.captured t)
+
+(* A refused press takes its drag and release with it, also while another
+   button's press is held, which leaves it unheld. *)
+let refused_press_under_another_held_press_goes_nowhere () =
+  let t = make_renderer () in
+  let child =
+    make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 ~focusable:true ()
+  in
+  Renderable.set_on_focus_request child (Some (fun () -> ()));
+  let log = record_mouse child in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~button:Right ~x:7 ~y:7 ());
+  List.iter
+    (fun mouse ->
+      is_true ~msg:"the refused gesture is prevented"
+        (Event.Mouse.default_prevented (Test_harness.dispatch_mouse t mouse)))
+    [
+      mouse_press ~x:8 ~y:7 ();
+      mouse_motion ~left:true ~x:9 ~y:7 ();
+      mouse_release ~x:9 ~y:7 ();
+    ];
+  dispatch_mouse t (mouse_release ~button:Right ~x:9 ~y:7 ());
+  equal ~msg:"the node sees the right press and release only" (list string)
+    [ "Down(Right)"; "Up(Right, dragged)" ]
+    (seen log)
+
+(* A press of a refused press's button says its release was lost: the
+   refusal ends with it, and the new press goes on. *)
+let refusal_ends_with_a_lost_release () =
+  let t = make_renderer () in
+  let child =
+    make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 ~focusable:true ()
+  in
+  let grant = ref false in
+  Renderable.set_on_focus_request child
+    (Some (fun () -> if !grant then ignore (Renderer.focus t child : bool)));
+  let clicks = count_clicks child in
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  grant := true;
+  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
+  dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
+  equal ~msg:"the new press clicks" int 1 !clicks
+
+(* Presses are timed by [~now], in nanoseconds. *)
+let ms n = n * 1_000_000
+
+(* A press then its release at [(x, y)], the press read at [now]; its
+   [clicks]. *)
+let click t ?button ~now ~x ~y () =
+  let press =
+    Test_harness.dispatch_mouse ~now t (mouse_press ?button ~x ~y ())
+  in
+  dispatch_mouse t (mouse_release ?button ~x ~y ());
+  match Event.Mouse.kind press with
+  | Down { clicks; _ } -> clicks
+  | _ -> fail "expected a press"
+
+let clicks_count_a_series () =
+  let t = make_renderer () in
+  do_frame t;
+  let first = click t ~now:0 ~x:5 ~y:5 () in
+  let second = click t ~now:(ms 100) ~x:5 ~y:5 () in
+  let third = click t ~now:(ms 200) ~x:5 ~y:5 () in
+  let fourth = click t ~now:(ms 300) ~x:5 ~y:5 () in
+  equal ~msg:"the count is not capped" (list int) [ 1; 2; 3; 4 ]
+    [ first; second; third; fourth ]
+
+let clicks_window_is_500_ms () =
+  let t = make_renderer () in
+  do_frame t;
+  let first = click t ~now:0 ~x:5 ~y:5 () in
+  let at_the_window = click t ~now:(ms 500) ~x:5 ~y:5 () in
+  let past_it = click t ~now:(ms 1001) ~x:5 ~y:5 () in
+  equal ~msg:"500 ms after the previous press, and no later" (list int)
+    [ 1; 2; 1 ]
+    [ first; at_the_window; past_it ]
+
+(* Within one cell of the series' first press on each axis, whichever node
+   is there: streaming text re-creates its nodes between two presses. *)
+let clicks_stay_near_the_first_press () =
+  let t = make_renderer () in
+  let a = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:5 ~h:10 () in
+  let b = make_child ~parent:(Renderer.root t) ~x:5 ~y:0 ~w:5 ~h:10 () in
+  let log_a = record_mouse a and log_b = record_mouse b in
+  do_frame t;
+  let first = click t ~now:0 ~x:4 ~y:5 () in
+  let diagonal = click t ~now:(ms 100) ~x:5 ~y:6 () in
+  let two_off = click t ~now:(ms 200) ~x:6 ~y:6 () in
+  equal ~msg:"one cell off on each axis, then two off the first press"
+    (list int) [ 1; 2; 1 ]
+    [ first; diagonal; two_off ];
+  equal ~msg:"the first press is on a" (list string)
+    [ "Down(Left)"; "Up(Left)" ]
+    (seen log_a);
+  equal ~msg:"the next two are on b" (list string)
+    [ "Down(Left, clicks=2)"; "Up(Left)"; "Down(Left)"; "Up(Left)" ]
+    (seen log_b)
+
+(* The window runs from the previous press, not from the series' first. *)
+let clicks_window_runs_from_the_previous_press () =
+  let t = make_renderer () in
+  do_frame t;
+  let first = click t ~now:0 ~x:5 ~y:5 () in
+  let second = click t ~now:(ms 400) ~x:5 ~y:5 () in
+  let third = click t ~now:(ms 800) ~x:5 ~y:5 () in
+  equal ~msg:"each press 400 ms after the one before" (list int) [ 1; 2; 3 ]
+    [ first; second; third ]
+
+let another_button_ends_a_series () =
+  let t = make_renderer () in
+  do_frame t;
+  let left = click t ~now:0 ~x:5 ~y:5 () in
+  let right = click t ~button:Right ~now:(ms 100) ~x:5 ~y:5 () in
+  let left_again = click t ~now:(ms 200) ~x:5 ~y:5 () in
+  equal ~msg:"each press starts a series" (list int) [ 1; 1; 1 ]
+    [ left; right; left_again ]
+
+let drag_between_presses_keeps_the_series () =
+  let t = make_renderer () in
+  do_frame t;
+  let first = Test_harness.dispatch_mouse ~now:0 t (mouse_press ~x:5 ~y:5 ()) in
+  dispatch_mouse t (mouse_motion ~left:true ~x:9 ~y:5 ());
+  dispatch_mouse t (mouse_release ~x:9 ~y:5 ());
+  let second = click t ~now:(ms 300) ~x:5 ~y:5 () in
+  equal ~msg:"the first press" int 1
+    (match Event.Mouse.kind first with
+    | Down { clicks; _ } -> clicks
+    | _ -> fail "expected a press");
+  equal ~msg:"the press after the drag continues the series" int 2 second
 
 (* ── Run ── *)
 
@@ -2975,5 +3358,40 @@ let () =
           test "clear notifies selectables" clear_notifies_selectables;
           test "click on non-selectable clears selection"
             click_on_non_selectable_clears_selection;
+        ];
+      group "Pointer gestures"
+        [
+          test "motion at the pressed cell is no drag"
+            motion_at_the_pressed_cell_is_no_drag;
+          test "motion back over the pressed cell is a drag"
+            motion_back_over_the_pressed_cell_is_a_drag;
+          test "a release says whether the pointer left"
+            release_says_whether_the_pointer_left;
+          test "a drag captures the node pressed" drag_captures_the_node_pressed;
+          test "a release that names no button is the held button's"
+            unnamed_release_is_the_held_buttons;
+          test "another button's release keeps the drag"
+            another_buttons_release_keeps_the_drag;
+          test "a press of the held button is a lost release"
+            press_of_the_held_button_is_a_lost_release;
+          test "a motion without a button is a lost release"
+            motion_without_a_button_is_a_lost_release;
+          test "pointer_lost settles the held press"
+            pointer_lost_settles_the_held_press;
+          test "a clear during a drag ends its selection"
+            clear_during_a_drag_ends_its_selection;
+          test "a refused press under another held press goes nowhere"
+            refused_press_under_another_held_press_goes_nowhere;
+          test "a refusal ends with a lost release"
+            refusal_ends_with_a_lost_release;
+          test "clicks count a series" clicks_count_a_series;
+          test "the clicks window is 500 ms" clicks_window_is_500_ms;
+          test "the clicks window runs from the previous press"
+            clicks_window_runs_from_the_previous_press;
+          test "clicks stay near the first press"
+            clicks_stay_near_the_first_press;
+          test "another button ends a series" another_button_ends_a_series;
+          test "a drag between presses keeps the series"
+            drag_between_presses_keeps_the_series;
         ];
     ]

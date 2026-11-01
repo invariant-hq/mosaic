@@ -965,9 +965,9 @@ let click_distance_ok (down_x, down_y) ~x ~y =
 
 let handle_mouse t event =
   match Event.Mouse.kind event with
-  | Down { button = Left } ->
+  | Down { button = Left; _ } ->
       t.mouse_down <- Some (Event.Mouse.x event, Event.Mouse.y event)
-  | Up { button = Left; is_dragging = _ } -> (
+  | Up { button = Left; _ } -> (
       let x = Event.Mouse.x event in
       let y = Event.Mouse.y event in
       let down = t.mouse_down in
@@ -980,8 +980,7 @@ let handle_mouse t event =
               Event.Mouse.stop_propagation event
           | Some _, None | None, Some _ | None, None -> ())
       | Some _ | None -> ())
-  | Drag { button = Left; _ } | Drag_end { button = Left } ->
-      t.mouse_down <- None
+  | Drag { button = Left } | Drag_end { button = Left } -> t.mouse_down <- None
   | Down _ | Up _ | Move | Drag _ | Drag_end _ | Drop _ | Over _ | Out
   | Scroll _ ->
       ()

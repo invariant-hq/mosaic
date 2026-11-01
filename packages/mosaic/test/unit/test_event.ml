@@ -10,7 +10,8 @@ let key_ev_b = key 'b'
 let no_mod = Event.Mouse.no_modifier
 
 let mouse_down ?(x = 0) ?(y = 0) ?target () =
-  Event.Mouse.make ~x ~y ~modifiers:no_mod ?target (Down { button = Left })
+  Event.Mouse.make ~x ~y ~modifiers:no_mod ?target
+    (Down { button = Left; clicks = 1 })
 
 (* ── Key ── *)
 
@@ -81,10 +82,11 @@ let mouse_make_stores_fields () =
     Event.Mouse.make ~x:10 ~y:20
       ~modifiers:{ no_mod with ctrl = true }
       ~target:42
-      (Down { button = Left })
+      (Down { button = Left; clicks = 1 })
   in
   is_true ~msg:"kind"
-    (Event.Mouse.equal_kind (Event.Mouse.kind ev) (Down { button = Left }));
+    (Event.Mouse.equal_kind (Event.Mouse.kind ev)
+       (Down { button = Left; clicks = 1 }));
   equal ~msg:"x" int 10 (Event.Mouse.x ev);
   equal ~msg:"y" int 20 (Event.Mouse.y ev);
   is_true ~msg:"ctrl" (Event.Mouse.modifiers ev).ctrl;
@@ -133,11 +135,12 @@ let mouse_equal_ignores_dispatch () =
 
 let mouse_equal_different_kind () =
   let a =
-    Event.Mouse.make ~x:0 ~y:0 ~modifiers:no_mod (Down { button = Left })
+    Event.Mouse.make ~x:0 ~y:0 ~modifiers:no_mod
+      (Down { button = Left; clicks = 1 })
   in
   let b =
     Event.Mouse.make ~x:0 ~y:0 ~modifiers:no_mod
-      (Up { button = Left; is_dragging = false })
+      (Up { button = Left; dragged = false })
   in
   is_false ~msg:"different kind" (Event.Mouse.equal a b)
 
@@ -184,31 +187,49 @@ let button_named_vs_numbered () =
 
 let kind_down () =
   is_true ~msg:"same"
-    (Event.Mouse.equal_kind (Down { button = Left }) (Down { button = Left }));
+    (Event.Mouse.equal_kind
+       (Down { button = Left; clicks = 1 })
+       (Down { button = Left; clicks = 1 }));
   is_false ~msg:"diff"
-    (Event.Mouse.equal_kind (Down { button = Left }) (Down { button = Right }))
+    (Event.Mouse.equal_kind
+       (Down { button = Left; clicks = 1 })
+       (Down { button = Right; clicks = 1 }));
+  is_false ~msg:"diff clicks"
+    (Event.Mouse.equal_kind
+       (Down { button = Left; clicks = 1 })
+       (Down { button = Left; clicks = 2 }))
+
+(* A kind prints what it carries: a press its count past the first click,
+   and a release that the pointer left the pressed cell. *)
+let kind_pp () =
+  let show kind = Format.asprintf "%a" Event.Mouse.pp_kind kind in
+  equal ~msg:"a single click" string "Down(Left)"
+    (show (Down { button = Left; clicks = 1 }));
+  equal ~msg:"a double click" string "Down(Left, clicks=2)"
+    (show (Down { button = Left; clicks = 2 }));
+  equal ~msg:"a release in place" string "Up(Left)"
+    (show (Up { button = Left; dragged = false }));
+  equal ~msg:"a dragged release" string "Up(Right, dragged)"
+    (show (Up { button = Right; dragged = true }));
+  equal ~msg:"a drag" string "Drag(Middle)" (show (Drag { button = Middle }))
 
 let kind_up () =
   is_true ~msg:"same"
     (Event.Mouse.equal_kind
-       (Up { button = Left; is_dragging = false })
-       (Up { button = Left; is_dragging = false }));
-  is_false ~msg:"diff dragging"
+       (Up { button = Left; dragged = false })
+       (Up { button = Left; dragged = false }));
+  is_false ~msg:"diff dragged"
     (Event.Mouse.equal_kind
-       (Up { button = Left; is_dragging = false })
-       (Up { button = Left; is_dragging = true }))
+       (Up { button = Left; dragged = false })
+       (Up { button = Left; dragged = true }))
 
 let kind_move () = is_true ~msg:"move" (Event.Mouse.equal_kind Move Move)
 
 let kind_drag () =
   is_true ~msg:"same"
-    (Event.Mouse.equal_kind
-       (Drag { button = Left; is_dragging = true })
-       (Drag { button = Left; is_dragging = true }));
+    (Event.Mouse.equal_kind (Drag { button = Left }) (Drag { button = Left }));
   is_false ~msg:"diff button"
-    (Event.Mouse.equal_kind
-       (Drag { button = Left; is_dragging = true })
-       (Drag { button = Right; is_dragging = true }))
+    (Event.Mouse.equal_kind (Drag { button = Left }) (Drag { button = Right }))
 
 let kind_drag_end () =
   is_true ~msg:"same"
@@ -254,9 +275,9 @@ let kind_scroll () =
 
 let kind_cross_variant () =
   is_false ~msg:"down/move"
-    (Event.Mouse.equal_kind (Down { button = Left }) Move);
+    (Event.Mouse.equal_kind (Down { button = Left; clicks = 1 }) Move);
   is_false ~msg:"up/out"
-    (Event.Mouse.equal_kind (Up { button = Left; is_dragging = false }) Out);
+    (Event.Mouse.equal_kind (Up { button = Left; dragged = false }) Out);
   is_false ~msg:"scroll/over"
     (Event.Mouse.equal_kind
        (Scroll { direction = Scroll_up; delta = 1 })
@@ -328,7 +349,7 @@ let () =
       group "Mouse kind"
         [
           test "Down" kind_down;
-          test "Up with is_dragging" kind_up;
+          test "Up with dragged" kind_up;
           test "Move" kind_move;
           test "Drag" kind_drag;
           test "Drag_end" kind_drag_end;
@@ -337,6 +358,7 @@ let () =
           test "Out" kind_out;
           test "Scroll" kind_scroll;
           test "cross-variant" kind_cross_variant;
+          test "printing" kind_pp;
         ];
       group "Scroll direction"
         [ test "equal and not equal" scroll_direction_equal ];

@@ -326,7 +326,7 @@ let handle_mouse t (event : Event.mouse) =
   let x = Event.Mouse.x event - Renderable.x t.node in
   let y = Event.Mouse.y event - Renderable.y t.node in
   match Event.Mouse.kind event with
-  | Down { button = Left } ->
+  | Down { button = Left; _ } ->
       if x >= 0 && x < width && y >= 0 && y < height then
         (* Map pixel row to item index via lines_per_item stride *)
         let index = scroll_offset t + (y / lines_per_item t) in

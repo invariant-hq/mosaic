@@ -242,9 +242,22 @@ val dispatch_paste : t -> path -> Event.paste -> unit
 (** [dispatch_paste t path event] is {!dispatch_key} for a paste, whose behavior
     inserts it. *)
 
-val mouse_path : t -> Matrix_input.Mouse_report.t -> path * Event.mouse
-(** [mouse_path t report] records the pointer and routes [report] to a target,
-    returning the target's path and the event to dispatch along it.
+val mouse_path :
+  t -> now:int -> Matrix_input.Mouse_report.t -> path * Event.mouse
+(** [mouse_path t ~now report] records the pointer and routes [report] to a
+    target, returning the target's path and the event to dispatch along it.
+    [now] is the time, in nanoseconds, of the turn that reads [report], such as
+    {!Matrix.now}: it times a press for its [clicks] ({!Event.Mouse.kind}), so
+    their window is accurate to one turn.
+
+    A press is {e held} until the release of its button; a release that does not
+    say which button (X10, URXVT) is the held button's. While a press is held,
+    another button's press or release leaves it alone, and a press of its button
+    or a motion with no button means its release was lost: before the report is
+    routed, the press ends as {!pointer_lost} ends it. A drag of the held button
+    reported at the pressed cell before the pointer has left it, which some
+    terminals send, is no drag: it is returned prevented, with no target. A
+    release's [dragged] says whether the pointer left the pressed cell.
 
     A primary press without Shift first invokes the focus request of the nearest
     focusable node under the pointer, if that node is unfocused and has one (see
@@ -258,11 +271,18 @@ val mouse_path : t -> Matrix_input.Mouse_report.t -> path * Event.mouse
 
     The target is the node under the pointer, from the latest layout. A wheel
     event over dead space goes to the focused node, whose ancestors reach the
-    nearest scrollable one. A left drag captures the node it starts on: until
-    the release, every event other than the wheel goes to it, and to no node
-    once it is destroyed. The drag and release of a text selection go to the
-    node the selection started on. Moving the pointer to another node sends
-    [Out] to the node it leaves and [Over] to the node it enters. *)
+    nearest scrollable one. A left drag captures the node pressed, which is the
+    node a text selection starts on: until the press ends, every event other
+    than the wheel goes to it, and to no node once it is destroyed. Moving the
+    pointer to another node sends [Out] to the node it leaves and [Over] to the
+    node it enters. *)
+
+val pointer_lost : t -> unit
+(** [pointer_lost t] ends the held press, if any, as a lost release: its release
+    will not come, as when the terminal's window loses focus. The gesture
+    settles where the pointer was last reported: the text selection it drags
+    ends there, the node it captured gets [Drag_end] and no [Drop], and nothing
+    is clicked. A host calls it when the terminal reports a focus loss. *)
 
 val dispatch_mouse : t -> path -> Event.mouse -> unit
 (** [dispatch_mouse t path event] delivers [event] to [path], then, unless the

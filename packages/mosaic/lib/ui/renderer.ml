@@ -15,16 +15,36 @@ type render_command =
   | Push_opacity of float
   | Pop_opacity
 
+(* A press held until the release of its button: the cell and the node
+   pressed, which a left drag captures; whether the pointer left the pressed
+   cell; and the node its release clicks, until a drag. *)
+type press = {
+  button : Event.Mouse.button;
+  press_x : int;
+  press_y : int;
+  pressed : Renderable.t option;
+  mutable moved : bool;
+  mutable click : Renderable.t option;
+}
+
 type pointer_state = {
   mutable position : (int * int) option;
   mutable modifiers : Event.Mouse.modifier;
-  mutable rejected_press : bool;
-  mutable press_target : Renderable.t option;
+  mutable held : press option;
+  (* The button of a refused press, held or not: its drag and release go to
+     no node. *)
+  mutable refused : Event.Mouse.button option;
+  (* The series of presses that [Down]'s [clicks] counts: the last press's
+     button, time and count, and the cell of the series' first press. *)
+  mutable series_button : Event.Mouse.button;
+  mutable series_time : int;
+  mutable series_clicks : int;
+  mutable series_x : int;
+  mutable series_y : int;
 }
 
 type selection_state = {
   mutable current : Selection.t option;
-  mutable anchor_node : Renderable.t option;
   mutable containers : Renderable.t list;
   mutable touched_selectables : Renderable.t list;
 }
@@ -264,7 +284,6 @@ let clear_active_selection t =
   | Some _ ->
       let touched = t.selection_state.touched_selectables in
       t.selection_state.current <- None;
-      t.selection_state.anchor_node <- None;
       t.selection_state.containers <- [];
       t.selection_state.touched_selectables <- [];
       List.iter
@@ -486,17 +505,17 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
     {
       position = None;
       modifiers = Event.Mouse.no_modifier;
-      rejected_press = false;
-      press_target = None;
+      held = None;
+      refused = None;
+      series_button = Event.Mouse.Left;
+      series_time = 0;
+      series_clicks = 0;
+      series_x = 0;
+      series_y = 0;
     }
   in
   let selection_state =
-    {
-      current = None;
-      anchor_node = None;
-      containers = [];
-      touched_selectables = [];
-    }
+    { current = None; containers = []; touched_selectables = [] }
   in
   let scroll_hint = ref Hint_none in
   let report_scroll node ~(region : Grid.region) ~dx ~dy =
@@ -1090,19 +1109,28 @@ let render_frame_until_settled ?(max_passes = 4) t ~width ~height ~dt =
 
 (* An event's path: its target and the target's ancestors, innermost first,
    fixed when the path is taken. A mouse path also carries what its defaults
-   need: the node a press asked for focus, the node a release would click,
-   and, for the release that ends a capturing drag, the captured node and the
-   node under the pointer, which receives the drop. *)
+   need: the node a press asked for focus, the held press a press starts,
+   the node a release clicks, and, for the release that ends a capturing
+   drag, the captured node and the node under the pointer, which receives the
+   drop. *)
 type path = {
   nodes : Renderable.t list;
   requested : Renderable.t option;
-  press : Renderable.t option;
+  holds : press option;
+  click : Renderable.t option;
   drag_end : Renderable.t option;
   drop : Renderable.t option;
 }
 
 let no_path =
-  { nodes = []; requested = None; press = None; drag_end = None; drop = None }
+  {
+    nodes = [];
+    requested = None;
+    holds = None;
+    click = None;
+    drag_end = None;
+    drop = None;
+  }
 
 let focus_path t =
   match !(t.focused) with
@@ -1145,28 +1173,12 @@ let map_button : Input.Mouse_report.button -> Event.Mouse.button = function
   | Middle -> Middle
   | Extra n -> Button n
 
-(* A release that does not say which button (X10, URXVT) is [Button 0],
-   which ends a left press. *)
-let mouse_kind (mouse : Input.Mouse_report.t) : Event.Mouse.kind =
-  match mouse.kind with
-  | Press button -> Down { button = map_button button }
-  | Release button ->
-      let button =
-        Option.fold ~none:(Event.Mouse.Button 0) ~some:map_button button
-      in
-      Up { button; is_dragging = false }
-  | Motion None -> Move
-  | Motion (Some button) ->
-      Drag { button = map_button button; is_dragging = true }
-  | Scroll direction ->
-      let direction : Event.Mouse.scroll_direction =
-        match direction with
-        | `Up -> Scroll_up
-        | `Down -> Scroll_down
-        | `Left -> Scroll_left
-        | `Right -> Scroll_right
-      in
-      Scroll { direction; delta = 1 }
+let map_scroll :
+    [ `Up | `Down | `Left | `Right ] -> Event.Mouse.scroll_direction = function
+  | `Up -> Scroll_up
+  | `Down -> Scroll_down
+  | `Left -> Scroll_left
+  | `Right -> Scroll_right
 
 let hit_node t ~x ~y =
   let num = query_input_hit t ~x ~y in
@@ -1181,14 +1193,81 @@ let selection_dragging t =
    selection. *)
 let starts_selection node ~x ~y ~(modifiers : Event.Mouse.modifier) kind =
   match kind with
-  | Event.Mouse.Down { button = Left } ->
+  | Event.Mouse.Down { button = Left; _ } ->
       (not modifiers.ctrl) && Renderable.selectable node
       && Renderable.Private.should_start_selection node ~x ~y
   | _ -> false
 
-let mouse_path t (mouse : Input.Mouse_report.t) =
+(* Win32's default double-click time, which Ghostty's and Claude Code's
+   share, in nanoseconds. *)
+let click_window = 500_000_000
+
+(* A press continues the series of the previous press when it is of the same
+   button, at most [click_window] later, and within one cell of the series'
+   first press on each axis, as Win32's double-click rectangle is around the
+   first click. A drag between them does not matter. *)
+let count_clicks (p : pointer_state) ~now ~x ~y button =
+  let elapsed = now - p.series_time in
+  let clicks =
+    if
+      p.series_clicks > 0
+      && Event.Mouse.equal_button button p.series_button
+      && elapsed >= 0 && elapsed <= click_window
+      && abs (x - p.series_x) <= 1
+      && abs (y - p.series_y) <= 1
+    then p.series_clicks + 1
+    else begin
+      p.series_x <- x;
+      p.series_y <- y;
+      1
+    end
+  in
+  p.series_button <- button;
+  p.series_time <- now;
+  p.series_clicks <- clicks;
+  clicks
+
+(* A selection's drag ends with the press that drags it, released or lost. *)
+let end_selection_drag t =
+  match t.selection_state.current with
+  | Some sel when Selection.is_dragging sel ->
+      Selection.set_is_dragging sel false;
+      notify_selectables t.selection_state (Some sel)
+  | Some _ | None -> ()
+
+(* A held press whose release was lost ends where the pointer was last
+   reported: the node it captured gets [Drag_end] and no [Drop], the
+   selection it drags settles, and nothing is clicked. *)
+let lose_press t (held : press) =
+  t.pointer.held <- None;
+  (match t.captured with
+  | None -> ()
+  | Some captured ->
+      t.captured <- None;
+      Atomic.set t.dirty true;
+      if not (Renderable.destroyed captured) then
+        let x, y =
+          match t.pointer.position with
+          | Some position -> position
+          | None -> (held.press_x, held.press_y)
+        in
+        deliver_mouse (ancestry captured)
+          (Event.Mouse.make ~x ~y ~modifiers:t.pointer.modifiers
+             ~target:(Renderable.uid captured)
+             (Event.Mouse.Drag_end { button = held.button })));
+  end_selection_drag t
+
+let pointer_lost t =
+  t.pointer.refused <- None;
+  Option.iter (lose_press t) t.pointer.held
+
+let is_refused t button =
+  match t.pointer.refused with
+  | Some refused -> Event.Mouse.equal_button refused button
+  | None -> false
+
+let mouse_path t ~now (mouse : Input.Mouse_report.t) =
   let x = mouse.x and y = mouse.y in
-  let kind = mouse_kind mouse in
   let modifiers =
     {
       Event.Mouse.no_modifier with
@@ -1197,107 +1276,119 @@ let mouse_path t (mouse : Input.Mouse_report.t) =
       ctrl = mouse.ctrl;
     }
   in
-  let press = t.pointer.press_target in
-  (match kind with
-  | Event.Mouse.Down _ | Event.Mouse.Drag _
-  | Event.Mouse.Up { button = Left | Button 0; _ } ->
-      t.pointer.press_target <- None
-  | _ -> ());
+  (* A press of the held or refused button, or a motion with no button, says
+     that its release was lost, as one is outside the window. *)
+  (match mouse.kind with
+  | Press button -> (
+      let button = map_button button in
+      if is_refused t button then t.pointer.refused <- None;
+      match t.pointer.held with
+      | Some held when Event.Mouse.equal_button button held.button ->
+          lose_press t held
+      | Some _ | None -> ())
+  | Motion None -> pointer_lost t
+  | Release _ | Motion (Some _) | Scroll _ -> ());
   t.pointer.position <- Some (x, y);
   t.pointer.modifiers <- modifiers;
-  (* A rejected press takes its drag and release with it. *)
-  let suppress =
-    match kind with
-    | Event.Mouse.Down { button = Left } ->
-        t.pointer.rejected_press <- false;
-        false
-    | Event.Mouse.Up { button = Left | Button 0; _ } ->
-        let rejected = t.pointer.rejected_press in
-        t.pointer.rejected_press <- false;
-        rejected
-    | Event.Mouse.Drag { button = Left; _ } -> t.pointer.rejected_press
-    | _ -> false
-  in
-  let rejected () =
-    let event = Event.Mouse.make ~x ~y ~modifiers kind in
-    Event.Mouse.prevent_default event;
-    (no_path, event)
-  in
-  let on ?(path = no_path) ?(kind = kind) node =
+  let held = t.pointer.held in
+  let on ?(path = no_path) kind node =
     let target = Option.map Renderable.uid node in
     ( { path with nodes = Option.fold ~none:[] ~some:ancestry node },
       Event.Mouse.make ~x ~y ~modifiers ?target kind )
   in
-  if suppress then rejected ()
-  else
-    let target = hit_node t ~x ~y in
-    (* Accept declarative focus before anything else sees the press. The
-       request may change layout, so hit again and require the same focus
-       target afterwards. *)
-    let requested =
-      match (kind, target) with
-      | Event.Mouse.Down { button = Left }, Some node when not modifiers.shift
-        -> (
-          match find_focusable node with
-          | Some focus when inert_under (top_layer t) focus -> None
-          | Some focus when not (Renderable.focused focus) ->
-              if Renderable.Private.request_focus focus then Some focus
-              else None
-          | Some focus -> Some focus
-          | None -> None)
-      | _ -> None
-    in
-    let target =
-      match requested with None -> target | Some _ -> hit_node t ~x ~y
-    in
-    if not (focus_request_accepted requested target) then begin
-      t.pointer.rejected_press <- true;
-      rejected ()
-    end
-    else
-      (* A scroll over dead space still means "scroll": fall back to the
-         focused renderable, whose ancestors reach the nearest scrollable. *)
-      let target =
-        match (kind, target) with
-        | Event.Mouse.Scroll _, None -> (
-            match !(t.focused) with
-            | Some node when Renderable.focused node -> Some node
-            | _ -> None)
-        | _ -> target
+  let nowhere kind =
+    let event = Event.Mouse.make ~x ~y ~modifiers kind in
+    Event.Mouse.prevent_default event;
+    (no_path, event)
+  in
+  (* Hover follows the pointer, and a capture takes every event but the
+     wheel; a captured node that unmounts takes them with it. *)
+  let route kind target =
+    let target_num = Option.fold ~none:0 ~some:Renderable.uid target in
+    update_hover t ~x ~y ~modifiers ~target_node:target ~target_num kind;
+    match (t.captured, kind) with
+    | Some _, Event.Mouse.Scroll _ | None, _ -> on kind target
+    | Some captured, _ ->
+        if Renderable.destroyed captured then
+          (no_path, Event.Mouse.make ~x ~y ~modifiers kind)
+        else on kind (Some captured)
+  in
+  match mouse.kind with
+  | Press button ->
+      let button = map_button button in
+      let kind =
+        Event.Mouse.Down
+          { button; clicks = count_clicks t.pointer ~now ~x ~y button }
       in
-      let path, event =
-        match kind with
-        | Event.Mouse.Drag { button = Left; _ }
-        | Event.Mouse.Up { button = Left; _ }
-          when selection_dragging t ->
-            (* A selection's drag and release go to the node it started on. *)
-            let anchor =
-              match t.selection_state.anchor_node with
-              | Some anchor when not (Renderable.destroyed anchor) ->
-                  Some anchor
-              | _ -> target
+      (* A press is held until its button's release, unless another press
+         is held, which it leaves alone. *)
+      let hold pressed =
+        match held with
+        | Some _ -> None
+        | None ->
+            let press =
+              {
+                button;
+                press_x = x;
+                press_y = y;
+                pressed;
+                moved = false;
+                click = None;
+              }
             in
-            let kind =
-              match kind with
-              | Event.Mouse.Up { button; _ } ->
-                  Event.Mouse.Up { button; is_dragging = true }
-              | kind -> kind
-            in
-            on ~kind anchor
-        | Event.Mouse.Down _
-          when match target with
-               | Some node -> starts_selection node ~x ~y ~modifiers kind
-               | None -> false ->
-            on target
-        | _ -> (
-            let target_num = Option.fold ~none:0 ~some:Renderable.uid target in
-            update_hover t ~x ~y ~modifiers ~target_node:target ~target_num kind;
-            (* A left drag captures the node it starts on until the release:
-             every event but the wheel goes to it. An unmounted captured
-             node takes the events with it. *)
-            match (t.captured, kind) with
-            | Some _, Event.Mouse.Scroll _ -> on target
-            | Some captured, Event.Mouse.Up { button; _ } ->
+            t.pointer.held <- Some press;
+            Some press
+      in
+      let target = hit_node t ~x ~y in
+      (* Accept declarative focus before anything else sees the press. The
+         request may change layout, so hit again and require the same focus
+         target afterwards. *)
+      let requested =
+        match (button, target) with
+        | Left, Some node when not modifiers.shift -> (
+            match find_focusable node with
+            | Some focus when inert_under (top_layer t) focus -> None
+            | Some focus when not (Renderable.focused focus) ->
+                if Renderable.Private.request_focus focus then Some focus
+                else None
+            | Some focus -> Some focus
+            | None -> None)
+        | _ -> None
+      in
+      let target =
+        match requested with None -> target | Some _ -> hit_node t ~x ~y
+      in
+      if not (focus_request_accepted requested target) then begin
+        (* A refused press takes its drag and release with it. *)
+        t.pointer.refused <- Some button;
+        ignore (hold None : press option);
+        nowhere kind
+      end
+      else
+        let path, event = route kind target in
+        ({ path with requested; holds = hold target }, event)
+  | Release button -> (
+      (* A release that does not say which button (X10, URXVT) is the held
+         button's. *)
+      let button =
+        match (button, held) with
+        | Some button, _ -> map_button button
+        | None, Some held -> held.button
+        | None, None -> Event.Mouse.Left
+      in
+      let refused = is_refused t button in
+      if refused then t.pointer.refused <- None;
+      let target = hit_node t ~x ~y in
+      match held with
+      | Some held when Event.Mouse.equal_button held.button button -> (
+          t.pointer.held <- None;
+          let dragged = held.moved || x <> held.press_x || y <> held.press_y in
+          let kind = Event.Mouse.Up { button; dragged } in
+          if refused then nowhere kind
+          else
+            match t.captured with
+            | None -> on ~path:{ no_path with click = held.click } kind target
+            | Some captured ->
                 t.captured <- None;
                 Atomic.set t.dirty true;
                 if Renderable.destroyed captured then
@@ -1306,20 +1397,47 @@ let mouse_path t (mouse : Input.Mouse_report.t) =
                   on
                     ~path:
                       { no_path with drag_end = Some captured; drop = target }
-                    ~kind:(Event.Mouse.Up { button; is_dragging = false })
-                    (Some captured)
-            | Some captured, _ ->
-                if Renderable.destroyed captured then
-                  (no_path, Event.Mouse.make ~x ~y ~modifiers kind)
-                else on (Some captured)
-            | None, _ ->
-                (match (kind, target) with
-                | Event.Mouse.Drag { button = Left; _ }, Some node ->
-                    t.captured <- Some node
-                | _ -> ());
-                on target)
+                    kind (Some captured))
+      | Some _ | None ->
+          let kind = Event.Mouse.Up { button; dragged = false } in
+          if refused then nowhere kind else route kind target)
+  | Motion (Some button) -> (
+      let button = map_button button in
+      let kind = Event.Mouse.Drag { button } in
+      if is_refused t button then nowhere kind
+      else
+        match held with
+        | Some held when Event.Mouse.equal_button held.button button ->
+            (* Motion at the pressed cell before the pointer has left it is
+               no drag: xterm reports motion only to another cell, and the
+               terminals that report it there make a tremor of a click. *)
+            if (not held.moved) && x = held.press_x && y = held.press_y then
+              nowhere kind
+            else begin
+              held.moved <- true;
+              held.click <- None;
+              (* A left drag captures the node pressed. *)
+              (match (button, t.captured) with
+              | Left, None -> t.captured <- held.pressed
+              | _ -> ());
+              route kind (hit_node t ~x ~y)
+            end
+        | Some _ | None -> route kind (hit_node t ~x ~y))
+  | Motion None -> route Event.Mouse.Move (hit_node t ~x ~y)
+  | Scroll direction ->
+      (* A scroll over dead space still means "scroll": fall back to the
+         focused renderable, whose ancestors reach the nearest scrollable. *)
+      let target =
+        match hit_node t ~x ~y with
+        | Some _ as target -> target
+        | None -> (
+            match !(t.focused) with
+            | Some node when Renderable.focused node -> Some node
+            | Some _ | None -> None)
       in
-      ({ path with requested; press }, event)
+      route
+        (Event.Mouse.Scroll { direction = map_scroll direction; delta = 1 })
+        target
 
 let rec ancestor_of ancestor node =
   ancestor == node
@@ -1348,14 +1466,15 @@ let dispatch_click t pressed event =
 
 (* The caret and the selection start only on a node still under the
    pointer, and, if the press asked for focus, still in the node granted it. *)
-let start_selection t ~x ~y ~requested node event =
+let start_selection t ~x ~y path node event =
   let valid () =
     alive_visible node && Renderable.selectable node
     && query_input_hit t ~x ~y = Renderable.uid node
-    && focus_request_accepted requested (Some node)
+    && focus_request_accepted path.requested (Some node)
   in
+  (* A selection starts on a left press. *)
   let reject () =
-    t.pointer.rejected_press <- true;
+    t.pointer.refused <- Some Event.Mouse.Left;
     Event.Mouse.prevent_default event
   in
   clear_active_selection t;
@@ -1369,7 +1488,6 @@ let start_selection t ~x ~y ~requested node event =
     in
     let sel = Selection.create ~anchor_position ~anchor:p ~focus:p () in
     t.selection_state.current <- Some sel;
-    t.selection_state.anchor_node <- Some node;
     t.selection_state.containers <-
       [ (match Renderable.parent node with Some p -> p | None -> t.root) ];
     t.selection_state.touched_selectables <- [];
@@ -1387,11 +1505,11 @@ let mouse_defaults t path event =
   let modifiers = Event.Mouse.modifiers event in
   let kind = Event.Mouse.kind event in
   (match (kind, path.nodes) with
-  | Event.Mouse.Down { button = Left }, node :: _
+  | Event.Mouse.Down { button = Left; _ }, node :: _
     when starts_selection node ~x ~y ~modifiers kind ->
-      start_selection t ~x ~y ~requested:path.requested node event
-  | Event.Mouse.Down { button = Left }, _ -> clear_active_selection t
-  | Event.Mouse.Drag { button = Left; _ }, _ when selection_dragging t ->
+      start_selection t ~x ~y path node event
+  | Event.Mouse.Down { button = Left; _ }, _ -> clear_active_selection t
+  | Event.Mouse.Drag { button = Left }, _ when selection_dragging t ->
       ignore
         (update_selection_state t.selection_state ~x ~y
            ~target_node:(hit_node t ~x ~y)
@@ -1406,16 +1524,15 @@ let mouse_defaults t path event =
   | _ -> ());
   if not (Event.Mouse.default_prevented event) then
     match kind with
-    | Event.Mouse.Down { button = Left } -> (
-        match Event.Mouse.target event with
-        | Some num when num = query_input_hit t ~x ~y -> (
+    | Event.Mouse.Down { button = Left; _ } -> (
+        match (path.holds, Event.Mouse.target event) with
+        | Some held, Some num when num = query_input_hit t ~x ~y -> (
             match find_node t num with
-            | Some node when alive_visible node ->
-                t.pointer.press_target <- Some node
+            | Some node when alive_visible node -> held.click <- Some node
             | _ -> ())
         | _ -> ())
-    | Event.Mouse.Up { button = Left | Button 0; _ } ->
-        Option.iter (fun node -> dispatch_click t node event) path.press
+    | Event.Mouse.Up { button = Left; _ } ->
+        Option.iter (fun node -> dispatch_click t node event) path.click
     | _ -> ()
 
 let dispatch_mouse t path event =
@@ -1429,11 +1546,8 @@ let dispatch_mouse t path event =
   | _ -> ());
   deliver_mouse path.nodes event;
   (* The release ends a selection's drag, prevented or not. *)
-  (match (Event.Mouse.kind event, t.selection_state.current) with
-  | Event.Mouse.Up { button = Left; _ }, Some sel when Selection.is_dragging sel
-    ->
-      Selection.set_is_dragging sel false;
-      notify_selectables t.selection_state (Some sel)
+  (match Event.Mouse.kind event with
+  | Event.Mouse.Up { button = Left; _ } -> end_selection_drag t
   | _ -> ());
   if not (Event.Mouse.default_prevented event) then mouse_defaults t path event
 

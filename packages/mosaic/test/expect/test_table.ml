@@ -21,8 +21,13 @@ let positional rows = List.mapi Mosaic.Table.row rows
 let paging_rows count =
   List.init count (fun index -> [| Table.cell ("row " ^ string_of_int index) |])
 
+(* Each report a second after the one before, so that no two presses make
+   one series of clicks. *)
+let clock = ref 0
+
 let dispatch_mouse app report =
-  let path, event = Renderer.mouse_path app.renderer report in
+  clock := !clock + 1_000_000_000;
+  let path, event = Renderer.mouse_path app.renderer ~now:!clock report in
   Renderer.dispatch_mouse app.renderer path event
 
 (* ── Basic Rendering ── *)

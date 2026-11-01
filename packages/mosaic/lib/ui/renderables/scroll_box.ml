@@ -412,7 +412,7 @@ let on_mouse t (event : Event.mouse) =
             Event.Mouse.stop_propagation event)
         end
       end
-  | Drag { button = Left; is_dragging = true } ->
+  | Drag { button = Left } ->
       update_auto_scroll t (Event.Mouse.x event) (Event.Mouse.y event)
   | Up { button = Left; _ } -> stop_auto_scroll t
   | _ -> ()

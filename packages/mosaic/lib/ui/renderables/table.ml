@@ -633,7 +633,7 @@ let handle_mouse t (event : Event.mouse) =
   | Out -> t.pointer <- None
   | _ -> t.pointer <- Some (Event.Mouse.x event, Event.Mouse.y event));
   match Event.Mouse.kind event with
-  | Down { button = Left } -> (
+  | Down { button = Left; _ } -> (
       let row = row_under_pointer t in
       let selected_row = t.selected_row in
       let on_change = t.on_change in

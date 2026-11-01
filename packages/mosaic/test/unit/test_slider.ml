@@ -534,20 +534,23 @@ let rejected_drag_proposals () =
   let proposals = ref [] in
   Slider.set_on_change slider
     (Some (fun value -> proposals := value :: !proposals));
+  (* The pointer leaves the pressed cell and comes back: a drag at the
+     pressed cell before it leaves is no drag. *)
   Test_harness.emit_mouse node (mouse_down ~x:10 ~y:0);
+  Test_harness.emit_mouse node (mouse_drag ~x:11 ~y:0);
   Test_harness.emit_mouse node (mouse_drag ~x:10 ~y:0);
   equal ~msg:"rejected drag never moves accepted thumb" float_exact 0.
     (Slider.value slider);
   Test_harness.emit_mouse node (mouse_drag ~x:10 ~y:0);
   (match !proposals with
-  | [ second_drag; first_drag; click ] ->
+  | [ second_drag; first_drag; _; click ] ->
       equal ~msg:"track click proposes midpoint" float_exact 50. click;
       equal ~msg:"repeated rejected drags propose the same value" float_exact
         first_drag second_drag;
       satisfies ~claim:"drag stays near the clicked midpoint" float_exact
         (fun value -> Float.abs (value -. click) < 2.)
         first_drag
-  | _ -> fail "expected one click and two drag proposals");
+  | _ -> fail "expected one click and three drag proposals");
   Slider.apply_props slider (Slider.Props.make ~value:25. ());
   equal ~msg:"application accepts a transformed value" float_exact 25.
     (Slider.value slider)

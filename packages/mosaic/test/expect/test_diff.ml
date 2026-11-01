@@ -121,8 +121,13 @@ let print_hit = function
         (string_of_hit_region hit.region)
         hit.logical_row hit.visual_row
 
+(* Each report a second after the one before, so that no two presses make
+   one series of clicks. *)
+let clock = ref 0
+
 let dispatch_mouse r report =
-  let path, event = Renderer.mouse_path r report in
+  clock := !clock + 1_000_000_000;
+  let path, event = Renderer.mouse_path r ~now:!clock report in
   Renderer.dispatch_mouse r path event
 
 let mouse_down ~x ~y = mouse_report ~x ~y (Press Left)
