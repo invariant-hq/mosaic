@@ -95,21 +95,12 @@ let color_with_alpha color alpha =
   let r, g, b, _ = Ansi.Color.to_rgba color in
   Ansi.Color.of_rgba r g b (int_of_float (alpha *. 255.))
 
-let draw_cell_alpha grid ~x ~y ~bg ~alpha =
-  let bg_with_alpha = color_with_alpha bg alpha in
-  Grid.set_uchar grid ~x ~y ~uchar:(Uchar.of_char ' ') ~fg:Ansi.Color.white
-    ~bg:bg_with_alpha ~attrs:Ansi.Attr.empty ~blend:true ()
-
 let draw_box grid ~x ~y ~w ~h ~bg ~border_color ~title ~subtitle ~alpha =
   let border_style = Style.make ~fg:border_color () in
   let title_style = Style.make ~fg:(Color.of_rgb 255 255 255) ~bold:true () in
   let subtitle_style = Style.make ~fg:(Color.of_rgb 200 200 200) ~dim:true () in
-  (* Fill background with alpha *)
-  for row = y to y + h - 1 do
-    for col = x to x + w - 1 do
-      draw_cell_alpha grid ~x:col ~y:row ~bg ~alpha
-    done
-  done;
+  (* A translucent fill tints the cells under it and keeps their text. *)
+  Grid.fill_rect grid ~x ~y ~width:w ~height:h ~color:(color_with_alpha bg alpha);
   (* Draw border on top *)
   Grid.draw_text ~style:border_style grid ~x ~y ~text:"\xe2\x94\x8c";
   Grid.draw_text ~style:border_style grid ~x:(x + w - 1) ~y ~text:"\xe2\x94\x90";
