@@ -461,30 +461,21 @@ val set_paste_behavior : t -> (Event.paste -> unit) option -> unit
     previous one; [None] removes it. [behavior] calls
     {!Event.Paste.prevent_default} when it acts on a paste. *)
 
-(** {1:selection Selection} *)
+(** {1:selection Selection}
 
-val set_selection :
-  t ->
-  should_start:(x:int -> y:int -> bool) ->
-  on_change:(Selection.t option -> bool) ->
-  clear:(unit -> unit) ->
-  get_text:(unit -> string) ->
-  unit
-(** [set_selection t ~should_start ~on_change ~clear ~get_text] enables text
-    selection on [t]. The renderer calls these callbacks during mouse
-    interactions and clipboard operations. The contract is:
-    - [should_start ~x ~y] is [true] iff a selection drag starting at [(x, y)]
-      should be initiated.
-    - [on_change sel] is called when the selection changes; returns [true] to
-      accept the selection.
-    - [clear ()] discards any active selection state.
-    - [get_text ()] returns the currently selected text. *)
+    Text selection reaches a node as the nearest declaration on the node or an
+    ancestor says, and every node when none does. A press on a node it does not
+    reach neither starts nor clears a selection, and a selection across the node
+    leaves out its text ([Renderer]). A descendant can declare it again inside a
+    subtree that refuses it. *)
 
-val unset_selection : t -> unit
-(** [unset_selection t] disables text selection on [t]. *)
+val set_selectable : t -> bool option -> unit
+(** [set_selectable t d] declares whether text selection reaches [t] and its
+    descendants ([Some b]), or removes [t]'s declaration ([None]). *)
 
 val selectable : t -> bool
-(** [selectable t] is [true] iff [t] has selection callbacks registered. *)
+(** [selectable t] is the nearest declaration on [t] or an ancestor, [true] if
+    none. *)
 
 (** {1:text_rows Text rows} *)
 
@@ -595,8 +586,7 @@ module Private : sig
         (** Runs work off the rendering thread ({!val-off_loop}). *)
     focus : t -> bool;
     blur : t -> unit;
-    get_selection : unit -> Selection.t option;
-    request_selection_update : unit -> unit;
+    selected_range : t -> (int * int) option;  (** {!val-selected_range}. *)
     register_lifecycle : t -> unit;
     unregister_lifecycle : t -> unit;
     alloc_num : unit -> int;
@@ -777,28 +767,48 @@ module Private : sig
 
   (** {2:selection Selection} *)
 
-  val emit_selection_changed : t -> Selection.t option -> bool
-  (** [emit_selection_changed t sel] notifies [t]'s selection [on_change]
-      callback with [sel]. Returns [false] if no callback is registered. *)
+  type region = {
+    viewport : t;
+        (** The node whose box a selection's pointer is held in, as the region's
+            view. *)
+    content : t;
+        (** The node from whose origin the region's positions count, which
+            scrolls with the region's content. *)
+    drag : x:int -> y:int -> unit;
+        (** [drag ~x ~y] is told the cell of the pointer, held in no box, at
+            each motion of a selection gesture in the region. *)
+    settle : unit -> unit;  (** [settle ()] is told that the gesture ended. *)
+  }
+  (** The type for the declaration of a region of text selection: a selection
+      that starts in it stays in it, and a selection around it selects all of
+      its text or none ([Renderer]). *)
 
-  val clear_selection : t -> unit
-  (** [clear_selection t] calls [t]'s selection [clear] callback, if any. *)
+  val set_region : t -> region option -> unit
+  (** [set_region t r] declares [t] a region, as a scroll box does when it is
+      created, or no region ([None]). *)
 
-  val should_start_selection : t -> x:int -> y:int -> bool
-  (** [should_start_selection t ~x ~y] is [true] iff [t]'s [should_start]
-      callback returns [true] for [(x, y)]. Returns [false] if no callback is
-      registered. *)
+  val region : t -> region option
+  (** [region t] is [t]'s region declaration, if any. *)
 
-  val get_selected_text : t -> string
-  (** [get_selected_text t] calls [t]'s [get_text] callback and returns the
-      result, or [""] if no callback is registered. *)
+  val set_owned_text : t -> (unit -> string option) option -> unit
+  (** [set_owned_text t f] declares that [t] owns its text and its selection, as
+      an editor does: the view selection never includes [t]'s text, a press on
+      [t] clears it, and [f ()] is the text [t] has selected, if any, which
+      [Renderer.selection_text] gives when [t] is focused and the view has no
+      selection. [None] removes the declaration. *)
 
-  val get_selection : t -> Selection.t option
-  (** [get_selection t] is the renderer's active text selection, if any. *)
+  val owned_text : t -> (unit -> string option) option
+  (** [owned_text t] is [t]'s declaration of {!set_owned_text}. *)
 
-  val request_selection_update : t -> unit
-  (** [request_selection_update t] asks the renderer to re-evaluate the active
-      selection against the current pointer position. *)
+  val declared_selectable : t -> bool option
+  (** [declared_selectable t] is the declaration {!val-set_selectable} made on
+      [t] itself, not inherited. *)
+
+  val selected_range : t -> (int * int) option
+  (** [selected_range t] is [Some (first, last)], with [first < last], when the
+      view selection holds the graphemes of [t]'s text rows ({!text_rows}) from
+      [first] to [last], and [None] when it holds none of them. A text node
+      reads it as it paints. *)
 
   val report_scroll : t -> region:Matrix_grid.region -> dx:int -> dy:int -> unit
   (** [report_scroll t ~region ~dx ~dy] forwards a scroll movement to the

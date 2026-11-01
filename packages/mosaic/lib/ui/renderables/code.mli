@@ -246,8 +246,6 @@ module Props : sig
     ?tab_width:int ->
     ?truncate:bool ->
     ?selectable:bool ->
-    ?selection_bg:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
     unit ->
     t
   (** [make ()] is a code props value with:
@@ -261,11 +259,10 @@ module Props : sig
       - [tab_width] is the tab stop width in columns. Defaults to [4].
       - [truncate] controls whether long lines are truncated with an ellipsis.
         Defaults to [false].
-      - [selectable] controls whether text can be selected. Defaults to [true].
-      - [selection_bg] is the selection background color.
-      - [selection_fg] is the selection foreground color. Without either,
-        selected text is drawn over the [Highlight] surface
-        ({!Text_surface.section-paint}).
+      - [selectable] declares whether text selection reaches the code
+        ({!Renderable.set_selectable}). Absent, the code declares nothing and is
+        selectable as its nearest declaring ancestor says. Selected text is
+        drawn with the [Highlight] role ({!Text_surface.section-paint}).
 
       [Mosaic.code] takes these labels with these defaults.
 
@@ -288,12 +285,10 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
-  ?on_selection:((int * int) option -> unit) ->
   Props.t ->
   t
 (** [create ~parent props] is a new code display renderable attached to
-    [parent], showing [props]. [on_selection] is called when the selection
-    changes. *)
+    [parent], showing [props]. *)
 
 (** {1:accessors Accessors} *)
 
@@ -315,10 +310,6 @@ val set_content : t -> string -> unit
 val set_syntax : t -> syntax option -> unit
 (** [set_syntax t syntax] sets the syntax configuration and re-renders [t]'s
     current content. [None] renders plain text. *)
-
-val set_on_selection : t -> ((int * int) option -> unit) option -> unit
-(** [set_on_selection t f] sets the selection-change callback used when
-    [selectable = true]. [None] clears it. *)
 
 val set_on_rows_change : t -> (unit -> unit) option -> unit
 (** [set_on_rows_change t f] sets the callback called when content,

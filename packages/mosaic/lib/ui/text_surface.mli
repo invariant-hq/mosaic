@@ -3,7 +3,9 @@
     A surface wraps a {!Text_buffer.t} and a {!Renderable.t}, providing line
     wrapping, viewport-based scrolling, intrinsic measurement, and selection
     overlay rendering. The surface registers render and measure callbacks on the
-    renderable automatically.
+    renderable automatically. It highlights the view selection's part of its
+    text ({!Renderable.Private.selected_range}), or its own selection, an
+    editor's, when it has one.
 
     Used by {!Text} for static rich text display, by {!Textarea} for multi-line
     editing, and potentially by other renderables that need text buffer
@@ -119,20 +121,14 @@ val local_caret : t -> x:int -> y:int -> Matrix.Text.Layout.caret
     ({!Renderable.theme}): each run's style, the content's, is merged over the
     [Plain] role ({!Ansi.Style.merge}), and that over the surface the text lies
     on ({!set_ground}), so the content's colors and attributes come first and
-    the roles fill in the rest. Selected text is drawn over the [Highlight]
-    surface instead, unless a selection color is given, which then replaces that
-    color of the text's style. *)
+    the roles fill in the rest. The [Highlight] role is drawn over selected
+    text, and over the blank cells after a selected line terminator, to the
+    node's right edge; a soft wrap selects and fills nothing. *)
 
 val set_ground : t -> Theme.role option -> unit
 (** [set_ground t s] makes [s] the surface [t]'s text lies on, such as [Field]
     for an editor's. [None], the default, draws the text over what is beneath
     it. *)
-
-val set_selection_bg : t -> Ansi.Color.t option -> unit
-(** [set_selection_bg t color] sets the selection background color. *)
-
-val set_selection_fg : t -> Ansi.Color.t option -> unit
-(** [set_selection_fg t color] sets the selection foreground color. *)
 
 (** {1:selection Selection} *)
 

@@ -98,8 +98,6 @@ module Props : sig
     ?streaming:bool ->
     ?style:Style.t ->
     ?selectable:bool ->
-    ?selection_bg:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
     ?render_node:
       (Cmarkit.Block.t ->
       parent:Renderable.t ->
@@ -125,10 +123,9 @@ module Props : sig
         rebuilt on every view re-renders nothing. Defaults to none. A markdown
         without a style draws with {!Style.of_theme} of the theme in scope, and
         renders its blocks again when that theme gives other styles.
-      - [selectable]: whether rendered markdown text can be selected. Defaults
-        to [true].
-      - [selection_bg] and [selection_fg]: selection colors applied to internal
-        text children. Default to none.
+      - [selectable]: declares whether text selection reaches the rendered
+        markdown ({!Renderable.set_selectable}). Absent, the markdown declares
+        nothing and is selectable as its nearest declaring ancestor says.
       - [render_node]: a custom block renderer called for every
         [Cmarkit.Block.t] before default rendering. Return [Some r] to replace
         default rendering with renderable [r], or [None] to fall through to the
@@ -175,14 +172,12 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
-  ?on_selection:(string option -> unit) ->
   Props.t ->
   t
 (** [create ~parent props] is a markdown display widget attached to [parent],
     showing [props]. [layout_style] is the node's layout style, the [style] of
     other widgets' [create], laid out as a column of the full width whatever it
-    gives. [on_selection] is called with the selected rendered text when the
-    selection changes, [None] when no text is selected. *)
+    gives. *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)
@@ -237,24 +232,8 @@ val set_streaming : t -> bool -> unit
     [v] equals the current value. *)
 
 val set_selectable : t -> bool -> unit
-(** [set_selectable t v] enables or disables text selection for the rendered
-    markdown text children. *)
-
-val set_selection_bg : t -> Ansi.Color.t option -> unit
-(** [set_selection_bg t c] sets the selection background color on rendered text
-    children. *)
-
-val set_selection_fg : t -> Ansi.Color.t option -> unit
-(** [set_selection_fg t c] sets the selection foreground color on rendered text
-    children. *)
-
-val set_on_selection : t -> (string option -> unit) option -> unit
-(** [set_on_selection t f] sets the aggregate markdown selection callback.
-    [None] clears it. *)
-
-val selected_text : t -> string
-(** [selected_text t] is the selected rendered text across all markdown text
-    children, in render order. Returns [""] if no text is selected. *)
+(** [set_selectable t v] declares whether text selection reaches the rendered
+    markdown ({!Renderable.set_selectable}). *)
 
 (** {1:apply Props application} *)
 

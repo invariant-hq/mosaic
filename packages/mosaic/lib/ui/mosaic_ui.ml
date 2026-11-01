@@ -2,7 +2,6 @@
    widgets. *)
 
 module Event = Event
-module Selection = Selection
 module Renderer = Renderer
 module Renderable = Renderable
 module Box = Box

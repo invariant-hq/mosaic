@@ -169,34 +169,6 @@ let map_transforms_input_on_change_callback () =
   ignore (dispatch_key renderer (char_key 'x') : Event.key);
   equal ~msg:"complete editor mapped" (list int) [ 1 ] !log
 
-(* Drags over the widget [element reported] mounts under [map], and checks
-   that each selection the widget reported reached the mapper as the message
-   its callback made of it. *)
-let selected_by_drag ~message element =
-  let reported = ref [] and log = ref [] in
-  let report selection =
-    reported := selection :: !reported;
-    Some (message selection)
-  in
-  ignore
-    (through_element
-       ~act:(fun renderer node -> select_text renderer node)
-       ~observe:(fun _ _ -> "")
-       (Mosaic.map (fun n -> log := n :: !log) (element report))
-      : string);
-  is_true ~msg:"the widget reported a selection" (!reported <> []);
-  equal ~msg:"on_selection mapped" (list int) (List.map message !reported) !log
-
-let map_transforms_code_on_selection_callback () =
-  selected_by_drag
-    ~message:(function Some (a, b) -> a + b | None -> 0)
-    (fun on_selection -> Mosaic.code ~on_selection "hello world")
-
-let map_transforms_markdown_on_selection_callback () =
-  selected_by_drag
-    ~message:(function Some text -> String.length text | None -> 0)
-    (fun on_selection -> Mosaic.markdown ~on_selection "hello world")
-
 (* map on an embed keeps the node: embeds have no handlers to transform. *)
 let map_embed_identity () =
   let renderer = Renderer.create () in
@@ -421,10 +393,6 @@ let () =
           test "transforms widget callbacks" map_transforms_widget_callbacks;
           test "transforms complete input callback"
             map_transforms_input_on_change_callback;
-          test "transforms code on_selection callback"
-            map_transforms_code_on_selection_callback;
-          test "transforms markdown on_selection callback"
-            map_transforms_markdown_on_selection_callback;
           test "embed unchanged" map_embed_identity;
           test "viewport switch maps both branches"
             viewport_switch_maps_both_branches;

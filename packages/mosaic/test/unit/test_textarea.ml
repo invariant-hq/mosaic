@@ -22,8 +22,7 @@ let editor ?(value = "") ?max_length ?cursor ?selection () =
 let make_props ?state ?value ?max_length ?cursor ?selection ?wrap ?annotations
     ?ghost_text ?ghost_text_color ?placeholder ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
-    ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?selectable ?show_cursor () =
+    ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor () =
   let state =
     match state with
     | Some state -> state
@@ -31,8 +30,8 @@ let make_props ?state ?value ?max_length ?cursor ?selection ?wrap ?annotations
   in
   Textarea.Props.make ~state ?wrap ?annotations ?ghost_text ?ghost_text_color
     ?placeholder ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor ()
+    ?focused_background_color ?placeholder_color ?cursor_style ?cursor_color
+    ?cursor_blinking ?selectable ?show_cursor ()
 
 let property_builders = Hashtbl.create 32
 
@@ -44,15 +43,14 @@ let update_editor widget f =
 
 let create_editor ~parent ?style ?value ?max_length ?cursor ?selection ?wrap
     ?placeholder ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
-    ?(accept = true) ?on_change ?on_submit () =
+    ?focused_background_color ?placeholder_color ?cursor_style ?cursor_color
+    ?cursor_blinking ?selectable ?show_cursor ?(accept = true) ?on_change
+    ?on_submit () =
   let state = editor ?value ?max_length ?cursor ?selection () in
   let props state =
     Textarea.Props.make ~state ?wrap ?placeholder ?text_color ?background_color
       ?focused_text_color ?focused_background_color ?placeholder_color
-      ?selection_color ?selection_fg ?cursor_style ?cursor_color
-      ?cursor_blinking ?selectable ?show_cursor ()
+      ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor ()
   in
   let install = ref (fun state -> ignore state) in
   let on_change state =
@@ -63,8 +61,8 @@ let create_editor ~parent ?style ?value ?max_length ?cursor ?selection ?wrap
     Textarea.create ~parent ?style ~on_change ?on_submit
       (Textarea.Props.make ~state ?wrap ?placeholder ?text_color
          ?background_color ?focused_text_color ?focused_background_color
-         ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-         ?cursor_color ?cursor_blinking ?selectable ?show_cursor ())
+         ?placeholder_color ?cursor_style ?cursor_color ?cursor_blinking
+         ?selectable ?show_cursor ())
   in
   (install := fun state -> Textarea.apply_props widget (props state));
   Hashtbl.replace property_builders (Renderable.id (Textarea.node widget)) props;
@@ -72,17 +70,15 @@ let create_editor ~parent ?style ?value ?max_length ?cursor ?selection ?wrap
 
 let make_textarea ?value ?max_length ?cursor ?selection ?wrap ?placeholder
     ?text_color ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?accept ?on_change
-    ?on_submit () =
+    ?placeholder_color ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+    ?show_cursor ?accept ?on_change ?on_submit () =
   let t = make_ctx () in
   let root = make_root t in
   let widget =
     create_editor ~parent:root ?value ?max_length ?cursor ?selection ?wrap
       ?placeholder ?text_color ?background_color ?focused_text_color
-      ?focused_background_color ?placeholder_color ?selection_color
-      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
-      ?show_cursor ?accept ?on_change ?on_submit ()
+      ?focused_background_color ?placeholder_color ?cursor_style ?cursor_color
+      ?cursor_blinking ?selectable ?show_cursor ?accept ?on_change ?on_submit ()
   in
   (t, widget)
 
@@ -1500,7 +1496,6 @@ let doors_size = Mosaic.size ~width:10 ~height:3
 let doors_style = Toffee.Style.make ~size:doors_size ()
 let doors_red = Ansi.Color.red
 let abc = Editor.of_string "abc"
-let abc_selected = Editor.select ~anchor:0 ~cursor:2 abc
 let let_x = Editor.of_string "let x"
 
 let let_x_bold =
@@ -1731,41 +1726,6 @@ let doors_placeholder_color () =
         (Textarea.create ~parent ~style:doors_style ~on_change:propose
            (Textarea.Props.make ~state:Editor.empty ~placeholder:"type"
               ~placeholder_color:doors_red ())))
-
-let doors_selection_color () =
-  Test_harness.reaches "selection_color"
-    ~base:
-      (Mosaic.textarea ~size:doors_size ~state:abc_selected ~on_change:propose
-         ())
-    ~element:
-      (Mosaic.textarea ~size:doors_size ~state:abc_selected
-         ~selection_color:doors_red ~on_change:propose ())
-    ~create_base:(fun parent ->
-      Textarea.node
-        (Textarea.create ~parent ~style:doors_style ~on_change:propose
-           (Textarea.Props.make ~state:abc_selected ())))
-    ~create:(fun parent ->
-      Textarea.node
-        (Textarea.create ~parent ~style:doors_style ~on_change:propose
-           (Textarea.Props.make ~state:abc_selected ~selection_color:doors_red
-              ())))
-
-let doors_selection_fg () =
-  Test_harness.reaches "selection_fg"
-    ~base:
-      (Mosaic.textarea ~size:doors_size ~state:abc_selected ~on_change:propose
-         ())
-    ~element:
-      (Mosaic.textarea ~size:doors_size ~state:abc_selected
-         ~selection_fg:doors_red ~on_change:propose ())
-    ~create_base:(fun parent ->
-      Textarea.node
-        (Textarea.create ~parent ~style:doors_style ~on_change:propose
-           (Textarea.Props.make ~state:abc_selected ())))
-    ~create:(fun parent ->
-      Textarea.node
-        (Textarea.create ~parent ~style:doors_style ~on_change:propose
-           (Textarea.Props.make ~state:abc_selected ~selection_fg:doors_red ())))
 
 let doors_cursor_style () =
   Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_style"
@@ -2094,8 +2054,6 @@ let () =
           test "focused_text_color" doors_focused_text_color;
           test "focused_background_color" doors_focused_background_color;
           test "placeholder_color" doors_placeholder_color;
-          test "selection_color" doors_selection_color;
-          test "selection_fg" doors_selection_fg;
           test "cursor_style" doors_cursor_style;
           test "cursor_color" doors_cursor_color;
           test "cursor_blinking" doors_cursor_blinking;

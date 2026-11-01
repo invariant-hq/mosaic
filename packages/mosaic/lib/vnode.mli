@@ -37,6 +37,7 @@ type attrs = {
   focused : bool;
   buffered : bool;
   live : bool;
+  selectable : bool option;
 }
 (** The type for non-handler element attributes. Grouped for sharing and
     physical-equality fast paths in the reconciler.
@@ -44,7 +45,11 @@ type attrs = {
     [focused] declares application-owned focus and implies [focusable]. At most
     one visible element that is not inert may declare focus. The application
     runtime synchronizes this declaration with the renderer after
-    reconciliation. *)
+    reconciliation.
+
+    [selectable] is the element's declaration of selectability
+    ([Renderable.set_selectable]); [None] keeps the one its widget made when it
+    was created. *)
 
 (** {1:vnodes Virtual nodes} *)
 
@@ -148,6 +153,7 @@ val element :
   ?focused:bool ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->

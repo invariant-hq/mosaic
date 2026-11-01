@@ -166,8 +166,6 @@ module Props = struct
     focused_text_color : Ansi.Color.t option;
     focused_background_color : Ansi.Color.t option;
     placeholder_color : Ansi.Color.t option;
-    selection_color : Ansi.Color.t option;
-    selection_fg : Ansi.Color.t option;
     cursor_style : [ `Block | `Line | `Underline ];
     cursor_color : Ansi.Color.t;
     cursor_blinking : bool;
@@ -179,7 +177,7 @@ module Props = struct
   let make ~state ?annotations ?syntax ?ghost_text ?ghost_text_color
       ?(placeholder = "") ?(wrap = `Word) ?text_color ?background_color
       ?focused_text_color ?focused_background_color ?placeholder_color
-      ?selection_color ?selection_fg ?(cursor_style = default_cursor_style)
+      ?(cursor_style = default_cursor_style)
       ?(cursor_color = Ansi.Color.default_fg)
       ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
       ?(show_cursor = true) ?(key_bindings = []) () =
@@ -204,8 +202,6 @@ module Props = struct
       focused_text_color;
       focused_background_color;
       placeholder_color;
-      selection_color;
-      selection_fg;
       cursor_style;
       cursor_color;
       cursor_blinking;
@@ -230,8 +226,6 @@ module Props = struct
     && Option.equal Ansi.Color.equal a.focused_background_color
          b.focused_background_color
     && Option.equal Ansi.Color.equal a.placeholder_color b.placeholder_color
-    && Option.equal Ansi.Color.equal a.selection_color b.selection_color
-    && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
     && a.cursor_style = b.cursor_style
     && Ansi.Color.equal a.cursor_color b.cursor_color
     && a.cursor_blinking = b.cursor_blinking
@@ -257,6 +251,8 @@ type t = {
   mutable on_submit : (string -> unit) option;
   mode : mode;
   mutable keymap : action Keymap.t;
+  mutable drag_anchor : Layout.caret option;
+      (* The caret of the press a left drag in the editor selects from. *)
 }
 
 (* Accessors *)
@@ -579,8 +575,6 @@ let render_before t _self grid ~dt:_ =
     end;
     match Editor.selection t.props.state with
     | Some (lo, hi) ->
-        Text_surface.set_selection_bg t.surface t.props.selection_color;
-        Text_surface.set_selection_fg t.surface t.props.selection_fg;
         ignore (Text_surface.set_selection t.surface ~start:lo ~end_:hi : bool)
     | None -> Text_surface.reset_selection t.surface
   end
@@ -642,47 +636,20 @@ let cursor_provider t _self =
 
 (* Selection *)
 
-let contains t ~x ~y =
-  let nx = Renderable.x t.node in
-  let ny = Renderable.y t.node in
-  x >= nx
-  && x < nx + Renderable.width t.node
-  && y >= ny
-  && y < ny + Renderable.height t.node
+(* The editor owns its text and its selection: the view selection leaves
+   them out, and a copy with nothing selected in the view reads the focused
+   editor's selection. *)
+let owned_text t () =
+  match Editor.selection t.props.state with
+  | None -> None
+  | Some _ -> Some (Editor.selected_text t.props.state)
 
-(* The caret and the selection are the editor's value, so only a selection
-   that starts inside the editor moves them. The renderer also tells the
-   selectables beside the one pressed, and those keep their value. *)
-let register_selection t =
-  if t.props.selectable then
-    Renderable.set_selection t.node
-      ~should_start:(fun ~x ~y -> contains t ~x ~y)
-      ~on_change:(fun sel ->
-        let base = t.props.state in
-        match sel with
-        | None ->
-            propose t ~base (Editor.clear_selection base);
-            Option.is_some (Editor.selection t.props.state)
-        | Some sel ->
-            let anchor = Selection.anchor sel and focus = Selection.focus sel in
-            if not (contains t ~x:anchor.x ~y:anchor.y) then false
-            else
-              let nx = Renderable.x t.node and ny = Renderable.y t.node in
-              let anchor =
-                Text_surface.local_caret t.surface ~x:(anchor.x - nx)
-                  ~y:(anchor.y - ny)
-              in
-              let focus =
-                Text_surface.local_caret t.surface ~x:(focus.x - nx)
-                  ~y:(focus.y - ny)
-              in
-              propose t ~base (select_carets ~anchor ~cursor:focus base);
-              Option.is_some (Editor.selection t.props.state))
-      ~clear:(fun () ->
-        let base = t.props.state in
-        propose t ~base (Editor.clear_selection base))
-      ~get_text:(fun () -> Editor.selected_text t.props.state)
-  else Renderable.unset_selection t.node
+(* The caret at the pointer's cell, which may lie outside the editor: a row
+   above or below its text is its start or end. *)
+let caret_at t ev =
+  Text_surface.local_caret t.surface
+    ~x:(Event.Mouse.x ev - Renderable.x t.node)
+    ~y:(Event.Mouse.y ev - Renderable.y t.node)
 
 (* Vertical movement *)
 
@@ -836,6 +803,9 @@ let handle_scroll t direction delta =
     let next = Editor.with_viewport ~x ~y ~follow:false base in
     propose t ~base next
 
+(* A left press places the caret, and a drag from it selects between the
+   two carets, as a text field's pointer does: a caret is not a selected
+   cell. Another button's press leaves the drag alone (RFC 0006 §3.5). *)
 let handle_mouse t ev =
   if Event.Mouse.default_prevented ev then ()
   else
@@ -843,6 +813,20 @@ let handle_mouse t ev =
     | Scroll { direction; delta } ->
         Event.Mouse.prevent_default ev;
         handle_scroll t direction delta
+    | Down { button = Left; _ } when Renderable.selectable t.node ->
+        let caret = caret_at t ev in
+        t.drag_anchor <- Some caret;
+        let base = t.props.state in
+        propose t ~base (select_carets ~anchor:caret ~cursor:caret base)
+    | Down { button = Left; _ } -> t.drag_anchor <- None
+    | Drag { button = Left } -> (
+        match t.drag_anchor with
+        | Some anchor ->
+            let base = t.props.state in
+            propose t ~base (select_carets ~anchor ~cursor:(caret_at t ev) base)
+        | None -> ())
+    | Up { button = Left; _ } | Drag_end { button = Left } ->
+        t.drag_anchor <- None
     | _ -> ()
 
 (* Paste *)
@@ -886,6 +870,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       on_submit;
       mode;
       keymap = Action.keymap ~custom:props.key_bindings mode;
+      drag_anchor = None;
     }
   in
   Renderable.set_render_before node (Some (render_before t));
@@ -907,7 +892,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   | `Multiline -> ()
   | `Single_line -> Renderable.set_measure node (Some (measure_single_line t)));
   Renderable.on_mouse node (handle_mouse t);
-  register_selection t;
+  Renderable.set_selectable node (Some props.selectable);
+  Renderable.Private.set_owned_text node (Some (owned_text t));
   register_text_rows t;
   Renderable.set_pending_provider node
     (Some
@@ -953,7 +939,8 @@ let apply_props t (props : Props.t) =
   t.props <- props;
   if keymap_changed then
     t.keymap <- Action.keymap ~custom:props.key_bindings t.mode;
-  if selectable_changed then register_selection t;
+  if selectable_changed then
+    Renderable.set_selectable t.node (Some props.selectable);
   if source_changed || syntax_changed then
     Syntax_session.set t.session ~content:(Editor.text props.state)
       ~range:

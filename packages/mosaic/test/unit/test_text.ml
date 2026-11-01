@@ -7,14 +7,12 @@ open Test_harness
 let red_style = Ansi.Style.fg Ansi.Color.red Ansi.Style.default
 let green_style = Ansi.Style.fg Ansi.Color.green Ansi.Style.default
 
-let make_text ?content ?text_style ?wrap ?selectable ?selection_bg ?selection_fg
-    ?tab_width () =
+let make_text ?content ?text_style ?wrap ?selectable ?tab_width () =
   let t = make_ctx () in
   let root = make_root t in
   let txt =
     Text.create ~parent:root
-      (Text.Props.make ?content ?text_style ?wrap ?selectable ?selection_bg
-         ?selection_fg ?tab_width ())
+      (Text.Props.make ?content ?text_style ?wrap ?selectable ?tab_width ())
   in
   (t, txt)
 
@@ -42,17 +40,25 @@ let props_detects_wrap_diff () =
 let props_detects_selectable_diff () =
   let a = Text.Props.make ~selectable:true () in
   let b = Text.Props.make ~selectable:false () in
-  is_false ~msg:"different" (Text.Props.equal a b)
+  is_false ~msg:"different" (Text.Props.equal a b);
+  is_false ~msg:"a declaration differs from none"
+    (Text.Props.equal a (Text.Props.make ()))
 
-let props_detects_selection_bg_diff () =
-  let a = Text.Props.make ~selection_bg:Ansi.Color.blue () in
-  let b = Text.Props.make () in
-  is_false ~msg:"different" (Text.Props.equal a b)
-
-let props_detects_selection_fg_diff () =
-  let a = Text.Props.make ~selection_fg:Ansi.Color.red () in
-  let b = Text.Props.make () in
-  is_false ~msg:"different" (Text.Props.equal a b)
+(* §3.4: an absent [selectable] declares nothing, so a text inherits its
+   ancestors' declaration; a given one declares on the text's node. *)
+let selectable_declares_on_the_node () =
+  let t = make_ctx () in
+  let root = make_root t in
+  Renderable.set_selectable root (Some false);
+  let plain = Text.create ~parent:root (Text.Props.make ~content:"a" ()) in
+  is_false ~msg:"absent inherits" (Renderable.selectable (Text.node plain));
+  let declared =
+    Text.create ~parent:root (Text.Props.make ~content:"a" ~selectable:true ())
+  in
+  is_true ~msg:"declared again" (Renderable.selectable (Text.node declared));
+  Text.apply_props declared (Text.Props.make ~content:"a" ());
+  is_false ~msg:"dropping the label removes the declaration"
+    (Renderable.selectable (Text.node declared))
 
 (* A tab width below 1 is a mistake, raised by the call that makes it. *)
 let props_reject_tab_width_below_1 () =
@@ -626,7 +632,6 @@ let size = Mosaic.size ~width:6 ~height:3
 let style = Toffee.Style.make ~size ()
 let words = "hello world"
 let bold = Ansi.Style.make ~bold:true ()
-let red = Ansi.Color.red
 let fragments = [ Text.Fragment.text words ]
 
 let rich t =
@@ -676,28 +681,6 @@ let doors_selectable () =
       Text.node
         (Text.create ~parent ~style
            (Text.Props.make ~content:words ~selectable:false ())))
-
-let doors_selection_bg () =
-  Test_harness.reaches "selection_bg" ~act:Test_harness.select_text
-    ~base:(Mosaic.text ~size words)
-    ~element:(Mosaic.text ~size ~selection_bg:red words)
-    ~create_base:(fun parent ->
-      Text.node (Text.create ~parent ~style (Text.Props.make ~content:words ())))
-    ~create:(fun parent ->
-      Text.node
-        (Text.create ~parent ~style
-           (Text.Props.make ~content:words ~selection_bg:red ())))
-
-let doors_selection_fg () =
-  Test_harness.reaches "selection_fg" ~act:Test_harness.select_text
-    ~base:(Mosaic.text ~size words)
-    ~element:(Mosaic.text ~size ~selection_fg:red words)
-    ~create_base:(fun parent ->
-      Text.node (Text.create ~parent ~style (Text.Props.make ~content:words ())))
-    ~create:(fun parent ->
-      Text.node
-        (Text.create ~parent ~style
-           (Text.Props.make ~content:words ~selection_fg:red ())))
 
 let doors_tab_width () =
   Test_harness.reaches "tab_width" ~base:(Mosaic.text ~size "a\tb")
@@ -749,24 +732,6 @@ let doors_rich_selectable () =
     ~create:(fun parent ->
       rich (Text.create ~parent ~style (Text.Props.make ~selectable:false ())))
 
-let doors_rich_selection_bg () =
-  Test_harness.reaches "rich selection_bg" ~act:Test_harness.select_text
-    ~base:(Mosaic.rich_text ~size fragments)
-    ~element:(Mosaic.rich_text ~size ~selection_bg:red fragments)
-    ~create_base:(fun parent ->
-      rich (Text.create ~parent ~style (Text.Props.make ())))
-    ~create:(fun parent ->
-      rich (Text.create ~parent ~style (Text.Props.make ~selection_bg:red ())))
-
-let doors_rich_selection_fg () =
-  Test_harness.reaches "rich selection_fg" ~act:Test_harness.select_text
-    ~base:(Mosaic.rich_text ~size fragments)
-    ~element:(Mosaic.rich_text ~size ~selection_fg:red fragments)
-    ~create_base:(fun parent ->
-      rich (Text.create ~parent ~style (Text.Props.make ())))
-    ~create:(fun parent ->
-      rich (Text.create ~parent ~style (Text.Props.make ~selection_fg:red ())))
-
 let doors_rich_tab_width () =
   let fragments = [ Text.Fragment.text "a\tb" ] in
   let rich t =
@@ -790,58 +755,11 @@ let doors_rich_truncate () =
     ~create:(fun parent ->
       rich (Text.create ~parent ~style (Text.Props.make ~truncate:true ())))
 
-(* The selections [on_selection] reported, in the order reported. *)
-let selections = ref []
-
-let record_selection s =
-  selections :=
-    (match s with Some (a, b) -> Printf.sprintf "%d-%d" a b | None -> "none")
-    :: !selections
-
-let select renderer node =
-  selections := [];
-  Test_harness.select_text renderer node
-
-let reported _ _ =
-  match !selections with [] -> "(none)" | l -> String.concat ";" (List.rev l)
-
-let doors_on_selection () =
-  Test_harness.reaches "on_selection" ~act:select ~observe:reported
-    ~base:(Mosaic.text ~size words)
-    ~element:
-      (Mosaic.text ~size
-         ~on_selection:(fun s ->
-           record_selection s;
-           None)
-         words)
-    ~create_base:(fun parent ->
-      Text.node (Text.create ~parent ~style (Text.Props.make ~content:words ())))
-    ~create:(fun parent ->
-      Text.node
-        (Text.create ~parent ~style ~on_selection:record_selection
-           (Text.Props.make ~content:words ())))
-
-let doors_rich_on_selection () =
-  Test_harness.reaches "rich on_selection" ~act:select ~observe:reported
-    ~base:(Mosaic.rich_text ~size fragments)
-    ~element:
-      (Mosaic.rich_text ~size
-         ~on_selection:(fun s ->
-           record_selection s;
-           None)
-         fragments)
-    ~create_base:(fun parent ->
-      rich (Text.create ~parent ~style (Text.Props.make ())))
-    ~create:(fun parent ->
-      rich
-        (Text.create ~parent ~style ~on_selection:record_selection
-           (Text.Props.make ())))
-
 (* ── Paint ── *)
 
 (* Text is drawn by the [Plain] role with its content's style merged over
-   it, one rule for plain and rich text, and its selection by the
-   [Highlight] surface unless a selection color is given. *)
+   it, one rule for plain and rich text, and its selection with the
+   [Highlight] role over that. *)
 
 let paint_red = Ansi.Color.indexed 1
 let paint_blue = Ansi.Color.indexed 4
@@ -868,6 +786,8 @@ let paint_content_over_role () =
   is_true ~msg:"colored fragment, its own color" (fg_is paint_blue b);
   is_true ~msg:"both bold" (has Bold a && has Bold b)
 
+(* §3.9 Colour: the theme's [Highlight] is painted over the run's style, so
+   its color wins over the run's. *)
 let paint_selection_highlight () =
   let selected view =
     let r = paint view in
@@ -875,11 +795,16 @@ let paint_selection_highlight () =
     Renderer.render_frame r ~width:doors_width ~height:doors_height ~dt:0.;
     cell_style r ~x:0 ~y:0
   in
-  is_true ~msg:"the Highlight surface"
-    (has Inverse (selected (Mosaic.text words)));
-  let s = selected (Mosaic.text ~selection_bg:paint_blue words) in
-  is_true ~msg:"a selection color replaces it"
-    (bg_is paint_blue s && not (has Inverse s))
+  is_true ~msg:"the Highlight role" (has Inverse (selected (Mosaic.text words)));
+  let blue_highlight =
+    Theme.with_style Highlight (Ansi.Style.make ~bg:paint_blue ())
+  in
+  let s =
+    selected
+      (Mosaic.themed blue_highlight
+         (Mosaic.text ~text_style:(Ansi.Style.make ~bg:paint_red ()) words))
+  in
+  is_true ~msg:"over the run's color" (bg_is paint_blue s)
 
 let () =
   run "mosaic.text"
@@ -887,7 +812,7 @@ let () =
       group "Paint"
         [
           test "content merges over the role" paint_content_over_role;
-          test "selection by Highlight, label first" paint_selection_highlight;
+          test "selection by Highlight over the run" paint_selection_highlight;
         ];
       group "Content ownership"
         [
@@ -908,8 +833,7 @@ let () =
           test "detects text_style diff" props_detects_text_style_diff;
           test "detects wrap diff" props_detects_wrap_diff;
           test "detects selectable diff" props_detects_selectable_diff;
-          test "detects selection_bg diff" props_detects_selection_bg_diff;
-          test "detects selection_fg diff" props_detects_selection_fg_diff;
+          test "selectable declares on the node" selectable_declares_on_the_node;
           test "detects tab_width diff" props_detects_tab_width_diff;
           test "rejects a tab width below 1" props_reject_tab_width_below_1;
           test "equal on identical" props_equal_identical;
@@ -1016,18 +940,12 @@ let () =
           test "style" doors_style;
           test "wrap" doors_wrap;
           test "selectable" doors_selectable;
-          test "selection_bg" doors_selection_bg;
-          test "selection_fg" doors_selection_fg;
           test "tab_width" doors_tab_width;
           test "truncate" doors_truncate;
-          test "on_selection" doors_on_selection;
           test "rich text_style" doors_rich_text_style;
           test "rich wrap" doors_rich_wrap;
           test "rich selectable" doors_rich_selectable;
-          test "rich selection_bg" doors_rich_selection_bg;
-          test "rich selection_fg" doors_rich_selection_fg;
           test "rich tab_width" doors_rich_tab_width;
           test "rich truncate" doors_rich_truncate;
-          test "rich on_selection" doors_rich_on_selection;
         ];
     ]

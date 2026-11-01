@@ -6,6 +6,11 @@
     declarations raise [Invalid_argument]. Paste strips ANSI escapes and
     newlines. Undo and redo that would restore multiline text are ignored.
 
+    The editor owns its selection, apart from the view's
+    ({!Renderer.section-selection}), which never includes its text: a left press
+    proposes the caret the pointer hits, and a drag from it proposes the
+    selection between that caret and the one the pointer hits.
+
     The editor is drawn on the [Field] surface of the theme in scope
     ({!Renderable.theme}), its text as {!Text_surface.section-paint} states, and
     its placeholder in the [Muted] role; a color label replaces the role or
@@ -89,8 +94,6 @@ module Props : sig
     ?focused_text_color:Ansi.Color.t ->
     ?focused_background_color:Ansi.Color.t ->
     ?placeholder_color:Ansi.Color.t ->
-    ?selection_color:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
     ?cursor_style:[ `Block | `Line | `Underline ] ->
     ?cursor_color:Ansi.Color.t ->
     ?cursor_blinking:bool ->
@@ -112,17 +115,16 @@ module Props : sig
         Defaults to [background_color].
       - [placeholder_color] is the placeholder's color. Defaults to none, the
         [Muted] role over the [Field] surface.
-      - [selection_color] is the selection's background color. Defaults to none.
-        Without it and [selection_fg], the selection is drawn over the
-        [Highlight] surface ({!Text_surface.section-paint}).
-      - [selection_fg] is the selection's foreground color. Defaults to the text
-        color.
       - [cursor_style] is the caret's shape when focused. Defaults to [`Block].
       - [cursor_color] is the caret's color when focused. Defaults to
         {!Ansi.Color.default_fg}, which leaves the caret in the terminal's own
         color.
       - [cursor_blinking] is [true] iff the caret blinks. Defaults to [true].
-      - [selectable] is [true] iff the pointer selects text. Defaults to [true].
+      - [selectable] is [true] iff the pointer places the caret and selects
+        text; it declares whether text selection reaches the editor
+        ({!Renderable.set_selectable}), as an editor reaches it whatever its
+        ancestors declare. Defaults to [true]. The selection is drawn with the
+        [Highlight] role ({!Text_surface.section-paint}).
       - [show_cursor] is [true] iff the focused input shows its caret. Defaults
         to [true].
       - [key_bindings] adds keys to those {!section-keys} lists or binds one of

@@ -146,7 +146,8 @@ val create :
   Props.t ->
   t
 (** [create ~parent props] is a tab selector attached to [parent]. The node is
-    focusable and uses buffered rendering. It shows [props].
+    focusable, uses buffered rendering, and declares itself unselectable
+    ({!Renderable.set_selectable}). It shows [props].
     - [on_change] fires when the selected index changes via navigation or
       {!set_selected}.
     - [on_activate] fires when a tab is activated (Enter key or

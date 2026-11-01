@@ -22,6 +22,7 @@ type attrs = {
   focused : bool;
   buffered : bool;
   live : bool;
+  selectable : bool option;
 }
 
 (* ───── Virtual Nodes ───── *)
@@ -157,6 +158,7 @@ let unfocusable_attrs =
     focused = false;
     buffered = false;
     live = false;
+    selectable = None;
   }
 
 let focusable_attrs = { unfocusable_attrs with focusable = true }
@@ -175,13 +177,20 @@ let no_handlers =
    default, and an element that asks for focus is focusable whatever its
    kind. *)
 let element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ~kind
-    ?(on = Kind.no_handler) props children =
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ~kind ?(on = Kind.no_handler) props children =
   let attrs =
     match
-      (visible, z_index, opacity, focused, buffered, live, on_focus_request)
+      ( visible,
+        z_index,
+        opacity,
+        focused,
+        buffered,
+        live,
+        selectable,
+        on_focus_request )
     with
-    | None, None, None, None, None, None, None
+    | None, None, None, None, None, None, None, None
       when style == Toffee.Style.default ->
         if kind.Kind.focusable then focusable_attrs else unfocusable_attrs
     | _ ->
@@ -194,6 +203,7 @@ let element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
           focused = Option.value focused ~default:false;
           buffered = Option.value buffered ~default:false;
           live = Option.value live ~default:false;
+          selectable;
         }
   in
   let handlers =

@@ -108,41 +108,35 @@ let set_highlighter_rerenders_existing_block () =
   Markdown.set_highlighter md (Some highlighter);
   equal ~msg:"highlighter called on re-render" int 1 (List.length !requests)
 
-let selection_callback_reports_rendered_text () =
+(* A drag over rendered markdown selects the text it shows, concealed
+   markup left out. *)
+let drag_selects_rendered_text () =
   let renderer = Renderer.create () in
-  let selected = ref None in
   let _md =
     Markdown.create ~parent:(Renderer.root renderer)
-      ~on_selection:(fun text -> selected := text)
       (Markdown.Props.make ~content:"Hello **world**" ())
   in
   Renderer.render_frame renderer ~width:40 ~height:5 ~dt:0.;
-  ignore (Renderer.render ~full:true renderer : string);
-  let mouse kind = Test_harness.mouse_report ~x:0 ~y:0 kind in
-  dispatch_mouse renderer (mouse (Press Left));
+  dispatch_mouse renderer (Test_harness.mouse_report ~x:0 ~y:0 (Press Left));
   dispatch_mouse renderer
-    (Test_harness.mouse_report ~x:5 ~y:0 (Motion (Some Left)));
-  equal ~msg:"selected markdown text" (option string) (Some "Hello") !selected
+    (Test_harness.mouse_report ~x:10 ~y:0 (Motion (Some Left)));
+  equal ~msg:"selected markdown text" (option string) (Some "Hello world")
+    (Renderer.selection_text renderer)
 
-let selection_callback_clears () =
+(* A markdown declared unselectable starts no selection. *)
+let unselectable_markdown_selects_nothing () =
   let renderer = Renderer.create () in
-  let selected = ref (Some "stale") in
   let md =
     Markdown.create ~parent:(Renderer.root renderer)
-      ~on_selection:(fun text -> selected := text)
       (Markdown.Props.make ~content:"Hello" ())
   in
-  Renderer.render_frame renderer ~width:40 ~height:5 ~dt:0.;
-  ignore (Renderer.render ~full:true renderer : string);
-  Markdown.set_on_selection md None;
-  Markdown.set_on_selection md (Some (fun text -> selected := text));
   Markdown.set_selectable md false;
-  let mouse kind = Test_harness.mouse_report ~x:0 ~y:0 kind in
-  dispatch_mouse renderer (mouse (Press Left));
+  Renderer.render_frame renderer ~width:40 ~height:5 ~dt:0.;
+  dispatch_mouse renderer (Test_harness.mouse_report ~x:0 ~y:0 (Press Left));
   dispatch_mouse renderer
     (Test_harness.mouse_report ~x:5 ~y:0 (Motion (Some Left)));
-  equal ~msg:"selection did not change while disabled" (option string)
-    (Some "stale") !selected
+  equal ~msg:"nothing selected" (option string) None
+    (Renderer.selection_text renderer)
 
 (* ── Lifecycle ── *)
 
@@ -437,32 +431,6 @@ let doors_selectable () =
         (Markdown.create ~parent ~layout_style:doors_style
            (Markdown.Props.make ~content:doors_md ~selectable:false ())))
 
-let doors_selection_bg () =
-  Test_harness.reaches ~act:Test_harness.select_text "selection_bg"
-    ~base:(Mosaic.markdown ~size:doors_size doors_md)
-    ~element:(Mosaic.markdown ~size:doors_size ~selection_bg:doors_red doors_md)
-    ~create_base:(fun parent ->
-      Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style
-           (Markdown.Props.make ~content:doors_md ())))
-    ~create:(fun parent ->
-      Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style
-           (Markdown.Props.make ~content:doors_md ~selection_bg:doors_red ())))
-
-let doors_selection_fg () =
-  Test_harness.reaches ~act:Test_harness.select_text "selection_fg"
-    ~base:(Mosaic.markdown ~size:doors_size doors_md)
-    ~element:(Mosaic.markdown ~size:doors_size ~selection_fg:doors_red doors_md)
-    ~create_base:(fun parent ->
-      Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style
-           (Markdown.Props.make ~content:doors_md ())))
-    ~create:(fun parent ->
-      Markdown.node
-        (Markdown.create ~parent ~layout_style:doors_style
-           (Markdown.Props.make ~content:doors_md ~selection_fg:doors_red ())))
-
 let doors_highlighter () =
   Test_harness.reaches "highlighter"
     ~base:(Mosaic.markdown ~size:doors_size doors_fenced)
@@ -564,10 +532,9 @@ let () =
           test "set_style custom" set_style_custom;
           test "set_highlighter re-renders existing block"
             set_highlighter_rerenders_existing_block;
-          test "selection callback reports rendered text"
-            selection_callback_reports_rendered_text;
-          test "selection disabled suppresses callback"
-            selection_callback_clears;
+          test "a drag selects the rendered text" drag_selects_rendered_text;
+          test "an unselectable markdown selects nothing"
+            unselectable_markdown_selects_nothing;
         ];
       group "Lifecycle"
         [
@@ -604,8 +571,6 @@ let () =
           test "conceal" doors_conceal;
           test "streaming" doors_streaming;
           test "selectable" doors_selectable;
-          test "selection_bg" doors_selection_bg;
-          test "selection_fg" doors_selection_fg;
           test "render_node" doors_render_node_label;
           test "render_code" doors_render_code_label;
           test "highlighter" doors_highlighter;

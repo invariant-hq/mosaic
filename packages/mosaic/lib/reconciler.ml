@@ -2,8 +2,8 @@ open Mosaic_ui
 
 (* ───── Common attributes ───── *)
 
-let update_common (node : Renderable.t) ~(old_attrs : Vnode.attrs)
-    ~(new_attrs : Vnode.attrs) : bool =
+let update_common (node : Renderable.t) ~own_selectable
+    ~(old_attrs : Vnode.attrs) ~(new_attrs : Vnode.attrs) : bool =
   let changed = ref false in
   if old_attrs.visible <> new_attrs.visible then (
     Renderable.set_visible node new_attrs.visible;
@@ -25,6 +25,14 @@ let update_common (node : Renderable.t) ~(old_attrs : Vnode.attrs)
     changed := true);
   if old_attrs.live <> new_attrs.live then (
     Renderable.set_live node new_attrs.live;
+    changed := true);
+  (* An element that stops declaring its selectability gets back the one its
+     widget made. *)
+  if old_attrs.selectable <> new_attrs.selectable then (
+    Renderable.set_selectable node
+      (match new_attrs.selectable with
+      | Some _ as declared -> declared
+      | None -> own_selectable);
     changed := true);
   (* Style is handled in update_instance for widget-specific behavior.
      Box.set_style adds border insets and Scroll_box.set_style its root
@@ -102,6 +110,9 @@ and ('props, 'event, 'w) fiber = {
   mutable viewport_width : int;
   mutable declared_focus : declared_focus;
   mutable pass : int;  (** The last matching pass that matched it. *)
+  own_selectable : bool option;
+      (** The selectability its widget declared when it was created, which the
+          element's absent [selectable] keeps. *)
 }
 
 (* A span owns the children of a memo's view, of a map's subtree or of one
@@ -175,6 +186,9 @@ let create_fiber ~(parent : Renderable.t) ~route (elem : msg Vnode.element) :
   let (E e) = elem in
   let attrs = e.attrs in
   let widget = e.kind.create ~parent ~layout:attrs.style e.props in
+  let own_selectable =
+    Renderable.Private.declared_selectable (e.kind.node widget)
+  in
   let f =
     {
       kind = e.kind;
@@ -190,6 +204,7 @@ let create_fiber ~(parent : Renderable.t) ~route (elem : msg Vnode.element) :
       viewport_width = 0;
       declared_focus = Focus_none;
       pass = 0;
+      own_selectable;
     }
   in
   let node = fiber_node f in
@@ -198,6 +213,8 @@ let create_fiber ~(parent : Renderable.t) ~route (elem : msg Vnode.element) :
   if attrs.opacity <> 1.0 then Renderable.set_opacity node attrs.opacity;
   Renderable.set_focusable node (attrs.focusable || attrs.focused);
   if attrs.buffered then Renderable.set_buffered node true;
+  if Option.is_some attrs.selectable then
+    Renderable.set_selectable node attrs.selectable;
   if attrs.live || Kind.same e.kind Kinds.spinner then apply_live f;
   Renderable.set_on_focus_request node (focus_request route e.handlers);
   Renderable.on_mouse node (fun ev ->
@@ -250,7 +267,10 @@ let update_fiber : type p e w. (p, e, w) fiber -> msg Vnode.element -> bool =
       let attrs_changed =
         old_attrs != new_attrs
         &&
-        let common = update_common (fiber_node f) ~old_attrs ~new_attrs in
+        let common =
+          update_common (fiber_node f) ~own_selectable:f.own_selectable
+            ~old_attrs ~new_attrs
+        in
         (* A layout shared by many elements is the same record on every
            render, and comparing it physically first costs nothing per
            field. *)

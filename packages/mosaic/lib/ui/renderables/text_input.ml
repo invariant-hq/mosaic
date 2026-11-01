@@ -56,8 +56,6 @@ module Props = struct
     focused_text_color : Ansi.Color.t option;
     focused_background_color : Ansi.Color.t option;
     placeholder_color : Ansi.Color.t option;
-    selection_color : Ansi.Color.t option;
-    selection_fg : Ansi.Color.t option;
     cursor_style : [ `Block | `Line | `Underline ];
     cursor_color : Ansi.Color.t;
     cursor_blinking : bool;
@@ -68,7 +66,7 @@ module Props = struct
 
   let make ~state ?(placeholder = "") ?text_color ?background_color
       ?focused_text_color ?focused_background_color ?placeholder_color
-      ?selection_color ?selection_fg ?(cursor_style = default_cursor_style)
+      ?(cursor_style = default_cursor_style)
       ?(cursor_color = Ansi.Color.default_fg)
       ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
       ?(show_cursor = true) ?(key_bindings = []) () =
@@ -82,8 +80,6 @@ module Props = struct
       focused_text_color;
       focused_background_color;
       placeholder_color;
-      selection_color;
-      selection_fg;
       cursor_style;
       cursor_color;
       cursor_blinking;
@@ -103,8 +99,6 @@ module Props = struct
     && Option.equal Ansi.Color.equal a.focused_background_color
          b.focused_background_color
     && Option.equal Ansi.Color.equal a.placeholder_color b.placeholder_color
-    && Option.equal Ansi.Color.equal a.selection_color b.selection_color
-    && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
     && a.cursor_style = b.cursor_style
     && Ansi.Color.equal a.cursor_color b.cursor_color
     && a.cursor_blinking = b.cursor_blinking
@@ -121,11 +115,10 @@ let surface_props (props : Props.t) =
     ?background_color:props.background_color
     ?focused_text_color:props.focused_text_color
     ?focused_background_color:props.focused_background_color
-    ?placeholder_color:props.placeholder_color
-    ?selection_color:props.selection_color ?selection_fg:props.selection_fg
-    ~cursor_style:props.cursor_style ~cursor_color:props.cursor_color
-    ~cursor_blinking:props.cursor_blinking ~selectable:props.selectable
-    ~show_cursor:props.show_cursor ~key_bindings:props.key_bindings ()
+    ?placeholder_color:props.placeholder_color ~cursor_style:props.cursor_style
+    ~cursor_color:props.cursor_color ~cursor_blinking:props.cursor_blinking
+    ~selectable:props.selectable ~show_cursor:props.show_cursor
+    ~key_bindings:props.key_bindings ()
 
 let node t = Edit_surface.node t.surface
 let state t = Edit_surface.state t.surface

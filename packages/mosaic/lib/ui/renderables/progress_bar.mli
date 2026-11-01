@@ -72,7 +72,8 @@ val create :
   Props.t ->
   t
 (** [create ~parent props] is a progress bar attached to [parent], showing
-    [props]. *)
+    [props]. The node declares itself unselectable
+    ({!Renderable.set_selectable}). *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] replaces all properties of [t] with [props]. Always

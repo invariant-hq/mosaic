@@ -3,9 +3,9 @@
     [Mosaic_ui] re-exports the modules that make up the Mosaic UI layer. It
     provides:
 
-    - {b Core infrastructure.} {!Event} for input events, {!Selection} for text
-      selections, {!Renderable} for the mutable node tree, and {!Renderer} for
-      the layout-render-diff pipeline.
+    - {b Core infrastructure.} {!Event} for input events, {!Renderable} for the
+      mutable node tree, and {!Renderer} for the layout-render-diff pipeline,
+      which owns the view's text selection.
     - {b Text primitives.} {!Text_buffer} for styled text storage,
       {!Text_surface} for viewport-aware text rendering with wrapping, and
       {!Editor} for persistent grapheme-aware editing with undo.
@@ -28,9 +28,6 @@ module Event = Event
 
 module Shortcut = Shortcut
 (** Typed keyboard shortcuts shared by widgets and application handlers. *)
-
-module Selection = Selection
-(** Text selections with anchor and focus points. *)
 
 (** {1:core Core infrastructure} *)
 

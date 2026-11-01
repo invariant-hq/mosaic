@@ -875,110 +875,50 @@ let live_count_change_callback () =
 
 (* ── Selection ── *)
 
-let not_selectable_default () =
+(* §3.4 Cascade: with no declaration anywhere, selection reaches every
+   node. *)
+let selectable_without_declaration () =
   let t = make_ctx () in
   let root = make_root t in
   let child = Renderable.create ~parent:root () in
-  is_false ~msg:"not selectable" (Renderable.selectable child)
-
-let set_selection_makes_selectable () =
-  let t = make_ctx () in
-  let root = make_root t in
-  let child = Renderable.create ~parent:root () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
   is_true ~msg:"selectable" (Renderable.selectable child)
 
-let unset_selection_clears () =
+(* A declaration reaches the node's descendants, and the nearest one wins: a
+   descendant declares selection again inside a box that refuses it. *)
+let nearest_declaration_wins () =
   let t = make_ctx () in
   let root = make_root t in
-  let child = Renderable.create ~parent:root () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
-  Renderable.unset_selection child;
-  is_false ~msg:"not selectable" (Renderable.selectable child)
+  let panel = Renderable.create ~parent:root () in
+  let label = Renderable.create ~parent:panel () in
+  let note = Renderable.create ~parent:label () in
+  Renderable.set_selectable panel (Some false);
+  is_false ~msg:"inherited refusal" (Renderable.selectable note);
+  Renderable.set_selectable label (Some true);
+  is_true ~msg:"declared again below" (Renderable.selectable note);
+  is_false ~msg:"the panel still refuses" (Renderable.selectable panel)
 
-(* A node of ten cells on the first row, selectable as [should_start],
-   [on_change], [clear] and [get_text] say. *)
-let selectable_node ?(should_start = fun ~x:_ ~y:_ -> true)
-    ?(on_change = fun _ -> true) ?(clear = ignore) ?(get_text = fun () -> "") t
-    =
-  let child = Renderable.create ~parent:(make_root t) () in
-  layout_node child ~x:0 ~y:0 ~width:10 ~height:1;
-  Renderable.set_selection child ~should_start ~on_change ~clear ~get_text;
-  child
-
-(* A drag on the first row from column [from] to column [to_], as a user
-   selecting text does. *)
-let drag t ~from ~to_ =
-  let send x kind =
-    ignore
-      (Test_harness.dispatch_mouse t.renderer
-         (Test_harness.mouse_report ~x ~y:0 kind)
-        : Event.mouse)
-  in
-  send from (Press Left);
-  send to_ (Motion (Some Left))
-
-let release t ~at =
-  ignore
-    (Test_harness.dispatch_mouse t.renderer
-       (Test_harness.mouse_report ~x:at ~y:0 (Release (Some Left)))
-      : Event.mouse)
-
-let should_start_selection_delegates () =
+(* [None] removes a node's declaration, and it inherits again. *)
+let removing_a_declaration_inherits () =
   let t = make_ctx () in
-  let _child = selectable_node t ~should_start:(fun ~x ~y:_ -> x > 5) in
-  drag t ~from:3 ~to_:4;
-  is_none ~msg:"x=3" (Renderer.selection t.renderer);
-  release t ~at:4;
-  drag t ~from:6 ~to_:8;
-  is_some ~msg:"x=6" (Renderer.selection t.renderer)
+  let root = make_root t in
+  let panel = Renderable.create ~parent:root () in
+  let child = Renderable.create ~parent:panel () in
+  Renderable.set_selectable panel (Some false);
+  Renderable.set_selectable child (Some true);
+  Renderable.set_selectable child None;
+  is_false ~msg:"inherits the refusal" (Renderable.selectable child)
 
-let get_selected_text_delegates () =
+(* A node that moves takes the declarations of its new ancestors. *)
+let reattached_node_inherits_its_new_parent () =
   let t = make_ctx () in
-  let _child = selectable_node t ~get_text:(fun () -> "hello") in
-  drag t ~from:0 ~to_:4;
-  equal ~msg:"text" (option string) (Some "hello")
-    (Renderer.selection_text t.renderer)
-
-let emit_selection_changed_delegates () =
-  let t = make_ctx () in
-  let received = ref false in
-  let _child =
-    selectable_node t ~on_change:(fun _ ->
-        received := true;
-        true)
-  in
-  drag t ~from:0 ~to_:4;
-  is_true ~msg:"callback ran" !received;
-  is_some ~msg:"the node takes the selection" (Renderer.selection t.renderer)
-
-(* A node without selection handlers takes no part in a selection: a drag
-   over it selects no text of it. *)
-let emit_selection_changed_none_without_handler () =
-  let t = make_ctx () in
-  let child = Renderable.create ~parent:(make_root t) () in
-  layout_node child ~x:0 ~y:0 ~width:10 ~height:1;
-  drag t ~from:0 ~to_:4;
-  is_false ~msg:"no selected text"
-    (match Renderer.selection_text t.renderer with
-    | Some text -> text <> ""
-    | None -> false)
-
-let clear_selection_delegates () =
-  let t = make_ctx () in
-  let cleared = ref false in
-  let _child = selectable_node t ~clear:(fun () -> cleared := true) in
-  drag t ~from:0 ~to_:4;
-  Renderer.clear_selection t.renderer;
-  is_true ~msg:"cleared" !cleared
+  let root = make_root t in
+  let closed = Renderable.create ~parent:root () in
+  let open_ = Renderable.create ~parent:root () in
+  let child = Renderable.create ~parent:closed () in
+  Renderable.set_selectable closed (Some false);
+  is_false ~msg:"under the closed box" (Renderable.selectable child);
+  Renderable.attach ~parent:open_ child;
+  is_true ~msg:"under the open box" (Renderable.selectable child)
 
 (* ── Lifecycle ── *)
 
@@ -1431,16 +1371,11 @@ let () =
         ];
       group "Selection"
         [
-          test "not selectable by default" not_selectable_default;
-          test "set_selection makes selectable" set_selection_makes_selectable;
-          test "unset_selection clears" unset_selection_clears;
-          test "should_start delegates" should_start_selection_delegates;
-          test "get_selected_text delegates" get_selected_text_delegates;
-          test "emit_selection_changed delegates"
-            emit_selection_changed_delegates;
-          test "emit_selection_changed None without handler"
-            emit_selection_changed_none_without_handler;
-          test "clear_selection delegates" clear_selection_delegates;
+          test "selectable without a declaration" selectable_without_declaration;
+          test "the nearest declaration wins" nearest_declaration_wins;
+          test "removing a declaration inherits" removing_a_declaration_inherits;
+          test "a reattached node inherits its new parent"
+            reattached_node_inherits_its_new_parent;
         ];
       group "Lifecycle"
         [

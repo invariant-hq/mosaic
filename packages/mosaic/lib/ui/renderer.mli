@@ -271,11 +271,10 @@ val mouse_path :
 
     The target is the node under the pointer, from the latest layout. A wheel
     event over dead space goes to the focused node, whose ancestors reach the
-    nearest scrollable one. A left drag captures the node pressed, which is the
-    node a text selection starts on: until the press ends, every event other
-    than the wheel goes to it, and to no node once it is destroyed. Moving the
-    pointer to another node sends [Out] to the node it leaves and [Over] to the
-    node it enters. *)
+    nearest scrollable one. A left drag captures the node pressed: until the
+    press ends, every event other than the wheel goes to it, and to no node once
+    it is destroyed. Moving the pointer to another node sends [Out] to the node
+    it leaves and [Over] to the node it enters. *)
 
 val pointer_lost : t -> unit
 (** [pointer_lost t] ends the held press, if any, as a lost release: its release
@@ -287,10 +286,11 @@ val pointer_lost : t -> unit
 val dispatch_mouse : t -> path -> Event.mouse -> unit
 (** [dispatch_mouse t path event] delivers [event] to [path], then, unless the
     default is prevented, runs the mouse defaults:
-    - a primary press without Ctrl on a selectable node starts a text selection
-      (an editor's caret is one), if the node is focused or has nothing
-      focusable above it; another primary press clears the selection;
-    - a primary drag extends the selection;
+    - a primary press starts a text selection ({!section-selection}) on a node
+      selection reaches ({!Renderable.selectable}), clears it on an editor
+      ({!Renderable.Private.set_owned_text}), which selects on its own, and
+      leaves it as it is on a node selection does not reach;
+    - a primary drag moves the focus of the selection its press started;
     - a release that ends a capturing drag sends [Drop] to the node under the
       pointer;
     - a primary press and a release over the same node, without a drag between
@@ -299,7 +299,8 @@ val dispatch_mouse : t -> path -> Event.mouse -> unit
       also over.
 
     The release that ends a capturing drag first sends [Drag_end] to the
-    captured node; the release of a selection ends it, prevented or not. *)
+    captured node; the release of the press that started a selection settles it,
+    prevented or not. *)
 
 (** {1:focus Focus} *)
 
@@ -349,19 +350,50 @@ val set_theme : t -> Theme.t -> unit
 val theme : t -> Theme.t
 (** [theme t] is the theme in scope at [t]'s root. *)
 
-(** {1:selection Selection} *)
+(** {1:selection Selection}
 
-val selection : t -> Selection.t option
-(** [selection t] is the active text selection, if any. *)
+    The renderer owns the view's text selection (RFC 0006): an anchor and a
+    focus in the text of nodes with text rows ({!Renderable.val-text_rows}),
+    stored as positions in their text, which scrolling, streaming and rewrapping
+    leave in place. The selection lies in a {e region}: the nearest scroll box
+    of the node its press found ({!Renderable.Private.set_region}), or the root
+    of the node's layer, the modal node for a node in the top layer.
+
+    A left press resolves to a text of its region: the one under the pointer,
+    else the first at or after the pressed cell in row-major order, else the
+    last before it. Texts selection does not reach ({!Renderable.selectable}),
+    editors, hidden nodes and texts in another scroll box are passed by. The
+    selection starts there with its anchor at the pressed cell: the graphemes
+    the cell shows, or the boundary nearest it. A press that finds no text
+    clears the selection. While the press is held, the pointer's cell, held in
+    the region's view, is the focus, and the region's scroll box scrolls while
+    the pointer holds near or past its edge. A press the pointer does not leave
+    selects nothing. When the press ends, the focus becomes the far end of the
+    text the selection holds.
+
+    Between the ends lies the terminal's row-major {e band}: in each text of the
+    region, the graphemes from the cell of the earlier end to that of the later
+    one. A scroll box in the region is selected whole when the band covers each
+    cell of its view, and not at all otherwise. Selected text paints with the
+    [Highlight] role of its theme ({!Text_surface.section-paint}). *)
 
 val selection_text : t -> string option
-(** [selection_text t] is the text of the active selection, gathered in document
-    order from the selectables under its container, or [None] when no selection
-    is active or the selection is empty. *)
+(** [selection_text t] is the text the view selection holds, as the user saw it
+    laid out: the fragments of its texts, each split at the rows another
+    fragment shares, in row-major order, without a line terminator at either
+    end, joined by as many spaces as cells between them on a row, else by a
+    blank line where a row between them lies in no box that holds either below
+    their common ancestor, else by a line break. Soft wraps add nothing, an
+    ellipsis gives the text it hides, and a scroll box selected whole gives all
+    of its text. Trailing blanks stay.
+
+    With no view selection, it is the selection of the focused editor
+    ({!Renderable.Private.set_owned_text}), if any, and [None] otherwise. *)
 
 val clear_selection : t -> unit
-(** [clear_selection t] clears the active text selection, notifying all
-    selectable renderables under the selection container. *)
+(** [clear_selection t] clears the view selection, and ends the gesture that
+    drags it, if any: its later motion selects nothing, and its release settles
+    nothing. *)
 
 (** {1:drag Drag capture} *)
 

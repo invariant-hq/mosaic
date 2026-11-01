@@ -121,7 +121,8 @@ val create :
   t
 (** [create ~parent props] is a scroll bar attached to [parent], showing
     [props]. [on_change] is invoked with the new scroll position whenever it
-    changes. *)
+    changes. The node declares itself unselectable
+    ({!Renderable.set_selectable}). *)
 
 val node : t -> Renderable.t
 (** [node t] is the underlying {!Renderable.t} for [t]. *)

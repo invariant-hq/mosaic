@@ -33,13 +33,6 @@ let pp_cursor ppf c =
   Format.fprintf ppf "Cursor(%d, %d, %s, %a, blink=%b)" c.x c.y style_str
     Ansi.Color.pp c.color c.blinking
 
-type selection_handler = {
-  should_start : x:int -> y:int -> bool;
-  on_change : Selection.t option -> bool;
-  clear : unit -> unit;
-  get_text : unit -> string;
-}
-
 type measure =
   known_dimensions:float option Toffee.Geometry.Size.t ->
   available_space:Toffee.Available_space.t Toffee.Geometry.Size.t ->
@@ -52,8 +45,7 @@ type context = {
   off_loop : (unit -> unit) -> unit;
   focus : node -> bool;
   blur : node -> unit;
-  get_selection : unit -> Selection.t option;
-  request_selection_update : unit -> unit;
+  selected_range : node -> (int * int) option;
   register_lifecycle : node -> unit;
   unregister_lifecycle : node -> unit;
   alloc_num : unit -> int;
@@ -66,6 +58,14 @@ type context = {
   mutable regroups : node list;
   mutable top_layer : node option;
   mutable theme : Theme.t;
+}
+
+(* A scroll box's declaration that it is a region of text selection. *)
+and region = {
+  viewport : node;
+  content : node;
+  drag : x:int -> y:int -> unit;
+  settle : unit -> unit;
 }
 
 (* The region a subtree may paint, in cells relative to its node's layout
@@ -154,6 +154,11 @@ and node = {
   mutable measure : measure option;
   mutable translate_x : int;
   mutable translate_y : int;
+  (* The shift a buffered render gives its subtree, to draw it at its own
+     buffer's origin. Unlike a translation, it moves no position the layout
+     gives. *)
+  mutable paint_shift_x : int;
+  mutable paint_shift_y : int;
   (* Hierarchy *)
   mutable parent : node option;
   mutable child_target : node option;
@@ -205,8 +210,11 @@ and node = {
   mutable paste_handlers : (Event.paste -> unit) list;
   mutable key_behavior : (Event.key -> unit) option;
   mutable paste_behavior : (Event.paste -> unit) option;
-  (* Selection *)
-  mutable selection : selection_handler option;
+  (* Selection: the node's declaration of selectability, its region
+     declaration, and an editor's selected text. *)
+  mutable selectable : bool option;
+  mutable region : region option;
+  mutable owned_text : (unit -> string option) option;
   (* Child clipping *)
   mutable child_clip : (node -> Grid.region option) option;
   (* Text rows *)
@@ -408,6 +416,8 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     measure = None;
     translate_x = 0;
     translate_y = 0;
+    paint_shift_x = 0;
+    paint_shift_y = 0;
     parent = None;
     child_target = None;
     children = [||];
@@ -446,7 +456,9 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     paste_handlers = [];
     key_behavior = None;
     paste_behavior = None;
-    selection = None;
+    selectable = None;
+    region = None;
+    owned_text = None;
     child_clip = None;
     text_rows_provider = None;
     pending_provider = None;
@@ -995,7 +1007,8 @@ let in_top_layer t =
 
 let translate_acc t =
   let rec loop node ax ay =
-    let ax = ax + node.translate_x and ay = ay + node.translate_y in
+    let ax = ax + node.translate_x + node.paint_shift_x
+    and ay = ay + node.translate_y + node.paint_shift_y in
     match node.parent with
     | Some p when not (in_top_layer node) -> loop p ax ay
     | Some _ | None -> (ax, ay)
@@ -1413,7 +1426,8 @@ let destroy t =
     t.paste_behavior <- None;
     t.focus_handler <- None;
     t.blur_handler <- None;
-    t.selection <- None;
+    t.region <- None;
+    t.owned_text <- None;
     t.child_clip <- None;
     t.text_rows_provider <- None;
     t.pending_provider <- None;
@@ -1580,22 +1594,18 @@ let run_paste_behavior t event = Option.iter (fun f -> f event) t.paste_behavior
 
 (* ───── Selection ───── *)
 
-let set_selection t ~should_start ~on_change ~clear ~get_text =
-  t.selection <- Some { should_start; on_change; clear; get_text }
+(* A declaration changes what the view selection highlights. *)
+let set_selectable t declaration =
+  if t.selectable <> declaration then begin
+    t.selectable <- declaration;
+    t.ctx.schedule ()
+  end
 
-let unset_selection t = t.selection <- None
-let selectable t = Option.is_some t.selection
-
-let emit_selection_changed t sel =
-  Option.fold ~none:false ~some:(fun h -> h.on_change sel) t.selection
-
-let clear_selection t = Option.iter (fun h -> h.clear ()) t.selection
-
-let should_start_selection t ~x ~y =
-  Option.fold ~none:false ~some:(fun h -> h.should_start ~x ~y) t.selection
-
-let get_selected_text t =
-  Option.fold ~none:"" ~some:(fun h -> h.get_text ()) t.selection
+let rec selectable t =
+  match (t.selectable, t.parent) with
+  | Some declared, _ -> declared
+  | None, Some parent -> selectable parent
+  | None, None -> true
 
 (* ───── Text Rows ───── *)
 
@@ -1998,17 +2008,17 @@ let render_full (t : t) ~(grid : Grid.t) ~(dt : float) : unit =
       | None -> (grid, false)
     else (grid, false)
   in
-  let original_tx = t.translate_x and original_ty = t.translate_y in
+  let original_sx = t.paint_shift_x and original_sy = t.paint_shift_y in
   if local_origin then (
     let ox = x t and oy = y t in
     (* Render buffered subtrees in local coordinates to avoid double offsets. *)
-    t.translate_x <- t.translate_x - ox;
-    t.translate_y <- t.translate_y - oy);
+    t.paint_shift_x <- t.paint_shift_x - ox;
+    t.paint_shift_y <- t.paint_shift_y - oy);
   Fun.protect
     ~finally:(fun () ->
       if local_origin then (
-        t.translate_x <- original_tx;
-        t.translate_y <- original_ty);
+        t.paint_shift_x <- original_sx;
+        t.paint_shift_y <- original_sy);
       if t.buffered then blit_frame_buffer t ~dst:grid)
     (fun () ->
       Option.iter (fun f -> f t render_target ~dt) t.render_before;
@@ -2058,8 +2068,7 @@ module Private = struct
     off_loop : (unit -> unit) -> unit;
     focus : t -> bool;
     blur : t -> unit;
-    get_selection : unit -> Selection.t option;
-    request_selection_update : unit -> unit;
+    selected_range : t -> (int * int) option;
     register_lifecycle : t -> unit;
     unregister_lifecycle : t -> unit;
     alloc_num : unit -> int;
@@ -2122,11 +2131,19 @@ module Private = struct
   let run_key_behavior = run_key_behavior
   let emit_paste = emit_paste
   let run_paste_behavior = run_paste_behavior
-  let emit_selection_changed = emit_selection_changed
-  let clear_selection = clear_selection
-  let should_start_selection = should_start_selection
-  let get_selected_text = get_selected_text
-  let get_selection t = t.ctx.get_selection ()
-  let request_selection_update t = t.ctx.request_selection_update ()
+
+  type nonrec region = region = {
+    viewport : t;
+    content : t;
+    drag : x:int -> y:int -> unit;
+    settle : unit -> unit;
+  }
+
+  let set_region t region = t.region <- region
+  let region t = t.region
+  let set_owned_text t f = t.owned_text <- f
+  let owned_text t = t.owned_text
+  let declared_selectable t = t.selectable
+  let selected_range t = t.ctx.selected_range t
   let report_scroll t ~region ~dx ~dy = t.ctx.report_scroll t ~region ~dx ~dy
 end

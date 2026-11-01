@@ -1631,8 +1631,8 @@ let box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?inert ?on_mouse ?on_key
-    ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?border
+    ?visible ?z_index ?opacity ?buffered ?live ?selectable ?inert ?on_mouse
+    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?border
     ?border_style ?border_sides ?border_color ?focused_border_color ?background
     ?fill ?title ?title_alignment children =
   (* The box owns its border widths, so [border_width] goes to the box. *)
@@ -1648,7 +1648,7 @@ let box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.box
     (Mosaic_ui.Box.Props.make ?inert ?border ?border_style ?border_sides
        ?border_width ?border_color ?focused_border_color ?background ?fill
@@ -1691,8 +1691,7 @@ let text ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?style ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key
     ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?text_style ?wrap
-    ?selectable ?selection_bg ?selection_fg ?tab_width ?truncate ?on_selection
-    content =
+    ?selectable ?tab_width ?truncate content =
   let layout_style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -1709,9 +1708,9 @@ let text ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
   in
   Vnode.element ?key ~style:layout_style ?visible ?z_index ?opacity ?focused
     ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
-    ?on_size ~kind:Kinds.text ?on:on_selection
-    (Mosaic_ui.Text.Props.make ~content ?text_style ?wrap ?selectable
-       ?selection_bg ?selection_fg ?tab_width ?truncate ())
+    ?on_size ~kind:Kinds.text
+    (Mosaic_ui.Text.Props.make ~content ?text_style ?wrap ?selectable ?tab_width
+       ?truncate ())
     []
 
 let rich_text ?key ?layout ?display ?box_sizing ?position ?overflow
@@ -1723,8 +1722,7 @@ let rich_text ?key ?layout ?display ?box_sizing ?position ?overflow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
     ?grid_row ?grid_column ?style ?visible ?z_index ?opacity ?buffered ?live
     ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused
-    ?text_style ?wrap ?selectable ?selection_bg ?selection_fg ?tab_width
-    ?truncate ?on_selection content =
+    ?text_style ?wrap ?selectable ?tab_width ?truncate content =
   let layout_style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -1741,9 +1739,9 @@ let rich_text ?key ?layout ?display ?box_sizing ?position ?overflow
   in
   Vnode.element ?key ~style:layout_style ?visible ?z_index ?opacity ?focused
     ?buffered ?live ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
-    ?on_size ~kind:Kinds.text ?on:on_selection
-    (Mosaic_ui.Text.Props.make_rich ?text_style ?wrap ?selectable ?selection_bg
-       ?selection_fg ?tab_width ?truncate content)
+    ?on_size ~kind:Kinds.text
+    (Mosaic_ui.Text.Props.make_rich ?text_style ?wrap ?selectable ?tab_width
+       ?truncate content)
     []
 
 let button ?key ?layout ?display ?box_sizing ?position ?overflow
@@ -1754,9 +1752,10 @@ let button ?key ?layout ?display ?box_sizing ?position ?overflow
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
-    ?on_focus_request ?on_size ?(focused = false) ?border ?border_style
-    ?border_sides ?border_color ?focused_border_color ?background ?fill ?title
-    ?title_alignment ?text_style ?(disabled = false) ~on_activate label =
+    ?selectable ?on_focus_request ?on_size ?(focused = false) ?border
+    ?border_style ?border_sides ?border_color ?focused_border_color ?background
+    ?fill ?title ?title_alignment ?text_style ?(disabled = false) ~on_activate
+    label =
   let text_style = Option.value text_style ~default:Ansi.Style.default in
   let text_style =
     if disabled then Ansi.Style.with_dim true text_style
@@ -1792,11 +1791,12 @@ let button ?key ?layout ?display ?box_sizing ?position ?overflow
     ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_focus_request ?on_size
-    ~focused:(focused && not disabled) ?border ?border_style ?border_sides
-    ?border_color ?focused_border_color ?background ?fill ?title
-    ?title_alignment ~on_key ~on_click
-    [ text ~text_style ~selectable:false label ]
+    ?visible ?z_index ?opacity ?buffered ?live
+    ~selectable:(Option.value selectable ~default:false)
+    ?on_focus_request ?on_size ~focused:(focused && not disabled) ?border
+    ?border_style ?border_sides ?border_color ?focused_border_color ?background
+    ?fill ?title ?title_alignment ~on_key ~on_click
+    [ text ~text_style label ]
 
 let slider ?key ?layout ?display ?box_sizing ?position ?overflow
     ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
@@ -1805,9 +1805,10 @@ let slider ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?orientation
-    ?min ?max ?viewport_size ?track_color ?thumb_color ~state ~on_change () =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused ?orientation ?min ?max ?viewport_size ?track_color ?thumb_color
+    ~state ~on_change () =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -1820,7 +1821,7 @@ let slider ?key ?layout ?display ?box_sizing ?position ?overflow
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.slider
     ~on:(fun value -> Some (on_change value))
     (Mosaic_ui.Slider.Props.make ?orientation ~value:state ?min ?max
@@ -1837,9 +1838,8 @@ let input ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
     ?on_click ?on_focus_request ?on_size ?focused ?placeholder ?text_color
     ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
-    ~on_change ?on_submit ~state () =
+    ?placeholder_color ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+    ?show_cursor ?key_bindings ~on_change ?on_submit ~state () =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -1856,8 +1856,8 @@ let input ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ~kind:Kinds.input ~on:(edit on_change on_submit)
     (Mosaic_ui.Text_input.Props.make ~state ?placeholder ?text_color
        ?background_color ?focused_text_color ?focused_background_color
-       ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-       ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings ())
+       ?placeholder_color ?cursor_style ?cursor_color ?cursor_blinking
+       ?selectable ?show_cursor ?key_bindings ())
     []
 
 (* The position of the first of [items] whose value is [selected], or [-1]. *)
@@ -1887,13 +1887,13 @@ let select ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?background
-    ?text_color ?focused_background ?focused_text_color ?selected_background
-    ?selected_text_color ?description_color ?selected_description_color
-    ?show_description ?show_scroll_indicator ?wrap_selection ?key_bindings
-    ?item_spacing ?fast_scroll_step ~on_change ?on_activate ~equal ~selected
-    options =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused ?background ?text_color ?focused_background ?focused_text_color
+    ?selected_background ?selected_text_color ?description_color
+    ?selected_description_color ?show_description ?show_scroll_indicator
+    ?wrap_selection ?key_bindings ?item_spacing ?fast_scroll_step ~on_change
+    ?on_activate ~equal ~selected options =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -1914,7 +1914,7 @@ let select ?key ?layout ?display ?box_sizing ?position ?overflow
   let on_change index = on_change (value index) in
   let on_activate = Option.map (fun f index -> f (value index)) on_activate in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.select
     ~on:(choice on_change on_activate)
     (Mosaic_ui.Select.Props.make ~selected_index ?background ?text_color
@@ -1932,13 +1932,13 @@ let tab_select ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?tab_width
-    ?background ?text_color ?focused_background ?focused_text_color
-    ?selected_background ?selected_text_color ?description_color
-    ?selected_description_color ?show_underline ?show_description
-    ?show_scroll_arrows ?wrap_selection ?key_bindings ~on_change ?on_activate
-    ~equal ~selected options =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused ?tab_width ?background ?text_color ?focused_background
+    ?focused_text_color ?selected_background ?selected_text_color
+    ?description_color ?selected_description_color ?show_underline
+    ?show_description ?show_scroll_arrows ?wrap_selection ?key_bindings
+    ~on_change ?on_activate ~equal ~selected options =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -1959,7 +1959,7 @@ let tab_select ?key ?layout ?display ?box_sizing ?position ?overflow
   let on_change index = on_change (value index) in
   let on_activate = Option.map (fun f index -> f (value index)) on_activate in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.tab_select
     ~on:(choice on_change on_activate)
     (Mosaic_ui.Tab_select.Props.make ~options:[] ~selected ?tab_width
@@ -1977,8 +1977,9 @@ let canvas ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused draw =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused draw =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -1991,7 +1992,7 @@ let canvas ?key ?layout ?display ?box_sizing ?position ?overflow
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.canvas draw []
 
 let picture ?key ?layout ?display ?box_sizing ?position ?overflow
@@ -2001,8 +2002,9 @@ let picture ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused p =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused p =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2015,7 +2017,7 @@ let picture ?key ?layout ?display ?box_sizing ?position ?overflow
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.picture p []
 
 let spinner ?key ?layout ?display ?box_sizing ?position ?overflow
@@ -2025,9 +2027,9 @@ let spinner ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?frame_set
-    ?color () =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused ?frame_set ?color () =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2041,7 +2043,7 @@ let spinner ?key ?layout ?display ?box_sizing ?position ?overflow
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered
     ?live:(match live with None -> Some true | live -> live)
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.spinner
     (Mosaic_ui.Spinner.Props.make ?frame_set ?color ())
     []
@@ -2053,9 +2055,9 @@ let progress_bar ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?value ?min
-    ?max ?orientation ?filled_color ?empty_color () =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused ?value ?min ?max ?orientation ?filled_color ?empty_color () =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2068,7 +2070,7 @@ let progress_bar ?key ?layout ?display ?box_sizing ?position ?overflow
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.progress_bar
     (Mosaic_ui.Progress_bar.Props.make ?value ?min ?max ?orientation
        ?filled_color ?empty_color ())
@@ -2081,10 +2083,10 @@ let scroll_bar ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?orientation
-    ?show_arrows ?track_color ?thumb_color ?arrow_fg ?arrow_bg ~on_change ~state
-    ~scroll_size ~viewport_size () =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused ?orientation ?show_arrows ?track_color ?thumb_color ?arrow_fg
+    ?arrow_bg ~on_change ~state ~scroll_size ~viewport_size () =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2097,7 +2099,7 @@ let scroll_bar ?key ?layout ?display ?box_sizing ?position ?overflow
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.scroll_bar
     ~on:(fun position -> Some (on_change position))
     (Mosaic_ui.Scroll_bar.Props.make ~position:state ~scroll_size ~viewport_size
@@ -2112,10 +2114,11 @@ let scroll_box ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?scroll_x
-    ?scroll_y ?background ?scroll_accel ?show_scrollbars ?scrollbar_style
-    ?vertical_bar_style ?horizontal_bar_style ~on_scroll ~scroll children =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused ?scroll_x ?scroll_y ?background ?scroll_accel ?show_scrollbars
+    ?scrollbar_style ?vertical_bar_style ?horizontal_bar_style ~on_scroll
+    ~scroll children =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2128,7 +2131,7 @@ let scroll_box ?key ?layout ?display ?box_sizing ?position ?overflow
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.scroll_box
     ~on:(fun scroll -> Some (on_scroll scroll))
     (Mosaic_ui.Scroll_box.Props.make ~scroll ?scroll_x ?scroll_y ?background
@@ -2147,9 +2150,8 @@ let textarea ?key ?layout ?display ?box_sizing ?position ?overflow
     ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?annotations
     ?syntax ?ghost_text ?ghost_text_color ?placeholder ?wrap ?text_color
     ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?key_bindings
-    ~on_change ?on_submit ~state () =
+    ?placeholder_color ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+    ?show_cursor ?key_bindings ~on_change ?on_submit ~state () =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2167,8 +2169,8 @@ let textarea ?key ?layout ?display ?box_sizing ?position ?overflow
     (Mosaic_ui.Textarea.Props.make ~state ?annotations ?syntax ?ghost_text
        ?ghost_text_color ?placeholder ?wrap ?text_color ?background_color
        ?focused_text_color ?focused_background_color ?placeholder_color
-       ?selection_color ?selection_fg ?cursor_style ?cursor_color
-       ?cursor_blinking ?selectable ?show_cursor ?key_bindings ())
+       ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
+       ?key_bindings ())
     []
 
 let code ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
@@ -2180,8 +2182,7 @@ let code ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
     ?on_click ?on_focus_request ?on_size ?focused ?syntax ?conceal ?text_style
-    ?wrap ?tab_width ?truncate ?selectable ?selection_bg ?selection_fg
-    ?on_selection content =
+    ?wrap ?tab_width ?truncate ?selectable content =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2195,9 +2196,9 @@ let code ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
     ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ~kind:Kinds.code ?on:on_selection
+    ~kind:Kinds.code
     (Mosaic_ui.Code.Props.make ~content ?syntax ?conceal ?text_style ?wrap
-       ?tab_width ?truncate ?selectable ?selection_bg ?selection_fg ())
+       ?tab_width ?truncate ?selectable ())
     []
 
 let line_number ?key ?layout ?display ?box_sizing ?position ?overflow
@@ -2207,10 +2208,11 @@ let line_number ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?fg ?bg
-    ?min_width ?padding_right ?show_line_numbers ?line_number_offset
-    ?line_colors ?line_signs ?line_numbers ?hidden_line_numbers child =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused ?fg ?bg ?min_width ?padding_right ?show_line_numbers
+    ?line_number_offset ?line_colors ?line_signs ?line_numbers
+    ?hidden_line_numbers child =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2223,7 +2225,7 @@ let line_number ?key ?layout ?display ?box_sizing ?position ?overflow
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.line_number
     (Mosaic_ui.Line_number.Props.make ?fg ?bg ?min_width ?padding_right
        ?show_line_numbers ?line_number_offset ?line_colors ?line_signs
@@ -2269,8 +2271,8 @@ let markdown ?key ?layout ?display ?box_sizing ?position ?overflow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
     ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?md_style
-    ?conceal ?streaming ?selectable ?selection_bg ?selection_fg ?render_node
-    ?render_code ?highlighter ?syntax_style ?on_selection content =
+    ?conceal ?streaming ?selectable ?render_node ?render_code ?highlighter
+    ?syntax_style content =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2284,10 +2286,9 @@ let markdown ?key ?layout ?display ?box_sizing ?position ?overflow
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
     ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ~kind:Kinds.markdown ?on:on_selection
+    ~kind:Kinds.markdown
     (Mosaic_ui.Markdown.Props.make ~content ?style:md_style ?conceal ?streaming
-       ?selectable ?selection_bg ?selection_fg ?render_node ?render_code
-       ?highlighter ?syntax_style ())
+       ?selectable ?render_node ?render_code ?highlighter ?syntax_style ())
     []
 
 let table ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
@@ -2297,15 +2298,15 @@ let table ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?columns ?(rows = []) ?border
-    ?border_style ?show_header ?show_column_separator ?show_row_separator
-    ?cell_padding ?header_color ?header_background ?text_color ?background
-    ?selected_text_color ?selected_background ?focused_selected_text_color
-    ?focused_selected_background ?selection_visible ?show_scroll_indicator
-    ?activate_on_click ?wheel_navigation ?row_styles ?wrap_selection
-    ?key_bindings ?fast_scroll_step ~on_change ?on_activate ?on_hover ~equal
-    ~selected () =
+    ?visible ?z_index ?opacity ?buffered ?live ?selectable ?on_mouse ?on_key
+    ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?columns
+    ?(rows = []) ?border ?border_style ?show_header ?show_column_separator
+    ?show_row_separator ?cell_padding ?header_color ?header_background
+    ?text_color ?background ?selected_text_color ?selected_background
+    ?focused_selected_text_color ?focused_selected_background ?selection_visible
+    ?show_scroll_indicator ?activate_on_click ?wheel_navigation ?row_styles
+    ?wrap_selection ?key_bindings ?fast_scroll_step ~on_change ?on_activate
+    ?on_hover ~equal ~selected () =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2327,7 +2328,7 @@ let table ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     Option.map (fun f index -> f (Option.map value index)) on_hover
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.table
     ~on:(function
       | Kinds.Choose choice' -> choice on_change on_activate choice'
@@ -2349,8 +2350,8 @@ let tree ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?flex_shrink ?flex_basis ?grid_template_rows ?grid_template_columns
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
-    ?visible ?z_index ?opacity ?buffered ?live ?on_mouse ?on_key ?on_paste
-    ?on_click ?on_focus_request ?on_size ?focused ?items ?indent_size
+    ?visible ?z_index ?opacity ?buffered ?live ?selectable ?on_mouse ?on_key
+    ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?items ?indent_size
     ?show_guides ?guide_style ?expand_icon ?collapse_icon ?leaf_icon ?background
     ?text_color ?selected_background ?selected_text_color
     ?focused_selected_background ?focused_selected_text_color ?guide_color
@@ -2368,7 +2369,7 @@ let tree ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.tree
     ~on:(function
       | Kinds.Tree_change state -> Some (on_change state)
@@ -2405,9 +2406,9 @@ let element ?key ?layout ?display ?box_sizing ?position ?overflow
     ?justify_self ?flex_grow ?flex_shrink ?flex_basis ?grid_template_rows
     ?grid_template_columns ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
-    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live ?on_mouse
-    ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused kind ?on
-    props children =
+    ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ?focused kind ?on props children =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2420,8 +2421,8 @@ let element ?key ?layout ?display ?box_sizing ?position ?overflow
       ?grid_column ()
   in
   Vnode.element ?key ~style ?visible ?z_index ?opacity ?focused ?buffered ?live
-    ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ~kind ?on
-    props children
+    ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
+    ~kind ?on props children
 
 let px n = Toffee.Style.Dimension.length (Float.of_int n)
 let pct n = Toffee.Style.Dimension.pct (Float.of_int n)

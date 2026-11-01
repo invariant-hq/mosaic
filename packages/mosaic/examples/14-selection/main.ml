@@ -74,20 +74,13 @@ let view scroll =
                 ~flex_direction:Column ~gap:(gap 0) ~title:"Document Section 1"
                 [
                   text ~style:section1_style ~selectable:true
-                    ~selection_bg:(Ansi.Color.of_rgb 88 166 255)
-                    ~selection_fg:Ansi.Color.white
                     "This is a paragraph in the first box.";
                   text ~style:section1_style ~selectable:true
-                    ~selection_bg:(Ansi.Color.of_rgb 88 166 255)
-                    ~selection_fg:Ansi.Color.white
                     "It contains multiple lines of text.";
                   text ~style:section1_style ~selectable:true
-                    ~selection_bg:(Ansi.Color.of_rgb 88 166 255)
-                    ~selection_fg:Ansi.Color.white
                     "You can select across these lines.";
                   text ~style:section1_style ~selectable:true
-                    ~selection_bg:(Ansi.Color.of_rgb 88 166 255)
-                    ~selection_fg:Ansi.Color.white "Unicode: 世界, 你好世界, 中文, 한글";
+                    "Unicode: 世界, 你好世界, 中文, 한글";
                 ];
               (* Section 2: Code example *)
               box ~border:true ~padding:(padding 1)
@@ -97,24 +90,16 @@ let view scroll =
                 [
                   text
                     ~style:(Ansi.Style.make ~fg:Ansi.Color.cyan ())
-                    ~selectable:true
-                    ~selection_bg:(Ansi.Color.of_rgb 74 85 104)
-                    "function handleSelection() {";
+                    ~selectable:true "function handleSelection() {";
                   text
                     ~style:(Ansi.Style.make ~fg:Ansi.Color.white ())
-                    ~selectable:true
-                    ~selection_bg:(Ansi.Color.of_rgb 74 85 104)
-                    "  const selected = getSelectedText()";
+                    ~selectable:true "  const selected = getSelectedText()";
                   text
                     ~style:(Ansi.Style.make ~fg:Ansi.Color.yellow ())
-                    ~selectable:true
-                    ~selection_bg:(Ansi.Color.of_rgb 74 85 104)
-                    "  console.log(selected)";
+                    ~selectable:true "  console.log(selected)";
                   text
                     ~style:(Ansi.Style.make ~fg:Ansi.Color.white ())
-                    ~selectable:true
-                    ~selection_bg:(Ansi.Color.of_rgb 74 85 104)
-                    "}";
+                    ~selectable:true "}";
                 ];
             ];
           (* Right panel: Scrollable content *)
@@ -139,7 +124,6 @@ let view scroll =
                                  (Ansi.Style.make ~bold:true
                                     ~fg:Ansi.Color.white ())
                                ~selectable:true
-                               ~selection_bg:(Ansi.Color.of_rgb 122 162 247)
                                (Printf.sprintf "Box %d" (i + 1));
                              fragment
                                (List.init num_lines (fun j ->
@@ -150,8 +134,6 @@ let view scroll =
                                       ~style:
                                         (Ansi.Style.make ~fg:Ansi.Color.white ())
                                       ~key:(string_of_int j) ~selectable:true
-                                      ~selection_bg:
-                                        (Ansi.Color.of_rgb 122 162 247)
                                       lorem_lines.(line_idx)));
                            ]));
                 ];

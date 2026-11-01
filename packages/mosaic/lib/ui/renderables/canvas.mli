@@ -44,6 +44,9 @@ val create :
     - [z_index] is the stacking order. Defaults to [0].
     - [opacity] is the compositing opacity. Defaults to [1.0].
 
+    The node declares itself unselectable ({!Renderable.set_selectable}): its
+    cells have no source text to select.
+
     See also {!set_on_resize} to redraw content when dimensions change. *)
 
 val node : t -> Renderable.t

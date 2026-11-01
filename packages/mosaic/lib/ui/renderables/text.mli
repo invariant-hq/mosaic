@@ -124,8 +124,6 @@ module Props : sig
     ?text_style:Ansi.Style.t ->
     ?wrap:Text_surface.wrap ->
     ?selectable:bool ->
-    ?selection_bg:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
     ?tab_width:int ->
     ?truncate:bool ->
     unit ->
@@ -135,11 +133,10 @@ module Props : sig
       - [text_style]: base visual style for all content. Defaults to
         {!Ansi.Style.default}.
       - [wrap]: wrapping mode. Defaults to [`None].
-      - [selectable]: whether text can be selected. Defaults to [true].
-      - [selection_bg]: background color for selected text. Defaults to [None].
-      - [selection_fg]: foreground color for selected text. Defaults to [None].
-        Without either, selected text is drawn over the [Highlight] surface
-        ({!Text_surface.section-paint}).
+      - [selectable]: declares whether text selection reaches the text
+        ({!Renderable.set_selectable}). Absent, the text declares nothing and is
+        selectable as its nearest declaring ancestor says. Selected text is
+        drawn with the [Highlight] role ({!Text_surface.section-paint}).
       - [tab_width]: tab stop width. Defaults to [2].
       - [truncate]: whether to truncate with ellipsis when [wrap = `None].
         Defaults to [false].
@@ -153,8 +150,6 @@ module Props : sig
     ?text_style:Ansi.Style.t ->
     ?wrap:Text_surface.wrap ->
     ?selectable:bool ->
-    ?selection_bg:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
     ?tab_width:int ->
     ?truncate:bool ->
     fragment list ->
@@ -180,13 +175,10 @@ val create :
   ?visible:bool ->
   ?z_index:int ->
   ?opacity:float ->
-  ?on_selection:((int * int) option -> unit) ->
   Props.t ->
   t
 (** [create ~parent props] is a text node attached to [parent], showing [props].
-    [on_selection] is called with the selected grapheme range, or [None], when
-    the selection of a [selectable] text changes; [Mosaic.text] and
-    [Mosaic.rich_text] take it as a callback that returns a message. *)
+*)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] replaces the accepted properties and content of [t],
@@ -260,21 +252,12 @@ val set_tab_width : t -> int -> unit
 (** {1:selection Selection} *)
 
 val set_selectable : t -> bool -> unit
-(** [set_selectable t v] enables or disables text selection. *)
-
-val set_selection_bg : t -> Ansi.Color.t option -> unit
-(** [set_selection_bg t color] sets the selection background color. *)
-
-val set_selection_fg : t -> Ansi.Color.t option -> unit
-(** [set_selection_fg t color] sets the selection foreground color. *)
-
-val set_on_selection : t -> ((int * int) option -> unit) option -> unit
-(** [set_on_selection t f] sets the selection-change callback used when
-    [selectable = true]. [None] clears it. *)
+(** [set_selectable t v] declares whether text selection reaches [t]
+    ({!Renderable.set_selectable}). *)
 
 val selected_text : t -> string
-(** [selected_text t] is the currently selected text. Returns [""] if no
-    selection is active. *)
+(** [selected_text t] is the part of the view selection in [t]'s text, [""] if
+    none ([Renderer.selection_text] gives all of it). *)
 
 (** {1:highlights Highlights} *)
 

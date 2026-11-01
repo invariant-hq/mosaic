@@ -246,8 +246,10 @@ module Props : sig
         [true].
       - [wrap] is the wrap mode for embedded {!Code} children. Defaults to
         [`None].
-      - [selectable] controls text selection on embedded {!Code} children.
-        Defaults to [true].
+      - [selectable] declares whether text selection reaches the embedded
+        {!Code} children ({!Renderable.set_selectable}). Absent, they declare
+        nothing, and are selectable as their ancestors declare. The gutters are
+        not ({!Line_number}).
       - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
 
       [Mosaic.diff] takes those of these labels it has, with these defaults. *)

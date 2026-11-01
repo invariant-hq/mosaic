@@ -213,9 +213,7 @@ let resolve_scroll t =
   Scroll_bar.set_scroll_position t.horizontal_bar x;
   Scroll_bar.set_scroll_position t.vertical_bar y;
   set_child_offsets t;
-  if dx <> 0 || dy <> 0 then (
-    report_scroll t ~dx ~dy;
-    Renderable.Private.request_selection_update t.node)
+  if dx <> 0 || dy <> 0 then report_scroll t ~dx ~dy
 
 let set_scroll_top t v = scroll_to_internal t ~y:v ()
 let set_scroll_left t v = scroll_to_internal t ~x:v ()
@@ -304,29 +302,29 @@ let auto_scroll_step acc direction amount =
   let cells = int_of_float total in
   (total -. float_of_int cells, cells)
 
+(* While a selection gesture in the box holds the pointer near or past an
+   edge, the box scrolls towards it, through its [on_scroll] proposal. *)
 let handle_auto_scroll t delta =
-  if t.auto_scrolling then
-    match Renderable.Private.get_selection t.node with
-    | Some sel when Selection.is_dragging sel ->
-        let scroll_x = auto_scroll_direction_x t t.auto_scroll_mouse_x in
-        let scroll_y = auto_scroll_direction_y t t.auto_scroll_mouse_y in
-        (* Speeds are cells per second. *)
-        let scroll_amount = t.cached_auto_scroll_speed *. Float.max 0. delta in
-        let acc_x, dx =
-          auto_scroll_step t.auto_scroll_acc_x scroll_x scroll_amount
-        in
-        let acc_y, dy =
-          auto_scroll_step t.auto_scroll_acc_y scroll_y scroll_amount
-        in
-        t.auto_scroll_acc_x <- acc_x;
-        t.auto_scroll_acc_y <- acc_y;
-        if dx <> 0 || dy <> 0 then
-          scroll_to_internal t
-            ?x:(if dx = 0 then None else Some (t.scroll_x + dx))
-            ?y:(if dy = 0 then None else Some (t.scroll_y + dy))
-            ();
-        if scroll_x = 0 && scroll_y = 0 then stop_auto_scroll t
-    | _ -> stop_auto_scroll t
+  if t.auto_scrolling then begin
+    let scroll_x = auto_scroll_direction_x t t.auto_scroll_mouse_x in
+    let scroll_y = auto_scroll_direction_y t t.auto_scroll_mouse_y in
+    (* Speeds are cells per second. *)
+    let scroll_amount = t.cached_auto_scroll_speed *. Float.max 0. delta in
+    let acc_x, dx =
+      auto_scroll_step t.auto_scroll_acc_x scroll_x scroll_amount
+    in
+    let acc_y, dy =
+      auto_scroll_step t.auto_scroll_acc_y scroll_y scroll_amount
+    in
+    t.auto_scroll_acc_x <- acc_x;
+    t.auto_scroll_acc_y <- acc_y;
+    if dx <> 0 || dy <> 0 then
+      scroll_to_internal t
+        ?x:(if dx = 0 then None else Some (t.scroll_x + dx))
+        ?y:(if dy = 0 then None else Some (t.scroll_y + dy))
+        ();
+    if scroll_x = 0 && scroll_y = 0 then stop_auto_scroll t
+  end
 
 (* ───── Metrics Recalculation ───── *)
 
@@ -412,9 +410,6 @@ let on_mouse t (event : Event.mouse) =
             Event.Mouse.stop_propagation event)
         end
       end
-  | Drag { button = Left } ->
-      update_auto_scroll t (Event.Mouse.x event) (Event.Mouse.y event)
-  | Up { button = Left; _ } -> stop_auto_scroll t
   | _ -> ()
 
 (* ───── Keyboard ───── *)
@@ -682,6 +677,16 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
     (Some (fun pos -> scroll_to_internal t ~y:pos ()));
   Scroll_bar.set_on_change t.horizontal_bar
     (Some (fun pos -> scroll_to_internal t ~x:pos ()));
+  (* The box is a region of text selection: a selection that starts in its
+     content stays in it, and its gestures scroll the box. *)
+  Renderable.Private.set_region node
+    (Some
+       {
+         viewport = viewport_node;
+         content = content_node;
+         drag = (fun ~x ~y -> update_auto_scroll t x y);
+         settle = (fun () -> stop_auto_scroll t);
+       });
   (* Wire mouse handler *)
   Renderable.on_mouse node (on_mouse t);
   (* Wire keyboard handler *)

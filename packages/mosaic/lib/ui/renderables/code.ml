@@ -18,14 +18,12 @@ module Props = struct
     wrap : Text_surface.wrap;
     tab_width : int;
     truncate : bool;
-    selectable : bool;
-    selection_bg : Ansi.Color.t option;
-    selection_fg : Ansi.Color.t option;
+    selectable : bool option;
   }
 
   let make ?(content = "") ?syntax ?(conceal = true)
       ?(text_style = Ansi.Style.default) ?(wrap = `None) ?(tab_width = 4)
-      ?(truncate = false) ?(selectable = true) ?selection_bg ?selection_fg () =
+      ?(truncate = false) ?selectable () =
     if tab_width < 1 then invalid_arg "Code.Props.make: tab width below 1";
     {
       content;
@@ -36,8 +34,6 @@ module Props = struct
       tab_width;
       truncate;
       selectable;
-      selection_bg;
-      selection_fg;
     }
 
   let default = make ()
@@ -48,9 +44,7 @@ module Props = struct
     && Bool.equal a.conceal b.conceal
     && Ansi.Style.equal a.text_style b.text_style
     && a.wrap = b.wrap && a.tab_width = b.tab_width && a.truncate = b.truncate
-    && a.selectable = b.selectable
-    && Option.equal Ansi.Color.equal a.selection_bg b.selection_bg
-    && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
+    && Option.equal Bool.equal a.selectable b.selectable
 end
 
 (* Types *)
@@ -73,7 +67,6 @@ type t = {
 let node t = Text_renderable.node t.text
 let buffer t = Text_renderable.buffer t.text
 let surface t = Text_renderable.surface t.text
-let set_on_selection t h = Text_renderable.set_on_selection t.text h
 let set_on_rows_change t h = t.on_rows_change <- h
 let notify_rows_change t = Option.iter (fun f -> f ()) t.on_rows_change
 
@@ -188,14 +181,12 @@ let render_before t _node grid ~dt:_ =
 
 (* Construction *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_selection
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     (props : Props.t) =
   let text =
     Text_renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       ~text_style:props.text_style ~wrap:props.wrap ~tab_width:props.tab_width
-      ~truncate:props.truncate ~selectable:props.selectable
-      ?selection_bg:props.selection_bg ?selection_fg:props.selection_fg
-      ?on_selection ()
+      ~truncate:props.truncate ?selectable:props.selectable ()
   in
   let node = Text_renderable.node text in
   let session =
@@ -260,11 +251,6 @@ let apply_props t (props : Props.t) =
     Text_renderable.set_truncate t.text props.truncate;
     metrics_changed := true
   end;
-  (* Selection colors *)
-  if not (Option.equal Ansi.Color.equal t.props.selection_bg props.selection_bg)
-  then Text_renderable.set_selection_bg t.text props.selection_bg;
-  if not (Option.equal Ansi.Color.equal t.props.selection_fg props.selection_fg)
-  then Text_renderable.set_selection_fg t.text props.selection_fg;
   (* Selectable *)
   if t.props.selectable <> props.selectable then
     Text_renderable.set_selectable t.text props.selectable;

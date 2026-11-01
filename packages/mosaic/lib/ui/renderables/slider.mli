@@ -78,7 +78,8 @@ val create :
   t
 (** [create ~parent props] is a slider attached to [parent], showing [props].
     [on_change] receives clamped proposals from mouse interaction. Input
-    proposes a value; it does not accept it. *)
+    proposes a value; it does not accept it. The node declares itself
+    unselectable ({!Renderable.set_selectable}). *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] accepts all properties, clamps the value to the

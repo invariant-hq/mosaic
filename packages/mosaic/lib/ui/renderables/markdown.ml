@@ -139,9 +139,7 @@ module Props = struct
     conceal : bool;
     streaming : bool;
     style : Style.t option;
-    selectable : bool;
-    selection_bg : Ansi.Color.t option;
-    selection_fg : Ansi.Color.t option;
+    selectable : bool option;
     render_node : render_node option;
     render_code : render_code option;
     highlighter : Code.Highlighter.t option;
@@ -149,16 +147,13 @@ module Props = struct
   }
 
   let make ?(content = "") ?(conceal = true) ?(streaming = false) ?style
-      ?(selectable = true) ?selection_bg ?selection_fg ?render_node ?render_code
-      ?highlighter ?syntax_style () =
+      ?selectable ?render_node ?render_code ?highlighter ?syntax_style () =
     {
       content;
       conceal;
       streaming;
       style;
       selectable;
-      selection_bg;
-      selection_fg;
       render_node;
       render_code;
       highlighter;
@@ -171,9 +166,7 @@ module Props = struct
     String.equal a.content b.content
     && a.conceal = b.conceal && a.streaming = b.streaming
     && Option.equal Style.equal a.style b.style
-    && a.selectable = b.selectable
-    && Option.equal Ansi.Color.equal a.selection_bg b.selection_bg
-    && Option.equal Ansi.Color.equal a.selection_fg b.selection_fg
+    && Option.equal Bool.equal a.selectable b.selectable
     && Option.equal ( == ) a.render_node b.render_node
     && Option.equal ( == ) a.render_code b.render_code
     && Option.equal ( == ) a.highlighter b.highlighter
@@ -221,10 +214,6 @@ type render_env = {
   conceal : bool;
   defs : Cmarkit.Label.defs;
   streaming : bool;
-  selectable : bool;
-  selection_bg : Ansi.Color.t option;
-  selection_fg : Ansi.Color.t option;
-  on_text_selection : ((int * int) option -> unit) option;
   render_node : render_node option;
   render_code : render_code option;
   highlighter : Code.Highlighter.t option;
@@ -239,10 +228,6 @@ type t = {
   mutable style : Style.t option;
   mutable conceal : bool;
   mutable streaming : bool;
-  mutable selectable : bool;
-  mutable selection_bg : Ansi.Color.t option;
-  mutable selection_fg : Ansi.Color.t option;
-  mutable on_selection : (string option -> unit) option;
   mutable blocks : tagged_block list;
   mutable last_defs : Cmarkit.Label.defs;
   mutable render_node : render_node option;
@@ -257,41 +242,12 @@ type t = {
 let node t = t.node
 let content t = t.content
 
-let rec selected_text_of_widget acc = function
-  | Text_widget text ->
-      let selected = String.trim (Text.selected_text text) in
-      if String.equal selected "" then acc else selected :: acc
-  | Code_widget _ -> acc
-  | Box_widget (_, children) | Container_widget (_, children) ->
-      List.fold_left selected_text_of_widget acc children
-
-let selected_text t =
-  t.blocks
-  |> List.fold_left
-       (fun acc block -> selected_text_of_widget acc block.widget)
-       []
-  |> List.rev |> String.concat "\n"
-
-let fire_on_selection t =
-  match t.on_selection with
-  | None -> ()
-  | Some f ->
-      let text = String.trim (selected_text t) in
-      f (if String.equal text "" then None else Some text)
-
-let configure_text (env : render_env) text =
-  Text.set_selectable text env.selectable;
-  Text.set_selection_bg text env.selection_bg;
-  Text.set_selection_fg text env.selection_fg;
-  Text.set_on_selection text env.on_text_selection
-
-let create_text ~(env : render_env) ~parent ?index ?id ?style ?visible ?z_index
-    ?opacity ?content ?text_style ?(wrap = `None) ?tab_width ?truncate () =
+(* A block's text declares no selectability: it is selectable as the
+   markdown is. *)
+let create_text ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
+    ?text_style ?(wrap = `None) ?tab_width ?truncate () =
   Text.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
-    ?on_selection:env.on_text_selection
-    (Text.Props.make ?content ?text_style ~wrap ~selectable:env.selectable
-       ?selection_bg:env.selection_bg ?selection_fg:env.selection_fg ?tab_width
-       ?truncate ())
+    (Text.Props.make ?content ?text_style ~wrap ?tab_width ?truncate ())
 
 (* ───── Inline Rendering ───── *)
 
@@ -502,7 +458,7 @@ let render_paragraph ~(env : render_env) ~parent ?index ~is_last
       inline
   in
   let text =
-    create_text ~env ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
+    create_text ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
   in
   Text.set_styled_text text spans;
   { tag = Para_tag; widget = Text_widget text; ast = empty_ast }
@@ -526,7 +482,7 @@ let render_heading ~(env : render_env) ~parent ?index ~is_last
       { Text_buffer.text = marker; style = heading_style } :: spans
   in
   let text =
-    create_text ~env ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
+    create_text ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
   in
   Text.set_styled_text text spans;
   { tag = Head_tag; widget = Text_widget text; ast = empty_ast }
@@ -542,8 +498,7 @@ let render_code_block_default ~(env : render_env) ~parent ?index ~is_last
       (Box.Props.make ~border:true ~border_sides:[ `Left ] ?title ())
   in
   let text =
-    create_text ~env ~parent:(Box.node box) ~content:code_text
-      ~text_style:code_style
+    create_text ~parent:(Box.node box) ~content:code_text ~text_style:code_style
       ~style:
         (Toffee.Style.make
            ~size:
@@ -581,7 +536,7 @@ let render_thematic_break ~(env : render_env) ~parent ?index ~is_last
     (_tb : Cmarkit.Block.Thematic_break.t) =
   let hr_style = env.style Thematic_break in
   let text =
-    create_text ~env ~parent ?index
+    create_text ~parent ?index
       ~content:"───────────────────────────────────────" ~text_style:hr_style
       ~style:(block_style ~is_last) ~truncate:true ()
   in
@@ -593,7 +548,7 @@ let render_html_block ~(env : render_env) ~parent ?index ~is_last
     String.concat "\n" (List.map Cmarkit.Block_line.to_string lines)
   in
   let text =
-    create_text ~env ~parent ?index ~content:text_content
+    create_text ~parent ?index ~content:text_content
       ~text_style:(env.style Default) ~style:(block_style ~is_last) ()
   in
   { tag = Html_tag; widget = Text_widget text; ast = empty_ast }
@@ -660,7 +615,7 @@ and render_list_item ~(env : render_env) ~parent ~is_last ~tight ~list_type
         string_of_int n ^ ". "
   in
   let _marker =
-    create_text ~env ~parent:row ~content:marker_text
+    create_text ~parent:row ~content:marker_text
       ~text_style:(env.style List_marker)
       ~style:
         (Toffee.Style.make
@@ -737,8 +692,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
   (* Fallback: no columns, or no header and no data rows *)
   if col_count = 0 || (Option.is_none !header_cells && data_rows = []) then begin
     let text =
-      create_text ~env ~parent ?index ~content:"" ~style:(block_style ~is_last)
-        ()
+      create_text ~parent ?index ~content:"" ~style:(block_style ~is_last) ()
     in
     { tag = Table_tag; widget = Text_widget text; ast = empty_ast }
   end
@@ -816,7 +770,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                        ?border_color ())
                 in
                 let text =
-                  create_text ~env ~parent:(Box.node header_box)
+                  create_text ~parent:(Box.node header_box)
                     ~style:cell_text_style ~truncate:true ()
                 in
                 Text.set_styled_text text spans;
@@ -839,7 +793,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                 let is_last_row = row_idx = data_count - 1 in
                 if is_last_row then begin
                   let text =
-                    create_text ~env ~parent:(Box.node col_box)
+                    create_text ~parent:(Box.node col_box)
                       ~style:cell_text_style ~truncate:true ()
                   in
                   Text.set_styled_text text spans;
@@ -852,7 +806,7 @@ and render_table ~(env : render_env) ~parent ?index ~is_last
                          ?border_color ())
                   in
                   let text =
-                    create_text ~env ~parent:(Box.node cell_box)
+                    create_text ~parent:(Box.node cell_box)
                       ~style:cell_text_style ~truncate:true ()
                   in
                   Text.set_styled_text text spans;
@@ -1123,12 +1077,6 @@ let render_env t defs =
     conceal = t.conceal;
     defs;
     streaming = t.streaming;
-    selectable = t.selectable;
-    selection_bg = t.selection_bg;
-    selection_fg = t.selection_fg;
-    on_text_selection =
-      (if Option.is_some t.on_selection then Some (fun _ -> fire_on_selection t)
-       else None);
     render_node = t.render_node;
     render_code = t.render_code;
     highlighter = t.highlighter;
@@ -1254,7 +1202,7 @@ let update_blocks ?old_content t =
      raw *)
   if new_blocks = [] && t.content <> "" then begin
     let text =
-      create_text ~env ~parent:t.node ~content:t.content
+      create_text ~parent:t.node ~content:t.content
         ~style:(block_style ~is_last:true)
         ~wrap:`Word ()
     in
@@ -1302,15 +1250,13 @@ let follow_theme t =
 (* ───── Construction ───── *)
 
 let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
-    ?opacity ?on_selection (props : Props.t) =
+    ?opacity (props : Props.t) =
   let ({
          content;
          conceal;
          streaming;
          style;
          selectable;
-         selection_bg;
-         selection_fg;
          render_node;
          render_code;
          highlighter;
@@ -1331,6 +1277,7 @@ let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
     |> Toffee.Style.set_width full_width
   in
   Renderable.set_style node effective_style;
+  Renderable.set_selectable node selectable;
   let t =
     {
       node;
@@ -1338,10 +1285,6 @@ let create ~parent ?index ?id ?(layout_style = column_style) ?visible ?z_index
       style;
       conceal;
       streaming;
-      selectable;
-      selection_bg;
-      selection_fg;
-      on_selection;
       blocks = [];
       last_defs = Cmarkit.Label.Map.empty;
       render_node;
@@ -1404,37 +1347,7 @@ let set_streaming t v =
     update_blocks t
   end
 
-let rec apply_selection_to_widget env = function
-  | Text_widget text -> configure_text env text
-  | Code_widget _ -> ()
-  | Box_widget (_, children) | Container_widget (_, children) ->
-      List.iter (apply_selection_to_widget env) children
-
-let apply_selection t =
-  let env = render_env t t.last_defs in
-  List.iter (fun block -> apply_selection_to_widget env block.widget) t.blocks
-
-let set_selectable t v =
-  if t.selectable <> v then begin
-    t.selectable <- v;
-    apply_selection t
-  end
-
-let set_selection_bg t color =
-  if not (Option.equal Ansi.Color.equal t.selection_bg color) then begin
-    t.selection_bg <- color;
-    apply_selection t
-  end
-
-let set_selection_fg t color =
-  if not (Option.equal Ansi.Color.equal t.selection_fg color) then begin
-    t.selection_fg <- color;
-    apply_selection t
-  end
-
-let set_on_selection t f =
-  t.on_selection <- f;
-  apply_selection t
+let set_selectable t v = Renderable.set_selectable t.node (Some v)
 
 (* ───── Props Application ───── *)
 
@@ -1464,9 +1377,7 @@ let apply_props t (props : Props.t) =
   t.conceal <- props.conceal;
   t.streaming <- props.streaming;
   t.content <- props.content;
-  set_selectable t props.selectable;
-  set_selection_bg t props.selection_bg;
-  set_selection_fg t props.selection_fg;
+  Renderable.set_selectable t.node props.selectable;
   if renderers_changed then begin
     List.iter (fun tb -> destroy_widget tb.widget) t.blocks;
     t.blocks <- [];

@@ -69,6 +69,7 @@ val box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?inert:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
@@ -135,6 +136,7 @@ val button :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_focus_request:'msg ->
   ?on_size:(w:int -> h:int -> 'msg option) ->
   ?focused:bool ->
@@ -200,6 +202,7 @@ val scroll_box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -279,11 +282,8 @@ val text :
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
-  ?on_selection:((int * int) option -> 'msg option) ->
   ?children:string list ->
   unit ->
   'msg t
@@ -344,11 +344,8 @@ val rich_text :
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
-  ?on_selection:((int * int) option -> 'msg option) ->
   ?children:Text.fragment list ->
   unit ->
   'msg t
@@ -414,9 +411,6 @@ val code :
   ?tab_width:int ->
   ?truncate:bool ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
-  ?on_selection:((int * int) option -> 'msg option) ->
   ?children:string list ->
   unit ->
   'msg t
@@ -477,8 +471,6 @@ val markdown :
   ?conceal:bool ->
   ?streaming:bool ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?render_node:
     (Cmarkit.Block.t ->
     parent:Mosaic_ui.Renderable.t ->
@@ -491,7 +483,6 @@ val markdown :
     Mosaic_ui.Renderable.t) ->
   ?highlighter:Code.Highlighter.t ->
   ?syntax_style:Syntax_style.t ->
-  ?on_selection:(string option -> 'msg option) ->
   ?children:string list ->
   unit ->
   'msg t
@@ -554,8 +545,6 @@ val input :
   ?focused_text_color:Ansi.Color.t ->
   ?focused_background_color:Ansi.Color.t ->
   ?placeholder_color:Ansi.Color.t ->
-  ?selection_color:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
@@ -633,8 +622,6 @@ val textarea :
   ?focused_text_color:Ansi.Color.t ->
   ?focused_background_color:Ansi.Color.t ->
   ?placeholder_color:Ansi.Color.t ->
-  ?selection_color:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
@@ -694,6 +681,7 @@ val line_number :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->

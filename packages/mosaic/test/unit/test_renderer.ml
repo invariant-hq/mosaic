@@ -9,26 +9,43 @@ let do_frame ?(width = 80) ?(height = 24) ?(dt = 16.0) t =
   Renderer.render_frame t ~width ~height ~dt;
   ignore (Renderer.render ~full:true t : string)
 
-let make_child ~parent ~x ~y ~w ~h ?focusable () =
+let absolute ~x ~y ~w ~h =
   let lpa = Toffee.Style.Length_percentage_auto.length in
-  let style =
-    Toffee.Style.default
-    |> Toffee.Style.set_position Absolute
-    |> Toffee.Style.set_inset
-         {
-           left = lpa (Float.of_int x);
-           top = lpa (Float.of_int y);
-           right = Toffee.Style.Length_percentage_auto.auto;
-           bottom = Toffee.Style.Length_percentage_auto.auto;
-         }
-    |> Toffee.Style.set_width (Toffee.Style.Dimension.length (Float.of_int w))
-    |> Toffee.Style.set_height (Toffee.Style.Dimension.length (Float.of_int h))
-  in
-  let child = Renderable.create ~parent ~style () in
+  Toffee.Style.default
+  |> Toffee.Style.set_position Absolute
+  |> Toffee.Style.set_inset
+       {
+         left = lpa (Float.of_int x);
+         top = lpa (Float.of_int y);
+         right = Toffee.Style.Length_percentage_auto.auto;
+         bottom = Toffee.Style.Length_percentage_auto.auto;
+       }
+  |> Toffee.Style.set_width (Toffee.Style.Dimension.length (Float.of_int w))
+  |> Toffee.Style.set_height (Toffee.Style.Dimension.length (Float.of_int h))
+
+let make_child ~parent ~x ~y ~w ~h ?focusable () =
+  let child = Renderable.create ~parent ~style:(absolute ~x ~y ~w ~h) () in
   (match focusable with
   | Some v -> Renderable.set_focusable child v
   | None -> ());
   child
+
+(* Five rows of ten graphemes, for a text of ten by five cells. *)
+let rows_of_ten = "0123456789\nabcdefghij\nABCDEFGHIJ\nklmnopqrst\nKLMNOPQRST"
+
+(* A text node placed as [make_child] places a node. *)
+let make_text ~parent ~x ~y ~w ~h ?focusable ?(content = rows_of_ten) () =
+  let node =
+    Text.node
+      (Text.create ~parent ~style:(absolute ~x ~y ~w ~h)
+         (Text.Props.make ~content ()))
+  in
+  (match focusable with
+  | Some v -> Renderable.set_focusable node v
+  | None -> ());
+  node
+
+let selected t = Renderer.selection_text t
 
 let mouse ?(modifiers = Matrix_input.Keystroke.no_mods) ~x ~y kind :
     Matrix_input.Mouse_report.t =
@@ -1134,8 +1151,8 @@ let selection_reads_rows_out_of_view () =
   do_frame ~width:20 ~height:5 t;
   dispatch_mouse t (mouse_press ~x:0 ~y:0 ());
   dispatch_mouse t (mouse_motion ~left:true ~x:19 ~y:4 ());
-  equal ~msg:"the rows in view" (option string)
-    (Some "new-0new-1new-2new-3new-4")
+  equal ~msg:"the rows in view, a line each" (option string)
+    (Some "new-0\nnew-1\nnew-2\nnew-3\nnew-4")
     (Renderer.selection_text t)
 
 let selection_reads_the_top_layer () =
@@ -1507,21 +1524,16 @@ let click_walks_up_to_focusable_parent () =
   | None -> fail "expected parent to be focused"
 
 let left_click_focuses_selectable_node () =
-  (* Starting a text selection consumes the Down event; the focus request
-     still runs before it. *)
+  (* The focus request runs before a press starts a text selection. *)
   let t = make_renderer () in
   let child =
-    make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 ~focusable:true ()
+    make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 ~focusable:true ()
   in
   grant_focus_on_request t child;
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
   do_frame t;
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
-  is_some ~msg:"selection started" (Renderer.selection t);
+  dispatch_mouse t (mouse_motion ~left:true ~x:9 ~y:7 ());
+  equal ~msg:"selection started" (option string) (Some "CDE") (selected t);
   match Renderer.focused t with
   | Some n -> is_true ~msg:"selectable child focused" (n == child)
   | None -> fail "expected focus after click on selectable node"
@@ -1770,26 +1782,16 @@ let mouse_bubbles_until_stopped () =
 
 let prevented_press_starts_no_selection () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  let child = make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   Renderable.on_mouse child Event.Mouse.prevent_default;
   do_frame t;
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
-  is_none ~msg:"a selection is a default a handler can prevent"
-    (Renderer.selection t)
+  dispatch_mouse t (mouse_motion ~left:true ~x:9 ~y:7 ());
+  is_none ~msg:"a selection is a default a handler can prevent" (selected t)
 
 let click_on_selectable_node () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  let child = make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   let clicks = ref 0 in
   Renderable.set_on_click child (Some (fun _ -> incr clicks));
   do_frame t;
@@ -2157,63 +2159,53 @@ let right_button_does_not_capture () =
 
 let selection_starts_none () =
   let t = make_renderer () in
-  is_none ~msg:"no selection" (Renderer.selection t)
+  is_none ~msg:"no selection" (selected t)
 
-let click_on_selectable_starts_selection () =
+(* §3.1 Anchor: a press the pointer does not leave selects nothing, and a
+   drag selects from the pressed grapheme to the pointer's. *)
+let click_on_selectable_selects_nothing () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  ignore
+    (make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () : Renderable.t);
   do_frame t;
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
-  is_some ~msg:"selection started" (Renderer.selection t)
+  is_none ~msg:"a press selects nothing" (selected t);
+  dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
+  is_none ~msg:"nor does its release" (selected t)
 
 let drag_updates_selection_focus () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  ignore
+    (make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () : Renderable.t);
   do_frame t;
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
-  is_some ~msg:"selection active" (Renderer.selection t);
   dispatch_mouse t (mouse_motion ~left:true ~x:12 ~y:8 ());
-  match Renderer.selection t with
-  | Some sel ->
-      let f = Selection.focus sel in
-      equal ~msg:"focus x" int 12 f.x;
-      equal ~msg:"focus y" int 8 f.y
-  | None -> fail "expected active selection"
+  equal ~msg:"from the press to the pointer" (option string)
+    (Some "CDEFGHIJ\nklmnopqr") (selected t);
+  dispatch_mouse t (mouse_motion ~left:true ~x:6 ~y:6 ());
+  equal ~msg:"backwards, the pressed grapheme stays" (option string)
+    (Some "bcdefghij\nABC") (selected t)
 
+(* §3.1 Focus: the release settles the focus where the band ends; a later
+   motion with no button leaves it. *)
 let release_finishes_selection () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  ignore
+    (make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () : Renderable.t);
   do_frame t;
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
   dispatch_mouse t (mouse_motion ~left:true ~x:12 ~y:8 ());
   dispatch_mouse t (mouse_release ~x:12 ~y:8 ());
-  match Renderer.selection t with
-  | Some sel -> is_false ~msg:"not dragging" (Selection.is_dragging sel)
-  | None -> fail "expected selection"
+  dispatch_mouse t (mouse_motion ~x:6 ~y:9 ());
+  equal ~msg:"the release keeps it" (option string) (Some "CDEFGHIJ\nklmnopqr")
+    (selected t)
 
+(* §3.5 Release: chording keeps the drag. A right press and release in the
+   middle of a left drag leave it dragging; the left release ends it. *)
 let unrelated_button_release_preserves_selection_drag () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  ignore
+    (make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () : Renderable.t);
   do_frame t;
   let decoder = Matrix_input.Decoder.create () in
   let feed sequence =
@@ -2225,33 +2217,27 @@ let unrelated_button_release_preserves_selection_drag () =
           failf "unexpected input: %a" Matrix_input.Decoder.pp_event event)
   in
   feed "\027[<0;8;8M\027[<32;10;8M\027[<2;10;8M\027[<2;10;8m";
-  let sel =
-    match Renderer.selection t with
-    | Some sel -> sel
-    | None -> fail "right-button click cleared the selection"
-  in
-  is_true ~msg:"right-button release leaves selection dragging"
-    (Selection.is_dragging sel);
+  equal ~msg:"right-button click keeps the selection" (option string)
+    (Some "CDE") (selected t);
   feed "\027[<32;13;9M";
-  equal ~msg:"left drag continues after right release" (pair int int) (12, 8)
-    ((Selection.focus sel).x, (Selection.focus sel).y);
+  equal ~msg:"left drag continues after right release" (option string)
+    (Some "CDEFGHIJ\nklmnopqr") (selected t);
   feed "\027[<0;13;9m";
-  is_false ~msg:"left-button release finishes selection"
-    (Selection.is_dragging sel)
+  feed "\027[<35;14;10M";
+  equal ~msg:"left-button release settles the selection" (option string)
+    (Some "CDEFGHIJ\nklmnopqr") (selected t)
 
 let clear_selection_resets () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  ignore
+    (make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () : Renderable.t);
   do_frame t;
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
-  is_some ~msg:"selection exists" (Renderer.selection t);
+  dispatch_mouse t (mouse_motion ~left:true ~x:9 ~y:7 ());
+  dispatch_mouse t (mouse_release ~x:9 ~y:7 ());
+  is_some ~msg:"selection exists" (selected t);
   Renderer.clear_selection t;
-  is_none ~msg:"cleared" (Renderer.selection t)
+  is_none ~msg:"cleared" (selected t)
 
 let scroll_on_dead_space_reaches_focused_scrollable () =
   let t = make_renderer () in
@@ -2292,32 +2278,26 @@ let selection_drag_auto_scrolls_scroll_box () =
       (Scroll_box.Props.make ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
-  let content_style =
-    Toffee.Style.default
-    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 18.)
-    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 30.)
-  in
-  let content =
-    Renderable.create ~parent:(Scroll_box.node sb) ~style:content_style ()
-  in
-  let changes = ref 0 in
-  Renderable.set_selection content
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ ->
-      incr changes;
-      true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  for i = 0 to 29 do
+    ignore
+      (Text.create ~parent:(Scroll_box.node sb)
+         (Text.Props.make ~content:(Printf.sprintf "line %d" i) ())
+        : Text.t)
+  done;
   do_frame ~width:20 ~height:8 t;
   dispatch_mouse t (mouse_press ~x:1 ~y:1 ());
   dispatch_mouse t (mouse_motion ~left:true ~x:1 ~y:7 ());
+  let before = selected t in
   do_frame ~width:20 ~height:8 ~dt:1. t;
   satisfies ~claim:"scroll box moved down (scroll_top > 0)" int
     (fun top -> top > 0)
     (Scroll_box.scroll_top sb);
-  satisfies ~claim:"selection was refreshed (more than 2 changes)" int
-    (fun n -> n > 2)
-    !changes
+  (* The focus is the pointer's cell, mapped again as the content scrolls
+     under it. *)
+  is_true ~msg:"the selection grew with the scroll"
+    (match (before, selected t) with
+    | Some a, Some b -> String.length b > String.length a
+    | _ -> false)
 
 let selection_drag_auto_scrolls_scroll_box_when_pointer_leaves_it () =
   let t = make_renderer () in
@@ -2331,19 +2311,12 @@ let selection_drag_auto_scrolls_scroll_box_when_pointer_leaves_it () =
       (Scroll_box.Props.make ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
-  let content_style =
-    Toffee.Style.default
-    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 18.)
-    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 30.)
-  in
-  let content =
-    Renderable.create ~parent:(Scroll_box.node sb) ~style:content_style ()
-  in
-  Renderable.set_selection content
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  for i = 0 to 29 do
+    ignore
+      (Text.create ~parent:(Scroll_box.node sb)
+         (Text.Props.make ~content:(Printf.sprintf "line %d" i) ())
+        : Text.t)
+  done;
   do_frame ~width:20 ~height:12 t;
   dispatch_mouse t (mouse_press ~x:1 ~y:1 ());
   dispatch_mouse t (mouse_motion ~left:true ~x:1 ~y:10 ());
@@ -2364,79 +2337,55 @@ let selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors () =
       (Scroll_box.Props.make ())
   in
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
-  let content_style =
-    Toffee.Style.default
-    |> Toffee.Style.set_width (Toffee.Style.Dimension.length 18.)
-    |> Toffee.Style.set_height (Toffee.Style.Dimension.length 30.)
-  in
-  let content =
-    Renderable.create ~parent:(Scroll_box.node sb) ~style:content_style ()
-  in
+  for i = 0 to 29 do
+    ignore
+      (Text.create ~parent:(Scroll_box.node sb)
+         (Text.Props.make ~content:(Printf.sprintf "line %d" i) ())
+        : Text.t)
+  done;
   let released = ref false in
   Renderable.on_mouse (Scroll_box.node sb) (fun event ->
       match Event.Mouse.kind event with
       | Up { button = Left; dragged = true } -> released := true
       | _ -> ());
-  Renderable.set_selection content
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
   do_frame ~width:20 ~height:12 t;
   dispatch_mouse t (mouse_press ~x:1 ~y:1 ());
   dispatch_mouse t (mouse_motion ~left:true ~x:1 ~y:10 ());
   dispatch_mouse t (mouse_release ~x:1 ~y:10 ());
   is_true ~msg:"release bubbled through scroll box" !released
 
-let selectable_child_receives_changed () =
+(* §3.4 Semantics: a press on a node selection does not reach leaves the
+   selection as it is. *)
+let press_on_unselectable_keeps_selection () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  let changed = ref false in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _sel ->
-      changed := true;
-      true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
+  ignore
+    (make_text ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:5 () : Renderable.t);
+  let other = make_child ~parent:(Renderer.root t) ~x:20 ~y:0 ~w:10 ~h:10 () in
+  Renderable.set_selectable other (Some false);
   do_frame t;
-  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
-  is_true ~msg:"on_change called" !changed
-
-let clear_notifies_selectables () =
-  let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  let clear_called = ref false in
-  Renderable.set_selection child
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> clear_called := true)
-    ~get_text:(fun () -> "");
-  do_frame t;
-  dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
-  Renderer.clear_selection t;
-  is_true ~msg:"clear called" !clear_called
-
-let click_on_non_selectable_clears_selection () =
-  let t = make_renderer () in
-  let selectable =
-    make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:10 ()
-  in
-  let non_selectable =
-    make_child ~parent:(Renderer.root t) ~x:20 ~y:0 ~w:10 ~h:10 ()
-  in
-  Renderable.set_selection selectable
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
-  do_frame t;
-  dispatch_mouse t (mouse_press ~x:5 ~y:5 ());
-  is_some ~msg:"selection active" (Renderer.selection t);
-  ignore non_selectable;
-  (* Click on non-selectable area *)
+  dispatch_mouse t (mouse_press ~x:1 ~y:0 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:3 ~y:0 ());
+  dispatch_mouse t (mouse_release ~x:3 ~y:0 ());
   dispatch_mouse t (mouse_press ~x:25 ~y:5 ());
-  is_none ~msg:"selection cleared" (Renderer.selection t)
+  dispatch_mouse t (mouse_release ~x:25 ~y:5 ());
+  equal ~msg:"selection kept" (option string) (Some "123") (selected t)
+
+(* A press on selectable content starts again: a click there leaves nothing
+   selected. *)
+let press_on_selectable_blank_clears_selection () =
+  let t = make_renderer () in
+  ignore
+    (make_text ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:5 () : Renderable.t);
+  ignore
+    (make_child ~parent:(Renderer.root t) ~x:20 ~y:0 ~w:10 ~h:10 ()
+      : Renderable.t);
+  do_frame t;
+  dispatch_mouse t (mouse_press ~x:1 ~y:0 ());
+  dispatch_mouse t (mouse_motion ~left:true ~x:3 ~y:0 ());
+  dispatch_mouse t (mouse_release ~x:3 ~y:0 ());
+  dispatch_mouse t (mouse_press ~x:25 ~y:5 ());
+  dispatch_mouse t (mouse_release ~x:25 ~y:5 ());
+  is_none ~msg:"selection cleared" (selected t)
 
 (* ── Pointer gestures (RFC 0006, §3.5) ── *)
 
@@ -2454,18 +2403,6 @@ let count_clicks node =
   let clicks = ref 0 in
   Renderable.set_on_click node (Some (fun _ -> incr clicks));
   clicks
-
-let make_selectable node =
-  Renderable.set_selection node
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun _ -> true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "")
-
-let selection_focus t =
-  match Renderer.selection t with
-  | Some sel -> ((Selection.focus sel).x, (Selection.focus sel).y)
-  | None -> fail "expected a selection"
 
 (* Some terminals report motion at the pressed cell, where xterm reports
    motion only to another cell: before the pointer leaves the cell, it is a
@@ -2644,8 +2581,7 @@ let motion_without_a_button_is_a_lost_release () =
    settles where the pointer was last reported, and nothing clicks. *)
 let pointer_lost_settles_the_held_press () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  make_selectable child;
+  let child = make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
   let log = record_mouse child in
   let clicks = count_clicks child in
   do_frame t;
@@ -2653,17 +2589,15 @@ let pointer_lost_settles_the_held_press () =
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
   dispatch_mouse t (mouse_motion ~left:true ~x:12 ~y:8 ());
   Renderer.pointer_lost t;
-  (match Renderer.selection t with
-  | Some sel ->
-      is_false ~msg:"the selection settles" (Selection.is_dragging sel)
-  | None -> fail "expected a selection");
+  equal ~msg:"the selection settles where the pointer was" (option string)
+    (Some "CDEFGHIJ\nklmnopqr") (selected t);
   is_none ~msg:"the capture ends" (Renderer.captured t);
   equal ~msg:"the captured node gets Drag_end and no drop" (list string)
     [ "Down(Left)"; "Drag(Left)"; "Drag_end(Left)" ]
     (seen log);
   dispatch_mouse t (mouse_motion ~left:true ~x:13 ~y:9 ());
-  equal ~msg:"a later motion selects nothing" (pair int int) (12, 8)
-    (selection_focus t);
+  equal ~msg:"a later motion selects nothing" (option string)
+    (Some "CDEFGHIJ\nklmnopqr") (selected t);
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
   Renderer.pointer_lost t;
   dispatch_mouse t (mouse_release ~x:7 ~y:7 ());
@@ -2673,16 +2607,16 @@ let pointer_lost_settles_the_held_press () =
    selects nothing, and its release settles nothing. *)
 let clear_during_a_drag_ends_its_selection () =
   let t = make_renderer () in
-  let child = make_child ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () in
-  make_selectable child;
+  ignore
+    (make_text ~parent:(Renderer.root t) ~x:5 ~y:5 ~w:10 ~h:5 () : Renderable.t);
   do_frame t;
   dispatch_mouse t (mouse_press ~x:7 ~y:7 ());
   dispatch_mouse t (mouse_motion ~left:true ~x:9 ~y:7 ());
   Renderer.clear_selection t;
   dispatch_mouse t (mouse_motion ~left:true ~x:12 ~y:8 ());
-  is_none ~msg:"the motion selects nothing" (Renderer.selection t);
+  is_none ~msg:"the motion selects nothing" (selected t);
   dispatch_mouse t (mouse_release ~x:12 ~y:8 ());
-  is_none ~msg:"the release settles nothing" (Renderer.selection t);
+  is_none ~msg:"the release settles nothing" (selected t);
   is_none ~msg:"the release ends the drag" (Renderer.captured t)
 
 (* A refused press takes its drag and release with it, also while another
@@ -3048,98 +2982,11 @@ let accepted_focus_does_not_retarget_press () =
   equal ~msg:"underlying target receives no part of rejected gesture" int 0
     (List.length !received)
 
-let selection_cleanup_revalidates_focus_target () =
-  List.iter
-    (fun change ->
-      let renderer = make_renderer () in
-      let parent = Renderer.root renderer in
-      let previous =
-        make_child ~parent ~x:0 ~y:0 ~w:5 ~h:2 ~focusable:true ()
-      in
-      let target = make_child ~parent ~x:10 ~y:0 ~w:5 ~h:2 ~focusable:true () in
-      let armed = ref false in
-      Renderable.set_selection previous
-        ~should_start:(fun ~x:_ ~y:_ -> true)
-        ~on_change:(fun selection ->
-          if !armed && Option.is_none selection then begin
-            armed := false;
-            (match change with
-            | `Hide -> Renderable.set_visible target false
-            | `Destroy -> Renderable.destroy_recursively target
-            | `Refocus | `Refocus_existing ->
-                ignore (Renderer.focus renderer previous : bool));
-            Renderer.prepare_layout renderer ~width:20 ~height:4
-          end;
-          true)
-        ~clear:(fun () -> ())
-        ~get_text:(fun () -> "");
-      Renderable.set_selection target
-        ~should_start:(fun ~x:_ ~y:_ -> true)
-        ~on_change:(fun _ -> true)
-        ~clear:(fun () -> ())
-        ~get_text:(fun () -> "");
-      Renderable.set_on_focus_request target
-        (Some (fun () -> ignore (Renderer.focus renderer target : bool)));
-      do_frame ~width:20 ~height:4 renderer;
-      dispatch_mouse renderer (mouse_press ~x:1 ~y:1 ());
-      if change = `Refocus_existing then
-        ignore (Renderer.focus renderer target : bool);
-      armed := true;
-      let received = record_mouse target in
-      let event =
-        Test_harness.dispatch_mouse renderer (mouse_press ~x:11 ~y:1 ())
-      in
-      is_true ~msg:"cleanup invalidates the press"
-        (Event.Mouse.default_prevented event);
-      is_none ~msg:"no selection starts on the invalidated target"
-        (Renderer.selection renderer);
-      (* The handlers see the press before its default starts the selection,
-         which the cleanup then invalidates. *)
-      equal ~msg:"invalidated target's handlers saw only the press" int 1
-        (List.length !received))
-    [ `Hide; `Destroy; `Refocus; `Refocus_existing ]
-
-let selection_notification_revalidates_focus_target () =
-  let renderer = make_renderer () in
-  let parent = Renderer.root renderer in
-  let modal = make_child ~parent ~x:10 ~y:0 ~w:5 ~h:2 ~focusable:true () in
-  let target = make_child ~parent ~x:0 ~y:0 ~w:5 ~h:2 ~focusable:true () in
-  Renderable.set_selection target
-    ~should_start:(fun ~x:_ ~y:_ -> true)
-    ~on_change:(fun selection ->
-      if Option.is_some selection then
-        ignore (Renderer.focus renderer modal : bool);
-      true)
-    ~clear:(fun () -> ())
-    ~get_text:(fun () -> "");
-  Renderable.set_on_focus_request target
-    (Some (fun () -> ignore (Renderer.focus renderer target : bool)));
-  let received = record_mouse target in
-  do_frame ~width:20 ~height:4 renderer;
-  List.iter
-    (fun mouse ->
-      let event = Test_harness.dispatch_mouse renderer mouse in
-      is_true ~msg:"selection callback invalidates the gesture"
-        (Event.Mouse.default_prevented event))
-    [
-      mouse_press ~x:1 ~y:1 ();
-      mouse_motion ~left:true ~x:2 ~y:1 ();
-      mouse_release ~x:2 ~y:1 ();
-    ];
-  is_none ~msg:"invalidated selection is cleared" (Renderer.selection renderer);
-  (* The handlers see the press before its default starts the selection; the
-     invalidated press takes its drag and release with it. *)
-  equal ~msg:"target receives only the press" int 1 (List.length !received)
-
 let () =
   run "mosaic.renderer"
     [
       test "accepted focus does not retarget press"
         accepted_focus_does_not_retarget_press;
-      test "selection cleanup revalidates focus target"
-        selection_cleanup_revalidates_focus_target;
-      test "selection notification revalidates focus target"
-        selection_notification_revalidates_focus_target;
       test "mouse uses changed geometry before paint"
         geometry_changes_route_mouse_before_paint;
       test "fresh hits respect stacking and scissors"
@@ -3338,8 +3185,8 @@ let () =
       group "Selection"
         [
           test "selection starts None" selection_starts_none;
-          test "click on selectable starts selection"
-            click_on_selectable_starts_selection;
+          test "a click on selectable text selects nothing"
+            click_on_selectable_selects_nothing;
           test "drag updates selection focus" drag_updates_selection_focus;
           test "release finishes selection" release_finishes_selection;
           test "unrelated button release preserves selection drag"
@@ -3353,11 +3200,10 @@ let () =
             "selection release after leaving scroll box goes to anchor \
              ancestors"
             selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors;
-          test "selectable child receives changed"
-            selectable_child_receives_changed;
-          test "clear notifies selectables" clear_notifies_selectables;
-          test "click on non-selectable clears selection"
-            click_on_non_selectable_clears_selection;
+          test "a press on unselectable content keeps the selection"
+            press_on_unselectable_keeps_selection;
+          test "a click on a selectable blank clears the selection"
+            press_on_selectable_blank_clears_selection;
         ];
       group "Pointer gestures"
         [

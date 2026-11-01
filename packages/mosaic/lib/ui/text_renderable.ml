@@ -2,9 +2,6 @@ type t = {
   node : Renderable.t;
   buffer : Text_buffer.t;
   surface : Text_surface.t;
-  mutable selectable : bool;
-  mutable on_selection : ((int * int) option -> unit) option;
-  mutable last_selection : (int * int) option;
 }
 
 (* Accessors *)
@@ -12,69 +9,16 @@ type t = {
 let node t = t.node
 let buffer t = t.buffer
 let surface t = t.surface
-let set_on_selection t h = t.on_selection <- h
 
 (* Selection *)
 
-let fire_on_selection t =
-  let selection = Text_surface.selection t.surface in
-  if selection <> t.last_selection then begin
-    t.last_selection <- selection;
-    Option.iter (fun f -> f selection) t.on_selection;
-    true
-  end
-  else false
+let set_selectable t declaration = Renderable.set_selectable t.node declaration
 
-let register_selection t =
-  if t.selectable then
-    Renderable.set_selection t.node
-      ~should_start:(fun ~x ~y ->
-        let nx = Renderable.x t.node in
-        let ny = Renderable.y t.node in
-        let w = Renderable.width t.node in
-        let h = Renderable.height t.node in
-        x >= nx && x < nx + w && y >= ny && y < ny + h)
-      ~on_change:(fun sel ->
-        match sel with
-        | None ->
-            Text_surface.reset_selection t.surface;
-            ignore (fire_on_selection t : bool);
-            true
-        | Some sel ->
-            let nx = Renderable.x t.node in
-            let ny = Renderable.y t.node in
-            let anchor = Selection.anchor sel in
-            let focus = Selection.focus sel in
-            let ax = anchor.x - nx and ay = anchor.y - ny in
-            let fx = focus.x - nx and fy = focus.y - ny in
-            let changed =
-              if Selection.is_start sel then
-                Text_surface.set_local_selection t.surface ~anchor_x:ax
-                  ~anchor_y:ay ~focus_x:fx ~focus_y:fy
-              else
-                Text_surface.update_local_selection t.surface ~anchor_x:ax
-                  ~anchor_y:ay ~focus_x:fx ~focus_y:fy
-            in
-            if changed then Renderable.request_render t.node;
-            ignore (fire_on_selection t : bool);
-            Text_surface.has_selection t.surface)
-      ~clear:(fun () ->
-        Text_surface.reset_selection t.surface;
-        ignore (fire_on_selection t : bool))
-      ~get_text:(fun () -> Text_surface.selected_text t.surface)
-  else begin
-    Text_surface.reset_selection t.surface;
-    ignore (fire_on_selection t : bool);
-    Renderable.unset_selection t.node
-  end
-
-let set_selectable t selectable =
-  if t.selectable <> selectable then begin
-    t.selectable <- selectable;
-    register_selection t
-  end
-
-let selected_text t = Text_surface.selected_text t.surface
+let selected_text t =
+  match Renderable.Private.selected_range t.node with
+  | None -> ""
+  | Some (first, last) ->
+      Text_buffer.text_in_range t.buffer ~start:first ~len:(last - first)
 
 (* Highlights *)
 
@@ -136,14 +80,11 @@ let set_tab_width t width =
     Text_surface.invalidate t.surface
 
 let set_truncate t truncate = Text_surface.set_truncate t.surface truncate
-let set_selection_bg t color = Text_surface.set_selection_bg t.surface color
-let set_selection_fg t color = Text_surface.set_selection_fg t.surface color
 
 (* Construction *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?text_style
-    ?wrap ?tab_width ?truncate ?selectable ?selection_bg ?selection_fg
-    ?on_selection () =
+    ?wrap ?tab_width ?truncate ?selectable () =
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
@@ -151,17 +92,12 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?text_style
   let tab_width = Option.value tab_width ~default:2 in
   let wrap = Option.value wrap ~default:`None in
   let truncate = Option.value truncate ~default:false in
-  let selectable = Option.value selectable ~default:true in
   let buffer = Text_buffer.create ~default_style:text_style ~tab_width () in
   let surface = Text_surface.create node buffer in
-  let t =
-    { node; buffer; surface; selectable; on_selection; last_selection = None }
-  in
+  let t = { node; buffer; surface } in
   if wrap <> `None then Text_surface.set_wrap surface wrap;
   if truncate then Text_surface.set_truncate surface true;
-  Text_surface.set_selection_bg surface selection_bg;
-  Text_surface.set_selection_fg surface selection_fg;
-  register_selection t;
+  Renderable.set_selectable node selectable;
   register_text_rows t;
   t
 

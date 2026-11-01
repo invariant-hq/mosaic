@@ -6,6 +6,11 @@
     handed to the change callback. The surface never commits a proposal itself;
     it displays the state it is next given.
 
+    The surface owns its text and its selection
+    ({!Renderable.Private.set_owned_text}): the view's selection leaves it out,
+    and a left press places the caret, from which a drag selects to the caret
+    the pointer hits.
+
     This module is an implementation module for editable text widgets such as
     {!Textarea}. *)
 
@@ -78,8 +83,6 @@ module Props : sig
     ?focused_text_color:Ansi.Color.t ->
     ?focused_background_color:Ansi.Color.t ->
     ?placeholder_color:Ansi.Color.t ->
-    ?selection_color:Ansi.Color.t ->
-    ?selection_fg:Ansi.Color.t ->
     ?cursor_style:[ `Block | `Line | `Underline ] ->
     ?cursor_color:Ansi.Color.t ->
     ?cursor_blinking:bool ->

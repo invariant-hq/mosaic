@@ -237,7 +237,8 @@ val create :
 (** [create ~parent props] is a tree widget attached to [parent], showing
     [props].
 
-    The widget is focusable and uses buffered rendering. *)
+    The widget is focusable, uses buffered rendering, and declares itself
+    unselectable ({!Renderable.set_selectable}). *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] applies [props] to [t], triggering the minimum

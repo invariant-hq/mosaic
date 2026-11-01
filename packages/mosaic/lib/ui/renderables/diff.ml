@@ -174,7 +174,7 @@ module Props = struct
     line_signs : line_sign list;
     show_line_numbers : bool;
     wrap : Text_surface.wrap;
-    selectable : bool;
+    selectable : bool option;
     text_style : Ansi.Style.t;
   }
 
@@ -182,7 +182,7 @@ module Props = struct
 
   let make ?(patch = empty_patch) ?(layout = Unified) ?theme ?highlight
       ?(line_highlights = []) ?(line_spans = []) ?(line_signs = [])
-      ?(show_line_numbers = true) ?(wrap = `None) ?(selectable = true)
+      ?(show_line_numbers = true) ?(wrap = `None) ?selectable
       ?(text_style = Ansi.Style.default) () =
     {
       patch;
@@ -210,7 +210,7 @@ module Props = struct
     && List.equal equal_line_sign a.line_signs b.line_signs
     && a.show_line_numbers = b.show_line_numbers
     && a.wrap = b.wrap
-    && a.selectable = b.selectable
+    && Option.equal Bool.equal a.selectable b.selectable
     && Ansi.Style.equal a.text_style b.text_style
 end
 
@@ -1063,14 +1063,14 @@ let code_props (props : Props.t) ~content ?syntax () =
   Code.Props.make ~content
     ?syntax:(Option.map code_syntax syntax)
     ~conceal:(code_conceal syntax) ~text_style:props.text_style ~wrap:props.wrap
-    ~selectable:props.selectable ()
+    ?selectable:props.selectable ()
 
 let make_code ~parent (props : Props.t) ~content ?syntax () =
   Code.create ~parent ~style:full_style
     (Code.Props.make ~content
        ?syntax:(Option.map code_syntax syntax)
        ~conceal:(code_conceal syntax) ~text_style:props.text_style
-       ~wrap:props.wrap ~selectable:props.selectable ())
+       ~wrap:props.wrap ?selectable:props.selectable ())
 
 let make_or_update_code existing ~parent (props : Props.t) ~content ?syntax () =
   match existing with

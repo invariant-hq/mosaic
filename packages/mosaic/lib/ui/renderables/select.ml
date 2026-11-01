@@ -500,6 +500,9 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   let node =
     Renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity ()
   in
+  (* It acts on a press, or paints no source text: a press on it neither
+     starts nor clears a text selection. *)
+  Renderable.set_selectable node (Some false);
   let items = Items.to_array props.options in
   let t =
     {

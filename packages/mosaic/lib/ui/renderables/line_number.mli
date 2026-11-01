@@ -8,7 +8,12 @@
     The gutter renders line numbers, optional signs, and per-line background
     colors. Content area colors are applied via a [render_before] callback on
     the content node. Setting [show_line_numbers] to [false] hides the gutter
-    entirely; it then takes no layout space. *)
+    entirely; it then takes no layout space.
+
+    The gutter declares itself unselectable ({!Renderable.set_selectable}), so a
+    press on it neither starts nor clears a text selection, and its numbers and
+    signs are never copied; the children are selectable as their ancestors
+    declare. *)
 
 (** {1:types Types} *)
 

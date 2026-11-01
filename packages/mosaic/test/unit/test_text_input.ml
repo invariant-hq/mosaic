@@ -18,8 +18,8 @@ let editor ?(value = "") ?max_length ?cursor ?selection () =
 
 let make_props ?state ?value ?max_length ?cursor ?selection ?placeholder
     ?text_color ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor () =
+    ?placeholder_color ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+    ?show_cursor () =
   let state =
     match state with
     | Some state -> state
@@ -27,8 +27,7 @@ let make_props ?state ?value ?max_length ?cursor ?selection ?placeholder
   in
   Text_input.Props.make ~state ?placeholder ?text_color ?background_color
     ?focused_text_color ?focused_background_color ?placeholder_color
-    ?selection_color ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking
-    ?selectable ?show_cursor ()
+    ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor ()
 
 let property_builders = Hashtbl.create 32
 
@@ -40,15 +39,14 @@ let update_editor widget f =
 
 let create_editor ~parent ?style ?value ?max_length ?cursor ?selection
     ?placeholder ?text_color ?background_color ?focused_text_color
-    ?focused_background_color ?placeholder_color ?selection_color ?selection_fg
-    ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
-    ?(accept = true) ?on_change ?on_submit () =
+    ?focused_background_color ?placeholder_color ?cursor_style ?cursor_color
+    ?cursor_blinking ?selectable ?show_cursor ?(accept = true) ?on_change
+    ?on_submit () =
   let state = editor ?value ?max_length ?cursor ?selection () in
   let props state =
     Text_input.Props.make ~state ?placeholder ?text_color ?background_color
       ?focused_text_color ?focused_background_color ?placeholder_color
-      ?selection_color ?selection_fg ?cursor_style ?cursor_color
-      ?cursor_blinking ?selectable ?show_cursor ()
+      ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor ()
   in
   let install = ref (fun state -> ignore state) in
   let on_change state =
@@ -59,8 +57,8 @@ let create_editor ~parent ?style ?value ?max_length ?cursor ?selection
     Text_input.create ~parent ?style ~on_change ?on_submit
       (Text_input.Props.make ~state ?placeholder ?text_color ?background_color
          ?focused_text_color ?focused_background_color ?placeholder_color
-         ?selection_color ?selection_fg ?cursor_style ?cursor_color
-         ?cursor_blinking ?selectable ?show_cursor ())
+         ?cursor_style ?cursor_color ?cursor_blinking ?selectable ?show_cursor
+         ())
   in
   (install := fun state -> Text_input.apply_props widget (props state));
   Hashtbl.replace property_builders
@@ -70,17 +68,15 @@ let create_editor ~parent ?style ?value ?max_length ?cursor ?selection
 
 let make_input ?value ?max_length ?cursor ?selection ?placeholder ?text_color
     ?background_color ?focused_text_color ?focused_background_color
-    ?placeholder_color ?selection_color ?selection_fg ?cursor_style
-    ?cursor_color ?cursor_blinking ?selectable ?show_cursor ?accept ?on_change
-    ?on_submit () =
+    ?placeholder_color ?cursor_style ?cursor_color ?cursor_blinking ?selectable
+    ?show_cursor ?accept ?on_change ?on_submit () =
   let t = make_ctx () in
   let root = make_root t in
   let widget =
     create_editor ~parent:root ?value ?max_length ?cursor ?selection
       ?placeholder ?text_color ?background_color ?focused_text_color
-      ?focused_background_color ?placeholder_color ?selection_color
-      ?selection_fg ?cursor_style ?cursor_color ?cursor_blinking ?selectable
-      ?show_cursor ?accept ?on_change ?on_submit ()
+      ?focused_background_color ?placeholder_color ?cursor_style ?cursor_color
+      ?cursor_blinking ?selectable ?show_cursor ?accept ?on_change ?on_submit ()
   in
   (t, widget)
 
@@ -188,11 +184,6 @@ let props_detects_background_color_diff () =
 let props_detects_cursor_style_diff () =
   let a = make_props ~cursor_style:`Block () in
   let b = make_props ~cursor_style:`Line () in
-  is_false ~msg:"different" (Text_input.Props.equal a b)
-
-let props_detects_selection_fg_diff () =
-  let a = make_props ~selection_fg:Ansi.Color.red () in
-  let b = make_props ~selection_fg:Ansi.Color.blue () in
   is_false ~msg:"different" (Text_input.Props.equal a b)
 
 let props_detects_cursor_color_diff () =
@@ -1073,7 +1064,6 @@ let doors_size = Mosaic.size ~width:10 ~height:1
 let doors_style = Toffee.Style.make ~size:doors_size ()
 let doors_red = Ansi.Color.red
 let abc = Editor.of_string "abc"
-let abc_selected = Editor.select ~anchor:0 ~cursor:2 abc
 let proposals = ref []
 
 let propose e =
@@ -1206,39 +1196,6 @@ let doors_placeholder_color () =
         (Text_input.create ~parent ~style:doors_style ~on_change:propose
            (Text_input.Props.make ~state:Editor.empty ~placeholder:"type"
               ~placeholder_color:doors_red ())))
-
-let doors_selection_color () =
-  Test_harness.reaches "selection_color"
-    ~base:
-      (Mosaic.input ~size:doors_size ~state:abc_selected ~on_change:propose ())
-    ~element:
-      (Mosaic.input ~size:doors_size ~state:abc_selected
-         ~selection_color:doors_red ~on_change:propose ())
-    ~create_base:(fun parent ->
-      Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~on_change:propose
-           (Text_input.Props.make ~state:abc_selected ())))
-    ~create:(fun parent ->
-      Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~on_change:propose
-           (Text_input.Props.make ~state:abc_selected ~selection_color:doors_red
-              ())))
-
-let doors_selection_fg () =
-  Test_harness.reaches "selection_fg"
-    ~base:
-      (Mosaic.input ~size:doors_size ~state:abc_selected ~on_change:propose ())
-    ~element:
-      (Mosaic.input ~size:doors_size ~state:abc_selected ~selection_fg:doors_red
-         ~on_change:propose ())
-    ~create_base:(fun parent ->
-      Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~on_change:propose
-           (Text_input.Props.make ~state:abc_selected ())))
-    ~create:(fun parent ->
-      Text_input.node
-        (Text_input.create ~parent ~style:doors_style ~on_change:propose
-           (Text_input.Props.make ~state:abc_selected ~selection_fg:doors_red ())))
 
 let doors_cursor_style () =
   Test_harness.reaches ~act:Test_harness.focus ~observe:caret "cursor_style"
@@ -1421,7 +1378,6 @@ let () =
           test "detects background_color diff"
             props_detects_background_color_diff;
           test "detects cursor_style diff" props_detects_cursor_style_diff;
-          test "detects selection_fg diff" props_detects_selection_fg_diff;
           test "detects cursor_color diff" props_detects_cursor_color_diff;
           test "detects cursor_blinking diff" props_detects_cursor_blinking_diff;
         ];
@@ -1591,8 +1547,6 @@ let () =
           test "focused_text_color" doors_focused_text_color;
           test "focused_background_color" doors_focused_background_color;
           test "placeholder_color" doors_placeholder_color;
-          test "selection_color" doors_selection_color;
-          test "selection_fg" doors_selection_fg;
           test "cursor_style" doors_cursor_style;
           test "cursor_color" doors_cursor_color;
           test "cursor_blinking" doors_cursor_blinking;

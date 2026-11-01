@@ -18,8 +18,6 @@ type t = {
   mutable ground_style : Ansi.Style.t;
   mutable highlight : Ansi.Style.t;
   mutable run_style : Ansi.Style.t;
-  mutable selection_bg : Ansi.Color.t option;
-  mutable selection_fg : Ansi.Color.t option;
   mutable selection : (int * int) option;
   (* Retain a bounded set of geometries, keyed by source version, the
      screen's width method and width, so that reading one again allocates
@@ -213,18 +211,6 @@ let set_ground t ground =
 
 (* ───── Selection ───── *)
 
-let set_selection_bg t bg =
-  if not (Option.equal Ansi.Color.equal t.selection_bg bg) then begin
-    t.selection_bg <- bg;
-    if Option.is_some t.selection then Renderable.request_render t.node
-  end
-
-let set_selection_fg t fg =
-  if not (Option.equal Ansi.Color.equal t.selection_fg fg) then begin
-    t.selection_fg <- fg;
-    if Option.is_some t.selection then Renderable.request_render t.node
-  end
-
 let local_caret t ~x ~y =
   Layout.hit (layout t) ~row:(t.scroll_y + y) ~column:(t.scroll_x + x)
 
@@ -278,6 +264,19 @@ let over base style =
   if Ansi.Style.equal base Ansi.Style.default then style
   else Ansi.Style.merge ~base ~overlay:style
 
+(* The graphemes drawn over [Highlight]: the surface's own selection, an
+   editor's, or else the view selection's part of the node's text, which the
+   renderer derives as the node paints. *)
+let highlighted t =
+  match t.selection with
+  | Some _ as range -> range
+  | None -> Renderable.Private.selected_range t.node
+
+(* Whether [row] ends its logical line with a line terminator. *)
+let ends_line geometry row =
+  row + 1 < Layout.row_count geometry
+  && Layout.continuation geometry (row + 1) = 0
+
 let render t _self grid ~dt:_ =
   let w = Renderable.width t.node and h = Renderable.height t.node in
   let ox = Renderable.x t.node and oy = Renderable.y t.node in
@@ -291,13 +290,13 @@ let render t _self grid ~dt:_ =
     let text = Layout.Source.text src in
     let tab_width = Text_buffer.tab_width t.buffer in
     let width_method = Renderable.width_method t.node in
-    let sel_start, sel_end = Option.value ~default:(0, 0) t.selection in
+    let sel_start, sel_end = Option.value ~default:(0, 0) (highlighted t) in
     (* The text's paint, resolved against the theme in scope: the content's
        style merged over the [Plain] role, then that over the surface the
-       text lies on, or over [Highlight] where it is selected and no
-       selection color is given. A default style merges as nothing, so the
-       default themes paint without allocating, and the styles are kept in
-       [t] so that a row's function captures nothing more. *)
+       text lies on, and [Highlight] over all of it where it is selected. A
+       default style merges as nothing, so the default themes paint without
+       allocating, and the styles are kept in [t] so that a row's function
+       captures nothing more. *)
     let theme = Renderable.theme t.node in
     t.role <- Theme.style theme Plain;
     t.ground_style <-
@@ -305,11 +304,19 @@ let render t _self grid ~dt:_ =
       | None -> Ansi.Style.default
       | Some s -> Theme.style theme s);
     t.highlight <- Theme.style theme Highlight;
+    (* The blanks after a selected line terminator, in the role on the
+       surface with [Highlight] over it. *)
+    let fill_style =
+      if sel_start < sel_end then over (over t.ground_style t.role) t.highlight
+      else Ansi.Style.default
+    in
+    let rows = Layout.row_count geometry in
     for y = y0 to y1 - 1 do
       let row = t.scroll_y + y - oy in
       let first_byte = ref 0 and last_byte = ref 0 and batch_x = ref 0 in
       let batch_style = ref Ansi.Style.default and active = ref false in
       let style_end = ref (-1) and base_style = ref Ansi.Style.default in
+      let selected_style = ref Ansi.Style.default in
       let flush () =
         if !active then begin
           Matrix_grid.draw_text ~style:!batch_style ~tab_width ~width_method
@@ -326,20 +333,12 @@ let render t _self grid ~dt:_ =
             let style, stop = Text_buffer.style_at t.buffer first in
             t.run_style <- over t.role style;
             base_style := over t.ground_style t.run_style;
+            if sel_start < sel_end then
+              selected_style := over !base_style t.highlight;
             style_end := stop
           end;
           let style =
-            if first < sel_end && last > sel_start then
-              match (t.selection_bg, t.selection_fg) with
-              | None, None ->
-                  Ansi.Style.merge ~base:t.highlight ~overlay:t.run_style
-              | bg, fg -> (
-                  let s =
-                    match bg with
-                    | None -> !base_style
-                    | Some bg -> Ansi.Style.bg bg !base_style
-                  in
-                  match fg with None -> s | Some fg -> Ansi.Style.fg fg s)
+            if first < sel_end && last > sel_start then !selected_style
             else !base_style
           in
           let x = ox + column - t.scroll_x in
@@ -372,7 +371,22 @@ let render t _self grid ~dt:_ =
               batch_x := x
             end
           end);
-      flush ()
+      flush ();
+      (* A selected line terminator fills the blank cells after its row to
+         the node's right edge; a soft wrap copies nothing and fills
+         nothing. *)
+      if sel_start < sel_end && row >= 0 && row < rows then begin
+        let terminator = Layout.row_end geometry row in
+        if
+          sel_start <= terminator && terminator < sel_end
+          && ends_line geometry row
+        then begin
+          let from = max x0 (ox + Layout.row_width geometry row - t.scroll_x) in
+          if from < x1 then
+            Matrix_grid.draw_text ~style:fill_style grid ~x:from ~y
+              ~text:(String.make (x1 - from) ' ')
+        end
+      end
     done
   end
 
@@ -440,8 +454,6 @@ let create node buffer =
       ground_style = Ansi.Style.default;
       highlight = Ansi.Style.default;
       run_style = Ansi.Style.default;
-      selection_bg = None;
-      selection_fg = None;
       selection = None;
       display_cache = [];
       measure_cache = [];

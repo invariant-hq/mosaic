@@ -25,13 +25,11 @@ let modal : (Box.Props.t, unit, Box.t) Kind.t =
   Kind.make ~name:"modal" ~create:box.create ~node:Box.node
     ~layout:Box.set_style ~update:Box.apply_props ~equal:Box.Props.equal ()
 
-let text =
+let text : (Text.Props.t, nothing, Text.t) Kind.t =
   Kind.make ~name:"text"
     ~create:(fun ~parent ~layout props ->
       Text.create ~parent ~style:layout props)
-    ~node:Text.node ~update:Text.apply_props ~equal:Text.Props.equal
-    ~handler:(fun text emit -> Text.set_on_selection text emit)
-    ()
+    ~node:Text.node ~update:Text.apply_props ~equal:Text.Props.equal ()
 
 let slider =
   Kind.make ~name:"slider"
@@ -175,6 +173,8 @@ let picture : (Matrix_grid.picture, nothing, picture) Kind.t =
     ~create:(fun ~parent ~layout picture ->
       let node = Renderable.create ~parent ~style:layout () in
       let p = { node; picture; style = layout } in
+      (* A picture paints no source text. *)
+      Renderable.set_selectable node (Some false);
       apply_picture_style p;
       Renderable.set_measure node (Some (picture_measure p));
       Renderable.set_render node (picture_render p);
@@ -239,13 +239,11 @@ let table =
       Table.set_on_hover table (Option.map (fun emit i -> emit (Hover i)) emit))
     ()
 
-let code =
+let code : (Code.Props.t, nothing, Code.t) Kind.t =
   Kind.make ~name:"code"
     ~create:(fun ~parent ~layout props ->
       Code.create ~parent ~style:layout props)
-    ~node:Code.node ~update:Code.apply_props ~equal:Code.Props.equal
-    ~events:(fun code emit -> Code.set_on_selection code (Some emit))
-    ()
+    ~node:Code.node ~update:Code.apply_props ~equal:Code.Props.equal ()
 
 let line_number : (Line_number.Props.t, nothing, Line_number.t) Kind.t =
   Kind.make ~name:"line_number"
@@ -254,15 +252,12 @@ let line_number : (Line_number.Props.t, nothing, Line_number.t) Kind.t =
     ~node:Line_number.node ~update:Line_number.apply_props
     ~equal:Line_number.Props.equal ()
 
-let markdown =
+let markdown : (Markdown.Props.t, nothing, Markdown.t) Kind.t =
   Kind.make ~name:"markdown"
     ~create:(fun ~parent ~layout props ->
       Markdown.create ~parent ~layout_style:layout props)
     ~node:Markdown.node ~layout:Markdown.set_layout_style
-    ~update:Markdown.apply_props ~equal:Markdown.Props.equal
-    ~events:(fun markdown emit ->
-      Markdown.set_on_selection markdown (Some emit))
-    ()
+    ~update:Markdown.apply_props ~equal:Markdown.Props.equal ()
 
 let diff =
   Kind.make ~name:"diff"

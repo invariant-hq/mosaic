@@ -49,9 +49,7 @@ module Props = struct
         content : string;
         text_style : Ansi.Style.t;
         wrap : Text_surface.wrap;
-        selectable : bool;
-        selection_bg : Ansi.Color.t option;
-        selection_fg : Ansi.Color.t option;
+        selectable : bool option;
         tab_width : int;
         truncate : bool;
       }
@@ -59,9 +57,7 @@ module Props = struct
         fragments : fragment list;
         text_style : Ansi.Style.t;
         wrap : Text_surface.wrap;
-        selectable : bool;
-        selection_bg : Ansi.Color.t option;
-        selection_fg : Ansi.Color.t option;
+        selectable : bool option;
         tab_width : int;
         truncate : bool;
       }
@@ -73,49 +69,24 @@ module Props = struct
      their defaults here alone; [k] makes the props of [x] with them. [k] is
      a function of the module, so passing it allocates nothing. *)
   let presentation name k x ?(text_style = Ansi.Style.default) ?(wrap = `None)
-      ?(selectable = true) ?selection_bg ?selection_fg ?(tab_width = 2)
-      ?(truncate = false) () =
+      ?selectable ?(tab_width = 2) ?(truncate = false) () =
     check_tab_width name tab_width;
-    k x ~text_style ~wrap ~selectable ~selection_bg ~selection_fg ~tab_width
-      ~truncate
+    k x ~text_style ~wrap ~selectable ~tab_width ~truncate
 
-  let plain content ~text_style ~wrap ~selectable ~selection_bg ~selection_fg
-      ~tab_width ~truncate =
-    Plain
-      {
-        content;
-        text_style;
-        wrap;
-        selectable;
-        selection_bg;
-        selection_fg;
-        tab_width;
-        truncate;
-      }
+  let plain content ~text_style ~wrap ~selectable ~tab_width ~truncate =
+    Plain { content; text_style; wrap; selectable; tab_width; truncate }
 
-  let rich fragments ~text_style ~wrap ~selectable ~selection_bg ~selection_fg
-      ~tab_width ~truncate =
-    Rich
-      {
-        fragments;
-        text_style;
-        wrap;
-        selectable;
-        selection_bg;
-        selection_fg;
-        tab_width;
-        truncate;
-      }
+  let rich fragments ~text_style ~wrap ~selectable ~tab_width ~truncate =
+    Rich { fragments; text_style; wrap; selectable; tab_width; truncate }
 
-  let make ?(content = "") ?text_style ?wrap ?selectable ?selection_bg
-      ?selection_fg ?tab_width ?truncate () =
-    presentation "make" plain content ?text_style ?wrap ?selectable
-      ?selection_bg ?selection_fg ?tab_width ?truncate ()
+  let make ?(content = "") ?text_style ?wrap ?selectable ?tab_width ?truncate ()
+      =
+    presentation "make" plain content ?text_style ?wrap ?selectable ?tab_width
+      ?truncate ()
 
-  let make_rich ?text_style ?wrap ?selectable ?selection_bg ?selection_fg
-      ?tab_width ?truncate fragments =
+  let make_rich ?text_style ?wrap ?selectable ?tab_width ?truncate fragments =
     presentation "make_rich" rich fragments ?text_style ?wrap ?selectable
-      ?selection_bg ?selection_fg ?tab_width ?truncate ()
+      ?tab_width ?truncate ()
 
   let default = make ()
 
@@ -126,12 +97,6 @@ module Props = struct
 
   let selectable = function
     | Plain { selectable; _ } | Rich { selectable; _ } -> selectable
-
-  let selection_bg = function
-    | Plain { selection_bg; _ } | Rich { selection_bg; _ } -> selection_bg
-
-  let selection_fg = function
-    | Plain { selection_fg; _ } | Rich { selection_fg; _ } -> selection_fg
 
   let tab_width = function
     | Plain { tab_width; _ } | Rich { tab_width; _ } -> tab_width
@@ -151,9 +116,7 @@ module Props = struct
          | _ -> false)
        && Ansi.Style.equal (text_style a) (text_style b)
        && wrap a = wrap b
-       && selectable a = selectable b
-       && Option.equal Ansi.Color.equal (selection_bg a) (selection_bg b)
-       && Option.equal Ansi.Color.equal (selection_fg a) (selection_fg b)
+       && Option.equal Bool.equal (selectable a) (selectable b)
        && tab_width a = tab_width b
        && truncate a = truncate b
 end
@@ -363,23 +326,18 @@ let apply_props t (props : Props.t) =
   Text_renderable.set_wrap t.text (Props.wrap props);
   Text_renderable.set_tab_width t.text (Props.tab_width props);
   Text_renderable.set_truncate t.text (Props.truncate props);
-  Text_renderable.set_selection_bg t.text (Props.selection_bg props);
-  Text_renderable.set_selection_fg t.text (Props.selection_fg props);
   Text_renderable.set_selectable t.text (Props.selectable props);
   install_content t ~text_style:(Props.text_style props) (Props.content props)
 
 (* Construction *)
 
-let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_selection
+let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
     (props : Props.t) =
   let text =
     Text_renderable.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
       ~text_style:(Props.text_style props) ~wrap:(Props.wrap props)
-      ~selectable:(Props.selectable props)
-      ?selection_bg:(Props.selection_bg props)
-      ?selection_fg:(Props.selection_fg props)
-      ~tab_width:(Props.tab_width props) ~truncate:(Props.truncate props)
-      ?on_selection ()
+      ?selectable:(Props.selectable props) ~tab_width:(Props.tab_width props)
+      ~truncate:(Props.truncate props) ()
   in
   let t = { text; content = Props.content props; flat_cache = None } in
   if t.content <> Plain "" then rebuild_buffer t;
@@ -432,11 +390,8 @@ let set_tab_width t tab_width = Text_renderable.set_tab_width t.text tab_width
 (* Selection *)
 
 let set_selectable t selectable =
-  Text_renderable.set_selectable t.text selectable
+  Text_renderable.set_selectable t.text (Some selectable)
 
-let set_selection_bg t color = Text_renderable.set_selection_bg t.text color
-let set_selection_fg t color = Text_renderable.set_selection_fg t.text color
-let set_on_selection t f = Text_renderable.set_on_selection t.text f
 let selected_text t = Text_renderable.selected_text t.text
 
 (* Highlights *)

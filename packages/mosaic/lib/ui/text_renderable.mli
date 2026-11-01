@@ -2,8 +2,9 @@
 
     [Text_renderable] owns the common mutable state for leaf renderables backed
     by a {!Text_buffer.t} and rendered through a {!Text_surface.t}. It creates
-    the underlying {!Renderable.t}, registers text selection and line
-    information, and keeps surface invalidation consistent after buffer changes.
+    the underlying {!Renderable.t}, registers its text rows, which the view
+    selection reads, and keeps surface invalidation consistent after buffer
+    changes.
 
     This module is an implementation module for text-like widgets. *)
 
@@ -25,17 +26,15 @@ val create :
   ?tab_width:int ->
   ?truncate:bool ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
-  ?on_selection:((int * int) option -> unit) ->
   unit ->
   t
 (** [create ~parent ()] is a text-backed renderable attached to [parent].
 
     [text_style] is the default style for plain text, [wrap] is the wrapping
     mode, [tab_width] is the tab stop width in columns, and [truncate] enables
-    ellipsis truncation for unwrapped long lines. [selectable] controls whether
-    the renderable participates in text selection.
+    ellipsis truncation for unwrapped long lines. [selectable], when given,
+    declares whether text selection reaches the renderable
+    ({!Renderable.set_selectable}).
 
     Raises [Invalid_argument] if [tab_width < 1]. *)
 
@@ -83,21 +82,12 @@ val set_tab_width : t -> int -> unit
 val set_truncate : t -> bool -> unit
 (** [set_truncate t truncate] enables or disables truncation. *)
 
-val set_selection_bg : t -> Ansi.Color.t option -> unit
-(** [set_selection_bg t color] sets the selection background color. *)
-
-val set_selection_fg : t -> Ansi.Color.t option -> unit
-(** [set_selection_fg t color] sets the selection foreground color. *)
-
-val set_selectable : t -> bool -> unit
-(** [set_selectable t selectable] enables or disables text selection. *)
-
-val set_on_selection : t -> ((int * int) option -> unit) option -> unit
-(** [set_on_selection t callback] sets the selection-change callback. *)
+val set_selectable : t -> bool option -> unit
+(** [set_selectable t d] is {!Renderable.set_selectable} on {!node}. *)
 
 val selected_text : t -> string
-(** [selected_text t] is the current selected text. Returns [""] if no selection
-    is active. *)
+(** [selected_text t] is the part of the view selection in [t]'s text, [""] if
+    none. *)
 
 (** {1:highlights Highlights} *)
 

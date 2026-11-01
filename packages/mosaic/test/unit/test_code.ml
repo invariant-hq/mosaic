@@ -1129,36 +1129,6 @@ let doors_selectable () =
         (Code.create ~parent ~style:doors_style
            (Code.Props.make ~content:"hello world" ~selectable:false ())))
 
-let doors_selection_bg () =
-  Test_harness.reaches ~act:Test_harness.select_text "selection_bg"
-    ~base:(Mosaic.code ~size:doors_size "hello world")
-    ~element:
-      (Mosaic.code ~size:doors_size ~selection_bg:Ansi.Color.red "hello world")
-    ~create_base:(fun parent ->
-      Code.node
-        (Code.create ~parent ~style:doors_style
-           (Code.Props.make ~content:"hello world" ())))
-    ~create:(fun parent ->
-      Code.node
-        (Code.create ~parent ~style:doors_style
-           (Code.Props.make ~content:"hello world" ~selection_bg:Ansi.Color.red
-              ())))
-
-let doors_selection_fg () =
-  Test_harness.reaches ~act:Test_harness.select_text "selection_fg"
-    ~base:(Mosaic.code ~size:doors_size "hello world")
-    ~element:
-      (Mosaic.code ~size:doors_size ~selection_fg:Ansi.Color.red "hello world")
-    ~create_base:(fun parent ->
-      Code.node
-        (Code.create ~parent ~style:doors_style
-           (Code.Props.make ~content:"hello world" ())))
-    ~create:(fun parent ->
-      Code.node
-        (Code.create ~parent ~style:doors_style
-           (Code.Props.make ~content:"hello world" ~selection_fg:Ansi.Color.red
-              ())))
-
 let () =
   run "mosaic.code"
     [
@@ -1241,7 +1211,5 @@ let () =
           test "tab_width" doors_tab_width;
           test "truncate" doors_truncate;
           test "selectable" doors_selectable;
-          test "selection_bg" doors_selection_bg;
-          test "selection_fg" doors_selection_fg;
         ];
     ]

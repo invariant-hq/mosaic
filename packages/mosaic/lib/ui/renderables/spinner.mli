@@ -82,6 +82,7 @@ val create :
   Props.t ->
   t
 (** [create ~parent props] is a spinner attached to [parent], showing [props].
+    The node declares itself unselectable ({!Renderable.set_selectable}).
 
     The spinner manages its own liveness: the node is made live while the frame
     set animates (more than one frame and a positive period), so the animation

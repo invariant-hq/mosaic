@@ -1001,7 +1001,9 @@ module Cmd : sig
 
   val copy_selection : 'msg t
   (** [copy_selection] copies the text selected in the view to the clipboard, as
-      {!copy_to_clipboard} does. It does nothing when no text is selected. *)
+      {!copy_to_clipboard} does, or else the focused editor's selection
+      ({!Mosaic_ui.Renderer.selection_text}). It does nothing when no text is
+      selected. *)
 
   val query_color_scheme : 'msg t
   (** [query_color_scheme] asks the terminal for its color scheme
@@ -1604,6 +1606,20 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     along a path through an inert ancestor. Every element in a [box ~inert:true]
     is inert, and while a {!modal} is shown every element outside it is.
 
+    [selectable] declares whether the view's text selection reaches an element
+    and the elements in it ({!Mosaic_ui.Renderable.set_selectable}); an element
+    in one that does not can declare it again. Without [selectable], an element
+    keeps the declaration of its kind. [button], [select], [tab_select],
+    [table], [tree], [slider], [scroll_bar], [progress_bar], [spinner], [canvas]
+    and [picture] act on a press or paint no source text and declare [false], as
+    does the gutter of a [line_number], whose child is selectable as its
+    ancestors declare. [input] and [textarea] select their own text and declare
+    [true] ([Mosaic_ui.Text_input.Props.make]). The others declare nothing. A
+    press on an element selection does not reach neither starts nor clears a
+    selection, so an element that acts on a press, such as a drag or a double
+    click, is unselectable or prevents its press. [Mosaic_ui.Renderer] describes
+    the selection.
+
     Focus is the model's, so nothing moves it but a declaration. Removing or
     hiding the focused element leaves nothing focused: keys reach subscriptions
     only until the model declares another element focused. The update that
@@ -1781,6 +1797,7 @@ val box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?inert:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
@@ -1879,6 +1896,7 @@ val button :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_focus_request:'msg ->
   ?on_size:(w:int -> h:int -> 'msg option) ->
   ?focused:bool ->
@@ -1970,18 +1988,14 @@ val text :
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
-  ?on_selection:((int * int) option -> 'msg option) ->
   string ->
   'msg t
 (** [text content] is a text element. The labels from [text_style] to [truncate]
     are {!Mosaic_ui.Text.Props.make}'s and take its defaults; [style] is the
-    text style when [text_style] is absent. [on_selection] is called with the
-    selected grapheme range, or [None], when the selection changes. Layout and
-    paint use the other labelled arguments. *)
+    text style when [text_style] is absent. Layout and paint use the other
+    labelled arguments. *)
 
 val rich_text :
   ?key:string ->
@@ -2038,11 +2052,8 @@ val rich_text :
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?tab_width:int ->
   ?truncate:bool ->
-  ?on_selection:((int * int) option -> 'msg option) ->
   Text.fragment list ->
   'msg t
 (** [rich_text fragments] renders structured text as one selectable text widget.
@@ -2095,6 +2106,7 @@ val slider :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2174,8 +2186,6 @@ val input :
   ?focused_text_color:Ansi.Color.t ->
   ?focused_background_color:Ansi.Color.t ->
   ?placeholder_color:Ansi.Color.t ->
-  ?selection_color:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
@@ -2243,6 +2253,7 @@ val select :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2330,6 +2341,7 @@ val tab_select :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2409,6 +2421,7 @@ val canvas :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2468,6 +2481,7 @@ val picture :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2536,6 +2550,7 @@ val spinner :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2595,6 +2610,7 @@ val progress_bar :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2658,6 +2674,7 @@ val scroll_bar :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2728,6 +2745,7 @@ val scroll_box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2815,8 +2833,6 @@ val textarea :
   ?focused_text_color:Ansi.Color.t ->
   ?focused_background_color:Ansi.Color.t ->
   ?placeholder_color:Ansi.Color.t ->
-  ?selection_color:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
@@ -2891,15 +2907,11 @@ val code :
   ?tab_width:int ->
   ?truncate:bool ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
-  ?on_selection:((int * int) option -> 'msg option) ->
   string ->
   'msg t
 (** [code content] is syntax-highlighted source. The labels from [syntax] to
-    [selection_fg] are {!Mosaic_ui.Code.Props.make}'s and take its defaults.
-    [on_selection] is called when the selection changes. Layout and paint use
-    the other labelled arguments. *)
+    [selectable] are {!Mosaic_ui.Code.Props.make}'s and take its defaults.
+    Layout and paint use the other labelled arguments. *)
 
 val line_number :
   ?key:string ->
@@ -2945,6 +2957,7 @@ val line_number :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -3094,8 +3107,6 @@ val markdown :
   ?conceal:bool ->
   ?streaming:bool ->
   ?selectable:bool ->
-  ?selection_bg:Ansi.Color.t ->
-  ?selection_fg:Ansi.Color.t ->
   ?render_node:
     (Cmarkit.Block.t ->
     parent:Renderable.t ->
@@ -3108,14 +3119,12 @@ val markdown :
     Renderable.t) ->
   ?highlighter:Code.Highlighter.t ->
   ?syntax_style:Syntax_style.t ->
-  ?on_selection:(string option -> 'msg option) ->
   string ->
   'msg t
 (** [markdown content] is rendered Markdown. The labels from [md_style] to
     [syntax_style] are {!Mosaic_ui.Markdown.Props.make}'s and take its defaults,
-    [md_style] being its [style]. [on_selection] is called with the selected
-    rendered text, or [None] when no text is selected. Layout and paint use the
-    other labelled arguments. *)
+    [md_style] being its [style]. Layout and paint use the other labelled
+    arguments. *)
 
 val table :
   ?key:string ->
@@ -3161,6 +3170,7 @@ val table :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -3258,6 +3268,7 @@ val tree :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -3407,6 +3418,7 @@ val element :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
+  ?selectable:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
