@@ -778,6 +778,10 @@ module Private : sig
         (** [drag ~x ~y] is told the cell of the pointer, held in no box, at
             each motion of a selection gesture in the region. *)
     settle : unit -> unit;  (** [settle ()] is told that the gesture ended. *)
+    scroll : int -> unit;
+        (** [scroll n] is asked to scroll the region's content by [n] rows, down
+            when [n] is positive, as a keyboard extension of a selection does to
+            show its focus. *)
   }
   (** The type for the declaration of a region of text selection: a selection
       that starts in it stays in it, and a selection around it selects all of

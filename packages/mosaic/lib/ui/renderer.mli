@@ -300,8 +300,8 @@ val dispatch_mouse : t -> path -> Event.mouse -> unit
       also over.
 
     The release that ends a capturing drag first sends [Drag_end] to the
-    captured node; the release of the press that started a selection settles it,
-    prevented or not. *)
+    captured node; the release of the press that started a selection settles it
+    ({!take_selection_changes}), prevented or not. *)
 
 (** {1:focus Focus} *)
 
@@ -377,7 +377,8 @@ val theme : t -> Theme.t
     it resolves to as a press does, or alone over a scroll box in the region,
     and the region's scroll box scrolls while the pointer holds near or past its
     edge. A single click the pointer does not leave selects nothing. When the
-    press ends, the focus becomes the far end of the text the selection holds.
+    press ends, the focus becomes the far end of the text the selection holds,
+    and a selection that holds no text clears.
 
     A left press with Shift, on a node selection reaches and while a selection
     that is not behind the modal node exists, moves the end of the selection
@@ -411,6 +412,42 @@ val clear_selection : t -> unit
 (** [clear_selection t] clears the view selection, and ends the gesture that
     drags it, if any: its later motion selects nothing, and its release settles
     nothing. *)
+
+val selection_live : t -> bool
+(** [selection_live t] is [true] iff the view selection holds text, so that
+    {!selection_text} gives it, and is not {e inert}: a selection whose anchor
+    is behind the modal node ({!set_modal}) stays as it is, and no key acts on
+    it. A host acts on the keys of a live selection (RFC 0006 §3.6). *)
+
+val extend_selection :
+  t -> [ `Left | `Right | `Up | `Down | `Row_start | `Row_end ] -> unit
+(** [extend_selection t direction] moves the focus of the view selection, when
+    no gesture drags it and it is not inert, and keeps its anchor: by a grapheme
+    for [`Left] and [`Right], to its column in the row above or below for [`Up]
+    and [`Down], and to the start or the end of its row for [`Row_start] and
+    [`Row_end], in the text it is in. Past the edge of that text it goes to the
+    boundary, in another text of the region, at the cell a press finds before or
+    after it in row-major order, or at its column in the row above or below. A
+    region whose view the focus leaves scrolls to show it, by its proposal. The
+    selection then extends by graphemes ({!section-selection}), and clears if it
+    holds no text. *)
+
+(** The type for changes of the view selection. *)
+type selection_change =
+  | Settled of string
+      (** A pointer gesture that made or moved the view selection ended, and the
+          selection holds this text. *)
+  | Cleared  (** The view selection held text, and holds none. *)
+
+val take_selection_changes : t -> selection_change list
+(** [take_selection_changes t] is the changes of the view selection since the
+    last take, oldest first, and forgets them. A gesture's selection is
+    [Settled] when its press ends, at the release or a lost release
+    ({!pointer_lost}), and the selection holds text; a double or triple click
+    settles at its release. A selection is [Cleared] when it held text and holds
+    none, whatever the cause: a press, {!clear_selection}, a gesture that ends
+    with no text, or {!extend_selection}, which settles nothing. A gesture's
+    motion queues nothing. *)
 
 (** {1:drag Drag capture} *)
 

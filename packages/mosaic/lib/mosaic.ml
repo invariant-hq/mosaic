@@ -307,6 +307,8 @@ module Sub = struct
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)
     | On_focus_lost of 'msg
     | On_palette of (Ansi.Palette.t -> 'msg option)
+    | On_selection of (string option -> 'msg option)
+    | On_copy of (string -> 'msg option)
 
   let none = None
   let batch subs = Batch subs
@@ -354,6 +356,8 @@ module Sub = struct
   let on_color_scheme f = On_color_scheme f
   let on_focus_lost msg = On_focus_lost msg
   let on_palette f = On_palette f
+  let on_selection f = On_selection f
+  let on_copy f = On_copy f
 
   let worker ~id f =
     if id = "" then invalid_arg "Mosaic.Sub.worker: empty id";
@@ -380,6 +384,8 @@ module Sub = struct
         Worker (id, fun stop mailbox -> g stop (map_mailbox f mailbox))
     | On_focus_lost msg -> On_focus_lost (f msg)
     | On_palette g -> On_palette (fun p -> Option.map f (g p))
+    | On_selection g -> On_selection (fun text -> Option.map f (g text))
+    | On_copy g -> On_copy (fun text -> Option.map f (g text))
 end
 
 type ('model, 'msg) app = {
@@ -488,6 +494,8 @@ type ('model, 'msg) runtime = {
   mutable had_focus : bool;
   mutable color_scheme_sub : ([ `Dark | `Light ] -> 'msg option) list;
   mutable palette_sub : (Ansi.Palette.t -> 'msg option) list;
+  mutable selection_sub : (string option -> 'msg option) list;
+  mutable copy_sub : (string -> 'msg option) list;
   (* The timer armed at the earliest deadline of the timers and the
      paste stalls, and that deadline. *)
   mutable wakeup : (Matrix.timer * int) option;
@@ -613,6 +621,12 @@ let end_program runtime =
       Matrix.request_redraw runtime.matrix_app))
   else runtime.quit <- true
 
+(* The runtime alone writes a selection to the clipboard (RFC 0006 §3.6),
+   and the [on_copy] subscribers hear each text it writes. *)
+let copy runtime text =
+  Matrix.Terminal.copy_to_clipboard (Matrix.terminal runtime.matrix_app) text;
+  List.iter (fun f -> Option.iter (push_msg runtime) (f text)) runtime.copy_sub
+
 let rec process_cmd runtime (cmd : _ Cmd.t) =
   match cmd with
   | Cmd.None -> ()
@@ -632,10 +646,7 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
         text
   | Cmd.Copy_selection -> (
       match Renderer.selection_text runtime.renderer with
-      | Some text when text <> "" ->
-          Matrix.Terminal.copy_to_clipboard
-            (Matrix.terminal runtime.matrix_app)
-            text
+      | Some text when text <> "" -> copy runtime text
       | Some _ | None -> ())
   | Cmd.Query_color_scheme ->
       Matrix.Terminal.query_color_scheme (Matrix.terminal runtime.matrix_app)
@@ -700,6 +711,8 @@ let rec collect_subs runtime (sub : _ Sub.t) =
   | Sub.On_focus_lost msg ->
       runtime.focus_lost_sub <- msg :: runtime.focus_lost_sub
   | Sub.On_palette f -> runtime.palette_sub <- f :: runtime.palette_sub
+  | Sub.On_selection f -> runtime.selection_sub <- f :: runtime.selection_sub
+  | Sub.On_copy f -> runtime.copy_sub <- f :: runtime.copy_sub
 
 (* How long a paste may be silent before the program ends it, when the
    application declares no stall of its own. *)
@@ -791,6 +804,8 @@ let update_subscriptions runtime =
   runtime.focus_lost_sub <- [];
   runtime.color_scheme_sub <- [];
   runtime.palette_sub <- [];
+  runtime.selection_sub <- [];
+  runtime.copy_sub <- [];
   collect_subs runtime (runtime.app.subscriptions runtime.model);
   runtime.key_subs <- List.rev runtime.key_subs;
   runtime.key_release_subs <- List.rev runtime.key_release_subs;
@@ -803,6 +818,8 @@ let update_subscriptions runtime =
   runtime.focus_lost_sub <- List.rev runtime.focus_lost_sub;
   runtime.color_scheme_sub <- List.rev runtime.color_scheme_sub;
   runtime.palette_sub <- List.rev runtime.palette_sub;
+  runtime.selection_sub <- List.rev runtime.selection_sub;
+  runtime.copy_sub <- List.rev runtime.copy_sub;
   let ids = Hashtbl.create 8 in
   let check_id id =
     if id = "" || Hashtbl.mem ids id then
@@ -842,11 +859,33 @@ let dispatch runtime msg =
     process_cmd runtime cmd;
     update_subscriptions runtime)
 
-(* Applies the pending messages. A frame is asked for when one changed the
-   model or asked to move focus, unless a frame is being drawn, which will
-   show it: a message that changes nothing draws nothing. *)
+(* The changes of the view selection go to the [on_selection] subscribers,
+   oldest first (RFC 0006 §3.7). The runtime takes them before it gives the
+   loop a message and as it applies messages: after each input event, the
+   loss of the pointer, each command and each commit. *)
+let take_selection runtime =
+  match Renderer.take_selection_changes runtime.renderer with
+  | [] -> ()
+  | changes ->
+      List.iter
+        (fun change ->
+          let text =
+            match change with
+            | Renderer.Settled text -> Some text
+            | Cleared -> None
+          in
+          List.iter
+            (fun f -> Option.iter (push_msg runtime) (f text))
+            runtime.selection_sub)
+        changes
+
+(* Applies the pending messages, and the changes of the view selection. A
+   frame is asked for when one changed the model or asked to move focus,
+   unless a frame is being drawn, which will show it: a message that changes
+   nothing draws nothing. *)
 let process_pending_msgs runtime =
   let rec drain () =
+    take_selection runtime;
     match Atomic.exchange runtime.pending_msgs [] with
     | [] -> ()
     | msgs ->
@@ -918,7 +957,10 @@ let synchronize runtime =
         settle ())
   end
 
+(* A message comes after the changes of the view selection made before it,
+   so that a key's [Bubble] listener hears the clear the key made first. *)
 let deliver runtime msg =
+  take_selection runtime;
   push_msg runtime msg;
   if not runtime.delivering then synchronize runtime
 
@@ -1033,6 +1075,84 @@ let key_default (key : Matrix.Input.Keystroke.t) =
   | Escape when not (chord || mods.shift) -> Some `Close
   | _ -> None
 
+(* Ctrl+C, and Ctrl+Shift+C and Super+C where the terminal sends them. *)
+let is_copy_chord (key : Matrix.Input.Keystroke.t) =
+  Matrix.Input.Keystroke.is_interrupt key
+  ||
+  let mods = key.mods in
+  let c = Uchar.of_char 'c' in
+  mods.super
+  && (not (mods.ctrl || mods.alt || mods.hyper || mods.meta))
+  &&
+  match key.key with
+  | Char u ->
+      Uchar.equal u c || Uchar.equal u (Uchar.of_char 'C') || key.base = Some c
+  | _ -> false
+
+(* What a key does to a live view selection (RFC 0006 §3.6). *)
+let selection_action (key : Matrix.Input.Keystroke.t) =
+  let mods = key.mods in
+  let navigates = mods.ctrl || mods.alt || mods.super in
+  let extends = mods.shift && not (navigates || mods.hyper || mods.meta) in
+  if is_copy_chord key then `Copy
+  else
+    match key.key with
+    | Escape when not (navigates || mods.shift || mods.hyper || mods.meta) ->
+        `Escape
+    | Left when extends -> `Extend `Left
+    | Right when extends -> `Extend `Right
+    | Up when extends -> `Extend `Up
+    | Down when extends -> `Extend `Down
+    | Home when extends -> `Extend `Row_start
+    | End when extends -> `Extend `Row_end
+    | (Left | Right | Up | Down | Home | End) when navigates -> `Keep
+    | Page_up | Page_down | Modifier _ -> `Keep
+    | _ -> `Clear
+
+(* The selection of the focused editor, which owns its own (§3.10). *)
+let editor_selection renderer =
+  match Renderer.focused renderer with
+  | Some node when Renderable.focused node -> (
+      match Renderable.Private.owned_text node with
+      | Some selected -> selected ()
+      | None -> None)
+  | Some _ | None -> None
+
+(* The keys of the view's text selection (RFC 0006 §3.6), which come after
+   the application's [Capture] listeners and before the elements. While the
+   selection is live, Escape clears it, a copy chord copies and clears it,
+   and Shift with an arrow, Home or End extends it, each taking the key; any
+   other key clears it and goes on, but PgUp, PgDn, an arrow, Home or End
+   held with Ctrl, Alt or Super, and a modifier alone. Otherwise a copy chord
+   copies the focused editor's selection, which stays, and takes the key. *)
+let selection_keys runtime event =
+  let renderer = runtime.renderer in
+  let key = Event.Key.data event in
+  let take () =
+    Event.Key.stop_propagation event;
+    Event.Key.prevent_default event
+  in
+  if Renderer.selection_live renderer then
+    match selection_action key with
+    | `Escape ->
+        Renderer.clear_selection renderer;
+        take ()
+    | `Copy ->
+        Option.iter (copy runtime) (Renderer.selection_text renderer);
+        Renderer.clear_selection renderer;
+        take ()
+    | `Extend direction ->
+        Renderer.extend_selection renderer direction;
+        take ()
+    | `Keep -> ()
+    | `Clear -> Renderer.clear_selection renderer
+  else if is_copy_chord key then
+    match editor_selection renderer with
+    | Some text when text <> "" ->
+        copy runtime text;
+        take ()
+    | Some _ | None -> ()
+
 (* A paste arrives in pieces and reaches widgets whole, once it completes; a
    cut paste is dropped. Text a terminal reports without a key, such as an
    input method's, is inserted as a paste is. *)
@@ -1054,8 +1174,16 @@ let handle_input runtime (input : Matrix.event) =
   | Key key -> (
       let path = Renderer.focus_path runtime.renderer in
       let event = Event.Key.of_input key in
+      (* The selection's keys come before the elements, unless a [Capture]
+         listener kept the key. *)
       listen runtime ~stopped:Event.Key.propagation_stopped runtime.key_subs
-        (Renderer.dispatch_key runtime.renderer path)
+        (fun event ->
+          if
+            not
+              (Event.Key.propagation_stopped event
+              || Event.Key.default_prevented event)
+          then selection_keys runtime event;
+          Renderer.dispatch_key runtime.renderer path event)
         event;
       (* A key's default action comes after every listener, unless one
          prevented it. Ctrl+C quits: in raw mode it is a key, and its default
@@ -1079,6 +1207,10 @@ let handle_input runtime (input : Matrix.event) =
           ~now:(Matrix.now runtime.matrix_app)
           mouse
       in
+      (* A release lost before this report settled its selection, which the
+         application hears before the report can replace it. *)
+      take_selection runtime;
+      if Atomic.get runtime.pending_msgs <> [] then synchronize runtime;
       listen runtime ~stopped:Event.Mouse.propagation_stopped runtime.mouse_subs
         (Renderer.dispatch_mouse runtime.renderer path)
         event
@@ -1190,6 +1322,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       had_focus = false;
       color_scheme_sub = [];
       palette_sub = [];
+      selection_sub = [];
+      copy_sub = [];
       wakeup = None;
       focus_moves = Queue.create ();
     }

@@ -66,6 +66,7 @@ and region = {
   content : node;
   drag : x:int -> y:int -> unit;
   settle : unit -> unit;
+  scroll : int -> unit;
 }
 
 (* The region a subtree may paint, in cells relative to its node's layout
@@ -2137,6 +2138,7 @@ module Private = struct
     content : t;
     drag : x:int -> y:int -> unit;
     settle : unit -> unit;
+    scroll : int -> unit;
   }
 
   let set_region t region = t.region <- region

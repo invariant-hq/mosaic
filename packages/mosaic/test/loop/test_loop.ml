@@ -730,7 +730,9 @@ let%expect_test "a mouse press a widget stops skips on_mouse" =
 
 (* Cmd.copy_selection asks the terminal to set the clipboard to the text
    dragged over (OSC 52). A pipe is asked nothing, as the run writes it no
-   control sequence. *)
+   control sequence. The key is bound in [Capture], where the binding
+   prevents it before any other key would clear the selection (RFC 0006
+   §3.6). *)
 let%expect_test "Cmd.copy_selection sends the dragged text to the clipboard" =
   let application =
     {
@@ -738,7 +740,8 @@ let%expect_test "Cmd.copy_selection sends the dragged text to the clipboard" =
       update = (fun () () -> ((), Mosaic.Cmd.copy_selection));
       view = (fun () -> Mosaic.text "hello world");
       subscriptions =
-        (fun () -> Mosaic.Sub.on_keys [ (Mosaic.Shortcut.char 'c', ()) ]);
+        (fun () ->
+          Mosaic.Sub.on_keys ~phase:Capture [ (Mosaic.Shortcut.char 'c', ()) ]);
     }
   in
   (* A drag from the first column to the fifth, then c. *)
@@ -3875,4 +3878,301 @@ let%expect_test "a focus loss ends the held press" =
        [
          `Feed "\027[<0;3;1M\027[<32;6;1M"; `Feed "\027[O"; `Feed "\027[<0;6;1m";
        ]);
+  [%expect {| |}]
+
+(* ───── RFC 0006 §3.6, §3.7, §3.10: the selection's keys and the
+   application ───── *)
+
+(* An application over "hello world" and a second line, with a focused input
+   of state [editor] below them, and a modal "dialog" once F2 opens it. It
+   logs what it hears: the view selection's changes, the copies, the keys
+   that reach its [Bubble] listeners unprevented, the input's edits and the
+   modal's close. In [Capture], F2 opens the modal, c asks for
+   [Cmd.copy_selection] and k for [Cmd.clear_selection]. With
+   [copy_on_select], a settle asks for [Cmd.copy_selection]. [subs] are
+   declared first. Returns the log, the texts written to the clipboard and
+   whether the program ended, once [feeds] are fed in turn. *)
+let selecting ?editor ?(copy_on_select = false)
+    ?(subs = fun _ -> Mosaic.Sub.none) feeds =
+  let log = ref [] in
+  let say entry = log := entry :: !log in
+  let application =
+    {
+      Mosaic.init = (fun () -> (false, Mosaic.Cmd.none));
+      update =
+        (fun msg shown ->
+          match msg with
+          | `Heard entry ->
+              say entry;
+              (shown, Mosaic.Cmd.none)
+          | `Settled text ->
+              say ("selected " ^ text);
+              ( shown,
+                if copy_on_select then Mosaic.Cmd.copy_selection
+                else Mosaic.Cmd.none )
+          | `Open -> (true, Mosaic.Cmd.none)
+          | `Close ->
+              say "close";
+              (false, Mosaic.Cmd.none)
+          | `Copy -> (shown, Mosaic.Cmd.copy_selection)
+          | `Clear -> (shown, Mosaic.Cmd.clear_selection));
+      view =
+        (fun shown ->
+          Mosaic.box ~flex_direction:Column
+            ~size:(Mosaic.size ~width:20 ~height:4)
+            ([ Mosaic.text "hello world"; Mosaic.text "second line" ]
+            @ (match editor with
+              | Some state ->
+                  [
+                    Mosaic.input ~focused:true
+                      ~size:(Mosaic.size ~width:10 ~height:1)
+                      ~state
+                      ~on_change:(fun _ -> `Heard "edit")
+                      ();
+                  ]
+              | None -> [])
+            @
+            if shown then
+              [ Mosaic.modal ~on_close:`Close (Mosaic.text "dialog") ]
+            else []));
+      subscriptions =
+        (fun model ->
+          Mosaic.Sub.batch
+            [
+              subs model;
+              Mosaic.Sub.on_selection (function
+                | Some text -> Some (`Settled text)
+                | None -> Some (`Heard "cleared"));
+              Mosaic.Sub.on_copy (fun text -> Some (`Heard ("copied " ^ text)));
+              Mosaic.Sub.on_keys ~phase:Capture
+                [
+                  (Mosaic.Shortcut.f 2, `Open);
+                  (Mosaic.Shortcut.char 'c', `Copy);
+                  (Mosaic.Shortcut.char 'k', `Clear);
+                ];
+              Mosaic.Sub.on_key (fun key ->
+                  if Mosaic.Event.Key.default_prevented key then None
+                  else Some (`Heard ("key " ^ key_name key)));
+            ]);
+    }
+  in
+  let t = terminal ~profile:Matrix_test.Profile.vte ~width:20 ~height:4 () in
+  let ended = ref false in
+  run t application (fun _ ->
+      List.iter
+        (fun bytes -> if not (Matrix_test.ended t.s) then feed t bytes)
+        feeds;
+      ended := Matrix_test.ended t.s);
+  let copied =
+    List.filter_map
+      (function
+        | Vte.Clipboard { data; _ } -> Some data
+        | Vte.Bell | Vte.Notification _ -> None)
+      (Matrix_test.Terminal.requests t.term)
+  in
+  (List.rev !log, copied, !ended)
+
+(* A drag over "hello", released. *)
+let drag_hello = "\027[<0;1;1M\027[<32;5;1M\027[<0;5;1m"
+let ctrl_c = "\003"
+
+(* §3.6 Escape: Escape clears the view selection and goes no further; with
+   no selection, it goes on as before. *)
+let%expect_test "Escape clears the view selection and goes no further" =
+  let log, _, _ = selecting [ drag_hello; "\027"; "\027" ] in
+  equal ~msg:"the first Escape is the selection's" (list string)
+    [ "selected hello"; "cleared"; "key <esc>" ]
+    log;
+  [%expect {| |}]
+
+(* In a modal, the first Escape clears the selection there, so the modal
+   stays, and the next closes it. The modal centres "dialog" on the third
+   row, from the eighth column. *)
+let%expect_test "Escape clears a selection in a modal before closing it" =
+  let log, _, _ =
+    selecting
+      [ "\027OQ"; "\027[<0;8;3M\027[<32;10;3M\027[<0;10;3m"; "\027"; "\027" ]
+  in
+  equal ~msg:"cleared, then closed" (list string)
+    [ "selected dia"; "cleared"; "key <esc>"; "close" ]
+    log;
+  [%expect {| |}]
+
+(* §3.6 Copy chords, Law 6: Ctrl+C copies the view selection and clears it,
+   so it does not quit; the next Ctrl+C, with no selection, quits. Super+C
+   and Ctrl+Shift+C, where the terminal sends them, copy too. *)
+let%expect_test "Ctrl+C copies the view selection and clears it" =
+  let log, copied, ended = selecting [ drag_hello; ctrl_c ] in
+  equal ~msg:"copied and cleared" (list string)
+    [ "selected hello"; "copied hello"; "cleared" ]
+    log;
+  equal ~msg:"to the clipboard" (list string) [ "hello" ] copied;
+  is_false ~msg:"running" ended;
+  let _, _, ended = selecting [ drag_hello; ctrl_c; ctrl_c ] in
+  is_true ~msg:"the next Ctrl+C quits" ended;
+  List.iter
+    (fun (name, chord) ->
+      let _, copied, ended = selecting [ drag_hello; chord ] in
+      equal ~msg:name (list string) [ "hello" ] copied;
+      is_false ~msg:name ended)
+    [ ("Super+C", "\027[99;9u"); ("Ctrl+Shift+C", "\027[99;6u") ];
+  [%expect {| |}]
+
+(* §3.10 Copy: with no view selection, a copy chord copies the focused
+   input's selection, which stays, so the next copies it again. A view
+   selection comes first, and its copy clears it alone. With neither, Ctrl+C
+   quits. *)
+let%expect_test "Ctrl+C copies a focused input's selection and keeps it" =
+  let editor =
+    Mosaic.Editor.select ~anchor:1 ~cursor:3 (Mosaic.Editor.of_string "abcd")
+  in
+  let log, copied, ended = selecting ~editor [ ctrl_c; ctrl_c ] in
+  equal ~msg:"twice" (list string) [ "copied bc"; "copied bc" ] log;
+  equal ~msg:"to the clipboard" (list string) [ "bc"; "bc" ] copied;
+  is_false ~msg:"running" ended;
+  let log, copied, ended = selecting ~editor [ drag_hello; ctrl_c; ctrl_c ] in
+  equal ~msg:"the view's first" (list string)
+    [ "selected hello"; "copied hello"; "cleared"; "copied bc" ]
+    log;
+  equal ~msg:"both to the clipboard" (list string) [ "hello"; "bc" ] copied;
+  is_false ~msg:"still running" ended;
+  let _, copied, ended =
+    selecting ~editor:(Mosaic.Editor.of_string "abcd") [ ctrl_c ]
+  in
+  equal ~msg:"nothing to copy" (list string) [] copied;
+  is_true ~msg:"quits" ended;
+  [%expect {| |}]
+
+(* §3.6 Extension: Shift with an arrow extends the view selection ahead of
+   the focused input, which neither sees the key nor changes, though Shift
+   with Left would select in it. *)
+let%expect_test "Shift with an arrow extends the view selection first" =
+  let log, copied, _ =
+    selecting
+      ~editor:(Mosaic.Editor.of_string "abcd")
+      [ drag_hello; "\027[1;2C"; "\027[1;2C"; "\027[1;2D"; ctrl_c ]
+  in
+  equal ~msg:"no edit, no key" (list string)
+    [ "selected hello"; "copied hello "; "cleared" ]
+    log;
+  equal ~msg:"extended" (list string) [ "hello " ] copied;
+  [%expect {| |}]
+
+(* §3.6 Other keys: any other key clears the view selection and goes on, to
+   the application or into the focused input. *)
+let%expect_test "any other key clears the view selection and goes on" =
+  let log, _, _ = selecting [ drag_hello; "x" ] in
+  equal ~msg:"to the application" (list string)
+    [ "selected hello"; "cleared"; "key x" ]
+    log;
+  let log, _, _ =
+    selecting ~editor:(Mosaic.Editor.of_string "") [ drag_hello; "x" ]
+  in
+  equal ~msg:"into the input" (list string)
+    [ "selected hello"; "cleared"; "edit" ]
+    log;
+  [%expect {| |}]
+
+(* PgDn, PgUp, an arrow held with Ctrl or Alt, and a modifier pressed alone
+   go on and leave the selection, which Ctrl+C then copies. *)
+let%expect_test "paging, modified navigation and a modifier keep the selection"
+    =
+  let log, copied, _ =
+    selecting
+      [
+        drag_hello;
+        "\027[6~";
+        "\027[5~";
+        "\027[1;5A";
+        "\027[1;3D";
+        "\027[57441u";
+        ctrl_c;
+      ]
+  in
+  equal ~msg:"each goes on" (list string)
+    [
+      "selected hello";
+      "key <other>";
+      "key <other>";
+      "key <up>";
+      "key <other>";
+      "key <other>";
+      "copied hello";
+      "cleared";
+    ]
+    log;
+  equal ~msg:"kept" (list string) [ "hello" ] copied;
+  [%expect {| |}]
+
+(* §3.6 Home, Inert: a [Capture] listener that prevents a key, as F2's
+   binding does, or stops it, keeps it from the selection. A selection behind
+   the modal it opens is inert: Escape closes the modal, Ctrl+C quits, and the
+   selection is there once the modal closes. *)
+let%expect_test "a selection behind a modal is inert, and stays" =
+  let log, copied, ended = selecting [ drag_hello; "\027OQ"; "\027"; ctrl_c ] in
+  equal ~msg:"Escape closes the modal" (list string)
+    [ "selected hello"; "key <esc>"; "close"; "copied hello"; "cleared" ]
+    log;
+  equal ~msg:"copied once the modal closed" (list string) [ "hello" ] copied;
+  is_false ~msg:"running" ended;
+  let _, copied, ended = selecting [ drag_hello; "\027OQ"; ctrl_c ] in
+  equal ~msg:"nothing copied" (list string) [] copied;
+  is_true ~msg:"Ctrl+C quits" ended;
+  let subs _ =
+    Mosaic.Sub.on_key ~phase:Capture (fun key ->
+        if Mosaic.Shortcut.matches Mosaic.Shortcut.escape key then
+          Mosaic.Event.Key.stop_propagation key;
+        None)
+  in
+  let log, _, _ = selecting ~subs [ drag_hello; "\027"; ctrl_c ] in
+  equal ~msg:"a stopped Escape leaves it" (list string)
+    [ "selected hello"; "copied hello"; "cleared" ]
+    log;
+  [%expect {| |}]
+
+(* §3.6 Home: a key that a [Capture] listener prevents, without stopping it,
+   is not the table's either: it leaves the selection, which Ctrl+C then
+   copies rather than quitting. *)
+let%expect_test "a key a Capture listener prevents leaves the selection" =
+  let subs _ =
+    Mosaic.Sub.on_key ~phase:Capture (fun key ->
+        if Mosaic.Shortcut.matches (Mosaic.Shortcut.char 'x') key then
+          Mosaic.Event.Key.prevent_default key;
+        None)
+  in
+  let log, copied, ended = selecting ~subs [ drag_hello; "x"; ctrl_c ] in
+  equal ~msg:"kept" (list string)
+    [ "selected hello"; "copied hello"; "cleared" ]
+    log;
+  equal ~msg:"to the clipboard" (list string) [ "hello" ] copied;
+  is_false ~msg:"running" ended;
+  [%expect {| |}]
+
+(* §3.7 Application: the application hears the copies and the clears its
+   commands make. *)
+let%expect_test "the application hears what its commands copy and clear" =
+  let log, copied, _ = selecting [ drag_hello; "c"; "k"; "k" ] in
+  equal ~msg:"copied, then cleared once" (list string)
+    [ "selected hello"; "copied hello"; "cleared" ]
+    log;
+  equal ~msg:"to the clipboard" (list string) [ "hello" ] copied;
+  [%expect {| |}]
+
+(* §3.7 Changes: a focus loss settles the selection a held press drags. *)
+let%expect_test "a focus loss settles the selection it drags" =
+  let log, _, _ = selecting [ "\027[<0;1;1M\027[<32;5;1M"; "\027[O" ] in
+  equal ~msg:"settled" (list string) [ "selected hello" ] log;
+  [%expect {| |}]
+
+(* An application that copies on select copies a selection whose release
+   was lost, before the press that reveals the loss starts another. *)
+let%expect_test "copy on select copies a selection whose release was lost" =
+  let log, copied, _ =
+    selecting ~copy_on_select:true
+      [ "\027[<0;1;1M\027[<32;5;1M"; "\027[<0;8;1M" ]
+  in
+  equal ~msg:"the settled text" (list string) [ "hello" ] copied;
+  equal ~msg:"then the new press clears it" (list string)
+    [ "selected hello"; "copied hello"; "cleared" ]
+    log;
   [%expect {| |}]

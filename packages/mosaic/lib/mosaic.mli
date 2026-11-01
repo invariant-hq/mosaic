@@ -1002,8 +1002,8 @@ module Cmd : sig
   val copy_selection : 'msg t
   (** [copy_selection] copies the text selected in the view to the clipboard, as
       {!copy_to_clipboard} does, or else the focused editor's selection
-      ({!Mosaic_ui.Renderer.selection_text}). It does nothing when no text is
-      selected. *)
+      ({!Mosaic_ui.Renderer.selection_text}), and {!Sub.val-on_copy} hears it.
+      It does nothing when no text is selected. *)
 
   val query_color_scheme : 'msg t
   (** [query_color_scheme] asks the terminal for its color scheme
@@ -1024,7 +1024,8 @@ module Cmd : sig
       character, and [title] no [;]. *)
 
   val clear_selection : 'msg t
-  (** [clear_selection] clears the text selected in the view, if any. *)
+  (** [clear_selection] clears the text selected in the view, if any, which
+      {!Sub.val-on_selection} hears. *)
 
   val static_commit : 'msg view -> 'msg t
   (** [static_commit view] renders [view] at the width of the next frame
@@ -1092,11 +1093,13 @@ module Sub : sig
       (the character a key types into a focused input, the item a key selects in
       a focused list), then each ancestor's handlers, then the application's
       [Bubble] listeners. A key or a paste targets the focused element; a mouse
-      event the element under the pointer. {!Event} says what stopping
-      propagation and preventing the default do along the way. A behavior that
-      acts on an event consumes it, which prevents and stops it. The keys a
-      widget's behavior acts on are part of the widget's interface, listed in
-      its module (for example {!Mosaic_ui.Select}).
+      event the element under the pointer. The keys of a text selection act
+      between the [Capture] listeners and the target ({!section-selection}).
+      {!Event} says what stopping propagation and preventing the default do
+      along the way. A behavior that acts on an event consumes it, which
+      prevents and stops it. The keys a widget's behavior acts on are part of
+      the widget's interface, listed in its module (for example
+      {!Mosaic_ui.Select}).
 
       The application is one node, so its listeners of a phase all see what
       reaches the phase, in declaration order, whatever the others did with it.
@@ -1174,6 +1177,9 @@ module Sub : sig
     | Worker of string * (Stop.t -> 'msg mailbox -> unit)  (** {!val-worker}. *)
     | On_focus_lost of 'msg  (** {!val-on_focus_lost}. *)
     | On_palette of (Ansi.Palette.t -> 'msg option)  (** {!val-on_palette}. *)
+    | On_selection of (string option -> 'msg option)
+        (** {!val-on_selection}. *)
+    | On_copy of (string -> 'msg option)  (** {!val-on_copy}. *)
 
   val none : 'msg t
   (** [none] is the subscription to nothing. *)
@@ -1332,6 +1338,52 @@ module Sub : sig
   val map : ('a -> 'b) -> 'a t -> 'b t
   (** [map f sub] is [sub] with every produced message transformed by [f]. Use
       this to embed child-component subscriptions in a parent subscription. *)
+
+  (** {1:selection Text selection}
+
+      The program owns the keys of the text selected in the view
+      ({!Mosaic_ui.Renderer.section-selection}). They come after the [Capture]
+      listeners and before the elements, unless a [Capture] listener stopped the
+      key or prevented its default, and act while the view's selection holds
+      text and is not behind a modal element
+      ({!Mosaic_ui.Renderer.selection_live}):
+      - Escape clears it.
+      - Ctrl+C, and Ctrl+Shift+C or Super+C where the terminal sends them, copy
+        it to the clipboard (OSC 52) and clear it, so Ctrl+C does not end the
+        program.
+      - Shift with an arrow, Home or End moves its focus by a grapheme, a row,
+        or to the row's ends ({!Mosaic_ui.Renderer.extend_selection}).
+      - Any other key clears it and goes on to the elements, but PgUp, PgDn, an
+        arrow, Home or End held with Ctrl, Alt or Super, and a modifier pressed
+        alone, which leave it.
+
+      The keys that act on the selection go no further: they are stopped and
+      their default prevented. Without such a selection, a copy chord copies the
+      selection of the focused input or textarea, which keeps it, as a text
+      field does, and goes no further either; with neither, every key does what
+      it did. The program never writes the clipboard on its own when a selection
+      is made: an application that copies on select answers {!on_selection} with
+      {!Cmd.copy_selection}. *)
+
+  val on_selection : (string option -> 'msg option) -> 'msg t
+  (** [on_selection f] calls [f (Some text)] when a pointer gesture that made or
+      moved the view's text selection ends with the selection holding [text], at
+      the release, or when the release is lost, and [f None] when a selection
+      that held text holds none, whatever cleared it, and dispatches the message
+      it returns. A double or triple click is heard at its release; a selection
+      extended with Shift and an arrow, Home or End is not heard again. The
+      calls come in the order of the changes, after the input event, the command
+      or the view that made them. This copies on select:
+      {[
+      Sub.on_selection (function Some _ -> Some Copy_selection | None -> None)
+      (* update: Copy_selection -> (model, Cmd.copy_selection) *)
+      ]} *)
+
+  val on_copy : (string -> 'msg option) -> 'msg t
+  (** [on_copy f] calls [f text] with each text the program writes to the
+      clipboard from a selection, at a copy chord ({!section-selection}) or
+      {!Cmd.copy_selection}, and dispatches the message it returns, such as one
+      that shows that the text was copied. *)
 end
 
 (** {1:application Application} *)
@@ -1379,10 +1431,11 @@ val run :
     prevented ({!Event.Key.prevent_default}), at the end of the input, or at a
     stop request. A signal that ends the process ends the program too, and then
     [run] does not return ({!Matrix}). In raw mode Ctrl+C is a key, and quitting
-    is its default, which an element or a listener that uses the key prevents.
-    The terminal is given back on every way out, an exception included. When the
-    run ends, [run] requests the stop of the workers and returns without waiting
-    for work still running off the loop.
+    is its default, which an element or a listener that uses the key prevents,
+    as a copy of selected text does ({!Sub.section-selection}). The terminal is
+    given back on every way out, an exception included. When the run ends, [run]
+    requests the stop of the workers and returns without waiting for work still
+    running off the loop.
 
     - [input], [output], [env] -- the terminal to run in and its session's
       environment, as {!Matrix.run} takes them. Default to the process's.
@@ -1836,9 +1889,10 @@ val modal : ?key:string -> ?on_close:'msg -> 'msg t -> 'msg t
     Once the view drops the modal, the rest is laid out and drawn as before.
 
     Escape's default action, after the [Bubble] listeners and unless something
-    prevented it ({!Sub.section-phases}), is to dispatch [on_close], whatever is
-    focused. [Capture] listeners still see every key first. Closing the modal is
-    the application's: [on_close] asks, and the view without the modal closes
+    prevented it ({!Sub.section-phases}), as clearing a text selection in the
+    modal does ({!Sub.section-selection}), is to dispatch [on_close], whatever
+    is focused. [Capture] listeners still see every key first. Closing the modal
+    is the application's: [on_close] asks, and the view without the modal closes
     it. A focus declared outside the modal is lost while it is shown
     ({!Sub.on_focus_lost}). The application answers with a focus inside, such as
     {!Cmd.focus_next}, and declares the element that opened the modal focused

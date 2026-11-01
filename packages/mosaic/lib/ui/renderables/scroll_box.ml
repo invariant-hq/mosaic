@@ -678,7 +678,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
   Scroll_bar.set_on_change t.horizontal_bar
     (Some (fun pos -> scroll_to_internal t ~x:pos ()));
   (* The box is a region of text selection: a selection that starts in its
-     content stays in it, and its gestures scroll the box. *)
+     content stays in it, and its gestures and keyboard extension scroll the
+     box, through its proposal. *)
   Renderable.Private.set_region node
     (Some
        {
@@ -686,6 +687,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
          content = content_node;
          drag = (fun ~x ~y -> update_auto_scroll t x y);
          settle = (fun () -> stop_auto_scroll t);
+         scroll = (fun rows -> scroll_by t ~y:rows ());
        });
   (* Wire mouse handler *)
   Renderable.on_mouse node (on_mouse t);

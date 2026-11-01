@@ -1250,6 +1250,375 @@ let an_editor_selects_lines () =
     (last_selection proposed);
   release r ~x:0 ~y:1
 
+(* ── §3.6 Keys ── *)
+
+(* "hello world" alone, on the first row. *)
+let hello () =
+  let r = Renderer.create () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "hello world" : Text.t);
+  frame r;
+  r
+
+(* §3.6 Home, Inert: the keys act on a selection that holds text and is not
+   behind the modal node, and one behind it is still there once it closes. *)
+let a_selection_is_live_while_it_holds_text_outside_a_modal () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore (text_at root ~x:0 ~y:5 ~w:10 ~h:1 "behind" : Text.t);
+  let top =
+    Renderable.create ~parent:root ~style:(place ~x:0 ~y:0 ~w:10 ~h:1) ()
+  in
+  ignore (line top "modal" : Text.t);
+  frame r;
+  is_false ~msg:"no selection" (Renderer.selection_live r);
+  press r ~x:0 ~y:5;
+  is_false ~msg:"a click holds nothing" (Renderer.selection_live r);
+  drag_to r ~x:2 ~y:5;
+  is_true ~msg:"dragging" (Renderer.selection_live r);
+  release r ~x:2 ~y:5;
+  is_true ~msg:"at rest" (Renderer.selection_live r);
+  Renderer.set_modal r (Some top);
+  frame r;
+  is_false ~msg:"behind the modal" (Renderer.selection_live r);
+  Renderer.extend_selection r `Right;
+  equal ~msg:"no extension behind the modal" (option string) (Some "beh")
+    (copied r);
+  Renderer.set_modal r None;
+  frame r;
+  is_true ~msg:"once the modal closes" (Renderer.selection_live r);
+  Renderer.clear_selection r;
+  is_false ~msg:"cleared" (Renderer.selection_live r)
+
+(* §3.6 Extension: Shift with an arrow moves the focus by a grapheme, and the
+   anchor's grapheme stays selected. *)
+let extension_moves_the_focus_by_a_grapheme () =
+  let r = hello () in
+  select r (0, 0) (2, 0);
+  Renderer.extend_selection r `Right;
+  equal ~msg:"right" (option string) (Some "hell") (copied r);
+  Renderer.extend_selection r `Left;
+  Renderer.extend_selection r `Left;
+  equal ~msg:"left" (option string) (Some "he") (copied r);
+  Renderer.extend_selection r `Left;
+  Renderer.extend_selection r `Left;
+  equal ~msg:"onto the anchor" (option string) (Some "h") (copied r)
+
+(* Shift+Home and Shift+End move the focus to its row's ends. *)
+let extension_moves_the_focus_to_its_rows_ends () =
+  let r = hello () in
+  select r (2, 0) (4, 0);
+  Renderer.extend_selection r `Row_end;
+  equal ~msg:"the row's end" (option string) (Some "llo world") (copied r);
+  Renderer.extend_selection r `Row_start;
+  equal ~msg:"the row's start, past the anchor" (option string) (Some "hel")
+    (copied r);
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:3
+       ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
+       "ab\ncd ef gh"
+      : Text.t);
+  frame r;
+  select r (0, 0) (0, 1);
+  Renderer.extend_selection r `Row_end;
+  equal ~msg:"the end of a row that wraps" (option string) (Some "ab\ncd ef ")
+    (copied r)
+
+(* Shift+Up and Shift+Down move the focus to its column in the row above or
+   below, in its text and from text to text. *)
+let extension_moves_the_focus_by_a_row () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:3 "one\ntwo\nthree" : Text.t);
+  frame r;
+  select r (0, 0) (1, 0);
+  Renderer.extend_selection r `Down;
+  equal ~msg:"in the text" (option string) (Some "one\ntw") (copied r);
+  Renderer.extend_selection r `Down;
+  equal ~msg:"again" (option string) (Some "one\ntwo\nth") (copied r);
+  Renderer.extend_selection r `Up;
+  equal ~msg:"up" (option string) (Some "one\ntw") (copied r);
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  List.iter (fun s -> ignore (line col s : Text.t)) [ "foo"; "bar"; "baz" ];
+  frame r;
+  select r (0, 0) (1, 0);
+  Renderer.extend_selection r `Down;
+  equal ~msg:"to the text below" (option string) (Some "foo\nba") (copied r);
+  Renderer.extend_selection r `Down;
+  equal ~msg:"and the next" (option string) (Some "foo\nbar\nba") (copied r);
+  Renderer.extend_selection r `Down;
+  equal ~msg:"none below the last" (option string) (Some "foo\nbar\nba")
+    (copied r);
+  Renderer.extend_selection r `Up;
+  equal ~msg:"back up" (option string) (Some "foo\nba") (copied r)
+
+(* Past the edge of its text, a grapheme move reaches the next text in
+   row-major order, at its start, or the one before, at its end. *)
+let extension_crosses_to_the_next_text () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore (line col "foo" : Text.t);
+  ignore (line col "bar" : Text.t);
+  frame r;
+  select r (0, 0) (2, 0);
+  Renderer.extend_selection r `Right;
+  equal ~msg:"at the next text's start" (option string) (Some "foo") (copied r);
+  Renderer.extend_selection r `Right;
+  equal ~msg:"its first grapheme" (option string) (Some "foo\nb") (copied r);
+  Renderer.extend_selection r `Left;
+  Renderer.extend_selection r `Left;
+  Renderer.extend_selection r `Left;
+  equal ~msg:"back in the text before" (option string) (Some "fo") (copied r)
+
+(* Two texts of three rows side by side. *)
+let columns () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore (text_at root ~x:0 ~y:0 ~w:5 ~h:3 "L0\nL1\nL2" : Text.t);
+  ignore (text_at root ~x:6 ~y:0 ~w:5 ~h:3 "R0\nR1\nR2" : Text.t);
+  frame r;
+  r
+
+(* Past the edge of its text, a grapheme move goes to the boundary at the
+   cell beside it in row-major order, on the same row of the text beside,
+   not to that text's far end. *)
+let extension_crosses_to_the_text_beside_by_a_grapheme () =
+  let r = columns () in
+  select r (6, 0) (8, 0);
+  for _ = 1 to 4 do
+    Renderer.extend_selection r `Left
+  done;
+  equal ~msg:"leftward, the row before" (option string) (Some "0    R")
+    (copied r);
+  let dragged = columns () in
+  select dragged (6, 0) (1, 0);
+  equal ~msg:"as a drag there" (option string) (copied dragged) (copied r);
+  let r = columns () in
+  select r (0, 2) (1, 2);
+  Renderer.extend_selection r `Right;
+  equal ~msg:"at the start of the row after" (option string) (Some "L2")
+    (copied r);
+  Renderer.extend_selection r `Right;
+  equal ~msg:"rightward, its first grapheme" (option string) (Some "L2    R")
+    (copied r);
+  let dragged = columns () in
+  select dragged (0, 2) (6, 2);
+  equal ~msg:"as a drag there" (option string) (copied dragged) (copied r)
+
+(* A focus left in a scroll box selected whole moves out of it, from its
+   view: the box stays whole. *)
+let extension_crosses_out_of_a_nested_box () =
+  let r = nested_box () in
+  select r (0, 0) (25, 3);
+  let whole = "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5" in
+  equal ~msg:"the box at the far end" (option string) (Some whole) (copied r);
+  Renderer.extend_selection r `Down;
+  equal ~msg:"the row below" (option string)
+    (Some (whole ^ "\nbelow"))
+    (copied r)
+
+(* A row move that takes the focus out of a scroll box's view scrolls the box
+   a row, by its proposal, and the focus never leaves the box. *)
+let a_row_move_past_the_view_scrolls_the_region () =
+  let r, sb = rows_in_a_box () in
+  select r (0, 1) (4, 3);
+  Renderer.extend_selection r `Down;
+  frame r;
+  equal ~msg:"a row" int 1 (Scroll_box.scroll_top sb);
+  equal ~msg:"the row below the view" (option string)
+    (Some "row-1\nrow-2\nrow-3\nrow-4") (copied r);
+  for _ = 1 to 8 do
+    Renderer.extend_selection r `Down;
+    frame r
+  done;
+  equal ~msg:"to the box's last row" int 6 (Scroll_box.scroll_top sb);
+  equal ~msg:"never the footer" (option string)
+    (Some "row-1\nrow-2\nrow-3\nrow-4\nrow-5\nrow-6\nrow-7\nrow-8\nrow-9")
+    (copied r)
+
+(* An extension selects by graphemes from then on: a Shift+press after it
+   reaches the grapheme pressed, not its word. *)
+let extension_selects_by_graphemes () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "alpha beta gamma" : Text.t);
+  frame r;
+  clicks r ~x:7 ~y:0 2;
+  Renderer.extend_selection r `Right;
+  equal ~msg:"a grapheme, not a word" (option string) (Some "beta ") (copied r);
+  clicks ~shift:true r ~x:13 ~y:0 1;
+  equal ~msg:"a Shift+press by graphemes" (option string) (Some "beta gam")
+    (copied r)
+
+(* While a gesture drags the selection, the pointer is its focus, which the
+   keys leave alone. *)
+let a_drag_keeps_its_focus_from_the_keys () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "alpha beta gamma" : Text.t);
+  frame r;
+  presses r ~x:7 ~y:0 2;
+  drag_to r ~x:13 ~y:0;
+  Renderer.extend_selection r `Right;
+  equal ~msg:"dragging" (option string) (Some "beta gamma") (copied r);
+  release r ~x:13 ~y:0;
+  equal ~msg:"released" (option string) (Some "beta gamma") (copied r)
+
+(* ── §3.7 Changes ── *)
+
+let changes r =
+  List.map
+    (function
+      | Renderer.Settled text -> "settled " ^ text
+      | Renderer.Cleared -> "cleared")
+    (Renderer.take_selection_changes r)
+
+(* A release settles the selection with its text; the motion before it
+   queues nothing, and a take forgets what it took. *)
+let a_release_settles_the_selection () =
+  let r = hello () in
+  press r ~x:0 ~y:0;
+  drag_to r ~x:4 ~y:0;
+  equal ~msg:"dragging" (list string) [] (changes r);
+  release r ~x:4 ~y:0;
+  equal ~msg:"released" (list string) [ "settled hello" ] (changes r);
+  equal ~msg:"taken" (list string) [] (changes r)
+
+(* A click selects nothing and settles nothing, but a selection that held
+   text and that a press replaces with nothing is cleared. *)
+let a_click_settles_nothing () =
+  let r = hello () in
+  select r (0, 0) (4, 0);
+  ignore (changes r : string list);
+  press r ~x:7 ~y:0;
+  equal ~msg:"the press clears" (list string) [ "cleared" ] (changes r);
+  release r ~x:7 ~y:0;
+  equal ~msg:"the click settles nothing" (list string) [] (changes r);
+  is_none ~msg:"and selects nothing" (copied r);
+  press r ~x:7 ~y:0;
+  release r ~x:7 ~y:0;
+  equal ~msg:"nor clears again" (list string) [] (changes r)
+
+(* A double click settles its word at its release, and the third click of a
+   series replaces the word with its line, with no clear between. *)
+let a_double_click_settles_at_its_release () =
+  let r = hello () in
+  presses r ~x:7 ~y:0 2;
+  equal ~msg:"held" (list string) [] (changes r);
+  release r ~x:7 ~y:0;
+  equal ~msg:"released" (list string) [ "settled world" ] (changes r);
+  let r = hello () in
+  presses r ~x:7 ~y:0 3;
+  equal ~msg:"the third press" (list string) [ "settled world" ] (changes r);
+  release r ~x:7 ~y:0;
+  equal ~msg:"the line" (list string) [ "settled hello world" ] (changes r)
+
+(* §3.5 Release: a press of the held button means its release was lost: the
+   gesture settles, then the new press clears what it held. A focus loss
+   settles it too. *)
+let a_lost_release_settles () =
+  let r = hello () in
+  press r ~x:0 ~y:0;
+  drag_to r ~x:4 ~y:0;
+  press r ~x:8 ~y:0;
+  equal ~msg:"a new press" (list string)
+    [ "settled hello"; "cleared" ]
+    (changes r);
+  release r ~x:8 ~y:0;
+  press r ~x:0 ~y:0;
+  drag_to r ~x:1 ~y:0;
+  Renderer.pointer_lost r;
+  equal ~msg:"a focus loss" (list string) [ "settled he" ] (changes r)
+
+(* A clear, during a gesture or at rest, is heard once, and the gesture it
+   ends settles nothing. *)
+let a_clear_is_heard_once () =
+  let r = hello () in
+  press r ~x:0 ~y:0;
+  drag_to r ~x:4 ~y:0;
+  Renderer.clear_selection r;
+  equal ~msg:"during a drag" (list string) [ "cleared" ] (changes r);
+  drag_to r ~x:6 ~y:0;
+  release r ~x:6 ~y:0;
+  equal ~msg:"the gesture settles nothing" (list string) [] (changes r);
+  is_none ~msg:"and selects nothing" (copied r);
+  select r (0, 0) (4, 0);
+  ignore (changes r : string list);
+  Renderer.clear_selection r;
+  Renderer.clear_selection r;
+  equal ~msg:"at rest" (list string) [ "cleared" ] (changes r)
+
+(* A Shift+press that moves an end settles the new selection, which it does
+   not clear first. *)
+let a_shift_press_settles_the_moved_selection () =
+  let r = letters ~backward:false in
+  ignore (changes r : string list);
+  clicks ~shift:true r ~x:8 ~y:0 1;
+  equal ~msg:"settled" (list string) [ "settled cdefghi" ] (changes r)
+
+(* A keyboard extension settles nothing; one that leaves the selection no
+   text clears it. *)
+let an_extension_settles_nothing () =
+  let r = hello () in
+  select r (0, 0) (2, 0);
+  ignore (changes r : string list);
+  Renderer.extend_selection r `Right;
+  equal ~msg:"extended" (option string) (Some "hell") (copied r);
+  equal ~msg:"nothing queued" (list string) [] (changes r);
+  (* A press past the end of a row anchors at a boundary, which holds no
+     text. *)
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore (line col "abc" : Text.t);
+  ignore (line col "def" : Text.t);
+  frame r;
+  select r (5, 0) (0, 1);
+  equal ~msg:"from a boundary" (option string) (Some "d") (copied r);
+  ignore (changes r : string list);
+  Renderer.extend_selection r `Left;
+  is_none ~msg:"no text left" (copied r);
+  is_false ~msg:"cleared" (Renderer.selection_live r);
+  equal ~msg:"heard" (list string) [ "cleared" ] (changes r);
+  Renderer.extend_selection r `Right;
+  is_none ~msg:"gone" (copied r)
+
+(* A selection holds the text it copies: a line break alone, which its
+   fragment drops, is no text, while one between two others is kept. *)
+let a_line_break_alone_holds_no_text () =
+  let r = Renderer.create () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:4 "ab\n\n\n" : Text.t);
+  frame r;
+  press r ~x:5 ~y:0;
+  drag_to r ~x:0 ~y:1;
+  is_none ~msg:"one copies nothing" (copied r);
+  is_false ~msg:"is not live" (Renderer.selection_live r);
+  release r ~x:0 ~y:1;
+  equal ~msg:"and settles nothing" (list string) [] (changes r);
+  press r ~x:5 ~y:0;
+  drag_to r ~x:0 ~y:3;
+  equal ~msg:"three copy the middle one" (option string) (Some "\n") (copied r);
+  is_true ~msg:"which is live" (Renderer.selection_live r);
+  release r ~x:0 ~y:3;
+  equal ~msg:"and settles" (list string) [ "settled \n" ] (changes r)
+
+(* Law 4: a press on unselectable content changes nothing, and queues
+   nothing. *)
+let a_press_on_unselectable_content_queues_nothing () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore (text_at root ~x:0 ~y:0 ~w:20 ~h:1 "hello world" : Text.t);
+  let fenced = text_at root ~x:0 ~y:2 ~w:20 ~h:1 "fenced" in
+  Renderable.set_selectable (Text.node fenced) (Some false);
+  frame r;
+  select r (0, 0) (4, 0);
+  ignore (changes r : string list);
+  press r ~x:1 ~y:2;
+  drag_to r ~x:3 ~y:2;
+  release r ~x:3 ~y:2;
+  equal ~msg:"nothing" (list string) [] (changes r);
+  equal ~msg:"kept" (option string) (Some "hello") (copied r)
+
 let () =
   run "mosaic.selection"
     [
@@ -1391,5 +1760,43 @@ let () =
             an_editors_drag_survives_a_chorded_press;
           test "an editor selects words" an_editor_selects_words;
           test "an editor selects lines" an_editor_selects_lines;
+        ];
+      group "Keys"
+        [
+          test "a selection is live while it holds text outside a modal"
+            a_selection_is_live_while_it_holds_text_outside_a_modal;
+          test "extension moves the focus by a grapheme"
+            extension_moves_the_focus_by_a_grapheme;
+          test "extension moves the focus to its row's ends"
+            extension_moves_the_focus_to_its_rows_ends;
+          test "extension moves the focus by a row"
+            extension_moves_the_focus_by_a_row;
+          test "extension crosses to the next text"
+            extension_crosses_to_the_next_text;
+          test "extension crosses to the text beside by a grapheme"
+            extension_crosses_to_the_text_beside_by_a_grapheme;
+          test "extension crosses out of a nested box"
+            extension_crosses_out_of_a_nested_box;
+          test "a row move past the view scrolls the region"
+            a_row_move_past_the_view_scrolls_the_region;
+          test "extension selects by graphemes" extension_selects_by_graphemes;
+          test "a drag keeps its focus from the keys"
+            a_drag_keeps_its_focus_from_the_keys;
+        ];
+      group "Changes"
+        [
+          test "a release settles the selection" a_release_settles_the_selection;
+          test "a click settles nothing" a_click_settles_nothing;
+          test "a double click settles at its release"
+            a_double_click_settles_at_its_release;
+          test "a lost release settles" a_lost_release_settles;
+          test "a clear is heard once" a_clear_is_heard_once;
+          test "a shift press settles the moved selection"
+            a_shift_press_settles_the_moved_selection;
+          test "an extension settles nothing" an_extension_settles_nothing;
+          test "a line break alone holds no text"
+            a_line_break_alone_holds_no_text;
+          test "a press on unselectable content queues nothing"
+            a_press_on_unselectable_content_queues_nothing;
         ];
     ]
