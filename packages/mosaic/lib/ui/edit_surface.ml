@@ -236,6 +236,12 @@ end
 
 (* Types *)
 
+(* The press a left drag in the editor selects from: a single click's caret,
+   or the span of the unit a double or triple click selected. *)
+type drag_anchor =
+  | Caret of Layout.caret
+  | Span of { unit : Text_unit.t; first : int; last : int }
+
 type t = {
   node : Renderable.t;
   text_buf : Text_buffer.t;
@@ -251,8 +257,7 @@ type t = {
   mutable on_submit : (string -> unit) option;
   mode : mode;
   mutable keymap : action Keymap.t;
-  mutable drag_anchor : Layout.caret option;
-      (* The caret of the press a left drag in the editor selects from. *)
+  mutable drag_anchor : drag_anchor option;
 }
 
 (* Accessors *)
@@ -319,6 +324,14 @@ let select_carets ~anchor ~cursor base =
     && Editor.selection next = Editor.selection base
   then base
   else next
+
+(* The selection from [first] to [last], its caret at [last] or, [backward],
+   at [first]. *)
+let select_span ~first ~last ~backward base =
+  let start = Layout.{ grapheme = first; affinity = Downstream }
+  and stop = Layout.{ grapheme = last; affinity = Upstream } in
+  if backward then select_carets ~anchor:stop ~cursor:start base
+  else select_carets ~anchor:start ~cursor:stop base
 
 (* An edit follows its caret from the viewport the surface shows, not from the
    one the accepted value declared. *)
@@ -651,6 +664,22 @@ let caret_at t ev =
     ~x:(Event.Mouse.x ev - Renderable.x t.node)
     ~y:(Event.Mouse.y ev - Renderable.y t.node)
 
+(* The span of [unit] around the pointer's cell, which may lie outside the
+   editor: the unit around the graphemes the cell shows, or around the
+   boundary nearest it (RFC 0006 §3.5 Units). *)
+let unit_at t ev unit =
+  let layout = Text_surface.layout t.surface in
+  let first, last =
+    Layout.coverage layout
+      ~row:
+        (Text_surface.scroll_y t.surface
+        + Event.Mouse.y ev - Renderable.y t.node)
+      ~column:
+        (Text_surface.scroll_x t.surface
+        + Event.Mouse.x ev - Renderable.x t.node)
+  in
+  Text_unit.span unit (Layout.source layout) ~first ~last
+
 (* Vertical movement *)
 
 let move_vertical t ~select ~delta =
@@ -805,7 +834,9 @@ let handle_scroll t direction delta =
 
 (* A left press places the caret, and a drag from it selects between the
    two carets, as a text field's pointer does: a caret is not a selected
-   cell. Another button's press leaves the drag alone (RFC 0006 §3.5). *)
+   cell. A double click selects a word and a triple click a line, and a drag
+   after either extends by that unit, the unit pressed staying selected.
+   Another button's press leaves the drag alone (RFC 0006 §3.5, §3.10). *)
 let handle_mouse t ev =
   if Event.Mouse.default_prevented ev then ()
   else
@@ -813,17 +844,28 @@ let handle_mouse t ev =
     | Scroll { direction; delta } ->
         Event.Mouse.prevent_default ev;
         handle_scroll t direction delta
-    | Down { button = Left; _ } when Renderable.selectable t.node ->
-        let caret = caret_at t ev in
-        t.drag_anchor <- Some caret;
+    | Down { button = Left; clicks } when Renderable.selectable t.node -> (
         let base = t.props.state in
-        propose t ~base (select_carets ~anchor:caret ~cursor:caret base)
+        match Text_unit.of_clicks clicks with
+        | Grapheme ->
+            let caret = caret_at t ev in
+            t.drag_anchor <- Some (Caret caret);
+            propose t ~base (select_carets ~anchor:caret ~cursor:caret base)
+        | (Word | Line) as unit ->
+            let first, last = unit_at t ev unit in
+            t.drag_anchor <- Some (Span { unit; first; last });
+            propose t ~base (select_span ~first ~last ~backward:false base))
     | Down { button = Left; _ } -> t.drag_anchor <- None
     | Drag { button = Left } -> (
+        let base = t.props.state in
         match t.drag_anchor with
-        | Some anchor ->
-            let base = t.props.state in
+        | Some (Caret anchor) ->
             propose t ~base (select_carets ~anchor ~cursor:(caret_at t ev) base)
+        | Some (Span { unit; first; last }) ->
+            let first', last' = unit_at t ev unit in
+            propose t ~base
+              (select_span ~first:(min first first') ~last:(max last last')
+                 ~backward:(first' < first) base)
         | None -> ())
     | Up { button = Left; _ } | Drag_end { button = Left } ->
         t.drag_anchor <- None

@@ -287,7 +287,8 @@ val dispatch_mouse : t -> path -> Event.mouse -> unit
 (** [dispatch_mouse t path event] delivers [event] to [path], then, unless the
     default is prevented, runs the mouse defaults:
     - a primary press starts a text selection ({!section-selection}) on a node
-      selection reaches ({!Renderable.selectable}), clears it on an editor
+      selection reaches ({!Renderable.selectable}), or with Shift moves an end
+      of the selection there is, clears it on an editor
       ({!Renderable.Private.set_owned_text}), which selects on its own, and
       leaves it as it is on a node selection does not reach;
     - a primary drag moves the focus of the selection its press started;
@@ -363,19 +364,35 @@ val theme : t -> Theme.t
     else the first at or after the pressed cell in row-major order, else the
     last before it. Texts selection does not reach ({!Renderable.selectable}),
     editors, hidden nodes and texts in another scroll box are passed by. The
-    selection starts there with its anchor at the pressed cell: the graphemes
-    the cell shows, or the boundary nearest it. A press that finds no text
-    clears the selection. While the press is held, the pointer's cell, held in
-    the region's view, is the focus, and the region's scroll box scrolls while
-    the pointer holds near or past its edge. A press the pointer does not leave
-    selects nothing. When the press ends, the focus becomes the far end of the
-    text the selection holds.
+    selection starts there with its anchor at the pressed cell, in the {e unit}
+    the press's [clicks] select ({!Event.Mouse.kind}): for one click, the
+    graphemes the cell shows, or the boundary nearest it; for two, the word
+    around them; for three or more, their logical line, without its terminator.
+    A word is a run of whitespace, a single boundary character, or a run of
+    anything else; the boundary characters are Ghostty's: the apostrophe, the
+    quotation mark, the grave accent, [│], [|], [:], [;], [,], [$], and the
+    parentheses, square brackets, braces and angle brackets. A press that finds
+    no text clears the selection. While the press is held, the pointer's cell,
+    held in the region's view, is the focus, with the unit around it in the text
+    it resolves to as a press does, or alone over a scroll box in the region,
+    and the region's scroll box scrolls while the pointer holds near or past its
+    edge. A single click the pointer does not leave selects nothing. When the
+    press ends, the focus becomes the far end of the text the selection holds.
+
+    A left press with Shift, on a node selection reaches and while a selection
+    that is not behind the modal node exists, moves the end of the selection
+    nearer the press, in row-major distance, the focus on a tie, and makes the
+    other end the anchor. The press then drags the focus as above, held in the
+    selection's region, in the selection's unit, or in that of its [clicks] if
+    they are two or more. Without a selection, it is an ordinary press, as a
+    press with Ctrl is.
 
     Between the ends lies the terminal's row-major {e band}: in each text of the
-    region, the graphemes from the cell of the earlier end to that of the later
-    one. A scroll box in the region is selected whole when the band covers each
-    cell of its view, and not at all otherwise. Selected text paints with the
-    [Highlight] role of its theme ({!Text_surface.section-paint}). *)
+    region, the graphemes from the first cell of the earlier end to the last
+    cell of the later one, and the units of the ends whole. A scroll box in the
+    region is selected whole when the band covers each cell of its view, and not
+    at all otherwise. Selected text paints with the [Highlight] role of its
+    theme ({!Text_surface.section-paint}). *)
 
 val selection_text : t -> string option
 (** [selection_text t] is the text the view selection holds, as the user saw it

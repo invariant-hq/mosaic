@@ -9,7 +9,10 @@
     The surface owns its text and its selection
     ({!Renderable.Private.set_owned_text}): the view's selection leaves it out,
     and a left press places the caret, from which a drag selects to the caret
-    the pointer hits.
+    the pointer hits. A double click selects the word around the graphemes under
+    the pointer and a triple click their logical line, in the units of the
+    view's selection ({!Renderer.section-selection}), and a drag after either
+    extends by that unit, the unit pressed staying selected.
 
     This module is an implementation module for editable text widgets such as
     {!Textarea}. *)

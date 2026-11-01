@@ -1,6 +1,6 @@
 (* The view's text selection (RFC 0006): its model, region and band (§3.1,
-   §3.2), copy (§3.3), selectability (§3.4), highlight (§3.9) and the editors'
-   own selection (§3.10). *)
+   §3.2), copy (§3.3), selectability (§3.4), units and the modified presses
+   (§3.5), highlight (§3.9) and the editors' own selection (§3.10). *)
 
 open Windtrap
 open Mosaic_ui
@@ -31,6 +31,27 @@ let select r (x0, y0) (x1, y1) =
   release r ~x:x1 ~y:y1
 
 let copied r = Renderer.selection_text r
+
+(* The [n] presses of a series at one cell, 50 ms apart, each released but
+   the last, which stays held. *)
+let presses ?(shift = false) ?(ctrl = false) r ~x ~y n =
+  let start = Test_harness.tick () in
+  for i = 1 to n do
+    let now = start + (i * 50_000_000) in
+    let dispatch kind =
+      ignore
+        (Test_harness.dispatch_mouse ~now r
+           (Test_harness.mouse_report ~shift ~ctrl ~x ~y kind)
+          : Event.mouse)
+    in
+    dispatch (Press Left);
+    if i < n then dispatch (Release (Some Left))
+  done
+
+(* [n] clicks of a series at one cell, the last released. *)
+let clicks ?shift r ~x ~y n =
+  presses ?shift r ~x ~y n;
+  release r ~x ~y
 
 let place ~x ~y ~w ~h =
   let lpa = Toffee.Style.Length_percentage_auto.length in
@@ -627,6 +648,386 @@ let a_line_numbers_child_follows_its_ancestors () =
   select r (5, 0) (9, 0);
   is_none ~msg:"not inside a refusing box" (copied r)
 
+(* ── §3.1 Anchor, §3.5 Pointer gestures ── *)
+
+(* A drag that leaves the pressed cell and comes back to it selects the
+   pressed grapheme: only a single click the pointer never left is empty. *)
+let a_drag_back_to_the_pressed_cell_selects_its_grapheme () =
+  let r = Renderer.create () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:1 "hello" : Text.t);
+  frame r;
+  press r ~x:1 ~y:0;
+  is_none ~msg:"a click" (copied r);
+  drag_to r ~x:3 ~y:0;
+  drag_to r ~x:1 ~y:0;
+  equal ~msg:"back at the pressed cell" (option string) (Some "e") (copied r);
+  release r ~x:1 ~y:0;
+  equal ~msg:"released there" (option string) (Some "e") (copied r)
+
+(* The band ends before the cell after the selection's last grapheme: a text
+   right beside the end holds none of it, while dragging or at rest. *)
+let the_band_stops_at_the_text_beside_its_end () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore (text_at root ~x:0 ~y:0 ~w:3 ~h:2 "abc\nghi" : Text.t);
+  ignore (text_at root ~x:3 ~y:0 ~w:3 ~h:2 "def\njkl" : Text.t);
+  frame r;
+  press r ~x:0 ~y:0;
+  drag_to r ~x:2 ~y:0;
+  equal ~msg:"dragging" (option string) (Some "abc") (copied r);
+  release r ~x:2 ~y:0;
+  equal ~msg:"at rest" (option string) (Some "abc") (copied r);
+  clicks r ~x:1 ~y:0 2;
+  equal ~msg:"a word beside the other text" (option string) (Some "abc")
+    (copied r)
+
+(* §3.5 Units: a double click selects a word, the run of whitespace, a
+   boundary character, or the run of anything else under the pointer. *)
+let a_double_click_selects_a_word () =
+  let words content cells =
+    let r = Renderer.create () in
+    ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 content : Text.t);
+    frame r;
+    List.iter
+      (fun (x, word) ->
+        clicks r ~x ~y:0 2;
+        equal
+          ~msg:(Printf.sprintf "%S at %d" content x)
+          (option string) (Some word) (copied r))
+      cells
+  in
+  words "key: value"
+    [ (0, "key"); (2, "key"); (3, ":"); (4, " "); (5, "value"); (9, "value") ];
+  words "f(a, b)"
+    [ (0, "f"); (1, "("); (2, "a"); (3, ","); (4, " "); (5, "b"); (6, ")") ];
+  words "src/main.ml" [ (0, "src/main.ml"); (4, "src/main.ml") ];
+  words "a  ::b" [ (1, "  "); (3, ":"); (4, ":") ]
+
+(* The word shows at the press, before any release, and while a drag after
+   it is painted. *)
+let a_double_click_selects_at_the_press () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "alpha beta gamma" : Text.t);
+  frame r;
+  presses r ~x:7 ~y:0 2;
+  equal ~msg:"held" (option string) (Some "beta") (copied r);
+  paint r;
+  is_false ~msg:"before the word" (inverse r ~x:5 ~y:0);
+  is_true ~msg:"the word" (inverse r ~x:6 ~y:0);
+  is_true ~msg:"to its end" (inverse r ~x:9 ~y:0);
+  is_false ~msg:"after it" (inverse r ~x:10 ~y:0);
+  drag_to r ~x:12 ~y:0;
+  paint r;
+  is_true ~msg:"the word dragged to, whole" (inverse r ~x:15 ~y:0)
+
+(* A double click beside a row that wraps inside a word selects that word;
+   past the end of a line, it selects nothing. *)
+let a_double_click_past_a_rows_end () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore
+    (text_at root ~x:0 ~y:0 ~w:3 ~h:2
+       ~props:(fun content -> Text.Props.make ~content ~wrap:`Char ())
+       "abcdef"
+      : Text.t);
+  ignore (text_at root ~x:0 ~y:3 ~w:6 ~h:2 "ab\ncd" : Text.t);
+  frame r;
+  clicks r ~x:5 ~y:0 2;
+  equal ~msg:"the word that wraps" (option string) (Some "abcdef") (copied r);
+  clicks r ~x:4 ~y:3 2;
+  is_none ~msg:"past a line's end" (copied r)
+
+(* A triple click selects the logical line, however it wraps, without its
+   terminator; a fourth click still does. *)
+let a_triple_click_selects_the_logical_line () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:3
+       ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
+       "alpha beta\nnext"
+      : Text.t);
+  frame r;
+  clicks r ~x:1 ~y:1 3;
+  equal ~msg:"three clicks" (option string) (Some "alpha beta") (copied r);
+  clicks r ~x:1 ~y:1 4;
+  equal ~msg:"four clicks" (option string) (Some "alpha beta") (copied r)
+
+(* A triple click in a margin selects the line of the text it resolves to:
+   the first at or after the pressed cell, else the last before it. *)
+let a_triple_click_in_a_margin_selects_the_nearest_line () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore (text_at root ~x:5 ~y:0 ~w:10 ~h:1 "first" : Text.t);
+  ignore (text_at root ~x:5 ~y:1 ~w:10 ~h:1 "second" : Text.t);
+  frame r;
+  clicks r ~x:0 ~y:1 3;
+  equal ~msg:"the text after the cell" (option string) (Some "second")
+    (copied r);
+  clicks r ~x:20 ~y:0 3;
+  equal ~msg:"after the first row" (option string) (Some "second") (copied r);
+  clicks r ~x:0 ~y:5 3;
+  equal ~msg:"below every text, the last before" (option string) (Some "second")
+    (copied r)
+
+(* A drag after a double click extends by words either way, and the word
+   pressed stays selected. *)
+let a_drag_after_a_double_click_extends_by_words () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma delta"
+      : Text.t);
+  frame r;
+  presses r ~x:7 ~y:0 2;
+  drag_to r ~x:13 ~y:0;
+  equal ~msg:"forward" (option string) (Some "beta gamma") (copied r);
+  drag_to r ~x:2 ~y:0;
+  equal ~msg:"backward" (option string) (Some "alpha beta") (copied r);
+  drag_to r ~x:8 ~y:0;
+  equal ~msg:"inside the word pressed" (option string) (Some "beta") (copied r);
+  drag_to r ~x:12 ~y:0;
+  release r ~x:12 ~y:0;
+  equal ~msg:"released" (option string) (Some "beta gamma") (copied r)
+
+(* Over its text, the band reaches the far end of the unit under the
+   pointer, so the text beside a line that wraps on is highlighted as it
+   will be at the release. *)
+let the_band_reaches_the_unit_under_the_pointer () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore (text_at root ~x:0 ~y:0 ~w:20 ~h:1 "top" : Text.t);
+  ignore
+    (text_at root ~x:0 ~y:1 ~w:6 ~h:3
+       ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
+       "alpha beta gamma"
+      : Text.t);
+  ignore (text_at root ~x:10 ~y:1 ~w:5 ~h:3 "U0\nU1\nU2" : Text.t);
+  frame r;
+  presses r ~x:1 ~y:0 3;
+  drag_to r ~x:1 ~y:1;
+  let dragging = copied r in
+  let holds piece =
+    match dragging with
+    | Some text ->
+        let n = String.length piece in
+        let rec at i =
+          i + n <= String.length text
+          && (String.sub text i n = piece || at (i + 1))
+        in
+        at 0
+    | None -> false
+  in
+  is_true ~msg:"the line's last row" (holds "gamma");
+  is_true ~msg:"the text beside its rows" (holds "U1");
+  is_false ~msg:"none beside its last row" (holds "U2");
+  release r ~x:1 ~y:1;
+  equal ~msg:"after the release" (option string) dragging (copied r)
+
+(* A pointer over a scroll box is as over a blank for a word too: the box is
+   selected only once the band covers it. *)
+let a_word_drag_selects_a_nested_box_once_covered () =
+  let r = nested_box () in
+  presses r ~x:1 ~y:0 2;
+  drag_to r ~x:2 ~y:2;
+  equal ~msg:"over the box" (option string) (Some "above") (copied r);
+  drag_to r ~x:2 ~y:4;
+  release r ~x:2 ~y:4;
+  equal ~msg:"past it" (option string)
+    (Some "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5\nbelow") (copied r)
+
+(* §3.1 Focus: a line drag over a nested box ends at the pointer's cell, and
+   the release keeps it there: neither the box nor the text after it is
+   selected. *)
+let a_line_drag_over_a_nested_box_settles_where_it_was () =
+  let r = nested_box () in
+  presses r ~x:1 ~y:0 3;
+  drag_to r ~x:2 ~y:2;
+  equal ~msg:"dragging" (option string) (Some "above") (copied r);
+  paint r;
+  is_false ~msg:"the box, dragging" (inverse r ~x:0 ~y:1);
+  release r ~x:2 ~y:2;
+  equal ~msg:"settled" (option string) (Some "above") (copied r);
+  paint r;
+  is_false ~msg:"the box, settled" (inverse r ~x:0 ~y:1)
+
+(* A line drag into a gap reaches the far end of the line the gap resolves
+   to, and the release keeps the band there, with the text beside that line's
+   rows. *)
+let a_line_drag_into_a_gap_settles_where_it_was () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore (text_at root ~x:0 ~y:0 ~w:10 ~h:1 "first" : Text.t);
+  ignore
+    (text_at root ~x:0 ~y:2 ~w:6 ~h:2
+       ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
+       "alpha beta"
+      : Text.t);
+  ignore (text_at root ~x:8 ~y:2 ~w:4 ~h:1 "SIDE" : Text.t);
+  frame r;
+  presses r ~x:1 ~y:0 3;
+  drag_to r ~x:1 ~y:1;
+  let dragging = copied r in
+  paint r;
+  let side = inverse r ~x:8 ~y:2 in
+  release r ~x:1 ~y:1;
+  equal ~msg:"the copy" (option string) dragging (copied r);
+  paint r;
+  equal ~msg:"the text beside" bool side (inverse r ~x:8 ~y:2);
+  equal ~msg:"settled" (option string) (Some "first\n\nalpha    SIDE\nbeta")
+    (copied r)
+
+(* A drag after a triple click extends by lines. *)
+let a_drag_after_a_triple_click_extends_by_lines () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:3 "one\ntwo\nthree" : Text.t);
+  frame r;
+  presses r ~x:1 ~y:1 3;
+  equal ~msg:"pressed" (option string) (Some "two") (copied r);
+  drag_to r ~x:0 ~y:2;
+  equal ~msg:"down" (option string) (Some "two\nthree") (copied r);
+  drag_to r ~x:4 ~y:0;
+  equal ~msg:"up" (option string) (Some "one\ntwo") (copied r);
+  release r ~x:4 ~y:0;
+  equal ~msg:"released" (option string) (Some "one\ntwo") (copied r)
+
+(* §3.1 Focus: the unit under a still pointer is found again when content
+   scrolls under it. *)
+let the_unit_under_the_pointer_follows_a_scroll () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  let sb = scroll_box col ~w:20 ~h:10 in
+  for i = 0 to 29 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "row-%d" i) : Text.t)
+  done;
+  frame r;
+  presses r ~x:1 ~y:4 3;
+  drag_to r ~x:0 ~y:5;
+  equal ~msg:"before" (option string) (Some "row-4\nrow-5") (copied r);
+  send r (Scroll `Down) ~x:1 ~y:5;
+  send r (Scroll `Down) ~x:1 ~y:5;
+  frame r;
+  equal ~msg:"scrolled" int 2 (Scroll_box.scroll_top sb);
+  equal ~msg:"after" (option string) (Some "row-4\nrow-5\nrow-6\nrow-7")
+    (copied r)
+
+(* A ten-letter text, with "cdefg" selected forward ([backward = false]) or
+   backward. *)
+let letters ~backward =
+  let r = Renderer.create () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "abcdefghij" : Text.t);
+  frame r;
+  if backward then select r (6, 0) (2, 0) else select r (2, 0) (6, 0);
+  equal ~msg:"selected" (option string) (Some "cdefg") (copied r);
+  r
+
+(* §3.5 Shift+press: the end nearer the press moves to it, and the other end
+   becomes the anchor; a drag goes on from there. *)
+let a_shift_press_moves_the_nearer_end () =
+  let r = letters ~backward:false in
+  clicks ~shift:true r ~x:8 ~y:0 1;
+  equal ~msg:"the far end, nearer" (option string) (Some "cdefghi") (copied r);
+  clicks ~shift:true r ~x:0 ~y:0 1;
+  equal ~msg:"the near end, nearer" (option string) (Some "abcdefghi")
+    (copied r);
+  presses ~shift:true r ~x:1 ~y:0 1;
+  drag_to r ~x:5 ~y:0;
+  release r ~x:5 ~y:0;
+  equal ~msg:"dragged on from the press" (option string) (Some "fghi")
+    (copied r)
+
+(* On a tie the focus moves, whichever way the selection runs. *)
+let a_shift_press_moves_the_focus_on_a_tie () =
+  let r = letters ~backward:false in
+  clicks ~shift:true r ~x:4 ~y:0 1;
+  equal ~msg:"forward" (option string) (Some "cde") (copied r);
+  let r = letters ~backward:true in
+  clicks ~shift:true r ~x:4 ~y:0 1;
+  equal ~msg:"backward" (option string) (Some "efg") (copied r)
+
+(* The unit is kept: after a double click, a Shift+press adds words. *)
+let a_shift_press_adds_words_after_a_double_click () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma delta"
+      : Text.t);
+  frame r;
+  clicks r ~x:7 ~y:0 2;
+  equal ~msg:"a word" (option string) (Some "beta") (copied r);
+  clicks ~shift:true r ~x:19 ~y:0 1;
+  equal ~msg:"to the word pressed" (option string) (Some "beta gamma delta")
+    (copied r)
+
+(* A Shift+press of two clicks or more sets the unit. *)
+let a_shift_double_click_sets_the_unit () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma delta"
+      : Text.t);
+  frame r;
+  select r (6, 0) (7, 0);
+  equal ~msg:"selected" (option string) (Some "be") (copied r);
+  presses ~shift:true r ~x:13 ~y:0 1;
+  release r ~x:13 ~y:0;
+  equal ~msg:"one click" (option string) (Some "beta gam") (copied r);
+  clicks ~shift:true r ~x:13 ~y:0 2;
+  equal ~msg:"two clicks" (option string) (Some "beta gamma") (copied r)
+
+(* With no selection, a Shift+press is an ordinary press. *)
+let a_shift_press_without_a_selection_is_ordinary () =
+  let r = Renderer.create () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "abcdefghij" : Text.t);
+  frame r;
+  presses ~shift:true r ~x:2 ~y:0 1;
+  drag_to r ~x:4 ~y:0;
+  release r ~x:4 ~y:0;
+  equal ~msg:"from the press" (option string) (Some "cde") (copied r)
+
+(* A Shift+press is held in the selection's region: one on the footer below
+   a scroll box moves an end to the box's last row, the end nearer the cell
+   it is held at. *)
+let a_shift_press_is_held_in_the_region () =
+  let r, _ = rows_in_a_box () in
+  select r (0, 1) (2, 1);
+  equal ~msg:"selected" (option string) (Some "row") (copied r);
+  clicks ~shift:true r ~x:2 ~y:4 1;
+  equal ~msg:"held at the box's last row" (option string)
+    (Some "row-1\nrow-2\nrow") (copied r);
+  select r (1, 3) (4, 3);
+  equal ~msg:"on the last row" (option string) (Some "ow-3") (copied r);
+  clicks ~shift:true r ~x:0 ~y:4 1;
+  equal ~msg:"the start, nearer the cell held" (option string) (Some "row-3")
+    (copied r)
+
+(* A selection behind a modal is inert: a Shift+press in the modal is an
+   ordinary press there. *)
+let a_shift_press_over_an_inert_selection_is_ordinary () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore (text_at root ~x:0 ~y:5 ~w:10 ~h:1 "behind" : Text.t);
+  let top =
+    Renderable.create ~parent:root ~style:(place ~x:0 ~y:0 ~w:10 ~h:1) ()
+  in
+  ignore (line top "modal" : Text.t);
+  frame r;
+  select r (0, 5) (2, 5);
+  equal ~msg:"selected" (option string) (Some "beh") (copied r);
+  Renderer.set_modal r (Some top);
+  frame r;
+  presses ~shift:true r ~x:1 ~y:0 1;
+  drag_to r ~x:3 ~y:0;
+  release r ~x:3 ~y:0;
+  equal ~msg:"a new selection in the modal" (option string) (Some "oda")
+    (copied r)
+
+(* §3.5 Ctrl+press: an ordinary press, which starts a new selection. *)
+let a_ctrl_press_is_ordinary () =
+  let r = letters ~backward:false in
+  presses ~ctrl:true r ~x:8 ~y:0 1;
+  drag_to r ~x:9 ~y:0;
+  release r ~x:9 ~y:0;
+  equal ~msg:"a new selection" (option string) (Some "ij") (copied r)
+
 (* ── §3.9 Highlight ── *)
 
 (* The blank cells after a selected hard line break are filled to the node's
@@ -793,6 +1194,62 @@ let an_editors_drag_survives_a_chorded_press () =
         (Editor.selection editor)
   | None -> fail "the drag proposed nothing"
 
+(* The proposals of an editor of [state] mounted alone, the last first. *)
+let mounted_editor ?(multiline = false) state =
+  let proposed = ref [] in
+  let on_change e = proposed := e :: !proposed in
+  let size = Mosaic.size ~width:20 ~height:3 in
+  let view =
+    if multiline then Mosaic.textarea ~size ~state ~on_change ()
+    else Mosaic.input ~size ~state ~on_change ()
+  in
+  let r, _, _ = mount view in
+  (r, proposed)
+
+let last_selection proposed =
+  match !proposed with
+  | editor :: _ -> (Editor.selection editor, Editor.cursor editor)
+  | [] -> fail "nothing proposed"
+
+(* §3.10: an editor's double click selects a word, with the shared units,
+   and a drag after it extends by words either way. *)
+let an_editor_selects_words () =
+  let r, proposed = mounted_editor (Editor.of_string "alpha beta gamma") in
+  presses r ~x:7 ~y:0 2;
+  equal ~msg:"the word"
+    (pair (option (pair int int)) int)
+    (Some (6, 10), 10)
+    (last_selection proposed);
+  drag_to r ~x:13 ~y:0;
+  equal ~msg:"forward"
+    (pair (option (pair int int)) int)
+    (Some (6, 16), 16)
+    (last_selection proposed);
+  drag_to r ~x:1 ~y:0;
+  equal ~msg:"backward, the caret first"
+    (pair (option (pair int int)) int)
+    (Some (0, 10), 0)
+    (last_selection proposed);
+  release r ~x:1 ~y:0
+
+(* A triple click selects the logical line without its terminator, and a
+   drag after it extends by lines. *)
+let an_editor_selects_lines () =
+  let r, proposed =
+    mounted_editor ~multiline:true (Editor.of_string "one two\nthree\nfour")
+  in
+  presses r ~x:1 ~y:0 3;
+  equal ~msg:"the line"
+    (pair (option (pair int int)) int)
+    (Some (0, 7), 7)
+    (last_selection proposed);
+  drag_to r ~x:0 ~y:1;
+  equal ~msg:"to the next line"
+    (pair (option (pair int int)) int)
+    (Some (0, 13), 13)
+    (last_selection proposed);
+  release r ~x:0 ~y:1
+
 let () =
   run "mosaic.selection"
     [
@@ -869,6 +1326,50 @@ let () =
           test "a line number's child follows its ancestors"
             a_line_numbers_child_follows_its_ancestors;
         ];
+      group "Pointer gestures"
+        [
+          test "a drag back to the pressed cell selects its grapheme"
+            a_drag_back_to_the_pressed_cell_selects_its_grapheme;
+          test "the band stops at the text beside its end"
+            the_band_stops_at_the_text_beside_its_end;
+          test "a double click selects a word" a_double_click_selects_a_word;
+          test "a double click selects at the press"
+            a_double_click_selects_at_the_press;
+          test "a double click past a row's end" a_double_click_past_a_rows_end;
+          test "a triple click selects the logical line"
+            a_triple_click_selects_the_logical_line;
+          test "a triple click in a margin selects the nearest line"
+            a_triple_click_in_a_margin_selects_the_nearest_line;
+          test "a drag after a double click extends by words"
+            a_drag_after_a_double_click_extends_by_words;
+          test "the band reaches the unit under the pointer"
+            the_band_reaches_the_unit_under_the_pointer;
+          test "a word drag selects a nested box once covered"
+            a_word_drag_selects_a_nested_box_once_covered;
+          test "a line drag over a nested box settles where it was"
+            a_line_drag_over_a_nested_box_settles_where_it_was;
+          test "a line drag into a gap settles where it was"
+            a_line_drag_into_a_gap_settles_where_it_was;
+          test "a drag after a triple click extends by lines"
+            a_drag_after_a_triple_click_extends_by_lines;
+          test "the unit under the pointer follows a scroll"
+            the_unit_under_the_pointer_follows_a_scroll;
+          test "a shift press moves the nearer end"
+            a_shift_press_moves_the_nearer_end;
+          test "a shift press moves the focus on a tie"
+            a_shift_press_moves_the_focus_on_a_tie;
+          test "a shift press adds words after a double click"
+            a_shift_press_adds_words_after_a_double_click;
+          test "a shift double click sets the unit"
+            a_shift_double_click_sets_the_unit;
+          test "a shift press without a selection is ordinary"
+            a_shift_press_without_a_selection_is_ordinary;
+          test "a shift press is held in the region"
+            a_shift_press_is_held_in_the_region;
+          test "a shift press over an inert selection is ordinary"
+            a_shift_press_over_an_inert_selection_is_ordinary;
+          test "a ctrl press is ordinary" a_ctrl_press_is_ordinary;
+        ];
       group "Highlight"
         [
           test "the fill after a hard break" the_fill_after_a_hard_break;
@@ -888,5 +1389,7 @@ let () =
             an_editor_drags_its_own_selection;
           test "an editor's drag survives a chorded press"
             an_editors_drag_survives_a_chorded_press;
+          test "an editor selects words" an_editor_selects_words;
+          test "an editor selects lines" an_editor_selects_lines;
         ];
     ]

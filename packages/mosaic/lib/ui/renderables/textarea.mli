@@ -7,7 +7,10 @@
     The editor owns its selection, apart from the view's
     ({!Renderer.section-selection}), which never includes its text: a left press
     proposes the caret the pointer hits, and a drag from it proposes the
-    selection between that caret and the one the pointer hits.
+    selection between that caret and the one the pointer hits. A double click
+    proposes the word under the pointer and a triple click its logical line, and
+    a drag after either extends the selection by that unit, in the units of the
+    view's selection.
 
     The editor is drawn on the [Field] surface of the theme in scope
     ({!Renderable.theme}), its text as {!Text_surface.section-paint} states, and

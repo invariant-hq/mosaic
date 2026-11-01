@@ -9,7 +9,8 @@
   keymap
   syntax_session
   text_crop
-  text_renderable)
+  text_renderable
+  text_unit)
  (libraries
   threads.posix
   toffee
