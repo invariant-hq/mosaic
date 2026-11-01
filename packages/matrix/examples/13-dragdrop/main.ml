@@ -100,7 +100,8 @@ let draw_box grid ~x ~y ~w ~h ~bg ~border_color ~title ~subtitle ~alpha =
   let title_style = Style.make ~fg:(Color.of_rgb 255 255 255) ~bold:true () in
   let subtitle_style = Style.make ~fg:(Color.of_rgb 200 200 200) ~dim:true () in
   (* A translucent fill tints the cells under it and keeps their text. *)
-  Grid.fill_rect grid ~x ~y ~width:w ~height:h ~color:(color_with_alpha bg alpha);
+  Grid.fill_rect grid ~x ~y ~width:w ~height:h
+    ~color:(color_with_alpha bg alpha);
   (* Draw border on top *)
   Grid.draw_text ~style:border_style grid ~x ~y ~text:"\xe2\x94\x8c";
   Grid.draw_text ~style:border_style grid ~x:(x + w - 1) ~y ~text:"\xe2\x94\x90";
