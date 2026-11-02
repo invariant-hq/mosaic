@@ -2998,6 +2998,33 @@ let a_drag_in_a_window_scrolls_its_scope_too () =
   equal ~msg:"the window" int 7 (Scroll_box.scroll_top code);
   equal ~msg:"the scope" int 7 (Scroll_box.scroll_top transcript)
 
+(* Under [`Text], a drag pressed in a scroll box inside another stays in
+   the inner one, which alone scrolls: the box around it, though the press
+   lies in it too, keeps its place. *)
+let a_drag_in_a_nested_text_box_leaves_the_box_around_it () =
+  let r = Renderer.create () in
+  let outer =
+    scroll_box (Renderer.root r) ~w:0 ~h:0 ~style:(place ~x:0 ~y:0 ~w:30 ~h:10)
+  in
+  let content = Scroll_box.node outer in
+  let message i = ignore (line content (Printf.sprintf "msg-%d" i) : Text.t) in
+  for i = 0 to 4 do
+    message i
+  done;
+  let code = scroll_box content ~w:20 ~h:4 in
+  for i = 0 to 19 do
+    ignore (line (Scroll_box.node code) (Printf.sprintf "code-%d" i) : Text.t)
+  done;
+  for i = 5 to 24 do
+    message i
+  done;
+  frame r;
+  press r ~x:1 ~y:6;
+  drag_to r ~x:1 ~y:11;
+  tick r;
+  equal ~msg:"the inner box" int 7 (Scroll_box.scroll_top code);
+  equal ~msg:"the box around it" int 0 (Scroll_box.scroll_top outer)
+
 let () =
   run "mosaic.selection"
     [
@@ -3307,5 +3334,7 @@ let () =
             a_text_box_scrolls_at_the_pointers_speed;
           test "a drag in a window scrolls its scope too"
             a_drag_in_a_window_scrolls_its_scope_too;
+          test "a drag in a nested text box leaves the box around it"
+            a_drag_in_a_nested_text_box_leaves_the_box_around_it;
         ];
     ]

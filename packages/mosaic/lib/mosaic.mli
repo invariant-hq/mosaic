@@ -1703,12 +1703,14 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     A selection stays inside the nearest of these around its press: a scroll box
     that does not read [`Cells], an element that reads [`Cells] in one that does
     not, or else the view, or the modal element while one is shown. A drag
-    scrolls the nearest scroll box around its press while the pointer is near or
-    past its edges. A selection around such a scroll box or [`Cells] element, in
-    content that does not read [`Cells], takes it whole once the drag covers its
-    view, and none of it before: under [`Text], a drag beside a scroll box never
-    takes part of it. In content that reads [`Cells], the band runs through the
-    scroll boxes, each giving the rows it shows.
+    scrolls the nearest scroll box around its press, and the scroll box the
+    selection stays in, while the pointer is near or past an edge of the box: up
+    or down within its columns, sideways within its rows. A selection around
+    such a scroll box or [`Cells] element, in content that does not read
+    [`Cells], takes it whole once the drag covers its view, and none of it
+    before: under [`Text], a drag beside a scroll box never takes part of it. In
+    content that reads [`Cells], the band runs through the scroll boxes, each
+    giving the rows it shows.
 
     [input] and [textarea] keep their own selection, and their [selectable] says
     only whether the pointer selects in their text: the view's selection never

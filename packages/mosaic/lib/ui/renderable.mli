@@ -812,7 +812,8 @@ module Private : sig
       not read [`Cells] takes it whole or not at all; one in content that reads
       [`Cells] takes it as a window: the rows its view shows of its content, and
       the text between an end it scrolled out of view and that view. A gesture
-      that starts in it scrolls it near or past its edge ([Renderer]). *)
+      scrolls it near or past its edge when it is the nearest region around the
+      gesture's press, or the scope its selection stays in ([Renderer]). *)
 
   val set_region : t -> region option -> unit
   (** [set_region t r] declares [t] a region, as a scroll box does when it is

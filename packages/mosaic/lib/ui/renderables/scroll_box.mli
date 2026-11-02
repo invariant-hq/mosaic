@@ -6,9 +6,10 @@
     ({!Renderable.Private.set_region}). Unless it and its parent both read
     [`Cells], a selection that starts in it stays in it, held in its viewport;
     otherwise the selection runs through it as through a window on the rows it
-    shows. While the pointer of a gesture that starts in it is within three
-    cells of an edge or past it, the box proposes to scroll towards that edge,
-    faster nearer it, until the gesture ends: up or down while the pointer, held
+    shows. A gesture scrolls the nearest scroll box around its press, and the
+    one its selection stays in: while the pointer is within three cells of an
+    edge of the box or past it, the box proposes to scroll towards that edge,
+    faster nearer it, until the gesture ends, up or down while the pointer, held
     in the selection's scope, lies within the box's columns, and sideways while
     it lies within its rows.
 

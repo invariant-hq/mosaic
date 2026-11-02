@@ -686,8 +686,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
     (Some (fun pos -> scroll_to_internal t ~x:pos ()));
   (* The box is a region of the view selection: unless it and its parent
      both read [`Cells], a selection that starts in its content stays in it.
-     A gesture that starts in it, and a keyboard extension, scroll the box
-     through its proposal. *)
+     A selection's gestures and keyboard extensions scroll the box through
+     its proposal. *)
   Renderable.Private.set_region node
     (Some
        {
