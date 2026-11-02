@@ -774,23 +774,24 @@ module Private : sig
 
   type region = {
     viewport : t;
-        (** The node whose box a selection's pointer is held in, as the region's
-            view. *)
+        (** The node whose box is the region's view: a selection takes the rows
+            of the region's content that it shows. *)
     content : t;
         (** The node from whose origin the region's positions count, which
             scrolls with the region's content. *)
     drag : x:int -> y:int -> unit;
-        (** [drag ~x ~y] is told the cell of the pointer, held in no box, at
-            each motion of a selection gesture in the region. *)
+        (** [drag ~x ~y] is told the cell of the pointer at each motion of a
+            selection gesture whose press was in the region. *)
     settle : unit -> unit;  (** [settle ()] is told that the gesture ended. *)
     scroll : int -> unit;
         (** [scroll n] is asked to scroll the region's content by [n] rows, down
             when [n] is positive, as a keyboard extension of a selection does to
             show its focus. *)
   }
-  (** The type for the declaration of a region of text selection: a selection
-      that starts in it stays in it, and a selection around it selects all of
-      its text or none ([Renderer]). *)
+  (** The type for the declaration of a scroll box to text selection: a
+      selection takes the rows its view shows of its content, and of the text
+      between an end it scrolled out of view and that view; a gesture that
+      starts in it scrolls it past its edge ([Renderer]). *)
 
   val set_region : t -> region option -> unit
   (** [set_region t r] declares [t] a region, as a scroll box does when it is

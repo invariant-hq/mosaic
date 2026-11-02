@@ -353,47 +353,52 @@ val theme : t -> Theme.t
 
 (** {1:selection Selection}
 
-    The renderer owns the view's text selection: an anchor and a focus in the
-    text of nodes with text rows ({!Renderable.val-text_rows}), stored as
-    positions in their text, which scrolling, streaming and rewrapping leave in
-    place. The selection lies in a {e region}: the nearest scroll box of the
-    node its press found ({!Renderable.Private.set_region}), or the root of the
-    node's layer, the modal node for a node in the top layer.
+    The renderer owns the view's text selection. Its {e scope} is the layer its
+    press found: the root, or the modal node for a press in the top layer. Each
+    of its two ends, the anchor and the focus, is a position in the text of a
+    node with text rows ({!Renderable.val-text_rows}), which scrolling,
+    streaming and rewrapping leave in place, or a cell that a node paints
+    without text, such as a border, which stays where it is on the screen.
 
-    A left press resolves to a text of its region: the one under the pointer,
-    else the first at or after the pressed cell in row-major order, else the
-    last before it. Texts selection does not reach ({!Renderable.selectable}),
-    editors, hidden nodes and texts in another scroll box are passed by. The
-    selection starts there with its anchor at the pressed cell, in the {e unit}
-    the press's [clicks] select ({!Event.Mouse.kind}): for one click, the
-    graphemes the cell shows, or the boundary nearest it; for two, the word
+    A left press of one click on a cell that a node paints without text anchors
+    there. A press on a text, or of two or more clicks, resolves to a text of
+    the scope: the one under the pointer, else the first at or after the pressed
+    cell in row-major order, else the last before it. Texts selection does not
+    reach ({!Renderable.selectable}), editors and hidden nodes are passed by.
+    The selection starts there with its anchor at the pressed cell, in the
+    {e unit} the press's [clicks] select ({!Event.Mouse.kind}): for one click,
+    the graphemes the cell shows, or the boundary nearest it; for two, the word
     around them; for three or more, their logical line, without its terminator.
     A word is a run of whitespace, a single boundary character, or a run of
     anything else; the boundary characters are Ghostty's: the apostrophe, the
     quotation mark, the grave accent, [│], [|], [:], [;], [,], [$], and the
-    parentheses, square brackets, braces and angle brackets. A press that finds
-    no text clears the selection. While the press is held, the pointer's cell,
-    held in the region's view, is the focus, with the unit around it in the text
-    it resolves to as a press does, or alone over a scroll box in the region,
-    and the region's scroll box scrolls while the pointer holds near or past its
-    edge. A single click the pointer does not leave selects nothing. When the
-    press ends, the focus becomes the far end of the text the selection holds,
-    and a selection that holds no text clears.
+    parentheses, square brackets, braces and angle brackets. A press of two or
+    more clicks that finds no text clears the selection. While the press is
+    held, the pointer's cell is the focus, with the unit around it in the text
+    it resolves to as a press does, and the scroll box the press found
+    ({!Renderable.Private.set_region}) scrolls while the pointer holds near or
+    past its edge. A single click the pointer does not leave selects nothing.
+    When the press ends, a focus of one click over a cell that a node paints
+    without text is that cell; otherwise it becomes the far end of the text the
+    selection holds. A selection that then holds nothing clears.
 
     A left press with Shift, on a node selection reaches and while a selection
     that is not behind the modal node exists, moves the end of the selection
     nearer the press, in row-major distance, the focus on a tie, and makes the
-    other end the anchor. The press then drags the focus as above, held in the
-    selection's region, in the selection's unit, or in that of its [clicks] if
-    they are two or more. Without a selection, it is an ordinary press, as a
-    press with Ctrl is.
+    other end the anchor. The press then drags the focus as above, in the
+    selection's unit, or in that of its [clicks] if they are two or more.
+    Without a selection, it is an ordinary press, as a press with Ctrl is.
 
-    Between the ends lies the terminal's row-major {e band}: in each text of the
-    region, the graphemes from the first cell of the earlier end to the last
-    cell of the later one, and the units of the ends whole. A scroll box in the
-    region is selected whole when the band covers each cell of its view, and not
-    at all otherwise. Selected text paints with the [Highlight] role of its
-    theme ({!Text_surface.section-paint}).
+    Between the ends lies the terminal's row-major {e band} over the screen: in
+    each text of the scope, the graphemes from the first cell of the earlier end
+    to the last cell of the later one, on the rows its scroll boxes show, and
+    the units of the ends whole; and each cell of the band that a selectable
+    node paints without text, as the frame on the screen shows it. An end that a
+    scroll box has scrolled out of view stands, for the band, at the edge of the
+    box's view, and the text of that box between the end and the edge is
+    selected too. Selected text paints with the [Highlight] role of its theme
+    ({!Text_surface.section-paint}), and the selected cells are drawn again with
+    it.
 
     The ends name text, so scrolling, appending, streaming and rewrapping leave
     them on the text they hold. An edit of an end's text
@@ -414,8 +419,9 @@ val selection_text : t -> string option
     end, joined by as many spaces as cells between them on a row, else by a
     blank line where a row between them lies in no box that holds either below
     their common ancestor, else by a line break. Soft wraps add nothing, an
-    ellipsis gives the text it hides, and a scroll box selected whole gives all
-    of its text. Trailing blanks stay.
+    ellipsis gives the text it hides, and a cell that a node paints without text
+    gives its grapheme, blank cells at the end of a row left out. The spaces of
+    a text stay.
 
     With no view selection, it is the selection of the focused editor
     ({!Renderable.Private.set_owned_text}), if any, and [None] otherwise. *)
@@ -438,11 +444,13 @@ val extend_selection :
     for [`Left] and [`Right], to its column in the row above or below for [`Up]
     and [`Down], and to the start or the end of its row for [`Row_start] and
     [`Row_end], in the text it is in. Past the edge of that text it goes to the
-    boundary, in another text of the region, at the cell a press finds before or
-    after it in row-major order, or at its column in the row above or below. A
-    region whose view the focus leaves scrolls to show it, by its proposal. The
-    selection then extends by graphemes ({!section-selection}), and clears if it
-    holds no text. *)
+    boundary, in another text, at the cell a press finds before or after it in
+    row-major order, or at its column in the row above or below: in the scroll
+    box the focus is in first, then anywhere in the scope. A scroll box whose
+    view the focus leaves scrolls to show it, by its proposal. A focus on a cell
+    moves by a cell, a row or to the row's ends over the screen, and is the
+    boundary of the text it lands on, if any. The selection then extends by
+    graphemes ({!section-selection}), and clears if it holds nothing. *)
 
 (** The type for changes of the view selection. *)
 type selection_change =
