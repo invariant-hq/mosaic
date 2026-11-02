@@ -843,7 +843,7 @@ let a_line_drag_into_a_gap_settles_where_it_was () =
   equal ~msg:"the copy" (option string) dragging (copied r);
   paint r;
   equal ~msg:"the text beside" bool side (inverse r ~x:8 ~y:2);
-  equal ~msg:"settled" (option string) (Some "first\n\nalpha    SIDE\nbeta")
+  equal ~msg:"settled" (option string) (Some "first\n\nalpha   SIDE\nbeta")
     (copied r)
 
 (* A drag after a triple click extends by lines. *)
@@ -1985,6 +1985,22 @@ let a_copy_lays_out_a_text_no_paint_reached () =
   equal ~msg:"row by row" (option string)
     (Some "before\ntop\nmid\naaaddd\nbbbeee\ncc ff\nafter") (copied r)
 
+(* A blank that hangs past a row's edge at a soft wrap takes no cell: the
+   spaces between it and the text beside it are the cells the screen shows
+   between them, the blank among them. *)
+let a_hanging_blank_counts_once () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  ignore
+    (text_at root ~x:0 ~y:0 ~w:3 ~h:2
+       ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
+       "abc def"
+      : Text.t);
+  ignore (text_at root ~x:8 ~y:0 ~w:4 ~h:1 "XYZ" : Text.t);
+  frame r;
+  select r (0, 0) (9, 0);
+  equal ~msg:"five cells between" (option string) (Some "abc     XY") (copied r)
+
 (* ── Cells to source (RFC 0003 §2.4) ── *)
 
 (* A drag takes both end cells' coverage: the space under the pointer is in. *)
@@ -2046,6 +2062,7 @@ let () =
     [
       group "Cells to source"
         [
+          test "a hanging blank counts once" a_hanging_blank_counts_once;
           test "a drag takes both end cells" a_drag_takes_both_end_cells;
           test "a drag past the rows selects to the end"
             a_drag_past_the_rows_selects_to_the_end;

@@ -1087,6 +1087,19 @@ let rec assemble t ~region band =
       let end_col, end_row =
         locate_cell rows ~ox ~oy ~affinity:Layout.Upstream p1
       in
+      (* A space that hangs past its row's edge at a soft wrap takes no
+         column, though it is copied: it counts as the cell it stands for,
+         so that the separator does not count it again. *)
+      let rec hanging g n =
+        if
+          g > p0
+          && Layout.Source.slice src ~first:(g - 1) ~last:g = " "
+          && fst (locate_cell rows ~ox ~oy ~affinity:Layout.Upstream (g - 1))
+             = end_col
+        then hanging (g - 1) (n + 1)
+        else n
+      in
+      let end_col = end_col + hanging p1 0 in
       pieces :=
         {
           text = Layout.Source.slice src ~first:p0 ~last:p1;
