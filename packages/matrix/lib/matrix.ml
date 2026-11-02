@@ -400,6 +400,8 @@ type 'msg app = {
   (* Events decoded and not yet returned. *)
   events : event Queue.t;
   config : config;
+  (* The mouse tracking the run keeps, [config]'s until [set_mouse]. *)
+  mutable mouse : Terminal.mouse_mode;
   backend : Device.t;
   variable : string -> string option;
       (* [Caps.variable] of the backend's environment, made once: a frame
@@ -885,7 +887,7 @@ let kitty_flags t = if t.config.key_releases then 0b11111 else 0b00101
 let apply_modes t =
   let terminal = t.terminal in
   let caps = Terminal.capabilities terminal in
-  Terminal.set_mouse_mode terminal t.config.mouse;
+  Terminal.set_mouse_mode terminal t.mouse;
   Terminal.enable_bracketed_paste terminal t.config.bracketed_paste;
   Terminal.enable_focus_reporting terminal true;
   Terminal.enable_color_scheme_reports terminal true;
@@ -1676,11 +1678,8 @@ let submit_primary ?(report = true) t =
     t.frame_modes_armed <- true;
     t.backend.write_output (Ansi.Writer.buffer buf) 0 (Ansi.Writer.len buf);
     publish_reset t ~shown ~below;
-    if
-      report && whole
-      && (t.config.mouse <> `Off || t.ask <> None)
-      && can_query t
-    then ask_cursor t below
+    if report && whole && (t.mouse <> `Off || t.ask <> None) && can_query t then
+      ask_cursor t below
   end
 
 let submit t =
@@ -2118,6 +2117,11 @@ let keep_frame t keep =
   check t;
   t.keep <- keep
 
+let set_mouse t mode =
+  check t;
+  t.mouse <- mode;
+  if t.modes_taken then Terminal.set_mouse_mode t.terminal mode
+
 let stop_job t =
   check t;
   if t.backend.controlling && not t.tstp_ignored then
@@ -2501,6 +2505,7 @@ let make backend ?stop config =
     restore_modes_on_next_focus = false;
     released = false;
     modes_taken = false;
+    mouse = config.mouse;
     taken = [];
     kept = [];
     tstp_ignored = false;

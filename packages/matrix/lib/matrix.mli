@@ -671,6 +671,13 @@ val release : 'msg app -> (unit -> 'a) -> 'a
     Raises what [f] raises, and [Invalid_argument] if called from the [f] of
     another [release] of the same run. *)
 
+val set_mouse : 'msg app -> Terminal.mouse_mode -> unit
+(** [set_mouse app mode] sets the mouse tracking [app] keeps to [mode], as
+    [config]'s [mouse] sets it at the start, and applies it now if [app] holds
+    the terminal. It holds when [app] gives the terminal back and takes it
+    again, as around {!release} and {!stop_job}. With [`Off], the terminal keeps
+    the mouse, and selects its own cells. *)
+
 val keep_frame : 'msg app -> bool -> unit
 (** [keep_frame app keep] says what a run in [`Primary] mode leaves of its live
     region when it gives the terminal back at its end. With [keep] [true], as by
