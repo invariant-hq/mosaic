@@ -1478,31 +1478,39 @@ let boundary_at t node ~ox ~oy ~cx ~cy =
    column [cx] in the row above or below, held in the rows of the last text
    at or before the cell there or of the first at or after it. *)
 let cross t region ~except ~cx ~cy ~top ~bottom direction =
-  let texts =
-    List.filter
-      (fun (node, _, _, _, _) -> not (node == except))
-      (region_texts t region)
+  let target texts =
+    let texts =
+      List.filter (fun (node, _, _, _, _) -> not (node == except)) texts
+    in
+    match direction with
+    | `Left ->
+        Option.map
+          (fun ((node, ox, oy, _, _), x, y) -> (node, ox, oy, x + 1, y))
+          (last_before_of ~cx ~cy texts)
+    | `Right ->
+        Option.map
+          (fun ((node, ox, oy, _, _), x, y) -> (node, ox, oy, x, y))
+          (first_after ~cx ~cy texts)
+    | `Up ->
+        Option.map
+          (fun ((node, ox, oy, _, _), _, _) -> (node, ox, oy, cx, top - 1))
+          (last_before_of ~cx:(cx + 1) ~cy:(top - 1) texts)
+    | `Down ->
+        Option.map
+          (fun ((node, ox, oy, _, _), _, _) -> (node, ox, oy, cx, bottom + 1))
+          (first_after ~cx ~cy:(bottom + 1) texts)
+    | `Row_start | `Row_end -> None
   in
-  match direction with
-  | `Left ->
-      Option.bind (last_before_of ~cx ~cy texts)
-        (fun ((node, ox, oy, _, _), x, y) ->
-          boundary_at t node ~ox ~oy ~cx:(x + 1) ~cy:y)
-  | `Right ->
-      Option.bind (first_after ~cx ~cy texts)
-        (fun ((node, ox, oy, _, _), x, y) ->
-          boundary_at t node ~ox ~oy ~cx:x ~cy:y)
-  | `Up ->
-      Option.bind
-        (last_before_of ~cx:(cx + 1) ~cy:(top - 1) texts)
-        (fun ((node, ox, oy, _, _), _, _) ->
-          boundary_at t node ~ox ~oy ~cx ~cy:(top - 1))
-  | `Down ->
-      Option.bind
-        (first_after ~cx ~cy:(bottom + 1) texts)
-        (fun ((node, ox, oy, _, _), _, _) ->
-          boundary_at t node ~ox ~oy ~cx ~cy:(bottom + 1))
-  | `Row_start | `Row_end -> None
+  (* A painted text that lies that way comes before every text the view
+     hides, which lie past its edge, so the region is walked only when the
+     paint drew none. *)
+  let found =
+    match target (painted_texts t region) with
+    | Some _ as found -> found
+    | None -> target (region_texts t region)
+  in
+  Option.bind found (fun (node, ox, oy, cx, cy) ->
+      boundary_at t node ~ox ~oy ~cx ~cy)
 
 (* Where a keyboard extension toward [direction] moves the focus of [sel],
    whose band is [band], with the focus's row in region coordinates. In its

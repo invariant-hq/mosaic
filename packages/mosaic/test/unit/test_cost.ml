@@ -178,6 +178,109 @@ let hidden_transcript_rows () =
   same "a steady frame grows with the rows the viewport hides"
     ~small:(frame 1_000) ~large:(frame 10_000)
 
+(* ───── A text selection in a scrolled transcript ─────
+
+   A selection's motion, the frame that paints it and its copy
+   cost what the selection and the viewport hold, not the rows the
+   transcript hides. A motion maps the pointer in the region and the frame
+   reads each painted text's range from the band; a copy visits the texts
+   the band covers. *)
+
+(* [rows] selectable rows behind a 24-row viewport. *)
+let selectable_transcript rows =
+  let renderer = Renderer.create () in
+  let px n = Toffee.Style.Dimension.length (Float.of_int n) in
+  let scroll =
+    Scroll_box.create ~parent:(Renderer.root renderer)
+      ~style:Toffee.Style.(default |> set_width (px 80) |> set_height (px 24))
+      (Scroll_box.Props.make ~show_scrollbars:false ())
+  in
+  for i = 1 to rows do
+    ignore
+      (Text.create ~parent:(Scroll_box.node scroll)
+         ~style:Toffee.Style.(default |> set_width (px 80) |> set_height (px 1))
+         (Text.Props.make
+            ~content:(Printf.sprintf "Transcript row %d, representative." i)
+            ())
+        : Text.t)
+  done;
+  render_frame renderer;
+  renderer
+
+let mouse renderer kind ~x ~y =
+  ignore
+    (Test_harness.dispatch_mouse renderer (Test_harness.mouse_report ~x ~y kind)
+      : Event.mouse)
+
+let selection_drag () =
+  let cost rows =
+    let renderer = selectable_transcript rows in
+    mouse renderer (Press Left) ~x:2 ~y:3;
+    mouse renderer (Motion (Some Left)) ~x:10 ~y:6;
+    render_frame renderer;
+    words (fun () ->
+        mouse renderer (Motion (Some Left)) ~x:12 ~y:8;
+        mouse renderer (Motion (Some Left)) ~x:10 ~y:6;
+        render_frame renderer)
+  in
+  same "a drag's motion and frame grow with the rows the viewport hides"
+    ~small:(cost 1_000) ~large:(cost 10_000)
+
+let selection_word_drag () =
+  let cost rows =
+    let renderer = selectable_transcript rows in
+    let start = Test_harness.tick () in
+    let at i kind =
+      ignore
+        (Test_harness.dispatch_mouse
+           ~now:(start + (i * 50_000_000))
+           renderer
+           (Test_harness.mouse_report ~x:2 ~y:3 kind)
+          : Event.mouse)
+    in
+    at 1 (Press Left);
+    at 2 (Release (Some Left));
+    at 3 (Press Left);
+    mouse renderer (Motion (Some Left)) ~x:20 ~y:6;
+    render_frame renderer;
+    words (fun () ->
+        mouse renderer (Motion (Some Left)) ~x:22 ~y:8;
+        mouse renderer (Motion (Some Left)) ~x:20 ~y:6;
+        render_frame renderer)
+  in
+  same "a word drag's motion and frame grow with the rows the viewport hides"
+    ~small:(cost 1_000) ~large:(cost 10_000)
+
+let selection_key_crossing () =
+  let cost rows =
+    let renderer = selectable_transcript rows in
+    mouse renderer (Press Left) ~x:2 ~y:3;
+    mouse renderer (Motion (Some Left)) ~x:10 ~y:5;
+    mouse renderer (Release (Some Left)) ~x:10 ~y:5;
+    render_frame renderer;
+    words (fun () ->
+        Renderer.extend_selection renderer `Down;
+        Renderer.extend_selection renderer `Up)
+  in
+  same "a key extension across texts grows with the rows the viewport hides"
+    ~small:(cost 1_000) ~large:(cost 10_000)
+
+let selection_copy () =
+  let cost rows =
+    let renderer = selectable_transcript rows in
+    mouse renderer (Press Left) ~x:2 ~y:3;
+    mouse renderer (Motion (Some Left)) ~x:10 ~y:5;
+    mouse renderer (Release (Some Left)) ~x:10 ~y:5;
+    render_frame renderer;
+    (match Renderer.selection_text renderer with
+    | Some text when List.length (String.split_on_char '\n' text) = 3 -> ()
+    | Some text -> failf "the copy holds %S, not three rows" text
+    | None -> fail "the drag selected nothing");
+    words (fun () -> ignore (Renderer.selection_text renderer : string option))
+  in
+  same "a copy grows with the rows the viewport hides" ~small:(cost 1_000)
+    ~large:(cost 10_000)
+
 (* ───── A key on a collection ─────
 
    A cursor finds its item at the position where it last saw it, so a key
@@ -808,6 +911,13 @@ let () =
         ];
       group "Frames follow the visible area"
         [ test "a scrolled transcript" hidden_transcript_rows ];
+      group "A text selection follows the visible area"
+        [
+          test "a drag's motion and frame" selection_drag;
+          test "a word drag's motion and frame" selection_word_drag;
+          test "a key extension across texts" selection_key_crossing;
+          test "a copy" selection_copy;
+        ];
       group "An element that declares nothing shares its records"
         [ test "a text" default_text ];
       group "An unchanged list costs nothing per element"
