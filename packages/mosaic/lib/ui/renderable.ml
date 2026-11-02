@@ -1612,11 +1612,12 @@ let run_paste_behavior t event = Option.iter (fun f -> f event) t.paste_behavior
 
 (* A declaration changes what the view selection highlights, and decides the
    scope and the kind of an end in the subtree: a change clears a selection
-   with an end there, as hiding the subtree would. *)
+   with an end there, as hiding the subtree would, while the subtree still
+   reads as the selection showed it. *)
 let set_selectable t declaration =
   if t.selectable <> declaration then begin
-    t.selectable <- declaration;
     t.ctx.hiding t;
+    t.selectable <- declaration;
     t.ctx.schedule ()
   end
 

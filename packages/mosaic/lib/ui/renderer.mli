@@ -487,7 +487,8 @@ val extend_selection :
     the focus is in first, then anywhere in the scope. A window, or a scope,
     whose view the focus leaves scrolls to show it, by its proposal. A focus in
     a scope taken whole moves out of it, from its view. A focus on a cell moves
-    by a cell, a row or to the row's ends over the scope's view, and is the
+    by a cell, a row or to the row's ends over the scope's view, from where it
+    stands, at the edge of a window that has scrolled it out of view, and is the
     boundary of the text it lands on; on a cell that shows no text, or no
     grapheme of a text that reads [`Cells], it stays a cell where a release
     would, and goes to the next text otherwise. The selection then extends by

@@ -2105,14 +2105,18 @@ let extension_target t sel band direction =
   let forward = band.forward in
   match focus.cell with
   | Some _ -> (
-      (* A focus on a cell moves by cells over the scope's view, and takes
-         the boundary of a text it lands on. On a cell that shows no text,
-         it stays a cell where that cell reads [`Cells], and crosses to the
-         next text where it reads [`Text]. *)
+      (* A focus on a cell moves by cells over the scope's view, from where
+         it stands for the band, at the edge of a window that has scrolled
+         it out of view, and takes the boundary of a text it lands on. On a
+         cell that shows no text, it stays a cell where that cell reads
+         [`Cells], and crosses to the next text where it reads [`Text]. *)
       let origin = band.origin in
       match end_cells t scope origin focus with
       | None -> None
       | Some (x, y, _, _) -> (
+          let x, y, _ =
+            clamp_end ~columns:true (windows_of t scope origin focus.node) x y
+          in
           let view = region_view scope in
           let ox = Renderable.x origin and oy = Renderable.y origin in
           let sx, sy =

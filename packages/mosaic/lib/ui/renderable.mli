@@ -594,9 +594,9 @@ module Private : sig
     hiding : t -> unit;
         (** Tells the renderer that a node and its descendants are about to stop
             being shown, as the node is hidden, detached or destroyed, or that
-            the node's declaration of what the view selection takes of them
-            changed ({!val-set_selectable}), so that a view selection with an
-            end among them clears ([Renderer]). *)
+            the node's declaration of what the view selection takes of them is
+            about to change ({!val-set_selectable}), so that a view selection
+            with an end among them clears ([Renderer]). *)
     register_lifecycle : t -> unit;
     unregister_lifecycle : t -> unit;
     alloc_num : unit -> int;

@@ -2806,6 +2806,8 @@ let a_cell_end_scrolled_out_sideways_stands_at_the_edge () =
   Scroll_box.scroll_to sb ~x:0 ();
   frame r;
   paint r;
+  is_false ~msg:"the window's last column, on the first row"
+    (inverse r ~x:9 ~y:1);
   is_true ~msg:"after the window, on the first row" (inverse r ~x:15 ~y:1);
   is_true ~msg:"in the window, on the last row" (inverse r ~x:5 ~y:3);
   is_false ~msg:"beside the window, on the last row" (inverse r ~x:15 ~y:3)
@@ -2867,6 +2869,50 @@ let a_declaration_change_clears_the_selection () =
   render `Cells `Off;
   is_none ~msg:"the ancestor's declaration" (copied r);
   equal ~msg:"heard" (list string) [ "cleared" ] (changes r)
+
+(* A declaration that changes above an end during a drag ends the drag, as
+   an unmount does: the text the drag held, as the user saw it, is heard
+   cleared, and its later motion selects nothing. *)
+let a_declaration_change_ends_its_drag () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore (line col "hello" : Text.t);
+  ignore (line col "world" : Text.t);
+  frame r;
+  press r ~x:0 ~y:0;
+  drag_to r ~x:2 ~y:1;
+  Renderable.set_selectable col (Some `Off);
+  equal ~msg:"heard" (list string) [ "cleared" ] (changes r);
+  frame r;
+  drag_to r ~x:4 ~y:0;
+  release r ~x:4 ~y:0;
+  is_none ~msg:"nothing selected" (copied r);
+  equal ~msg:"nothing settled" (list string) [] (changes r)
+
+(* A key moves a cell focus from where it stands: one that a window has
+   scrolled out of view moves from the window's edge, not from the cell
+   beside the window where its node now lies. *)
+let a_cell_focus_scrolled_out_moves_from_the_windows_edge () =
+  let r = cells_renderer () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:40 ~h:1 "header" : Text.t);
+  let sb =
+    scroll_box (Renderer.root r) ~w:0 ~h:0 ~style:(place ~x:0 ~y:2 ~w:20 ~h:6)
+  in
+  for i = 0 to 19 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "row-%d" i) : Text.t)
+  done;
+  frame r;
+  select r (1, 7) (10, 3);
+  equal ~msg:"to past a line's end" (option string)
+    (Some "row-2\nrow-3\nrow-4\nro") (copied r);
+  Scroll_box.scroll_to sb ~y:3 ();
+  frame r;
+  Renderer.extend_selection r `Right;
+  frame r;
+  equal ~msg:"from the window's first cell" (option string)
+    (Some "ow-3\nrow-4\nro") (copied r);
+  paint r;
+  is_false ~msg:"the header" (inverse r ~x:11 ~y:0)
 
 (* ── Autoscroll ── *)
 
@@ -3248,6 +3294,10 @@ let () =
             a_multi_click_on_a_border_resolves_to_the_nearest_text;
           test "a declaration change clears the selection"
             a_declaration_change_clears_the_selection;
+          test "a declaration change ends its drag"
+            a_declaration_change_ends_its_drag;
+          test "a cell focus scrolled out moves from the window's edge"
+            a_cell_focus_scrolled_out_moves_from_the_windows_edge;
         ];
       group "Autoscroll"
         [
