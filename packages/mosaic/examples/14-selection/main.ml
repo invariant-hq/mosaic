@@ -1,17 +1,23 @@
 (** Text selection across renderables and scroll boxes.
 
-    Ctrl+click extends the selection. *)
+    Drag to select, double-click for a word, triple-click for a line; drag after
+    either to extend by words or lines. Shift+arrows extend the selection,
+    Ctrl+C copies it and Escape clears it. The application copies on select, and
+    shows each copy in the footer. *)
 
 open Mosaic
 
-type msg = Quit | Scrolled of Scroll.t
+type model = { scroll : Scroll.t; copied : int option }
+type msg = Quit | Scrolled of Scroll.t | Copy_selection | Copied of string
 
-let init () = (Scroll.at 0, Cmd.none)
+let init () = ({ scroll = Scroll.at 0; copied = None }, Cmd.none)
 
-let update msg scroll =
+let update msg model =
   match msg with
-  | Quit -> (scroll, Cmd.quit)
-  | Scrolled scroll -> (scroll, Cmd.none)
+  | Quit -> (model, Cmd.quit)
+  | Scrolled scroll -> ({ model with scroll }, Cmd.none)
+  | Copy_selection -> (model, Cmd.copy_selection)
+  | Copied text -> ({ model with copied = Some (String.length text) }, Cmd.none)
 
 let section1_style = Ansi.Style.make ~fg:Ansi.Color.white ()
 
@@ -47,12 +53,12 @@ let footer_bg = Ansi.Color.grayscale ~level:3
 let muted = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:16) ()
 let hint = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) ()
 
-let view scroll =
+let view { scroll; copied } =
   box ~flex_direction:Column
     ~size:{ width = pct 100; height = pct 100 }
     [
       (* Header *)
-      box ~padding:(padding 1) ~background:header_bg
+      box ~padding:(padding 1) ~background:header_bg ~selectable:false
         [
           box ~flex_direction:Row ~justify_content:Space_between
             ~align_items:Center
@@ -73,14 +79,13 @@ let view scroll =
                 ~background:(Ansi.Color.grayscale ~level:2)
                 ~flex_direction:Column ~gap:(gap 0) ~title:"Document Section 1"
                 [
-                  text ~style:section1_style ~selectable:true
+                  text ~style:section1_style
                     "This is a paragraph in the first box.";
-                  text ~style:section1_style ~selectable:true
+                  text ~style:section1_style
                     "It contains multiple lines of text.";
-                  text ~style:section1_style ~selectable:true
+                  text ~style:section1_style
                     "You can select across these lines.";
-                  text ~style:section1_style ~selectable:true
-                    "Unicode: 世界, 你好世界, 中文, 한글";
+                  text ~style:section1_style "Unicode: 世界, 你好世界, 中文, 한글";
                 ];
               (* Section 2: Code example *)
               box ~border:true ~padding:(padding 1)
@@ -90,16 +95,14 @@ let view scroll =
                 [
                   text
                     ~style:(Ansi.Style.make ~fg:Ansi.Color.cyan ())
-                    ~selectable:true "function handleSelection() {";
+                    "function handleSelection() {";
                   text
                     ~style:(Ansi.Style.make ~fg:Ansi.Color.white ())
-                    ~selectable:true "  const selected = getSelectedText()";
+                    "  const selected = getSelectedText()";
                   text
                     ~style:(Ansi.Style.make ~fg:Ansi.Color.yellow ())
-                    ~selectable:true "  console.log(selected)";
-                  text
-                    ~style:(Ansi.Style.make ~fg:Ansi.Color.white ())
-                    ~selectable:true "}";
+                    "  console.log(selected)";
+                  text ~style:(Ansi.Style.make ~fg:Ansi.Color.white ()) "}";
                 ];
             ];
           (* Right panel: Scrollable content *)
@@ -123,7 +126,6 @@ let view scroll =
                                ~style:
                                  (Ansi.Style.make ~bold:true
                                     ~fg:Ansi.Color.white ())
-                               ~selectable:true
                                (Printf.sprintf "Box %d" (i + 1));
                              fragment
                                (List.init num_lines (fun j ->
@@ -133,21 +135,30 @@ let view scroll =
                                     text
                                       ~style:
                                         (Ansi.Style.make ~fg:Ansi.Color.white ())
-                                      ~key:(string_of_int j) ~selectable:true
+                                      ~key:(string_of_int j)
                                       lorem_lines.(line_idx)));
                            ]));
                 ];
             ];
         ];
       (* Footer *)
-      box ~padding:(padding 1) ~background:footer_bg
+      box ~padding:(padding 1) ~background:footer_bg ~selectable:false
         [
           text ~style:hint
-            "click and drag to select  •  Ctrl+click extend  •  q quit";
+            (match copied with
+            | Some n -> Printf.sprintf "copied %d bytes  •  q quit" n
+            | None ->
+                "drag, double or triple click to select  •  Ctrl+C copy  •  \
+                 Esc clear  •  q quit");
         ];
     ]
 
-let subscriptions _scroll =
-  Sub.on_keys [ (Shortcut.char 'q', Quit); (Shortcut.escape, Quit) ]
+let subscriptions _ =
+  Sub.batch
+    [
+      Sub.on_keys [ (Shortcut.char 'q', Quit); (Shortcut.escape, Quit) ];
+      Sub.on_selection (function Some _ -> Some Copy_selection | None -> None);
+      Sub.on_copy (fun text -> Some (Copied text));
+    ]
 
 let () = run { init; update; view; subscriptions }
