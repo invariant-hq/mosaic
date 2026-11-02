@@ -1273,6 +1273,40 @@ let extension_moves_the_focus_by_a_grapheme () =
   Renderer.extend_selection r `Left;
   equal ~msg:"onto the anchor" (option string) (Some "h") (copied r)
 
+(* After a double click, a key extension drops the unit to the grapheme: the
+   word collapses to its grapheme on the side away from the focus, which
+   stays selected as a grapheme anchor's does. *)
+let extension_after_a_word_keeps_its_first_grapheme () =
+  let words () =
+    let r = Renderer.create () in
+    ignore
+      (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "alpha beta gamma"
+        : Text.t);
+    frame r;
+    r
+  in
+  let r = words () in
+  clicks r ~x:7 ~y:0 2;
+  equal ~msg:"the word" (option string) (Some "beta") (copied r);
+  Renderer.extend_selection r `Left;
+  equal ~msg:"a grapheme back" (option string) (Some "bet") (copied r);
+  let r = words () in
+  clicks r ~x:7 ~y:0 2;
+  Renderer.extend_selection r `Row_start;
+  equal ~msg:"to the row's start, the word's first grapheme kept"
+    (option string) (Some "alpha b") (copied r);
+  let r = words () in
+  presses r ~x:7 ~y:0 2;
+  drag_to r ~x:1 ~y:0;
+  release r ~x:1 ~y:0;
+  equal ~msg:"a backward word drag" (option string) (Some "alpha beta")
+    (copied r);
+  Renderer.extend_selection r `Right;
+  equal ~msg:"a grapheme forward" (option string) (Some "lpha beta") (copied r);
+  Renderer.extend_selection r `Row_end;
+  equal ~msg:"past the anchor, its last grapheme kept" (option string)
+    (Some "a gamma") (copied r)
+
 (* Shift+Home and Shift+End move the focus to its row's ends. *)
 let extension_moves_the_focus_to_its_rows_ends () =
   let r = hello () in
@@ -1553,24 +1587,26 @@ let an_extension_settles_nothing () =
   Renderer.extend_selection r `Right;
   is_none ~msg:"gone" (copied r)
 
-(* A selection holds the text it copies: a line break alone, which its
-   fragment drops, is no text, while one between two others is kept. *)
-let a_line_break_alone_holds_no_text () =
+(* A selection of line breaks alone holds them all: their fill is
+   highlighted, so they are copied (Law 2). *)
+let line_breaks_alone_are_held () =
   let r = Renderer.create () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:4 "ab\n\n\n" : Text.t);
   frame r;
   press r ~x:5 ~y:0;
   drag_to r ~x:0 ~y:1;
-  is_none ~msg:"one copies nothing" (copied r);
-  is_false ~msg:"is not live" (Renderer.selection_live r);
+  equal ~msg:"one copies itself" (option string) (Some "\n") (copied r);
+  is_true ~msg:"is live" (Renderer.selection_live r);
   release r ~x:0 ~y:1;
-  equal ~msg:"and settles nothing" (list string) [] (changes r);
+  equal ~msg:"and settles" (list string) [ "settled \n" ] (changes r);
   press r ~x:5 ~y:0;
   drag_to r ~x:0 ~y:3;
-  equal ~msg:"three copy the middle one" (option string) (Some "\n") (copied r);
+  equal ~msg:"three copy all three" (option string) (Some "\n\n\n") (copied r);
   is_true ~msg:"which is live" (Renderer.selection_live r);
   release r ~x:0 ~y:3;
-  equal ~msg:"and settles" (list string) [ "settled \n" ] (changes r)
+  equal ~msg:"the first cleared, then settles" (list string)
+    [ "cleared"; "settled \n\n\n" ]
+    (changes r)
 
 (* Law 4: a press on unselectable content changes nothing, and queues
    nothing. *)
@@ -2162,6 +2198,8 @@ let () =
             a_selection_is_live_while_it_holds_text_outside_a_modal;
           test "extension moves the focus by a grapheme"
             extension_moves_the_focus_by_a_grapheme;
+          test "an extension after a word keeps its first grapheme"
+            extension_after_a_word_keeps_its_first_grapheme;
           test "extension moves the focus to its row's ends"
             extension_moves_the_focus_to_its_rows_ends;
           test "extension moves the focus by a row"
@@ -2189,8 +2227,7 @@ let () =
           test "a shift press settles the moved selection"
             a_shift_press_settles_the_moved_selection;
           test "an extension settles nothing" an_extension_settles_nothing;
-          test "a line break alone holds no text"
-            a_line_break_alone_holds_no_text;
+          test "line breaks alone are held" line_breaks_alone_are_held;
           test "a press on unselectable content queues nothing"
             a_press_on_unselectable_content_queues_nothing;
         ];

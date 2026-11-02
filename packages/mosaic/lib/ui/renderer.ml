@@ -1041,7 +1041,9 @@ let item_rows (rows : Renderable.text_rows) ~oy ~first ~last =
 (* [assemble t ~region band] is the text of [region]'s [items]: each text's
    range is split before each row on which another fragment also lies and
    after it, so that the fragments read row by row; a line terminator that
-   begins or ends a fragment is dropped, the separator standing for it. *)
+   begins or ends a fragment is dropped, the separator standing for it.
+   When the fragments hold nothing but terminators, no separator stands for
+   them: the text is all of them, as their highlight shows (Law 2). *)
 let rec assemble t ~region band =
   let items = items t ~region band in
   (* How many items lie on each row. *)
@@ -1068,7 +1070,16 @@ let rec assemble t ~region band =
   done;
   let shared r = r >= !lo && r <= !hi && counts.(r - !lo) > 1 in
   let pieces = ref [] in
+  let breaks = Buffer.create 2 and only_breaks = ref true in
   let add_piece ~src ~rows ~ox ~oy ~enclosed ~rank p0 p1 =
+    if !only_breaks then begin
+      let g = ref p0 in
+      while !g < p1 && is_terminator src !g do
+        incr g
+      done;
+      if !g < p1 then only_breaks := false
+      else Buffer.add_string breaks (Layout.Source.slice src ~first:p0 ~last:p1)
+    end;
     let p0 = if is_terminator src p0 then p0 + 1 else p0 in
     let p1 = if p1 > p0 && is_terminator src (p1 - 1) then p1 - 1 else p1 in
     if p0 < p1 then begin
@@ -1109,6 +1120,7 @@ let rec assemble t ~region band =
             ~rank:i.order !from i.last
       | Box_item { box; view = x, y, w, h; chain; order } ->
           let text = assemble t ~region:box None in
+          if text <> "" then only_breaks := false;
           if text <> "" then
             pieces :=
               {
@@ -1142,7 +1154,7 @@ let rec assemble t ~region band =
          Some piece)
        None pieces
       : piece option);
-  Buffer.contents buf
+  if !only_breaks then Buffer.contents breaks else Buffer.contents buf
 
 (* The text of [sel], if it holds any. *)
 let text_of t sel =
@@ -1541,6 +1553,15 @@ let reveal region origin row =
       if row < top then decl.scroll (row - top)
       else if row > bottom then decl.scroll (row - bottom)
 
+(* The anchor of a selection whose unit drops to the grapheme: its word or
+   line collapses to the grapheme it starts the selection with, the first
+   when the focus lies after it and the last otherwise, as a grapheme
+   anchor's own grapheme stays selected. *)
+let grapheme_anchor (anchor : end_) ~forward =
+  if anchor.last - anchor.first <= 1 then anchor
+  else if forward then { anchor with last = anchor.first + 1 }
+  else { anchor with first = anchor.last - 1 }
+
 (* §3.6 Extension: the focus of a selection at rest moves, the anchor
    stays, and the unit becomes the grapheme. A selection that then holds no
    text clears; one that does is not settled again. *)
@@ -1553,7 +1574,13 @@ let extend_selection t direction =
           | None -> ()
           | Some (focus, row) ->
               reveal sel.region band.origin row;
-              let next = { sel with focus; unit = Grapheme } in
+              let anchor =
+                match sel.unit with
+                | Grapheme -> sel.anchor
+                | Word | Line ->
+                    grapheme_anchor sel.anchor ~forward:band.forward
+              in
+              let next = { sel with anchor; focus; unit = Grapheme } in
               let holds = holds_text t next in
               replace t (if holds then Some next else None) ~holds)
       | Some _ | None -> ())
