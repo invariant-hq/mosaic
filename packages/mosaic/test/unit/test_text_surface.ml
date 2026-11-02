@@ -280,44 +280,6 @@ let reset_selection_clears () =
   is_false ~msg:"not active" (Text_surface.has_selection s);
   equal ~msg:"empty text" string "" (Text_surface.selected_text s)
 
-(* ── Selection — local ── *)
-
-let set_local_selection_basic () =
-  let s = make_surface ~width:40 ~content:"hello world" () in
-  let changed =
-    Text_surface.set_local_selection s ~anchor_x:0 ~anchor_y:0 ~focus_x:5
-      ~focus_y:0
-  in
-  is_true ~msg:"changed" changed;
-  is_true ~msg:"has_selection" (Text_surface.has_selection s);
-  (* Static drags occupy their endpoint cells, including the space at column 5. *)
-  equal ~msg:"selected text" string "hello " (Text_surface.selected_text s)
-
-let update_local_selection_extends () =
-  let s = make_surface ~width:40 ~content:"hello world" () in
-  let _ =
-    Text_surface.set_local_selection s ~anchor_x:0 ~anchor_y:0 ~focus_x:5
-      ~focus_y:0
-  in
-  let changed =
-    Text_surface.update_local_selection s ~anchor_x:0 ~anchor_y:0 ~focus_x:11
-      ~focus_y:0
-  in
-  is_true ~msg:"changed" changed;
-  equal ~msg:"full text" string "hello world" (Text_surface.selected_text s)
-
-(* A drag that leaves the text above or below selects to its start or end. *)
-let local_selection_past_the_rows () =
-  let s = make_surface ~width:40 ~content:"ab\ncd" () in
-  ignore
-    (Text_surface.set_local_selection s ~anchor_x:1 ~anchor_y:0 ~focus_x:0
-       ~focus_y:5);
-  equal ~msg:"below" string "b\ncd" (Text_surface.selected_text s);
-  ignore
-    (Text_surface.set_local_selection s ~anchor_x:0 ~anchor_y:1 ~focus_x:5
-       ~focus_y:(-1));
-  equal ~msg:"above" string "ab\nc" (Text_surface.selected_text s)
-
 (* ── Cache Invalidation ── *)
 
 let invalidate_clears_cache () =
@@ -687,21 +649,6 @@ let small_string = Gen.string_of (Gen.char_range 'a' 'z')
 
 (* ── Runner ── *)
 
-let truncated_source_selection () =
-  let s = make_surface ~width:3 ~content:"abcdef\nXY" () in
-  Text_surface.set_truncate s true;
-  ignore
-    (Text_surface.set_local_selection s ~anchor_x:0 ~anchor_y:1 ~focus_x:2
-       ~focus_y:1);
-  equal string "XY" (Text_surface.selected_text s)
-
-let zero_width_source_selection () =
-  let s = make_surface ~content:"a\226\128\139b" () in
-  ignore
-    (Text_surface.set_local_selection s ~anchor_x:0 ~anchor_y:0 ~focus_x:2
-       ~focus_y:0);
-  equal string "a\226\128\139b" (Text_surface.selected_text s)
-
 let styled_cluster_paints_as_one () =
   let s = make_surface ~width:8 () in
   let red = Ansi.Style.make ~fg:Ansi.Color.red () in
@@ -785,18 +732,6 @@ let clipped_wide_start_stays_inside_node () =
   equal string "N" (Matrix_grid.get_text grid 1);
   equal string "a" (Matrix_grid.get_text grid 3)
 
-let ellipsis_drag_and_press () =
-  let s = make_surface ~width:3 ~content:"abcdef" () in
-  Text_surface.set_truncate s true;
-  ignore
-    (Text_surface.set_local_selection s ~anchor_x:2 ~anchor_y:0 ~focus_x:2
-       ~focus_y:0);
-  is_false (Text_surface.has_selection s);
-  ignore
-    (Text_surface.set_local_selection s ~anchor_x:0 ~anchor_y:0 ~focus_x:2
-       ~focus_y:0);
-  equal string "abcdef" (Text_surface.selected_text s)
-
 let () =
   run "mosaic.text_surface"
     [
@@ -808,8 +743,6 @@ let () =
             clipped_text_uses_absolute_source_rows;
           test "clipped wide start cannot paint before its node"
             clipped_wide_start_stays_inside_node;
-          test "ellipsis drag copies hidden source, press stays empty"
-            ellipsis_drag_and_press;
         ];
       group "Construction"
         [
@@ -873,13 +806,6 @@ let () =
         ];
       group "Selection — reset"
         [ test "clears active state" reset_selection_clears ];
-      group "Selection — local"
-        [
-          test "set_local_selection" set_local_selection_basic;
-          test "update_local_selection extends" update_local_selection_extends;
-          test "a drag past the rows selects to the ends"
-            local_selection_past_the_rows;
-        ];
       group "Cache invalidation"
         [
           test "invalidate clears cache" invalidate_clears_cache;
@@ -936,13 +862,6 @@ let () =
           test "long word falls back to char" wrap_word_long_word_fallback;
           test "empty lines preserved" wrap_word_empty_lines_preserved;
           test "single char words" wrap_word_single_char_words;
-        ];
-      group "Source geometry regressions"
-        [
-          test "truncation keeps later source offsets"
-            truncated_source_selection;
-          test "invisible clusters stay in source ranges"
-            zero_width_source_selection;
         ];
       group "Properties"
         [

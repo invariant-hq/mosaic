@@ -1949,9 +1949,76 @@ let a_copy_lays_out_a_text_no_paint_reached () =
   equal ~msg:"row by row" (option string)
     (Some "before\ntop\nmid\naaaddd\nbbbeee\ncc ff\nafter") (copied r)
 
+(* ── Cells to source (RFC 0003 §2.4) ── *)
+
+(* A drag takes both end cells' coverage: the space under the pointer is in. *)
+let a_drag_takes_both_end_cells () =
+  let r = Renderer.create () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "hello world" : Text.t);
+  frame r;
+  select r (0, 0) (5, 0);
+  equal ~msg:"through the space" (option string) (Some "hello ") (copied r)
+
+(* A drag that leaves a text below or above selects to its end or start. *)
+let a_drag_past_the_rows_selects_to_the_end () =
+  let r = Renderer.create () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:2 ~w:20 ~h:2 "ab\ncd" : Text.t);
+  frame r;
+  select r (1, 2) (0, 6);
+  equal ~msg:"below" (option string) (Some "b\ncd") (copied r);
+  select r (0, 3) (5, 0);
+  equal ~msg:"above" (option string) (Some "ab\nc") (copied r)
+
+(* A truncated line's ellipsis stands for its hidden suffix alone: the next
+   line starts at its own source. *)
+let a_truncated_line_leaves_the_next_line_whole () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:3 ~h:2
+       ~props:(fun content -> Text.Props.make ~content ~truncate:true ())
+       "abcdef\nXY"
+      : Text.t);
+  frame r;
+  select r (0, 1) (2, 1);
+  equal ~msg:"the second line" (option string) (Some "XY") (copied r)
+
+(* A zero-width cluster between two cells is copied with them. *)
+let a_zero_width_cluster_is_copied () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "a\226\128\139b" : Text.t);
+  frame r;
+  select r (0, 0) (1, 0);
+  equal ~msg:"with the space" (option string) (Some "a\226\128\139b") (copied r)
+
+(* A click on an ellipsis selects nothing: a click never selects hidden
+   text. *)
+let a_click_on_an_ellipsis_selects_nothing () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:3 ~h:1
+       ~props:(fun content -> Text.Props.make ~content ~truncate:true ())
+       "abcdef"
+      : Text.t);
+  frame r;
+  press r ~x:2 ~y:0;
+  release r ~x:2 ~y:0;
+  equal ~msg:"nothing" (option string) None (copied r)
+
 let () =
   run "mosaic.selection"
     [
+      group "Cells to source"
+        [
+          test "a drag takes both end cells" a_drag_takes_both_end_cells;
+          test "a drag past the rows selects to the end"
+            a_drag_past_the_rows_selects_to_the_end;
+          test "a truncated line leaves the next line whole"
+            a_truncated_line_leaves_the_next_line_whole;
+          test "a zero-width cluster is copied" a_zero_width_cluster_is_copied;
+          test "a click on an ellipsis selects nothing"
+            a_click_on_an_ellipsis_selects_nothing;
+        ];
       group "Model"
         [
           test "a press in a margin starts at the nearest text"

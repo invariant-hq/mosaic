@@ -143,20 +143,6 @@ val selection : t -> (int * int) option
     [start < end_] as normalized grapheme offsets. [None] when no selection is
     active. *)
 
-val set_local_selection :
-  t -> anchor_x:int -> anchor_y:int -> focus_x:int -> focus_y:int -> bool
-(** [set_local_selection t ~anchor_x ~anchor_y ~focus_x ~focus_y] sets the
-    selection from viewport-local cells, accounting for scrolling. A stationary
-    press is empty; a drag includes the source coverage of both endpoint cells.
-    An ellipsis covers the omitted source suffix. Returns [true] if changed.
-
-    See {!update_local_selection} for updating an existing drag. *)
-
-val update_local_selection :
-  t -> anchor_x:int -> anchor_y:int -> focus_x:int -> focus_y:int -> bool
-(** [update_local_selection t ~anchor_x ~anchor_y ~focus_x ~focus_y] is like
-    {!set_local_selection}. Returns [true] if the selection changed. *)
-
 val reset_selection : t -> unit
 (** [reset_selection t] clears any active selection and requests a render. *)
 

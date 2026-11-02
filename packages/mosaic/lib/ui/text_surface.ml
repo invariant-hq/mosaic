@@ -228,21 +228,6 @@ let set_selection t ~start ~end_ =
 
 let selection t = t.selection
 
-let set_local_selection t ~anchor_x ~anchor_y ~focus_x ~focus_y =
-  let geometry = layout t in
-  let range x y =
-    Layout.coverage geometry ~row:(t.scroll_y + y) ~column:(t.scroll_x + x)
-  in
-  let a, ae = range anchor_x anchor_y in
-  let f, fe = range focus_x focus_y in
-  let first, last =
-    if anchor_x = focus_x && anchor_y = focus_y then (a, a)
-    else (min a f, max ae fe)
-  in
-  set_selection t ~start:first ~end_:last
-
-let update_local_selection = set_local_selection
-
 let reset_selection t =
   if Option.is_some t.selection then begin
     t.selection <- None;
