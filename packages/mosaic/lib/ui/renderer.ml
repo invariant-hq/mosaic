@@ -59,6 +59,10 @@ type end_ = {
   first : int;
   last : int;
   source : Layout.Source.t;
+  cell : (int * int) option;
+      (* An end on a cell a node paints without text, such as a border: the
+         cell, in the scope's coordinates. It stays on the screen as the
+         content moves, as a terminal's does. *)
 }
 
 (* The pointer gesture that drags a selection: the cell it last reported, on
@@ -530,7 +534,13 @@ let text_rows_of t node =
 (* The span of [node]'s text from boundary [first] to [last], in the text
    [rows] show, as an end. *)
 let end_in node (rows : Renderable.text_rows) ~first ~last =
-  { node; first; last; source = Layout.source rows.layout }
+  { node; first; last; source = Layout.source rows.layout; cell = None }
+
+let no_source = Layout.Source.of_string ""
+
+(* An end on the cell [x, y] of [node], which paints it without text. *)
+let cell_end node ~x ~y =
+  { node; first = 0; last = 0; source = no_source; cell = Some (x, y) }
 
 (* Whether the cell [x, y] is at or before [x', y'] in row-major order. *)
 let[@inline] precedes x y x' y' = y < y' || (y = y' && x <= x')
@@ -892,19 +902,22 @@ let unit_end t origin node unit ~cx ~cy =
 let end_cells t region origin (e : end_) =
   if not (alive_visible e.node) then None
   else
-    match placement t region e.node with
-    | Outside -> None
-    | Direct | Inside _ -> (
-        match (offset t e.node origin, current_rows t e.node) with
-        | Some (ox, oy), Some rows ->
-            let x, y =
-              locate_cell rows ~ox ~oy ~affinity:Layout.Downstream e.first
-            in
-            let x', y' =
-              locate_cell rows ~ox ~oy ~affinity:Layout.Upstream e.last
-            in
-            Some (x, y, x', y')
-        | _ -> None)
+    match e.cell with
+    | Some (x, y) -> Some (x, y, x + 1, y)
+    | None -> (
+        match placement t region e.node with
+        | Outside -> None
+        | Direct | Inside _ -> (
+            match (offset t e.node origin, current_rows t e.node) with
+            | Some (ox, oy), Some rows ->
+                let x, y =
+                  locate_cell rows ~ox ~oy ~affinity:Layout.Downstream e.first
+                in
+                let x', y' =
+                  locate_cell rows ~ox ~oy ~affinity:Layout.Upstream e.last
+                in
+                Some (x, y, x', y')
+            | _ -> None))
 
 let hit_node t ~x ~y =
   let num = query_input_hit t ~x ~y in
@@ -1073,17 +1086,22 @@ let below_common a b =
   let rec drop n l =
     if n <= 0 then l else match l with _ :: l -> drop (n - 1) l | [] -> []
   in
+  let rec take n l =
+    if n <= 0 then []
+    else match l with e :: l -> e :: take (n - 1) l | [] -> []
+  in
   let la = List.length a and lb = List.length b in
-  let rec common x y =
-    if x == y then x
-    else match (x, y) with _ :: x, _ :: y -> common x y | _ -> []
+  (* The tails the two chains share, compared by their extents: a text's
+     chain and a painted cell's are built apart. *)
+  let rec shared x y n =
+    match (x, y) with
+    | e :: x', f :: y' when e.top = f.top && e.bottom = f.bottom && x' = y' ->
+        n + 1 + List.length x'
+    | _ :: x', _ :: y' -> shared x' y' n
+    | _ -> n
   in
-  let shared = common (drop (la - lb) a) (drop (lb - la) b) in
-  let rec take l acc =
-    if l == shared then acc
-    else match l with e :: l -> take l (e :: acc) | [] -> acc
-  in
-  take a (take b [])
+  let k = shared (drop (la - lb) a) (drop (lb - la) b) 0 in
+  take (la - k) a @ take (lb - k) b
 
 (* Whether a row strictly between [from] and [until] lies outside every
    extent of [extents]: a margin or a gap. *)
@@ -1117,6 +1135,53 @@ let item_rows (rows : Renderable.text_rows) ~oy ~first ~last =
     fst (Layout.locate rows.layout { grapheme = g; affinity = Downstream })
   in
   (oy + row first - rows.scroll_y, oy + row (last - 1) - rows.scroll_y)
+
+(* [iter_band_cells t band ~grid ~owner f] calls [f ~x ~y idx node] for each cell
+   of [band] that a selectable node paints without text, such as a border or
+   a chart's glyph, in [grid] whose cells' nodes [owner] gives, row by row, in
+   screen coordinates. A text's cells are its text's, and an editor's are its
+   own. *)
+let iter_band_cells t band ~grid ~owner f =
+  let ox = Renderable.x band.origin and oy = Renderable.y band.origin in
+  let width = Grid.width grid and height = Grid.height grid in
+  let top = band.low_y + oy and bottom = band.high_y + oy in
+  for y = max 0 top to min (height - 1) bottom do
+    let first = if y = top then max 0 (band.low_x + ox) else 0
+    and last =
+      if y = bottom then min (width - 1) (band.high_x + ox - 1) else width - 1
+    in
+    for x = first to last do
+      let idx = (y * width) + x in
+      if not (Grid.is_continuation grid idx) then
+        match owner ~x ~y with
+        | Some node
+          when Option.is_none (Renderable.text_rows node)
+               && Option.is_none (Renderable.Private.owned_text node)
+               && Renderable.selectable node
+               && not (inert_under (top_layer t) node) ->
+            f ~x ~y idx node
+        | Some _ | None -> ()
+    done
+  done
+
+(* The extents of [node] and its ancestors up to [origin], innermost first,
+   as an item's chain holds them. *)
+let chain_of t origin node =
+  let rec up n acc =
+    let acc =
+      match offset t n origin with
+      | Some (_, y) -> { top = y; bottom = y + snd (layout_size t n) } :: acc
+      | None -> acc
+    in
+    if n == origin then List.rev acc
+    else
+      match Renderable.parent n with Some p -> up p acc | None -> List.rev acc
+  in
+  up node []
+
+let owner_in t hits ~x ~y =
+  let num = Screen.Hit_grid.get hits ~x ~y in
+  if num = Screen.Hit_grid.empty_id then None else find_node t num
 
 (* [assemble t ~region band] is the text of [region]'s [items]: each text's
    range is split before each row on which another fragment also lies and
@@ -1208,6 +1273,54 @@ let assemble t ~region band =
       add_piece ~src ~rows:i.rows ~ox:i.ox ~oy:i.oy ~enclosed:i.chain
         ~rank:i.order !from i.last)
     items;
+  (* The cells a selectable node paints without text, as the frame on the
+     screen shows them: each run of cells that are not blank is a fragment,
+     so the separators keep the blanks between them and none at a row's
+     end. *)
+  (match band with
+  | None -> ()
+  | Some band ->
+      let grid = Screen.current_grid t.screen in
+      let ox = Renderable.x band.origin and oy = Renderable.y band.origin in
+      let run = Buffer.create 16 in
+      let run_y = ref 0 and run_x = ref 0 and next_x = ref (-1) in
+      let run_chain = ref [] in
+      let flush () =
+        if Buffer.length run > 0 then begin
+          only_breaks := false;
+          pieces :=
+            {
+              text = Buffer.contents run;
+              row = !run_y - oy;
+              col = !run_x - ox;
+              end_row = !run_y - oy;
+              end_col = !next_x - ox;
+              enclosed = !run_chain;
+              rank = 0;
+            }
+            :: !pieces;
+          Buffer.clear run
+        end;
+        next_x := -1
+      in
+      iter_band_cells t band ~grid
+        ~owner:(fun ~x ~y ->
+          let num = Screen.query_hit t.screen ~x ~y in
+          if num = Screen.Hit_grid.empty_id then None else find_node t num)
+        (fun ~x ~y idx node ->
+          let text = Grid.get_text grid idx in
+          if text = "" || text = " " then flush ()
+          else begin
+            if not (y = !run_y && x = !next_x) then begin
+              flush ();
+              run_y := y;
+              run_x := x;
+              run_chain := chain_of t band.origin node
+            end;
+            Buffer.add_string run text;
+            next_x := x + max 1 (Grid.cell_width grid idx)
+          end);
+      flush ());
   let pieces =
     List.sort
       (fun a b ->
@@ -1255,7 +1368,7 @@ let holds_text t sel =
         from first
       in
       List.exists has_grapheme found
-      || (found <> [] && assemble t ~region:sel.region (Some band) <> "")
+      || assemble t ~region:sel.region (Some band) <> ""
   | Some _ | None -> false
 
 let view_text t =
@@ -1331,25 +1444,45 @@ let start_selection t hit ~x ~y ~clicks =
   let origin = region_origin region in
   let cx = x - Renderable.x origin and cy = y - Renderable.y origin in
   let unit = Text_unit.of_clicks clicks in
+  let off_text =
+    match (unit, hit) with
+    | Grapheme, Some node -> Option.is_none (text_rows_of t node)
+    | Grapheme, None -> true
+    | (Word | Line), _ -> false
+  in
   let next =
-    match resolve_press t region ~cx ~cy hit with
-    | None -> None
-    | Some node -> (
-        match unit_end t origin node unit ~cx ~cy with
-        | None -> None
-        | Some anchor ->
-            let click =
-              match unit with Grapheme -> true | Word | Line -> false
-            in
-            Some
-              {
-                region;
-                box;
-                anchor;
-                focus = anchor;
-                unit;
-                gesture = Some { pointer_x = x; pointer_y = y; click };
-              })
+    if off_text then
+      (* A press on a cell a node paints without text anchors at the cell,
+         as a terminal's does. *)
+      let node = Option.value hit ~default:region in
+      Some
+        {
+          region;
+          box;
+          anchor = cell_end node ~x:cx ~y:cy;
+          focus = cell_end node ~x:cx ~y:cy;
+          unit;
+          gesture = Some { pointer_x = x; pointer_y = y; click = true };
+        }
+    else
+      match resolve_press t region ~cx ~cy hit with
+      | None -> None
+      | Some node -> (
+          match unit_end t origin node unit ~cx ~cy with
+          | None -> None
+          | Some anchor ->
+              let click =
+                match unit with Grapheme -> true | Word | Line -> false
+              in
+              Some
+                {
+                  region;
+                  box;
+                  anchor;
+                  focus = anchor;
+                  unit;
+                  gesture = Some { pointer_x = x; pointer_y = y; click };
+                })
   in
   let holds =
     match next with
@@ -1460,14 +1593,40 @@ let far_end t sel band =
 let end_selection_drag t =
   let state = t.selection_state in
   match state.current with
-  | Some ({ gesture = Some _; _ } as sel) -> (
+  | Some ({ gesture = Some g; _ } as sel) -> (
       let band = band_of t sel in
       sel.gesture <- None;
       settle_region sel.box;
+      (* A grapheme gesture released over a cell a node paints without text
+         keeps the pointer's cell as its focus; otherwise the focus is the
+         band's far end in its text. *)
+      let pointer_cell () =
+        let origin = region_origin sel.region in
+        let view = region_view sel.region in
+        let px = clamp g.pointer_x view.x view.width
+        and py = clamp g.pointer_y view.y view.height in
+        match (sel.unit, hit_node t ~x:px ~y:py) with
+        | Grapheme, Some node when Option.is_none (text_rows_of t node) ->
+            Some
+              (cell_end node
+                 ~x:(px - Renderable.x origin)
+                 ~y:(py - Renderable.y origin))
+        | Grapheme, None ->
+            Some
+              (cell_end sel.region
+                 ~x:(px - Renderable.x origin)
+                 ~y:(py - Renderable.y origin))
+        | (Grapheme | Word | Line), _ -> None
+      in
       let settled =
         match band with
         | Some band when not band.empty -> (
-            match far_end t sel band with
+            let focus =
+              match pointer_cell () with
+              | Some _ as cell -> cell
+              | None -> far_end t sel band
+            in
+            match focus with
             | Some focus ->
                 sel.focus <- focus;
                 text_of t sel
@@ -1570,35 +1729,67 @@ let cross t region ~box ~except ~cx ~cy ~top ~bottom direction =
 let extension_target t sel band direction =
   let focus = sel.focus in
   let forward = band.forward in
-  match placement t sel.region focus.node with
-  | Outside -> None
-  | Direct | Inside _ -> (
-      match (offset t focus.node band.origin, current_rows t focus.node) with
-      | Some (ox, oy), Some rows -> (
-          let layout = rows.layout in
-          let g = if forward then focus.last else focus.first in
-          let affinity = if forward then Layout.Upstream else Downstream in
-          let row, column = Layout.locate layout { grapheme = g; affinity } in
-          let cx = ox + column and cy = oy + row - rows.scroll_y in
-          let here = boundary focus.node rows ~oy ~affinity in
-          let across () =
-            cross t sel.region ~box:(region_of t focus.node) ~except:focus.node
-              ~cx ~cy ~top:cy ~bottom:cy direction
-          in
-          let length = Layout.Source.length (Layout.source layout) in
-          match direction with
-          | `Left -> if g > 0 then here (g - 1) else across ()
-          | `Right -> if g < length then here (g + 1) else across ()
-          | `Up ->
-              if row > 0 then boundary_at t focus.node ~ox ~oy ~cx ~cy:(cy - 1)
-              else across ()
-          | `Down ->
-              if row < Layout.row_count layout - 1 then
-                boundary_at t focus.node ~ox ~oy ~cx ~cy:(cy + 1)
-              else across ()
-          | `Row_start -> here (Layout.row_start layout row)
-          | `Row_end -> here (Layout.row_end layout row))
-      | _ -> None)
+  match focus.cell with
+  | Some (x, y) -> (
+      (* A focus on a cell moves by cells over the screen, and takes the
+         boundary of a text it lands on. *)
+      let origin = band.origin in
+      let view = region_view sel.region in
+      let ox = Renderable.x origin and oy = Renderable.y origin in
+      let sx, sy =
+        match direction with
+        | `Left -> (x - 1, y)
+        | `Right -> (x + 1, y)
+        | `Up -> (x, y - 1)
+        | `Down -> (x, y + 1)
+        | `Row_start -> (view.x - ox, y)
+        | `Row_end -> (view.x + view.width - 1 - ox, y)
+      in
+      let px = clamp (sx + ox) view.x view.width
+      and py = clamp (sy + oy) view.y view.height in
+      let cx = px - ox and cy = py - oy in
+      match hit_node t ~x:px ~y:py with
+      | Some node when Option.is_some (text_rows_of t node) -> (
+          match offset t node origin with
+          | Some (nx, ny) -> boundary_at t node ~ox:nx ~oy:ny ~cx ~cy
+          | None -> None)
+      | Some node -> Some (cell_end node ~x:cx ~y:cy, cy)
+      | None -> Some (cell_end sel.region ~x:cx ~y:cy, cy))
+  | None -> (
+      match placement t sel.region focus.node with
+      | Outside -> None
+      | Direct | Inside _ -> (
+          match
+            (offset t focus.node band.origin, current_rows t focus.node)
+          with
+          | Some (ox, oy), Some rows -> (
+              let layout = rows.layout in
+              let g = if forward then focus.last else focus.first in
+              let affinity = if forward then Layout.Upstream else Downstream in
+              let row, column =
+                Layout.locate layout { grapheme = g; affinity }
+              in
+              let cx = ox + column and cy = oy + row - rows.scroll_y in
+              let here = boundary focus.node rows ~oy ~affinity in
+              let across () =
+                cross t sel.region ~box:(region_of t focus.node)
+                  ~except:focus.node ~cx ~cy ~top:cy ~bottom:cy direction
+              in
+              let length = Layout.Source.length (Layout.source layout) in
+              match direction with
+              | `Left -> if g > 0 then here (g - 1) else across ()
+              | `Right -> if g < length then here (g + 1) else across ()
+              | `Up ->
+                  if row > 0 then
+                    boundary_at t focus.node ~ox ~oy ~cx ~cy:(cy - 1)
+                  else across ()
+              | `Down ->
+                  if row < Layout.row_count layout - 1 then
+                    boundary_at t focus.node ~ox ~oy ~cx ~cy:(cy + 1)
+                  else across ()
+              | `Row_start -> here (Layout.row_start layout row)
+              | `Row_end -> here (Layout.row_end layout row))
+          | _ -> None))
 
 (* The region scrolls to show its row [row], in region coordinates, as
    little as it can. *)
@@ -2289,6 +2480,26 @@ let layout_frame ?(animate = true) t ~width ~height ~dt =
   prepare_commands t ~width ~height ~frame:animate ~dt;
   t.frame <- Some { width; height; dt }
 
+(* The cells of the selection's band that a selectable node paints without
+   text are drawn again with the [Highlight] role of that node's theme over
+   their own style, as a text draws its selected graphemes. *)
+let highlight_cells t ~grid ~hits =
+  match t.selection_state.current with
+  | None -> ()
+  | Some sel -> (
+      match current_band t sel with
+      | Some band when not band.empty ->
+          iter_band_cells t band ~grid ~owner:(owner_in t hits)
+            (fun ~x ~y idx node ->
+              let text = Grid.get_text grid idx in
+              if not (text = "" || text = " ") then
+                let style =
+                  Ansi.Style.merge ~base:(Grid.get_style grid idx)
+                    ~overlay:(Theme.style (Renderable.theme node) Highlight)
+                in
+                Grid.draw_text ~style grid ~x ~y ~text)
+      | Some _ | None -> ())
+
 let paint_frame t ~height =
   let frame =
     match t.frame with
@@ -2313,7 +2524,8 @@ let paint_frame t ~height =
       (fun () ->
         Screen.build t.screen ~width ~height (fun grid hits ->
             Screen.Hit_grid.clear_clip hits;
-            execute_commands t ~grid ~hits ~dt));
+            execute_commands t ~grid ~hits ~dt;
+            highlight_cells t ~grid ~hits));
     if layout_dirty t then begin
       if remaining = 0 then
         invalid_arg "Mosaic.Renderer: rendering repeatedly invalidated layout";

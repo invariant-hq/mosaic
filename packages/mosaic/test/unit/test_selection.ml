@@ -32,6 +32,9 @@ let select r (x0, y0) (x1, y1) =
 
 let copied r = Renderer.selection_text r
 
+(* [n] horizontal box-drawing lines. *)
+let rule n = String.concat "" (List.init n (fun _ -> "\u{2500}"))
+
 (* The [n] presses of a series at one cell, 50 ms apart, each released but
    the last, which stays held. *)
 let presses ?(shift = false) ?(ctrl = false) r ~x ~y n =
@@ -400,9 +403,9 @@ let paragraphs_copy_with_a_blank_line () =
   equal ~msg:"a blank line" (option string) (Some "first para\n\nsecond")
     (copied r)
 
-(* A bordered box between paragraphs reads as a block of its own: its border
-   rows are its own, the gaps around it are margins. *)
-let a_bordered_box_between_paragraphs () =
+(* A bordered box copies as the screen shows it, border and all, and a
+   gap between blocks is a blank line. *)
+let a_bordered_box_copies_as_drawn () =
   let r = Renderer.create () in
   let col = column ~gap:1 (Renderer.root r) in
   ignore (line col "intro" : Text.t);
@@ -411,12 +414,44 @@ let a_bordered_box_between_paragraphs () =
   ignore (line col "outro" : Text.t);
   frame r;
   select r (0, 0) (4, 6);
-  equal ~msg:"blocks a blank line apart" (option string)
-    (Some "intro\n\ncode\n\noutro") (copied r)
+  equal ~msg:"its border, and blocks a blank line apart" (option string)
+    (Some
+       ("intro\n\n\u{250C}" ^ rule 38 ^ "\u{2510}\n\u{2502}code"
+      ^ String.make 34 ' ' ^ "\u{2502}\n\u{2514}" ^ rule 38
+      ^ "\u{2518}\n\noutro"))
+    (copied r)
 
-(* The markdown table [| a | b |] with rows [1 2] and [3 4] copies its cells
-   with the cells between as spaces, and its bordered rows a line apart. *)
-let the_markdown_table_copies_row_by_row () =
+(* A border's cells are highlighted as they are copied. *)
+let a_border_is_highlighted () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  let box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
+  ignore (line (Box.node box) "code" : Text.t);
+  frame r;
+  select r (0, 0) (6, 2);
+  paint r;
+  is_true ~msg:"the top left corner" (inverse r ~x:0 ~y:0);
+  is_true ~msg:"the left border" (inverse r ~x:0 ~y:1)
+
+(* An unselectable box's cells are neither highlighted nor copied, while a
+   text inside it that is selectable again is. *)
+let an_unselectable_border_is_left_out () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  let box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
+  let inner = line (Box.node box) "code" in
+  Renderable.set_selectable (Box.node box) (Some false);
+  Renderable.set_selectable (Text.node inner) (Some true);
+  frame r;
+  select r (1, 1) (6, 2);
+  equal ~msg:"the text alone" (option string) (Some "code") (copied r);
+  paint r;
+  is_false ~msg:"the left border" (inverse r ~x:0 ~y:1)
+
+(* The markdown table [| a | b |] with rows [1 2] and [3 4] copies as the
+   screen shows it: a row a line, its rules and borders included, the cells
+   between as spaces. *)
+let the_markdown_table_copies_as_drawn () =
   let r = Renderer.create () in
   ignore
     (Markdown.create ~parent:(Renderer.root r)
@@ -433,9 +468,19 @@ let the_markdown_table_copies_row_by_row () =
   let words line =
     List.filter (fun w -> w <> "") (String.split_on_char ' ' line)
   in
-  equal ~msg:"a row a line, the cells apart"
+  let v = "\u{2502}" in
+  let ruled = v ^ rule 19 ^ v ^ rule 18 ^ v in
+  equal ~msg:"a row a line, as drawn"
     (list (list string))
-    [ [ "a"; "b" ]; [ "1"; "2" ]; [ "3"; "4" ] ]
+    [
+      [ "\u{250C}" ^ rule 19 ^ "\u{252C}" ^ rule 18 ^ "\u{2510}" ];
+      [ v ^ "a"; v ^ "b"; v ];
+      [ ruled ];
+      [ v ^ "1"; v ^ "2"; v ];
+      [ ruled ];
+      [ v ^ "3"; v ^ "4"; v ];
+      [ "\u{2514}" ^ rule 19 ^ "\u{2534}" ^ rule 18 ^ "\u{2518}" ];
+    ]
     (List.map words lines)
 
 (* An ellipsis copies the text it hides. *)
@@ -1407,18 +1452,17 @@ let extension_crosses_to_the_text_beside_by_a_grapheme () =
   select dragged (0, 2) (6, 2);
   equal ~msg:"as a drag there" (option string) (copied dragged) (copied r)
 
-(* A focus in a scroll box moves on through the box's rows, past its view,
-   before it leaves it. *)
-let extension_moves_on_through_a_nested_box () =
+(* A focus released beside a scroll box is a cell, and moves down the
+   screen. *)
+let extension_moves_a_cell_focus_down_the_screen () =
   let r = nested_box () in
   select r (0, 0) (25, 3);
   let shown = "above\nin-0\nin-1\nin-2" in
   equal ~msg:"the rows in view" (option string) (Some shown) (copied r);
-  (* The box scrolls a row to show the focus, and the row that leaves its
-     view at the top lies between an end outside it and one in it. *)
   Renderer.extend_selection r `Down;
-  equal ~msg:"the box's next row" (option string)
-    (Some "above\nin-1\nin-2\nin-3") (copied r)
+  equal ~msg:"the row below" (option string)
+    (Some (shown ^ "\nbelow"))
+    (copied r)
 
 (* A row move that takes the focus out of a scroll box's view scrolls the box
    a row, by its proposal; past the box's last row, the focus goes on to the
@@ -2118,10 +2162,12 @@ let () =
             side_by_side_text_copies_row_by_row;
           test "paragraphs copy with a blank line"
             paragraphs_copy_with_a_blank_line;
-          test "a bordered box between paragraphs"
-            a_bordered_box_between_paragraphs;
-          test "the markdown table copies row by row"
-            the_markdown_table_copies_row_by_row;
+          test "a bordered box copies as drawn" a_bordered_box_copies_as_drawn;
+          test "the markdown table copies as drawn"
+            the_markdown_table_copies_as_drawn;
+          test "a border is highlighted" a_border_is_highlighted;
+          test "an unselectable border is left out"
+            an_unselectable_border_is_left_out;
           test "an ellipsis copies what it hides"
             an_ellipsis_copies_what_it_hides;
           test "a soft wrap adds nothing" a_soft_wrap_adds_nothing;
@@ -2228,8 +2274,8 @@ let () =
             extension_crosses_to_the_next_text;
           test "extension crosses to the text beside by a grapheme"
             extension_crosses_to_the_text_beside_by_a_grapheme;
-          test "extension moves on through a nested box"
-            extension_moves_on_through_a_nested_box;
+          test "extension moves a cell focus down the screen"
+            extension_moves_a_cell_focus_down_the_screen;
           test "a row move past the view scrolls the region"
             a_row_move_past_the_view_scrolls_the_region;
           test "extension selects by graphemes" extension_selects_by_graphemes;
