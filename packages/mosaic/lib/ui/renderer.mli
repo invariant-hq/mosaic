@@ -416,11 +416,11 @@ val theme : t -> Theme.t
     When the press ends, a focus of one click on a cell that shows no text, or
     no grapheme of a text that reads [`Cells], stays that cell: of the nearest
     node at or above the cell's in the scope that reads [`Text] or [`Cells] and
-    is no editor when that node reads [`Cells], or of the scope when there is no
-    such node. Otherwise it becomes the far end of what the selection holds: the
-    end of its last or first text, or the far corner of a scope taken whole that
-    reads [`Cells] and shows no text. A selection that then holds nothing
-    clears.
+    is no editor when that node reads [`Cells], or of the scope's origin when
+    there is no such node. Otherwise it becomes the far end of what the
+    selection holds: the end of its last or first text, or the far corner of a
+    scope taken whole that reads [`Cells] and shows no text. A selection that
+    then holds nothing clears.
 
     A left press with Shift, on a node that does not read [`Off] and while a
     selection that is not behind the modal node exists, moves the end of the
