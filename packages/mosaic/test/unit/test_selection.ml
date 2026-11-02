@@ -1,6 +1,8 @@
-(* The view's text selection: its model, region and band, copy, selectability,
+(* The view's selection: its model, region and band, copy, selectability,
    units and the modified presses, keys, changes, change under a selection,
-   highlight and the editors' own selection. *)
+   highlight and the editors' own selection, under a root that reads
+   [`Cells]; then the selection under the default reading, [`Text], and the
+   two readings side by side. *)
 
 open Windtrap
 open Mosaic_ui
@@ -31,6 +33,14 @@ let select r (x0, y0) (x1, y1) =
   release r ~x:x1 ~y:y1
 
 let copied r = Renderer.selection_text r
+
+(* A renderer whose root reads [`Cells], so that its selection takes every
+   cell its nodes paint, as a terminal's does. With no declaration, a root
+   reads [`Text]. *)
+let cells_renderer () =
+  let r = Renderer.create () in
+  Renderable.set_selectable (Renderer.root r) (Some `Cells);
+  r
 
 (* [n] horizontal box-drawing lines. *)
 let rule n = String.concat "" (List.init n (fun _ -> "\u{2500}"))
@@ -111,9 +121,10 @@ let scroll_box ?style parent ~w ~h =
   Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
   sb
 
-(* A view mounted in a renderer of its own, whose messages are logged. *)
+(* A view mounted in a renderer of its own whose root reads [`Cells], and
+   whose messages are logged. *)
 let mount view =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let log = ref [] in
   let reconciler =
     Mosaic.Reconciler.create ~container:(Renderer.root r) ~deliver:(fun m ->
@@ -136,7 +147,7 @@ let paint r = Renderer.render_frame r ~width ~height ~dt:0.
 (* A press in a margin starts at the nearest text of its region: the first
    at or after the pressed cell, in row-major order. *)
 let a_press_in_a_margin_starts_at_the_nearest_text () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:5 ~y:0 ~w:10 ~h:1 "hello" : Text.t);
   frame r;
   select r (0, 0) (7, 0);
@@ -148,7 +159,7 @@ let a_press_in_a_margin_starts_at_the_nearest_text () =
 (* With no text at or after the pressed cell, the press finds the last text
    before it, at its end. *)
 let a_press_below_the_last_text_starts_at_its_end () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:1 "hello" : Text.t);
   frame r;
   select r (3, 5) (2, 0);
@@ -156,7 +167,7 @@ let a_press_below_the_last_text_starts_at_its_end () =
 
 (* A press in a region that holds no text clears the selection. *)
 let a_press_with_no_text_clears () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:1 "hello" : Text.t);
   let sb =
     scroll_box (Renderer.root r) ~w:0 ~h:0 ~style:(place ~x:0 ~y:3 ~w:20 ~h:5)
@@ -171,7 +182,7 @@ let a_press_with_no_text_clears () =
 (* A press beside a scroll box resolves to the next text in row-major order,
    which may be one the box shows. *)
 let a_press_beside_a_nested_box_resolves_to_the_next_text () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore (line col "above" : Text.t);
   let sb = scroll_box col ~w:20 ~h:3 in
@@ -187,7 +198,7 @@ let a_press_beside_a_nested_box_resolves_to_the_next_text () =
 (* The ends name text, so a rewrap leaves the selection on the words
    it held. *)
 let the_ends_name_text_through_a_rewrap () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let t =
     text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:3
       ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
@@ -204,7 +215,7 @@ let the_ends_name_text_through_a_rewrap () =
    band does not move. A far end where a row wraps stays at the end of that
    row, and the text beside it stays unselected. *)
 let the_release_keeps_the_band_where_it_was () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore
     (text_at root ~x:0 ~y:0 ~w:6 ~h:2
@@ -223,8 +234,7 @@ let the_release_keeps_the_band_where_it_was () =
 (* ── Region and band ── *)
 
 (* Ten rows in a scroll box four rows tall, with a footer below it. *)
-let rows_in_a_box () =
-  let r = Renderer.create () in
+let rows_in_a_box r =
   let col = column (Renderer.root r) in
   let sb = scroll_box col ~w:20 ~h:4 in
   for i = 0 to 9 do
@@ -237,7 +247,7 @@ let rows_in_a_box () =
 (* A drag that leaves the scroll box downward goes on into the footer below,
    row by row, as a terminal's does. *)
 let a_drag_out_of_a_scroll_box_downward_reaches_the_footer () =
-  let r, _ = rows_in_a_box () in
+  let r, _ = rows_in_a_box (cells_renderer ()) in
   press r ~x:0 ~y:1;
   drag_to r ~x:3 ~y:4;
   equal ~msg:"into the footer" (option string)
@@ -246,7 +256,7 @@ let a_drag_out_of_a_scroll_box_downward_reaches_the_footer () =
 (* Sideways, a drag past the view's edge reaches the text the box scrolls
    to. *)
 let a_drag_out_of_a_scroll_box_sideways_reaches_its_text () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let sb =
     Scroll_box.create ~parent:(Renderer.root r)
       ~style:(place ~x:0 ~y:0 ~w:10 ~h:2)
@@ -262,7 +272,7 @@ let a_drag_out_of_a_scroll_box_sideways_reaches_its_text () =
 
 (* The band at rest does not move under the wheel. *)
 let a_selection_at_rest_stays_under_the_wheel () =
-  let r, sb = rows_in_a_box () in
+  let r, sb = rows_in_a_box (cells_renderer ()) in
   select r (0, 1) (4, 2);
   equal ~msg:"before" (option string) (Some "row-1\nrow-2") (copied r);
   send r (Scroll `Down) ~x:1 ~y:1;
@@ -273,7 +283,7 @@ let a_selection_at_rest_stays_under_the_wheel () =
 
 (* A text hidden, or below a hidden node, takes no part. *)
 let hidden_text_takes_no_part () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore (line col "one" : Text.t);
   let two = line col "two" in
@@ -287,7 +297,7 @@ let hidden_text_takes_no_part () =
 (* A selection in the root's layer holds nothing of the top
    layer, which is a region of its own, painted over it. *)
 let a_selection_leaves_the_top_layer_out () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore (line col "one" : Text.t);
   ignore (line col "two" : Text.t);
@@ -307,7 +317,7 @@ let a_selection_leaves_the_top_layer_out () =
    lies between its ends on the screen, and the pointer is held in the
    modal's box. *)
 let a_selection_in_the_top_layer_stays_in_it () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:10 ~y:0 ~w:5 ~h:2 "R0\nR1" : Text.t);
   let top =
@@ -330,8 +340,7 @@ let a_selection_in_the_top_layer_stays_in_it () =
 
 (* A text above a scroll box of six rows, three in view, and a text below
    it. *)
-let nested_box () =
-  let r = Renderer.create () in
+let nested_box r =
   let col = column (Renderer.root r) in
   ignore (line col "above" : Text.t);
   let sb = scroll_box col ~w:20 ~h:3 in
@@ -344,14 +353,14 @@ let nested_box () =
 
 (* A scroll box the band crosses gives the rows its view shows. *)
 let a_nested_box_gives_the_rows_it_shows () =
-  let r = nested_box () in
+  let r = nested_box (cells_renderer ()) in
   select r (0, 0) (2, 4);
   equal ~msg:"the rows in view" (option string)
     (Some "above\nin-0\nin-1\nin-2\nbel") (copied r)
 
 (* A drag into a scroll box selects its rows up to the pointer. *)
 let a_drag_into_a_nested_box_selects_to_the_pointer () =
-  let r = nested_box () in
+  let r = nested_box (cells_renderer ()) in
   press r ~x:0 ~y:0;
   drag_to r ~x:2 ~y:2;
   equal ~msg:"while dragging" (option string) (Some "above\nin-0\nin-")
@@ -362,7 +371,7 @@ let a_drag_into_a_nested_box_selects_to_the_pointer () =
 (* The band is highlighted as it is copied: the covered box's rows in view
    are painted with the [Highlight] role. *)
 let a_nested_box_covered_is_highlighted () =
-  let r = nested_box () in
+  let r = nested_box (cells_renderer ()) in
   select r (0, 0) (2, 4);
   paint r;
   is_true ~msg:"a row of the box" (inverse r ~x:1 ~y:2);
@@ -373,7 +382,7 @@ let a_nested_box_covered_is_highlighted () =
 
 (* "foo" above "bar" copies as [foo\nbar]. *)
 let stacked_texts_copy_on_their_own_lines () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore (line col "foo" : Text.t);
   ignore (line col "bar" : Text.t);
@@ -384,7 +393,7 @@ let stacked_texts_copy_on_their_own_lines () =
 (* Two columns side by side, selected from L1 to R2, copy row by row, the
    cells between as spaces, as a terminal copies them. *)
 let side_by_side_text_copies_row_by_row () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:0 ~w:2 ~h:5 "L0\nL1\nL2\nL3\nL4" : Text.t);
   ignore (text_at root ~x:5 ~y:0 ~w:2 ~h:5 "R0\nR1\nR2\nR3\nR4" : Text.t);
@@ -394,7 +403,7 @@ let side_by_side_text_copies_row_by_row () =
 
 (* Paragraphs a gap apart copy with a blank line between them. *)
 let paragraphs_copy_with_a_blank_line () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column ~gap:1 (Renderer.root r) in
   ignore (line col "first para" : Text.t);
   ignore (line col "second para" : Text.t);
@@ -406,7 +415,7 @@ let paragraphs_copy_with_a_blank_line () =
 (* A bordered box copies as the screen shows it, border and all, and a
    gap between blocks is a blank line. *)
 let a_bordered_box_copies_as_drawn () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column ~gap:1 (Renderer.root r) in
   ignore (line col "intro" : Text.t);
   let box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
@@ -423,7 +432,7 @@ let a_bordered_box_copies_as_drawn () =
 
 (* A border's cells are highlighted as they are copied. *)
 let a_border_is_highlighted () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   let box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
   ignore (line (Box.node box) "code" : Text.t);
@@ -436,7 +445,7 @@ let a_border_is_highlighted () =
 (* An unselectable box's cells are neither highlighted nor copied, while a
    text inside it that is selectable again is. *)
 let an_unselectable_border_is_left_out () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   let box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
   let inner = line (Box.node box) "code" in
@@ -452,7 +461,7 @@ let an_unselectable_border_is_left_out () =
    screen shows it: a row a line, its rules and borders included, the cells
    between as spaces. *)
 let the_markdown_table_copies_as_drawn () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (Markdown.create ~parent:(Renderer.root r)
        (Markdown.Props.make
@@ -485,7 +494,7 @@ let the_markdown_table_copies_as_drawn () =
 
 (* An ellipsis copies the text it hides. *)
 let an_ellipsis_copies_what_it_hides () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:1
        ~props:(fun content -> Text.Props.make ~content ~truncate:true ())
@@ -497,7 +506,7 @@ let an_ellipsis_copies_what_it_hides () =
 
 (* A soft wrap adds no line break. *)
 let a_soft_wrap_adds_nothing () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:2
        ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
@@ -510,7 +519,7 @@ let a_soft_wrap_adds_nothing () =
 (* A line terminator that begins a fragment is dropped, as one that ends
    it: the separator stands for it. *)
 let a_fragment_drops_a_terminator_at_either_end () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:2 "ab\ncd" : Text.t);
   frame r;
   select r (4, 0) (1, 1);
@@ -520,7 +529,7 @@ let a_fragment_drops_a_terminator_at_either_end () =
 
 (* Trailing whitespace is copied. *)
 let trailing_whitespace_is_copied () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:1 "ab   " : Text.t);
   frame r;
   select r (0, 0) (9, 0);
@@ -529,7 +538,7 @@ let trailing_whitespace_is_copied () =
 (* A selection across text it does not reach leaves that
    text out. *)
 let a_selection_across_unselectable_text_leaves_it_out () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:0 ~w:1 ~h:1 "a" : Text.t);
   ignore
@@ -674,7 +683,7 @@ let a_line_numbers_child_follows_its_ancestors () =
 (* A drag that leaves the pressed cell and comes back to it selects the
    pressed grapheme: only a single click the pointer never left is empty. *)
 let a_drag_back_to_the_pressed_cell_selects_its_grapheme () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:1 "hello" : Text.t);
   frame r;
   press r ~x:1 ~y:0;
@@ -688,7 +697,7 @@ let a_drag_back_to_the_pressed_cell_selects_its_grapheme () =
 (* The band ends before the cell after the selection's last grapheme: a text
    right beside the end holds none of it, while dragging or at rest. *)
 let the_band_stops_at_the_text_beside_its_end () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:0 ~w:3 ~h:2 "abc\nghi" : Text.t);
   ignore (text_at root ~x:3 ~y:0 ~w:3 ~h:2 "def\njkl" : Text.t);
@@ -706,7 +715,7 @@ let the_band_stops_at_the_text_beside_its_end () =
    boundary character, or the run of anything else under the pointer. *)
 let a_double_click_selects_a_word () =
   let words content cells =
-    let r = Renderer.create () in
+    let r = cells_renderer () in
     ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 content : Text.t);
     frame r;
     List.iter
@@ -727,7 +736,7 @@ let a_double_click_selects_a_word () =
 (* The word shows at the press, before any release, and while a drag after
    it is painted. *)
 let a_double_click_selects_at_the_press () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "alpha beta gamma" : Text.t);
   frame r;
@@ -745,7 +754,7 @@ let a_double_click_selects_at_the_press () =
 (* A double click beside a row that wraps inside a word selects that word;
    past the end of a line, it selects nothing. *)
 let a_double_click_past_a_rows_end () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore
     (text_at root ~x:0 ~y:0 ~w:3 ~h:2
@@ -762,7 +771,7 @@ let a_double_click_past_a_rows_end () =
 (* A triple click selects the logical line, however it wraps, without its
    terminator; a fourth click still does. *)
 let a_triple_click_selects_the_logical_line () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:3
        ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
@@ -777,7 +786,7 @@ let a_triple_click_selects_the_logical_line () =
 (* A triple click in a margin selects the line of the text it resolves to:
    the first at or after the pressed cell, else the last before it. *)
 let a_triple_click_in_a_margin_selects_the_nearest_line () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:5 ~y:0 ~w:10 ~h:1 "first" : Text.t);
   ignore (text_at root ~x:5 ~y:1 ~w:10 ~h:1 "second" : Text.t);
@@ -794,7 +803,7 @@ let a_triple_click_in_a_margin_selects_the_nearest_line () =
 (* A drag after a double click extends by words either way, and the word
    pressed stays selected. *)
 let a_drag_after_a_double_click_extends_by_words () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma delta"
       : Text.t);
@@ -814,7 +823,7 @@ let a_drag_after_a_double_click_extends_by_words () =
    pointer, so the text beside a line that wraps on is highlighted as it
    will be at the release. *)
 let the_band_reaches_the_unit_under_the_pointer () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:0 ~w:20 ~h:1 "top" : Text.t);
   ignore
@@ -847,7 +856,7 @@ let the_band_reaches_the_unit_under_the_pointer () =
 (* A word drag goes through a scroll box word by word, over the rows it
    shows. *)
 let a_word_drag_goes_through_a_nested_box () =
-  let r = nested_box () in
+  let r = nested_box (cells_renderer ()) in
   presses r ~x:1 ~y:0 2;
   drag_to r ~x:2 ~y:2;
   equal ~msg:"over the box" (option string) (Some "above\nin-0\nin-1")
@@ -860,7 +869,7 @@ let a_word_drag_goes_through_a_nested_box () =
 (* A line drag through a scroll box selects the lines it shows, and the
    release keeps the band where it was. *)
 let a_line_drag_through_a_nested_box_settles_where_it_was () =
-  let r = nested_box () in
+  let r = nested_box (cells_renderer ()) in
   presses r ~x:1 ~y:0 3;
   drag_to r ~x:2 ~y:2;
   equal ~msg:"dragging" (option string) (Some "above\nin-0\nin-1") (copied r);
@@ -875,7 +884,7 @@ let a_line_drag_through_a_nested_box_settles_where_it_was () =
    to, and the release keeps the band there, with the text beside that line's
    rows. *)
 let a_line_drag_into_a_gap_settles_where_it_was () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:0 ~w:10 ~h:1 "first" : Text.t);
   ignore
@@ -899,7 +908,7 @@ let a_line_drag_into_a_gap_settles_where_it_was () =
 
 (* A drag after a triple click extends by lines. *)
 let a_drag_after_a_triple_click_extends_by_lines () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:3 "one\ntwo\nthree" : Text.t);
   frame r;
@@ -915,7 +924,7 @@ let a_drag_after_a_triple_click_extends_by_lines () =
 (* The unit under a still pointer is found again when content
    scrolls under it. *)
 let the_unit_under_the_pointer_follows_a_scroll () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   let sb = scroll_box col ~w:20 ~h:10 in
   for i = 0 to 29 do
@@ -935,7 +944,7 @@ let the_unit_under_the_pointer_follows_a_scroll () =
 (* A ten-letter text, with "cdefg" selected forward ([backward = false]) or
    backward. *)
 let letters ~backward =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "abcdefghij" : Text.t);
   frame r;
   if backward then select r (6, 0) (2, 0) else select r (2, 0) (6, 0);
@@ -968,7 +977,7 @@ let a_shift_press_moves_the_focus_on_a_tie () =
 
 (* The unit is kept: after a double click, a Shift+press adds words. *)
 let a_shift_press_adds_words_after_a_double_click () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma delta"
       : Text.t);
@@ -981,7 +990,7 @@ let a_shift_press_adds_words_after_a_double_click () =
 
 (* A Shift+press of two clicks or more sets the unit. *)
 let a_shift_double_click_sets_the_unit () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma delta"
       : Text.t);
@@ -996,7 +1005,7 @@ let a_shift_double_click_sets_the_unit () =
 
 (* With no selection, a Shift+press is an ordinary press. *)
 let a_shift_press_without_a_selection_is_ordinary () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "abcdefghij" : Text.t);
   frame r;
   presses ~shift:true r ~x:2 ~y:0 1;
@@ -1007,7 +1016,7 @@ let a_shift_press_without_a_selection_is_ordinary () =
 (* A Shift+press reaches past the scroll box the selection started in: one on
    the footer below it moves the nearer end there. *)
 let a_shift_press_reaches_past_the_box () =
-  let r, _ = rows_in_a_box () in
+  let r, _ = rows_in_a_box (cells_renderer ()) in
   select r (0, 1) (2, 1);
   equal ~msg:"selected" (option string) (Some "row") (copied r);
   clicks ~shift:true r ~x:2 ~y:4 1;
@@ -1022,7 +1031,7 @@ let a_shift_press_reaches_past_the_box () =
 (* A selection behind a modal is inert: a Shift+press in the modal is an
    ordinary press there. *)
 let a_shift_press_over_an_inert_selection_is_ordinary () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:5 ~w:10 ~h:1 "behind" : Text.t);
   let top =
@@ -1054,7 +1063,7 @@ let a_ctrl_press_is_ordinary () =
    shows its selection: each row but the last to the screen's edge, the last
    to the focus. *)
 let the_band_is_highlighted_to_the_screen_edge () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:2 "ab\ncd" : Text.t);
   frame r;
   select r (0, 0) (0, 1);
@@ -1068,7 +1077,7 @@ let the_band_is_highlighted_to_the_screen_edge () =
 (* A soft wrap copies nothing, but the cells after it are in the band and
    highlighted. *)
 let the_cells_after_a_soft_wrap_are_highlighted () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:2
        ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
@@ -1086,7 +1095,7 @@ let the_cells_after_a_soft_wrap_are_highlighted () =
    highlights none of the text beside it, and a buffered text between the
    ends is highlighted whole. *)
 let buffered_texts_are_highlighted_where_they_lie () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   let buffered text = Renderable.set_buffered (Text.node text) true in
   buffered (text_at root ~x:5 ~y:2 ~w:10 ~h:1 "0123456789");
@@ -1277,7 +1286,7 @@ let an_editor_selects_lines () =
 
 (* "hello world" alone, on the first row. *)
 let hello () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "hello world" : Text.t);
   frame r;
   r
@@ -1285,7 +1294,7 @@ let hello () =
 (* The keys act on a selection that holds text and is not
    behind the modal node, and one behind it is still there once it closes. *)
 let a_selection_is_live_while_it_holds_text_outside_a_modal () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:5 ~w:10 ~h:1 "behind" : Text.t);
   let top =
@@ -1331,7 +1340,7 @@ let extension_moves_the_focus_by_a_grapheme () =
    stays selected as a grapheme anchor's does. *)
 let extension_after_a_word_keeps_its_first_grapheme () =
   let words () =
-    let r = Renderer.create () in
+    let r = cells_renderer () in
     ignore
       (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "alpha beta gamma"
         : Text.t);
@@ -1369,7 +1378,7 @@ let extension_moves_the_focus_to_its_rows_ends () =
   Renderer.extend_selection r `Row_start;
   equal ~msg:"the row's start, past the anchor" (option string) (Some "hel")
     (copied r);
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:3
        ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
@@ -1384,7 +1393,7 @@ let extension_moves_the_focus_to_its_rows_ends () =
 (* Shift+Up and Shift+Down move the focus to its column in the row above or
    below, in its text and from text to text. *)
 let extension_moves_the_focus_by_a_row () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:3 "one\ntwo\nthree" : Text.t);
   frame r;
@@ -1395,7 +1404,7 @@ let extension_moves_the_focus_by_a_row () =
   equal ~msg:"again" (option string) (Some "one\ntwo\nth") (copied r);
   Renderer.extend_selection r `Up;
   equal ~msg:"up" (option string) (Some "one\ntw") (copied r);
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   List.iter (fun s -> ignore (line col s : Text.t)) [ "foo"; "bar"; "baz" ];
   frame r;
@@ -1413,7 +1422,7 @@ let extension_moves_the_focus_by_a_row () =
 (* Past the edge of its text, a grapheme move reaches the next text in
    row-major order, at its start, or the one before, at its end. *)
 let extension_crosses_to_the_next_text () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore (line col "foo" : Text.t);
   ignore (line col "bar" : Text.t);
@@ -1430,7 +1439,7 @@ let extension_crosses_to_the_next_text () =
 
 (* Two texts of three rows side by side. *)
 let columns () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:0 ~w:5 ~h:3 "L0\nL1\nL2" : Text.t);
   ignore (text_at root ~x:6 ~y:0 ~w:5 ~h:3 "R0\nR1\nR2" : Text.t);
@@ -1466,7 +1475,7 @@ let extension_crosses_to_the_text_beside_by_a_grapheme () =
 (* A focus released beside a scroll box is a cell, and moves down the
    screen. *)
 let extension_moves_a_cell_focus_down_the_screen () =
-  let r = nested_box () in
+  let r = nested_box (cells_renderer ()) in
   select r (0, 0) (25, 3);
   let shown = "above\nin-0\nin-1\nin-2" in
   equal ~msg:"the rows in view" (option string) (Some shown) (copied r);
@@ -1475,11 +1484,11 @@ let extension_moves_a_cell_focus_down_the_screen () =
     (Some (shown ^ "\nbelow"))
     (copied r)
 
-(* A row move that takes the focus out of a scroll box's view scrolls the box
-   a row, by its proposal; past the box's last row, the focus goes on to the
-   next text on the screen. *)
-let a_row_move_past_the_view_scrolls_the_region () =
-  let r, sb = rows_in_a_box () in
+(* A row move that takes the focus out of a window's view scrolls the
+   window a row, by its proposal; past its last row, the focus goes on to
+   the next text on the screen. *)
+let a_row_move_scrolls_a_window_then_leaves_it () =
+  let r, sb = rows_in_a_box (cells_renderer ()) in
   select r (0, 1) (4, 3);
   Renderer.extend_selection r `Down;
   frame r;
@@ -1498,7 +1507,7 @@ let a_row_move_past_the_view_scrolls_the_region () =
 (* An extension selects by graphemes from then on: a Shift+press after it
    reaches the grapheme pressed, not its word. *)
 let extension_selects_by_graphemes () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "alpha beta gamma" : Text.t);
   frame r;
@@ -1512,7 +1521,7 @@ let extension_selects_by_graphemes () =
 (* While a gesture drags the selection, the pointer is its focus, which the
    keys leave alone. *)
 let a_drag_keeps_its_focus_from_the_keys () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "alpha beta gamma" : Text.t);
   frame r;
@@ -1626,7 +1635,7 @@ let an_extension_settles_nothing () =
   equal ~msg:"nothing queued" (list string) [] (changes r);
   (* A press past the end of a row anchors at a boundary, which holds no
      text. *)
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore (line col "abc" : Text.t);
   ignore (line col "def" : Text.t);
@@ -1644,7 +1653,7 @@ let an_extension_settles_nothing () =
 (* A selection of line breaks alone holds them all: their fill is
    highlighted, so they are copied. *)
 let line_breaks_alone_are_held () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:4 "ab\n\n\n" : Text.t);
   frame r;
   press r ~x:5 ~y:0;
@@ -1665,7 +1674,7 @@ let line_breaks_alone_are_held () =
 (* A press on unselectable content changes nothing, and queues
    nothing. *)
 let a_press_on_unselectable_content_queues_nothing () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:0 ~w:20 ~h:1 "hello world" : Text.t);
   let fenced = text_at root ~x:0 ~y:2 ~w:20 ~h:1 "fenced" in
@@ -1684,7 +1693,7 @@ let a_press_on_unselectable_content_queues_nothing () =
 (* "alpha beta gamma" alone on the first row, its "beta" selected at rest,
    with no change left to take. *)
 let beta () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let t = text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma" in
   frame r;
   select r (6, 0) (9, 0);
@@ -1702,7 +1711,7 @@ let highlighted r ~y x0 x1 =
 (* A scroll box that follows its bottom as rows are appended
    keeps the selection on the rows it held, out of its view. *)
 let following_and_appending_keep_the_selection () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let sb =
     Scroll_box.create ~parent:(Renderer.root r)
       ~style:(place ~x:0 ~y:0 ~w:20 ~h:4)
@@ -1731,7 +1740,7 @@ let following_and_appending_keep_the_selection () =
 (* A resize rewraps the text, and the selection stays on the word it
    held. *)
 let a_resize_keeps_the_selection () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore
     (Text.create ~parent:col
@@ -1763,7 +1772,7 @@ let an_edit_before_the_ends_moves_them () =
    so text inserted after it stays out of a selection that starts there; wide
    clusters inserted before the ends move them by their count. *)
 let an_edit_counts_clusters () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let t = text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "cafe ok" in
   frame r;
   select r (4, 0) (6, 0);
@@ -1775,7 +1784,7 @@ let an_edit_counts_clusters () =
 
 (* An end strictly inside the changed span moves to its start. *)
 let an_end_inside_the_edit_moves_to_its_start () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let t = text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma" in
   frame r;
   select r (7, 0) (15, 0);
@@ -1803,7 +1812,7 @@ let an_insertion_at_an_end_leaves_it () =
 (* Concealed markdown rewrites the text before an end when a [**]
    closes, and the end stays on the word it held. *)
 let a_streaming_paragraph_closes_bold_before_an_end () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let md =
     Markdown.create ~parent:(Renderer.root r)
       (Markdown.Props.make ~content:"a **b c" ~streaming:true ())
@@ -1829,7 +1838,7 @@ let the_selection_clears_when_its_ends_meet () =
 (* A gesture keeps its anchor through an edit, even one that leaves it no
    text for a while, and settles the text the anchor names. *)
 let an_edit_during_a_drag_follows_its_anchor () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let t = text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma" in
   frame r;
   press r ~x:6 ~y:0;
@@ -1855,7 +1864,7 @@ let an_edit_during_a_drag_follows_its_anchor () =
    clears the selection, which showing the node again does not bring back.
    A node hidden between the ends, or outside them, leaves it. *)
 let an_ends_node_hidden_clears_the_selection () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore (line col "zero" : Text.t);
   let one = line col "one" in
@@ -1904,7 +1913,7 @@ let an_ends_node_hidden_clears_the_selection () =
 (* An end whose node is detached, destroyed or remounted clears the
    selection; a render that keeps the node keeps it. *)
 let an_ends_node_unmounted_clears_the_selection () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let node =
     Text.node (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "hello world")
   in
@@ -1936,7 +1945,7 @@ let an_ends_node_unmounted_clears_the_selection () =
 (* An end's unmount during a drag ends its gesture: its later
    motion selects nothing and its release settles nothing. *)
 let an_ends_unmount_ends_its_drag () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   let first = line col "hello" in
   ignore (line col "world" : Text.t);
@@ -1954,7 +1963,7 @@ let an_ends_unmount_ends_its_drag () =
 (* List, table and block quote blocks update in place while
    streaming, so an end in one survives a chunk. *)
 let an_end_in_a_streaming_list_survives_a_chunk () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let md =
     Markdown.create ~parent:(Renderer.root r)
       (Markdown.Props.make ~content:"- one\n- two" ~streaming:true ())
@@ -1972,7 +1981,7 @@ let an_end_in_a_streaming_list_survives_a_chunk () =
   equal ~msg:"nothing heard" (list string) [] (changes r)
 
 let an_end_in_a_streaming_table_survives_a_chunk () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let table = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n" in
   let md =
     Markdown.create ~parent:(Renderer.root r)
@@ -1988,7 +1997,7 @@ let an_end_in_a_streaming_table_survives_a_chunk () =
   equal ~msg:"nothing heard" (list string) [] (changes r)
 
 let an_end_in_a_streaming_quote_survives_a_chunk () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let quote = "> alpha\n>\n> beta" in
   let md =
     Markdown.create ~parent:(Renderer.root r)
@@ -2006,10 +2015,10 @@ let an_end_in_a_streaming_quote_survives_a_chunk () =
 (* A copy lays out a text that no paint reached at the width its layout
    gives it, as a paint would show it: here the focus moves by keys, with no
    frame between, into two wrapped texts side by side below the view of the
-   anchor's scroll box, whose first row the focus reaches at the width of
-   three cells. *)
-let a_copy_lays_out_a_text_no_paint_reached () =
-  let r = Renderer.create () in
+   anchor's window, whose first row the focus reaches at the width of three
+   cells. *)
+let a_key_move_lays_out_a_text_no_paint_reached () =
+  let r = cells_renderer () in
   let col = column (Renderer.root r) in
   ignore (line col "before" : Text.t);
   let sb = scroll_box col ~w:20 ~h:2 in
@@ -2047,7 +2056,7 @@ let a_copy_lays_out_a_text_no_paint_reached () =
    spaces between it and the text beside it are the cells the screen shows
    between them, the blank among them. *)
 let a_hanging_blank_counts_once () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   let root = Renderer.root r in
   ignore
     (text_at root ~x:0 ~y:0 ~w:3 ~h:2
@@ -2063,7 +2072,7 @@ let a_hanging_blank_counts_once () =
 
 (* A drag takes both end cells' coverage: the space under the pointer is in. *)
 let a_drag_takes_both_end_cells () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "hello world" : Text.t);
   frame r;
   select r (0, 0) (5, 0);
@@ -2071,7 +2080,7 @@ let a_drag_takes_both_end_cells () =
 
 (* A drag that leaves a text below or above selects to its end or start. *)
 let a_drag_past_the_rows_selects_to_the_end () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:2 ~w:20 ~h:2 "ab\ncd" : Text.t);
   frame r;
   select r (1, 2) (0, 6);
@@ -2082,7 +2091,7 @@ let a_drag_past_the_rows_selects_to_the_end () =
 (* A truncated line's ellipsis stands for its hidden suffix alone: the next
    line starts at its own source. *)
 let a_truncated_line_leaves_the_next_line_whole () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:3 ~h:2
        ~props:(fun content -> Text.Props.make ~content ~truncate:true ())
@@ -2094,7 +2103,7 @@ let a_truncated_line_leaves_the_next_line_whole () =
 
 (* A zero-width cluster between two cells is copied with them. *)
 let a_zero_width_cluster_is_copied () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "a\226\128\139b" : Text.t);
   frame r;
@@ -2104,7 +2113,7 @@ let a_zero_width_cluster_is_copied () =
 (* A click on an ellipsis selects nothing: a click never selects hidden
    text. *)
 let a_click_on_an_ellipsis_selects_nothing () =
-  let r = Renderer.create () in
+  let r = cells_renderer () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:3 ~h:1
        ~props:(fun content -> Text.Props.make ~content ~truncate:true ())
@@ -2114,6 +2123,475 @@ let a_click_on_an_ellipsis_selects_nothing () =
   press r ~x:2 ~y:0;
   release r ~x:2 ~y:0;
   equal ~msg:"nothing" (option string) None (copied r)
+
+(* ── Text ──
+
+   Under a root that declares nothing, which reads [`Text], a selection
+   takes text alone, stays in the scroll box its press found, and takes a
+   scroll box nested in its scope whole or not at all. *)
+
+(* A press beside a scroll box passes over the texts of that box, a scope of
+   its own, to the nearest text of the pressed cell's scope. *)
+let a_press_beside_a_nested_box_resolves_past_its_texts () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore (line col "above" : Text.t);
+  let sb = scroll_box col ~w:20 ~h:3 in
+  for i = 0 to 5 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "in-%d" i) : Text.t)
+  done;
+  ignore (line col "below" : Text.t);
+  frame r;
+  select r (25, 2) (2, 4);
+  equal ~msg:"from the text below the box" (option string) (Some "bel")
+    (copied r)
+
+(* A drag that leaves the scroll box downward is held at its last
+   row, and never reaches the footer below. *)
+let a_drag_out_of_a_scroll_box_downward_stays_in_it () =
+  let r, _ = rows_in_a_box (Renderer.create ()) in
+  press r ~x:0 ~y:1;
+  drag_to r ~x:3 ~y:4;
+  equal ~msg:"held at the box's last row" (option string)
+    (Some "row-1\nrow-2\nrow-") (copied r)
+
+(* Sideways, the pointer is held at the view's last column, short of the
+   text the view does not show. *)
+let a_drag_out_of_a_scroll_box_sideways_stays_in_it () =
+  let r = Renderer.create () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root r)
+      ~style:(place ~x:0 ~y:0 ~w:10 ~h:2)
+      (Scroll_box.Props.make ~scroll_x:true ~show_scrollbars:false ())
+  in
+  Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
+  ignore (line (Scroll_box.node sb) "0123456789abcdefghij" : Text.t);
+  frame r;
+  press r ~x:0 ~y:0;
+  drag_to r ~x:30 ~y:0;
+  equal ~msg:"to the view's last column" (option string) (Some "0123456789")
+    (copied r)
+
+(* A scroll box the band covers is selected whole, its rows
+   out of view included. *)
+let a_nested_box_covered_is_selected_whole () =
+  let r = nested_box (Renderer.create ()) in
+  select r (0, 0) (2, 4);
+  equal ~msg:"the box's text whole" (option string)
+    (Some "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5\nbel") (copied r)
+
+(* A scroll box the band covers in part is not selected, and a pointer over
+   it is as over a blank. *)
+let a_nested_box_partly_covered_is_left_out () =
+  let r = nested_box (Renderer.create ()) in
+  press r ~x:0 ~y:0;
+  drag_to r ~x:2 ~y:2;
+  equal ~msg:"while dragging" (option string) (Some "above") (copied r);
+  release r ~x:2 ~y:2;
+  equal ~msg:"settled" (option string) (Some "above") (copied r)
+
+(* A bordered box between paragraphs reads as a block of its own: its border
+   rows are its own, the gaps around it are margins. *)
+let a_bordered_box_between_paragraphs () =
+  let r = Renderer.create () in
+  let col = column ~gap:1 (Renderer.root r) in
+  ignore (line col "intro" : Text.t);
+  let box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
+  ignore (line (Box.node box) "code" : Text.t);
+  ignore (line col "outro" : Text.t);
+  frame r;
+  select r (0, 0) (4, 6);
+  equal ~msg:"blocks a blank line apart" (option string)
+    (Some "intro\n\ncode\n\noutro") (copied r)
+
+(* The markdown table [| a | b |] with rows [1 2] and [3 4] copies its cells
+   with the cells between as spaces, and its bordered rows a line apart. *)
+let the_markdown_table_copies_row_by_row () =
+  let r = Renderer.create () in
+  ignore
+    (Markdown.create ~parent:(Renderer.root r)
+       (Markdown.Props.make
+          ~content:"| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |" ())
+      : Markdown.t);
+  frame r;
+  select r (0, 0) (width - 1, height - 1);
+  let lines =
+    match copied r with
+    | Some text -> String.split_on_char '\n' text
+    | None -> []
+  in
+  let words line =
+    List.filter (fun w -> w <> "") (String.split_on_char ' ' line)
+  in
+  equal ~msg:"a row a line, the cells apart"
+    (list (list string))
+    [ [ "a"; "b" ]; [ "1"; "2" ]; [ "3"; "4" ] ]
+    (List.map words lines)
+
+(* A pointer over a scroll box is as over a blank for a word too: the box is
+   selected only once the band covers it. *)
+let a_word_drag_selects_a_nested_box_once_covered () =
+  let r = nested_box (Renderer.create ()) in
+  presses r ~x:1 ~y:0 2;
+  drag_to r ~x:2 ~y:2;
+  equal ~msg:"over the box" (option string) (Some "above") (copied r);
+  drag_to r ~x:2 ~y:4;
+  release r ~x:2 ~y:4;
+  equal ~msg:"past it" (option string)
+    (Some "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5\nbelow") (copied r)
+
+(* A line drag over a nested box ends at the pointer's cell, and
+   the release keeps it there: neither the box nor the text after it is
+   selected. *)
+let a_line_drag_over_a_nested_box_settles_where_it_was () =
+  let r = nested_box (Renderer.create ()) in
+  presses r ~x:1 ~y:0 3;
+  drag_to r ~x:2 ~y:2;
+  equal ~msg:"dragging" (option string) (Some "above") (copied r);
+  paint r;
+  is_false ~msg:"the box, dragging" (inverse r ~x:0 ~y:1);
+  release r ~x:2 ~y:2;
+  equal ~msg:"settled" (option string) (Some "above") (copied r);
+  paint r;
+  is_false ~msg:"the box, settled" (inverse r ~x:0 ~y:1)
+
+(* A Shift+press is held in the selection's scope: one on the footer below
+   a scroll box moves an end to the box's last row, the end nearer the cell
+   it is held at. *)
+let a_shift_press_is_held_in_the_region () =
+  let r, _ = rows_in_a_box (Renderer.create ()) in
+  select r (0, 1) (2, 1);
+  equal ~msg:"selected" (option string) (Some "row") (copied r);
+  clicks ~shift:true r ~x:2 ~y:4 1;
+  equal ~msg:"held at the box's last row" (option string)
+    (Some "row-1\nrow-2\nrow") (copied r);
+  select r (1, 3) (4, 3);
+  equal ~msg:"on the last row" (option string) (Some "ow-3") (copied r);
+  clicks ~shift:true r ~x:0 ~y:4 1;
+  equal ~msg:"the start, nearer the cell held" (option string) (Some "row-3")
+    (copied r)
+
+(* The blank cells after a selected hard line break are filled to the node's
+   right edge. *)
+let the_fill_after_a_hard_break () =
+  let r = Renderer.create () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:2 "ab\ncd" : Text.t);
+  frame r;
+  select r (0, 0) (0, 1);
+  paint r;
+  is_true ~msg:"the text" (inverse r ~x:1 ~y:0);
+  is_true ~msg:"after the break" (inverse r ~x:5 ~y:0);
+  is_false ~msg:"beyond the node" (inverse r ~x:6 ~y:0);
+  is_true ~msg:"the last grapheme" (inverse r ~x:0 ~y:1);
+  is_false ~msg:"after the last row's selection" (inverse r ~x:3 ~y:1)
+
+(* A soft wrap copies nothing and fills nothing. *)
+let no_fill_after_a_soft_wrap () =
+  let r = Renderer.create () in
+  ignore
+    (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:2
+       ~props:(fun content -> Text.Props.make ~content ~wrap:`Word ())
+       "abc def"
+      : Text.t);
+  frame r;
+  select r (0, 0) (1, 1);
+  paint r;
+  is_true ~msg:"the text" (inverse r ~x:2 ~y:0);
+  is_false ~msg:"after the wrap" (inverse r ~x:5 ~y:0)
+
+(* A focus left in a scroll box selected whole moves out of it, from its
+   view: the box stays whole. *)
+let extension_crosses_out_of_a_nested_box () =
+  let r = nested_box (Renderer.create ()) in
+  select r (0, 0) (25, 3);
+  let whole = "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5" in
+  equal ~msg:"the box at the far end" (option string) (Some whole) (copied r);
+  Renderer.extend_selection r `Down;
+  equal ~msg:"the row below" (option string)
+    (Some (whole ^ "\nbelow"))
+    (copied r)
+
+(* A row move that takes the focus out of a scroll box's view scrolls the box
+   a row, by its proposal, and the focus never leaves the box. *)
+let a_row_move_past_the_view_scrolls_the_region () =
+  let r, sb = rows_in_a_box (Renderer.create ()) in
+  select r (0, 1) (4, 3);
+  Renderer.extend_selection r `Down;
+  frame r;
+  equal ~msg:"a row" int 1 (Scroll_box.scroll_top sb);
+  equal ~msg:"the row below the view" (option string)
+    (Some "row-1\nrow-2\nrow-3\nrow-4") (copied r);
+  for _ = 1 to 8 do
+    Renderer.extend_selection r `Down;
+    frame r
+  done;
+  equal ~msg:"to the box's last row" int 6 (Scroll_box.scroll_top sb);
+  equal ~msg:"never the footer" (option string)
+    (Some "row-1\nrow-2\nrow-3\nrow-4\nrow-5\nrow-6\nrow-7\nrow-8\nrow-9")
+    (copied r)
+
+(* A copy lays out a text that no paint reached at the width its layout
+   gives it, as a paint would show it: here two wrapped texts side by side
+   below a nested box's view, which copy row by row. *)
+let a_copy_lays_out_a_text_no_paint_reached () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore (line col "before" : Text.t);
+  let sb = scroll_box col ~w:20 ~h:2 in
+  ignore (line (Scroll_box.node sb) "top" : Text.t);
+  ignore (line (Scroll_box.node sb) "mid" : Text.t);
+  let pair =
+    Renderable.create ~parent:(Scroll_box.node sb)
+      ~style:
+        (Toffee.Style.default
+        |> Toffee.Style.set_flex_direction Row
+        |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.))
+      ()
+  in
+  let wrapped content =
+    ignore
+      (Text.create ~parent:pair
+         ~style:
+           (Toffee.Style.default
+           |> Toffee.Style.set_width (Toffee.Style.Dimension.length 3.)
+           |> Toffee.Style.set_flex_shrink 0.)
+         (Text.Props.make ~content ~wrap:`Char ())
+        : Text.t)
+  in
+  wrapped "aaabbbcc";
+  wrapped "dddeeeff";
+  ignore (line col "after" : Text.t);
+  frame r;
+  select r (0, 0) (4, 3);
+  equal ~msg:"row by row" (option string)
+    (Some "before\ntop\nmid\naaaddd\nbbbeee\ncc ff\nafter") (copied r)
+
+(* ── Readings ── *)
+
+(* A bordered pane of [lines] six rows tall and twenty cells wide, from the
+   column [x], that reads [reading] when given. *)
+let pane ?reading r ~x lines =
+  let style =
+    place ~x ~y:0 ~w:20 ~h:6 |> Toffee.Style.set_flex_direction Column
+  in
+  let box =
+    Box.create ~parent:(Renderer.root r) ~style (Box.Props.make ~border:true ())
+  in
+  Option.iter
+    (fun reading -> Renderable.set_selectable (Box.node box) (Some reading))
+    reading;
+  List.iter (fun content -> ignore (line (Box.node box) content : Text.t)) lines
+
+(* Under a root that reads [`Text], a pane of words beside a pane that reads
+   [`Cells]. *)
+let text_and_cells_panes () =
+  let r = Renderer.create () in
+  pane r ~x:0 [ "alpha beta"; "gamma" ];
+  pane r ~x:20 ~reading:`Cells [ "l0"; "l1"; "l2"; "l3" ];
+  frame r;
+  r
+
+(* A pane that reads [`Cells] beside a drag in text content is a scope of
+   its own, taken whole or not at all: a drag beside it, which never covers
+   its view, takes nothing of it. *)
+let a_text_drag_takes_nothing_of_a_cells_pane_beside_it () =
+  let r = text_and_cells_panes () in
+  select r (1, 1) (25, 3);
+  equal ~msg:"the words alone" (option string) (Some "alpha beta\ngamma")
+    (copied r);
+  paint r;
+  is_true ~msg:"a word" (inverse r ~x:1 ~y:1);
+  is_false ~msg:"the words' border" (inverse r ~x:0 ~y:2);
+  is_false ~msg:"the cells pane's border" (inverse r ~x:20 ~y:2);
+  is_false ~msg:"the cells pane's text" (inverse r ~x:21 ~y:2)
+
+(* A drag pressed in a pane that reads [`Cells] stays in it, held in its
+   view, and takes every cell it crosses there, its border included. *)
+let a_cells_drag_stays_in_its_pane () =
+  let r = text_and_cells_panes () in
+  let v = "\u{2502}" and blanks = String.make 16 ' ' in
+  select r (21, 2) (5, 4);
+  equal ~msg:"the pane's cells to the cell held" (option string)
+    (Some ("l1" ^ blanks ^ v ^ "\n" ^ v ^ "l2" ^ blanks ^ v ^ "\n" ^ v))
+    (copied r);
+  paint r;
+  is_true ~msg:"its border" (inverse r ~x:39 ~y:2);
+  is_true ~msg:"a blank" (inverse r ~x:30 ~y:3);
+  is_false ~msg:"after the cell held" (inverse r ~x:21 ~y:4);
+  is_false ~msg:"the words pane" (inverse r ~x:5 ~y:4)
+
+(* Under a root that reads [`Cells], a bordered pane of eight rows, and
+   beside it a scroll box that reads [`Text] of ten rows, five in view. *)
+let notes_beside_a_cells_pane () =
+  let r = cells_renderer () in
+  pane r ~x:0 [ "p0"; "p1"; "p2"; "p3" ];
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root r)
+      ~style:(place ~x:21 ~y:0 ~w:19 ~h:5)
+      (Scroll_box.Props.make ~show_scrollbars:false ())
+  in
+  Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
+  Renderable.set_selectable (Scroll_box.node sb) (Some `Text);
+  for i = 0 to 9 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "n%d" i) : Text.t)
+  done;
+  frame r;
+  (r, sb)
+
+(* A selection pressed in a scroll box that reads [`Text] is held in its
+   view: it highlights and copies nothing of the pane beside it, which reads
+   [`Cells], on the rows it crosses, while dragging, settled, or with its
+   anchor scrolled out of view. *)
+let a_text_box_beside_a_cells_pane_takes_nothing_of_it () =
+  let r, sb = notes_beside_a_cells_pane () in
+  press r ~x:21 ~y:1;
+  drag_to r ~x:23 ~y:3;
+  equal ~msg:"dragging" (option string) (Some "n1\nn2\nn3") (copied r);
+  paint r;
+  is_false ~msg:"the pane's border, dragging" (inverse r ~x:0 ~y:2);
+  is_false ~msg:"the pane's text, dragging" (inverse r ~x:2 ~y:2);
+  release r ~x:23 ~y:3;
+  equal ~msg:"settled" (option string) (Some "n1\nn2\nn3") (copied r);
+  paint r;
+  is_true ~msg:"the box's text" (inverse r ~x:21 ~y:2);
+  is_false ~msg:"the pane's border, settled" (inverse r ~x:0 ~y:2);
+  for _ = 1 to 3 do
+    send r (Scroll `Down) ~x:22 ~y:1
+  done;
+  frame r;
+  equal ~msg:"scrolled" int 3 (Scroll_box.scroll_top sb);
+  equal ~msg:"the anchor out of view" (option string) (Some "n1\nn2\nn3")
+    (copied r);
+  paint r;
+  is_true ~msg:"the last row, at the top" (inverse r ~x:21 ~y:0);
+  is_false ~msg:"the pane's border beside it" (inverse r ~x:0 ~y:0);
+  is_false ~msg:"the pane's corner" (inverse r ~x:19 ~y:0)
+
+(* Under a root that reads [`Cells], a scroll box that reads [`Text] is a
+   window: a band across it copies the words of the rows it shows, between
+   the borders of the box that holds it. *)
+let a_text_box_in_a_cells_window_copies_its_shown_rows () =
+  let r = cells_renderer () in
+  let col = column (Renderer.root r) in
+  ignore (line col "above" : Text.t);
+  let frame_box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
+  let sb = scroll_box (Box.node frame_box) ~w:38 ~h:3 in
+  Renderable.set_selectable (Scroll_box.node sb) (Some `Text);
+  for i = 0 to 5 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "in-%d" i) : Text.t)
+  done;
+  ignore (line col "below" : Text.t);
+  frame r;
+  select r (0, 0) (2, 6);
+  let v = "\u{2502}" and blanks = String.make 34 ' ' in
+  let row i = v ^ Printf.sprintf "in-%d" i ^ blanks ^ v in
+  equal ~msg:"its shown rows between the borders" (option string)
+    (Some
+       (String.concat "\n"
+          [
+            "above";
+            "\u{250C}" ^ rule 38 ^ "\u{2510}";
+            row 0;
+            row 1;
+            row 2;
+            "\u{2514}" ^ rule 38 ^ "\u{2518}";
+            "bel";
+          ]))
+    (copied r);
+  paint r;
+  is_true ~msg:"the border" (inverse r ~x:0 ~y:2);
+  is_true ~msg:"a word" (inverse r ~x:1 ~y:2);
+  is_false ~msg:"a blank of the box" (inverse r ~x:10 ~y:2)
+
+(* Under a root that reads [`Text], a figure that reads [`Cells] is a scope
+   of its own in the document: a drag over it takes it whole, every cell it
+   shows, only once the band covers it, and a drag pressed on it stays in
+   it. *)
+let a_cells_figure_in_a_text_document_is_taken_whole () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore (line col "intro" : Text.t);
+  let figure = Box.create ~parent:col (Box.Props.make ~border:true ()) in
+  Renderable.set_selectable (Box.node figure) (Some `Cells);
+  ignore (line (Box.node figure) "fig" : Text.t);
+  ignore (line col "outro" : Text.t);
+  frame r;
+  select r (0, 0) (2, 2);
+  equal ~msg:"partly covered" (option string) (Some "intro") (copied r);
+  paint r;
+  is_false ~msg:"its border, partly covered" (inverse r ~x:0 ~y:1);
+  let v = "\u{2502}" in
+  let drawn =
+    String.concat "\n"
+      [
+        "\u{250C}" ^ rule 38 ^ "\u{2510}";
+        v ^ "fig" ^ String.make 35 ' ' ^ v;
+        "\u{2514}" ^ rule 38 ^ "\u{2518}";
+      ]
+  in
+  select r (0, 0) (3, 4);
+  equal ~msg:"covered" (option string)
+    (Some ("intro\n" ^ drawn ^ "\noutr"))
+    (copied r);
+  paint r;
+  is_true ~msg:"its border, covered" (inverse r ~x:0 ~y:1);
+  is_true ~msg:"a blank, covered" (inverse r ~x:20 ~y:2);
+  select r (1, 2) (3, 4);
+  equal ~msg:"pressed on it" (option string)
+    (Some ("fig" ^ String.make 35 ' ' ^ v ^ "\n\u{2514}" ^ rule 3))
+    (copied r)
+
+(* Two panes side by side, stretched to the same rows, are two nodes: the
+   rows between a text at the top of one and a text lower in the other lie
+   in a pane that holds a text, not in a gap. *)
+let equal_panes_copy_a_line_apart () =
+  let r = Renderer.create () in
+  let row =
+    Renderable.create ~parent:(Renderer.root r)
+      ~style:
+        (Toffee.Style.default
+        |> Toffee.Style.set_flex_direction Row
+        |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.)
+        |> Toffee.Style.set_height (Toffee.Style.Dimension.length 10.))
+      ()
+  in
+  let pane () =
+    Renderable.create ~parent:row
+      ~style:(Toffee.Style.default |> Toffee.Style.set_flex_grow 1.)
+      ()
+  in
+  let left = pane () and right = pane () in
+  ignore (text_at left ~x:0 ~y:0 ~w:5 ~h:1 "a" : Text.t);
+  ignore (text_at right ~x:0 ~y:3 ~w:5 ~h:1 "b" : Text.t);
+  frame r;
+  select r (0, 0) (25, 3);
+  equal ~msg:"a line apart" (option string) (Some "a\nb") (copied r)
+
+(* An editor takes no part in the view's selection: under a root that reads
+   [`Cells], a band across it highlights the cells around it and none of its
+   own, whatever it reads. *)
+let an_editor_is_never_highlighted () =
+  let field ?selectable () =
+    Mosaic.input ?selectable
+      ~size:(Mosaic.size ~width:3 ~height:1)
+      ~state:(Editor.of_string "XYZ")
+      ~on_change:(fun _ -> ())
+      ()
+  in
+  List.iter
+    (fun (name, selectable) ->
+      let r, _, _ =
+        mount
+          (Mosaic.box
+             [ Mosaic.text "ab"; field ?selectable (); Mosaic.text "cd" ])
+      in
+      select r (0, 0) (6, 0);
+      equal ~msg:name (option string) (Some "ab   cd") (copied r);
+      paint r;
+      is_true ~msg:(name ^ ": the text before") (inverse r ~x:1 ~y:0);
+      is_false ~msg:(name ^ ": the editor") (inverse r ~x:3 ~y:0);
+      is_true ~msg:(name ^ ": the text after") (inverse r ~x:5 ~y:0))
+    [ ("its own reading", None); ("declared `Cells", Some `Cells) ]
 
 let () =
   run "mosaic.selection"
@@ -2289,8 +2767,8 @@ let () =
             extension_crosses_to_the_text_beside_by_a_grapheme;
           test "extension moves a cell focus down the screen"
             extension_moves_a_cell_focus_down_the_screen;
-          test "a row move past the view scrolls the region"
-            a_row_move_past_the_view_scrolls_the_region;
+          test "a row move scrolls a window, then leaves it"
+            a_row_move_scrolls_a_window_then_leaves_it;
           test "extension selects by graphemes" extension_selects_by_graphemes;
           test "a drag keeps its focus from the keys"
             a_drag_keeps_its_focus_from_the_keys;
@@ -2341,7 +2819,52 @@ let () =
             an_end_in_a_streaming_table_survives_a_chunk;
           test "an end in a streaming quote survives a chunk"
             an_end_in_a_streaming_quote_survives_a_chunk;
+          test "a key move lays out a text no paint reached"
+            a_key_move_lays_out_a_text_no_paint_reached;
+        ];
+      group "Text"
+        [
+          test "a press beside a nested box resolves past its texts"
+            a_press_beside_a_nested_box_resolves_past_its_texts;
+          test "a drag out of a scroll box downward stays in it"
+            a_drag_out_of_a_scroll_box_downward_stays_in_it;
+          test "a drag out of a scroll box sideways stays in it"
+            a_drag_out_of_a_scroll_box_sideways_stays_in_it;
+          test "a nested box covered is selected whole"
+            a_nested_box_covered_is_selected_whole;
+          test "a nested box partly covered is left out"
+            a_nested_box_partly_covered_is_left_out;
+          test "a bordered box between paragraphs"
+            a_bordered_box_between_paragraphs;
+          test "the markdown table copies row by row"
+            the_markdown_table_copies_row_by_row;
+          test "a word drag selects a nested box once covered"
+            a_word_drag_selects_a_nested_box_once_covered;
+          test "a line drag over a nested box settles where it was"
+            a_line_drag_over_a_nested_box_settles_where_it_was;
+          test "a shift press is held in the region"
+            a_shift_press_is_held_in_the_region;
+          test "the fill after a hard break" the_fill_after_a_hard_break;
+          test "no fill after a soft wrap" no_fill_after_a_soft_wrap;
+          test "extension crosses out of a nested box"
+            extension_crosses_out_of_a_nested_box;
+          test "a row move past the view scrolls the region"
+            a_row_move_past_the_view_scrolls_the_region;
           test "a copy lays out a text no paint reached"
             a_copy_lays_out_a_text_no_paint_reached;
+        ];
+      group "Readings"
+        [
+          test "a text drag takes nothing of a cells pane beside it"
+            a_text_drag_takes_nothing_of_a_cells_pane_beside_it;
+          test "a cells drag stays in its pane" a_cells_drag_stays_in_its_pane;
+          test "a text box beside a cells pane takes nothing of it"
+            a_text_box_beside_a_cells_pane_takes_nothing_of_it;
+          test "a text box in a cells window copies its shown rows"
+            a_text_box_in_a_cells_window_copies_its_shown_rows;
+          test "a cells figure in a text document is taken whole"
+            a_cells_figure_in_a_text_document_is_taken_whole;
+          test "equal panes copy a line apart" equal_panes_copy_a_line_apart;
+          test "an editor is never highlighted" an_editor_is_never_highlighted;
         ];
     ]

@@ -4094,6 +4094,23 @@ let%expect_test "Ctrl+C copies a focused input's selection and keeps it" =
   is_true ~msg:"quits" ended;
   [%expect {| |}]
 
+(* An editor takes no part in the view selection: a press in the input
+   clears it, so Ctrl+C then copies the input's own selection. *)
+let%expect_test "a press in an input lets Ctrl+C copy the input's selection" =
+  let editor =
+    Mosaic.Editor.select ~anchor:1 ~cursor:3 (Mosaic.Editor.of_string "abcd")
+  in
+  let press_input = "\027[<0;9;3M\027[<0;9;3m" in
+  let log, copied, ended =
+    selecting ~editor [ drag_hello; press_input; ctrl_c ]
+  in
+  equal ~msg:"cleared, then the input's copied" (list string)
+    [ "selected hello"; "edit"; "cleared"; "copied bc" ]
+    log;
+  equal ~msg:"to the clipboard" (list string) [ "bc" ] copied;
+  is_false ~msg:"running" ended;
+  [%expect {| |}]
+
 (* Shift with an arrow extends the view selection ahead of
    the focused input, which neither sees the key nor changes, though Shift
    with Left would select in it. *)
