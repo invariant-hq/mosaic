@@ -1042,9 +1042,10 @@ let a_ctrl_press_is_ordinary () =
 
 (* ── Highlight ── *)
 
-(* The blank cells after a selected hard line break are filled to the node's
-   right edge. *)
-let the_fill_after_a_hard_break () =
+(* Every cell of the band is highlighted, blanks included, as a terminal
+   shows its selection: each row but the last to the screen's edge, the last
+   to the focus. *)
+let the_band_is_highlighted_to_the_screen_edge () =
   let r = Renderer.create () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:2 "ab\ncd" : Text.t);
   frame r;
@@ -1052,12 +1053,13 @@ let the_fill_after_a_hard_break () =
   paint r;
   is_true ~msg:"the text" (inverse r ~x:1 ~y:0);
   is_true ~msg:"after the break" (inverse r ~x:5 ~y:0);
-  is_false ~msg:"beyond the node" (inverse r ~x:6 ~y:0);
+  is_true ~msg:"beyond the node" (inverse r ~x:6 ~y:0);
   is_true ~msg:"the last grapheme" (inverse r ~x:0 ~y:1);
-  is_false ~msg:"after the last row's selection" (inverse r ~x:3 ~y:1)
+  is_false ~msg:"after the focus" (inverse r ~x:3 ~y:1)
 
-(* A soft wrap copies nothing and fills nothing. *)
-let no_fill_after_a_soft_wrap () =
+(* A soft wrap copies nothing, but the cells after it are in the band and
+   highlighted. *)
+let the_cells_after_a_soft_wrap_are_highlighted () =
   let r = Renderer.create () in
   ignore
     (text_at (Renderer.root r) ~x:0 ~y:0 ~w:6 ~h:2
@@ -1066,9 +1068,10 @@ let no_fill_after_a_soft_wrap () =
       : Text.t);
   frame r;
   select r (0, 0) (1, 1);
+  equal ~msg:"copied" (option string) (Some "abc de") (copied r);
   paint r;
   is_true ~msg:"the text" (inverse r ~x:2 ~y:0);
-  is_false ~msg:"after the wrap" (inverse r ~x:5 ~y:0)
+  is_true ~msg:"after the wrap" (inverse r ~x:5 ~y:0)
 
 (* A buffered text paints in its own buffer's coordinates, but the
    band and the texts' places stay in the region's: a buffered end
@@ -2238,8 +2241,10 @@ let () =
         ];
       group "Highlight"
         [
-          test "the fill after a hard break" the_fill_after_a_hard_break;
-          test "no fill after a soft wrap" no_fill_after_a_soft_wrap;
+          test "the band is highlighted to the screen edge"
+            the_band_is_highlighted_to_the_screen_edge;
+          test "the cells after a soft wrap are highlighted"
+            the_cells_after_a_soft_wrap_are_highlighted;
           test "buffered texts are highlighted where they lie"
             buffered_texts_are_highlighted_where_they_lie;
         ];

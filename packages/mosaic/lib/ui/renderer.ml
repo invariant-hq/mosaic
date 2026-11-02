@@ -1136,12 +1136,10 @@ let item_rows (rows : Renderable.text_rows) ~oy ~first ~last =
   in
   (oy + row first - rows.scroll_y, oy + row (last - 1) - rows.scroll_y)
 
-(* [iter_band_cells t band ~grid ~owner f] calls [f ~x ~y idx node] for each cell
-   of [band] that a selectable node paints without text, such as a border or
-   a chart's glyph, in [grid] whose cells' nodes [owner] gives, row by row, in
-   screen coordinates. A text's cells are its text's, and an editor's are its
-   own. *)
-let iter_band_cells t band ~grid ~owner f =
+(* [iter_band band ~grid f] calls [f ~x ~y idx] for each cell of [band] in
+   [grid], row by row, in screen coordinates, the tail of a wide grapheme
+   left to its head. *)
+let iter_band band ~grid f =
   let ox = Renderable.x band.origin and oy = Renderable.y band.origin in
   let width = Grid.width grid and height = Grid.height grid in
   let top = band.low_y + oy and bottom = band.high_y + oy in
@@ -1152,17 +1150,27 @@ let iter_band_cells t band ~grid ~owner f =
     in
     for x = first to last do
       let idx = (y * width) + x in
-      if not (Grid.is_continuation grid idx) then
-        match owner ~x ~y with
-        | Some node
-          when Option.is_none (Renderable.text_rows node)
-               && Option.is_none (Renderable.Private.owned_text node)
-               && Renderable.selectable node
-               && not (inert_under (top_layer t) node) ->
-            f ~x ~y idx node
-        | Some _ | None -> ()
+      if not (Grid.is_continuation grid idx) then f ~x ~y idx
     done
   done
+
+(* A node takes part in the selection when it is selectable and not inert. *)
+let selects t node =
+  Renderable.selectable node && not (inert_under (top_layer t) node)
+
+(* [iter_band_cells t band ~grid ~owner f] calls [f ~x ~y idx node] for each cell
+   of [band] that a selectable node paints without text, such as a border or
+   a chart's glyph, in [grid] whose cells' nodes [owner] gives. A text's
+   cells are its text's, and an editor's are its own. *)
+let iter_band_cells t band ~grid ~owner f =
+  iter_band band ~grid (fun ~x ~y idx ->
+      match owner ~x ~y with
+      | Some node
+        when Option.is_none (Renderable.text_rows node)
+             && Option.is_none (Renderable.Private.owned_text node)
+             && selects t node ->
+          f ~x ~y idx node
+      | Some _ | None -> ())
 
 (* The extents of [node] and its ancestors up to [origin], innermost first,
    as an item's chain holds them. *)
@@ -2480,24 +2488,31 @@ let layout_frame ?(animate = true) t ~width ~height ~dt =
   prepare_commands t ~width ~height ~frame:animate ~dt;
   t.frame <- Some { width; height; dt }
 
-(* The cells of the selection's band that a selectable node paints without
-   text are drawn again with the [Highlight] role of that node's theme over
-   their own style, as a text draws its selected graphemes. *)
+(* Every cell of the selection's band is drawn again with the [Highlight]
+   role of its node's theme over its own style, blanks included, as a
+   terminal shows its selection; a cell no node paints takes the root's
+   theme unless a top layer holds the selection. Cells of nodes that are not
+   selectable keep their style. *)
 let highlight_cells t ~grid ~hits =
   match t.selection_state.current with
   | None -> ()
   | Some sel -> (
       match current_band t sel with
       | Some band when not band.empty ->
-          iter_band_cells t band ~grid ~owner:(owner_in t hits)
-            (fun ~x ~y idx node ->
-              let text = Grid.get_text grid idx in
-              if not (text = "" || text = " ") then
-                let style =
-                  Ansi.Style.merge ~base:(Grid.get_style grid idx)
-                    ~overlay:(Theme.style (Renderable.theme node) Highlight)
-                in
-                Grid.draw_text ~style grid ~x ~y ~text)
+          let draw ~x ~y idx node =
+            let style =
+              Ansi.Style.merge ~base:(Grid.get_style grid idx)
+                ~overlay:(Theme.style (Renderable.theme node) Highlight)
+            in
+            let text = Grid.get_text grid idx in
+            Grid.draw_text ~style grid ~x ~y
+              ~text:(if text = "" then " " else text)
+          in
+          iter_band band ~grid (fun ~x ~y idx ->
+              match owner_in t hits ~x ~y with
+              | Some node -> if selects t node then draw ~x ~y idx node
+              | None ->
+                  if Option.is_none (top_layer t) then draw ~x ~y idx t.root)
       | Some _ | None -> ())
 
 let paint_frame t ~height =

@@ -397,8 +397,11 @@ val theme : t -> Theme.t
     scroll box has scrolled out of view stands, for the band, at the edge of the
     box's view, and the text of that box between the end and the edge is
     selected too. Selected text paints with the [Highlight] role of its theme
-    ({!Text_surface.section-paint}), and the selected cells are drawn again with
-    it.
+    ({!Text_surface.section-paint}), and every cell of the band is drawn again
+    with the role of its node's theme, blanks included, as a terminal shows its
+    selection: each row to the screen's edge but the last, which stops at the
+    later end. A cell no node paints takes the root's theme, and the cells of an
+    unselectable node keep their style.
 
     The ends name text, so scrolling, appending, streaming and rewrapping leave
     them on the text they hold. An edit of an end's text
