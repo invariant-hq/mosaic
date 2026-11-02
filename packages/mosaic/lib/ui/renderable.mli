@@ -472,7 +472,9 @@ val set_paste_behavior : t -> (Event.paste -> unit) option -> unit
 val set_selectable : t -> [ `Off | `Text | `Cells ] option -> unit
 (** [set_selectable t d] declares what the view selection takes of [t] and its
     descendants ([Some r]): nothing ([`Off]), their text ([`Text]) or every cell
-    they paint ([`Cells]). [None] removes [t]'s declaration. *)
+    they paint ([`Cells]). [None] removes [t]'s declaration. A declaration that
+    changes clears a view selection with an end in [t] or below it; declaring
+    the value [t] already declares changes nothing. *)
 
 val selectable : t -> [ `Off | `Text | `Cells ]
 (** [selectable t] is the nearest declaration on [t] or an ancestor, [`Text] if
@@ -591,8 +593,10 @@ module Private : sig
     text_changed : t -> unit;  (** {!val-text_changed}. *)
     hiding : t -> unit;
         (** Tells the renderer that a node and its descendants are about to stop
-            being shown, as the node is hidden, detached or destroyed, so that a
-            text selection with an end among them clears ([Renderer]). *)
+            being shown, as the node is hidden, detached or destroyed, or that
+            the node's declaration of what the view selection takes of them
+            changed ({!val-set_selectable}), so that a view selection with an
+            end among them clears ([Renderer]). *)
     register_lifecycle : t -> unit;
     unregister_lifecycle : t -> unit;
     alloc_num : unit -> int;
@@ -780,9 +784,11 @@ module Private : sig
     content : t;
         (** The node from whose origin the region's positions count, which
             scrolls with the region's content. *)
-    drag : x:int -> y:int -> unit;
-        (** [drag ~x ~y] is told the cell of the pointer at each motion of a
-            selection gesture whose press was in the region. *)
+    drag : x:int option -> y:int option -> unit;
+        (** [drag ~x ~y] is told, at each motion of a selection gesture that
+            scrolls the region, the column [x] of the pointer when the region
+            may scroll sideways and its row [y] when it may scroll up or down,
+            [None] on an axis it must not scroll. *)
     settle : unit -> unit;  (** [settle ()] is told that the gesture ended. *)
     scroll : int -> unit;
         (** [scroll n] is asked to scroll the region's content by [n] rows, down

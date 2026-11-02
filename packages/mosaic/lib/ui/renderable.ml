@@ -66,7 +66,7 @@ type context = {
 and region = {
   viewport : node;
   content : node;
-  drag : x:int -> y:int -> unit;
+  drag : x:int option -> y:int option -> unit;
   settle : unit -> unit;
   scroll : int -> unit;
 }
@@ -1610,10 +1610,13 @@ let run_paste_behavior t event = Option.iter (fun f -> f event) t.paste_behavior
 
 (* ───── Selection ───── *)
 
-(* A declaration changes what the view selection highlights. *)
+(* A declaration changes what the view selection highlights, and decides the
+   scope and the kind of an end in the subtree: a change clears a selection
+   with an end there, as hiding the subtree would. *)
 let set_selectable t declaration =
   if t.selectable <> declaration then begin
     t.selectable <- declaration;
+    t.ctx.hiding t;
     t.ctx.schedule ()
   end
 
@@ -2160,7 +2163,7 @@ module Private = struct
   type nonrec region = region = {
     viewport : t;
     content : t;
-    drag : x:int -> y:int -> unit;
+    drag : x:int option -> y:int option -> unit;
     settle : unit -> unit;
     scroll : int -> unit;
   }

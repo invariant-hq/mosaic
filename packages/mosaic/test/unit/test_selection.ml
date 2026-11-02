@@ -2641,6 +2641,317 @@ let an_editor_is_never_highlighted () =
       is_true ~msg:(name ^ ": the text after") (inverse r ~x:5 ~y:0))
     [ ("its own reading", None); ("declared `Cells", Some `Cells) ]
 
+(* ── Cells ── *)
+
+(* Under a root that reads [`Cells], a pane that reads [`Text] beside one
+   that does not: between two fragments, a band copies a line for each row
+   on which it highlights a cell, as a terminal copies a blank row, though
+   the pane of words shows nothing there. *)
+let a_band_copies_a_line_for_each_highlighted_row () =
+  let r = cells_renderer () in
+  let pane ~x a b =
+    let node =
+      Renderable.create ~parent:(Renderer.root r)
+        ~style:(place ~x ~y:0 ~w:20 ~h:5) ()
+    in
+    ignore (text_at node ~x:0 ~y:0 ~w:5 ~h:1 a : Text.t);
+    ignore (text_at node ~x:0 ~y:4 ~w:5 ~h:1 b : Text.t);
+    node
+  in
+  Renderable.set_selectable (pane ~x:0 "a" "b") (Some `Text);
+  ignore (pane ~x:20 "x" "y" : Renderable.t);
+  frame r;
+  select r (0, 0) (39, 4);
+  let blanks = String.make 19 ' ' in
+  equal ~msg:"a line for each highlighted row" (option string)
+    (Some ("a" ^ blanks ^ "x\n\n\n\nb" ^ blanks ^ "y"))
+    (copied r);
+  paint r;
+  is_false ~msg:"a blank of the words" (inverse r ~x:5 ~y:2);
+  is_true ~msg:"a blank of the cells" (inverse r ~x:25 ~y:2)
+
+(* A band over blanks alone holds nothing: it is not live while it is
+   dragged, settles as cleared, and gives nothing to copy. *)
+let a_band_of_blanks_alone_clears () =
+  let r = cells_renderer () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:1 "hello" : Text.t);
+  frame r;
+  press r ~x:2 ~y:3;
+  drag_to r ~x:8 ~y:6;
+  is_false ~msg:"not live" (Renderer.selection_live r);
+  is_none ~msg:"nothing to copy" (copied r);
+  release r ~x:8 ~y:6;
+  is_none ~msg:"cleared" (copied r);
+  equal ~msg:"nothing heard" (list string) [] (changes r)
+
+(* A release on a scroll bar, which reads [`Off], takes the reading of the
+   scroll box that holds it: under [`Cells], the bar's cell is the focus,
+   and the band stays where it was. *)
+let a_release_on_the_scroll_bar_keeps_the_band () =
+  let r = cells_renderer () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root r)
+      ~style:(place ~x:0 ~y:0 ~w:20 ~h:8)
+      (Scroll_box.Props.make ())
+  in
+  Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
+  for i = 0 to 19 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "row-%d" i) : Text.t)
+  done;
+  frame r;
+  press r ~x:0 ~y:1;
+  drag_to r ~x:19 ~y:3;
+  equal ~msg:"dragging" (option string) (Some "row-1\nrow-2\nrow-3") (copied r);
+  is_true ~msg:"dragging, to the bar" (highlighted r ~y:3 0 18);
+  release r ~x:19 ~y:3;
+  equal ~msg:"settled" (option string) (Some "row-1\nrow-2\nrow-3") (copied r);
+  is_true ~msg:"settled, to the bar" (highlighted r ~y:3 0 18)
+
+(* A release over a node outside the scope, such as an overlay over a
+   scroll box that reads [`Text], keeps the selection: the focus is the
+   pointer's cell of the scope. *)
+let a_release_over_an_overlay_keeps_the_selection () =
+  let r = Renderer.create () in
+  let root = Renderer.root r in
+  let sb = scroll_box root ~w:0 ~h:0 ~style:(place ~x:0 ~y:0 ~w:20 ~h:6) in
+  for i = 0 to 9 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "row-%d" i) : Text.t)
+  done;
+  let overlay =
+    Renderable.create ~parent:root ~style:(place ~x:10 ~y:2 ~w:8 ~h:2) ()
+  in
+  ignore (line overlay "tip" : Text.t);
+  frame r;
+  press r ~x:0 ~y:1;
+  drag_to r ~x:11 ~y:2;
+  equal ~msg:"dragging" (option string) (Some "row-1\nrow-2") (copied r);
+  release r ~x:11 ~y:2;
+  equal ~msg:"settled" (option string) (Some "row-1\nrow-2") (copied r);
+  equal ~msg:"heard" (list string) [ "settled row-1\nrow-2" ] (changes r)
+
+(* Under [`Cells], a release past a line's end, on a cell that shows no
+   grapheme, makes that cell the focus, so the band stays where it was; a
+   press there anchors at it. *)
+let a_release_past_a_line_end_keeps_the_band () =
+  let r = cells_renderer () in
+  ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:1 "abc" : Text.t);
+  frame r;
+  press r ~x:0 ~y:0;
+  drag_to r ~x:7 ~y:0;
+  is_true ~msg:"dragging" (highlighted r ~y:0 0 7);
+  release r ~x:7 ~y:0;
+  equal ~msg:"the text" (option string) (Some "abc") (copied r);
+  is_true ~msg:"released" (highlighted r ~y:0 0 7);
+  select r (7, 0) (1, 0);
+  equal ~msg:"pressed past it" (option string) (Some "bc") (copied r);
+  is_true ~msg:"from the pressed cell" (highlighted r ~y:0 1 7)
+
+(* A cell end lies on the node that drew it: as a window scrolls, an end on
+   a box's border moves with the box, and the band with it. *)
+let a_cell_end_moves_with_its_node () =
+  let r = cells_renderer () in
+  let sb = scroll_box (Renderer.root r) ~w:20 ~h:6 in
+  let content = Scroll_box.node sb in
+  ignore (line content "m0" : Text.t);
+  let box = Box.create ~parent:content (Box.Props.make ~border:true ()) in
+  ignore (line (Box.node box) "code" : Text.t);
+  for i = 2 to 9 do
+    ignore (line content (Printf.sprintf "m%d" i) : Text.t)
+  done;
+  frame r;
+  select r (0, 1) (1, 4);
+  let drawn =
+    String.concat "\n"
+      [
+        "\u{250C}" ^ rule 18 ^ "\u{2510}";
+        "\u{2502}code" ^ String.make 14 ' ' ^ "\u{2502}";
+        "\u{2514}" ^ rule 18 ^ "\u{2518}";
+        "m2";
+      ]
+  in
+  equal ~msg:"from the box's corner" (option string) (Some drawn) (copied r);
+  send r (Scroll `Down) ~x:1 ~y:1;
+  frame r;
+  equal ~msg:"scrolled" int 1 (Scroll_box.scroll_top sb);
+  equal ~msg:"still from its corner" (option string) (Some drawn) (copied r);
+  paint r;
+  is_true ~msg:"the corner, where it now lies" (inverse r ~x:0 ~y:0)
+
+(* A cell end that a window scrolls out of view sideways stands at the
+   window's edge, as one scrolled out above or below does: the band does not
+   reach the cell beside the window where the end would lie. *)
+let a_cell_end_scrolled_out_sideways_stands_at_the_edge () =
+  let r = cells_renderer () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root r)
+      ~style:(place ~x:0 ~y:0 ~w:10 ~h:4)
+      (Scroll_box.Props.make ~scroll_x:true ~show_scrollbars:false ())
+  in
+  Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
+  ignore
+    (Box.create ~parent:(Scroll_box.node sb)
+       ~style:
+         (Toffee.Style.default
+         |> Toffee.Style.set_width (Toffee.Style.Dimension.length 20.)
+         |> Toffee.Style.set_height (Toffee.Style.Dimension.length 4.)
+         |> Toffee.Style.set_flex_shrink 0.)
+       (Box.Props.make ~border:true ())
+      : Box.t);
+  frame r;
+  Scroll_box.scroll_to sb ~x:10 ();
+  frame r;
+  select r (9, 1) (9, 3);
+  paint r;
+  is_true ~msg:"from the box's right border" (inverse r ~x:9 ~y:1);
+  Scroll_box.scroll_to sb ~x:0 ();
+  frame r;
+  paint r;
+  is_true ~msg:"after the window, on the first row" (inverse r ~x:15 ~y:1);
+  is_true ~msg:"in the window, on the last row" (inverse r ~x:5 ~y:3);
+  is_false ~msg:"beside the window, on the last row" (inverse r ~x:15 ~y:3)
+
+(* A cell end on a container's own cell, such as the gap between two
+   paragraphs, stays on that cell of the container: when the paragraph above
+   grows over it, the end lies in the paragraph. *)
+let a_cell_end_on_a_gap_stays_as_the_text_above_grows () =
+  let r = cells_renderer () in
+  let col = column ~gap:1 (Renderer.root r) in
+  let first = line col "m0" in
+  ignore (line col "m1" : Text.t);
+  frame r;
+  select r (0, 1) (1, 2);
+  equal ~msg:"from the gap" (option string) (Some "m1") (copied r);
+  Text.set_content first "m0\nmore";
+  frame r;
+  equal ~msg:"from the grown text's second row" (option string)
+    (Some "more\n\nm1") (copied r)
+
+(* Under [`Cells], a double or triple click on a border resolves to the
+   nearest text, as one on any cell that shows no text does, where a
+   terminal selects the border's run of cells: it selects the word or the
+   line around the boundary of that text nearest the cell. Beside the
+   text's start, that boundary lies in no word. *)
+let a_multi_click_on_a_border_resolves_to_the_nearest_text () =
+  let r = cells_renderer () in
+  let col = column (Renderer.root r) in
+  let box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
+  ignore (line (Box.node box) "alpha beta" : Text.t);
+  frame r;
+  clicks r ~x:0 ~y:1 2;
+  is_none ~msg:"no word holds the text's first boundary" (copied r);
+  clicks r ~x:0 ~y:1 3;
+  equal ~msg:"its line" (option string) (Some "alpha beta") (copied r)
+
+(* A declaration that changes on an end's node or an ancestor decides the
+   end's scope and kind again, so the selection clears; a render that
+   declares the same value, or a change beside the ends, keeps it. *)
+let a_declaration_change_clears_the_selection () =
+  let view outer beside =
+    Mosaic.box ~selectable:outer
+      [ Mosaic.text "alpha"; Mosaic.text ~selectable:beside "beta" ]
+  in
+  let r, reconciler, _ = mount (view `Text `Text) in
+  let render outer beside =
+    Mosaic.Reconciler.render reconciler ~viewport_width:width
+      (view outer beside);
+    frame r
+  in
+  select r (0, 0) (3, 0);
+  ignore (changes r : string list);
+  equal ~msg:"selected" (option string) (Some "alph") (copied r);
+  render `Text `Text;
+  equal ~msg:"the same declarations" (option string) (Some "alph") (copied r);
+  render `Text `Off;
+  equal ~msg:"a declaration beside it" (option string) (Some "alph") (copied r);
+  equal ~msg:"nothing heard" (list string) [] (changes r);
+  render `Cells `Off;
+  is_none ~msg:"the ancestor's declaration" (copied r);
+  equal ~msg:"heard" (list string) [ "cleared" ] (changes r)
+
+(* ── Autoscroll ── *)
+
+(* A frame a tenth of a second after the last. *)
+let tick r =
+  Renderer.render_frame r ~width ~height ~dt:0.1;
+  ignore (Renderer.render ~full:true r : string)
+
+(* Under [`Cells], a drag pressed in a window scrolls it up or down only
+   while the pointer lies within its columns: not beside it, nor past its
+   corner, but straight below it. *)
+let a_window_scrolls_only_with_the_pointer_within_its_columns () =
+  let r = cells_renderer () in
+  let sb =
+    scroll_box (Renderer.root r) ~w:0 ~h:0 ~style:(place ~x:0 ~y:0 ~w:20 ~h:6)
+  in
+  for i = 0 to 29 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "row-%d" i) : Text.t)
+  done;
+  frame r;
+  press r ~x:1 ~y:1;
+  drag_to r ~x:25 ~y:5;
+  tick r;
+  equal ~msg:"beside it" int 0 (Scroll_box.scroll_top sb);
+  drag_to r ~x:25 ~y:9;
+  tick r;
+  equal ~msg:"past its corner" int 0 (Scroll_box.scroll_top sb);
+  drag_to r ~x:1 ~y:9;
+  tick r;
+  equal ~msg:"straight below it" int 7 (Scroll_box.scroll_top sb)
+
+(* Under [`Text], the pointer held in a scroll box is always within it, so
+   the box scrolls by the pointer itself: straight below it or past its
+   corner, at the speed its distance from the box's edge, its border
+   included, gives. *)
+let a_text_box_scrolls_at_the_pointers_speed () =
+  let r = Renderer.create () in
+  let one = Toffee.Style.Length_percentage.length 1. in
+  let sb =
+    scroll_box (Renderer.root r) ~w:0 ~h:0
+      ~style:
+        (place ~x:0 ~y:0 ~w:20 ~h:8
+        |> Toffee.Style.set_border
+             { left = one; right = one; top = one; bottom = one })
+  in
+  for i = 0 to 39 do
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "row-%d" i) : Text.t)
+  done;
+  frame r;
+  press r ~x:2 ~y:2;
+  drag_to r ~x:2 ~y:10;
+  tick r;
+  equal ~msg:"straight below it, at full speed" int 7 (Scroll_box.scroll_top sb);
+  drag_to r ~x:30 ~y:10;
+  tick r;
+  equal ~msg:"past its corner, at full speed" int 14 (Scroll_box.scroll_top sb)
+
+(* A drag pressed in a window scrolls the window, and the scope too when the
+   scope is a scroll box: a transcript that reads [`Cells], in a view that
+   does not, scrolls with the code block inside it. *)
+let a_drag_in_a_window_scrolls_its_scope_too () =
+  let r = Renderer.create () in
+  let transcript =
+    scroll_box (Renderer.root r) ~w:0 ~h:0 ~style:(place ~x:0 ~y:0 ~w:30 ~h:10)
+  in
+  Renderable.set_selectable (Scroll_box.node transcript) (Some `Cells);
+  let content = Scroll_box.node transcript in
+  let message i = ignore (line content (Printf.sprintf "msg-%d" i) : Text.t) in
+  for i = 0 to 4 do
+    message i
+  done;
+  let code = scroll_box content ~w:20 ~h:4 in
+  for i = 0 to 19 do
+    ignore (line (Scroll_box.node code) (Printf.sprintf "code-%d" i) : Text.t)
+  done;
+  for i = 5 to 24 do
+    message i
+  done;
+  frame r;
+  press r ~x:1 ~y:6;
+  drag_to r ~x:1 ~y:11;
+  tick r;
+  equal ~msg:"the window" int 7 (Scroll_box.scroll_top code);
+  equal ~msg:"the scope" int 7 (Scroll_box.scroll_top transcript)
+
 let () =
   run "mosaic.selection"
     [
@@ -2916,5 +3227,35 @@ let () =
           test "a cells figure without text stays taken at the release"
             a_cells_figure_without_text_stays_taken_at_the_release;
           test "an editor is never highlighted" an_editor_is_never_highlighted;
+        ];
+      group "Cells"
+        [
+          test "a band copies a line for each highlighted row"
+            a_band_copies_a_line_for_each_highlighted_row;
+          test "a band of blanks alone clears" a_band_of_blanks_alone_clears;
+          test "a release on the scroll bar keeps the band"
+            a_release_on_the_scroll_bar_keeps_the_band;
+          test "a release over an overlay keeps the selection"
+            a_release_over_an_overlay_keeps_the_selection;
+          test "a release past a line's end keeps the band"
+            a_release_past_a_line_end_keeps_the_band;
+          test "a cell end moves with its node" a_cell_end_moves_with_its_node;
+          test "a cell end scrolled out sideways stands at the edge"
+            a_cell_end_scrolled_out_sideways_stands_at_the_edge;
+          test "a cell end on a gap stays as the text above grows"
+            a_cell_end_on_a_gap_stays_as_the_text_above_grows;
+          test "a multi-click on a border resolves to the nearest text"
+            a_multi_click_on_a_border_resolves_to_the_nearest_text;
+          test "a declaration change clears the selection"
+            a_declaration_change_clears_the_selection;
+        ];
+      group "Autoscroll"
+        [
+          test "a window scrolls only with the pointer within its columns"
+            a_window_scrolls_only_with_the_pointer_within_its_columns;
+          test "a text box scrolls at the pointer's speed"
+            a_text_box_scrolls_at_the_pointers_speed;
+          test "a drag in a window scrolls its scope too"
+            a_drag_in_a_window_scrolls_its_scope_too;
         ];
     ]

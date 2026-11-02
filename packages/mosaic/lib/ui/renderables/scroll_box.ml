@@ -132,8 +132,9 @@ type t = {
   mutable frame_clock : float;
   mutable wheel_acc_x : float;
   mutable wheel_acc_y : float;
-  mutable auto_scroll_mouse_x : int;
-  mutable auto_scroll_mouse_y : int;
+  (* The pointer of a selection gesture, on each axis the box may scroll. *)
+  mutable auto_scroll_mouse_x : int option;
+  mutable auto_scroll_mouse_y : int option;
   mutable cached_auto_scroll_speed : float;
   mutable auto_scroll_acc_x : float;
   mutable auto_scroll_acc_y : float;
@@ -239,35 +240,41 @@ let scroll_by_unit t ?x ?y ~(unit : Scroll_bar.scroll_unit) () =
 
 (* ───── Selection Auto-scroll ───── *)
 
-let auto_scroll_direction_x t mouse_x =
-  let relative_x = mouse_x - Renderable.x t.node in
-  let dist_to_left = relative_x in
-  let dist_to_right = Renderable.width t.node - relative_x in
-  if dist_to_left <= auto_scroll_threshold_horizontal then
-    if t.scroll_x > 0 then -1 else 0
-  else if dist_to_right <= auto_scroll_threshold_horizontal then
-    if t.scroll_x < t.max_scroll_x then 1 else 0
-  else 0
+let auto_scroll_direction_x t = function
+  | None -> 0
+  | Some mouse_x ->
+      let relative_x = mouse_x - Renderable.x t.node in
+      let dist_to_left = relative_x in
+      let dist_to_right = Renderable.width t.node - relative_x in
+      if dist_to_left <= auto_scroll_threshold_horizontal then
+        if t.scroll_x > 0 then -1 else 0
+      else if dist_to_right <= auto_scroll_threshold_horizontal then
+        if t.scroll_x < t.max_scroll_x then 1 else 0
+      else 0
 
-let auto_scroll_direction_y t mouse_y =
-  let relative_y = mouse_y - Renderable.y t.node in
-  let dist_to_top = relative_y in
-  let dist_to_bottom = Renderable.height t.node - relative_y in
-  if dist_to_top <= auto_scroll_threshold_vertical then
-    if t.scroll_y > 0 then -1 else 0
-  else if dist_to_bottom <= auto_scroll_threshold_vertical then
-    if t.scroll_y < t.max_scroll_y then 1 else 0
-  else 0
+let auto_scroll_direction_y t = function
+  | None -> 0
+  | Some mouse_y ->
+      let relative_y = mouse_y - Renderable.y t.node in
+      let dist_to_top = relative_y in
+      let dist_to_bottom = Renderable.height t.node - relative_y in
+      if dist_to_top <= auto_scroll_threshold_vertical then
+        if t.scroll_y > 0 then -1 else 0
+      else if dist_to_bottom <= auto_scroll_threshold_vertical then
+        if t.scroll_y < t.max_scroll_y then 1 else 0
+      else 0
 
+(* The nearer the pointer to an edge on an axis the box may scroll, the
+   faster, and fastest within a cell of it or past it. *)
 let auto_scroll_speed t mouse_x mouse_y =
-  let relative_x = mouse_x - Renderable.x t.node in
-  let relative_y = mouse_y - Renderable.y t.node in
-  let dist_to_left = relative_x in
-  let dist_to_right = Renderable.width t.node - relative_x in
-  let dist_to_top = relative_y in
-  let dist_to_bottom = Renderable.height t.node - relative_y in
+  let distance from extent = function
+    | None -> max_int
+    | Some mouse -> min (mouse - from) (from + extent - mouse)
+  in
   let min_distance =
-    min (min dist_to_left dist_to_right) (min dist_to_top dist_to_bottom)
+    min
+      (distance (Renderable.x t.node) (Renderable.width t.node) mouse_x)
+      (distance (Renderable.y t.node) (Renderable.height t.node) mouse_y)
   in
   if min_distance <= 1 then auto_scroll_speed_fast
   else if min_distance <= 2 then auto_scroll_speed_medium
@@ -664,8 +671,8 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
       frame_clock = 0.;
       wheel_acc_x = 0.;
       wheel_acc_y = 0.;
-      auto_scroll_mouse_x = 0;
-      auto_scroll_mouse_y = 0;
+      auto_scroll_mouse_x = None;
+      auto_scroll_mouse_y = None;
       cached_auto_scroll_speed = auto_scroll_speed_slow;
       auto_scroll_acc_x = 0.;
       auto_scroll_acc_y = 0.;

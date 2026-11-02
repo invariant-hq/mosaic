@@ -63,9 +63,10 @@ type end_ = {
   last : int;
   source : Layout.Source.t;
   cell : (int * int) option;
-      (* An end on a cell that shows no text, such as a border, of a node that
-         reads [`Cells]: the cell, in the scope's coordinates. It stays on the
-         screen as the content moves, as a terminal's does. *)
+      (* An end on a cell that shows no grapheme, such as a border or the
+         blanks past a line's end, of [node]: the cell, from [node]'s origin.
+         It moves with [node], not with its children, and is held within
+         [node]'s box. *)
 }
 
 (* The pointer gesture that drags a selection: the cell it last reported, on
@@ -496,10 +497,25 @@ let region_view region =
   | Some decl -> Renderable.bounds decl.viewport
   | None -> Renderable.bounds region
 
-let settle_region region =
-  match Renderable.Private.region region with
-  | Some decl -> decl.settle ()
-  | None -> ()
+(* The scroll boxes a gesture of [sel] scrolls: the one its press found,
+   and the scope too when that box is a window in a scope that is a scroll
+   box. *)
+let scrolled sel =
+  if
+    (not (sel.box == sel.scope))
+    && Option.is_some (Renderable.Private.region sel.scope)
+    && ancestor_of sel.scope sel.box
+  then [ sel.box; sel.scope ]
+  else [ sel.box ]
+
+(* The gesture of [sel] ended: the boxes it scrolled stop. *)
+let settle_gesture sel =
+  List.iter
+    (fun box ->
+      match Renderable.Private.region box with
+      | Some decl -> decl.settle ()
+      | None -> ())
+    (scrolled sel)
 
 let layout_size t node =
   match Toffee.layout t.tree (Renderable.Private.toffee_node node) with
@@ -528,6 +544,13 @@ let offset t node origin =
                 (y + cell (Renderable.Private.location_y node layout) + ty))
   in
   up node 0 0
+
+(* [node]'s position from [origin]'s, in cells, where either holds the
+   other. *)
+let relative t node origin =
+  match offset t node origin with
+  | Some _ as at -> at
+  | None -> Option.map (fun (x, y) -> (-x, -y)) (offset t origin node)
 
 (* The rows of [node]'s text, laid out at the width its layout gives it
    now: a text no paint reached since its layout changed, out of view, is
@@ -558,9 +581,17 @@ let end_in node (rows : Renderable.text_rows) ~first ~last =
 
 let no_source = Layout.Source.of_string ""
 
-(* An end on the cell [x, y] of [node], which paints it without text. *)
-let cell_end node ~x ~y =
+(* An end on the cell [x, y] of [node], counted from [node]'s origin. *)
+let on_cell node ~x ~y =
   { node; first = 0; last = 0; source = no_source; cell = Some (x, y) }
+
+(* An end on the cell [x, y] of the scope whose positions count from
+   [origin], a cell [node] paints without a grapheme; a cell of [origin]
+   when [node]'s position from it is unknown. *)
+let cell_end t origin node ~x ~y =
+  match relative t node origin with
+  | Some (nx, ny) -> on_cell node ~x:(x - nx) ~y:(y - ny)
+  | None -> on_cell origin ~x ~y
 
 (* Whether the cell [x, y] is at or before [x', y'] in row-major order. *)
 let[@inline] precedes x y x' y' = y < y' || (y = y' && x <= x')
@@ -658,9 +689,10 @@ let clip_rows boxes =
 
 (* Where the cell [x, y] of an end stands for the band: at the edge of each
    scroll box of [boxes] whose view it has scrolled out of, the corner its
-   view starts at when above and the cell after its view when below, with
-   the innermost such box. *)
-let clamp_end boxes x y =
+   view starts at when above and the cell after its view when below, and,
+   for an end on a cell ([columns]), the view's first column when left of it
+   and the column after it when right of it; with the innermost such box. *)
+let clamp_end ~columns boxes x y =
   let rec go boxes x y clamped =
     match boxes with
     | [] -> (x, y, clamped)
@@ -668,6 +700,8 @@ let clamp_end boxes x y =
         let first = match clamped with None -> Some box | Some _ -> clamped in
         if y < vy then go rest vx vy first
         else if y > vy + vh - 1 then go rest (vx + vw) (vy + vh - 1) first
+        else if columns && (x < vx || x > vx + vw) then
+          go rest (max vx (min x (vx + vw))) y first
         else go rest x y clamped
   in
   go boxes x y None
@@ -726,7 +760,7 @@ let whole (rows : Renderable.text_rows) =
 let view_band scope =
   let origin = region_origin scope and view = region_view scope in
   let x = view.x - Renderable.x origin and y = view.y - Renderable.y origin in
-  let corner = cell_end scope ~x ~y in
+  let corner = on_cell origin ~x ~y in
   {
     origin;
     low_x = x;
@@ -987,12 +1021,19 @@ let unit_end t origin node unit ~cx ~cy =
 
 (* The first cell of an end's span and the cell after its last, in the
    coordinates of [scope], whose positions count from [origin]. An end inside
-   a nested scope taken whole spans that scope's view. *)
+   a nested scope taken whole spans that scope's view, and an end on a cell
+   is held within its node's box. *)
 let end_cells t scope origin (e : end_) =
   if not (alive_visible e.node) then None
   else
     match e.cell with
-    | Some (x, y) -> Some (x, y, x + 1, y)
+    | Some (x, y) -> (
+        match relative t e.node origin with
+        | Some (nx, ny) ->
+            let w, h = layout_size t e.node in
+            let x = nx + clamp x 0 w and y = ny + clamp y 0 h in
+            Some (x, y, x + 1, y)
+        | None -> None)
     | None -> (
         match placement t scope e.node with
         | Outside -> None
@@ -1078,10 +1119,12 @@ let band_of t sel =
       match focus with
       | None -> None
       | Some ((fx, fy, fx', fy'), focus_boxes, focus_span) ->
-          let a_lo = clamp_end anchor_boxes ax ay
-          and a_hi = clamp_end anchor_boxes ax' ay'
-          and f_lo = clamp_end focus_boxes fx fy
-          and f_hi = clamp_end focus_boxes fx' fy' in
+          let columns = Option.is_some sel.anchor.cell in
+          let a_lo = clamp_end ~columns anchor_boxes ax ay
+          and a_hi = clamp_end ~columns anchor_boxes ax' ay' in
+          let columns = Option.is_some sel.focus.cell in
+          let f_lo = clamp_end ~columns focus_boxes fx fy
+          and f_hi = clamp_end ~columns focus_boxes fx' fy' in
           (* The order of two ends that stand at one cell is their own. *)
           let before (x, y, _) (x', y', _) (rx, ry) (rx', ry') =
             if x = x' && y = y' then precedes rx ry rx' ry'
@@ -1231,18 +1274,32 @@ let gap_between extents ~from ~until =
   in
   sweep (from + 1) sorted
 
-let separator buf (prev : piece) (next : piece) =
+(* What joins two fragments in row-major order: as many spaces as cells
+   between them on one row; else a line break, and one more for each row
+   strictly between them that holds a highlighted cell of the band, as a
+   terminal copies a blank row, or, when none does, one more for a margin or
+   a gap between them. [lit ~from ~until] is how many rows strictly between
+   [from] and [until] hold a highlighted cell. *)
+let separator buf ~lit (prev : piece) (next : piece) =
   if next.row = prev.end_row then
     for _ = 1 to next.col - prev.end_col do
       Buffer.add_char buf ' '
     done
-  else if
-    next.row > prev.end_row + 1
-    && gap_between
-         (below_common prev.enclosed next.enclosed)
-         ~from:prev.end_row ~until:next.row
-  then Buffer.add_string buf "\n\n"
-  else Buffer.add_char buf '\n'
+  else begin
+    Buffer.add_char buf '\n';
+    if next.row > prev.end_row + 1 then
+      match lit ~from:prev.end_row ~until:next.row with
+      | 0 ->
+          if
+            gap_between
+              (below_common prev.enclosed next.enclosed)
+              ~from:prev.end_row ~until:next.row
+          then Buffer.add_char buf '\n'
+      | rows ->
+          for _ = 1 to rows do
+            Buffer.add_char buf '\n'
+          done
+  end
 
 (* The rows of a text item, in scope coordinates. *)
 let item_rows (rows : Renderable.text_rows) ~oy ~first ~last =
@@ -1279,25 +1336,43 @@ let takes_cells t node =
   && Option.is_none (Renderable.Private.owned_text node)
   && not (inert_under (top_layer t) node)
 
-(* [iter_band_cells t ~scope band ~grid ~owner f] calls [f ~x ~y idx node]
-   for each cell of [band] in [scope]'s view that a node directly in [scope]
-   whose cells a selection takes paints without text, such as a border or a
-   chart's glyph, in [grid] whose cells' nodes [owner] gives. A text's cells
-   are its text's, and a nested scope taken whole gives its own. *)
-let iter_band_cells t ~scope band ~grid ~owner f =
-  let last = ref None and takes = ref false in
-  iter_band band ~grid ~view:(region_view scope) (fun ~x ~y idx ->
+(* [iter_highlighted t ~scope band ~grid ~owner f] calls [f ~x ~y idx node]
+   for each cell of [band] in [scope]'s view that the selection highlights
+   as a terminal does, row by row, in [grid] whose cells' nodes [owner]
+   gives: a cell of a node whose cells the selection takes, directly in
+   [scope] or inside a nested scope the band covers, within that scope's
+   view; and, when the selection takes [scope]'s cells, a cell no node
+   paints, which reads as [scope], the [node] given for it. *)
+let iter_highlighted t ~scope band ~grid ~owner f =
+  let view = region_view scope in
+  let unowned = takes_cells t scope in
+  (* The box on the screen in which the band takes the cells of the node
+     last met. *)
+  let last = ref None and within = ref None in
+  iter_band band ~grid ~view (fun ~x ~y idx ->
       match owner ~x ~y with
-      | Some node ->
+      | Some node -> (
           (match !last with
           | Some seen when seen == node -> ()
-          | Some _ | None ->
+          | Some _ | None -> (
               last := Some node;
-              takes :=
-                Option.is_none (Renderable.text_rows node)
-                && takes_cells t node && is_direct t scope node);
-          if !takes then f ~x ~y idx node
-      | None -> ())
+              within :=
+                if not (takes_cells t node) then None
+                else
+                  match placement t scope node with
+                  | Outside -> None
+                  | Direct -> Some view
+                  | Inside box -> (
+                      match view_of t band.origin box with
+                      | Some v when covers band v -> Some (region_view box)
+                      | Some _ | None -> None)));
+          match !within with
+          | Some (r : Grid.region)
+            when x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+            ->
+              f ~x ~y idx node
+          | Some _ | None -> ())
+      | None -> if unowned then f ~x ~y idx scope)
 
 (* The extents of [node] and its ancestors up to [origin], innermost first,
    as an item's chain holds them. *)
@@ -1433,12 +1508,23 @@ let rec assemble t ~scope band =
   (* The cells that nodes directly in the scope paint without text, as the
      frame on the screen shows them: each run of cells that are not blank is
      a fragment, so the separators keep the blanks between them and none at
-     a row's end. *)
+     a row's end. Whether each row holds a highlighted cell, blank or not, is
+     [lit_rows], from the row [lit_top]. *)
+  let lit_rows = ref [||] and lit_top = ref 0 in
   (match band with
   | None -> ()
   | Some band ->
       let grid = Screen.current_grid t.screen in
       let ox = Renderable.x band.origin and oy = Renderable.y band.origin in
+      let view = region_view scope in
+      let top = max (max 0 view.y) (band.low_y + oy)
+      and bottom =
+        min
+          (min (Grid.height grid - 1) (view.y + view.height - 1))
+          (band.high_y + oy)
+      in
+      lit_rows := Array.make (max 0 (bottom - top + 1)) false;
+      lit_top := top - oy;
       let run = Buffer.create 16 in
       let run_y = ref 0 and run_x = ref 0 and next_x = ref (-1) in
       let run_chain = ref [] in
@@ -1460,24 +1546,45 @@ let rec assemble t ~scope band =
         end;
         next_x := -1
       in
-      iter_band_cells t ~scope band ~grid
+      (* Whether the node last met paints cells the copy takes as drawn. *)
+      let last = ref None and drawn = ref false in
+      iter_highlighted t ~scope band ~grid
         ~owner:(fun ~x ~y ->
           let num = Screen.query_hit t.screen ~x ~y in
           if num = Screen.Hit_grid.empty_id then None else find_node t num)
         (fun ~x ~y idx node ->
-          let text = Grid.get_text grid idx in
-          if text = "" || text = " " then flush ()
-          else begin
-            if not (y = !run_y && x = !next_x) then begin
-              flush ();
-              run_y := y;
-              run_x := x;
-              run_chain := chain_of t band.origin node
-            end;
-            Buffer.add_string run text;
-            next_x := x + max 1 (Grid.cell_width grid idx)
-          end);
+          !lit_rows.(y - top) <- true;
+          (match !last with
+          | Some seen when seen == node -> ()
+          | Some _ | None ->
+              last := Some node;
+              drawn :=
+                Option.is_none (Renderable.text_rows node)
+                && is_direct t scope node);
+          if !drawn then
+            let text = Grid.get_text grid idx in
+            if text = "" || text = " " then flush ()
+            else begin
+              if not (y = !run_y && x = !next_x) then begin
+                flush ();
+                run_y := y;
+                run_x := x;
+                run_chain := chain_of t band.origin node
+              end;
+              Buffer.add_string run text;
+              next_x := x + max 1 (Grid.cell_width grid idx)
+            end);
       flush ());
+  let lit ~from ~until =
+    let rows = !lit_rows and top = !lit_top in
+    let n = ref 0 in
+    for
+      r = max (from + 1) top to min (until - 1) (top + Array.length rows - 1)
+    do
+      if rows.(r - top) then incr n
+    done;
+    !n
+  in
   let pieces =
     List.sort
       (fun a b ->
@@ -1493,7 +1600,7 @@ let rec assemble t ~scope band =
   ignore
     (List.fold_left
        (fun prev piece ->
-         Option.iter (fun prev -> separator buf prev piece) prev;
+         Option.iter (fun prev -> separator buf ~lit prev piece) prev;
          Buffer.add_string buf piece.text;
          Some piece)
        None pieces
@@ -1580,7 +1687,7 @@ let replace t next ~holds =
         let held =
           state.held || (Option.is_some sel.gesture && holds_text t sel)
         in
-        if Option.is_some sel.gesture then settle_region sel.box;
+        if Option.is_some sel.gesture then settle_gesture sel;
         held
   in
   state.current <- next;
@@ -1614,13 +1721,34 @@ let cell_reader t scope owner =
       | Direct -> up node
       | Inside box -> Option.bind (Renderable.parent box) up)
 
+(* Whether an end on the cell [x, y] of [scope], whose positions count from
+   [origin], lies in the text of [node], which paints the cell: [node] is a
+   text directly in [scope] that does not read [`Cells], or one that does
+   and shows a grapheme there. Past a line's end, a text that reads [`Cells]
+   shows blanks, as a terminal's row does. *)
+let on_text t scope origin node ~x ~y =
+  match text_rows_of t node with
+  | Some rows when is_direct t scope node -> (
+      Renderable.selectable node <> `Cells
+      ||
+      match offset t node origin with
+      | Some (ox, oy) ->
+          let first, last =
+            Layout.coverage rows.layout
+              ~row:(y - oy + rows.scroll_y)
+              ~column:(x - ox)
+          in
+          first < last
+      | None -> false)
+  | Some _ | None -> false
+
 (* A press of [clicks] starts a selection in the scope of the node it finds,
    or in the top layer when it finds none. One click on a cell that shows no
-   text, of a node that reads [`Cells], or no node's in a scope that reads
-   [`Cells], anchors at the cell, as a terminal's does. Otherwise the press
-   resolves to a text, its anchor the span of the unit those clicks select.
-   A single click the pointer does not leave selects nothing; a double or
-   triple click selects its unit at once. *)
+   grapheme, of a node that reads [`Cells], or no node's in a scope that
+   reads [`Cells], anchors at the cell, as a terminal's does. Otherwise the
+   press resolves to a text, its anchor the span of the unit those clicks
+   select. A single click the pointer does not leave selects nothing; a
+   double or triple click selects its unit at once. *)
 let start_selection t hit ~x ~y ~clicks =
   let scope, box =
     match hit with
@@ -1633,20 +1761,21 @@ let start_selection t hit ~x ~y ~clicks =
   let on_cell =
     match (unit, hit) with
     | Grapheme, Some node ->
-        Option.is_none (text_rows_of t node)
-        && Renderable.selectable node = `Cells
+        Renderable.selectable node = `Cells
+        && not (on_text t scope origin node ~x:cx ~y:cy)
     | Grapheme, None -> Renderable.selectable scope = `Cells
     | (Word | Line), _ -> false
   in
   let next =
     if on_cell then
       let node = Option.value hit ~default:scope in
+      let anchor = cell_end t origin node ~x:cx ~y:cy in
       Some
         {
           scope;
           box;
-          anchor = cell_end node ~x:cx ~y:cy;
-          focus = cell_end node ~x:cx ~y:cy;
+          anchor;
+          focus = anchor;
           unit;
           gesture = Some { pointer_x = x; pointer_y = y; click = true };
         }
@@ -1733,18 +1862,32 @@ let press_selection t ~x ~y ~shift ~clicks =
       in
       if not extended then start_selection t hit ~x ~y ~clicks
 
-(* The pointer of a gesture moves its selection's focus, and the scroll box
-   its press found scrolls while the pointer holds near or past its edge. A
-   gesture the pointer has left is no longer a click. *)
+(* The pointer of a gesture moves its selection's focus, and the boxes the
+   gesture scrolls move while the pointer holds near or past their edges:
+   each up or down while the pointer, held in the scope's view, lies within
+   its columns, and sideways while it lies within its rows, so that past its
+   corner it scrolls on neither axis. A gesture the pointer has left is no
+   longer a click. *)
 let drag_selection t ~x ~y =
   match t.selection_state.current with
-  | Some { gesture = Some g; box; _ } ->
+  | Some ({ gesture = Some g; _ } as sel) ->
       g.pointer_x <- x;
       g.pointer_y <- y;
       g.click <- false;
-      (match Renderable.Private.region box with
-      | Some decl -> decl.drag ~x ~y
-      | None -> ());
+      let view = region_view sel.scope in
+      let held_x = clamp x view.x view.width
+      and held_y = clamp y view.y view.height in
+      List.iter
+        (fun box ->
+          match Renderable.Private.region box with
+          | Some decl ->
+              let b = Renderable.bounds box in
+              let within v lo n = v >= lo && v < lo + n in
+              decl.drag
+                ~x:(if within held_y b.y b.height then Some x else None)
+                ~y:(if within held_x b.x b.width then Some y else None)
+          | None -> ())
+        (scrolled sel);
       t.ctx.schedule ()
   | Some { gesture = None; _ } | None -> ()
 
@@ -1809,7 +1952,7 @@ let far_end t sel band =
           match extreme_text t box ~last with
           | Some _ as e -> e
           | None when Renderable.selectable box = `Cells ->
-              Some (cell_end box ~x ~y)
+              Some (cell_end t band.origin box ~x ~y)
           | None -> None))
     (List.stable_sort farthest_first ends)
 
@@ -1823,11 +1966,13 @@ let end_selection_drag t =
   | Some ({ gesture = Some g; _ } as sel) -> (
       let band = band_of t sel in
       sel.gesture <- None;
-      settle_region sel.box;
-      (* A grapheme gesture released over a cell that shows no text keeps
-         the pointer's cell as its focus where that cell reads [`Cells], or
-         where nothing reads [`Text] or [`Cells] for it; otherwise the focus
-         is the band's far end. *)
+      settle_gesture sel;
+      (* A grapheme gesture released over a cell that shows no text, past a
+         line's end in a text that reads [`Cells] included, keeps the
+         pointer's cell as its focus where that cell reads [`Cells], on the
+         node that reads so, or where nothing reads [`Text] or [`Cells] for
+         it, on the scope's origin; otherwise the focus is the band's far
+         end. *)
       let pointer_cell () =
         let scope = sel.scope in
         let origin = region_origin scope and view = region_view scope in
@@ -1838,15 +1983,12 @@ let end_selection_drag t =
         | Word | Line -> None
         | Grapheme -> (
             match hit_node t ~x:px ~y:py with
-            | Some node
-              when Option.is_some (text_rows_of t node)
-                   && is_direct t scope node ->
-                None
+            | Some node when on_text t scope origin node ~x ~y -> None
             | hit -> (
                 match cell_reader t scope hit with
-                | Some (node, `Cells) -> Some (cell_end node ~x ~y)
+                | Some (node, `Cells) -> Some (cell_end t origin node ~x ~y)
                 | Some (_, `Text) -> None
-                | None -> Some (cell_end scope ~x ~y)))
+                | None -> Some (cell_end t origin origin ~x ~y)))
       in
       let settled =
         match band with
@@ -1962,38 +2104,42 @@ let extension_target t sel band direction =
   let focus = sel.focus in
   let forward = band.forward in
   match focus.cell with
-  | Some (x, y) -> (
+  | Some _ -> (
       (* A focus on a cell moves by cells over the scope's view, and takes
          the boundary of a text it lands on. On a cell that shows no text,
          it stays a cell where that cell reads [`Cells], and crosses to the
          next text where it reads [`Text]. *)
       let origin = band.origin in
-      let view = region_view scope in
-      let ox = Renderable.x origin and oy = Renderable.y origin in
-      let sx, sy =
-        match direction with
-        | `Left -> (x - 1, y)
-        | `Right -> (x + 1, y)
-        | `Up -> (x, y - 1)
-        | `Down -> (x, y + 1)
-        | `Row_start -> (view.x - ox, y)
-        | `Row_end -> (view.x + view.width - 1 - ox, y)
-      in
-      let px = clamp (sx + ox) view.x view.width
-      and py = clamp (sy + oy) view.y view.height in
-      let cx = px - ox and cy = py - oy in
-      match hit_node t ~x:px ~y:py with
-      | Some node
-        when Option.is_some (text_rows_of t node) && is_direct t scope node -> (
-          match offset t node origin with
-          | Some (nx, ny) -> boundary_at t node ~ox:nx ~oy:ny ~cx ~cy
-          | None -> None)
-      | hit -> (
-          match cell_reader t scope hit with
-          | Some (node, `Cells) -> Some (cell_end node ~x:cx ~y:cy, cy)
-          | Some (_, `Text) ->
-              cross t scope ~box:scope ~cx:x ~cy:y ~top:y ~bottom:y direction
-          | None -> Some (cell_end scope ~x:cx ~y:cy, cy)))
+      match end_cells t scope origin focus with
+      | None -> None
+      | Some (x, y, _, _) -> (
+          let view = region_view scope in
+          let ox = Renderable.x origin and oy = Renderable.y origin in
+          let sx, sy =
+            match direction with
+            | `Left -> (x - 1, y)
+            | `Right -> (x + 1, y)
+            | `Up -> (x, y - 1)
+            | `Down -> (x, y + 1)
+            | `Row_start -> (view.x - ox, y)
+            | `Row_end -> (view.x + view.width - 1 - ox, y)
+          in
+          let px = clamp (sx + ox) view.x view.width
+          and py = clamp (sy + oy) view.y view.height in
+          let cx = px - ox and cy = py - oy in
+          match hit_node t ~x:px ~y:py with
+          | Some node when on_text t scope origin node ~x:cx ~y:cy -> (
+              match offset t node origin with
+              | Some (nx, ny) -> boundary_at t node ~ox:nx ~oy:ny ~cx ~cy
+              | None -> None)
+          | hit -> (
+              match cell_reader t scope hit with
+              | Some (node, `Cells) ->
+                  Some (cell_end t origin node ~x:cx ~y:cy, cy)
+              | Some (_, `Text) ->
+                  cross t scope ~box:scope ~cx:x ~cy:y ~top:y ~bottom:y
+                    direction
+              | None -> Some (cell_end t origin origin ~x:cx ~y:cy, cy))))
   | None -> (
       match placement t scope focus.node with
       | Outside -> None
@@ -2170,8 +2316,12 @@ let text_changed_of t node =
       | Some rows ->
           let next = Layout.source rows.layout in
           let span = ref None in
+          (* An end on a cell names no text, and stays on its cell. *)
           let follow (e : end_) =
-            if (not (e.node == node)) || e.source == next then e
+            if
+              (not (e.node == node))
+              || Option.is_some e.cell || e.source == next
+            then e
             else
               let s =
                 match !span with
@@ -2728,61 +2878,24 @@ let layout_frame ?(animate = true) t ~width ~height ~dt =
   prepare_commands t ~width ~height ~frame:animate ~dt;
   t.frame <- Some { width; height; dt }
 
-(* Every cell of the selection's band in its scope's view whose cells the
-   selection takes is drawn again with the [Highlight] role of its node's
-   theme over its own style, blanks included, as a terminal shows its
-   selection: a cell of a node directly in the scope that reads [`Cells],
-   or of one inside a nested scope the band covers, within that scope's
-   view; a cell no node paints reads as the scope. Other cells keep their
-   style. *)
+(* Every cell of the selection's band that it highlights as a terminal
+   does is drawn again with the [Highlight] role of its node's theme over
+   its own style, blanks included. Other cells keep their style. *)
 let highlight_cells t ~grid ~hits =
   match t.selection_state.current with
   | None -> ()
   | Some sel -> (
       match current_band t sel with
       | Some band when not band.empty ->
-          let scope = sel.scope in
-          let view = region_view scope in
-          let draw ~x ~y idx node =
-            let style =
-              Ansi.Style.merge ~base:(Grid.get_style grid idx)
-                ~overlay:(Theme.style (Renderable.theme node) Highlight)
-            in
-            let text = Grid.get_text grid idx in
-            Grid.draw_text ~style grid ~x ~y
-              ~text:(if text = "" then " " else text)
-          in
-          (* The box on the screen in which the band takes [node]'s cells. *)
-          let taken node =
-            if not (takes_cells t node) then None
-            else
-              match placement t scope node with
-              | Outside -> None
-              | Direct -> Some view
-              | Inside box -> (
-                  match view_of t band.origin box with
-                  | Some v when covers band v -> Some (region_view box)
-                  | Some _ | None -> None)
-          in
-          let unowned = takes_cells t scope in
-          let last = ref None and within = ref None in
-          iter_band band ~grid ~view (fun ~x ~y idx ->
-              match owner_in t hits ~x ~y with
-              | Some node -> (
-                  (match !last with
-                  | Some seen when seen == node -> ()
-                  | Some _ | None ->
-                      last := Some node;
-                      within := taken node);
-                  match !within with
-                  | Some (r : Grid.region)
-                    when x >= r.x
-                         && x < r.x + r.width
-                         && y >= r.y
-                         && y < r.y + r.height ->
-                      draw ~x ~y idx node
-                  | Some _ | None -> ())
-              | None -> if unowned then draw ~x ~y idx scope)
+          iter_highlighted t ~scope:sel.scope band ~grid
+            ~owner:(owner_in t hits) (fun ~x ~y idx node ->
+              let style =
+                Ansi.Style.merge ~base:(Grid.get_style grid idx)
+                  ~overlay:(Theme.style (Renderable.theme node) Highlight)
+              in
+              let text = Grid.get_text grid idx in
+              Grid.draw_text ~style grid ~x ~y
+                ~text:(if text = "" then " " else text))
       | Some _ | None -> ())
 
 let paint_frame t ~height =
