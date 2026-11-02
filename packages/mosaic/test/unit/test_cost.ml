@@ -178,17 +178,20 @@ let hidden_transcript_rows () =
   same "a steady frame grows with the rows the viewport hides"
     ~small:(frame 1_000) ~large:(frame 10_000)
 
-(* ───── A text selection in a scrolled transcript ─────
+(* ───── A selection in a scrolled transcript ─────
 
    A selection's motion, the frame that paints it and its copy
    cost what the selection and the viewport hold, not the rows the
-   transcript hides. A motion maps the pointer in the region and the frame
-   reads each painted text's range from the band; a copy visits the texts
-   the band covers. *)
+   transcript hides, whether the transcript reads [`Text], a scope of its
+   own, or [`Cells], a window in its root's. A motion maps the pointer in
+   the scope and the frame reads each painted text's range from the band; a
+   copy visits the texts the band covers. *)
 
-(* [rows] selectable rows behind a 24-row viewport. *)
-let selectable_transcript rows =
+(* [rows] selectable rows behind a 24-row viewport, under a root that reads
+   [reading]. *)
+let selectable_transcript reading rows =
   let renderer = Renderer.create () in
+  Renderable.set_selectable (Renderer.root renderer) (Some reading);
   let px n = Toffee.Style.Dimension.length (Float.of_int n) in
   let scroll =
     Scroll_box.create ~parent:(Renderer.root renderer)
@@ -212,9 +215,9 @@ let mouse renderer kind ~x ~y =
     (Test_harness.dispatch_mouse renderer (Test_harness.mouse_report ~x ~y kind)
       : Event.mouse)
 
-let selection_drag () =
+let selection_drag reading () =
   let cost rows =
-    let renderer = selectable_transcript rows in
+    let renderer = selectable_transcript reading rows in
     mouse renderer (Press Left) ~x:2 ~y:3;
     mouse renderer (Motion (Some Left)) ~x:10 ~y:6;
     render_frame renderer;
@@ -226,9 +229,9 @@ let selection_drag () =
   same "a drag's motion and frame grow with the rows the viewport hides"
     ~small:(cost 1_000) ~large:(cost 10_000)
 
-let selection_word_drag () =
+let selection_word_drag reading () =
   let cost rows =
-    let renderer = selectable_transcript rows in
+    let renderer = selectable_transcript reading rows in
     let start = Test_harness.tick () in
     let at i kind =
       ignore
@@ -251,9 +254,9 @@ let selection_word_drag () =
   same "a word drag's motion and frame grow with the rows the viewport hides"
     ~small:(cost 1_000) ~large:(cost 10_000)
 
-let selection_key_crossing () =
+let selection_key_crossing reading () =
   let cost rows =
-    let renderer = selectable_transcript rows in
+    let renderer = selectable_transcript reading rows in
     mouse renderer (Press Left) ~x:2 ~y:3;
     mouse renderer (Motion (Some Left)) ~x:10 ~y:5;
     mouse renderer (Release (Some Left)) ~x:10 ~y:5;
@@ -265,9 +268,9 @@ let selection_key_crossing () =
   same "a key extension across texts grows with the rows the viewport hides"
     ~small:(cost 1_000) ~large:(cost 10_000)
 
-let selection_copy () =
+let selection_copy reading () =
   let cost rows =
-    let renderer = selectable_transcript rows in
+    let renderer = selectable_transcript reading rows in
     mouse renderer (Press Left) ~x:2 ~y:3;
     mouse renderer (Motion (Some Left)) ~x:10 ~y:5;
     mouse renderer (Release (Some Left)) ~x:10 ~y:5;
@@ -913,10 +916,17 @@ let () =
         [ test "a scrolled transcript" hidden_transcript_rows ];
       group "A text selection follows the visible area"
         [
-          test "a drag's motion and frame" selection_drag;
-          test "a word drag's motion and frame" selection_word_drag;
-          test "a key extension across texts" selection_key_crossing;
-          test "a copy" selection_copy;
+          test "a drag's motion and frame" (selection_drag `Text);
+          test "a word drag's motion and frame" (selection_word_drag `Text);
+          test "a key extension across texts" (selection_key_crossing `Text);
+          test "a copy" (selection_copy `Text);
+        ];
+      group "A cell selection follows the visible area"
+        [
+          test "a drag's motion and frame" (selection_drag `Cells);
+          test "a word drag's motion and frame" (selection_word_drag `Cells);
+          test "a key extension across texts" (selection_key_crossing `Cells);
+          test "a copy" (selection_copy `Cells);
         ];
       group "An element that declares nothing shares its records"
         [ test "a text" default_text ];
