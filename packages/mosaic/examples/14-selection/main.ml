@@ -69,7 +69,9 @@ let view { scroll; copied } =
             ];
         ];
       (* Main content area *)
-      box ~flex_grow:1. ~flex_direction:Row ~gap:(gap 1) ~padding:(padding 1)
+      box ~flex_grow:1.
+        ~min_size:{ width = px 0; height = px 0 }
+        ~flex_direction:Row ~gap:(gap 1) ~padding:(padding 1)
         [
           (* Left panel: Document sections *)
           box ~flex_grow:1. ~flex_direction:Column ~gap:(gap 1)
@@ -106,9 +108,12 @@ let view { scroll; copied } =
                 ];
             ];
           (* Right panel: Scrollable content *)
-          box ~flex_grow:1. ~flex_direction:Column
+          box ~flex_grow:1.
+            ~min_size:{ width = px 0; height = px 0 }
+            ~flex_direction:Column
             [
               box ~border:true ~flex_grow:1.
+                ~min_size:{ width = px 0; height = px 0 }
                 ~background:(Ansi.Color.grayscale ~level:1)
                 ~title:"Scrollable Content"
                 [
