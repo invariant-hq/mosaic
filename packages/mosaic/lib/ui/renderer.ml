@@ -74,6 +74,10 @@ type gesture = {
    Shift+press makes a new selection. *)
 type selection = {
   region : Renderable.t;
+      (* The selection's scope: the root of the layer its press found. *)
+  box : Renderable.t;
+      (* The scroll box the press found, or the scope: a drag past its top or
+         bottom edge scrolls it. *)
   mutable anchor : end_;
   mutable focus : end_;
       (* The focus at rest. While a gesture drags the selection, the focus
@@ -98,6 +102,11 @@ type band = {
   focus_span : end_ option;
   forward : bool;
   empty : bool;
+  low_box : (Renderable.t * int * int) option;
+  high_box : (Renderable.t * int * int) option;
+      (* An end that a scroll box has scrolled out of view stands, for the
+         band, at the edge of that box's view: the box and the end's own
+         cell, for the text of the box between the two. *)
 }
 
 type selection_change = Settled of string | Cleared
@@ -546,6 +555,16 @@ let placement t region node =
   in
   up node None
 
+let in_scope t scope node =
+  match placement t scope node with
+  | Outside -> false
+  | Direct | Inside _ -> true
+
+(* The root of [node]'s layer: the top layer it is in, or the root. *)
+let rec layer_of t node =
+  if is_top_layer t node then node
+  else match Renderable.parent node with Some p -> layer_of t p | None -> node
+
 (* The view of the scroll box [box], as [x, y, w, h] in the coordinates of
    the region that counts from [origin]. *)
 let box_view t origin box =
@@ -558,33 +577,96 @@ let box_view t origin box =
           let w, h = layout_size t decl.viewport in
           Some (x, y, w, h))
 
-(* Whether the band covers every cell of [x, y, w, h]. *)
-let covers band (x, y, w, h) =
-  w > 0 && h > 0
-  && precedes band.low_x band.low_y x y
-  && precedes (x + w) (y + h - 1) band.high_x band.high_y
-
 let clamp v lo n = if n <= 0 then v else max lo (min v (lo + n - 1))
+
+(* A culling node lists the children on rows [lo, hi] alone, in its own
+   coordinates. Its cross axis is left unbounded. *)
+let unbounded = 1 lsl 40
+
+(* The scroll boxes between [node] and [scope], innermost first, with their
+   views in the coordinates that count from [origin]. *)
+let boxes_of t scope origin node =
+  let rec up n acc =
+    if n == scope then List.rev acc
+    else
+      match Renderable.parent n with
+      | None -> List.rev acc
+      | Some p ->
+          let acc =
+            match Renderable.Private.region p with
+            | Some _ when not (p == scope) -> (
+                match box_view t origin p with
+                | Some view -> (p, view) :: acc
+                | None -> acc)
+            | Some _ | None -> acc
+          in
+          up p acc
+  in
+  up node []
+
+(* The rows the scroll boxes [boxes] show of what they hold. *)
+let clip_rows boxes =
+  List.fold_left
+    (fun (top, bottom) (_, (_, y, _, h)) -> (max top y, min bottom (y + h - 1)))
+    (min_int, max_int) boxes
+
+(* Where the cell [x, y] of an end stands for the band: at the edge of each
+   scroll box of [boxes] whose view it has scrolled out of, the corner its
+   view starts at when above and the cell after its view when below, with
+   the innermost such box. *)
+let clamp_end boxes x y =
+  let rec go boxes x y clamped =
+    match boxes with
+    | [] -> (x, y, clamped)
+    | (box, (vx, vy, vw, vh)) :: rest ->
+        let first = match clamped with None -> Some box | Some _ -> clamped in
+        if y < vy then go rest vx vy first
+        else if y > vy + vh - 1 then go rest (vx + vw) (vy + vh - 1) first
+        else go rest x y clamped
+  in
+  go boxes x y None
 
 (* The range the band selects in a text directly in its region whose origin
    is at [ox, oy]: from the cover of its first cell to that of its last, and
    the span of each end in the text whole. *)
-let range_in band node (rows : Renderable.text_rows) ~ox ~oy =
+let range_in band node (rows : Renderable.text_rows) ~ox ~oy ~clip:(top, bottom)
+    =
   let cover ~x ~y =
     Layout.coverage rows.layout ~row:(y - oy + rows.scroll_y) ~column:(x - ox)
   in
-  let first = fst (cover ~x:band.low_x ~y:band.low_y)
-  and last = snd (cover ~x:(band.high_x - 1) ~y:band.high_y) in
-  let widen (e : end_) (first, last) =
-    if e.node == node then (min first e.first, max last e.last)
-    else (first, last)
+  (* In the scroll box an end has scrolled out of, the band reaches the end
+     itself; elsewhere it stops at the rows the text's boxes show. *)
+  let inside = function
+    | Some (box, x, y) when ancestor_of box node -> Some (x, y)
+    | Some _ | None -> None
   in
-  let first, last =
-    match band.focus_span with
-    | Some focus -> widen focus (widen band.anchor_span (first, last))
-    | None -> widen band.anchor_span (first, last)
+  let low_x, low_y, top =
+    match inside band.low_box with
+    | Some (x, y) -> (x, y, min_int)
+    | None -> (band.low_x, band.low_y, top)
+  and high_x, high_y, bottom =
+    match inside band.high_box with
+    | Some (x, y) -> (x, y, max_int)
+    | None -> (band.high_x, band.high_y, bottom)
   in
-  if first < last then Some (first, last) else None
+  if high_y < top || low_y > bottom then None
+  else
+    let low_x, low_y = if low_y < top then (ox - 1, top) else (low_x, low_y) in
+    let high_x, high_y =
+      if high_y > bottom then (ox + unbounded, bottom) else (high_x, high_y)
+    in
+    let first = fst (cover ~x:low_x ~y:low_y)
+    and last = snd (cover ~x:(high_x - 1) ~y:high_y) in
+    let widen (e : end_) (first, last) =
+      if e.node == node then (min first e.first, max last e.last)
+      else (first, last)
+    in
+    let first, last =
+      match band.focus_span with
+      | Some focus -> widen focus (widen band.anchor_span (first, last))
+      | None -> widen band.anchor_span (first, last)
+    in
+    if first < last then Some (first, last) else None
 
 let whole (rows : Renderable.text_rows) =
   let n = Layout.Source.length (Layout.source rows.layout) in
@@ -593,10 +675,9 @@ let whole (rows : Renderable.text_rows) =
 (* The rows a box spans, in region coordinates. *)
 type extent = { top : int; bottom : int }
 
-(* What a region holds of a band: a text's selected range, or a scroll box it
-   covers, whose text is selected whole. [chain] is the extents of the boxes
-   from it up to the region, innermost first, shared with its siblings'.
-   [order] is its place in the tree. *)
+(* What a scope holds of a band: a text's selected range. [chain] is the
+   extents of the boxes from it up to the scope, innermost first, shared with
+   its siblings'. [order] is its place in the tree. *)
 type item =
   | Text_item of {
       node : Renderable.t;
@@ -608,25 +689,17 @@ type item =
       chain : extent list;
       order : int;
     }
-  | Box_item of {
-      box : Renderable.t;
-      view : int * int * int * int;
-      chain : extent list;
-      order : int;
-    }
-
-(* A culling node lists the children on rows [lo, hi] alone, in its own
-   coordinates. Its cross axis is left unbounded. *)
-let unbounded = 1 lsl 40
 
 (* [items t ~region band] is what [region] holds of [band] in tree order, or
-   of all of its text when [band] is [None]. Only the children of a culling
-   node that reach the band's rows are visited, so the cost grows with what
-   the band crosses. *)
+   of all of its text when [band] is [None]. A text in a scroll box holds the
+   rows the box shows, and, in the box an end has scrolled out of, the rows
+   between the end and the box's view. Only the children of a culling node
+   that reach the band's rows are visited, so the cost grows with what the
+   band crosses. *)
 let items t ~region band =
   let origin = region_origin region in
   let acc = ref [] and order = ref 0 in
-  let rec visit node ~ox ~oy chain =
+  let rec visit node ~ox ~oy ~clip chain =
     if
       Renderable.visible node
       && (not (Renderable.destroyed node))
@@ -634,40 +707,34 @@ let items t ~region band =
     then begin
       let _, h = layout_size t node in
       let chain = { top = oy; bottom = oy + h } :: chain in
-      match Renderable.Private.region node with
-      | Some _ when not (node == region) -> (
-          match box_view t node node with
-          | Some (vx, vy, vw, vh) ->
-              let view = (ox + vx, oy + vy, vw, vh) in
-              let covered =
-                match band with None -> true | Some b -> covers b view
-              in
-              if covered then begin
-                incr order;
-                acc :=
-                  Box_item { box = node; view; chain; order = !order } :: !acc
-              end
-          | None -> ())
-      | Some _ | None ->
-          (match text_rows_of t node with
+      (match text_rows_of t node with
+      | None -> ()
+      | Some rows -> (
+          let range =
+            match band with
+            | None -> whole rows
+            | Some b -> range_in b node rows ~ox ~oy ~clip
+          in
+          match range with
           | None -> ()
-          | Some rows -> (
-              let range =
-                match band with
-                | None -> whole rows
-                | Some b -> range_in b node rows ~ox ~oy
-              in
-              match range with
-              | None -> ()
-              | Some (first, last) ->
-                  incr order;
-                  acc :=
-                    Text_item
-                      { node; rows; ox; oy; first; last; chain; order = !order }
-                    :: !acc));
-          visit_children node ~ox ~oy chain
+          | Some (first, last) ->
+              incr order;
+              acc :=
+                Text_item
+                  { node; rows; ox; oy; first; last; chain; order = !order }
+                :: !acc));
+      let clip =
+        match Renderable.Private.region node with
+        | Some _ when not (node == region) -> (
+            match box_view t node node with
+            | Some (_, vy, _, vh) ->
+                (max (fst clip) (oy + vy), min (snd clip) (oy + vy + vh - 1))
+            | None -> clip)
+        | Some _ | None -> clip
+      in
+      visit_children node ~ox ~oy ~clip chain
     end
-  and visit_children node ~ox ~oy chain =
+  and visit_children node ~ox ~oy ~clip chain =
     let child c =
       match Toffee.layout t.tree (Renderable.Private.toffee_node c) with
       | Error _ -> ()
@@ -676,23 +743,26 @@ let items t ~region band =
           visit c
             ~ox:(ox + cell (Renderable.Private.location_x c layout) + tx)
             ~oy:(oy + cell (Renderable.Private.location_y c layout) + ty)
-            chain
+            ~clip chain
     in
     match band with
     | Some b when Renderable.viewport_cull node ->
+        let reach default = function Some (_, _, y) -> y | None -> default in
+        let lo = min b.low_y (reach b.low_y b.low_box)
+        and hi = max b.high_y (reach b.high_y b.high_box) in
         let viewport : Grid.region =
           {
             x = Renderable.x node - unbounded;
-            y = Renderable.y node + (b.low_y - oy);
+            y = Renderable.y node + (lo - oy);
             width = 2 * unbounded;
-            height = b.high_y - b.low_y + 1;
+            height = hi - lo + 1;
           }
         in
         Renderable.Private.iter_children_in_viewport ~parent:node ~viewport
           child
     | Some _ | None -> Renderable.Private.iter_children_z node child
   in
-  visit origin ~ox:0 ~oy:0 [];
+  visit origin ~ox:0 ~oy:0 ~clip:(min_int, max_int) [];
   List.rev !acc
 
 (* The first and last cells of the box [x, y, w, h] at or after, and before,
@@ -756,7 +826,7 @@ let painted_texts t region =
   for i = t.cmd_len - 1 downto 0 do
     match t.commands.(i) with
     | Render node
-      when Option.is_some (text_rows_of t node) && region_of t node == region ->
+      when Option.is_some (text_rows_of t node) && in_scope t region node ->
         texts :=
           ( node,
             Renderable.x node - ox,
@@ -779,7 +849,7 @@ let region_texts t region =
         ->
           let w, h = layout_size t node in
           Some (node, ox, oy, w, h)
-      | Text_item _ | Box_item _ -> None)
+      | Text_item _ -> None)
     (items t ~region None)
 
 (* The nearest text of [region] to its cell [cx, cy], as a press resolves
@@ -795,7 +865,7 @@ let resolve_cell t region ~cx ~cy =
 let resolve_press t region ~cx ~cy hit =
   match hit with
   | Some node
-    when Option.is_some (text_rows_of t node) && region_of t node == region ->
+    when Option.is_some (text_rows_of t node) && in_scope t region node ->
       Some node
   | Some _ | None -> resolve_cell t region ~cx ~cy
 
@@ -824,7 +894,7 @@ let end_cells t region origin (e : end_) =
   else
     match placement t region e.node with
     | Outside -> None
-    | Direct -> (
+    | Direct | Inside _ -> (
         match (offset t e.node origin, current_rows t e.node) with
         | Some (ox, oy), Some rows ->
             let x, y =
@@ -835,32 +905,33 @@ let end_cells t region origin (e : end_) =
             in
             Some (x, y, x', y')
         | _ -> None)
-    | Inside box -> (
-        match box_view t origin box with
-        | Some (x, y, w, h) -> Some (x, y, x + w, y + h - 1)
-        | None -> None)
 
 let hit_node t ~x ~y =
   let num = query_input_hit t ~x ~y in
   if num > 0 then find_node t num else None
 
 (* The selection's band: from the earlier of its ends' first cells to the later
-   of the cells after their spans. While a gesture drags the selection, its
-   focus is the pointer's cell, held in the region's view, and for a word or a
-   line the span of that unit in the text the cell resolves to as a press does,
-   which the band reaches. Over a nested box the focus is the pointer's cell
-   alone, and the box is selected only once covered. An end whose node is not
-   shown gives no band, though the selection clears before one is hidden or
-   unmounted. *)
+   of the cells after their spans, on the screen. While a gesture drags the
+   selection, its focus is the pointer's cell, and for a word or a line the
+   span of that unit in the text the cell resolves to as a press does, which
+   the band reaches. An end that a scroll box has scrolled out of view stands
+   at the edge of the box's view. An end whose node is not shown gives no
+   band, though the selection clears before one is hidden or unmounted. *)
 let band_of t sel =
-  let origin = region_origin sel.region in
-  match end_cells t sel.region origin sel.anchor with
+  let scope = sel.region in
+  let origin = region_origin scope in
+  let ends e =
+    Option.map
+      (fun cells -> (cells, boxes_of t scope origin e.node))
+      (end_cells t scope origin e)
+  in
+  match ends sel.anchor with
   | None -> None
-  | Some (ax, ay, ax', ay') -> (
+  | Some ((ax, ay, ax', ay'), anchor_boxes) -> (
       let focus =
         match sel.gesture with
         | Some g ->
-            let view = region_view sel.region in
+            let view = region_view scope in
             let px = clamp g.pointer_x view.x view.width
             and py = clamp g.pointer_y view.y view.height in
             let x = px - Renderable.x origin and y = py - Renderable.y origin in
@@ -868,25 +939,16 @@ let band_of t sel =
               match sel.unit with
               | Grapheme -> None
               | Word | Line -> (
-                  let hit = hit_node t ~x:px ~y:py in
-                  let in_box =
-                    match hit with
-                    | Some n -> (
-                        match placement t sel.region n with
-                        | Inside _ -> true
-                        | Direct | Outside -> false)
-                    | None -> false
-                  in
-                  if in_box then None
-                  else
-                    match resolve_press t sel.region ~cx:x ~cy:y hit with
-                    | Some node -> unit_end t origin node sel.unit ~cx:x ~cy:y
-                    | None -> None)
+                  match
+                    resolve_press t scope ~cx:x ~cy:y (hit_node t ~x:px ~y:py)
+                  with
+                  | Some node -> unit_end t origin node sel.unit ~cx:x ~cy:y
+                  | None -> None)
             in
             let cells =
               match span with
               | Some e -> (
-                  match end_cells t sel.region origin e with
+                  match end_cells t scope origin e with
                   | Some (sx, sy, ex, ey) ->
                       let sx, sy =
                         if precedes sx sy x y then (sx, sy) else (x, y)
@@ -897,19 +959,36 @@ let band_of t sel =
                   | None -> (x, y, x + 1, y))
               | None -> (x, y, x + 1, y)
             in
-            Some (cells, span)
+            Some (cells, [], span)
         | None ->
             Option.map
-              (fun cells -> (cells, Some sel.focus))
-              (end_cells t sel.region origin sel.focus)
+              (fun (cells, boxes) -> (cells, boxes, Some sel.focus))
+              (ends sel.focus)
       in
       match focus with
       | None -> None
-      | Some ((fx, fy, fx', fy'), focus_span) ->
-          let forward = precedes ax ay fx fy in
-          let low_x, low_y = if forward then (ax, ay) else (fx, fy) in
-          let high_x, high_y =
-            if precedes ax' ay' fx' fy' then (fx', fy') else (ax', ay')
+      | Some ((fx, fy, fx', fy'), focus_boxes, focus_span) ->
+          let a_lo = clamp_end anchor_boxes ax ay
+          and a_hi = clamp_end anchor_boxes ax' ay'
+          and f_lo = clamp_end focus_boxes fx fy
+          and f_hi = clamp_end focus_boxes fx' fy' in
+          (* The order of two ends that stand at one cell is their own. *)
+          let before (x, y, _) (x', y', _) (rx, ry) (rx', ry') =
+            if x = x' && y = y' then precedes rx ry rx' ry'
+            else precedes x y x' y'
+          in
+          let forward = before a_lo f_lo (ax, ay) (fx, fy) in
+          let box_of (_, _, clamped) rx ry =
+            Option.map (fun box -> (box, rx, ry)) clamped
+          in
+          let (low_x, low_y, _), low_box =
+            if forward then (a_lo, box_of a_lo ax ay)
+            else (f_lo, box_of f_lo fx fy)
+          in
+          let (high_x, high_y, _), high_box =
+            if before a_hi f_hi (ax', ay') (fx', fy') then
+              (f_hi, box_of f_hi fx' fy')
+            else (a_hi, box_of a_hi ax' ay')
           in
           let empty =
             match sel.gesture with Some g -> g.click | None -> false
@@ -925,6 +1004,8 @@ let band_of t sel =
               focus_span;
               forward;
               empty;
+              low_box;
+              high_box;
             })
 
 (* The band of the paint in progress is derived once for all its nodes. *)
@@ -952,14 +1033,14 @@ let selected_range_of t node =
           | Some band -> (
               match placement t sel.region node with
               | Outside -> None
-              | Direct -> (
+              | Direct | Inside _ -> (
                   match offset t node band.origin with
-                  | Some (ox, oy) -> range_in band node rows ~ox ~oy
-                  | None -> None)
-              | Inside box -> (
-                  match box_view t band.origin box with
-                  | Some view when covers band view -> whole rows
-                  | Some _ | None -> None))))
+                  | Some (ox, oy) ->
+                      let clip =
+                        clip_rows (boxes_of t sel.region band.origin node)
+                      in
+                      range_in band node rows ~ox ~oy ~clip
+                  | None -> None))))
 
 (* ───── Copy ─────
 
@@ -1043,13 +1124,12 @@ let item_rows (rows : Renderable.text_rows) ~oy ~first ~last =
    begins or ends a fragment is dropped, the separator standing for it.
    When the fragments hold nothing but terminators, no separator stands for
    them: the text is all of them, as their highlight shows. *)
-let rec assemble t ~region band =
+let assemble t ~region band =
   let items = items t ~region band in
   (* How many items lie on each row. *)
   let lo = ref max_int and hi = ref min_int in
-  let span = function
-    | Text_item i -> item_rows i.rows ~oy:i.oy ~first:i.first ~last:i.last
-    | Box_item { view = _, y, _, h; _ } -> (y, y + h - 1)
+  let span (Text_item i) =
+    item_rows i.rows ~oy:i.oy ~first:i.first ~last:i.last
   in
   List.iter
     (fun item ->
@@ -1113,38 +1193,20 @@ let rec assemble t ~region band =
     end
   in
   List.iter
-    (function
-      | Text_item i ->
-          let src = Layout.source i.rows.layout in
-          let r0, r1 = item_rows i.rows ~oy:i.oy ~first:i.first ~last:i.last in
-          let from = ref i.first in
-          for r = r0 + 1 to r1 do
-            if shared r || shared (r - 1) then begin
-              let g =
-                Layout.row_start i.rows.layout (r - i.oy + i.rows.scroll_y)
-              in
-              add_piece ~src ~rows:i.rows ~ox:i.ox ~oy:i.oy ~enclosed:i.chain
-                ~rank:i.order !from g;
-              from := g
-            end
-          done;
+    (fun (Text_item i) ->
+      let src = Layout.source i.rows.layout in
+      let r0, r1 = item_rows i.rows ~oy:i.oy ~first:i.first ~last:i.last in
+      let from = ref i.first in
+      for r = r0 + 1 to r1 do
+        if shared r || shared (r - 1) then begin
+          let g = Layout.row_start i.rows.layout (r - i.oy + i.rows.scroll_y) in
           add_piece ~src ~rows:i.rows ~ox:i.ox ~oy:i.oy ~enclosed:i.chain
-            ~rank:i.order !from i.last
-      | Box_item { box; view = x, y, w, h; chain; order } ->
-          let text = assemble t ~region:box None in
-          if text <> "" then only_breaks := false;
-          if text <> "" then
-            pieces :=
-              {
-                text;
-                row = y;
-                col = x;
-                end_row = y + h - 1;
-                end_col = x + w;
-                enclosed = chain;
-                rank = order;
-              }
-              :: !pieces)
+            ~rank:i.order !from g;
+          from := g
+        end
+      done;
+      add_piece ~src ~rows:i.rows ~ox:i.ox ~oy:i.oy ~enclosed:i.chain
+        ~rank:i.order !from i.last)
     items;
   let pieces =
     List.sort
@@ -1185,15 +1247,12 @@ let holds_text t sel =
   match band_of t sel with
   | Some band when not band.empty ->
       let found = items t ~region:sel.region (Some band) in
-      let rec has_grapheme = function
-        | Text_item { rows; first; last; _ } ->
-            let src = Layout.source rows.layout in
-            let rec from g =
-              g < last && ((not (is_terminator src g)) || from (g + 1))
-            in
-            from first
-        | Box_item { box; _ } ->
-            List.exists has_grapheme (items t ~region:box None)
+      let has_grapheme (Text_item { rows; first; last; _ }) =
+        let src = Layout.source rows.layout in
+        let rec from g =
+          g < last && ((not (is_terminator src g)) || from (g + 1))
+        in
+        from first
       in
       List.exists has_grapheme found
       || (found <> [] && assemble t ~region:sel.region (Some band) <> "")
@@ -1248,7 +1307,7 @@ let replace t next ~holds =
         let held =
           state.held || (Option.is_some sel.gesture && holds_text t sel)
         in
-        if Option.is_some sel.gesture then settle_region sel.region;
+        if Option.is_some sel.gesture then settle_region sel.box;
         held
   in
   state.current <- next;
@@ -1264,8 +1323,10 @@ let clear_selection t =
    click the pointer does not leave selects nothing; a double or triple
    click selects its unit at once. *)
 let start_selection t hit ~x ~y ~clicks =
-  let region =
-    match hit with Some node -> region_of t node | None -> layer_root t
+  let region, box =
+    match hit with
+    | Some node -> (layer_of t node, region_of t node)
+    | None -> (layer_root t, layer_root t)
   in
   let origin = region_origin region in
   let cx = x - Renderable.x origin and cy = y - Renderable.y origin in
@@ -1283,6 +1344,7 @@ let start_selection t hit ~x ~y ~clicks =
             Some
               {
                 region;
+                box;
                 anchor;
                 focus = anchor;
                 unit;
@@ -1319,6 +1381,7 @@ let move_nearer_end t sel band ~x ~y ~clicks =
   let next =
     {
       region = sel.region;
+      box = sel.box;
       anchor;
       focus = anchor;
       unit;
@@ -1355,70 +1418,40 @@ let press_selection t ~x ~y ~shift ~clicks =
    pointer has left is no longer a click. *)
 let drag_selection t ~x ~y =
   match t.selection_state.current with
-  | Some { gesture = Some g; region; _ } ->
+  | Some { gesture = Some g; box; _ } ->
       g.pointer_x <- x;
       g.pointer_y <- y;
       g.click <- false;
-      (match Renderable.Private.region region with
+      (match Renderable.Private.region box with
       | Some decl -> decl.drag ~x ~y
       | None -> ());
       t.ctx.schedule ()
   | Some { gesture = None; _ } | None -> ()
 
-(* The deepest text of [box], first or last in the region's order. *)
-let extreme_text t box ~last =
-  let ends =
-    List.filter_map
-      (function
-        | Text_item { node; rows; ox; oy; first; last = stop; _ } ->
-            let g = if last then stop else first in
-            let x, y =
-              locate_cell rows ~ox ~oy
-                ~affinity:(if last then Upstream else Downstream)
-                g
-            in
-            Some (end_in node rows ~first:g ~last:g, x, y)
-        | Box_item _ -> None)
-      (items t ~region:box None)
-  in
-  List.fold_left
-    (fun best (e, x, y) ->
-      match best with
-      | Some (_, bx, by) when last && precedes x y bx by -> best
-      | Some (_, bx, by) when (not last) && precedes bx by x y -> best
-      | Some _ | None -> Some (e, x, y))
-    None ends
-  |> Option.map (fun (e, _, _) -> e)
-
 (* When the gesture settles, its focus becomes the band's far end, in its
    fragment's node, so the highlight stays where it is: the end of the
    last fragment when the focus was after the anchor, else the start of the
-   first. A scroll box covered at the far end gives the end of its own last
-   or first text, which stands at the corner of its view. *)
+   first. *)
 let far_end t sel band =
   let last = band.forward in
   let ends =
     List.map
-      (function
-        | Text_item { node; rows; ox; oy; first; last = stop; _ } ->
-            let g = if last then stop else first in
-            let x, y =
-              locate_cell rows ~ox ~oy
-                ~affinity:(if last then Upstream else Downstream)
-                g
-            in
-            (`Text (end_in node rows ~first:g ~last:g), x, y)
-        | Box_item { box; view = x, y, w, h; _ } ->
-            if last then (`Box box, x + w, y + h - 1) else (`Box box, x, y))
+      (fun (Text_item { node; rows; ox; oy; first; last = stop; _ }) ->
+        let g = if last then stop else first in
+        let x, y =
+          locate_cell rows ~ox ~oy
+            ~affinity:(if last then Upstream else Downstream)
+            g
+        in
+        (end_in node rows ~first:g ~last:g, x, y))
       (items t ~region:sel.region (Some band))
   in
   let farthest_first (_, x, y) (_, x', y') =
     if x = x' && y = y' then 0 else if precedes x y x' y' = last then 1 else -1
   in
-  List.find_map
-    (function
-      | `Text e, _, _ -> Some e | `Box box, _, _ -> extreme_text t box ~last)
-    (List.stable_sort farthest_first ends)
+  match List.stable_sort farthest_first ends with
+  | (e, _, _) :: _ -> Some e
+  | [] -> None
 
 (* A selection's gesture ends with the press that drags it, released or
    lost, and the selection settles with the text it holds: a
@@ -1430,7 +1463,7 @@ let end_selection_drag t =
   | Some ({ gesture = Some _; _ } as sel) -> (
       let band = band_of t sel in
       sel.gesture <- None;
-      settle_region sel.region;
+      settle_region sel.box;
       let settled =
         match band with
         | Some band when not band.empty -> (
@@ -1477,7 +1510,7 @@ let boundary_at t node ~ox ~oy ~cx ~cy =
    other texts before [cx, cy], or before the first at or after it, or at
    column [cx] in the row above or below, held in the rows of the last text
    at or before the cell there or of the first at or after it. *)
-let cross t region ~except ~cx ~cy ~top ~bottom direction =
+let cross t region ~box ~except ~cx ~cy ~top ~bottom direction =
   let target texts =
     let texts =
       List.filter (fun (node, _, _, _, _) -> not (node == except)) texts
@@ -1501,14 +1534,31 @@ let cross t region ~except ~cx ~cy ~top ~bottom direction =
           (first_after ~cx ~cy:(bottom + 1) texts)
     | `Row_start | `Row_end -> None
   in
-  (* A painted text that lies that way comes before every text the view
-     hides, which lie past its edge, so the region is walked only when the
-     paint drew none. *)
-  let found =
-    match target (painted_texts t region) with
-    | Some _ as found -> found
-    | None -> target (region_texts t region)
+  (* The focus moves on in its own scroll box first, whose content goes on
+     past its view where other texts may lie on the screen, and then among
+     the texts of the screen. A painted text that lies that way comes before
+     every text the view hides, which lie past its edge, so a box or the
+     region is walked only when the paint drew none there. *)
+  let painted = painted_texts t region in
+  let box_texts () =
+    match offset t (region_origin box) (region_origin region) with
+    | None -> []
+    | Some (dx, dy) ->
+        List.map
+          (fun (node, x, y, w, h) -> (node, x + dx, y + dy, w, h))
+          (region_texts t box)
   in
+  let candidates =
+    (if box == region then []
+     else
+       [
+         (fun () ->
+           List.filter (fun (node, _, _, _, _) -> ancestor_of box node) painted);
+         box_texts;
+       ])
+    @ [ (fun () -> painted); (fun () -> region_texts t region) ]
+  in
+  let found = List.find_map (fun texts -> target (texts ())) candidates in
   Option.bind found (fun (node, ox, oy, cx, cy) ->
       boundary_at t node ~ox ~oy ~cx ~cy)
 
@@ -1522,17 +1572,7 @@ let extension_target t sel band direction =
   let forward = band.forward in
   match placement t sel.region focus.node with
   | Outside -> None
-  | Inside box -> (
-      (* The focus is in a scroll box selected whole, which stands for it at
-         the band's end: it crosses out of the box, from its view. *)
-      match box_view t band.origin box with
-      | None -> None
-      | Some (x, y, w, h) ->
-          let cx, cy = if forward then (x + w, y + h - 1) else (x, y) in
-          cross t sel.region ~except:focus.node ~cx ~cy ~top:y
-            ~bottom:(y + h - 1)
-            direction)
-  | Direct -> (
+  | Direct | Inside _ -> (
       match (offset t focus.node band.origin, current_rows t focus.node) with
       | Some (ox, oy), Some rows -> (
           let layout = rows.layout in
@@ -1542,8 +1582,8 @@ let extension_target t sel band direction =
           let cx = ox + column and cy = oy + row - rows.scroll_y in
           let here = boundary focus.node rows ~oy ~affinity in
           let across () =
-            cross t sel.region ~except:focus.node ~cx ~cy ~top:cy ~bottom:cy
-              direction
+            cross t sel.region ~box:(region_of t focus.node) ~except:focus.node
+              ~cx ~cy ~top:cy ~bottom:cy direction
           in
           let length = Layout.Source.length (Layout.source layout) in
           match direction with
@@ -1592,7 +1632,7 @@ let extend_selection t direction =
           match extension_target t sel band direction with
           | None -> ()
           | Some (focus, row) ->
-              reveal sel.region band.origin row;
+              reveal (region_of t focus.node) band.origin row;
               let anchor =
                 match sel.unit with
                 | Grapheme -> sel.anchor

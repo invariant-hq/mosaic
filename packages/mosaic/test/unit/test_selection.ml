@@ -165,9 +165,9 @@ let a_press_with_no_text_clears () =
   press r ~x:2 ~y:4;
   is_none ~msg:"cleared" (copied r)
 
-(* A press beside a scroll box passes over the texts of that box, a region
-   of its own, to the nearest text of the pressed cell's region. *)
-let a_press_beside_a_nested_box_resolves_past_its_texts () =
+(* A press beside a scroll box resolves to the next text in row-major order,
+   which may be one the box shows. *)
+let a_press_beside_a_nested_box_resolves_to_the_next_text () =
   let r = Renderer.create () in
   let col = column (Renderer.root r) in
   ignore (line col "above" : Text.t);
@@ -178,7 +178,7 @@ let a_press_beside_a_nested_box_resolves_past_its_texts () =
   ignore (line col "below" : Text.t);
   frame r;
   select r (25, 2) (2, 4);
-  equal ~msg:"from the text below the box" (option string) (Some "bel")
+  equal ~msg:"from the box's next row" (option string) (Some "in-2\nbel")
     (copied r)
 
 (* The ends name text, so a rewrap leaves the selection on the words
@@ -231,18 +231,18 @@ let rows_in_a_box () =
   frame r;
   (r, sb)
 
-(* A drag that leaves the scroll box downward is held at its last
-   row, and never reaches the footer below. *)
-let a_drag_out_of_a_scroll_box_downward_stays_in_it () =
+(* A drag that leaves the scroll box downward goes on into the footer below,
+   row by row, as a terminal's does. *)
+let a_drag_out_of_a_scroll_box_downward_reaches_the_footer () =
   let r, _ = rows_in_a_box () in
   press r ~x:0 ~y:1;
   drag_to r ~x:3 ~y:4;
-  equal ~msg:"held at the box's last row" (option string)
-    (Some "row-1\nrow-2\nrow-") (copied r)
+  equal ~msg:"into the footer" (option string)
+    (Some "row-1\nrow-2\nrow-3\nfoot") (copied r)
 
-(* Sideways, the pointer is held at the view's last column, short of the
-   text the view does not show. *)
-let a_drag_out_of_a_scroll_box_sideways_stays_in_it () =
+(* Sideways, a drag past the view's edge reaches the text the box scrolls
+   to. *)
+let a_drag_out_of_a_scroll_box_sideways_reaches_its_text () =
   let r = Renderer.create () in
   let sb =
     Scroll_box.create ~parent:(Renderer.root r)
@@ -254,8 +254,8 @@ let a_drag_out_of_a_scroll_box_sideways_stays_in_it () =
   frame r;
   press r ~x:0 ~y:0;
   drag_to r ~x:30 ~y:0;
-  equal ~msg:"to the view's last column" (option string) (Some "0123456789")
-    (copied r)
+  equal ~msg:"past the view's last column" (option string)
+    (Some "0123456789abcdefghij") (copied r)
 
 (* The band at rest does not move under the wheel. *)
 let a_selection_at_rest_stays_under_the_wheel () =
@@ -339,23 +339,22 @@ let nested_box () =
   frame r;
   r
 
-(* A scroll box the band covers is selected whole, its rows
-   out of view included. *)
-let a_nested_box_covered_is_selected_whole () =
+(* A scroll box the band crosses gives the rows its view shows. *)
+let a_nested_box_gives_the_rows_it_shows () =
   let r = nested_box () in
   select r (0, 0) (2, 4);
-  equal ~msg:"the box's text whole" (option string)
-    (Some "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5\nbel") (copied r)
+  equal ~msg:"the rows in view" (option string)
+    (Some "above\nin-0\nin-1\nin-2\nbel") (copied r)
 
-(* A scroll box the band covers in part is not selected, and a pointer over
-   it is as over a blank. *)
-let a_nested_box_partly_covered_is_left_out () =
+(* A drag into a scroll box selects its rows up to the pointer. *)
+let a_drag_into_a_nested_box_selects_to_the_pointer () =
   let r = nested_box () in
   press r ~x:0 ~y:0;
   drag_to r ~x:2 ~y:2;
-  equal ~msg:"while dragging" (option string) (Some "above") (copied r);
+  equal ~msg:"while dragging" (option string) (Some "above\nin-0\nin-")
+    (copied r);
   release r ~x:2 ~y:2;
-  equal ~msg:"settled" (option string) (Some "above") (copied r)
+  equal ~msg:"settled" (option string) (Some "above\nin-0\nin-") (copied r)
 
 (* The band is highlighted as it is copied: the covered box's rows in view
    are painted with the [Highlight] role. *)
@@ -792,32 +791,32 @@ let the_band_reaches_the_unit_under_the_pointer () =
   release r ~x:1 ~y:1;
   equal ~msg:"after the release" (option string) dragging (copied r)
 
-(* A pointer over a scroll box is as over a blank for a word too: the box is
-   selected only once the band covers it. *)
-let a_word_drag_selects_a_nested_box_once_covered () =
+(* A word drag goes through a scroll box word by word, over the rows it
+   shows. *)
+let a_word_drag_goes_through_a_nested_box () =
   let r = nested_box () in
   presses r ~x:1 ~y:0 2;
   drag_to r ~x:2 ~y:2;
-  equal ~msg:"over the box" (option string) (Some "above") (copied r);
+  equal ~msg:"over the box" (option string) (Some "above\nin-0\nin-1")
+    (copied r);
   drag_to r ~x:2 ~y:4;
   release r ~x:2 ~y:4;
-  equal ~msg:"past it" (option string)
-    (Some "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5\nbelow") (copied r)
+  equal ~msg:"past it" (option string) (Some "above\nin-0\nin-1\nin-2\nbelow")
+    (copied r)
 
-(* A line drag over a nested box ends at the pointer's cell, and
-   the release keeps it there: neither the box nor the text after it is
-   selected. *)
-let a_line_drag_over_a_nested_box_settles_where_it_was () =
+(* A line drag through a scroll box selects the lines it shows, and the
+   release keeps the band where it was. *)
+let a_line_drag_through_a_nested_box_settles_where_it_was () =
   let r = nested_box () in
   presses r ~x:1 ~y:0 3;
   drag_to r ~x:2 ~y:2;
-  equal ~msg:"dragging" (option string) (Some "above") (copied r);
+  equal ~msg:"dragging" (option string) (Some "above\nin-0\nin-1") (copied r);
   paint r;
-  is_false ~msg:"the box, dragging" (inverse r ~x:0 ~y:1);
+  is_true ~msg:"the box, dragging" (inverse r ~x:0 ~y:1);
   release r ~x:2 ~y:2;
-  equal ~msg:"settled" (option string) (Some "above") (copied r);
+  equal ~msg:"settled" (option string) (Some "above\nin-0\nin-1") (copied r);
   paint r;
-  is_false ~msg:"the box, settled" (inverse r ~x:0 ~y:1)
+  is_true ~msg:"the box, settled" (inverse r ~x:0 ~y:1)
 
 (* A line drag into a gap reaches the far end of the line the gap resolves
    to, and the release keeps the band there, with the text beside that line's
@@ -952,20 +951,19 @@ let a_shift_press_without_a_selection_is_ordinary () =
   release r ~x:4 ~y:0;
   equal ~msg:"from the press" (option string) (Some "cde") (copied r)
 
-(* A Shift+press is held in the selection's region: one on the footer below
-   a scroll box moves an end to the box's last row, the end nearer the cell
-   it is held at. *)
-let a_shift_press_is_held_in_the_region () =
+(* A Shift+press reaches past the scroll box the selection started in: one on
+   the footer below it moves the nearer end there. *)
+let a_shift_press_reaches_past_the_box () =
   let r, _ = rows_in_a_box () in
   select r (0, 1) (2, 1);
   equal ~msg:"selected" (option string) (Some "row") (copied r);
   clicks ~shift:true r ~x:2 ~y:4 1;
-  equal ~msg:"held at the box's last row" (option string)
-    (Some "row-1\nrow-2\nrow") (copied r);
+  equal ~msg:"into the footer" (option string) (Some "row-1\nrow-2\nrow-3\nfoo")
+    (copied r);
   select r (1, 3) (4, 3);
   equal ~msg:"on the last row" (option string) (Some "ow-3") (copied r);
   clicks ~shift:true r ~x:0 ~y:4 1;
-  equal ~msg:"the start, nearer the cell held" (option string) (Some "row-3")
+  equal ~msg:"the end, nearer the footer" (option string) (Some "ow-3\nf")
     (copied r)
 
 (* A selection behind a modal is inert: a Shift+press in the modal is an
@@ -1409,20 +1407,22 @@ let extension_crosses_to_the_text_beside_by_a_grapheme () =
   select dragged (0, 2) (6, 2);
   equal ~msg:"as a drag there" (option string) (copied dragged) (copied r)
 
-(* A focus left in a scroll box selected whole moves out of it, from its
-   view: the box stays whole. *)
-let extension_crosses_out_of_a_nested_box () =
+(* A focus in a scroll box moves on through the box's rows, past its view,
+   before it leaves it. *)
+let extension_moves_on_through_a_nested_box () =
   let r = nested_box () in
   select r (0, 0) (25, 3);
-  let whole = "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5" in
-  equal ~msg:"the box at the far end" (option string) (Some whole) (copied r);
+  let shown = "above\nin-0\nin-1\nin-2" in
+  equal ~msg:"the rows in view" (option string) (Some shown) (copied r);
+  (* The box scrolls a row to show the focus, and the row that leaves its
+     view at the top lies between an end outside it and one in it. *)
   Renderer.extend_selection r `Down;
-  equal ~msg:"the row below" (option string)
-    (Some (whole ^ "\nbelow"))
-    (copied r)
+  equal ~msg:"the box's next row" (option string)
+    (Some "above\nin-1\nin-2\nin-3") (copied r)
 
 (* A row move that takes the focus out of a scroll box's view scrolls the box
-   a row, by its proposal, and the focus never leaves the box. *)
+   a row, by its proposal; past the box's last row, the focus goes on to the
+   next text on the screen. *)
 let a_row_move_past_the_view_scrolls_the_region () =
   let r, sb = rows_in_a_box () in
   select r (0, 1) (4, 3);
@@ -1436,8 +1436,8 @@ let a_row_move_past_the_view_scrolls_the_region () =
     frame r
   done;
   equal ~msg:"to the box's last row" int 6 (Scroll_box.scroll_top sb);
-  equal ~msg:"never the footer" (option string)
-    (Some "row-1\nrow-2\nrow-3\nrow-4\nrow-5\nrow-6\nrow-7\nrow-8\nrow-9")
+  equal ~msg:"then the footer" (option string)
+    (Some "row-1\nrow-2\nrow-3\nrow-4\nrow-5\nrow-6\nrow-7\nrow-8\nrow-9\nfoote")
     (copied r)
 
 (* An extension selects by graphemes from then on: a Shift+press after it
@@ -1949,8 +1949,10 @@ let an_end_in_a_streaming_quote_survives_a_chunk () =
   equal ~msg:"nothing heard" (list string) [] (changes r)
 
 (* A copy lays out a text that no paint reached at the width its layout
-   gives it, as a paint would show it: here two wrapped texts side by side
-   below a nested box's view, which copy row by row. *)
+   gives it, as a paint would show it: here the focus moves by keys, with no
+   frame between, into two wrapped texts side by side below the view of the
+   anchor's scroll box, whose first row the focus reaches at the width of
+   three cells. *)
 let a_copy_lays_out_a_text_no_paint_reached () =
   let r = Renderer.create () in
   let col = column (Renderer.root r) in
@@ -1980,9 +1982,11 @@ let a_copy_lays_out_a_text_no_paint_reached () =
   wrapped "dddeeeff";
   ignore (line col "after" : Text.t);
   frame r;
-  select r (0, 0) (4, 3);
-  equal ~msg:"row by row" (option string)
-    (Some "before\ntop\nmid\naaaddd\nbbbeee\ncc ff\nafter") (copied r)
+  select r (0, 1) (2, 1);
+  Renderer.extend_selection r `Down;
+  Renderer.extend_selection r `Down;
+  equal ~msg:"into the first row of the left text" (option string)
+    (Some "top\nmid\naaa") (copied r)
 
 (* A blank that hangs past a row's edge at a soft wrap takes no cell: the
    spaces between it and the text beside it are the cells the screen shows
@@ -2079,8 +2083,8 @@ let () =
             a_press_below_the_last_text_starts_at_its_end;
           test "a press with no text in its region clears"
             a_press_with_no_text_clears;
-          test "a press beside a nested box resolves past its texts"
-            a_press_beside_a_nested_box_resolves_past_its_texts;
+          test "a press beside a nested box resolves to the next text"
+            a_press_beside_a_nested_box_resolves_to_the_next_text;
           test "the ends name text through a rewrap"
             the_ends_name_text_through_a_rewrap;
           test "the release keeps the band where it was"
@@ -2088,10 +2092,10 @@ let () =
         ];
       group "Region and band"
         [
-          test "a drag out of a scroll box downward stays in it"
-            a_drag_out_of_a_scroll_box_downward_stays_in_it;
-          test "a drag out of a scroll box sideways stays in it"
-            a_drag_out_of_a_scroll_box_sideways_stays_in_it;
+          test "a drag out of a scroll box downward reaches the footer"
+            a_drag_out_of_a_scroll_box_downward_reaches_the_footer;
+          test "a drag out of a scroll box sideways reaches its text"
+            a_drag_out_of_a_scroll_box_sideways_reaches_its_text;
           test "a selection at rest stays under the wheel"
             a_selection_at_rest_stays_under_the_wheel;
           test "hidden text takes no part" hidden_text_takes_no_part;
@@ -2099,10 +2103,10 @@ let () =
             a_selection_leaves_the_top_layer_out;
           test "a selection in the top layer stays in it"
             a_selection_in_the_top_layer_stays_in_it;
-          test "a nested box covered is selected whole"
-            a_nested_box_covered_is_selected_whole;
-          test "a nested box partly covered is left out"
-            a_nested_box_partly_covered_is_left_out;
+          test "a nested box gives the rows it shows"
+            a_nested_box_gives_the_rows_it_shows;
+          test "a drag into a nested box selects to the pointer"
+            a_drag_into_a_nested_box_selects_to_the_pointer;
           test "a nested box covered is highlighted"
             a_nested_box_covered_is_highlighted;
         ];
@@ -2160,10 +2164,10 @@ let () =
             a_drag_after_a_double_click_extends_by_words;
           test "the band reaches the unit under the pointer"
             the_band_reaches_the_unit_under_the_pointer;
-          test "a word drag selects a nested box once covered"
-            a_word_drag_selects_a_nested_box_once_covered;
-          test "a line drag over a nested box settles where it was"
-            a_line_drag_over_a_nested_box_settles_where_it_was;
+          test "a word drag goes through a nested box"
+            a_word_drag_goes_through_a_nested_box;
+          test "a line drag through a nested box settles where it was"
+            a_line_drag_through_a_nested_box_settles_where_it_was;
           test "a line drag into a gap settles where it was"
             a_line_drag_into_a_gap_settles_where_it_was;
           test "a drag after a triple click extends by lines"
@@ -2180,8 +2184,8 @@ let () =
             a_shift_double_click_sets_the_unit;
           test "a shift press without a selection is ordinary"
             a_shift_press_without_a_selection_is_ordinary;
-          test "a shift press is held in the region"
-            a_shift_press_is_held_in_the_region;
+          test "a shift press reaches past the box"
+            a_shift_press_reaches_past_the_box;
           test "a shift press over an inert selection is ordinary"
             a_shift_press_over_an_inert_selection_is_ordinary;
           test "a ctrl press is ordinary" a_ctrl_press_is_ordinary;
@@ -2224,8 +2228,8 @@ let () =
             extension_crosses_to_the_next_text;
           test "extension crosses to the text beside by a grapheme"
             extension_crosses_to_the_text_beside_by_a_grapheme;
-          test "extension crosses out of a nested box"
-            extension_crosses_out_of_a_nested_box;
+          test "extension moves on through a nested box"
+            extension_moves_on_through_a_nested_box;
           test "a row move past the view scrolls the region"
             a_row_move_past_the_view_scrolls_the_region;
           test "extension selects by graphemes" extension_selects_by_graphemes;
