@@ -1354,8 +1354,9 @@ module Sub : sig
       - Shift with an arrow, Home or End moves its focus by a grapheme, a row,
         or to the row's ends ({!Mosaic_ui.Renderer.extend_selection}).
       - Any other key clears it and goes on to the elements, but PgUp, PgDn, an
-        arrow, Home or End held with Ctrl, Alt or Super, and a modifier pressed
-        alone, which leave it.
+        arrow, Home or End held with Ctrl, Alt or Super, and a modifier or a
+        lock key pressed alone, which leave it. A paste, or an input method's
+        text, clears it as a typed key does.
 
       The keys that act on the selection go no further: they are stopped and
       their default prevented. Without such a selection, a copy chord copies the
@@ -1363,7 +1364,16 @@ module Sub : sig
       field does, and goes no further either; with neither, every key does what
       it did. The program never writes the clipboard on its own when a selection
       is made: an application that copies on select answers {!on_selection} with
-      {!Cmd.copy_selection}. *)
+      {!Cmd.copy_selection}.
+
+      The terminal's own selection stays one modifier away. Dragging with it
+      held, the terminal selects its cells itself, as it does without mouse
+      tracking, which also reaches what has no text, such as a chart or a box
+      drawing. The modifier is Shift in xterm, Ghostty, kitty and WezTerm,
+      Option in iTerm2, and Alt in VS Code's terminal (Option on macOS, once its
+      [macOptionClickForcesSelection] setting is on). The program never asks the
+      terminal to report Shift with the mouse (XTSHIFTESCAPE), so Shift stays
+      the terminal's. *)
 
   val on_selection : (string option -> 'msg option) -> 'msg t
   (** [on_selection f] calls [f (Some text)] when a pointer gesture that made or
@@ -1432,10 +1442,11 @@ val run :
     stop request. A signal that ends the process ends the program too, and then
     [run] does not return ({!Matrix}). In raw mode Ctrl+C is a key, and quitting
     is its default, which an element or a listener that uses the key prevents,
-    as a copy of selected text does ({!Sub.section-selection}). The terminal is
-    given back on every way out, an exception included. When the run ends, [run]
-    requests the stop of the workers and returns without waiting for work still
-    running off the loop.
+    as a copy of selected text does ({!Sub.section-selection}). Under mouse
+    tracking, the terminal's own selection is one modifier away
+    ({!Sub.section-selection}). The terminal is given back on every way out, an
+    exception included. When the run ends, [run] requests the stop of the
+    workers and returns without waiting for work still running off the loop.
 
     - [input], [output], [env] -- the terminal to run in and its session's
       environment, as {!Matrix.run} takes them. Default to the process's.
