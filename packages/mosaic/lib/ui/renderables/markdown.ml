@@ -190,7 +190,7 @@ type block_tag =
 
 (* A list, a block quote and a table keep their nodes and update them in
    place, as a paragraph does, so that a selection end in them survives a
-   streaming chunk (RFC 0006 §3.8 Markdown). *)
+   streaming chunk. *)
 type widget =
   | Text_widget of Text.t
   | Box_widget of Box.t * widget list

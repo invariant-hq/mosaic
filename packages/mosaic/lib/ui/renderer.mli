@@ -353,12 +353,12 @@ val theme : t -> Theme.t
 
 (** {1:selection Selection}
 
-    The renderer owns the view's text selection (RFC 0006): an anchor and a
-    focus in the text of nodes with text rows ({!Renderable.val-text_rows}),
-    stored as positions in their text, which scrolling, streaming and rewrapping
-    leave in place. The selection lies in a {e region}: the nearest scroll box
-    of the node its press found ({!Renderable.Private.set_region}), or the root
-    of the node's layer, the modal node for a node in the top layer.
+    The renderer owns the view's text selection: an anchor and a focus in the
+    text of nodes with text rows ({!Renderable.val-text_rows}), stored as
+    positions in their text, which scrolling, streaming and rewrapping leave in
+    place. The selection lies in a {e region}: the nearest scroll box of the
+    node its press found ({!Renderable.Private.set_region}), or the root of the
+    node's layer, the modal node for a node in the top layer.
 
     A left press resolves to a text of its region: the one under the pointer,
     else the first at or after the pressed cell in row-major order, else the
@@ -429,7 +429,7 @@ val selection_live : t -> bool
 (** [selection_live t] is [true] iff the view selection holds text, so that
     {!selection_text} gives it, and is not {e inert}: a selection whose anchor
     is behind the modal node ({!set_modal}) stays as it is, and no key acts on
-    it. A host acts on the keys of a live selection (RFC 0006 §3.6). *)
+    it. A host acts on the keys of a live selection. *)
 
 val extend_selection :
   t -> [ `Left | `Right | `Up | `Down | `Row_start | `Row_end ] -> unit

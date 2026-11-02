@@ -666,7 +666,7 @@ let caret_at t ev =
 
 (* The span of [unit] around the pointer's cell, which may lie outside the
    editor: the unit around the graphemes the cell shows, or around the
-   boundary nearest it (RFC 0006 §3.5 Units). *)
+   boundary nearest it. *)
 let unit_at t ev unit =
   let layout = Text_surface.layout t.surface in
   let first, last =
@@ -836,7 +836,7 @@ let handle_scroll t direction delta =
    two carets, as a text field's pointer does: a caret is not a selected
    cell. A double click selects a word and a triple click a line, and a drag
    after either extends by that unit, the unit pressed staying selected.
-   Another button's press leaves the drag alone (RFC 0006 §3.5, §3.10). *)
+   Another button's press leaves the drag alone. *)
 let handle_mouse t ev =
   if Event.Mouse.default_prevented ev then ()
   else

@@ -481,7 +481,7 @@ World|}]
 (* ── Streaming in place ── *)
 
 (* Blocks update their nodes in place as content streams, lists, block
-   quotes and tables as paragraphs do (RFC 0006 §3.8): each frame after a
+   quotes and tables as paragraphs do: each frame after a
    change shows what a fresh render of the same content, printed after it,
    shows. *)
 

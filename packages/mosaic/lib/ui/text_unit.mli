@@ -1,7 +1,7 @@
 (** Units of text selection.
 
-    A selection grows by a unit (RFC 0006 §3.5): a grapheme cluster, a word or a
-    logical line. The view's selection and the editors share them.
+    A selection grows by a unit: a grapheme cluster, a word or a logical line.
+    The view's selection and the editors share them.
 
     A {e word} is, in this precedence, a run of whitespace, a single boundary
     character, or a run of anything else, never across a line terminator. The

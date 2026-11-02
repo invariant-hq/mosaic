@@ -44,7 +44,7 @@ let props_detects_selectable_diff () =
   is_false ~msg:"a declaration differs from none"
     (Text.Props.equal a (Text.Props.make ()))
 
-(* §3.4: an absent [selectable] declares nothing, so a text inherits its
+(* An absent [selectable] declares nothing, so a text inherits its
    ancestors' declaration; a given one declares on the text's node. *)
 let selectable_declares_on_the_node () =
   let t = make_ctx () in
@@ -786,7 +786,7 @@ let paint_content_over_role () =
   is_true ~msg:"colored fragment, its own color" (fg_is paint_blue b);
   is_true ~msg:"both bold" (has Bold a && has Bold b)
 
-(* §3.9 Colour: the theme's [Highlight] is painted over the run's style, so
+(* The theme's [Highlight] is painted over the run's style, so
    its color wins over the run's. *)
 let paint_selection_highlight () =
   let selected view =

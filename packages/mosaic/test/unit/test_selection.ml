@@ -1,7 +1,6 @@
-(* The view's text selection (RFC 0006): its model, region and band (§3.1,
-   §3.2), copy (§3.3), selectability (§3.4), units and the modified presses
-   (§3.5), keys (§3.6), changes (§3.7), change under a selection (§3.8),
-   highlight (§3.9) and the editors' own selection (§3.10). *)
+(* The view's text selection: its model, region and band, copy, selectability,
+   units and the modified presses, keys, changes, change under a selection,
+   highlight and the editors' own selection. *)
 
 open Windtrap
 open Mosaic_ui
@@ -129,7 +128,7 @@ let mount view =
 let inverse r ~x ~y = Test_harness.has Inverse (Test_harness.cell_style r ~x ~y)
 let paint r = Renderer.render_frame r ~width ~height ~dt:0.
 
-(* ── §3.1 Model ── *)
+(* ── Model ── *)
 
 (* A press in a margin starts at the nearest text of its region: the first
    at or after the pressed cell, in row-major order. *)
@@ -182,7 +181,7 @@ let a_press_beside_a_nested_box_resolves_past_its_texts () =
   equal ~msg:"from the text below the box" (option string) (Some "bel")
     (copied r)
 
-(* Law 1: the ends name text, so a rewrap leaves the selection on the words
+(* The ends name text, so a rewrap leaves the selection on the words
    it held. *)
 let the_ends_name_text_through_a_rewrap () =
   let r = Renderer.create () in
@@ -198,7 +197,7 @@ let the_ends_name_text_through_a_rewrap () =
   frame r;
   equal ~msg:"rewrapped" (option string) (Some "beta") (copied r)
 
-(* §3.1 Focus: at the release the focus becomes the band's far end, so the
+(* At the release the focus becomes the band's far end, so the
    band does not move. A far end where a row wraps stays at the end of that
    row, and the text beside it stays unselected. *)
 let the_release_keeps_the_band_where_it_was () =
@@ -218,7 +217,7 @@ let the_release_keeps_the_band_where_it_was () =
   release r ~x:5 ~y:0;
   equal ~msg:"after the release" (option string) dragging (copied r)
 
-(* ── §3.2 Region and band ── *)
+(* ── Region and band ── *)
 
 (* Ten rows in a scroll box four rows tall, with a footer below it. *)
 let rows_in_a_box () =
@@ -232,7 +231,7 @@ let rows_in_a_box () =
   frame r;
   (r, sb)
 
-(* Law 3: a drag that leaves the scroll box downward is held at its last
+(* A drag that leaves the scroll box downward is held at its last
    row, and never reaches the footer below. *)
 let a_drag_out_of_a_scroll_box_downward_stays_in_it () =
   let r, _ = rows_in_a_box () in
@@ -258,7 +257,7 @@ let a_drag_out_of_a_scroll_box_sideways_stays_in_it () =
   equal ~msg:"to the view's last column" (option string) (Some "0123456789")
     (copied r)
 
-(* Law 3: the band at rest does not move under the wheel. *)
+(* The band at rest does not move under the wheel. *)
 let a_selection_at_rest_stays_under_the_wheel () =
   let r, sb = rows_in_a_box () in
   select r (0, 1) (4, 2);
@@ -282,7 +281,7 @@ let hidden_text_takes_no_part () =
   equal ~msg:"without the hidden text" (option string) (Some "one\nthree")
     (copied r)
 
-(* §3.2 Region: a selection in the root's layer holds nothing of the top
+(* A selection in the root's layer holds nothing of the top
    layer, which is a region of its own, painted over it. *)
 let a_selection_leaves_the_top_layer_out () =
   let r = Renderer.create () in
@@ -340,8 +339,8 @@ let nested_box () =
   frame r;
   r
 
-(* §3.2 Nested box: a scroll box the band covers is selected whole, its rows
-   out of view included (Law 2). *)
+(* A scroll box the band covers is selected whole, its rows
+   out of view included. *)
 let a_nested_box_covered_is_selected_whole () =
   let r = nested_box () in
   select r (0, 0) (2, 4);
@@ -368,7 +367,7 @@ let a_nested_box_covered_is_highlighted () =
   is_true ~msg:"the text below, to the pointer" (inverse r ~x:2 ~y:4);
   is_false ~msg:"after the pointer" (inverse r ~x:3 ~y:4)
 
-(* ── §3.3 Copy ── *)
+(* ── Copy ── *)
 
 (* "foo" above "bar" copies as [foo\nbar]. *)
 let stacked_texts_copy_on_their_own_lines () =
@@ -483,7 +482,7 @@ let trailing_whitespace_is_copied () =
   select r (0, 0) (9, 0);
   equal ~msg:"kept" (option string) (Some "ab   ") (copied r)
 
-(* §3.4 Semantics: a selection across text it does not reach leaves that
+(* A selection across text it does not reach leaves that
    text out. *)
 let a_selection_across_unselectable_text_leaves_it_out () =
   let r = Renderer.create () in
@@ -499,7 +498,7 @@ let a_selection_across_unselectable_text_leaves_it_out () =
   select r (0, 0) (2, 0);
   equal ~msg:"its cell a space" (option string) (Some "a b") (copied r)
 
-(* ── §3.4 Selectability ── *)
+(* ── Selectability ── *)
 
 (* An element that acts on a press declares itself unselectable, and keeps
    it without [selectable]; [selectable] declares otherwise, and dropping it
@@ -567,7 +566,7 @@ let an_absent_selectable_keeps_a_user_kinds_declaration () =
   is_false ~msg:"its widget's declaration again"
     (Renderable.selectable (node ()))
 
-(* Law 4: a press on a button, a canvas or a line number's gutter, with a
+(* A press on a button, a canvas or a line number's gutter, with a
    selection present, leaves the selection, and the button still acts. *)
 let a_press_on_unselectable_content_changes_nothing () =
   let view =
@@ -618,7 +617,7 @@ let a_line_numbers_child_follows_its_ancestors () =
   select r (5, 0) (9, 0);
   is_none ~msg:"not inside a refusing box" (copied r)
 
-(* ── §3.1 Anchor, §3.5 Pointer gestures ── *)
+(* ── Anchor, Pointer gestures ── *)
 
 (* A drag that leaves the pressed cell and comes back to it selects the
    pressed grapheme: only a single click the pointer never left is empty. *)
@@ -651,7 +650,7 @@ let the_band_stops_at_the_text_beside_its_end () =
   equal ~msg:"a word beside the other text" (option string) (Some "abc")
     (copied r)
 
-(* §3.5 Units: a double click selects a word, the run of whitespace, a
+(* A double click selects a word, the run of whitespace, a
    boundary character, or the run of anything else under the pointer. *)
 let a_double_click_selects_a_word () =
   let words content cells =
@@ -805,7 +804,7 @@ let a_word_drag_selects_a_nested_box_once_covered () =
   equal ~msg:"past it" (option string)
     (Some "above\nin-0\nin-1\nin-2\nin-3\nin-4\nin-5\nbelow") (copied r)
 
-(* §3.1 Focus: a line drag over a nested box ends at the pointer's cell, and
+(* A line drag over a nested box ends at the pointer's cell, and
    the release keeps it there: neither the box nor the text after it is
    selected. *)
 let a_line_drag_over_a_nested_box_settles_where_it_was () =
@@ -861,7 +860,7 @@ let a_drag_after_a_triple_click_extends_by_lines () =
   release r ~x:4 ~y:0;
   equal ~msg:"released" (option string) (Some "one\ntwo") (copied r)
 
-(* §3.1 Focus: the unit under a still pointer is found again when content
+(* The unit under a still pointer is found again when content
    scrolls under it. *)
 let the_unit_under_the_pointer_follows_a_scroll () =
   let r = Renderer.create () in
@@ -891,7 +890,7 @@ let letters ~backward =
   equal ~msg:"selected" (option string) (Some "cdefg") (copied r);
   r
 
-(* §3.5 Shift+press: the end nearer the press moves to it, and the other end
+(* The end nearer the press moves to it, and the other end
    becomes the anchor; a drag goes on from there. *)
 let a_shift_press_moves_the_nearer_end () =
   let r = letters ~backward:false in
@@ -990,7 +989,7 @@ let a_shift_press_over_an_inert_selection_is_ordinary () =
   equal ~msg:"a new selection in the modal" (option string) (Some "oda")
     (copied r)
 
-(* §3.5 Ctrl+press: an ordinary press, which starts a new selection. *)
+(* An ordinary press, which starts a new selection. *)
 let a_ctrl_press_is_ordinary () =
   let r = letters ~backward:false in
   presses ~ctrl:true r ~x:8 ~y:0 1;
@@ -998,7 +997,7 @@ let a_ctrl_press_is_ordinary () =
   release r ~x:9 ~y:0;
   equal ~msg:"a new selection" (option string) (Some "ij") (copied r)
 
-(* ── §3.9 Highlight ── *)
+(* ── Highlight ── *)
 
 (* The blank cells after a selected hard line break are filled to the node's
    right edge. *)
@@ -1028,7 +1027,7 @@ let no_fill_after_a_soft_wrap () =
   is_true ~msg:"the text" (inverse r ~x:2 ~y:0);
   is_false ~msg:"after the wrap" (inverse r ~x:5 ~y:0)
 
-(* Law 2: a buffered text paints in its own buffer's coordinates, but the
+(* A buffered text paints in its own buffer's coordinates, but the
    band and the texts' places stay in the region's: a buffered end
    highlights none of the text beside it, and a buffered text between the
    ends is highlighted whole. *)
@@ -1052,7 +1051,7 @@ let buffered_texts_are_highlighted_where_they_lie () =
   is_true ~msg:"the other end" (inverse r ~x:7 ~y:4);
   is_false ~msg:"after the other end" (inverse r ~x:8 ~y:4)
 
-(* ── §3.10 Editors ── *)
+(* ── Editors ── *)
 
 let selected_input value ~anchor ~cursor =
   Editor.select ~anchor ~cursor (Editor.of_string value)
@@ -1096,7 +1095,7 @@ let the_view_selection_leaves_editors_out () =
   equal ~msg:"the editor's cells as spaces" (option string) (Some "ab   cd")
     (copied r)
 
-(* §3.10 Copy: with no view selection, the copy is the focused editor's
+(* With no view selection, the copy is the focused editor's
    selection, which a view selection takes over. *)
 let the_copy_falls_back_to_the_focused_editor () =
   let view =
@@ -1181,7 +1180,7 @@ let last_selection proposed =
   | editor :: _ -> (Editor.selection editor, Editor.cursor editor)
   | [] -> fail "nothing proposed"
 
-(* §3.10: an editor's double click selects a word, with the shared units,
+(* An editor's double click selects a word, with the shared units,
    and a drag after it extends by words either way. *)
 let an_editor_selects_words () =
   let r, proposed = mounted_editor (Editor.of_string "alpha beta gamma") in
@@ -1220,7 +1219,7 @@ let an_editor_selects_lines () =
     (last_selection proposed);
   release r ~x:0 ~y:1
 
-(* ── §3.6 Keys ── *)
+(* ── Keys ── *)
 
 (* "hello world" alone, on the first row. *)
 let hello () =
@@ -1229,7 +1228,7 @@ let hello () =
   frame r;
   r
 
-(* §3.6 Home, Inert: the keys act on a selection that holds text and is not
+(* The keys act on a selection that holds text and is not
    behind the modal node, and one behind it is still there once it closes. *)
 let a_selection_is_live_while_it_holds_text_outside_a_modal () =
   let r = Renderer.create () in
@@ -1259,7 +1258,7 @@ let a_selection_is_live_while_it_holds_text_outside_a_modal () =
   Renderer.clear_selection r;
   is_false ~msg:"cleared" (Renderer.selection_live r)
 
-(* §3.6 Extension: Shift with an arrow moves the focus by a grapheme, and the
+(* Shift with an arrow moves the focus by a grapheme, and the
    anchor's grapheme stays selected. *)
 let extension_moves_the_focus_by_a_grapheme () =
   let r = hello () in
@@ -1469,7 +1468,7 @@ let a_drag_keeps_its_focus_from_the_keys () =
   release r ~x:13 ~y:0;
   equal ~msg:"released" (option string) (Some "beta gamma") (copied r)
 
-(* ── §3.7 Changes ── *)
+(* ── Changes ── *)
 
 let changes r =
   List.map
@@ -1518,7 +1517,7 @@ let a_double_click_settles_at_its_release () =
   release r ~x:7 ~y:0;
   equal ~msg:"the line" (list string) [ "settled hello world" ] (changes r)
 
-(* §3.5 Release: a press of the held button means its release was lost: the
+(* A press of the held button means its release was lost: the
    gesture settles, then the new press clears what it held. A focus loss
    settles it too. *)
 let a_lost_release_settles () =
@@ -1588,7 +1587,7 @@ let an_extension_settles_nothing () =
   is_none ~msg:"gone" (copied r)
 
 (* A selection of line breaks alone holds them all: their fill is
-   highlighted, so they are copied (Law 2). *)
+   highlighted, so they are copied. *)
 let line_breaks_alone_are_held () =
   let r = Renderer.create () in
   ignore (text_at (Renderer.root r) ~x:0 ~y:0 ~w:10 ~h:4 "ab\n\n\n" : Text.t);
@@ -1608,7 +1607,7 @@ let line_breaks_alone_are_held () =
     [ "cleared"; "settled \n\n\n" ]
     (changes r)
 
-(* Law 4: a press on unselectable content changes nothing, and queues
+(* A press on unselectable content changes nothing, and queues
    nothing. *)
 let a_press_on_unselectable_content_queues_nothing () =
   let r = Renderer.create () in
@@ -1625,7 +1624,7 @@ let a_press_on_unselectable_content_queues_nothing () =
   equal ~msg:"nothing" (list string) [] (changes r);
   equal ~msg:"kept" (option string) (Some "hello") (copied r)
 
-(* ── §3.8 Change under a selection ── *)
+(* ── Change under a selection ── *)
 
 (* "alpha beta gamma" alone on the first row, its "beta" selected at rest,
    with no change left to take. *)
@@ -1645,7 +1644,7 @@ let highlighted r ~y x0 x1 =
     (fun x -> Bool.equal (inverse r ~x ~y) (x >= x0 && x <= x1))
     (List.init width Fun.id)
 
-(* §3.8 Scrolling: a scroll box that follows its bottom as rows are appended
+(* A scroll box that follows its bottom as rows are appended
    keeps the selection on the rows it held, out of its view. *)
 let following_and_appending_keep_the_selection () =
   let r = Renderer.create () in
@@ -1691,7 +1690,7 @@ let a_resize_keeps_the_selection () =
   is_true ~msg:"highlighted where it now lies" (inverse r ~x:0 ~y:2);
   is_false ~msg:"and not where it was" (inverse r ~x:0 ~y:1)
 
-(* §3.8 Edits: an edit before the ends moves them by the change in length;
+(* An edit before the ends moves them by the change in length;
    one after them leaves them. *)
 let an_edit_before_the_ends_moves_them () =
   let r, t = beta () in
@@ -1746,7 +1745,7 @@ let an_insertion_at_an_end_leaves_it () =
   Text.set_content t "alpha Xbetas gamma";
   equal ~msg:"at the start" (option string) (Some "Xbeta") (copied r)
 
-(* Law 1: concealed markdown rewrites the text before an end when a [**]
+(* Concealed markdown rewrites the text before an end when a [**]
    closes, and the end stays on the word it held. *)
 let a_streaming_paragraph_closes_bold_before_an_end () =
   let r = Renderer.create () in
@@ -1797,7 +1796,7 @@ let an_edit_during_a_drag_follows_its_anchor () =
   release r ~x:13 ~y:0;
   equal ~msg:"settled again" (list string) [ "settled beta" ] (changes r)
 
-(* §3.8 Unmount, hide: an end whose node is hidden, or below a hidden node,
+(* An end whose node is hidden, or below a hidden node,
    clears the selection, which showing the node again does not bring back.
    A node hidden between the ends, or outside them, leaves it. *)
 let an_ends_node_hidden_clears_the_selection () =
@@ -1879,7 +1878,7 @@ let an_ends_node_unmounted_clears_the_selection () =
   is_none ~msg:"remounted" (copied r);
   equal ~msg:"remounted: heard" (list string) [ "cleared" ] (changes r)
 
-(* §3.5 Release: an end's unmount during a drag ends its gesture: its later
+(* An end's unmount during a drag ends its gesture: its later
    motion selects nothing and its release settles nothing. *)
 let an_ends_unmount_ends_its_drag () =
   let r = Renderer.create () in
@@ -1897,7 +1896,7 @@ let an_ends_unmount_ends_its_drag () =
   is_none ~msg:"nothing selected" (copied r);
   equal ~msg:"nothing settled" (list string) [] (changes r)
 
-(* §3.8 Markdown: list, table and block quote blocks update in place while
+(* List, table and block quote blocks update in place while
    streaming, so an end in one survives a chunk. *)
 let an_end_in_a_streaming_list_survives_a_chunk () =
   let r = Renderer.create () in
@@ -2001,7 +2000,7 @@ let a_hanging_blank_counts_once () =
   select r (0, 0) (9, 0);
   equal ~msg:"five cells between" (option string) (Some "abc     XY") (copied r)
 
-(* ── Cells to source (RFC 0003 §2.4) ── *)
+(* ── Cells to source ── *)
 
 (* A drag takes both end cells' coverage: the space under the pointer is in. *)
 let a_drag_takes_both_end_cells () =

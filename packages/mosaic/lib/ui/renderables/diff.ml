@@ -216,7 +216,7 @@ end
 
 (* A pane's buffer text joins diff rows with LF; patch lines hold none, so
    each LF ends a row. The buffer's source index decides where logical lines
-   start (RFC 0003 §5.1): a CR also ends one, so a row holding a lone CR spans
+   start: a CR also ends one, so a row holding a lone CR spans
    two lines and a final CR adds an empty one. Rows carry the diff's metadata;
    logical lines and graphemes are buffer positions. This map is the only
    crossing between them. *)
@@ -781,8 +781,8 @@ let source_line_at_row_with_kind patch ~layout ?side row =
     | Split -> source_line_at_row_split patch ?side row
 
 module Split_layout = struct
-  (* Visual rows per diff row. This traverses the pane's complete layout, which
-     RFC 0003 §5.4 allows when pane geometry changes. *)
+  (* Visual rows per diff row. This traverses the pane's complete layout, and
+     runs only when the pane's geometry changes. *)
   let visual_counts pane code =
     let counts = Array.make (Pane.row_count pane) 0 in
     Option.iter

@@ -2161,7 +2161,7 @@ let selection_starts_none () =
   let t = make_renderer () in
   is_none ~msg:"no selection" (selected t)
 
-(* §3.1 Anchor: a press the pointer does not leave selects nothing, and a
+(* A press the pointer does not leave selects nothing, and a
    drag selects from the pressed grapheme to the pointer's. *)
 let click_on_selectable_selects_nothing () =
   let t = make_renderer () in
@@ -2186,7 +2186,7 @@ let drag_updates_selection_focus () =
   equal ~msg:"backwards, the pressed grapheme stays" (option string)
     (Some "bcdefghij\nABC") (selected t)
 
-(* §3.1 Focus: the release settles the focus where the band ends; a later
+(* The release settles the focus where the band ends; a later
    motion with no button leaves it. *)
 let release_finishes_selection () =
   let t = make_renderer () in
@@ -2200,7 +2200,7 @@ let release_finishes_selection () =
   equal ~msg:"the release keeps it" (option string) (Some "CDEFGHIJ\nklmnopqr")
     (selected t)
 
-(* §3.5 Release: chording keeps the drag. A right press and release in the
+(* Chording keeps the drag. A right press and release in the
    middle of a left drag leave it dragging; the left release ends it. *)
 let unrelated_button_release_preserves_selection_drag () =
   let t = make_renderer () in
@@ -2354,7 +2354,7 @@ let selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors () =
   dispatch_mouse t (mouse_release ~x:1 ~y:10 ());
   is_true ~msg:"release bubbled through scroll box" !released
 
-(* §3.4 Semantics: a press on a node selection does not reach leaves the
+(* A press on a node selection does not reach leaves the
    selection as it is. *)
 let press_on_unselectable_keeps_selection () =
   let t = make_renderer () in
@@ -2387,7 +2387,7 @@ let press_on_selectable_blank_clears_selection () =
   dispatch_mouse t (mouse_release ~x:25 ~y:5 ());
   is_none ~msg:"selection cleared" (selected t)
 
-(* ── Pointer gestures (RFC 0006, §3.5) ── *)
+(* ── Pointer gestures ── *)
 
 (* The kinds of the events a node's handlers saw, oldest first, as they
    print. *)

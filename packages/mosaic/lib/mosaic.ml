@@ -621,7 +621,7 @@ let end_program runtime =
       Matrix.request_redraw runtime.matrix_app))
   else runtime.quit <- true
 
-(* The runtime alone writes a selection to the clipboard (RFC 0006 §3.6),
+(* The runtime alone writes a selection to the clipboard,
    and the [on_copy] subscribers hear each text it writes. *)
 let copy runtime text =
   Matrix.Terminal.copy_to_clipboard (Matrix.terminal runtime.matrix_app) text;
@@ -860,7 +860,7 @@ let dispatch runtime msg =
     update_subscriptions runtime)
 
 (* The changes of the view selection go to the [on_selection] subscribers,
-   oldest first (RFC 0006 §3.7). The runtime takes them before it gives the
+   oldest first. The runtime takes them before it gives the
    loop a message and as it applies messages: after each input event, the
    loss of the pointer, each command and each commit. *)
 let take_selection runtime =
@@ -1054,7 +1054,7 @@ let paste_heard runtime =
 
 (* A paste, or an input method's text, is typing: like a typed key, it
    clears a live view selection after the [Capture] listeners, unless one
-   kept it (RFC 0006 §3.6). *)
+   kept it. *)
 let dispatch_paste runtime text =
   let renderer = runtime.renderer in
   let path = Renderer.focus_path renderer in
@@ -1100,7 +1100,7 @@ let is_copy_chord (key : Matrix.Input.Keystroke.t) =
       Uchar.equal u c || Uchar.equal u (Uchar.of_char 'C') || key.base = Some c
   | _ -> false
 
-(* What a key does to a live view selection (RFC 0006 §3.6). *)
+(* What a key does to a live view selection. *)
 let selection_action (key : Matrix.Input.Keystroke.t) =
   let mods = key.mods in
   let navigates = mods.ctrl || mods.alt || mods.super in
@@ -1121,7 +1121,7 @@ let selection_action (key : Matrix.Input.Keystroke.t) =
         `Keep
     | _ -> `Clear
 
-(* The selection of the focused editor, which owns its own (§3.10). *)
+(* The selection of the focused editor, which owns its own. *)
 let editor_selection renderer =
   match Renderer.focused renderer with
   | Some node when Renderable.focused node -> (
@@ -1130,7 +1130,7 @@ let editor_selection renderer =
       | None -> None)
   | Some _ | None -> None
 
-(* The keys of the view's text selection (RFC 0006 §3.6), which come after
+(* The keys of the view's text selection, which come after
    the application's [Capture] listeners and before the elements. While the
    selection is live, Escape clears it, a copy chord copies and clears it,
    and Shift with an arrow, Home or End extends it, each taking the key; any

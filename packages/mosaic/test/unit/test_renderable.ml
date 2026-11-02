@@ -875,7 +875,7 @@ let live_count_change_callback () =
 
 (* ── Selection ── *)
 
-(* §3.4 Cascade: with no declaration anywhere, selection reaches every
+(* With no declaration anywhere, selection reaches every
    node. *)
 let selectable_without_declaration () =
   let t = make_ctx () in

@@ -193,8 +193,8 @@ val set_content : t -> string -> unit
     re-renders. Unchanged blocks keep their renderables untouched, and a block
     that keeps its kind, a list, a block quote or a table as a paragraph,
     updates its renderables in place, making this efficient for streaming
-    appends and keeping a text selection in them (RFC 0006 §3.8). No-op when [s]
-    equals the current content.
+    appends and keeping a text selection in them. No-op when [s] equals the
+    current content.
 
     See also {!val-content}. *)
 

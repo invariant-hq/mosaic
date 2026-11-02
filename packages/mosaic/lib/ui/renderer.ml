@@ -46,14 +46,14 @@ type pointer_state = {
 
 (* ───── Text Selection ─────
 
-   The view selection (RFC 0006 §3.1) is an anchor span and a focus in the
+   The view selection is an anchor span and a focus in the
    source of text nodes, in the region the anchor's press found: its nearest
    scroll box, or the root of its layer. No cell is stored. Between its ends
    lies the terminal's row-major band, derived from layout whenever a node
-   paints or a copy runs (§3.2). *)
+   paints or a copy runs. *)
 
 (* An end: a node and the boundaries of a span of its text, counted in
-   [source], the text they were found in, which an edit replaces (§3.8). *)
+   [source], the text they were found in, which an edit replaces. *)
 type end_ = {
   node : Renderable.t;
   first : int;
@@ -63,15 +63,15 @@ type end_ = {
 
 (* The pointer gesture that drags a selection: the cell it last reported, on
    the screen, and whether it is still a single click, which the pointer has
-   not left and which selects nothing (§3.1 Anchor). *)
+   not left and which selects nothing. *)
 type gesture = {
   mutable pointer_x : int;
   mutable pointer_y : int;
   mutable click : bool;
 }
 
-(* The anchor is fixed at the press, and follows an edit of its text alone
-   (§3.8); a Shift+press makes a new selection. *)
+(* The anchor is fixed at the press, and follows an edit of its text alone; a
+   Shift+press makes a new selection. *)
 type selection = {
   region : Renderable.t;
   mutable anchor : end_;
@@ -105,7 +105,7 @@ type selection_change = Settled of string | Cleared
 type selection_state = {
   mutable current : selection option;
   (* Whether the selection held text when it was last made, settled or
-     extended: one that held text and holds none is [Cleared] (§3.7). A
+     extended: one that held text and holds none is [Cleared]. A
      gesture's motion does not set it. *)
   mutable held : bool;
   (* The changes not yet taken, oldest first. *)
@@ -533,7 +533,7 @@ let locate_cell (rows : Renderable.text_rows) ~ox ~oy ~affinity g =
   (ox + column, oy + row - rows.scroll_y)
 
 (* Where a node lies for a selection in [region]: directly in it, inside a
-   scroll box in it, which is all or nothing (§3.2), or outside it. *)
+   scroll box in it, which is all or nothing, or outside it. *)
 type placement = Direct | Inside of Renderable.t | Outside
 
 let placement t region node =
@@ -568,7 +568,7 @@ let clamp v lo n = if n <= 0 then v else max lo (min v (lo + n - 1))
 
 (* The range the band selects in a text directly in its region whose origin
    is at [ox, oy]: from the cover of its first cell to that of its last, and
-   the span of each end in the text whole (§3.1 Anchor, §3.2). *)
+   the span of each end in the text whole. *)
 let range_in band node (rows : Renderable.text_rows) ~ox ~oy =
   let cover ~x ~y =
     Layout.coverage rows.layout ~row:(y - oy + rows.scroll_y) ~column:(x - ox)
@@ -790,7 +790,7 @@ let resolve_cell t region ~cx ~cy =
   | Some _ as node -> node
   | None -> nearest ~cx ~cy (region_texts t region)
 
-(* A press resolves to a text (§3.1): the one under the pressed cell, else
+(* A press resolves to a text: the one under the pressed cell, else
    the nearest in its region. *)
 let resolve_press t region ~cx ~cy hit =
   match hit with
@@ -802,7 +802,7 @@ let resolve_press t region ~cx ~cy hit =
 (* The end that the span of [unit] around the cell [cx, cy] gives in [node],
    a text directly in the region whose positions count from [origin]: the
    unit around the graphemes the cell shows, or around the boundary nearest
-   it (§3.1 Anchor, §3.5 Units). *)
+   it. *)
 let unit_end t origin node unit ~cx ~cy =
   match (offset t node origin, current_rows t node) with
   | Some (ox, oy), Some rows ->
@@ -818,7 +818,7 @@ let unit_end t origin node unit ~cx ~cy =
 
 (* The first cell of an end's span and the cell after its last, in the
    coordinates of [region], whose positions count from [origin]. An end inside
-   a scroll box of the region spans the box's view (§3.2 Nested box). *)
+   a scroll box of the region spans the box's view. *)
 let end_cells t region origin (e : end_) =
   if not (alive_visible e.node) then None
   else
@@ -844,15 +844,14 @@ let hit_node t ~x ~y =
   let num = query_input_hit t ~x ~y in
   if num > 0 then find_node t num else None
 
-(* The selection's band: from the earlier of its ends' first cells to the
-   later of the cells after their spans. While a gesture drags the selection,
-   its focus is the pointer's cell, held in the region's view, and for a word
-   or a line the span of that unit in the text the cell resolves to as a
-   press does (§3.1 Focus), which the band reaches. Over a nested box the
-   focus is the pointer's cell alone, and the box is selected only once
-   covered (§3.2 Nested box). An end whose node is not shown gives no band
-   (§3.2 Hidden), though the selection clears before one is hidden or
-   unmounted (§3.8). *)
+(* The selection's band: from the earlier of its ends' first cells to the later
+   of the cells after their spans. While a gesture drags the selection, its
+   focus is the pointer's cell, held in the region's view, and for a word or a
+   line the span of that unit in the text the cell resolves to as a press does,
+   which the band reaches. Over a nested box the focus is the pointer's cell
+   alone, and the box is selected only once covered. An end whose node is not
+   shown gives no band, though the selection clears before one is hidden or
+   unmounted. *)
 let band_of t sel =
   let origin = region_origin sel.region in
   match end_cells t sel.region origin sel.anchor with
@@ -964,7 +963,7 @@ let selected_range_of t node =
 
 (* ───── Copy ─────
 
-   A copy reproduces the lines the user saw (§3.3): the fragments of the
+   A copy reproduces the lines the user saw: the fragments of the
    texts the band selects, row by row, joined by spaces, a line break, or a
    blank line where the layout leaves a margin or gap. *)
 
@@ -1043,7 +1042,7 @@ let item_rows (rows : Renderable.text_rows) ~oy ~first ~last =
    after it, so that the fragments read row by row; a line terminator that
    begins or ends a fragment is dropped, the separator standing for it.
    When the fragments hold nothing but terminators, no separator stands for
-   them: the text is all of them, as their highlight shows (Law 2). *)
+   them: the text is all of them, as their highlight shows. *)
 let rec assemble t ~region band =
   let items = items t ~region band in
   (* How many items lie on each row. *)
@@ -1216,7 +1215,7 @@ let selection_text t =
           | None -> None)
       | Some _ | None -> None)
 
-(* A selection behind the modal node is inert: no key acts on it (§3.6). *)
+(* A selection behind the modal node is inert: no key acts on it. *)
 let inert_selection t sel = inert_under (top_layer t) sel.anchor.node
 
 let selection_live t =
@@ -1239,7 +1238,7 @@ let take_selection_changes t =
    whether it holds text, and ends the gesture of the one it replaces. The
    change is [Cleared] when [next] holds no text and the one it replaces
    held some, when it was last made, settled or extended, or under its
-   gesture now (§3.7 Changes). *)
+   gesture now. *)
 let replace t next ~holds =
   let state = t.selection_state in
   let held =
@@ -1261,7 +1260,7 @@ let clear_selection t =
   if Option.is_some t.selection_state.current then replace t None ~holds:false
 
 (* A press of [clicks] starts a selection at the text it resolves to, its
-   anchor the span of the unit those clicks select (§3.5 Units). A single
+   anchor the span of the unit those clicks select. A single
    click the pointer does not leave selects nothing; a double or triple
    click selects its unit at once. *)
 let start_selection t hit ~x ~y ~clicks =
@@ -1297,11 +1296,11 @@ let start_selection t hit ~x ~y ~clicks =
   in
   replace t next ~holds
 
-(* A Shift+press moves the end of [sel] nearer the press, in row-major
-   distance and the focus on a tie, and makes the other end the anchor
-   (§3.5 Shift+press). The press starts a gesture, whose pointer is held in
-   the region's view, so the selection takes the unit at the press. The unit
-   is kept, unless the press is a double or triple click, which sets it. *)
+(* A Shift+press moves the end of [sel] nearer the press, in row-major distance
+   and the focus on a tie, and makes the other end the anchor. The press starts
+   a gesture, whose pointer is held in the region's view, so the selection takes
+   the unit at the press. The unit is kept, unless the press is a double or
+   triple click, which sets it. *)
 let move_nearer_end t sel band ~x ~y ~clicks =
   let view = region_view sel.region in
   let x = clamp x view.x view.width and y = clamp y view.y view.height in
@@ -1331,8 +1330,7 @@ let move_nearer_end t sel band ~x ~y ~clicks =
 (* A left press on a node selection reaches starts a selection at the text
    it resolves to, or, with Shift, moves the nearer end of the selection
    there is; a press on an editor clears the view's; a press on a node
-   selection does not reach changes nothing (§3.4). Ctrl changes nothing
-   (§3.5 Ctrl+press). *)
+   selection does not reach changes nothing. Ctrl changes nothing. *)
 let press_selection t ~x ~y ~shift ~clicks =
   let hit = hit_node t ~x ~y in
   match hit with
@@ -1393,7 +1391,7 @@ let extreme_text t box ~last =
   |> Option.map (fun (e, _, _) -> e)
 
 (* When the gesture settles, its focus becomes the band's far end, in its
-   fragment's node, so the highlight stays where it is (§3.1): the end of the
+   fragment's node, so the highlight stays where it is: the end of the
    last fragment when the focus was after the anchor, else the start of the
    first. A scroll box covered at the far end gives the end of its own last
    or first text, which stands at the corner of its view. *)
@@ -1423,7 +1421,7 @@ let far_end t sel band =
     (List.stable_sort farthest_first ends)
 
 (* A selection's gesture ends with the press that drags it, released or
-   lost, and the selection settles with the text it holds (§3.7 Changes): a
+   lost, and the selection settles with the text it holds: a
    single click the pointer never left, or a selection that holds no text,
    clears. *)
 let end_selection_drag t =
@@ -1475,7 +1473,7 @@ let boundary_at t node ~ox ~oy ~cx ~cy =
    the cell [cx, cy] for [`Left] and [`Right] and from the rows [top] to
    [bottom] at column [cx] for [`Up] and [`Down]: to the boundary, in
    another text of the region, at the cell a press finds that way in
-   row-major order (§3.1). That is the boundary after the last cell of the
+   row-major order. That is the boundary after the last cell of the
    other texts before [cx, cy], or before the first at or after it, or at
    column [cx] in the row above or below, held in the rows of the last text
    at or before the cell there or of the first at or after it. *)
@@ -1510,7 +1508,7 @@ let cross t region ~except ~cx ~cy ~top ~bottom direction =
    whose band is [band], with the focus's row in region coordinates. In its
    text, the focus moves by a grapheme, to its column in the row above or
    below, or to its row's ends; past the edge of its text it crosses to
-   another (§3.6 Extension). *)
+   another. *)
 let extension_target t sel band direction =
   let focus = sel.focus in
   let forward = band.forward in
@@ -1575,7 +1573,7 @@ let grapheme_anchor (anchor : end_) ~forward =
   else if forward then { anchor with last = anchor.first + 1 }
   else { anchor with first = anchor.last - 1 }
 
-(* §3.6 Extension: the focus of a selection at rest moves, the anchor
+(* The focus of a selection at rest moves, the anchor
    stays, and the unit becomes the grapheme. A selection that then holds no
    text clears; one that does is not settled again. *)
 let extend_selection t direction =
@@ -1602,7 +1600,7 @@ let extend_selection t direction =
 (* ───── Change under a Selection ─────
 
    Scrolling, streaming and rewrapping leave the ends where they are, since
-   they name text (§3.8). An edit of an end's text maps the end through the
+   they name text. An edit of an end's text maps the end through the
    one span it changed; an end whose node is hidden or unmounted clears the
    selection. *)
 
@@ -1630,7 +1628,7 @@ let common_suffix a b ~limit =
 (* The one span an edit changed, from the text [old] to [next]: the
    boundaries [(p, stop, stop')] such that the clusters before [p], and
    those from [stop] in [old] and from [stop'] in [next], are the same,
-   with the shared prefix and suffix as long as they can be (§3.8 Edits).
+   with the shared prefix and suffix as long as they can be.
    Each is a boundary of both texts at the same bytes, so a cluster that
    the edit extends or splits falls inside the span. *)
 let changed_span old next =
@@ -1674,7 +1672,7 @@ let through (p, stop, stop') g =
   if g <= p then g else if g >= stop then g + stop' - stop else p
 
 (* The text of [node] changed: an end in it follows the edit, from the text
-   it counts in to the one [node] holds now (§3.8 Edits). A selection at
+   it counts in to the one [node] holds now. A selection at
    rest whose end moved clears when it holds no text, its ends met; one
    that a gesture drags keeps its anchor, followed. *)
 let text_changed_of t node =
@@ -1716,8 +1714,7 @@ let text_changed_of t node =
   | Some _ | None -> ()
 
 (* [node] and its descendants are about to stop being shown: a selection
-   with an end among them clears, and its gesture ends (§3.8 Unmount,
-   hide). *)
+   with an end among them clears, and its gesture ends. *)
 let hiding_of t node =
   match t.selection_state.current with
   | Some sel

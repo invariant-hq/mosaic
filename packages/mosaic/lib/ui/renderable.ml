@@ -1446,8 +1446,7 @@ let destroy_node t =
   t.cleanup <- None;
   Option.iter (fun f -> f ()) cleanup
 
-(* The renderer hears of a destruction while the nodes are still shown
-   (RFC 0006 §3.8). *)
+(* The renderer hears of a destruction while the nodes are still shown. *)
 let destroy t =
   if not t.destroyed then (
     t.ctx.hiding t;

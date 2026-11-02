@@ -731,8 +731,7 @@ let%expect_test "a mouse press a widget stops skips on_mouse" =
 (* Cmd.copy_selection asks the terminal to set the clipboard to the text
    dragged over (OSC 52). A pipe is asked nothing, as the run writes it no
    control sequence. The key is bound in [Capture], where the binding
-   prevents it before any other key would clear the selection (RFC 0006
-   §3.6). *)
+   prevents it before any other key would clear the selection. *)
 let%expect_test "Cmd.copy_selection sends the dragged text to the clipboard" =
   let application =
     {
@@ -3853,7 +3852,7 @@ let pointer_events steps =
   drive ~width:10 ~height:1 application steps;
   List.rev !seen
 
-(* RFC 0006, §3.5: a press is timed by the turn that reads it. *)
+(* A press is timed by the turn that reads it. *)
 let%expect_test "presses are timed by the session's clock" =
   let click = `Feed "\027[<0;3;1M\027[<0;3;1m" in
   equal ~msg:"a second press within 500 ms is a double click" (list string)
@@ -3868,7 +3867,7 @@ let%expect_test "presses are timed by the session's clock" =
     (pointer_events [ click; `Advance 0.3; click; `Advance 0.6; click ]);
   [%expect {| |}]
 
-(* RFC 0006, §3.5: a held press's release does not come once the window
+(* A held press's release does not come once the window
    loses focus. Its drag ends there, with no drop, and the release that comes
    later ends nothing. *)
 let%expect_test "a focus loss ends the held press" =
@@ -3880,7 +3879,7 @@ let%expect_test "a focus loss ends the held press" =
        ]);
   [%expect {| |}]
 
-(* ───── RFC 0006 §3.6, §3.7, §3.10: the selection's keys and the
+(* ───── The selection's keys and the
    application ───── *)
 
 (* An application over "hello world" and a second line, with a focused input
@@ -3976,7 +3975,7 @@ let selecting ?editor ?(copy_on_select = false)
 let drag_hello = "\027[<0;1;1M\027[<32;5;1M\027[<0;5;1m"
 let ctrl_c = "\003"
 
-(* §3.6 Escape: Escape clears the view selection and goes no further; with
+(* Escape clears the view selection and goes no further; with
    no selection, it goes on as before. *)
 let%expect_test "Escape clears the view selection and goes no further" =
   let log, _, _ = selecting [ drag_hello; "\027"; "\027" ] in
@@ -3998,7 +3997,7 @@ let%expect_test "Escape clears a selection in a modal before closing it" =
     log;
   [%expect {| |}]
 
-(* §3.6 Copy chords, Law 6: Ctrl+C copies the view selection and clears it,
+(* Ctrl+C copies the view selection and clears it,
    so it does not quit; the next Ctrl+C, with no selection, quits. Super+C
    and Ctrl+Shift+C, where the terminal sends them, copy too. *)
 let%expect_test "Ctrl+C copies the view selection and clears it" =
@@ -4018,7 +4017,7 @@ let%expect_test "Ctrl+C copies the view selection and clears it" =
     [ ("Super+C", "\027[99;9u"); ("Ctrl+Shift+C", "\027[99;6u") ];
   [%expect {| |}]
 
-(* §3.10 Copy: with no view selection, a copy chord copies the focused
+(* With no view selection, a copy chord copies the focused
    input's selection, which stays, so the next copies it again. A view
    selection comes first, and its copy clears it alone. With neither, Ctrl+C
    quits. *)
@@ -4043,7 +4042,7 @@ let%expect_test "Ctrl+C copies a focused input's selection and keeps it" =
   is_true ~msg:"quits" ended;
   [%expect {| |}]
 
-(* §3.6 Extension: Shift with an arrow extends the view selection ahead of
+(* Shift with an arrow extends the view selection ahead of
    the focused input, which neither sees the key nor changes, though Shift
    with Left would select in it. *)
 let%expect_test "Shift with an arrow extends the view selection first" =
@@ -4058,7 +4057,7 @@ let%expect_test "Shift with an arrow extends the view selection first" =
   equal ~msg:"extended" (list string) [ "hello " ] copied;
   [%expect {| |}]
 
-(* §3.6 Other keys: any other key clears the view selection and goes on, to
+(* Any other key clears the view selection and goes on, to
    the application or into the focused input. *)
 let%expect_test "any other key clears the view selection and goes on" =
   let log, _, _ = selecting [ drag_hello; "x" ] in
@@ -4133,7 +4132,7 @@ let%expect_test "paging, modified navigation and a modifier keep the selection"
   equal ~msg:"kept" (list string) [ "hello" ] copied;
   [%expect {| |}]
 
-(* §3.6 Home, Inert: a [Capture] listener that prevents a key, as F2's
+(* A [Capture] listener that prevents a key, as F2's
    binding does, or stops it, keeps it from the selection. A selection behind
    the modal it opens is inert: Escape closes the modal, Ctrl+C quits, and the
    selection is there once the modal closes. *)
@@ -4159,7 +4158,7 @@ let%expect_test "a selection behind a modal is inert, and stays" =
     log;
   [%expect {| |}]
 
-(* §3.6 Home: a key that a [Capture] listener prevents, without stopping it,
+(* A key that a [Capture] listener prevents, without stopping it,
    is not the table's either: it leaves the selection, which Ctrl+C then
    copies rather than quitting. *)
 let%expect_test "a key a Capture listener prevents leaves the selection" =
@@ -4177,7 +4176,7 @@ let%expect_test "a key a Capture listener prevents leaves the selection" =
   is_false ~msg:"running" ended;
   [%expect {| |}]
 
-(* §3.7 Application: the application hears the copies and the clears its
+(* The application hears the copies and the clears its
    commands make. *)
 let%expect_test "the application hears what its commands copy and clear" =
   let log, copied, _ = selecting [ drag_hello; "c"; "k"; "k" ] in
@@ -4187,7 +4186,7 @@ let%expect_test "the application hears what its commands copy and clear" =
   equal ~msg:"to the clipboard" (list string) [ "hello" ] copied;
   [%expect {| |}]
 
-(* §3.7 Changes: a focus loss settles the selection a held press drags. *)
+(* A focus loss settles the selection a held press drags. *)
 let%expect_test "a focus loss settles the selection it drags" =
   let log, _, _ = selecting [ "\027[<0;1;1M\027[<32;5;1M"; "\027[O" ] in
   equal ~msg:"settled" (list string) [ "selected hello" ] log;
@@ -4206,7 +4205,7 @@ let%expect_test "copy on select copies a selection whose release was lost" =
     log;
   [%expect {| |}]
 
-(* §3.8 Unmount: a commit that unmounts the selected text clears the
+(* A commit that unmounts the selected text clears the
    selection, and the application hears it. Here the application removes
    "hello world", on the second row, as it hears the selection settle. *)
 let%expect_test "the application hears a clear when the selected text unmounts"

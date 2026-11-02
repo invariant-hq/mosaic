@@ -332,7 +332,7 @@ let rec texts node =
   @ List.concat_map texts (Renderable.children node)
 
 (* Lists, block quotes and tables update in place while streaming, as
-   paragraphs do (RFC 0006 §3.8): every text they showed keeps its node as
+   paragraphs do: every text they showed keeps its node as
    they grow. *)
 let containers_grow_in_place () =
   let _t, md =
