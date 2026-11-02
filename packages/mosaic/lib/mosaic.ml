@@ -1052,10 +1052,21 @@ let paste_heard runtime =
   runtime.paste_checked <- now;
   arm_wakeup runtime
 
+(* A paste, or an input method's text, is typing: like a typed key, it
+   clears a live view selection after the [Capture] listeners, unless one
+   kept it (RFC 0006 §3.6). *)
 let dispatch_paste runtime text =
-  let path = Renderer.focus_path runtime.renderer in
+  let renderer = runtime.renderer in
+  let path = Renderer.focus_path renderer in
   listen runtime ~stopped:Event.Paste.propagation_stopped runtime.paste_subs
-    (Renderer.dispatch_paste runtime.renderer path)
+    (fun event ->
+      if
+        Renderer.selection_live renderer
+        && not
+             (Event.Paste.propagation_stopped event
+             || Event.Paste.default_prevented event)
+      then Renderer.clear_selection renderer;
+      Renderer.dispatch_paste renderer path event)
     (Event.Paste.of_text text)
 
 (* The root's theme is the default of the terminal's palette, and the
@@ -1106,7 +1117,8 @@ let selection_action (key : Matrix.Input.Keystroke.t) =
     | Home when extends -> `Extend `Row_start
     | End when extends -> `Extend `Row_end
     | (Left | Right | Up | Down | Home | End) when navigates -> `Keep
-    | Page_up | Page_down | Modifier _ -> `Keep
+    | Page_up | Page_down | Modifier _ | Caps_lock | Num_lock | Scroll_lock ->
+        `Keep
     | _ -> `Clear
 
 (* The selection of the focused editor, which owns its own (§3.10). *)
@@ -1123,7 +1135,8 @@ let editor_selection renderer =
    selection is live, Escape clears it, a copy chord copies and clears it,
    and Shift with an arrow, Home or End extends it, each taking the key; any
    other key clears it and goes on, but PgUp, PgDn, an arrow, Home or End
-   held with Ctrl, Alt or Super, and a modifier alone. Otherwise a copy chord
+   held with Ctrl, Alt or Super, and a modifier or a lock key alone.
+   Otherwise a copy chord
    copies the focused editor's selection, which stays, and takes the key. *)
 let selection_keys runtime event =
   let renderer = runtime.renderer in

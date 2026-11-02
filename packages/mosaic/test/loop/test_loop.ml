@@ -4073,6 +4073,35 @@ let%expect_test "any other key clears the view selection and goes on" =
     log;
   [%expect {| |}]
 
+(* A paste is typing: it clears the view selection and goes on, into the
+   focused input. Caps, Num and Scroll Lock pressed alone keep it, as a
+   modifier does. *)
+let%expect_test "a paste clears the view selection, a lock key keeps it" =
+  let log, _, _ =
+    selecting
+      ~editor:(Mosaic.Editor.of_string "")
+      [ drag_hello; "\027[200~abc\027[201~" ]
+  in
+  equal ~msg:"a paste clears" (list string)
+    [ "selected hello"; "cleared"; "edit" ]
+    log;
+  let log, copied, _ =
+    selecting
+      [ drag_hello; "\027[57358u"; "\027[57359u"; "\027[57360u"; ctrl_c ]
+  in
+  equal ~msg:"the lock keys keep it" (list string)
+    [
+      "selected hello";
+      "key <other>";
+      "key <other>";
+      "key <other>";
+      "copied hello";
+      "cleared";
+    ]
+    log;
+  equal ~msg:"and Ctrl+C copies it" (list string) [ "hello" ] copied;
+  [%expect {| |}]
+
 (* PgDn, PgUp, an arrow held with Ctrl or Alt, and a modifier pressed alone
    go on and leave the selection, which Ctrl+C then copies. *)
 let%expect_test "paging, modified navigation and a modifier keep the selection"
