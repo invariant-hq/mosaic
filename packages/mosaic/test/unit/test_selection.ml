@@ -2567,6 +2567,54 @@ let equal_panes_copy_a_line_apart () =
   select r (0, 0) (25, 3);
   equal ~msg:"a line apart" (option string) (Some "a\nb") (copied r)
 
+(* A figure that reads [`Cells] and holds no text, as a chart does, is taken
+   whole once the band covers it, and stays taken when the drag is released
+   past it or on it, forward or backward. *)
+let a_cells_figure_without_text_stays_taken_at_the_release () =
+  let v = "\u{2502}" in
+  let drawn =
+    String.concat "\n"
+      [
+        "\u{250C}" ^ rule 38 ^ "\u{2510}";
+        v ^ String.make 38 ' ' ^ v;
+        "\u{2514}" ^ rule 38 ^ "\u{2518}";
+      ]
+  in
+  (* The figure, three rows tall, below "intro" or above "outro". *)
+  let document ~first =
+    let r = Renderer.create () in
+    let col = column (Renderer.root r) in
+    if not first then ignore (line col "intro" : Text.t);
+    let figure =
+      Box.create ~parent:col
+        ~style:
+          (Toffee.Style.default
+          |> Toffee.Style.set_height (Toffee.Style.Dimension.length 3.))
+        (Box.Props.make ~border:true ())
+    in
+    Renderable.set_selectable (Box.node figure) (Some `Cells);
+    if first then ignore (line col "outro" : Text.t);
+    frame r;
+    r
+  in
+  List.iter
+    (fun (name, first, (x0, y0), (x1, y1), expected) ->
+      let r = document ~first in
+      press r ~x:x0 ~y:y0;
+      drag_to r ~x:x1 ~y:y1;
+      equal ~msg:(name ^ ", dragging") (option string) (Some expected)
+        (copied r);
+      release r ~x:x1 ~y:y1;
+      equal ~msg:(name ^ ", settled") (option string) (Some expected) (copied r);
+      paint r;
+      let top = if first then 0 else 1 in
+      is_true ~msg:(name ^ ": its border") (inverse r ~x:39 ~y:(top + 1)))
+    [
+      ("past it", false, (0, 0), (10, 6), "intro\n" ^ drawn);
+      ("on its last cell", false, (0, 0), (39, 3), "intro\n" ^ drawn);
+      ("back onto its first cell", true, (4, 3), (0, 0), drawn ^ "\noutro");
+    ]
+
 (* An editor takes no part in the view's selection: under a root that reads
    [`Cells], a band across it highlights the cells around it and none of its
    own, whatever it reads. *)
@@ -2865,6 +2913,8 @@ let () =
           test "a cells figure in a text document is taken whole"
             a_cells_figure_in_a_text_document_is_taken_whole;
           test "equal panes copy a line apart" equal_panes_copy_a_line_apart;
+          test "a cells figure without text stays taken at the release"
+            a_cells_figure_without_text_stays_taken_at_the_release;
           test "an editor is never highlighted" an_editor_is_never_highlighted;
         ];
     ]

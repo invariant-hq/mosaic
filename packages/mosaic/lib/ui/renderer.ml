@@ -1778,7 +1778,9 @@ let extreme_text t box ~last =
    fragment's node, so the highlight stays where it is: the end of the
    last fragment when the focus was after the anchor, else the start of the
    first. A nested scope covered at the far end gives the end of its own
-   last or first text, which stands at the corner of its view. *)
+   last or first text, which stands at the corner of its view; one that
+   reads [`Cells] and shows no text, such as a chart, gives the cell at
+   that corner. *)
 let far_end t sel band =
   let last = band.forward in
   let ends =
@@ -1793,7 +1795,8 @@ let far_end t sel band =
             in
             (`Text (end_in node rows ~first:g ~last:g), x, y)
         | Box_item { box; view = x, y, w, h; _ } ->
-            if last then (`Box box, x + w, y + h - 1) else (`Box box, x, y))
+            if last then (`Box (box, x + w - 1, y + h - 1), x + w, y + h - 1)
+            else (`Box (box, x, y), x, y))
       (items t ~scope:sel.scope (Some band))
   in
   let farthest_first (_, x, y) (_, x', y') =
@@ -1801,7 +1804,13 @@ let far_end t sel band =
   in
   List.find_map
     (function
-      | `Text e, _, _ -> Some e | `Box box, _, _ -> extreme_text t box ~last)
+      | `Text e, _, _ -> Some e
+      | `Box (box, x, y), _, _ -> (
+          match extreme_text t box ~last with
+          | Some _ as e -> e
+          | None when Renderable.selectable box = `Cells ->
+              Some (cell_end box ~x ~y)
+          | None -> None))
     (List.stable_sort farthest_first ends)
 
 (* A selection's gesture ends with the press that drags it, released or
@@ -1818,7 +1827,7 @@ let end_selection_drag t =
       (* A grapheme gesture released over a cell that shows no text keeps
          the pointer's cell as its focus where that cell reads [`Cells], or
          where nothing reads [`Text] or [`Cells] for it; otherwise the focus
-         is the band's far end in its text. *)
+         is the band's far end. *)
       let pointer_cell () =
         let scope = sel.scope in
         let origin = region_origin scope and view = region_view scope in

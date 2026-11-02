@@ -395,8 +395,9 @@ val theme : t -> Theme.t
     click on a cell that shows no text stays that cell when the nearest node at
     or above the cell's in the scope that reads [`Text] or [`Cells] and is no
     editor reads [`Cells], or when there is no such node; otherwise it becomes
-    the far end of the text the selection holds. A selection that then holds
-    nothing clears.
+    the far end of what the selection holds: the end of its last or first text,
+    or the far corner of a scope taken whole that reads [`Cells] and shows no
+    text. A selection that then holds nothing clears.
 
     A left press with Shift, on a node that does not read [`Off] and while a
     selection that is not behind the modal node exists, moves the end of the
