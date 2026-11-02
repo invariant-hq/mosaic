@@ -587,6 +587,11 @@ module Private : sig
     focus : t -> bool;
     blur : t -> unit;
     selected_range : t -> (int * int) option;  (** {!val-selected_range}. *)
+    text_changed : t -> unit;  (** {!val-text_changed}. *)
+    hiding : t -> unit;
+        (** Tells the renderer that a node and its descendants are about to stop
+            being shown, as the node is hidden, detached or destroyed, so that a
+            text selection with an end among them clears ([Renderer]). *)
     register_lifecycle : t -> unit;
     unregister_lifecycle : t -> unit;
     alloc_num : unit -> int;
@@ -813,6 +818,18 @@ module Private : sig
       view selection holds the graphemes of [t]'s text rows ({!text_rows}) from
       [first] to [last], and [None] when it holds none of them. A text node
       reads it as it paints. *)
+
+  val text_changed : t -> unit
+  (** [text_changed t] tells the renderer that the text of [t]'s text rows
+      ({!text_rows}) changed, so that a view selection with an end in it follows
+      the change ([Renderer]). A text node calls it after each change of its
+      text. *)
+
+  val update_from_layout : t -> unit
+  (** [update_from_layout t] caches the box the layout tree holds for [t], at
+      its parent's cached position, as a paint that reached [t] would: the
+      renderer reads a text no paint reached since its layout changed at the
+      width its layout gives it. *)
 
   val report_scroll : t -> region:Matrix_grid.region -> dx:int -> dy:int -> unit
   (** [report_scroll t ~region ~dx ~dy] forwards a scroll movement to the

@@ -171,5 +171,6 @@ val selected_text : t -> string
 
 val invalidate : t -> unit
 (** [invalidate t] requests a render after modifying the underlying buffer.
-    Changes to text or width policy also invalidate geometry and mark layout
-    dirty. Paint changes retain cached geometry. *)
+    Changes to text or width policy also invalidate geometry, mark layout dirty
+    and tell the renderer ({!Renderable.Private.text_changed}). Paint changes
+    retain cached geometry. *)

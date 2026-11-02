@@ -46,6 +46,8 @@ type context = {
   focus : node -> bool;
   blur : node -> unit;
   selected_range : node -> (int * int) option;
+  text_changed : node -> unit;
+  hiding : node -> unit;
   register_lifecycle : node -> unit;
   unregister_lifecycle : node -> unit;
   alloc_num : unit -> int;
@@ -970,11 +972,12 @@ let apply_style t ~preserve_hidden new_style =
     then Toffee.Style.set_display Toffee.Style.Display.None new_style
     else new_style
   in
-  toffee_exn (Toffee.set_style t.ctx.tree t.toffee_node effective_style);
-  t.style <- effective_style;
   let now_visible =
     not (Toffee.Style.Display.is_none (Toffee.Style.display effective_style))
   in
+  if t.visible && not now_visible then t.ctx.hiding t;
+  toffee_exn (Toffee.set_style t.ctx.tree t.toffee_node effective_style);
+  t.style <- effective_style;
   if t.visible <> now_visible then (
     t.visible <- now_visible;
     update_self_live t;
@@ -1167,6 +1170,7 @@ let attach ~parent ?index t =
 
 let detach t =
   blur_focused_subtree t;
+  t.ctx.hiding t;
   detach_impl t
 
 (* Detaches [nodes] as [detach] does, removing each parent's departing
@@ -1280,6 +1284,7 @@ let detach_all = function
   | [] -> ()
   | first_node :: _ as nodes -> (
       List.iter blur_focused_subtree nodes;
+      List.iter (fun node -> node.ctx.hiding node) nodes;
       (* Nodes of one parent, the usual case, are counted before they leave,
          so that the search for them stops once each is seen. *)
       match first_node.parent with
@@ -1404,62 +1409,73 @@ let detach_children t =
     adjust_live_count t (- !live);
     t.ctx.schedule ())
 
+let destroy_node t =
+  blur_focused_subtree t;
+  t.destroyed <- true;
+  detach_children t;
+  t.z_sorted <- [||];
+  t.z_len <- 0;
+  t.z_dirty <- false;
+  t.cull_index <- None;
+  t.paint_region <- None;
+  detach_impl t;
+  t.ctx.unregister t;
+  ignore (Toffee.remove t.ctx.tree t.toffee_node);
+  t.frame_buffer <- None;
+  t.child_target <- None;
+  t.mouse_handlers <- [];
+  t.click_handler <- None;
+  t.key_handlers <- [];
+  t.paste_handlers <- [];
+  t.key_behavior <- None;
+  t.paste_behavior <- None;
+  t.focus_handler <- None;
+  t.blur_handler <- None;
+  t.region <- None;
+  t.owned_text <- None;
+  t.child_clip <- None;
+  t.text_rows_provider <- None;
+  t.pending_provider <- None;
+  t.on_update <- None;
+  t.on_frame <- None;
+  t.on_resize <- None;
+  t.size_observer <- None;
+  t.on_lifecycle_pass <- None;
+  t.cursor_provider <- None;
+  let cleanup = t.cleanup in
+  t.cleanup <- None;
+  Option.iter (fun f -> f ()) cleanup
+
+(* The renderer hears of a destruction while the nodes are still shown
+   (RFC 0006 §3.8). *)
 let destroy t =
   if not t.destroyed then (
-    blur_focused_subtree t;
-    t.destroyed <- true;
-    detach_children t;
-    t.z_sorted <- [||];
-    t.z_len <- 0;
-    t.z_dirty <- false;
-    t.cull_index <- None;
-    t.paint_region <- None;
-    detach_impl t;
-    t.ctx.unregister t;
-    ignore (Toffee.remove t.ctx.tree t.toffee_node);
-    t.frame_buffer <- None;
-    t.child_target <- None;
-    t.mouse_handlers <- [];
-    t.click_handler <- None;
-    t.key_handlers <- [];
-    t.paste_handlers <- [];
-    t.key_behavior <- None;
-    t.paste_behavior <- None;
-    t.focus_handler <- None;
-    t.blur_handler <- None;
-    t.region <- None;
-    t.owned_text <- None;
-    t.child_clip <- None;
-    t.text_rows_provider <- None;
-    t.pending_provider <- None;
-    t.on_update <- None;
-    t.on_frame <- None;
-    t.on_resize <- None;
-    t.size_observer <- None;
-    t.on_lifecycle_pass <- None;
-    t.cursor_provider <- None;
-    let cleanup = t.cleanup in
-    t.cleanup <- None;
-    Option.iter (fun f -> f ()) cleanup)
+    t.ctx.hiding t;
+    destroy_node t)
 
 (* The children are detached together before any is destroyed, so that each
    one's destruction finds no parent to be removed from. *)
-let rec destroy_recursively t =
+let destroy_recursively t =
+  let rec go t =
+    if not t.destroyed then (
+      let kids = Array.make (max 1 t.child_count) t in
+      let n = ref 0 in
+      for i = 0 to t.child_count - 1 do
+        match t.children.(i) with
+        | Some c ->
+            kids.(!n) <- c;
+            incr n
+        | None -> ()
+      done;
+      detach_children t;
+      for i = 0 to !n - 1 do
+        go kids.(i)
+      done;
+      destroy_node t)
+  in
   if not t.destroyed then (
-    let kids = Array.make (max 1 t.child_count) t in
-    let n = ref 0 in
-    for i = 0 to t.child_count - 1 do
-      match t.children.(i) with
-      | Some c ->
-          kids.(!n) <- c;
-          incr n
-      | None -> ()
-    done;
-    detach_children t;
-    for i = 0 to !n - 1 do
-      destroy_recursively kids.(i)
-    done;
-    destroy t)
+    t.ctx.hiding t;
+    go t)
 
 let destroyed t = t.destroyed
 
@@ -1644,27 +1660,34 @@ let[@inline] update_layout t ~x ~y ~width ~height =
     t.abs.abs_h <- height);
   t.layout_valid <- true
 
+(* [child]'s cached layout from the layout tree, at [t]'s cached position,
+   as OpenTUI's [updateFromLayout] reads it. The node in the top layer is
+   laid out as a root, at the root's origin. *)
+let update_child_layout t child =
+  match Toffee.layout t.ctx.tree child.toffee_node with
+  | Ok (l : Toffee.Layout.t) ->
+      let ox, oy =
+        if in_top_layer child then (0., 0.) else (t.abs.abs_x, t.abs.abs_y)
+      in
+      update_layout child
+        ~x:(ox +. location_x child l)
+        ~y:(oy +. location_y child l)
+        ~width:l.size.width ~height:l.size.height
+  | Error _ -> ()
+
 (* Refresh direct children's cached layout from the layout tree, mirroring
    OpenTUI's updateFromLayout pass before [_getVisibleChildren].
    [t.abs] is current because the renderer updates a node's layout
-   before descending into its children. The node in the top layer is laid
-   out as a root, at the root's origin. *)
+   before descending into its children. *)
 let update_children_layout t =
   for i = 0 to t.child_count - 1 do
     match t.children.(i) with
-    | Some child when child.visible -> (
-        match Toffee.layout t.ctx.tree child.toffee_node with
-        | Ok (l : Toffee.Layout.t) ->
-            let ox, oy =
-              if in_top_layer child then (0., 0.) else (t.abs.abs_x, t.abs.abs_y)
-            in
-            update_layout child
-              ~x:(ox +. location_x child l)
-              ~y:(oy +. location_y child l)
-              ~width:l.size.width ~height:l.size.height
-        | Error _ -> ())
+    | Some child when child.visible -> update_child_layout t child
     | Some _ | None -> ()
   done
+
+let update_from_layout t =
+  match t.parent with Some p -> update_child_layout p t | None -> ()
 
 (* A culling node's index refreshes its direct children alone; below them,
    only a paint does. *)
@@ -2070,6 +2093,8 @@ module Private = struct
     focus : t -> bool;
     blur : t -> unit;
     selected_range : t -> (int * int) option;
+    text_changed : t -> unit;
+    hiding : t -> unit;
     register_lifecycle : t -> unit;
     unregister_lifecycle : t -> unit;
     alloc_num : unit -> int;
@@ -2147,5 +2172,7 @@ module Private = struct
   let owned_text t = t.owned_text
   let declared_selectable t = t.selectable
   let selected_range t = t.ctx.selected_range t
+  let text_changed t = t.ctx.text_changed t
+  let update_from_layout = update_from_layout
   let report_scroll t ~region ~dx ~dy = t.ctx.report_scroll t ~region ~dx ~dy
 end

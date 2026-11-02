@@ -190,8 +190,10 @@ val set_layout_style : t -> Toffee.Style.t -> unit
 
 val set_content : t -> string -> unit
 (** [set_content t s] replaces the markdown source of [t] with [s] and
-    re-renders. Unchanged blocks are updated in place without destroying their
-    renderables, making this efficient for streaming appends. No-op when [s]
+    re-renders. Unchanged blocks keep their renderables untouched, and a block
+    that keeps its kind, a list, a block quote or a table as a paragraph,
+    updates its renderables in place, making this efficient for streaming
+    appends and keeping a text selection in them (RFC 0006 §3.8). No-op when [s]
     equals the current content.
 
     See also {!val-content}. *)
@@ -205,9 +207,9 @@ val content : t -> string
 
 val set_style : t -> Style.t -> unit
 (** [set_style t style] changes the element style of [t] and re-renders.
-    Re-parsing is skipped when blocks already exist; leaf blocks are updated in
-    place without destroying their renderables. No-op when [style] equals the
-    current style. *)
+    Re-parsing is skipped when blocks already exist; blocks but those a custom
+    renderer made are updated in place without destroying their renderables.
+    No-op when [style] equals the current style. *)
 
 val set_highlighter : t -> Code.Highlighter.t option -> unit
 (** [set_highlighter t h] changes the fenced-code highlighter of [t] to [h] (see
@@ -223,8 +225,8 @@ val set_syntax_style : t -> Syntax_style.t -> unit
 
 val set_conceal : t -> bool -> unit
 (** [set_conceal t v] sets whether [t] hides markdown syntax characters.
-    Re-parsing is skipped when blocks already exist; leaf blocks are updated in
-    place. No-op when [v] equals the current value. *)
+    Re-parsing is skipped when blocks already exist; blocks but those a custom
+    renderer made update in place. No-op when [v] equals the current value. *)
 
 val set_streaming : t -> bool -> unit
 (** [set_streaming t v] enables ([true]) or disables ([false]) streaming mode on

@@ -1,6 +1,7 @@
 (* The view's text selection (RFC 0006): its model, region and band (§3.1,
    §3.2), copy (§3.3), selectability (§3.4), units and the modified presses
-   (§3.5), highlight (§3.9) and the editors' own selection (§3.10). *)
+   (§3.5), keys (§3.6), changes (§3.7), change under a selection (§3.8),
+   highlight (§3.9) and the editors' own selection (§3.10). *)
 
 open Windtrap
 open Mosaic_ui
@@ -280,37 +281,6 @@ let hidden_text_takes_no_part () =
   select r (0, 0) (4, 1);
   equal ~msg:"without the hidden text" (option string) (Some "one\nthree")
     (copied r)
-
-(* An end whose node is hidden names no visible text: the selection shows
-   and copies nothing. *)
-let an_ends_node_hidden_shows_and_copies_nothing () =
-  let r = Renderer.create () in
-  let col = column (Renderer.root r) in
-  ignore (line col "zero" : Text.t);
-  let one = line col "one" in
-  ignore (line col "two" : Text.t);
-  let three = line col "three" in
-  frame r;
-  let nothing_shown msg =
-    is_none ~msg (copied r);
-    paint r;
-    for y = 0 to 3 do
-      for x = 0 to 5 do
-        is_false
-          ~msg:(Printf.sprintf "%s: no highlight at %d,%d" msg x y)
-          (inverse r ~x ~y)
-      done
-    done
-  in
-  select r (1, 1) (2, 3);
-  equal ~msg:"selected" (option string) (Some "ne\ntwo\nthr") (copied r);
-  Renderable.set_visible (Text.node one) false;
-  nothing_shown "the anchor's node hidden";
-  Renderable.set_visible (Text.node one) true;
-  frame r;
-  select r (1, 1) (2, 3);
-  Renderable.set_visible (Text.node three) false;
-  nothing_shown "the focus's node hidden"
 
 (* §3.2 Region: a selection in the root's layer holds nothing of the top
    layer, which is a region of its own, painted over it. *)
@@ -1619,6 +1589,366 @@ let a_press_on_unselectable_content_queues_nothing () =
   equal ~msg:"nothing" (list string) [] (changes r);
   equal ~msg:"kept" (option string) (Some "hello") (copied r)
 
+(* ── §3.8 Change under a selection ── *)
+
+(* "alpha beta gamma" alone on the first row, its "beta" selected at rest,
+   with no change left to take. *)
+let beta () =
+  let r = Renderer.create () in
+  let t = text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma" in
+  frame r;
+  select r (6, 0) (9, 0);
+  ignore (changes r : string list);
+  (r, t)
+
+(* Whether the frame drawn last shows the cells from [x0] to [x1] of row
+   [y] in reverse, and no other cell of the row. *)
+let highlighted r ~y x0 x1 =
+  paint r;
+  List.for_all
+    (fun x -> Bool.equal (inverse r ~x ~y) (x >= x0 && x <= x1))
+    (List.init width Fun.id)
+
+(* §3.8 Scrolling: a scroll box that follows its bottom as rows are appended
+   keeps the selection on the rows it held, out of its view. *)
+let following_and_appending_keep_the_selection () =
+  let r = Renderer.create () in
+  let sb =
+    Scroll_box.create ~parent:(Renderer.root r)
+      ~style:(place ~x:0 ~y:0 ~w:20 ~h:4)
+      (Scroll_box.Props.make ~show_scrollbars:false
+         ~scroll:(Scroll.follow `Bottom (Scroll.at 0))
+         ())
+  in
+  Scroll_box.set_on_scroll sb (Some (Scroll_box.set_scroll sb));
+  let row i =
+    ignore (line (Scroll_box.node sb) (Printf.sprintf "row-%d" i) : Text.t)
+  in
+  for i = 0 to 3 do
+    row i
+  done;
+  frame r;
+  select r (0, 1) (4, 2);
+  ignore (changes r : string list);
+  for i = 4 to 9 do
+    row i;
+    frame r
+  done;
+  equal ~msg:"followed" int 6 (Scroll_box.scroll_top sb);
+  equal ~msg:"the rows it held" (option string) (Some "row-1\nrow-2") (copied r);
+  equal ~msg:"nothing heard" (list string) [] (changes r)
+
+(* A resize rewraps the text, and the selection stays on the word it
+   held. *)
+let a_resize_keeps_the_selection () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore
+    (Text.create ~parent:col
+       (Text.Props.make ~content:"alpha beta gamma delta" ~wrap:`Word ())
+      : Text.t);
+  frame r;
+  clicks r ~x:12 ~y:0 2;
+  equal ~msg:"before" (option string) (Some "gamma") (copied r);
+  Renderer.render_frame r ~width:8 ~height ~dt:0.;
+  equal ~msg:"after" (option string) (Some "gamma") (copied r);
+  is_true ~msg:"highlighted where it now lies" (inverse r ~x:0 ~y:2);
+  is_false ~msg:"and not where it was" (inverse r ~x:0 ~y:1)
+
+(* §3.8 Edits: an edit before the ends moves them by the change in length;
+   one after them leaves them. *)
+let an_edit_before_the_ends_moves_them () =
+  let r, t = beta () in
+  Text.set_content t "and alpha beta gamma";
+  equal ~msg:"an insertion before" (option string) (Some "beta") (copied r);
+  is_true ~msg:"highlighted where it now lies" (highlighted r ~y:0 10 13);
+  Text.set_content t "alpha beta gamma";
+  equal ~msg:"a deletion before" (option string) (Some "beta") (copied r);
+  Text.set_content t "alpha beta gamma delta";
+  equal ~msg:"an insertion after" (option string) (Some "beta") (copied r);
+  equal ~msg:"nothing heard" (list string) [] (changes r)
+
+(* The changed span counts clusters, whatever their bytes: a combining mark
+   that joins the cluster before an end makes that cluster part of the span,
+   so text inserted after it stays out of a selection that starts there; wide
+   clusters inserted before the ends move them by their count. *)
+let an_edit_counts_clusters () =
+  let r = Renderer.create () in
+  let t = text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "cafe ok" in
+  frame r;
+  select r (4, 0) (6, 0);
+  equal ~msg:"before" (option string) (Some " ok") (copied r);
+  Text.set_content t "cafe\u{0301}! ok";
+  equal ~msg:"a mark joins a cluster" (option string) (Some " ok") (copied r);
+  Text.set_content t "\u{65E5}\u{672C} cafe\u{0301}! ok";
+  equal ~msg:"wide clusters inserted" (option string) (Some " ok") (copied r)
+
+(* An end strictly inside the changed span moves to its start. *)
+let an_end_inside_the_edit_moves_to_its_start () =
+  let r = Renderer.create () in
+  let t = text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma" in
+  frame r;
+  select r (7, 0) (15, 0);
+  equal ~msg:"before" (option string) (Some "eta gamma") (copied r);
+  Text.set_content t "alpha BETA gamma";
+  equal ~msg:"from the span's start" (option string) (Some "BETA gamma")
+    (copied r)
+
+(* An end at the old end of the changed span moves by the change in
+   length, and one at its start stays. *)
+let an_end_at_the_edits_end_moves_with_it () =
+  let r, t = beta () in
+  Text.set_content t "alpha BETA! gamma";
+  equal ~msg:"the span replaced" (option string) (Some "BETA!") (copied r)
+
+(* An insertion at an end leaves the end in place: text inserted at the
+   selection's start falls inside it, and text at its end outside. *)
+let an_insertion_at_an_end_leaves_it () =
+  let r, t = beta () in
+  Text.set_content t "alpha betas gamma";
+  equal ~msg:"at the end" (option string) (Some "beta") (copied r);
+  Text.set_content t "alpha Xbetas gamma";
+  equal ~msg:"at the start" (option string) (Some "Xbeta") (copied r)
+
+(* Law 1: concealed markdown rewrites the text before an end when a [**]
+   closes, and the end stays on the word it held. *)
+let a_streaming_paragraph_closes_bold_before_an_end () =
+  let r = Renderer.create () in
+  let md =
+    Markdown.create ~parent:(Renderer.root r)
+      (Markdown.Props.make ~content:"a **b c" ~streaming:true ())
+  in
+  frame r;
+  clicks r ~x:6 ~y:0 2;
+  equal ~msg:"before" (option string) (Some "c") (copied r);
+  Markdown.set_content md "a **b** c";
+  frame r;
+  equal ~msg:"the bold closed" (option string) (Some "c") (copied r);
+  is_true ~msg:"highlighted where it now lies" (highlighted r ~y:0 4 4)
+
+(* The selection clears when its ends meet: an edit removes all it held. *)
+let the_selection_clears_when_its_ends_meet () =
+  let r, t = beta () in
+  Text.set_content t "alpha  gamma";
+  is_none ~msg:"nothing held" (copied r);
+  is_false ~msg:"not live" (Renderer.selection_live r);
+  equal ~msg:"heard" (list string) [ "cleared" ] (changes r);
+  Text.set_content t "alpha beta gamma";
+  is_none ~msg:"gone" (copied r)
+
+(* A gesture keeps its anchor through an edit, even one that leaves it no
+   text for a while, and settles the text the anchor names. *)
+let an_edit_during_a_drag_follows_its_anchor () =
+  let r = Renderer.create () in
+  let t = text_at (Renderer.root r) ~x:0 ~y:0 ~w:30 ~h:1 "alpha beta gamma" in
+  frame r;
+  press r ~x:6 ~y:0;
+  drag_to r ~x:9 ~y:0;
+  Text.set_content t "and alpha beta gamma";
+  frame r;
+  drag_to r ~x:13 ~y:0;
+  release r ~x:13 ~y:0;
+  equal ~msg:"settled" (list string) [ "settled beta" ] (changes r);
+  press r ~x:10 ~y:0;
+  ignore (changes r : string list);
+  drag_to r ~x:11 ~y:0;
+  Text.set_content t "and alpha ";
+  frame r;
+  is_none ~msg:"no text for a while" (copied r);
+  Text.set_content t "and alpha beta gamma";
+  frame r;
+  drag_to r ~x:13 ~y:0;
+  release r ~x:13 ~y:0;
+  equal ~msg:"settled again" (list string) [ "settled beta" ] (changes r)
+
+(* §3.8 Unmount, hide: an end whose node is hidden, or below a hidden node,
+   clears the selection, which showing the node again does not bring back.
+   A node hidden between the ends, or outside them, leaves it. *)
+let an_ends_node_hidden_clears_the_selection () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore (line col "zero" : Text.t);
+  let one = line col "one" in
+  let two = line col "two" in
+  let three = line col "three" in
+  frame r;
+  let reselect () =
+    select r (1, 1) (2, 3);
+    ignore (changes r : string list)
+  in
+  let cleared msg =
+    is_none ~msg (copied r);
+    equal ~msg:(msg ^ ": heard") (list string) [ "cleared" ] (changes r);
+    paint r;
+    for y = 0 to 3 do
+      for x = 0 to 5 do
+        is_false
+          ~msg:(Printf.sprintf "%s: no highlight at %d,%d" msg x y)
+          (inverse r ~x ~y)
+      done
+    done
+  in
+  reselect ();
+  equal ~msg:"selected" (option string) (Some "ne\ntwo\nthr") (copied r);
+  Renderable.set_visible (Text.node one) false;
+  cleared "the anchor's node hidden";
+  Renderable.set_visible (Text.node one) true;
+  frame r;
+  is_none ~msg:"shown again" (copied r);
+  reselect ();
+  Renderable.set_visible (Text.node three) false;
+  cleared "the focus's node hidden";
+  Renderable.set_visible (Text.node three) true;
+  frame r;
+  reselect ();
+  Renderable.set_visible col false;
+  cleared "an ancestor hidden";
+  Renderable.set_visible col true;
+  frame r;
+  reselect ();
+  Renderable.set_visible (Text.node two) false;
+  frame r;
+  equal ~msg:"a node between hidden" (option string) (Some "ne\nthr") (copied r);
+  equal ~msg:"nothing heard" (list string) [] (changes r)
+
+(* An end whose node is detached, destroyed or remounted clears the
+   selection; a render that keeps the node keeps it. *)
+let an_ends_node_unmounted_clears_the_selection () =
+  let r = Renderer.create () in
+  let node =
+    Text.node (text_at (Renderer.root r) ~x:0 ~y:0 ~w:20 ~h:1 "hello world")
+  in
+  let unmounted msg unmount =
+    if Option.is_none (Renderable.parent node) then
+      Renderable.attach ~parent:(Renderer.root r) node;
+    frame r;
+    select r (0, 0) (4, 0);
+    ignore (changes r : string list);
+    unmount node;
+    is_none ~msg (copied r);
+    equal ~msg:(msg ^ ": heard") (list string) [ "cleared" ] (changes r)
+  in
+  unmounted "detached" Renderable.detach;
+  unmounted "detached among others" (fun node -> Renderable.detach_all [ node ]);
+  unmounted "destroyed" Renderable.destroy;
+  let view key = Mosaic.box [ Mosaic.text ~key "hello world" ] in
+  let r, reconciler, _ = mount (view "a") in
+  select r (0, 0) (4, 0);
+  ignore (changes r : string list);
+  Mosaic.Reconciler.render reconciler ~viewport_width:width (view "a");
+  frame r;
+  equal ~msg:"kept" (option string) (Some "hello") (copied r);
+  Mosaic.Reconciler.render reconciler ~viewport_width:width (view "b");
+  frame r;
+  is_none ~msg:"remounted" (copied r);
+  equal ~msg:"remounted: heard" (list string) [ "cleared" ] (changes r)
+
+(* §3.5 Release: an end's unmount during a drag ends its gesture: its later
+   motion selects nothing and its release settles nothing. *)
+let an_ends_unmount_ends_its_drag () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  let first = line col "hello" in
+  ignore (line col "world" : Text.t);
+  frame r;
+  press r ~x:0 ~y:0;
+  drag_to r ~x:2 ~y:1;
+  Renderable.destroy_recursively (Text.node first);
+  equal ~msg:"heard" (list string) [ "cleared" ] (changes r);
+  frame r;
+  drag_to r ~x:4 ~y:0;
+  release r ~x:4 ~y:0;
+  is_none ~msg:"nothing selected" (copied r);
+  equal ~msg:"nothing settled" (list string) [] (changes r)
+
+(* §3.8 Markdown: list, table and block quote blocks update in place while
+   streaming, so an end in one survives a chunk. *)
+let an_end_in_a_streaming_list_survives_a_chunk () =
+  let r = Renderer.create () in
+  let md =
+    Markdown.create ~parent:(Renderer.root r)
+      (Markdown.Props.make ~content:"- one\n- two" ~streaming:true ())
+  in
+  frame r;
+  clicks r ~x:2 ~y:1 2;
+  equal ~msg:"before" (option string) (Some "two") (copied r);
+  ignore (changes r : string list);
+  Markdown.set_content md "- one\n- two\n- three";
+  frame r;
+  equal ~msg:"an item added" (option string) (Some "two") (copied r);
+  Markdown.set_content md "- one\n- two\n- three\n\n  more";
+  frame r;
+  equal ~msg:"the list loosened" (option string) (Some "two") (copied r);
+  equal ~msg:"nothing heard" (list string) [] (changes r)
+
+let an_end_in_a_streaming_table_survives_a_chunk () =
+  let r = Renderer.create () in
+  let table = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n" in
+  let md =
+    Markdown.create ~parent:(Renderer.root r)
+      (Markdown.Props.make ~content:table ~streaming:true ())
+  in
+  frame r;
+  clicks r ~x:1 ~y:3 2;
+  equal ~msg:"before" (option string) (Some "1") (copied r);
+  ignore (changes r : string list);
+  Markdown.set_content md (table ^ "| 5 | 6 |\n");
+  frame r;
+  equal ~msg:"a row added" (option string) (Some "1") (copied r);
+  equal ~msg:"nothing heard" (list string) [] (changes r)
+
+let an_end_in_a_streaming_quote_survives_a_chunk () =
+  let r = Renderer.create () in
+  let quote = "> alpha\n>\n> beta" in
+  let md =
+    Markdown.create ~parent:(Renderer.root r)
+      (Markdown.Props.make ~content:quote ~streaming:true ())
+  in
+  frame r;
+  clicks r ~x:2 ~y:0 2;
+  equal ~msg:"before" (option string) (Some "alpha") (copied r);
+  ignore (changes r : string list);
+  Markdown.set_content md (quote ^ " gamma\n>\n> delta");
+  frame r;
+  equal ~msg:"a paragraph added" (option string) (Some "alpha") (copied r);
+  equal ~msg:"nothing heard" (list string) [] (changes r)
+
+(* A copy lays out a text that no paint reached at the width its layout
+   gives it, as a paint would show it: here two wrapped texts side by side
+   below a nested box's view, which copy row by row. *)
+let a_copy_lays_out_a_text_no_paint_reached () =
+  let r = Renderer.create () in
+  let col = column (Renderer.root r) in
+  ignore (line col "before" : Text.t);
+  let sb = scroll_box col ~w:20 ~h:2 in
+  ignore (line (Scroll_box.node sb) "top" : Text.t);
+  ignore (line (Scroll_box.node sb) "mid" : Text.t);
+  let pair =
+    Renderable.create ~parent:(Scroll_box.node sb)
+      ~style:
+        (Toffee.Style.default
+        |> Toffee.Style.set_flex_direction Row
+        |> Toffee.Style.set_width (Toffee.Style.Dimension.percent 1.))
+      ()
+  in
+  let wrapped content =
+    ignore
+      (Text.create ~parent:pair
+         ~style:
+           (Toffee.Style.default
+           |> Toffee.Style.set_width (Toffee.Style.Dimension.length 3.)
+           |> Toffee.Style.set_flex_shrink 0.)
+         (Text.Props.make ~content ~wrap:`Char ())
+        : Text.t)
+  in
+  wrapped "aaabbbcc";
+  wrapped "dddeeeff";
+  ignore (line col "after" : Text.t);
+  frame r;
+  select r (0, 0) (4, 3);
+  equal ~msg:"row by row" (option string)
+    (Some "before\ntop\nmid\naaaddd\nbbbeee\ncc ff\nafter") (copied r)
+
 let () =
   run "mosaic.selection"
     [
@@ -1646,8 +1976,6 @@ let () =
           test "a selection at rest stays under the wheel"
             a_selection_at_rest_stays_under_the_wheel;
           test "hidden text takes no part" hidden_text_takes_no_part;
-          test "an end's node hidden shows and copies nothing"
-            an_ends_node_hidden_shows_and_copies_nothing;
           test "a selection leaves the top layer out"
             a_selection_leaves_the_top_layer_out;
           test "a selection in the top layer stays in it"
@@ -1798,5 +2126,39 @@ let () =
             a_line_break_alone_holds_no_text;
           test "a press on unselectable content queues nothing"
             a_press_on_unselectable_content_queues_nothing;
+        ];
+      group "Change under a selection"
+        [
+          test "following and appending keep the selection"
+            following_and_appending_keep_the_selection;
+          test "a resize keeps the selection" a_resize_keeps_the_selection;
+          test "an edit before the ends moves them"
+            an_edit_before_the_ends_moves_them;
+          test "an edit counts clusters" an_edit_counts_clusters;
+          test "an end inside the edit moves to its start"
+            an_end_inside_the_edit_moves_to_its_start;
+          test "an end at the edit's end moves with it"
+            an_end_at_the_edits_end_moves_with_it;
+          test "an insertion at an end leaves it"
+            an_insertion_at_an_end_leaves_it;
+          test "a streaming paragraph closes bold before an end"
+            a_streaming_paragraph_closes_bold_before_an_end;
+          test "the selection clears when its ends meet"
+            the_selection_clears_when_its_ends_meet;
+          test "an edit during a drag follows its anchor"
+            an_edit_during_a_drag_follows_its_anchor;
+          test "an end's node hidden clears the selection"
+            an_ends_node_hidden_clears_the_selection;
+          test "an end's node unmounted clears the selection"
+            an_ends_node_unmounted_clears_the_selection;
+          test "an end's unmount ends its drag" an_ends_unmount_ends_its_drag;
+          test "an end in a streaming list survives a chunk"
+            an_end_in_a_streaming_list_survives_a_chunk;
+          test "an end in a streaming table survives a chunk"
+            an_end_in_a_streaming_table_survives_a_chunk;
+          test "an end in a streaming quote survives a chunk"
+            an_end_in_a_streaming_quote_survives_a_chunk;
+          test "a copy lays out a text no paint reached"
+            a_copy_lays_out_a_text_no_paint_reached;
         ];
     ]

@@ -197,7 +197,8 @@ let invalidate t =
     t.notified_version <- version;
     t.display_cache <- [];
     t.measure_cache <- [];
-    Renderable.mark_dirty t.node
+    Renderable.mark_dirty t.node;
+    Renderable.Private.text_changed t.node
   end;
   Renderable.request_render t.node
 

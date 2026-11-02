@@ -188,19 +188,47 @@ type block_tag =
   | Html_tag
   | Custom_tag
 
+(* A list, a block quote and a table keep their nodes and update them in
+   place, as a paragraph does, so that a selection end in them survives a
+   streaming chunk (RFC 0006 §3.8 Markdown). *)
 type widget =
   | Text_widget of Text.t
   | Box_widget of Box.t * widget list
   | Container_widget of Renderable.t * widget list
   | Code_widget of Code.t
+  | Quote_widget of { box : Box.t; mutable blocks : tagged_block list }
+  | List_widget of { node : Renderable.t; mutable items : list_item list }
+  | Table_widget of { node : Renderable.t; columns : table_column list }
 
-type tagged_block = {
+and tagged_block = {
   mutable tag : block_tag;
   mutable widget : widget;
   mutable ast : Cmarkit.Block.t;
       (* The block this widget was rendered from. Its textloc identifies the
          source bytes so unchanged prefix blocks can be reused verbatim on
          streaming appends. *)
+  mutable last : bool;
+      (* Whether the widget is laid out as the last of its siblings, with no
+         margin below it. *)
+}
+
+(* A list item: its row, whether a margin follows it, the marker beside its
+   content, and the blocks of its content. *)
+and list_item = {
+  row : Renderable.t;
+  mutable spaced : bool;
+  marker : Text.t;
+  content : Renderable.t;
+  mutable blocks : tagged_block list;
+}
+
+(* A table column: its box, the box and text of its header, if the table has
+   one, and those of each data cell, every cell but the last bordered
+   below. *)
+and table_column = {
+  column : Box.t;
+  header : (Box.t * Text.t) option;
+  mutable cells : (Box.t * Text.t) list;
 }
 
 (* Placeholder for tagged blocks not backed by a parsed block (the raw-text
@@ -461,7 +489,7 @@ let render_paragraph ~(env : render_env) ~parent ?index ~is_last
     create_text ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
   in
   Text.set_styled_text text spans;
-  { tag = Para_tag; widget = Text_widget text; ast = empty_ast }
+  { tag = Para_tag; widget = Text_widget text; ast = empty_ast; last = is_last }
 
 let render_heading ~(env : render_env) ~parent ?index ~is_last
     (h : Cmarkit.Block.Heading.t) =
@@ -485,7 +513,7 @@ let render_heading ~(env : render_env) ~parent ?index ~is_last
     create_text ~parent ?index ~style:(block_style ~is_last) ~wrap:`Word ()
   in
   Text.set_styled_text text spans;
-  { tag = Head_tag; widget = Text_widget text; ast = empty_ast }
+  { tag = Head_tag; widget = Text_widget text; ast = empty_ast; last = is_last }
 
 let render_code_block_default ~(env : render_env) ~parent ?index ~is_last
     (cb : Cmarkit.Block.Code_block.t) =
@@ -510,6 +538,7 @@ let render_code_block_default ~(env : render_env) ~parent ?index ~is_last
     tag = Code_tag;
     widget = Box_widget (box, [ Text_widget text ]);
     ast = empty_ast;
+    last = is_last;
   }
 
 (* A fence names its language in its info string; a fence without one is
@@ -530,7 +559,7 @@ let render_code_highlighted ~env ~parent ?index ~is_last highlighter
     Code.create ~parent ?index ~style:(block_style ~is_last)
       (Code.Props.make ~content ?syntax ())
   in
-  { tag = Code_tag; widget = Code_widget code; ast = empty_ast }
+  { tag = Code_tag; widget = Code_widget code; ast = empty_ast; last = is_last }
 
 let render_thematic_break ~(env : render_env) ~parent ?index ~is_last
     (_tb : Cmarkit.Block.Thematic_break.t) =
@@ -540,7 +569,7 @@ let render_thematic_break ~(env : render_env) ~parent ?index ~is_last
       ~content:"───────────────────────────────────────" ~text_style:hr_style
       ~style:(block_style ~is_last) ~truncate:true ()
   in
-  { tag = Hr_tag; widget = Text_widget text; ast = empty_ast }
+  { tag = Hr_tag; widget = Text_widget text; ast = empty_ast; last = is_last }
 
 let render_html_block ~(env : render_env) ~parent ?index ~is_last
     (lines : Cmarkit.Block.Html_block.t) =
@@ -551,71 +580,33 @@ let render_html_block ~(env : render_env) ~parent ?index ~is_last
     create_text ~parent ?index ~content:text_content
       ~text_style:(env.style Default) ~style:(block_style ~is_last) ()
   in
-  { tag = Html_tag; widget = Text_widget text; ast = empty_ast }
+  { tag = Html_tag; widget = Text_widget text; ast = empty_ast; last = is_last }
 
-let rec render_list ~(env : render_env) ~parent ?index ~is_last
-    (lst : Cmarkit.Block.List'.t) =
-  let container =
-    Renderable.create ~parent ?index
-      ~style:
-        (Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Column
-           ~size:
-             (Toffee.Geometry.Size.make full_width Toffee.Style.Dimension.auto)
-           ~margin:(if is_last then margin_bottom 0 else margin_bottom 1)
-           ())
-      ()
-  in
-  let items = Cmarkit.Block.List'.items lst in
-  let tight = Cmarkit.Block.List'.tight lst in
-  let list_type = Cmarkit.Block.List'.type' lst in
-  let item_count = List.length items in
-  let item_widgets =
-    List.mapi
-      (fun i (item, _meta) ->
-        let is_last_item = i = item_count - 1 in
-        render_list_item ~env ~parent:container ~is_last:is_last_item ~tight
-          ~list_type ~index:i item)
-      items
-  in
-  {
-    tag = List_tag;
-    widget = Container_widget (container, item_widgets);
-    ast = empty_ast;
-  }
+(* ───── Lists ───── *)
 
-and render_list_item ~(env : render_env) ~parent ~is_last ~tight ~list_type
-    ~index (item : Cmarkit.Block.List_item.t) =
-  let item_margin =
-    if is_last || tight then margin_bottom 0 else margin_bottom 1
-  in
-  let row =
-    Renderable.create ~parent
-      ~style:
-        (Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Row
-           ~size:
-             (Toffee.Geometry.Size.make full_width Toffee.Style.Dimension.auto)
-           ~margin:item_margin ())
-      ()
-  in
-  let task_prefix =
-    match Cmarkit.Block.List_item.ext_task_marker item with
-    | Some (uchar, _meta) -> (
-        match Cmarkit.Block.List_item.task_status_of_task_marker uchar with
-        | `Checked -> Some "[x] "
-        | `Unchecked -> Some "[ ] "
-        | `Cancelled -> Some "[~] "
-        | `Other _ -> Some "[?] ")
-    | None -> None
-  in
-  let marker_text =
-    match list_type with
-    | `Unordered _ -> "• "
-    | `Ordered (start, _) ->
-        let n = start + index in
-        string_of_int n ^ ". "
-  in
-  let _marker =
-    create_text ~parent:row ~content:marker_text
+let list_style ~is_last =
+  Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Column
+    ~size:(Toffee.Geometry.Size.make full_width Toffee.Style.Dimension.auto)
+    ~margin:(if is_last then margin_bottom 0 else margin_bottom 1)
+    ()
+
+let item_style ~spaced =
+  Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Row
+    ~size:(Toffee.Geometry.Size.make full_width Toffee.Style.Dimension.auto)
+    ~margin:(margin_bottom (if spaced then 1 else 0))
+    ()
+
+let marker_text (list_type : Cmarkit.Block.List'.type') index =
+  match list_type with
+  | `Unordered _ -> "• "
+  | `Ordered (start, _) -> string_of_int (start + index) ^ ". "
+
+(* A new item of a list, its content empty. *)
+let new_list_item ~(env : render_env) ~parent ~spaced ~list_type ~index =
+  let row = Renderable.create ~parent ~style:(item_style ~spaced) () in
+  let marker =
+    create_text ~parent:row
+      ~content:(marker_text list_type index)
       ~text_style:(env.style List_marker)
       ~style:
         (Toffee.Style.make
@@ -625,7 +616,7 @@ and render_list_item ~(env : render_env) ~parent ~is_last ~tight ~list_type
            ~flex_shrink:0. ())
       ()
   in
-  let item_content =
+  let content =
     Renderable.create ~parent:row
       ~style:
         (Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Column
@@ -636,191 +627,311 @@ and render_list_item ~(env : render_env) ~parent ~is_last ~tight ~list_type
            ())
       ()
   in
-  let block = Cmarkit.Block.List_item.block item in
-  let children = render_block_children ~tight ~env ~parent:item_content block in
-  (match (task_prefix, children) with
-  | Some prefix, { widget = Text_widget text; _ } :: _ ->
-      let buf = Text.buffer text in
-      let existing_spans = Text_buffer.styled_text buf in
-      let task_span =
-        { Text_buffer.text = prefix; style = env.style Task_marker }
+  { row; spaced; marker; content; blocks = [] }
+
+(* The task marker of an item, which leads the text of its first block. *)
+let task_lead ~(env : render_env) (item : Cmarkit.Block.List_item.t) =
+  match Cmarkit.Block.List_item.ext_task_marker item with
+  | Some (uchar, _meta) ->
+      let marker =
+        match Cmarkit.Block.List_item.task_status_of_task_marker uchar with
+        | `Checked -> "[x] "
+        | `Unchecked -> "[ ] "
+        | `Cancelled -> "[~] "
+        | `Other _ -> "[?] "
       in
-      Text.set_styled_text text (task_span :: existing_spans)
-  | _ -> ());
-  Container_widget (row, List.map (fun tb -> tb.widget) children)
+      [ { Text_buffer.text = marker; style = env.style Task_marker } ]
+  | None -> []
 
-and render_blockquote ~(env : render_env) ~parent ?index ~is_last
-    (bq : Cmarkit.Block.Block_quote.t) =
-  let bq_style = env.style Blockquote in
-  let box =
-    Box.create ~parent ?index
-      ~style:(bordered_column_block_style ~is_last)
-      (Box.Props.make ~border:true ~border_sides:[ `Left ]
-         ?border_color:bq_style.fg ())
-  in
-  let inner_block = Cmarkit.Block.Block_quote.block bq in
-  let children =
-    render_block_children ~env ~parent:(Box.node box) inner_block
-  in
-  {
-    tag = Quote_tag;
-    widget = Box_widget (box, List.map (fun tb -> tb.widget) children);
-    ast = empty_ast;
-  }
+(* ───── Tables ───── *)
 
-and render_table ~(env : render_env) ~parent ?index ~is_last
-    (table : Cmarkit.Block.Table.t) =
+let table_style ~is_last =
+  Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Row
+    ~size:(Toffee.Geometry.Size.make full_width Toffee.Style.Dimension.auto)
+    ~margin:(if is_last then margin_bottom 0 else margin_bottom 1)
+    ()
+
+let cell_text_style =
+  Toffee.Style.make
+    ~size:
+      (Toffee.Geometry.Size.make full_width (Toffee.Style.Dimension.length 1.))
+    ~overflow:
+      (Toffee.Geometry.Point.make Toffee.Style.Overflow.Hidden
+         Toffee.Style.Overflow.Hidden)
+    ()
+
+(* The rows a table shows: its column count, its header's cells, if any, and
+   its data rows' cells, the last row left out while streaming, which may be
+   incomplete. [None] when it has no column, or neither header nor data. *)
+let table_rows ~(env : render_env) (table : Cmarkit.Block.Table.t) =
   let all_rows = Cmarkit.Block.Table.rows table in
-  (* Streaming: skip the last row which may be incomplete *)
   let rows =
     if env.streaming && all_rows <> [] then
       match List.rev all_rows with _ :: rest -> List.rev rest | [] -> []
     else all_rows
   in
-  (* Classify rows into header, separator, and data *)
-  let header_cells = ref None in
-  let data_rows = ref [] in
+  let header = ref None and data = ref [] in
   List.iter
     (fun ((row, _meta), _blanks) ->
       match row with
       | `Sep _ -> ()
-      | `Header cells -> header_cells := Some cells
-      | `Data cells -> data_rows := cells :: !data_rows)
+      | `Header cells -> header := Some cells
+      | `Data cells -> data := cells :: !data)
     rows;
-  let data_rows = List.rev !data_rows in
+  let data = List.rev !data in
   let col_count = Cmarkit.Block.Table.col_count table in
-  (* Fallback: no columns, or no header and no data rows *)
-  if col_count = 0 || (Option.is_none !header_cells && data_rows = []) then begin
-    let text =
-      create_text ~parent ?index ~content:"" ~style:(block_style ~is_last) ()
-    in
-    { tag = Table_tag; widget = Text_widget text; ast = empty_ast }
-  end
-  else
-    let border_style = env.style Table_border in
-    let border_color = border_style.fg in
-    let cell_text_style =
-      Toffee.Style.make
-        ~size:
-          (Toffee.Geometry.Size.make full_width
-             (Toffee.Style.Dimension.length 1.))
-        ~overflow:
-          (Toffee.Geometry.Point.make Toffee.Style.Overflow.Hidden
-             Toffee.Style.Overflow.Hidden)
-        ()
-    in
-    let table_box =
-      Renderable.create ~parent ?index
-        ~style:
-          (Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Row
-             ~size:
-               (Toffee.Geometry.Size.make full_width Toffee.Style.Dimension.auto)
-             ~margin:(if is_last then margin_bottom 0 else margin_bottom 1)
+  if col_count = 0 || (Option.is_none !header && data = []) then None
+  else Some (col_count, !header, data)
+
+let cell_spans ~(env : render_env) ~base cells col =
+  match List.nth_opt cells col with
+  | Some (inline, _) ->
+      inline_to_spans ~style:env.style ~conceal:env.conceal ~base ~defs:env.defs
+        inline
+  | None -> []
+
+(* Column [col] of [col_count], with a header box when [header], its cells
+   empty. *)
+let new_table_column ~(env : render_env) ~parent ~col ~col_count ~header =
+  let border_color = (env.style Table_border).fg in
+  let column =
+    Box.create ~parent
+      ~style:
+        (Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Column
+           ~flex_grow:1.
+           ~size:
+             (Toffee.Geometry.Size.make Toffee.Style.Dimension.auto
+                Toffee.Style.Dimension.auto)
+           ())
+      (Box.Props.make ~border:true
+         ~border_style:
+           (if col = 0 then Matrix_grid.Border.single else inner_column_border)
+         ~border_sides:
+           (if col = col_count - 1 then Matrix_grid.Border.all
+            else [ `Top; `Bottom; `Left ])
+         ?border_color ())
+  in
+  let header =
+    if header then
+      let box =
+        Box.create ~parent:(Box.node column)
+          (Box.Props.make ~border:true ~border_sides:[ `Bottom ] ?border_color
              ())
-        ()
-    in
-    let col_widgets =
-      List.init col_count (fun col_idx ->
-          let is_first_col = col_idx = 0 in
-          let is_last_col = col_idx = col_count - 1 in
-          let border_chars =
-            if is_first_col then Matrix_grid.Border.single
-            else inner_column_border
-          in
-          let border_sides =
-            if is_last_col then Matrix_grid.Border.all
-            else [ `Top; `Bottom; `Left ]
-          in
-          let col_box =
-            Box.create ~parent:table_box
-              ~style:
-                (Toffee.Style.make
-                   ~flex_direction:Toffee.Style.Flex_direction.Column
-                   ~flex_grow:1.
-                   ~size:
-                     (Toffee.Geometry.Size.make Toffee.Style.Dimension.auto
-                        Toffee.Style.Dimension.auto)
-                   ())
-              (Box.Props.make ~border:true ~border_style:border_chars
-                 ~border_sides ?border_color ())
-          in
-          let get_cell cells =
-            if col_idx < List.length cells then
-              Some (fst (List.nth cells col_idx))
-            else None
-          in
-          (* Header cell *)
-          let header_widget =
-            match !header_cells with
-            | Some cells ->
-                let base =
-                  Ansi.Style.merge ~base:(env.style Default)
-                    ~overlay:(Ansi.Style.make ~bold:true ())
-                in
-                let spans =
-                  match get_cell cells with
-                  | Some inline ->
-                      inline_to_spans ~style:env.style ~conceal:env.conceal
-                        ~base ~defs:env.defs inline
-                  | None -> []
-                in
-                let header_box =
-                  Box.create ~parent:(Box.node col_box)
-                    (Box.Props.make ~border:true ~border_sides:[ `Bottom ]
-                       ?border_color ())
-                in
-                let text =
-                  create_text ~parent:(Box.node header_box)
-                    ~style:cell_text_style ~truncate:true ()
-                in
-                Text.set_styled_text text spans;
-                [ Box_widget (header_box, [ Text_widget text ]) ]
-            | None -> []
-          in
-          (* Data rows *)
-          let data_count = List.length data_rows in
-          let row_widgets =
-            List.mapi
-              (fun row_idx cells ->
-                let base = env.style Default in
-                let spans =
-                  match get_cell cells with
-                  | Some inline ->
-                      inline_to_spans ~style:env.style ~conceal:env.conceal
-                        ~base ~defs:env.defs inline
-                  | None -> []
-                in
-                let is_last_row = row_idx = data_count - 1 in
-                if is_last_row then begin
-                  let text =
-                    create_text ~parent:(Box.node col_box)
-                      ~style:cell_text_style ~truncate:true ()
+      in
+      Some
+        ( box,
+          create_text ~parent:(Box.node box) ~style:cell_text_style
+            ~truncate:true () )
+    else None
+  in
+  { column; header; cells = [] }
+
+(* The columns show [header] and [data]: each cell's text is set, a cell is
+   added for each new row and removed for each row gone, and every cell but
+   the last is bordered below. *)
+let fill_table ~(env : render_env) columns header data =
+  let border_color = (env.style Table_border).fg in
+  let header_base =
+    Ansi.Style.merge ~base:(env.style Default)
+      ~overlay:(Ansi.Style.make ~bold:true ())
+  in
+  let count = List.length data in
+  List.iteri
+    (fun col c ->
+      Option.iter (Box.set_border_color c.column) border_color;
+      (match (c.header, header) with
+      | Some (box, text), Some cells ->
+          Option.iter (Box.set_border_color box) border_color;
+          Text.set_styled_text text
+            (cell_spans ~env ~base:header_base cells col)
+      | Some _, None | None, _ -> ());
+      let rec fill i cells rows =
+        match (cells, rows) with
+        | [], [] -> []
+        | (box, _) :: cells, [] ->
+            Renderable.destroy_recursively (Box.node box);
+            fill i cells []
+        | cells, row :: rows ->
+            let (box, text), cells =
+              match cells with
+              | cell :: cells -> (cell, cells)
+              | [] ->
+                  let box =
+                    Box.create ~parent:(Box.node c.column)
+                      (Box.Props.make ~border_sides:[ `Bottom ] ())
                   in
-                  Text.set_styled_text text spans;
-                  Text_widget text
-                end
-                else begin
-                  let cell_box =
-                    Box.create ~parent:(Box.node col_box)
-                      (Box.Props.make ~border:true ~border_sides:[ `Bottom ]
-                         ?border_color ())
-                  in
-                  let text =
-                    create_text ~parent:(Box.node cell_box)
-                      ~style:cell_text_style ~truncate:true ()
-                  in
-                  Text.set_styled_text text spans;
-                  Box_widget (cell_box, [ Text_widget text ])
-                end)
-              data_rows
-          in
-          Box_widget (col_box, header_widget @ row_widgets))
-    in
-    {
-      tag = Table_tag;
-      widget = Container_widget (table_box, col_widgets);
-      ast = empty_ast;
-    }
+                  ( ( box,
+                      create_text ~parent:(Box.node box) ~style:cell_text_style
+                        ~truncate:true () ),
+                    [] )
+            in
+            let bordered = i < count - 1 in
+            Box.set_border box bordered;
+            if bordered then Option.iter (Box.set_border_color box) border_color;
+            Text.set_styled_text text
+              (cell_spans ~env ~base:(env.style Default) row col);
+            (box, text) :: fill (i + 1) cells rows
+      in
+      c.cells <- fill 0 c.cells data)
+    columns
+
+let render_table ~(env : render_env) ~parent ?index ~is_last
+    (table : Cmarkit.Block.Table.t) =
+  match table_rows ~env table with
+  | None ->
+      let text =
+        create_text ~parent ?index ~content:"" ~style:(block_style ~is_last) ()
+      in
+      {
+        tag = Table_tag;
+        widget = Text_widget text;
+        ast = empty_ast;
+        last = is_last;
+      }
+  | Some (col_count, header, data) ->
+      let node =
+        Renderable.create ~parent ?index ~style:(table_style ~is_last) ()
+      in
+      let columns =
+        List.init col_count (fun col ->
+            new_table_column ~env ~parent:node ~col ~col_count
+              ~header:(Option.is_some header))
+      in
+      fill_table ~env columns header data;
+      {
+        tag = Table_tag;
+        widget = Table_widget { node; columns };
+        ast = empty_ast;
+        last = is_last;
+      }
+
+(* ───── Widget Destruction ───── *)
+
+let rec destroy_widget = function
+  | Text_widget text -> Renderable.destroy_recursively (Text.node text)
+  | Code_widget code -> Renderable.destroy_recursively (Code.node code)
+  | Box_widget (box, children) ->
+      List.iter destroy_widget children;
+      Renderable.destroy_recursively (Box.node box)
+  | Container_widget (node, children) ->
+      List.iter destroy_widget children;
+      Renderable.destroy_recursively node
+  | Quote_widget { box; _ } -> Renderable.destroy_recursively (Box.node box)
+  | List_widget { node; _ } | Table_widget { node; _ } ->
+      Renderable.destroy_recursively node
+
+(* ───── Block Tag ───── *)
+
+let tag_of_block (block : Cmarkit.Block.t) : block_tag =
+  match block with
+  | Cmarkit.Block.Paragraph _ -> Para_tag
+  | Cmarkit.Block.Heading _ -> Head_tag
+  | Cmarkit.Block.Code_block _ -> Code_tag
+  | Cmarkit.Block.Block_quote _ -> Quote_tag
+  | Cmarkit.Block.List _ -> List_tag
+  | Cmarkit.Block.Thematic_break _ -> Hr_tag
+  | Cmarkit.Block.Ext_table _ -> Table_tag
+  | Cmarkit.Block.Html_block _ -> Html_tag
+  | _ -> Custom_tag
+
+let renderable_blocks (block : Cmarkit.Block.t) : Cmarkit.Block.t list =
+  let filter bs =
+    List.filter
+      (fun b ->
+        match b with
+        | Cmarkit.Block.Blank_line _ | Cmarkit.Block.Link_reference_definition _
+        | Cmarkit.Block.Ext_footnote_definition _ ->
+            false
+        | _ -> true)
+      bs
+  in
+  match block with
+  | Cmarkit.Block.Blocks (blocks, _meta) -> filter blocks
+  | Cmarkit.Block.Blank_line _ | Cmarkit.Block.Link_reference_definition _
+  | Cmarkit.Block.Ext_footnote_definition _ ->
+      []
+  | other -> [ other ]
+
+(* A block rendered anew is reused by nothing. *)
+let never _ _ = false
+
+(* [lead] leads the text of a block rendered anew. *)
+let with_lead lead tb =
+  match (lead, tb.widget) with
+  | _ :: _, Text_widget text ->
+      Text.set_styled_text text
+        (lead @ Text_buffer.styled_text (Text.buffer text))
+  | [], _ | _ :: _, _ -> ()
+
+(* ───── Rendering and Update ───── *)
+
+let rec render_list ~(env : render_env) ~parent ?index ~is_last
+    (lst : Cmarkit.Block.List'.t) =
+  let node = Renderable.create ~parent ?index ~style:(list_style ~is_last) () in
+  let items = list_items ~env ~reusable:never ~parent:node [] lst in
+  {
+    tag = List_tag;
+    widget = List_widget { node; items };
+    ast = empty_ast;
+    last = is_last;
+  }
+
+(* The items of [lst] under [parent], from the items [olds] shown there
+   before: each kept item is updated in place, by the index of the item it
+   shows, the items added are rendered after them and those gone are
+   destroyed. *)
+and list_items ~(env : render_env) ~reusable ~parent olds
+    (lst : Cmarkit.Block.List'.t) =
+  let items = Cmarkit.Block.List'.items lst in
+  let tight = Cmarkit.Block.List'.tight lst in
+  let list_type = Cmarkit.Block.List'.type' lst in
+  let count = List.length items in
+  let rec go index olds items =
+    match (olds, items) with
+    | [], [] -> []
+    | old :: olds, [] ->
+        Renderable.destroy_recursively old.row;
+        go index olds []
+    | olds, (item, _meta) :: items ->
+        let spaced = not (index = count - 1 || tight) in
+        let shown, olds =
+          match olds with
+          | shown :: olds ->
+              if not (Bool.equal shown.spaced spaced) then begin
+                shown.spaced <- spaced;
+                Renderable.set_style shown.row (item_style ~spaced)
+              end;
+              Text.set_content shown.marker (marker_text list_type index);
+              Text.set_text_style shown.marker (env.style List_marker);
+              (shown, olds)
+          | [] -> (new_list_item ~env ~parent ~spaced ~list_type ~index, [])
+        in
+        shown.blocks <-
+          reconcile_blocks ~env ~reusable ~tight ~lead:(task_lead ~env item)
+            ~parent:shown.content shown.blocks
+            (renderable_blocks (Cmarkit.Block.List_item.block item));
+        shown :: go (index + 1) olds items
+  in
+  go 0 olds items
+
+and render_blockquote ~(env : render_env) ~parent ?index ~is_last
+    (bq : Cmarkit.Block.Block_quote.t) =
+  let box =
+    Box.create ~parent ?index
+      ~style:(bordered_column_block_style ~is_last)
+      (Box.Props.make ~border:true ~border_sides:[ `Left ]
+         ?border_color:(env.style Blockquote).fg ())
+  in
+  let blocks =
+    reconcile_blocks ~env ~reusable:never ~parent:(Box.node box) []
+      (renderable_blocks (Cmarkit.Block.Block_quote.block bq))
+  in
+  {
+    tag = Quote_tag;
+    widget = Quote_widget { box; blocks };
+    ast = empty_ast;
+    last = is_last;
+  }
 
 (* Dispatch a single block to the appropriate renderer, checking hooks first *)
 and render_block ~(env : render_env) ~parent ?index ~is_last
@@ -842,6 +953,7 @@ and render_block_dispatch ~(env : render_env) ~parent ?index ~is_last
           tag = Code_tag;
           widget = Container_widget (custom_node, []);
           ast = empty_ast;
+          last = is_last;
         }
   | _ -> (
       (* 2. Highlighted code block *)
@@ -864,6 +976,7 @@ and general_render ~(env : render_env) ~parent ?index ~is_last block =
                 tag = Custom_tag;
                 widget = Container_widget (custom_node, []);
                 ast = empty_ast;
+                last = is_last;
               }
         | None -> None)
     | None -> None
@@ -908,13 +1021,14 @@ and render_block_default ~(env : render_env) ~parent ?index ~is_last
               Container_widget
                 (container, List.map (fun tb -> tb.widget) children);
             ast = empty_ast;
+            last = is_last;
           }
   | Cmarkit.Block.Blank_line _ | Cmarkit.Block.Link_reference_definition _
   | Cmarkit.Block.Ext_footnote_definition _ ->
       None
   | _ -> None
 
-and render_block_list ?(tight = false) ~(env : render_env) ~parent blocks =
+and render_block_list ~(env : render_env) ~parent blocks =
   let blocks =
     List.filter
       (fun b ->
@@ -928,22 +1042,18 @@ and render_block_list ?(tight = false) ~(env : render_env) ~parent blocks =
   let count = List.length blocks in
   List.concat_map
     (fun (i, block) ->
-      let is_last = i = count - 1 || tight in
+      let is_last = i = count - 1 in
       match render_block ~env ~parent ~is_last block with
       | Some tb -> [ tb ]
       | None -> [])
     (List.mapi (fun i b -> (i, b)) blocks)
 
-and render_block_children ?(tight = false) ~(env : render_env) ~parent block =
-  match block with
-  | Cmarkit.Block.Blocks (blocks, _meta) ->
-      render_block_list ~tight ~env ~parent blocks
-  | other -> render_block_list ~tight ~env ~parent [ other ]
-
-(* ───── In-place Update ───── *)
-
-let update_leaf_in_place ~(env : render_env) ~is_last (tb : tagged_block)
-    (block : Cmarkit.Block.t) : bool =
+(* [update_in_place ~env ~reusable ~is_last ~lead tb block] shows [block]
+   in [tb]'s widget, which the block's own tag made, and is [false] when the
+   widget cannot show it. [lead] leads the text of a paragraph or a
+   heading. *)
+and update_in_place ~(env : render_env) ~reusable ~is_last ~lead
+    (tb : tagged_block) (block : Cmarkit.Block.t) : bool =
   match (tb.tag, block, tb.widget) with
   | Para_tag, Cmarkit.Block.Paragraph (p, _), Text_widget text ->
       let inline = Cmarkit.Block.Paragraph.inline p in
@@ -952,7 +1062,7 @@ let update_leaf_in_place ~(env : render_env) ~is_last (tb : tagged_block)
         inline_to_spans ~style:env.style ~conceal:env.conceal ~base
           ~defs:env.defs inline
       in
-      Text.set_styled_text text spans;
+      Text.set_styled_text text (lead @ spans);
       Renderable.set_style (Text.node text) (block_style ~is_last);
       true
   | Head_tag, Cmarkit.Block.Heading (h, _), Text_widget text ->
@@ -972,9 +1082,10 @@ let update_leaf_in_place ~(env : render_env) ~is_last (tb : tagged_block)
           let marker = String.make level '#' ^ " " in
           { Text_buffer.text = marker; style = heading_style } :: spans
       in
-      Text.set_styled_text text spans;
+      Text.set_styled_text text (lead @ spans);
       Renderable.set_style (Text.node text) (block_style ~is_last);
       true
+  | _ when lead <> [] -> false
   | ( Code_tag,
       Cmarkit.Block.Code_block (cb, _),
       Box_widget (box, [ Text_widget text ]) )
@@ -984,7 +1095,7 @@ let update_leaf_in_place ~(env : render_env) ~is_last (tb : tagged_block)
       Text.set_content text code_text;
       Text.set_text_style text (env.style Code_block);
       Box.set_title box title;
-      Renderable.set_style (Box.node box) (block_style ~is_last);
+      Box.set_style box (bordered_block_style ~is_last);
       true
   | Code_tag, Cmarkit.Block.Code_block (cb, _), Code_widget code
     when Option.is_none env.render_code -> (
@@ -1010,51 +1121,84 @@ let update_leaf_in_place ~(env : render_env) ~is_last (tb : tagged_block)
       Text.set_text_style text (env.style Default);
       Renderable.set_style (Text.node text) (block_style ~is_last);
       true
+  | Quote_tag, Cmarkit.Block.Block_quote (bq, _), Quote_widget quote ->
+      let bq_style = env.style Blockquote in
+      Box.set_style quote.box (bordered_column_block_style ~is_last);
+      Option.iter (Box.set_border_color quote.box) bq_style.fg;
+      quote.blocks <-
+        reconcile_blocks ~env ~reusable ~parent:(Box.node quote.box)
+          quote.blocks
+          (renderable_blocks (Cmarkit.Block.Block_quote.block bq));
+      true
+  | List_tag, Cmarkit.Block.List (lst, _), List_widget l ->
+      Renderable.set_style l.node (list_style ~is_last);
+      l.items <- list_items ~env ~reusable ~parent:l.node l.items lst;
+      true
+  | ( Table_tag,
+      Cmarkit.Block.Ext_table (table, _),
+      Table_widget { node; columns } ) -> (
+      let with_header =
+        match columns with c :: _ -> Option.is_some c.header | [] -> false
+      in
+      match table_rows ~env table with
+      | Some (col_count, header, data)
+        when col_count = List.length columns
+             && Bool.equal (Option.is_some header) with_header ->
+          Renderable.set_style node (table_style ~is_last);
+          fill_table ~env columns header data;
+          true
+      | Some _ | None -> false)
+  | Table_tag, Cmarkit.Block.Ext_table (table, _), Text_widget text
+    when Option.is_none (table_rows ~env table) ->
+      Renderable.set_style (Text.node text) (block_style ~is_last);
+      true
   | _ -> false
 
-(* ───── Widget Destruction ───── *)
-
-let rec destroy_widget = function
-  | Text_widget text -> Renderable.destroy_recursively (Text.node text)
-  | Code_widget code -> Renderable.destroy_recursively (Code.node code)
-  | Box_widget (box, children) ->
-      List.iter destroy_widget children;
-      Renderable.destroy_recursively (Box.node box)
-  | Container_widget (node, children) ->
-      List.iter destroy_widget children;
-      Renderable.destroy_recursively node
-
-(* ───── Block Tag ───── *)
-
-let tag_of_block (block : Cmarkit.Block.t) : block_tag =
-  match block with
-  | Cmarkit.Block.Paragraph _ -> Para_tag
-  | Cmarkit.Block.Heading _ -> Head_tag
-  | Cmarkit.Block.Code_block _ -> Code_tag
-  | Cmarkit.Block.Block_quote _ -> Quote_tag
-  | Cmarkit.Block.List _ -> List_tag
-  | Cmarkit.Block.Thematic_break _ -> Hr_tag
-  | Cmarkit.Block.Ext_table _ -> Table_tag
-  | Cmarkit.Block.Html_block _ -> Html_tag
-  | _ -> Custom_tag
-
-let renderable_blocks (block : Cmarkit.Block.t) : Cmarkit.Block.t list =
-  let filter bs =
-    List.filter
-      (fun b ->
-        match b with
-        | Cmarkit.Block.Blank_line _ | Cmarkit.Block.Link_reference_definition _
-        | Cmarkit.Block.Ext_footnote_definition _ ->
-            false
-        | _ -> true)
-      bs
+(* [reconcile_blocks ~env ~reusable ~parent olds blocks] are the blocks
+   that show [blocks] under [parent], from [olds] shown there before, in
+   order: a block whose source is unchanged keeps its widget untouched, one
+   of the same kind updates it in place, and any other replaces it. A block
+   is the last of its siblings when [tight]. [lead] leads the text of the
+   first block (a task marker). *)
+and reconcile_blocks ~(env : render_env) ~reusable ?(tight = false) ?(lead = [])
+    ~parent old_blocks new_ast_blocks =
+  let total = List.length new_ast_blocks in
+  let rec go i placed olds news =
+    match (olds, news) with
+    | [], [] -> []
+    | old :: olds, [] ->
+        destroy_widget old.widget;
+        go i placed olds []
+    | olds, block :: news -> (
+        let is_last = i = total - 1 || tight in
+        let lead = if placed = 0 then lead else [] in
+        match olds with
+        | old :: olds when old.last = is_last && reusable old block ->
+            (* Unchanged source, unchanged margin: keep the widget untouched.
+               Refresh the stored ast so the next parse's textlocs compare. *)
+            old.ast <- block;
+            old :: go (i + 1) (placed + 1) olds news
+        | old :: olds
+          when old.tag = tag_of_block block
+               && update_in_place ~env ~reusable ~is_last ~lead old block ->
+            old.ast <- block;
+            old.last <- is_last;
+            old :: go (i + 1) (placed + 1) olds news
+        | olds -> (
+            let olds =
+              match olds with
+              | old :: olds ->
+                  destroy_widget old.widget;
+                  olds
+              | [] -> []
+            in
+            match render_block ~env ~parent ~index:placed ~is_last block with
+            | Some tb ->
+                with_lead lead tb;
+                tb :: go (i + 1) (placed + 1) olds news
+            | None -> go (i + 1) placed olds news))
   in
-  match block with
-  | Cmarkit.Block.Blocks (blocks, _meta) -> filter blocks
-  | Cmarkit.Block.Blank_line _ | Cmarkit.Block.Link_reference_definition _
-  | Cmarkit.Block.Ext_footnote_definition _ ->
-      []
-  | other -> [ other ]
+  go 0 0 old_blocks new_ast_blocks
 
 (* The element styles: [style] where given, and otherwise those the theme in
    scope gives ({!Style.of_theme}), derived again only when the theme is
@@ -1127,50 +1271,6 @@ let common_prefix_length a b =
   done;
   !i
 
-let reconcile_blocks ~(env : render_env) ~reusable ~parent old_blocks
-    new_ast_blocks =
-  let total_old = List.length old_blocks in
-  let total_new = List.length new_ast_blocks in
-  let rec go i child_idx olds news =
-    match (olds, news) with
-    | [], [] -> []
-    | [], new_block :: rest -> (
-        let is_last = i = total_new - 1 in
-        let tb =
-          render_block ~env ~parent ~index:child_idx ~is_last new_block
-        in
-        let more = go (i + 1) (child_idx + 1) [] rest in
-        match tb with Some tb -> tb :: more | None -> more)
-    | old :: olds_rest, [] ->
-        destroy_widget old.widget;
-        go i child_idx olds_rest []
-    | old :: olds_rest, new_block :: news_rest ->
-        let new_tag = tag_of_block new_block in
-        let is_last = i = total_new - 1 in
-        let was_last = i = total_old - 1 in
-        if is_last = was_last && reusable old new_block then begin
-          (* Unchanged source, unchanged margin: keep the widget untouched.
-             Refresh the stored ast so the next parse's textlocs compare. *)
-          old.ast <- new_block;
-          old :: go (i + 1) (child_idx + 1) olds_rest news_rest
-        end
-        else if
-          old.tag = new_tag && update_leaf_in_place ~env ~is_last old new_block
-        then begin
-          old.ast <- new_block;
-          old :: go (i + 1) (child_idx + 1) olds_rest news_rest
-        end
-        else begin
-          destroy_widget old.widget;
-          let tb =
-            render_block ~env ~parent ~index:child_idx ~is_last new_block
-          in
-          let rest = go (i + 1) (child_idx + 1) olds_rest news_rest in
-          match tb with Some tb -> tb :: rest | None -> rest
-        end
-  in
-  go 0 0 old_blocks new_ast_blocks
-
 (* ───── Content Update ───── *)
 
 (* [update_blocks ?old_content t] reparses [t.content] and reconciles the
@@ -1207,7 +1307,14 @@ let update_blocks ?old_content t =
         ~wrap:`Word ()
     in
     t.blocks <-
-      [ { tag = Para_tag; widget = Text_widget text; ast = empty_ast } ]
+      [
+        {
+          tag = Para_tag;
+          widget = Text_widget text;
+          ast = empty_ast;
+          last = true;
+        };
+      ]
   end;
   Renderable.request_render t.node
 
@@ -1220,12 +1327,15 @@ let rerender_blocks t =
     (fun i tb ->
       if tb.ast != empty_ast then begin
         let is_last = i = total - 1 in
-        if not (update_leaf_in_place ~env ~is_last tb tb.ast) then begin
+        if update_in_place ~env ~reusable:never ~is_last ~lead:[] tb tb.ast then
+          tb.last <- is_last
+        else begin
           destroy_widget tb.widget;
           match render_block ~env ~parent:t.node ~index:i ~is_last tb.ast with
           | Some new_tb ->
               tb.tag <- new_tb.tag;
-              tb.widget <- new_tb.widget
+              tb.widget <- new_tb.widget;
+              tb.last <- is_last
           | None -> ()
         end
       end)

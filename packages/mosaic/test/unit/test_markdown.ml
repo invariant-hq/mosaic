@@ -326,6 +326,69 @@ let streaming_append_reuses_prefix_blocks () =
       is_true ~msg:"code widget reused" (b2 == a2)
   | _ -> fail "expected at least three blocks"
 
+(* The nodes below [node] with text rows, in tree order. *)
+let rec texts node =
+  (if Option.is_some (Renderable.text_rows node) then [ node ] else [])
+  @ List.concat_map texts (Renderable.children node)
+
+(* Lists, block quotes and tables update in place while streaming, as
+   paragraphs do (RFC 0006 §3.8): every text they showed keeps its node as
+   they grow. *)
+let containers_grow_in_place () =
+  let _t, md =
+    make_md ~streaming:true
+      ~content:
+        "- one\n\
+         - tw\n\n\
+         > quoted\n\n\
+         | a | b |\n\
+         |---|---|\n\
+         | 1 | 2 |\n\
+         | 3 | 4 |\n"
+      ()
+  in
+  let before = texts (Markdown.node md) in
+  Markdown.set_content md
+    "- one\n\
+     - two\n\
+     - three\n\n\
+     > quoted\n\
+     > more\n\
+     >\n\
+     > next\n\n\
+     | a | b |\n\
+     |---|---|\n\
+     | 1 | 2 |\n\
+     | 3 | 4 |\n\
+     | 5 | 6 |\n";
+  let after = texts (Markdown.node md) in
+  List.iteri
+    (fun i node ->
+      is_true ~msg:(Printf.sprintf "text %d kept" i) (List.memq node after))
+    before;
+  gt ~msg:"texts added" ~than:(List.length before) (List.length after)
+
+(* A block left the last of its siblings again loses the margin below it:
+   the text after the markdown comes up. *)
+let a_block_last_again_loses_its_margin () =
+  let t = make_ctx () in
+  let root =
+    make_root t
+      ~style:
+        (Toffee.Style.make ~flex_direction:Toffee.Style.Flex_direction.Column ())
+  in
+  let md = Markdown.create ~parent:root (Markdown.Props.make ~content:"a" ()) in
+  let after = Text.create ~parent:root (Text.Props.make ~content:"after" ()) in
+  let row () =
+    Test_harness.settle_frames t.renderer;
+    Renderable.y (Text.node after)
+  in
+  equal ~msg:"one block" int 1 (row ());
+  Markdown.set_content md "a\n\nb";
+  equal ~msg:"two blocks" int 3 (row ());
+  Markdown.set_content md "a";
+  equal ~msg:"one block again" int 1 (row ())
+
 let pp_does_not_crash () =
   let _t, md = make_md ~content:"# Hello\n\nWorld" () in
   let buf = Buffer.create 64 in
@@ -563,6 +626,9 @@ let () =
             apply_props_same_content_no_rerender;
           test "streaming append reuses prefix blocks"
             streaming_append_reuses_prefix_blocks;
+          test "containers grow in place" containers_grow_in_place;
+          test "a block last again loses its margin"
+            a_block_last_again_loses_its_margin;
         ];
       group "Both doors"
         [

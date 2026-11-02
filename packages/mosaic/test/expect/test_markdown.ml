@@ -478,6 +478,169 @@ let%expect_test "set_content appending" =
 
 World|}]
 
+(* ── Streaming in place ── *)
+
+(* Blocks update their nodes in place as content streams, lists, block
+   quotes and tables as paragraphs do (RFC 0006 §3.8): each frame after a
+   change shows what a fresh render of the same content, printed after it,
+   shows. *)
+
+let%expect_test "a list streams in place" =
+  let app = make_markdown_app ~streaming:true "- one\n- tw" in
+  markdown_frame app ~width:30 ~height:10;
+  [%expect {|
+    • one
+    • tw
+    |}];
+  let content = "- one\n- two\n- [x] three\n  1. nested\n\n- loose" in
+  Markdown.set_content app.md content;
+  markdown_frame app ~width:30 ~height:10;
+  [%expect
+    {|
+    • one
+
+    • two
+
+    • [x] three
+
+      1. nested
+
+    • loose
+    |}];
+  render_markdown ~width:30 ~height:10 ~streaming:true content;
+  [%expect
+    {|
+    • one
+
+    • two
+
+    • [x] three
+
+      1. nested
+
+    • loose
+    |}]
+
+let%expect_test "a task item keeps its marker as it streams" =
+  let app = make_markdown_app ~streaming:true "- [ ] fir" in
+  markdown_frame app ~width:30 ~height:3;
+  [%expect {| • [ ] fir |}];
+  let content = "- [ ] first\n- [x] second" in
+  Markdown.set_content app.md content;
+  markdown_frame app ~width:30 ~height:3;
+  [%expect {|
+    • [ ] first
+    • [x] second
+    |}];
+  render_markdown ~width:30 ~height:3 ~streaming:true content;
+  [%expect {|
+    • [ ] first
+    • [x] second
+    |}]
+
+let%expect_test "a block quote streams in place" =
+  let app = make_markdown_app ~streaming:true "> alpha" in
+  markdown_frame app ~width:30 ~height:6;
+  [%expect {| │ alpha |}];
+  let content = "> alpha\n>\n> beta\n>\n> > nested" in
+  Markdown.set_content app.md content;
+  markdown_frame app ~width:30 ~height:6;
+  [%expect {|
+    │ alpha
+    │
+    │ beta
+    │
+    │ │ nested
+    |}];
+  render_markdown ~width:30 ~height:6 ~streaming:true content;
+  [%expect {|
+    │ alpha
+    │
+    │ beta
+    │
+    │ │ nested
+    |}]
+
+let%expect_test "a code block streams in place" =
+  let app = make_markdown_app ~streaming:true "```\nab" in
+  markdown_frame app ~width:20 ~height:4;
+  [%expect {| │ ab |}];
+  let content = "```\nabc\nde" in
+  Markdown.set_content app.md content;
+  markdown_frame app ~width:20 ~height:4;
+  [%expect {|
+    │ abc
+    │ de
+    |}];
+  render_markdown ~width:20 ~height:4 ~streaming:true content;
+  [%expect {|
+    │ abc
+    │ de
+    |}]
+
+let%expect_test "a table streams in place" =
+  let table = "| a | b |\n|---|---|\n| 1 | 2 |\n" in
+  let app = make_markdown_app ~streaming:true table in
+  markdown_frame app ~width:20 ~height:10;
+  [%expect
+    {|
+    ┌─────────┬────────┐
+    │a        │b       │
+    │─────────│────────│
+    └─────────┴────────┘
+    |}];
+  let table = table ^ "| 3 | 4 |\n| 5 | 6 |\n" in
+  Markdown.set_content app.md table;
+  markdown_frame app ~width:20 ~height:10;
+  [%expect
+    {|
+    ┌─────────┬────────┐
+    │a        │b       │
+    │─────────│────────│
+    │1        │2       │
+    │─────────│────────│
+    │3        │4       │
+    └─────────┴────────┘
+    |}];
+  render_markdown ~width:20 ~height:10 ~streaming:true table;
+  [%expect
+    {|
+    ┌─────────┬────────┐
+    │a        │b       │
+    │─────────│────────│
+    │1        │2       │
+    │─────────│────────│
+    │3        │4       │
+    └─────────┴────────┘
+    |}];
+  Markdown.set_streaming app.md false;
+  markdown_frame app ~width:20 ~height:10;
+  [%expect
+    {|
+    ┌─────────┬────────┐
+    │a        │b       │
+    │─────────│────────│
+    │1        │2       │
+    │─────────│────────│
+    │3        │4       │
+    │─────────│────────│
+    │5        │6       │
+    └─────────┴────────┘
+    |}];
+  render_markdown ~width:20 ~height:10 ~streaming:false table;
+  [%expect
+    {|
+    ┌─────────┬────────┐
+    │a        │b       │
+    │─────────│────────│
+    │1        │2       │
+    │─────────│────────│
+    │3        │4       │
+    │─────────│────────│
+    │5        │6       │
+    └─────────┴────────┘
+    |}]
+
 (* ── Style changes ── *)
 
 let%expect_test "set_style changes appearance" =

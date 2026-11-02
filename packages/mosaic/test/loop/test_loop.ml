@@ -4176,3 +4176,36 @@ let%expect_test "copy on select copies a selection whose release was lost" =
     [ "selected hello"; "copied hello"; "cleared" ]
     log;
   [%expect {| |}]
+
+(* §3.8 Unmount: a commit that unmounts the selected text clears the
+   selection, and the application hears it. Here the application removes
+   "hello world", on the second row, as it hears the selection settle. *)
+let%expect_test "the application hears a clear when the selected text unmounts"
+    =
+  let log = ref [] in
+  let application =
+    {
+      Mosaic.init = (fun () -> (true, Mosaic.Cmd.none));
+      update =
+        (fun msg _ ->
+          log := msg :: !log;
+          (false, Mosaic.Cmd.none));
+      view =
+        (fun shown ->
+          Mosaic.box ~flex_direction:Column
+            ~size:(Mosaic.size ~width:20 ~height:4)
+            (Mosaic.text "first line"
+            :: (if shown then [ Mosaic.text "hello world" ] else [])));
+      subscriptions =
+        (fun _ ->
+          Mosaic.Sub.on_selection (function
+            | Some text -> Some ("selected " ^ text)
+            | None -> Some "cleared"));
+    }
+  in
+  let t = terminal ~profile:Matrix_test.Profile.vte ~width:20 ~height:4 () in
+  run t application (fun _ -> feed t "\027[<0;1;2M\027[<32;5;2M\027[<0;5;2m");
+  equal ~msg:"cleared by the commit" (list string)
+    [ "selected hello"; "cleared" ]
+    (List.rev !log);
+  [%expect {| |}]

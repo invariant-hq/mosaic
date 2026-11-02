@@ -52,8 +52,14 @@ type pointer_state = {
    lies the terminal's row-major band, derived from layout whenever a node
    paints or a copy runs (§3.2). *)
 
-(* An end: a node and the boundaries of a span of its text. *)
-type end_ = { node : Renderable.t; first : int; last : int }
+(* An end: a node and the boundaries of a span of its text, counted in
+   [source], the text they were found in, which an edit replaces (§3.8). *)
+type end_ = {
+  node : Renderable.t;
+  first : int;
+  last : int;
+  source : Layout.Source.t;
+}
 
 (* The pointer gesture that drags a selection: the cell it last reported, on
    the screen, and whether it is still a single click, which the pointer has
@@ -64,10 +70,11 @@ type gesture = {
   mutable click : bool;
 }
 
-(* The anchor is fixed at the press; a Shift+press makes a new selection. *)
+(* The anchor is fixed at the press, and follows an edit of its text alone
+   (§3.8); a Shift+press makes a new selection. *)
 type selection = {
   region : Renderable.t;
-  anchor : end_;
+  mutable anchor : end_;
   mutable focus : end_;
       (* The focus at rest. While a gesture drags the selection, the focus
          is the pointer's cell, and the span of the unit there. *)
@@ -282,6 +289,14 @@ let rec ancestry node =
   node
   :: (match Renderable.parent node with Some p -> ancestry p | None -> [])
 
+(* Whether [ancestor] is [node] or one of its ancestors. *)
+let rec ancestor_of ancestor node =
+  ancestor == node
+  ||
+  match Renderable.parent node with
+  | None -> false
+  | Some parent -> ancestor_of ancestor parent
+
 (* Runs each node's handlers on [event], innermost first, until propagation
    stops; a node destroyed since [nodes] was taken is skipped. *)
 let deliver ~stopped emit nodes event =
@@ -481,17 +496,32 @@ let offset t node origin =
   in
   up node 0 0
 
+(* The rows of [node]'s text, laid out at the width its layout gives it
+   now: a text no paint reached since its layout changed, out of view, is
+   laid out again first, so that a copy slices it as a paint shows it. *)
+let current_rows t node =
+  (match Toffee.layout t.tree (Renderable.Private.toffee_node node) with
+  | Ok layout when cell layout.size.width <> Renderable.width node ->
+      Renderable.Private.update_from_layout node
+  | Ok _ | Error _ -> ());
+  Renderable.text_rows node
+
 (* The rows of a text the view selection reaches: a node with text rows,
    selectable, that owns neither its text nor its selection as an editor
    does. *)
-let text_rows_of node =
-  match Renderable.text_rows node with
+let text_rows_of t node =
+  match current_rows t node with
   | Some _ as rows
     when (not (Renderable.destroyed node))
          && Option.is_none (Renderable.Private.owned_text node)
          && Renderable.selectable node ->
       rows
   | Some _ | None -> None
+
+(* The span of [node]'s text from boundary [first] to [last], in the text
+   [rows] show, as an end. *)
+let end_in node (rows : Renderable.text_rows) ~first ~last =
+  { node; first; last; source = Layout.source rows.layout }
 
 (* Whether the cell [x, y] is at or before [x', y'] in row-major order. *)
 let[@inline] precedes x y x' y' = y < y' || (y = y' && x <= x')
@@ -619,7 +649,7 @@ let items t ~region band =
               end
           | None -> ())
       | Some _ | None ->
-          (match text_rows_of node with
+          (match text_rows_of t node with
           | None -> ()
           | Some rows -> (
               let range =
@@ -726,7 +756,7 @@ let painted_texts t region =
   for i = t.cmd_len - 1 downto 0 do
     match t.commands.(i) with
     | Render node
-      when Option.is_some (text_rows_of node) && region_of t node == region ->
+      when Option.is_some (text_rows_of t node) && region_of t node == region ->
         texts :=
           ( node,
             Renderable.x node - ox,
@@ -765,7 +795,7 @@ let resolve_cell t region ~cx ~cy =
 let resolve_press t region ~cx ~cy hit =
   match hit with
   | Some node
-    when Option.is_some (text_rows_of node) && region_of t node == region ->
+    when Option.is_some (text_rows_of t node) && region_of t node == region ->
       Some node
   | Some _ | None -> resolve_cell t region ~cx ~cy
 
@@ -774,7 +804,7 @@ let resolve_press t region ~cx ~cy hit =
    unit around the graphemes the cell shows, or around the boundary nearest
    it (§3.1 Anchor, §3.5 Units). *)
 let unit_end t origin node unit ~cx ~cy =
-  match (offset t node origin, Renderable.text_rows node) with
+  match (offset t node origin, current_rows t node) with
   | Some (ox, oy), Some rows ->
       let layout = rows.layout in
       let first, last =
@@ -783,7 +813,7 @@ let unit_end t origin node unit ~cx ~cy =
       let first, last =
         Text_unit.span unit (Layout.source layout) ~first ~last
       in
-      Some { node; first; last }
+      Some (end_in node rows ~first ~last)
   | _ -> None
 
 (* The first cell of an end's span and the cell after its last, in the
@@ -795,7 +825,7 @@ let end_cells t region origin (e : end_) =
     match placement t region e.node with
     | Outside -> None
     | Direct -> (
-        match (offset t e.node origin, Renderable.text_rows e.node) with
+        match (offset t e.node origin, current_rows t e.node) with
         | Some (ox, oy), Some rows ->
             let x, y =
               locate_cell rows ~ox ~oy ~affinity:Layout.Downstream e.first
@@ -820,8 +850,9 @@ let hit_node t ~x ~y =
    or a line the span of that unit in the text the cell resolves to as a
    press does (§3.1 Focus), which the band reaches. Over a nested box the
    focus is the pointer's cell alone, and the box is selected only once
-   covered (§3.2 Nested box). An end whose node is destroyed or hidden gives
-   no band (§3.2 Hidden). *)
+   covered (§3.2 Nested box). An end whose node is not shown gives no band
+   (§3.2 Hidden), though the selection clears before one is hidden or
+   unmounted (§3.8). *)
 let band_of t sel =
   let origin = region_origin sel.region in
   match end_cells t sel.region origin sel.anchor with
@@ -913,7 +944,7 @@ let selected_range_of t node =
   match t.selection_state.current with
   | None -> None
   | Some sel -> (
-      match text_rows_of node with
+      match text_rows_of t node with
       | None -> None
       | Some rows -> (
           match current_band t sel with
@@ -1323,7 +1354,7 @@ let extreme_text t box ~last =
                 ~affinity:(if last then Upstream else Downstream)
                 g
             in
-            Some ({ node; first = g; last = g }, x, y)
+            Some (end_in node rows ~first:g ~last:g, x, y)
         | Box_item _ -> None)
       (items t ~region:box None)
   in
@@ -1353,7 +1384,7 @@ let far_end t sel band =
                 ~affinity:(if last then Upstream else Downstream)
                 g
             in
-            (`Text { node; first = g; last = g }, x, y)
+            (`Text (end_in node rows ~first:g ~last:g), x, y)
         | Box_item { box; view = x, y, w, h; _ } ->
             if last then (`Box box, x + w, y + h - 1) else (`Box box, x, y))
       (items t ~region:sel.region (Some band))
@@ -1401,19 +1432,19 @@ let end_selection_drag t =
    is [oy], as an end of no extent, with the row it lies on at [affinity]. *)
 let boundary node (rows : Renderable.text_rows) ~oy ~affinity g =
   let row, _ = Layout.locate rows.layout { grapheme = g; affinity } in
-  Some ({ node; first = g; last = g }, oy + row - rows.scroll_y)
+  Some (end_in node rows ~first:g ~last:g, oy + row - rows.scroll_y)
 
 (* The boundary of [node] nearest the cell [cx, cy], the cell's row held in
    the text's rows. *)
-let boundary_at node ~ox ~oy ~cx ~cy =
-  match Renderable.text_rows node with
+let boundary_at t node ~ox ~oy ~cx ~cy =
+  match current_rows t node with
   | None -> None
   | Some rows ->
       let row =
         max 0 (min (cy - oy + rows.scroll_y) (Layout.row_count rows.layout - 1))
       in
       let g = (Layout.hit rows.layout ~row ~column:(cx - ox)).grapheme in
-      Some ({ node; first = g; last = g }, oy + row - rows.scroll_y)
+      Some (end_in node rows ~first:g ~last:g, oy + row - rows.scroll_y)
 
 (* Where a focus goes past the edge of its text toward [direction], from
    the cell [cx, cy] for [`Left] and [`Right] and from the rows [top] to
@@ -1433,21 +1464,21 @@ let cross t region ~except ~cx ~cy ~top ~bottom direction =
   | `Left ->
       Option.bind (last_before_of ~cx ~cy texts)
         (fun ((node, ox, oy, _, _), x, y) ->
-          boundary_at node ~ox ~oy ~cx:(x + 1) ~cy:y)
+          boundary_at t node ~ox ~oy ~cx:(x + 1) ~cy:y)
   | `Right ->
       Option.bind (first_after ~cx ~cy texts)
         (fun ((node, ox, oy, _, _), x, y) ->
-          boundary_at node ~ox ~oy ~cx:x ~cy:y)
+          boundary_at t node ~ox ~oy ~cx:x ~cy:y)
   | `Up ->
       Option.bind
         (last_before_of ~cx:(cx + 1) ~cy:(top - 1) texts)
         (fun ((node, ox, oy, _, _), _, _) ->
-          boundary_at node ~ox ~oy ~cx ~cy:(top - 1))
+          boundary_at t node ~ox ~oy ~cx ~cy:(top - 1))
   | `Down ->
       Option.bind
         (first_after ~cx ~cy:(bottom + 1) texts)
         (fun ((node, ox, oy, _, _), _, _) ->
-          boundary_at node ~ox ~oy ~cx ~cy:(bottom + 1))
+          boundary_at t node ~ox ~oy ~cx ~cy:(bottom + 1))
   | `Row_start | `Row_end -> None
 
 (* Where a keyboard extension toward [direction] moves the focus of [sel],
@@ -1471,9 +1502,7 @@ let extension_target t sel band direction =
             ~bottom:(y + h - 1)
             direction)
   | Direct -> (
-      match
-        (offset t focus.node band.origin, Renderable.text_rows focus.node)
-      with
+      match (offset t focus.node band.origin, current_rows t focus.node) with
       | Some (ox, oy), Some rows -> (
           let layout = rows.layout in
           let g = if forward then focus.last else focus.first in
@@ -1490,11 +1519,11 @@ let extension_target t sel band direction =
           | `Left -> if g > 0 then here (g - 1) else across ()
           | `Right -> if g < length then here (g + 1) else across ()
           | `Up ->
-              if row > 0 then boundary_at focus.node ~ox ~oy ~cx ~cy:(cy - 1)
+              if row > 0 then boundary_at t focus.node ~ox ~oy ~cx ~cy:(cy - 1)
               else across ()
           | `Down ->
               if row < Layout.row_count layout - 1 then
-                boundary_at focus.node ~ox ~oy ~cx ~cy:(cy + 1)
+                boundary_at t focus.node ~ox ~oy ~cx ~cy:(cy + 1)
               else across ()
           | `Row_start -> here (Layout.row_start layout row)
           | `Row_end -> here (Layout.row_end layout row))
@@ -1528,6 +1557,132 @@ let extend_selection t direction =
               let holds = holds_text t next in
               replace t (if holds then Some next else None) ~holds)
       | Some _ | None -> ())
+  | Some _ | None -> ()
+
+(* ───── Change under a Selection ─────
+
+   Scrolling, streaming and rewrapping leave the ends where they are, since
+   they name text (§3.8). An edit of an end's text maps the end through the
+   one span it changed; an end whose node is hidden or unmounted clears the
+   selection. *)
+
+(* The bytes [a] and [b] share from their start. *)
+let common_prefix a b =
+  let n = min (String.length a) (String.length b) in
+  let i = ref 0 in
+  while !i < n && String.unsafe_get a !i = String.unsafe_get b !i do
+    incr i
+  done;
+  !i
+
+(* The bytes [a] and [b] share from their end, [limit] at most. *)
+let common_suffix a b ~limit =
+  let la = String.length a and lb = String.length b in
+  let i = ref 0 in
+  while
+    !i < limit
+    && String.unsafe_get a (la - 1 - !i) = String.unsafe_get b (lb - 1 - !i)
+  do
+    incr i
+  done;
+  !i
+
+(* The one span an edit changed, from the text [old] to [next]: the
+   boundaries [(p, stop, stop')] such that the clusters before [p], and
+   those from [stop] in [old] and from [stop'] in [next], are the same,
+   with the shared prefix and suffix as long as they can be (§3.8 Edits).
+   Each is a boundary of both texts at the same bytes, so a cluster that
+   the edit extends or splits falls inside the span. *)
+let changed_span old next =
+  let module S = Layout.Source in
+  let a = S.text old and b = S.text next in
+  let la = String.length a and lb = String.length b in
+  let shared = common_prefix a b in
+  let shared_end = common_suffix a b ~limit:(min la lb - shared) in
+  let rec prefix g =
+    let o = S.byte_offset old g in
+    if
+      g = 0
+      || S.grapheme_of_byte next ~affinity:Upstream o = g
+         && S.byte_offset next g = o
+    then g
+    else prefix (g - 1)
+  in
+  let p = prefix (S.grapheme_of_byte old ~affinity:Upstream shared) in
+  let n = S.length old and n' = S.length next in
+  let rec suffix g =
+    if g >= n then n
+    else
+      let o = S.byte_offset old g + lb - la and g' = g + n' - n in
+      if
+        g' >= p
+        && S.grapheme_of_byte next ~affinity:Downstream o = g'
+        && S.byte_offset next g' = o
+      then g
+      else suffix (g + 1)
+  in
+  let stop =
+    suffix (S.grapheme_of_byte old ~affinity:Downstream (la - shared_end))
+  in
+  (p, stop, stop + n' - n)
+
+(* Boundary [g] through the span [(p, stop, stop')]: one before the span or
+   at its start stays, so an insertion at it leaves it; one at its old end
+   or after moves by the change in length; one strictly inside moves to its
+   start. *)
+let through (p, stop, stop') g =
+  if g <= p then g else if g >= stop then g + stop' - stop else p
+
+(* The text of [node] changed: an end in it follows the edit, from the text
+   it counts in to the one [node] holds now (§3.8 Edits). A selection at
+   rest whose end moved clears when it holds no text, its ends met; one
+   that a gesture drags keeps its anchor, followed. *)
+let text_changed_of t node =
+  match t.selection_state.current with
+  | Some sel when sel.anchor.node == node || sel.focus.node == node -> (
+      match current_rows t node with
+      | None -> ()
+      | Some rows ->
+          let next = Layout.source rows.layout in
+          let span = ref None in
+          let follow (e : end_) =
+            if (not (e.node == node)) || e.source == next then e
+            else
+              let s =
+                match !span with
+                | Some (from, s) when from == e.source -> s
+                | Some _ | None ->
+                    let s = changed_span e.source next in
+                    span := Some (e.source, s);
+                    s
+              in
+              {
+                e with
+                first = through s e.first;
+                last = through s e.last;
+                source = next;
+              }
+          in
+          let moved (e : end_) (e' : end_) =
+            e.first <> e'.first || e.last <> e'.last
+          in
+          let anchor = follow sel.anchor and focus = follow sel.focus in
+          let changed = moved sel.anchor anchor || moved sel.focus focus in
+          sel.anchor <- anchor;
+          sel.focus <- focus;
+          if changed && Option.is_none sel.gesture && not (holds_text t sel)
+          then replace t None ~holds:false
+          else t.ctx.schedule ())
+  | Some _ | None -> ()
+
+(* [node] and its descendants are about to stop being shown: a selection
+   with an end among them clears, and its gesture ends (§3.8 Unmount,
+   hide). *)
+let hiding_of t node =
+  match t.selection_state.current with
+  | Some sel
+    when ancestor_of node sel.anchor.node || ancestor_of node sel.focus.node ->
+      clear_selection t
   | Some _ | None -> ()
 
 (* ───── Creation ───── *)
@@ -1572,8 +1727,10 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
       band = None;
     }
   in
-  (* The renderer reads what the selection holds of a node as it paints. *)
+  (* The renderer reads what the selection holds of a node as it paints,
+     and hears of the changes that move or clear its ends. *)
   let selected_range = ref (fun _ -> None) in
+  let text_changed = ref ignore and hiding = ref ignore in
   let scroll_hint = ref Hint_none in
   let report_scroll node ~(region : Grid.region) ~dx ~dy =
     (* Horizontal movement and degenerate regions cannot be expressed as a
@@ -1634,6 +1791,8 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
               focused := None
           | _ -> ());
       selected_range = (fun node -> !selected_range node);
+      text_changed = (fun node -> !text_changed node);
+      hiding = (fun node -> !hiding node);
       register_lifecycle =
         (fun node -> Hashtbl.replace lifecycle_set (Renderable.uid node) node);
       unregister_lifecycle =
@@ -1713,6 +1872,8 @@ let create ?width_method ?screen ?style ?(request_render = fun () -> ())
     }
   in
   selected_range := selected_range_of t;
+  text_changed := text_changed_of t;
+  hiding := hiding_of t;
   t
 
 (* ───── Accessors ───── *)
@@ -2453,13 +2614,6 @@ let mouse_path t ~now (mouse : Input.Mouse_report.t) =
       route
         (Event.Mouse.Scroll { direction = map_scroll direction; delta = 1 })
         target
-
-let rec ancestor_of ancestor node =
-  ancestor == node
-  ||
-  match Renderable.parent node with
-  | None -> false
-  | Some parent -> ancestor_of ancestor parent
 
 (* A click goes to the pressed node, and to its ancestors that are also
    ancestors of the node released over. *)

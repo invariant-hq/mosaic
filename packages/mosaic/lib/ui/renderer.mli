@@ -393,7 +393,19 @@ val theme : t -> Theme.t
     cell of the later one, and the units of the ends whole. A scroll box in the
     region is selected whole when the band covers each cell of its view, and not
     at all otherwise. Selected text paints with the [Highlight] role of its
-    theme ({!Text_surface.section-paint}). *)
+    theme ({!Text_surface.section-paint}).
+
+    The ends name text, so scrolling, appending, streaming and rewrapping leave
+    them on the text they hold. An edit of an end's text
+    ({!Renderable.Private.text_changed}) moves the end through the one span it
+    changed: the clusters between the longest prefix and the longest suffix that
+    the text before the edit and the text after it share. An end before the span
+    or at its start stays, so text inserted at an end is left out of the
+    selection at its end and taken in at its start; one at its old end or after
+    it moves by the change in length; one strictly inside it moves to its start.
+    A selection at rest that an edit leaves holding no text, as when its ends
+    meet, clears. An end whose node is hidden, detached or destroyed, or below a
+    node that is, clears the selection and ends the gesture that drags it. *)
 
 val selection_text : t -> string option
 (** [selection_text t] is the text the view selection holds, as the user saw it
@@ -446,8 +458,9 @@ val take_selection_changes : t -> selection_change list
     ({!pointer_lost}), and the selection holds text; a double or triple click
     settles at its release. A selection is [Cleared] when it held text and holds
     none, whatever the cause: a press, {!clear_selection}, a gesture that ends
-    with no text, or {!extend_selection}, which settles nothing. A gesture's
-    motion queues nothing. *)
+    with no text, {!extend_selection}, which settles nothing, an edit of its
+    text, or an end's node hidden or unmounted ({!section-selection}). A
+    gesture's motion queues nothing. *)
 
 (** {1:drag Drag capture} *)
 
