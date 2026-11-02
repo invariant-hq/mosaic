@@ -1087,7 +1087,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   in
   (* It acts on a press, or paints no source text: a press on it neither
      starts nor clears a text selection. *)
-  Renderable.set_selectable node (Some false);
+  Renderable.set_selectable node (Some `Off);
   let col_specs = Array.of_list props.columns in
   let data_rows = Items.to_array props.rows in
   let initial_selected =

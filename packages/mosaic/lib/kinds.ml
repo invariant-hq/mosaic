@@ -174,7 +174,7 @@ let picture : (Matrix_grid.picture, nothing, picture) Kind.t =
       let node = Renderable.create ~parent ~style:layout () in
       let p = { node; picture; style = layout } in
       (* A picture paints no source text. *)
-      Renderable.set_selectable node (Some false);
+      Renderable.set_selectable node (Some `Off);
       apply_picture_style p;
       Renderable.set_measure node (Some (picture_measure p));
       Renderable.set_render node (picture_render p);

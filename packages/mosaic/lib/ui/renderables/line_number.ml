@@ -382,9 +382,9 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   in
   Renderable.set_style content content_style;
   (* The gutter paints no source text: a press on it neither starts nor
-     clears a text selection. The children are selectable as their
-     ancestors declare. *)
-  Renderable.set_selectable gutter (Some false);
+     clears a text selection. The children read as their ancestors
+     declare. *)
+  Renderable.set_selectable gutter (Some `Off);
   (* Route children to content node *)
   Renderable.set_child_target node (Some content);
   let t = { node; gutter; content; props; lookup = None } in

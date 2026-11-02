@@ -123,7 +123,7 @@ module Props : sig
     ?content:string ->
     ?text_style:Ansi.Style.t ->
     ?wrap:Text_surface.wrap ->
-    ?selectable:bool ->
+    ?selectable:[ `Off | `Text | `Cells ] ->
     ?tab_width:int ->
     ?truncate:bool ->
     unit ->
@@ -133,10 +133,10 @@ module Props : sig
       - [text_style]: base visual style for all content. Defaults to
         {!Ansi.Style.default}.
       - [wrap]: wrapping mode. Defaults to [`None].
-      - [selectable]: declares whether text selection reaches the text
-        ({!Renderable.set_selectable}). Absent, the text declares nothing and is
-        selectable as its nearest declaring ancestor says. Selected text is
-        drawn with the [Highlight] role ({!Text_surface.section-paint}).
+      - [selectable]: declares what the view selection takes of the text
+        ({!Renderable.set_selectable}). Absent, the text declares nothing and
+        reads as its nearest declaring ancestor says. Selected text is drawn
+        with the [Highlight] role ({!Text_surface.section-paint}).
       - [tab_width]: tab stop width. Defaults to [2].
       - [truncate]: whether to truncate with ellipsis when [wrap = `None].
         Defaults to [false].
@@ -149,7 +149,7 @@ module Props : sig
   val make_rich :
     ?text_style:Ansi.Style.t ->
     ?wrap:Text_surface.wrap ->
-    ?selectable:bool ->
+    ?selectable:[ `Off | `Text | `Cells ] ->
     ?tab_width:int ->
     ?truncate:bool ->
     fragment list ->
@@ -250,10 +250,6 @@ val set_tab_width : t -> int -> unit
     Raises [Invalid_argument] if [w < 1]. *)
 
 (** {1:selection Selection} *)
-
-val set_selectable : t -> bool -> unit
-(** [set_selectable t v] declares whether text selection reaches [t]
-    ({!Renderable.set_selectable}). *)
 
 val selected_text : t -> string
 (** [selected_text t] is the part of the view selection in [t]'s text, [""] if

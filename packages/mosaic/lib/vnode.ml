@@ -22,7 +22,7 @@ type attrs = {
   focused : bool;
   buffered : bool;
   live : bool;
-  selectable : bool option;
+  selectable : [ `Off | `Text | `Cells ] option;
 }
 
 (* ───── Virtual Nodes ───── *)

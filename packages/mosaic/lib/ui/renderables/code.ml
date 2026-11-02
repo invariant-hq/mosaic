@@ -18,7 +18,7 @@ module Props = struct
     wrap : Text_surface.wrap;
     tab_width : int;
     truncate : bool;
-    selectable : bool option;
+    selectable : [ `Off | `Text | `Cells ] option;
   }
 
   let make ?(content = "") ?syntax ?(conceal = true)
@@ -44,7 +44,7 @@ module Props = struct
     && Bool.equal a.conceal b.conceal
     && Ansi.Style.equal a.text_style b.text_style
     && a.wrap = b.wrap && a.tab_width = b.tab_width && a.truncate = b.truncate
-    && Option.equal Bool.equal a.selectable b.selectable
+    && Option.equal ( = ) a.selectable b.selectable
 end
 
 (* Types *)

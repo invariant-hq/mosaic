@@ -97,7 +97,7 @@ module Props : sig
     ?conceal:bool ->
     ?streaming:bool ->
     ?style:Style.t ->
-    ?selectable:bool ->
+    ?selectable:[ `Off | `Text | `Cells ] ->
     ?render_node:
       (Cmarkit.Block.t ->
       parent:Renderable.t ->
@@ -123,9 +123,9 @@ module Props : sig
         rebuilt on every view re-renders nothing. Defaults to none. A markdown
         without a style draws with {!Style.of_theme} of the theme in scope, and
         renders its blocks again when that theme gives other styles.
-      - [selectable]: declares whether text selection reaches the rendered
+      - [selectable]: declares what the view selection takes of the rendered
         markdown ({!Renderable.set_selectable}). Absent, the markdown declares
-        nothing and is selectable as its nearest declaring ancestor says.
+        nothing and reads as its nearest declaring ancestor says.
       - [render_node]: a custom block renderer called for every
         [Cmarkit.Block.t] before default rendering. Return [Some r] to replace
         default rendering with renderable [r], or [None] to fall through to the
@@ -232,10 +232,6 @@ val set_streaming : t -> bool -> unit
 (** [set_streaming t v] enables ([true]) or disables ([false]) streaming mode on
     [t]. When enabled, incomplete trailing table rows are skipped. No-op when
     [v] equals the current value. *)
-
-val set_selectable : t -> bool -> unit
-(** [set_selectable t v] declares whether text selection reaches the rendered
-    markdown ({!Renderable.set_selectable}). *)
 
 (** {1:apply Props application} *)
 

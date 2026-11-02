@@ -169,7 +169,7 @@ module Props = struct
     cursor_style : [ `Block | `Line | `Underline ];
     cursor_color : Ansi.Color.t;
     cursor_blinking : bool;
-    selectable : bool;
+    selectable : [ `Off | `Text | `Cells ];
     show_cursor : bool;
     key_bindings : key_binding list;
   }
@@ -179,7 +179,7 @@ module Props = struct
       ?focused_text_color ?focused_background_color ?placeholder_color
       ?(cursor_style = default_cursor_style)
       ?(cursor_color = Ansi.Color.default_fg)
-      ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
+      ?(cursor_blinking = default_cursor_blinking) ?(selectable = `Text)
       ?(show_cursor = true) ?(key_bindings = []) () =
     (match annotations with
     | None -> ()
@@ -844,7 +844,8 @@ let handle_mouse t ev =
     | Scroll { direction; delta } ->
         Event.Mouse.prevent_default ev;
         handle_scroll t direction delta
-    | Down { button = Left; clicks } when Renderable.selectable t.node -> (
+    | Down { button = Left; clicks } when Renderable.selectable t.node <> `Off
+      -> (
         let base = t.props.state in
         match Text_unit.of_clicks clicks with
         | Grapheme ->

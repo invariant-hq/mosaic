@@ -25,7 +25,7 @@ val create :
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
   ?truncate:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   unit ->
   t
 (** [create ~parent ()] is a text-backed renderable attached to [parent].
@@ -33,7 +33,7 @@ val create :
     [text_style] is the default style for plain text, [wrap] is the wrapping
     mode, [tab_width] is the tab stop width in columns, and [truncate] enables
     ellipsis truncation for unwrapped long lines. [selectable], when given,
-    declares whether text selection reaches the renderable
+    declares what the view selection takes of the renderable
     ({!Renderable.set_selectable}).
 
     Raises [Invalid_argument] if [tab_width < 1]. *)
@@ -82,7 +82,7 @@ val set_tab_width : t -> int -> unit
 val set_truncate : t -> bool -> unit
 (** [set_truncate t truncate] enables or disables truncation. *)
 
-val set_selectable : t -> bool option -> unit
+val set_selectable : t -> [ `Off | `Text | `Cells ] option -> unit
 (** [set_selectable t d] is {!Renderable.set_selectable} on {!node}. *)
 
 val selected_text : t -> string

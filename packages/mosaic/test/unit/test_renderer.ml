@@ -1135,7 +1135,7 @@ let selection_reads_rows_out_of_view () =
     in
     ignore
       (Text.create ~parent:wrapper
-         (Text.Props.make ~content:text ~selectable:true ())
+         (Text.Props.make ~content:text ~selectable:`Text ())
         : Text.t)
   in
   for i = 0 to 9 do
@@ -1181,7 +1181,7 @@ let selection_reads_the_top_layer () =
       (Text.create ~parent:(Scroll_box.node sb)
          (Text.Props.make
             ~content:(Printf.sprintf "row-%d" i)
-            ~selectable:true ())
+            ~selectable:`Text ())
         : Text.t)
   done;
   let top =
@@ -1193,7 +1193,7 @@ let selection_reads_the_top_layer () =
   in
   ignore
     (Text.create ~parent:top
-       (Text.Props.make ~content:"copy me" ~selectable:true ())
+       (Text.Props.make ~content:"copy me" ~selectable:`Text ())
       : Text.t);
   Renderer.set_modal t (Some top);
   do_frame ~width:20 ~height:9 t;
@@ -1248,7 +1248,7 @@ let make_hint_transcript ?(rows = 20) ?(vw = 20) ?(vh = 6) t =
       (Text.create ~parent:(Scroll_box.node sb) ~style:row_style
          (Text.Props.make
             ~content:(Printf.sprintf "row %d" i)
-            ~selectable:false ())
+            ~selectable:`Off ())
         : Text.t)
   done;
   Renderer.render_frame t ~width:vw ~height:vh ~dt:0.;
@@ -2361,7 +2361,7 @@ let press_on_unselectable_keeps_selection () =
   ignore
     (make_text ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:10 ~h:5 () : Renderable.t);
   let other = make_child ~parent:(Renderer.root t) ~x:20 ~y:0 ~w:10 ~h:10 () in
-  Renderable.set_selectable other (Some false);
+  Renderable.set_selectable other (Some `Off);
   do_frame t;
   dispatch_mouse t (mouse_press ~x:1 ~y:0 ());
   dispatch_mouse t (mouse_motion ~left:true ~x:3 ~y:0 ());
@@ -2907,7 +2907,7 @@ let scrollbar_geometry_settles_before_next_input () =
       (Text.create ~parent:(Scroll_box.node box) ~style:row_style
          (Text.Props.make
             ~content:(Printf.sprintf "row %d" i)
-            ~selectable:false ())
+            ~selectable:`Off ())
         : Text.t)
   in
   add_row 0;

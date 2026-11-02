@@ -463,18 +463,19 @@ val set_paste_behavior : t -> (Event.paste -> unit) option -> unit
 
 (** {1:selection Selection}
 
-    Text selection reaches a node as the nearest declaration on the node or an
-    ancestor says, and every node when none does. A press on a node it does not
-    reach neither starts nor clears a selection, and a selection across the node
-    leaves out its text ([Renderer]). A descendant can declare it again inside a
-    subtree that refuses it. *)
+    A node reads what the view selection takes of it from the nearest
+    declaration on the node or an ancestor, and [`Text] when none does. A press
+    on a node that reads [`Off] neither starts nor clears a selection, and a
+    selection across the node leaves it out ([Renderer]). A descendant can
+    declare again inside a subtree that declares otherwise. *)
 
-val set_selectable : t -> bool option -> unit
-(** [set_selectable t d] declares whether text selection reaches [t] and its
-    descendants ([Some b]), or removes [t]'s declaration ([None]). *)
+val set_selectable : t -> [ `Off | `Text | `Cells ] option -> unit
+(** [set_selectable t d] declares what the view selection takes of [t] and its
+    descendants ([Some r]): nothing ([`Off]), their text ([`Text]) or every cell
+    they paint ([`Cells]). [None] removes [t]'s declaration. *)
 
-val selectable : t -> bool
-(** [selectable t] is the nearest declaration on [t] or an ancestor, [true] if
+val selectable : t -> [ `Off | `Text | `Cells ]
+(** [selectable t] is the nearest declaration on [t] or an ancestor, [`Text] if
     none. *)
 
 (** {1:text_rows Text rows} *)
@@ -810,7 +811,7 @@ module Private : sig
   val owned_text : t -> (unit -> string option) option
   (** [owned_text t] is [t]'s declaration of {!set_owned_text}. *)
 
-  val declared_selectable : t -> bool option
+  val declared_selectable : t -> [ `Off | `Text | `Cells ] option
   (** [declared_selectable t] is the declaration {!val-set_selectable} made on
       [t] itself, not inherited. *)
 

@@ -610,7 +610,7 @@ let doors_wrap () =
 let doors_selectable () =
   Test_harness.reaches ~act:doors_select ~observe:doors_selected "selectable"
     ~base:(Mosaic.diff ~size:doors_size doors_patch)
-    ~element:(Mosaic.diff ~size:doors_size ~selectable:false doors_patch)
+    ~element:(Mosaic.diff ~size:doors_size ~selectable:`Off doors_patch)
     ~create_base:(fun parent ->
       Diff.node
         (Diff.create ~parent ~style:doors_style
@@ -618,7 +618,7 @@ let doors_selectable () =
     ~create:(fun parent ->
       Diff.node
         (Diff.create ~parent ~style:doors_style
-           (Diff.Props.make ~patch:doors_patch ~selectable:false ())))
+           (Diff.Props.make ~patch:doors_patch ~selectable:`Off ())))
 
 let doors_text_style () =
   Test_harness.reaches "text_style"

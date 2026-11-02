@@ -520,14 +520,14 @@ let current_rows t node =
   Renderable.text_rows node
 
 (* The rows of a text the view selection reaches: a node with text rows,
-   selectable, that owns neither its text nor its selection as an editor
-   does. *)
+   that does not read [`Off] and owns neither its text nor its selection as
+   an editor does. *)
 let text_rows_of t node =
   match current_rows t node with
   | Some _ as rows
     when (not (Renderable.destroyed node))
          && Option.is_none (Renderable.Private.owned_text node)
-         && Renderable.selectable node ->
+         && Renderable.selectable node <> `Off ->
       rows
   | Some _ | None -> None
 
@@ -1154,9 +1154,10 @@ let iter_band band ~grid f =
     done
   done
 
-(* A node takes part in the selection when it is selectable and not inert. *)
+(* A node takes part in the selection when it does not read [`Off] and is not
+   inert. *)
 let selects t node =
-  Renderable.selectable node && not (inert_under (top_layer t) node)
+  Renderable.selectable node <> `Off && not (inert_under (top_layer t) node)
 
 (* [iter_band_cells t band ~grid ~owner f] calls [f ~x ~y idx node] for each cell
    of [band] that a selectable node paints without text, such as a border or
@@ -1538,7 +1539,7 @@ let move_nearer_end t sel band ~x ~y ~clicks =
 let press_selection t ~x ~y ~shift ~clicks =
   let hit = hit_node t ~x ~y in
   match hit with
-  | Some node when not (Renderable.selectable node) -> ()
+  | Some node when Renderable.selectable node = `Off -> ()
   | Some node when Option.is_some (Renderable.Private.owned_text node) ->
       clear_selection t
   | Some _ | None ->

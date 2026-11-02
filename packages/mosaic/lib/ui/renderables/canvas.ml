@@ -81,7 +81,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity () =
   in
   (* It acts on a press, or paints no source text: a press on it neither
      starts nor clears a text selection. *)
-  Renderable.set_selectable node (Some false);
+  Renderable.set_selectable node (Some `Off);
   (* 1×1 placeholder; resized to match layout on the first render pass. The
      grid follows the screen's width method so drawing lays cells down the
      same way the parent grid does. *)

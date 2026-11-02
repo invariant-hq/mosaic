@@ -892,7 +892,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity props =
   in
   (* It acts on a press, or paints no source text: a press on it neither
      starts nor clears a text selection. *)
-  Renderable.set_selectable rnode (Some false);
+  Renderable.set_selectable rnode (Some `Off);
   let t =
     {
       node = rnode;

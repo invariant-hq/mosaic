@@ -219,7 +219,7 @@ module Props : sig
     ?line_signs:line_sign list ->
     ?show_line_numbers:bool ->
     ?wrap:Text_surface.wrap ->
-    ?selectable:bool ->
+    ?selectable:[ `Off | `Text | `Cells ] ->
     ?text_style:Ansi.Style.t ->
     unit ->
     t
@@ -246,10 +246,10 @@ module Props : sig
         [true].
       - [wrap] is the wrap mode for embedded {!Code} children. Defaults to
         [`None].
-      - [selectable] declares whether text selection reaches the embedded
+      - [selectable] declares what the view selection takes of the embedded
         {!Code} children ({!Renderable.set_selectable}). Absent, they declare
-        nothing, and are selectable as their ancestors declare. The gutters are
-        not ({!Line_number}).
+        nothing, and read as their ancestors declare. The gutters declare [`Off]
+        ({!Line_number}).
       - [text_style] is the base text style. Defaults to {!Ansi.Style.default}.
 
       [Mosaic.diff] takes those of these labels it has, with these defaults. *)

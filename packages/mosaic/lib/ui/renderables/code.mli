@@ -245,7 +245,7 @@ module Props : sig
     ?wrap:Text_surface.wrap ->
     ?tab_width:int ->
     ?truncate:bool ->
-    ?selectable:bool ->
+    ?selectable:[ `Off | `Text | `Cells ] ->
     unit ->
     t
   (** [make ()] is a code props value with:
@@ -259,10 +259,10 @@ module Props : sig
       - [tab_width] is the tab stop width in columns. Defaults to [4].
       - [truncate] controls whether long lines are truncated with an ellipsis.
         Defaults to [false].
-      - [selectable] declares whether text selection reaches the code
-        ({!Renderable.set_selectable}). Absent, the code declares nothing and is
-        selectable as its nearest declaring ancestor says. Selected text is
-        drawn with the [Highlight] role ({!Text_surface.section-paint}).
+      - [selectable] declares what the view selection takes of the code
+        ({!Renderable.set_selectable}). Absent, the code declares nothing and
+        reads as its nearest declaring ancestor says. Selected text is drawn
+        with the [Highlight] role ({!Text_surface.section-paint}).
 
       [Mosaic.code] takes these labels with these defaults.
 

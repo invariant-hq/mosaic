@@ -69,7 +69,7 @@ val box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?inert:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
@@ -136,7 +136,7 @@ val button :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_focus_request:'msg ->
   ?on_size:(w:int -> h:int -> 'msg option) ->
   ?focused:bool ->
@@ -202,7 +202,7 @@ val scroll_box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -281,7 +281,7 @@ val text :
   ?focused:bool ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?tab_width:int ->
   ?truncate:bool ->
   ?children:string list ->
@@ -343,7 +343,7 @@ val rich_text :
   ?focused:bool ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?tab_width:int ->
   ?truncate:bool ->
   ?children:Text.fragment list ->
@@ -410,7 +410,7 @@ val code :
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
   ?truncate:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?children:string list ->
   unit ->
   'msg t
@@ -470,7 +470,7 @@ val markdown :
   ?md_style:Markdown.Style.t ->
   ?conceal:bool ->
   ?streaming:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?render_node:
     (Cmarkit.Block.t ->
     parent:Mosaic_ui.Renderable.t ->
@@ -548,7 +548,7 @@ val input :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?show_cursor:bool ->
   ?key_bindings:Mosaic_ui.Text_input.key_binding list ->
   on_change:(Editor.t -> 'msg) ->
@@ -625,7 +625,7 @@ val textarea :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?show_cursor:bool ->
   ?key_bindings:Mosaic_ui.Textarea.key_binding list ->
   on_change:(Editor.t -> 'msg) ->
@@ -681,7 +681,7 @@ val line_number :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->

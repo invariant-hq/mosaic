@@ -49,7 +49,7 @@ module Props = struct
         content : string;
         text_style : Ansi.Style.t;
         wrap : Text_surface.wrap;
-        selectable : bool option;
+        selectable : [ `Off | `Text | `Cells ] option;
         tab_width : int;
         truncate : bool;
       }
@@ -57,7 +57,7 @@ module Props = struct
         fragments : fragment list;
         text_style : Ansi.Style.t;
         wrap : Text_surface.wrap;
-        selectable : bool option;
+        selectable : [ `Off | `Text | `Cells ] option;
         tab_width : int;
         truncate : bool;
       }
@@ -116,7 +116,7 @@ module Props = struct
          | _ -> false)
        && Ansi.Style.equal (text_style a) (text_style b)
        && wrap a = wrap b
-       && Option.equal Bool.equal (selectable a) (selectable b)
+       && Option.equal ( = ) (selectable a) (selectable b)
        && tab_width a = tab_width b
        && truncate a = truncate b
 end
@@ -388,9 +388,6 @@ let set_wrap t wrap = Text_renderable.set_wrap t.text wrap
 let set_tab_width t tab_width = Text_renderable.set_tab_width t.text tab_width
 
 (* Selection *)
-
-let set_selectable t selectable =
-  Text_renderable.set_selectable t.text (Some selectable)
 
 let selected_text t = Text_renderable.selected_text t.text
 

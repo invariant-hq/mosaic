@@ -89,7 +89,7 @@ module Props : sig
     ?cursor_style:[ `Block | `Line | `Underline ] ->
     ?cursor_color:Ansi.Color.t ->
     ?cursor_blinking:bool ->
-    ?selectable:bool ->
+    ?selectable:[ `Off | `Text | `Cells ] ->
     ?show_cursor:bool ->
     ?key_bindings:key_binding list ->
     unit ->

@@ -26,8 +26,8 @@ let update_common (node : Renderable.t) ~own_selectable
   if old_attrs.live <> new_attrs.live then (
     Renderable.set_live node new_attrs.live;
     changed := true);
-  (* An element that stops declaring its selectability gets back the one its
-     widget made. *)
+  (* An element that stops declaring [selectable] gets back the declaration
+     its widget made. *)
   if old_attrs.selectable <> new_attrs.selectable then (
     Renderable.set_selectable node
       (match new_attrs.selectable with
@@ -110,8 +110,8 @@ and ('props, 'event, 'w) fiber = {
   mutable viewport_width : int;
   mutable declared_focus : declared_focus;
   mutable pass : int;  (** The last matching pass that matched it. *)
-  own_selectable : bool option;
-      (** The selectability its widget declared when it was created, which the
+  own_selectable : [ `Off | `Text | `Cells ] option;
+      (** The declaration its widget made when it was created, which the
           element's absent [selectable] keeps. *)
 }
 

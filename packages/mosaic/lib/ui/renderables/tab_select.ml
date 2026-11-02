@@ -361,7 +361,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
   in
   (* It acts on a press, or paints no source text: a press on it neither
      starts nor clears a text selection. *)
-  Renderable.set_selectable node (Some false);
+  Renderable.set_selectable node (Some `Off);
   let options = Items.to_list props.Props.options in
   let selected_index = clamp_selected options props.selected in
   let t =

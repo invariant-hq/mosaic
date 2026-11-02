@@ -1950,7 +1950,7 @@ let button ?key ?layout ?display ?box_sizing ?position ?overflow
     ?grid_auto_rows ?grid_auto_columns ?grid_auto_flow ?grid_template_areas
     ?grid_template_column_names ?grid_template_row_names ?grid_row ?grid_column
     ?visible ?z_index ?opacity ?buffered ?live
-    ~selectable:(Option.value selectable ~default:false)
+    ~selectable:(Option.value selectable ~default:`Off)
     ?on_focus_request ?on_size ~focused:(focused && not disabled) ?border
     ?border_style ?border_sides ?border_color ?focused_border_color ?background
     ?fill ?title ?title_alignment ~on_key ~on_click

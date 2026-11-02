@@ -59,7 +59,7 @@ module Props = struct
     cursor_style : [ `Block | `Line | `Underline ];
     cursor_color : Ansi.Color.t;
     cursor_blinking : bool;
-    selectable : bool;
+    selectable : [ `Off | `Text | `Cells ];
     show_cursor : bool;
     key_bindings : key_binding list;
   }
@@ -68,7 +68,7 @@ module Props = struct
       ?focused_text_color ?focused_background_color ?placeholder_color
       ?(cursor_style = default_cursor_style)
       ?(cursor_color = Ansi.Color.default_fg)
-      ?(cursor_blinking = default_cursor_blinking) ?(selectable = true)
+      ?(cursor_blinking = default_cursor_blinking) ?(selectable = `Text)
       ?(show_cursor = true) ?(key_bindings = []) () =
     if Matrix.Text.Layout.Source.line_count (Editor.source state) <> 1 then
       invalid_arg "Mosaic_ui.Text_input: state must not contain CR or LF";

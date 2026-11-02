@@ -329,7 +329,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
   in
   (* It acts on a press, or paints no source text: a press on it neither
      starts nor clears a text selection. *)
-  Renderable.set_selectable node (Some false);
+  Renderable.set_selectable node (Some `Off);
   let initial_value =
     clamp_value ~min:props.Props.min ~max:props.max props.value
   in

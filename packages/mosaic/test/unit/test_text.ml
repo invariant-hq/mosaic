@@ -38,8 +38,8 @@ let props_detects_wrap_diff () =
   is_false ~msg:"different" (Text.Props.equal a b)
 
 let props_detects_selectable_diff () =
-  let a = Text.Props.make ~selectable:true () in
-  let b = Text.Props.make ~selectable:false () in
+  let a = Text.Props.make ~selectable:`Text () in
+  let b = Text.Props.make ~selectable:`Off () in
   is_false ~msg:"different" (Text.Props.equal a b);
   is_false ~msg:"a declaration differs from none"
     (Text.Props.equal a (Text.Props.make ()))
@@ -49,15 +49,17 @@ let props_detects_selectable_diff () =
 let selectable_declares_on_the_node () =
   let t = make_ctx () in
   let root = make_root t in
-  Renderable.set_selectable root (Some false);
+  Renderable.set_selectable root (Some `Off);
   let plain = Text.create ~parent:root (Text.Props.make ~content:"a" ()) in
-  is_false ~msg:"absent inherits" (Renderable.selectable (Text.node plain));
+  equal ~msg:"absent inherits" reading `Off
+    (Renderable.selectable (Text.node plain));
   let declared =
-    Text.create ~parent:root (Text.Props.make ~content:"a" ~selectable:true ())
+    Text.create ~parent:root (Text.Props.make ~content:"a" ~selectable:`Text ())
   in
-  is_true ~msg:"declared again" (Renderable.selectable (Text.node declared));
+  equal ~msg:"declared again" reading `Text
+    (Renderable.selectable (Text.node declared));
   Text.apply_props declared (Text.Props.make ~content:"a" ());
-  is_false ~msg:"dropping the label removes the declaration"
+  equal ~msg:"dropping the label removes the declaration" reading `Off
     (Renderable.selectable (Text.node declared))
 
 (* A tab width below 1 is a mistake, raised by the call that makes it. *)
@@ -674,13 +676,13 @@ let doors_selectable () =
     ~observe:(fun renderer _ ->
       Option.value ~default:"(none)" (Renderer.selection_text renderer))
     ~base:(Mosaic.text ~size words)
-    ~element:(Mosaic.text ~size ~selectable:false words)
+    ~element:(Mosaic.text ~size ~selectable:`Off words)
     ~create_base:(fun parent ->
       Text.node (Text.create ~parent ~style (Text.Props.make ~content:words ())))
     ~create:(fun parent ->
       Text.node
         (Text.create ~parent ~style
-           (Text.Props.make ~content:words ~selectable:false ())))
+           (Text.Props.make ~content:words ~selectable:`Off ())))
 
 let doors_tab_width () =
   Test_harness.reaches "tab_width" ~base:(Mosaic.text ~size "a\tb")
@@ -726,11 +728,11 @@ let doors_rich_selectable () =
     ~observe:(fun renderer _ ->
       Option.value ~default:"(none)" (Renderer.selection_text renderer))
     ~base:(Mosaic.rich_text ~size fragments)
-    ~element:(Mosaic.rich_text ~size ~selectable:false fragments)
+    ~element:(Mosaic.rich_text ~size ~selectable:`Off fragments)
     ~create_base:(fun parent ->
       rich (Text.create ~parent ~style (Text.Props.make ())))
     ~create:(fun parent ->
-      rich (Text.create ~parent ~style (Text.Props.make ~selectable:false ())))
+      rich (Text.create ~parent ~style (Text.Props.make ~selectable:`Off ())))
 
 let doors_rich_tab_width () =
   let fragments = [ Text.Fragment.text "a\tb" ] in

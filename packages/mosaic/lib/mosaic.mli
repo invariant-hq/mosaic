@@ -1678,19 +1678,20 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     along a path through an inert ancestor. Every element in a [box ~inert:true]
     is inert, and while a {!modal} is shown every element outside it is.
 
-    [selectable] declares whether the view's text selection reaches an element
-    and the elements in it ({!Mosaic_ui.Renderable.set_selectable}); an element
-    in one that does not can declare it again. Without [selectable], an element
-    keeps the declaration of its kind. [button], [select], [tab_select],
+    [selectable] declares what the view's selection takes of an element and the
+    elements in it ({!Mosaic_ui.Renderable.set_selectable}): nothing ([`Off]),
+    their text ([`Text]) or every cell they paint ([`Cells]). An element in one
+    that declares otherwise can declare again, and an element with no
+    declaration on it or an ancestor reads [`Text]. Without [selectable], an
+    element keeps the declaration of its kind. [button], [select], [tab_select],
     [table], [tree], [slider], [scroll_bar], [progress_bar], [spinner], [canvas]
-    and [picture] act on a press or paint no source text and declare [false], as
-    does the gutter of a [line_number], whose child is selectable as its
-    ancestors declare. [input] and [textarea] select their own text and declare
-    [true] ([Mosaic_ui.Text_input.Props.make]). The others declare nothing. A
-    press on an element selection does not reach neither starts nor clears a
-    selection, so an element that acts on a press, such as a drag or a double
-    click, is unselectable or prevents its press. [Mosaic_ui.Renderer] describes
-    the selection.
+    and [picture] act on a press or paint no source text and declare [`Off], as
+    does the gutter of a [line_number], whose child reads as its ancestors
+    declare. [input] and [textarea] select their own text and declare [`Text]
+    ([Mosaic_ui.Text_input.Props.make]). The others declare nothing. A press on
+    an element that reads [`Off] neither starts nor clears a selection, so an
+    element that acts on a press, such as a drag or a double click, declares
+    [`Off] or prevents its press. [Mosaic_ui.Renderer] describes the selection.
 
     Focus is the model's, so nothing moves it but a declaration. Removing or
     hiding the focused element leaves nothing focused: keys reach subscriptions
@@ -1869,7 +1870,7 @@ val box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?inert:bool ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
@@ -1969,7 +1970,7 @@ val button :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_focus_request:'msg ->
   ?on_size:(w:int -> h:int -> 'msg option) ->
   ?focused:bool ->
@@ -2060,7 +2061,7 @@ val text :
   ?focused:bool ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?tab_width:int ->
   ?truncate:bool ->
   string ->
@@ -2124,7 +2125,7 @@ val rich_text :
   ?focused:bool ->
   ?text_style:Ansi.Style.t ->
   ?wrap:Text_surface.wrap ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?tab_width:int ->
   ?truncate:bool ->
   Text.fragment list ->
@@ -2179,7 +2180,7 @@ val slider :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2262,7 +2263,7 @@ val input :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?show_cursor:bool ->
   ?key_bindings:Mosaic_ui.Text_input.key_binding list ->
   on_change:(Editor.t -> 'msg) ->
@@ -2326,7 +2327,7 @@ val select :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2414,7 +2415,7 @@ val tab_select :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2494,7 +2495,7 @@ val canvas :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2554,7 +2555,7 @@ val picture :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2623,7 +2624,7 @@ val spinner :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2683,7 +2684,7 @@ val progress_bar :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2747,7 +2748,7 @@ val scroll_bar :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2818,7 +2819,7 @@ val scroll_box :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -2909,7 +2910,7 @@ val textarea :
   ?cursor_style:[ `Block | `Line | `Underline ] ->
   ?cursor_color:Ansi.Color.t ->
   ?cursor_blinking:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?show_cursor:bool ->
   ?key_bindings:Mosaic_ui.Textarea.key_binding list ->
   on_change:(Editor.t -> 'msg) ->
@@ -2979,7 +2980,7 @@ val code :
   ?wrap:Text_surface.wrap ->
   ?tab_width:int ->
   ?truncate:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   string ->
   'msg t
 (** [code content] is syntax-highlighted source. The labels from [syntax] to
@@ -3030,7 +3031,7 @@ val line_number :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -3113,7 +3114,7 @@ val diff :
   ?line_signs:Diff.line_sign list ->
   ?show_line_numbers:bool ->
   ?wrap:Text_surface.wrap ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?text_style:Ansi.Style.t ->
   ?on_line_click:(Diff.line_hit -> 'msg option) ->
   Diff.Patch.t ->
@@ -3179,7 +3180,7 @@ val markdown :
   ?md_style:Markdown.Style.t ->
   ?conceal:bool ->
   ?streaming:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?render_node:
     (Cmarkit.Block.t ->
     parent:Renderable.t ->
@@ -3243,7 +3244,7 @@ val table :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -3341,7 +3342,7 @@ val tree :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->
@@ -3491,7 +3492,7 @@ val element :
   ?opacity:float ->
   ?buffered:bool ->
   ?live:bool ->
-  ?selectable:bool ->
+  ?selectable:[ `Off | `Text | `Cells ] ->
   ?on_mouse:(Event.mouse -> 'msg option) ->
   ?on_key:(Event.key -> 'msg option) ->
   ?on_paste:(Event.paste -> 'msg option) ->

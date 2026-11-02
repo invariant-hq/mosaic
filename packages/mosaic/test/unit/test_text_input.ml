@@ -1246,7 +1246,7 @@ let doors_selectable () =
   Test_harness.reaches ~act:drag ~observe:proposed "selectable"
     ~base:(Mosaic.input ~size:doors_size ~state:abc ~on_change:propose ())
     ~element:
-      (Mosaic.input ~size:doors_size ~state:abc ~selectable:false
+      (Mosaic.input ~size:doors_size ~state:abc ~selectable:`Off
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Text_input.node
@@ -1255,7 +1255,7 @@ let doors_selectable () =
     ~create:(fun parent ->
       Text_input.node
         (Text_input.create ~parent ~style:doors_style ~on_change:propose
-           (Text_input.Props.make ~state:abc ~selectable:false ())))
+           (Text_input.Props.make ~state:abc ~selectable:`Off ())))
 
 let doors_show_cursor () =
   Test_harness.reaches ~act:Test_harness.focus ~observe:caret "show_cursor"

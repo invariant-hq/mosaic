@@ -34,6 +34,16 @@ let le ?pos ?msg ~than n =
     (fun v -> v <= than)
     n
 
+(* ── Selection readings ── *)
+
+(* What the view selection takes of a node ([Renderable.selectable]). *)
+let reading =
+  Windtrap.Testable.make
+    ~pp:(fun ppf (r : [ `Off | `Text | `Cells ]) ->
+      Format.pp_print_string ppf
+        (match r with `Off -> "`Off" | `Text -> "`Text" | `Cells -> "`Cells"))
+    ~equal:( = )
+
 (* ── Renderer Context ── *)
 
 (* A renderer for a test, with the frames its nodes asked for

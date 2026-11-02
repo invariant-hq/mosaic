@@ -174,7 +174,7 @@ module Props = struct
     line_signs : line_sign list;
     show_line_numbers : bool;
     wrap : Text_surface.wrap;
-    selectable : bool option;
+    selectable : [ `Off | `Text | `Cells ] option;
     text_style : Ansi.Style.t;
   }
 
@@ -210,7 +210,7 @@ module Props = struct
     && List.equal equal_line_sign a.line_signs b.line_signs
     && a.show_line_numbers = b.show_line_numbers
     && a.wrap = b.wrap
-    && Option.equal Bool.equal a.selectable b.selectable
+    && Option.equal ( = ) a.selectable b.selectable
     && Ansi.Style.equal a.text_style b.text_style
 end
 

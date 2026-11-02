@@ -139,7 +139,7 @@ module Props = struct
     conceal : bool;
     streaming : bool;
     style : Style.t option;
-    selectable : bool option;
+    selectable : [ `Off | `Text | `Cells ] option;
     render_node : render_node option;
     render_code : render_code option;
     highlighter : Code.Highlighter.t option;
@@ -166,7 +166,7 @@ module Props = struct
     String.equal a.content b.content
     && a.conceal = b.conceal && a.streaming = b.streaming
     && Option.equal Style.equal a.style b.style
-    && Option.equal Bool.equal a.selectable b.selectable
+    && Option.equal ( = ) a.selectable b.selectable
     && Option.equal ( == ) a.render_node b.render_node
     && Option.equal ( == ) a.render_code b.render_code
     && Option.equal ( == ) a.highlighter b.highlighter
@@ -270,8 +270,8 @@ type t = {
 let node t = t.node
 let content t = t.content
 
-(* A block's text declares no selectability: it is selectable as the
-   markdown is. *)
+(* A block's text declares nothing of the selection: it reads as the
+   markdown does. *)
 let create_text ~parent ?index ?id ?style ?visible ?z_index ?opacity ?content
     ?text_style ?(wrap = `None) ?tab_width ?truncate () =
   Text.create ~parent ?index ?id ?style ?visible ?z_index ?opacity
@@ -1456,8 +1456,6 @@ let set_streaming t v =
     t.streaming <- v;
     update_blocks t
   end
-
-let set_selectable t v = Renderable.set_selectable t.node (Some v)
 
 (* ───── Props Application ───── *)
 

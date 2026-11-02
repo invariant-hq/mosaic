@@ -948,7 +948,7 @@ let mouse_selection_disabled_when_not_selectable () =
   let ta =
     create_editor ~parent:(Renderer.root r)
       ~style:(sized_style ~width:20 ~height:3)
-      ~value:"hello world" ~selectable:false ()
+      ~value:"hello world" ~selectable:`Off ()
   in
   render_frame r ~width:20 ~height:3;
   dispatch_mouse r (mouse_down ~x:0 ~y:0);
@@ -1121,9 +1121,9 @@ let apply_props_selection_none_clears_buffer_selection () =
   Textarea.apply_props ta (make_props ~value:"hello\nworld" ~selection:None ());
   is_none ~msg:"selection cleared" (Textarea.selection ta)
 
-let apply_props_selectable_false_clears_selection () =
+let apply_props_selectable_off_clears_selection () =
   let _t, ta = make_textarea ~value:"hello world" ~selection:(Some (0, 5)) () in
-  Textarea.apply_props ta (make_props ~value:"hello world" ~selectable:false ());
+  Textarea.apply_props ta (make_props ~value:"hello world" ~selectable:`Off ());
   is_none ~msg:"selection cleared" (Textarea.selection ta)
 
 let apply_props_schedules_render () =
@@ -1776,7 +1776,7 @@ let doors_selectable () =
   Test_harness.reaches ~act:drag ~observe:proposed "selectable"
     ~base:(Mosaic.textarea ~size:doors_size ~state:abc ~on_change:propose ())
     ~element:
-      (Mosaic.textarea ~size:doors_size ~state:abc ~selectable:false
+      (Mosaic.textarea ~size:doors_size ~state:abc ~selectable:`Off
          ~on_change:propose ())
     ~create_base:(fun parent ->
       Textarea.node
@@ -1785,7 +1785,7 @@ let doors_selectable () =
     ~create:(fun parent ->
       Textarea.node
         (Textarea.create ~parent ~style:doors_style ~on_change:propose
-           (Textarea.Props.make ~state:abc ~selectable:false ())))
+           (Textarea.Props.make ~state:abc ~selectable:`Off ())))
 
 let doors_show_cursor () =
   Test_harness.reaches ~act:Test_harness.focus ~observe:caret "show_cursor"
@@ -2024,8 +2024,8 @@ let () =
             apply_props_selection_change_updates_buffer;
           test "selection None clears buffer selection"
             apply_props_selection_none_clears_buffer_selection;
-          test "selectable false clears selection"
-            apply_props_selectable_false_clears_selection;
+          test "selectable off clears selection"
+            apply_props_selectable_off_clears_selection;
           test "schedules render" apply_props_schedules_render;
         ];
       group "Rendering"

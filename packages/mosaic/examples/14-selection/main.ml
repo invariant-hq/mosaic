@@ -58,7 +58,7 @@ let view { scroll; copied } =
     ~size:{ width = pct 100; height = pct 100 }
     [
       (* Header *)
-      box ~padding:(padding 1) ~background:header_bg ~selectable:false
+      box ~padding:(padding 1) ~background:header_bg ~selectable:`Off
         [
           box ~flex_direction:Row ~justify_content:Space_between
             ~align_items:Center
@@ -147,7 +147,7 @@ let view { scroll; copied } =
             ];
         ];
       (* Footer *)
-      box ~padding:(padding 1) ~background:footer_bg ~selectable:false
+      box ~padding:(padding 1) ~background:footer_bg ~selectable:`Off
         [
           text ~style:hint
             (match copied with

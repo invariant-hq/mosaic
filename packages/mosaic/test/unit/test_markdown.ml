@@ -130,7 +130,7 @@ let unselectable_markdown_selects_nothing () =
     Markdown.create ~parent:(Renderer.root renderer)
       (Markdown.Props.make ~content:"Hello" ())
   in
-  Markdown.set_selectable md false;
+  Renderable.set_selectable (Markdown.node md) (Some `Off);
   Renderer.render_frame renderer ~width:40 ~height:5 ~dt:0.;
   dispatch_mouse renderer (Test_harness.mouse_report ~x:0 ~y:0 (Press Left));
   dispatch_mouse renderer
@@ -484,7 +484,7 @@ let doors_selectable () =
   Test_harness.reaches ~act:Test_harness.select_text ~observe:doors_selected
     "selectable"
     ~base:(Mosaic.markdown ~size:doors_size doors_md)
-    ~element:(Mosaic.markdown ~size:doors_size ~selectable:false doors_md)
+    ~element:(Mosaic.markdown ~size:doors_size ~selectable:`Off doors_md)
     ~create_base:(fun parent ->
       Markdown.node
         (Markdown.create ~parent ~layout_style:doors_style
@@ -492,7 +492,7 @@ let doors_selectable () =
     ~create:(fun parent ->
       Markdown.node
         (Markdown.create ~parent ~layout_style:doors_style
-           (Markdown.Props.make ~content:doors_md ~selectable:false ())))
+           (Markdown.Props.make ~content:doors_md ~selectable:`Off ())))
 
 let doors_highlighter () =
   Test_harness.reaches "highlighter"

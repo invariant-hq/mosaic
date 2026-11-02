@@ -357,7 +357,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_change
   in
   (* It acts on a press, or paints no source text: a press on it neither
      starts nor clears a text selection. *)
-  Renderable.set_selectable node (Some false);
+  Renderable.set_selectable node (Some `Off);
   (* Configure root layout as a flex container *)
   let auto_width, auto_height =
     let size = Toffee.Style.size (Renderable.style node) in

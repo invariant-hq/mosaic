@@ -875,13 +875,12 @@ let live_count_change_callback () =
 
 (* ── Selection ── *)
 
-(* With no declaration anywhere, selection reaches every
-   node. *)
+(* With no declaration anywhere, a node reads [`Text]. *)
 let selectable_without_declaration () =
   let t = make_ctx () in
   let root = make_root t in
   let child = Renderable.create ~parent:root () in
-  is_true ~msg:"selectable" (Renderable.selectable child)
+  equal ~msg:"text" reading `Text (Renderable.selectable child)
 
 (* A declaration reaches the node's descendants, and the nearest one wins: a
    descendant declares selection again inside a box that refuses it. *)
@@ -891,11 +890,12 @@ let nearest_declaration_wins () =
   let panel = Renderable.create ~parent:root () in
   let label = Renderable.create ~parent:panel () in
   let note = Renderable.create ~parent:label () in
-  Renderable.set_selectable panel (Some false);
-  is_false ~msg:"inherited refusal" (Renderable.selectable note);
-  Renderable.set_selectable label (Some true);
-  is_true ~msg:"declared again below" (Renderable.selectable note);
-  is_false ~msg:"the panel still refuses" (Renderable.selectable panel)
+  Renderable.set_selectable panel (Some `Off);
+  equal ~msg:"inherited refusal" reading `Off (Renderable.selectable note);
+  Renderable.set_selectable label (Some `Cells);
+  equal ~msg:"declared again below" reading `Cells (Renderable.selectable note);
+  equal ~msg:"the panel still refuses" reading `Off
+    (Renderable.selectable panel)
 
 (* [None] removes a node's declaration, and it inherits again. *)
 let removing_a_declaration_inherits () =
@@ -903,10 +903,10 @@ let removing_a_declaration_inherits () =
   let root = make_root t in
   let panel = Renderable.create ~parent:root () in
   let child = Renderable.create ~parent:panel () in
-  Renderable.set_selectable panel (Some false);
-  Renderable.set_selectable child (Some true);
+  Renderable.set_selectable panel (Some `Off);
+  Renderable.set_selectable child (Some `Text);
   Renderable.set_selectable child None;
-  is_false ~msg:"inherits the refusal" (Renderable.selectable child)
+  equal ~msg:"inherits the refusal" reading `Off (Renderable.selectable child)
 
 (* A node that moves takes the declarations of its new ancestors. *)
 let reattached_node_inherits_its_new_parent () =
@@ -915,10 +915,10 @@ let reattached_node_inherits_its_new_parent () =
   let closed = Renderable.create ~parent:root () in
   let open_ = Renderable.create ~parent:root () in
   let child = Renderable.create ~parent:closed () in
-  Renderable.set_selectable closed (Some false);
-  is_false ~msg:"under the closed box" (Renderable.selectable child);
+  Renderable.set_selectable closed (Some `Off);
+  equal ~msg:"under the closed box" reading `Off (Renderable.selectable child);
   Renderable.attach ~parent:open_ child;
-  is_true ~msg:"under the open box" (Renderable.selectable child)
+  equal ~msg:"under the open box" reading `Text (Renderable.selectable child)
 
 (* ── Lifecycle ── *)
 

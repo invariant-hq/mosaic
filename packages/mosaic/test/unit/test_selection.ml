@@ -440,8 +440,8 @@ let an_unselectable_border_is_left_out () =
   let col = column (Renderer.root r) in
   let box = Box.create ~parent:col (Box.Props.make ~border:true ()) in
   let inner = line (Box.node box) "code" in
-  Renderable.set_selectable (Box.node box) (Some false);
-  Renderable.set_selectable (Text.node inner) (Some true);
+  Renderable.set_selectable (Box.node box) (Some `Off);
+  Renderable.set_selectable (Text.node inner) (Some `Text);
   frame r;
   select r (1, 1) (6, 2);
   equal ~msg:"the text alone" (option string) (Some "code") (copied r);
@@ -534,7 +534,7 @@ let a_selection_across_unselectable_text_leaves_it_out () =
   ignore (text_at root ~x:0 ~y:0 ~w:1 ~h:1 "a" : Text.t);
   ignore
     (text_at root ~x:1 ~y:0 ~w:1 ~h:1
-       ~props:(fun content -> Text.Props.make ~content ~selectable:false ())
+       ~props:(fun content -> Text.Props.make ~content ~selectable:`Off ())
        "|"
       : Text.t);
   ignore (text_at root ~x:2 ~y:0 ~w:1 ~h:1 "b" : Text.t);
@@ -555,12 +555,15 @@ let an_absent_selectable_keeps_a_buttons_default () =
     | [ node ] -> node
     | _ -> fail "expected the button alone"
   in
-  is_false ~msg:"a button refuses" (Renderable.selectable (node ()));
+  equal ~msg:"a button refuses" Test_harness.reading `Off
+    (Renderable.selectable (node ()));
   Mosaic.Reconciler.render reconciler ~viewport_width:width
-    (button ~selectable:true ());
-  is_true ~msg:"declared selectable" (Renderable.selectable (node ()));
+    (button ~selectable:`Text ());
+  equal ~msg:"declared selectable" Test_harness.reading `Text
+    (Renderable.selectable (node ()));
   Mosaic.Reconciler.render reconciler ~viewport_width:width (button ());
-  is_false ~msg:"the default again" (Renderable.selectable (node ()))
+  equal ~msg:"the default again" Test_harness.reading `Off
+    (Renderable.selectable (node ()))
 
 let an_absent_selectable_keeps_a_sliders_default () =
   let slider ?selectable () =
@@ -572,12 +575,15 @@ let an_absent_selectable_keeps_a_sliders_default () =
     | [ node ] -> node
     | _ -> fail "expected the slider alone"
   in
-  is_false ~msg:"a slider refuses" (Renderable.selectable (node ()));
+  equal ~msg:"a slider refuses" Test_harness.reading `Off
+    (Renderable.selectable (node ()));
   Mosaic.Reconciler.render reconciler ~viewport_width:width
-    (slider ~selectable:true ());
-  is_true ~msg:"declared selectable" (Renderable.selectable (node ()));
+    (slider ~selectable:`Cells ());
+  equal ~msg:"declared selectable" Test_harness.reading `Cells
+    (Renderable.selectable (node ()));
   Mosaic.Reconciler.render reconciler ~viewport_width:width (slider ());
-  is_false ~msg:"the default again" (Renderable.selectable (node ()))
+  equal ~msg:"the default again" Test_harness.reading `Off
+    (Renderable.selectable (node ()))
 
 (* A kind of the application's own whose widget declares itself
    unselectable when it is created. *)
@@ -585,7 +591,7 @@ let pad : (unit, unit, Renderable.t) Mosaic.Element.kind =
   Mosaic.Element.kind ~name:"pad"
     ~create:(fun ~parent ~layout () ->
       let node = Renderable.create ~parent ~style:layout () in
-      Renderable.set_selectable node (Some false);
+      Renderable.set_selectable node (Some `Off);
       node)
     ~node:Fun.id
     ~update:(fun _ () -> ())
@@ -602,12 +608,14 @@ let an_absent_selectable_keeps_a_user_kinds_declaration () =
     | [ node ] -> node
     | _ -> fail "expected the pad alone"
   in
-  is_false ~msg:"its widget refuses" (Renderable.selectable (node ()));
+  equal ~msg:"its widget refuses" Test_harness.reading `Off
+    (Renderable.selectable (node ()));
   Mosaic.Reconciler.render reconciler ~viewport_width:width
-    (pad ~selectable:true ());
-  is_true ~msg:"declared selectable" (Renderable.selectable (node ()));
+    (pad ~selectable:`Cells ());
+  equal ~msg:"declared selectable" Test_harness.reading `Cells
+    (Renderable.selectable (node ()));
   Mosaic.Reconciler.render reconciler ~viewport_width:width (pad ());
-  is_false ~msg:"its widget's declaration again"
+  equal ~msg:"its widget's declaration again" Test_harness.reading `Off
     (Renderable.selectable (node ()))
 
 (* A press on a button, a canvas or a line number's gutter, with a
@@ -637,8 +645,8 @@ let a_press_on_unselectable_content_changes_nothing () =
    selection is selectable. *)
 let a_selectable_text_inside_an_unselectable_box () =
   let view =
-    Mosaic.box ~selectable:false ~flex_direction:Column
-      [ Mosaic.text ~selectable:true "inner"; Mosaic.text "other" ]
+    Mosaic.box ~selectable:`Off ~flex_direction:Column
+      [ Mosaic.text ~selectable:`Text "inner"; Mosaic.text "other" ]
   in
   let r, _, _ = mount view in
   select r (0, 0) (4, 0);
@@ -657,7 +665,7 @@ let a_line_numbers_child_follows_its_ancestors () =
   select r (5, 0) (9, 0);
   is_some ~msg:"the child is selectable" (copied r);
   Renderer.clear_selection r;
-  let r, _, _ = mount (Mosaic.box ~selectable:false [ numbered ]) in
+  let r, _, _ = mount (Mosaic.box ~selectable:`Off [ numbered ]) in
   select r (5, 0) (9, 0);
   is_none ~msg:"not inside a refusing box" (copied r)
 
@@ -1661,7 +1669,7 @@ let a_press_on_unselectable_content_queues_nothing () =
   let root = Renderer.root r in
   ignore (text_at root ~x:0 ~y:0 ~w:20 ~h:1 "hello world" : Text.t);
   let fenced = text_at root ~x:0 ~y:2 ~w:20 ~h:1 "fenced" in
-  Renderable.set_selectable (Text.node fenced) (Some false);
+  Renderable.set_selectable (Text.node fenced) (Some `Off);
   frame r;
   select r (0, 0) (4, 0);
   ignore (changes r : string list);

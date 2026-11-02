@@ -254,7 +254,7 @@ let bold = Ansi.Style.make ~bold:true ()
 let labelled ?(text_style = Ansi.Style.default) b =
   ignore
     (Text.create ~parent:(Box.node b)
-       (Text.Props.make ~content:"OK" ~text_style ~selectable:false ())
+       (Text.Props.make ~content:"OK" ~text_style ~selectable:`Off ())
       : Text.t);
   Box.node b
 

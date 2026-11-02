@@ -100,7 +100,7 @@ module Props : sig
     ?cursor_style:[ `Block | `Line | `Underline ] ->
     ?cursor_color:Ansi.Color.t ->
     ?cursor_blinking:bool ->
-    ?selectable:bool ->
+    ?selectable:[ `Off | `Text | `Cells ] ->
     ?show_cursor:bool ->
     ?key_bindings:key_binding list ->
     unit ->
@@ -123,11 +123,11 @@ module Props : sig
         {!Ansi.Color.default_fg}, which leaves the caret in the terminal's own
         color.
       - [cursor_blinking] is [true] iff the caret blinks. Defaults to [true].
-      - [selectable] is [true] iff the pointer places the caret and selects
-        text; it declares whether text selection reaches the editor
-        ({!Renderable.set_selectable}), as an editor reaches it whatever its
-        ancestors declare. Defaults to [true]. The selection is drawn with the
-        [Highlight] role ({!Text_surface.section-paint}).
+      - [selectable] is the editor's own declaration
+        ({!Renderable.set_selectable}), whatever its ancestors declare: with
+        [`Off] the pointer neither places the caret nor selects text, with
+        [`Text] or [`Cells] it does. Defaults to [`Text]. The selection is drawn
+        with the [Highlight] role ({!Text_surface.section-paint}).
       - [show_cursor] is [true] iff the focused input shows its caret. Defaults
         to [true].
       - [key_bindings] adds keys to those {!section-keys} lists or binds one of

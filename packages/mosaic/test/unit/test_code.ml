@@ -1119,7 +1119,7 @@ let doors_selectable () =
   Test_harness.reaches ~act:Test_harness.select_text ~observe:selected
     "selectable"
     ~base:(Mosaic.code ~size:doors_size "hello world")
-    ~element:(Mosaic.code ~size:doors_size ~selectable:false "hello world")
+    ~element:(Mosaic.code ~size:doors_size ~selectable:`Off "hello world")
     ~create_base:(fun parent ->
       Code.node
         (Code.create ~parent ~style:doors_style
@@ -1127,7 +1127,7 @@ let doors_selectable () =
     ~create:(fun parent ->
       Code.node
         (Code.create ~parent ~style:doors_style
-           (Code.Props.make ~content:"hello world" ~selectable:false ())))
+           (Code.Props.make ~content:"hello world" ~selectable:`Off ())))
 
 let () =
   run "mosaic.code"

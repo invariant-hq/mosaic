@@ -213,9 +213,9 @@ and node = {
   mutable paste_handlers : (Event.paste -> unit) list;
   mutable key_behavior : (Event.key -> unit) option;
   mutable paste_behavior : (Event.paste -> unit) option;
-  (* Selection: the node's declaration of selectability, its region
-     declaration, and an editor's selected text. *)
-  mutable selectable : bool option;
+  (* Selection: the node's declaration of what a selection takes of it, its
+     region declaration, and an editor's selected text. *)
+  mutable selectable : [ `Off | `Text | `Cells ] option;
   mutable region : region option;
   mutable owned_text : (unit -> string option) option;
   (* Child clipping *)
@@ -1621,7 +1621,7 @@ let rec selectable t =
   match (t.selectable, t.parent) with
   | Some declared, _ -> declared
   | None, Some parent -> selectable parent
-  | None, None -> true
+  | None, None -> `Text
 
 (* ───── Text Rows ───── *)
 
