@@ -18,7 +18,7 @@ says what it shows and which keys it takes.
 | `11-scrollbox` | Scrollable content with scroll bars | `dune exec ./packages/mosaic/examples/11-scrollbox/main.exe` |
 | `12-form` | A form with focus management | `dune exec ./packages/mosaic/examples/12-form/main.exe` |
 | `13-markdown` | CommonMark rendering in a scroll box | `dune exec ./packages/mosaic/examples/13-markdown/main.exe` |
-| `14-selection` | Text selection across renderables | `dune exec ./packages/mosaic/examples/14-selection/main.exe` |
+| `14-selection` | Selection of text or of cells, switched at run time | `dune exec ./packages/mosaic/examples/14-selection/main.exe` |
 | `15-charts` | Charts with zoom, pan and tooltips | `dune exec ./packages/mosaic/examples/15-charts/main.exe` |
 | `16-timer` | A countdown on tick subscriptions | `dune exec ./packages/mosaic/examples/16-timer/main.exe` |
 | `17-progress-bar` | Animated progress bars | `dune exec ./packages/mosaic/examples/17-progress-bar/main.exe` |

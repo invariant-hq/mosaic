@@ -1,16 +1,36 @@
-(** Text selection across renderables and scroll boxes.
+(** Selection of text or of cells, across panes and scroll boxes.
 
     Drag to select, double-click for a word, triple-click for a line; drag after
     either to extend by words or lines. Shift+arrows extend the selection,
     Ctrl+C copies it and Escape clears it. The application copies on select, and
-    shows each copy in the footer. *)
+    shows each copy in the footer.
+
+    The view selects text: a drag pressed in the scrollable pane stays in it and
+    scrolls it, and one from the left panel leaves the pane out. [s] makes the
+    view select cells, as a terminal does: the band crosses both panels and the
+    scroll box, borders included. [p] makes the right pane select the other way
+    from the rest. *)
 
 open Mosaic
 
-type model = { scroll : Scroll.t; copied : int option }
-type msg = Quit | Scrolled of Scroll.t | Copy_selection | Copied of string
+type model = {
+  scroll : Scroll.t;
+  copied : int option;
+  cells : bool;
+  pane_flipped : bool;
+}
 
-let init () = ({ scroll = Scroll.at 0; copied = None }, Cmd.none)
+type msg =
+  | Quit
+  | Scrolled of Scroll.t
+  | Copy_selection
+  | Copied of string
+  | Flip
+  | Flip_pane
+
+let init () =
+  ( { scroll = Scroll.at 0; copied = None; cells = false; pane_flipped = false },
+    Cmd.none )
 
 let update msg model =
   match msg with
@@ -18,6 +38,8 @@ let update msg model =
   | Scrolled scroll -> ({ model with scroll }, Cmd.none)
   | Copy_selection -> (model, Cmd.copy_selection)
   | Copied text -> ({ model with copied = Some (String.length text) }, Cmd.none)
+  | Flip -> ({ model with cells = not model.cells }, Cmd.none)
+  | Flip_pane -> ({ model with pane_flipped = not model.pane_flipped }, Cmd.none)
 
 let section1_style = Ansi.Style.make ~fg:Ansi.Color.white ()
 
@@ -53,8 +75,12 @@ let footer_bg = Ansi.Color.grayscale ~level:3
 let muted = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:16) ()
 let hint = Ansi.Style.make ~fg:(Ansi.Color.grayscale ~level:14) ()
 
-let view { scroll; copied } =
-  box ~flex_direction:Column
+(* What a selection takes: cells, as a terminal selects, or text. *)
+let reads cells = if cells then `Cells else `Text
+let reading cells = if cells then "cells" else "text"
+
+let view { scroll; copied; cells; pane_flipped } =
+  box ~selectable:(reads cells) ~flex_direction:Column
     ~size:{ width = pct 100; height = pct 100 }
     [
       (* Header *)
@@ -64,7 +90,7 @@ let view { scroll; copied } =
             ~align_items:Center
             ~size:{ width = pct 100; height = auto }
             [
-              text ~style:(Ansi.Style.make ~bold:true ()) "▸ Text Selection";
+              text ~style:(Ansi.Style.make ~bold:true ()) "▸ Selection";
               text ~style:muted "▄▀ mosaic";
             ];
         ];
@@ -112,7 +138,9 @@ let view { scroll; copied } =
             ~min_size:{ width = px 0; height = px 0 }
             ~flex_direction:Column
             [
-              box ~border:true ~flex_grow:1.
+              box
+                ~selectable:(reads (cells <> pane_flipped))
+                ~border:true ~flex_grow:1.
                 ~min_size:{ width = px 0; height = px 0 }
                 ~background:(Ansi.Color.grayscale ~level:1)
                 ~title:"Scrollable Content"
@@ -148,20 +176,33 @@ let view { scroll; copied } =
         ];
       (* Footer *)
       box ~padding:(padding 1) ~background:footer_bg ~selectable:`Off
+        ~flex_direction:Column
         [
+          text ~style:hint
+            (Printf.sprintf
+               "view: %s  •  right pane: %s  •  s: text or cells  •  p: flip \
+                the pane"
+               (reading cells)
+               (reading (cells <> pane_flipped)));
           text ~style:hint
             (match copied with
             | Some n -> Printf.sprintf "copied %d bytes  •  q quit" n
             | None ->
-                "drag, double or triple click to select  •  Ctrl+C copy  •  \
-                 Esc clear  •  q quit");
+                "drag, double or triple click  •  Ctrl+C copy  •  Esc clear  \
+                 •  q quit");
         ];
     ]
 
 let subscriptions _ =
   Sub.batch
     [
-      Sub.on_keys [ (Shortcut.char 'q', Quit); (Shortcut.escape, Quit) ];
+      Sub.on_keys
+        [
+          (Shortcut.char 'q', Quit);
+          (Shortcut.char 's', Flip);
+          (Shortcut.char 'p', Flip_pane);
+          (Shortcut.escape, Quit);
+        ];
       Sub.on_selection (function Some _ -> Some Copy_selection | None -> None);
       Sub.on_copy (fun text -> Some (Copied text));
     ]
