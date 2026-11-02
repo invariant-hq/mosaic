@@ -684,9 +684,10 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity ?on_scroll
     (Some (fun pos -> scroll_to_internal t ~y:pos ()));
   Scroll_bar.set_on_change t.horizontal_bar
     (Some (fun pos -> scroll_to_internal t ~x:pos ()));
-  (* The box is a region of the view selection: unless it reads [`Cells], a
-     selection that starts in its content stays in it, and its gestures and
-     keyboard extension scroll the box, through its proposal. *)
+  (* The box is a region of the view selection: unless it and its parent
+     both read [`Cells], a selection that starts in its content stays in it.
+     A gesture that starts in it, and a keyboard extension, scroll the box
+     through its proposal. *)
   Renderable.Private.set_region node
     (Some
        {

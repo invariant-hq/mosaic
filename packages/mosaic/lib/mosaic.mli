@@ -1679,19 +1679,41 @@ val inset_lrtb : int -> int -> int -> int -> length_percentage_auto rect
     is inert, and while a {!modal} is shown every element outside it is.
 
     [selectable] declares what the view's selection takes of an element and the
-    elements in it ({!Mosaic_ui.Renderable.set_selectable}): nothing ([`Off]),
-    their text ([`Text]) or every cell they paint ([`Cells]). An element in one
-    that declares otherwise can declare again, and an element with no
-    declaration on it or an ancestor reads [`Text]. Without [selectable], an
-    element keeps the declaration of its kind. [button], [select], [tab_select],
-    [table], [tree], [slider], [scroll_bar], [progress_bar], [spinner], [canvas]
-    and [picture] act on a press or paint no source text and declare [`Off], as
-    does the gutter of a [line_number], whose child reads as its ancestors
-    declare. [input] and [textarea] select their own text and declare [`Text]
-    ([Mosaic_ui.Text_input.Props.make]). The others declare nothing. A press on
-    an element that reads [`Off] neither starts nor clears a selection, so an
-    element that acts on a press, such as a drag or a double click, declares
-    [`Off] or prevents its press. [Mosaic_ui.Renderer] describes the selection.
+    elements in it ({!Mosaic_ui.Renderable.set_selectable}):
+    - [`Off]: nothing. A press on the element neither starts nor clears a
+      selection, so an element that acts on a press, such as a drag or a double
+      click, declares [`Off] or prevents its press.
+    - [`Text]: its text, highlighted and copied from its source. Its borders,
+      rules and drawings give nothing.
+    - [`Cells]: every cell it paints, as a terminal selects. The highlight is a
+      solid band from the press to the pointer, blanks included, and borders and
+      rules are copied as they are drawn, a blank row the band covers as a line.
+
+    The nearest declaration decides: an element in one that declares otherwise
+    can declare again, and an element with no declaration on it or an ancestor
+    reads [`Text]. Without [selectable], an element keeps the declaration of its
+    kind. [button], [select], [tab_select], [table], [tree], [slider],
+    [scroll_bar], [progress_bar], [spinner], [canvas] and [picture] act on a
+    press or paint no source text and declare [`Off], as does the gutter of a
+    [line_number], whose child reads as its ancestors declare. [input] and
+    [textarea] declare [`Text], and the others nothing. So [~selectable:`Cells]
+    on the outermost element selects the whole view as a terminal does, and on
+    one pane, that pane alone.
+
+    A selection stays inside the nearest of these around its press: a scroll box
+    that does not read [`Cells], an element that reads [`Cells] in one that does
+    not, or else the view, or the modal element while one is shown. A drag
+    scrolls the nearest scroll box around its press while the pointer is near or
+    past its edges. A selection around such a scroll box or [`Cells] element, in
+    content that does not read [`Cells], takes it whole once the drag covers its
+    view, and none of it before: under [`Text], a drag beside a scroll box never
+    takes part of it. In content that reads [`Cells], the band runs through the
+    scroll boxes, each giving the rows it shows.
+
+    [input] and [textarea] keep their own selection, and their [selectable] says
+    only whether the pointer selects in their text: the view's selection never
+    highlights or copies them, and a press on one that does not read [`Off]
+    clears it. [Mosaic_ui.Renderer] describes the selection.
 
     Focus is the model's, so nothing moves it but a declaration. Removing or
     hiding the focused element leaves nothing focused: keys reach subscriptions

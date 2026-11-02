@@ -464,10 +464,21 @@ val set_paste_behavior : t -> (Event.paste -> unit) option -> unit
 (** {1:selection Selection}
 
     A node reads what the view selection takes of it from the nearest
-    declaration on the node or an ancestor, and [`Text] when none does. A press
-    on a node that reads [`Off] neither starts nor clears a selection, and a
-    selection across the node leaves it out ([Renderer]). A descendant can
-    declare again inside a subtree that declares otherwise. *)
+    declaration on the node or an ancestor, and [`Text] when none does:
+    - [`Off]: nothing. A press on the node neither starts nor clears a
+      selection.
+    - [`Text]: its text, from its source. Its borders, padding and drawings give
+      nothing.
+    - [`Cells]: every cell it paints, blanks and borders included, as a terminal
+      selects.
+
+    A descendant can declare again inside a subtree that declares otherwise. A
+    selection stays in the {e scope} its press found: the nearest root of a
+    layer, scroll box that does not read [`Cells], or node that reads [`Cells]
+    whose parent does not. A selection around a scope takes it whole or not at
+    all where the content between them does not read [`Cells]; where it does,
+    the band runs through it, a scroll box giving the rows it shows
+    ([Renderer]). *)
 
 val set_selectable : t -> [ `Off | `Text | `Cells ] option -> unit
 (** [set_selectable t d] declares what the view selection takes of [t] and its
@@ -796,12 +807,12 @@ module Private : sig
             show its focus. *)
   }
   (** The type for the declaration of a scroll box to the view selection. Unless
-      it reads [`Cells], the region is a scope: a selection that starts in it
-      stays in it, and a selection around it, in content that does not read
-      [`Cells], takes all of its text or none. Otherwise it is a window: a
-      selection takes the rows its view shows of its content, and of the text
-      between an end it scrolled out of view and that view. A gesture that
-      starts in it scrolls it past its edge ([Renderer]). *)
+      it and its parent both read [`Cells], the region is a scope: a selection
+      that starts in it stays in it. A selection around it in content that does
+      not read [`Cells] takes it whole or not at all; one in content that reads
+      [`Cells] takes it as a window: the rows its view shows of its content, and
+      the text between an end it scrolled out of view and that view. A gesture
+      that starts in it scrolls it near or past its edge ([Renderer]). *)
 
   val set_region : t -> region option -> unit
   (** [set_region t r] declares [t] a region, as a scroll box does when it is

@@ -354,26 +354,39 @@ val theme : t -> Theme.t
 (** {1:selection Selection}
 
     The renderer owns the view's selection. Each node {e reads} what the
-    selection takes of it ({!Renderable.selectable}): nothing ([`Off]), its text
-    ([`Text]), or every cell it paints, as a terminal selects ([`Cells]). Each
-    of the selection's two ends, the anchor and the focus, is a position in the
-    text of a node with text rows ({!Renderable.val-text_rows}), which
+    selection takes of it ({!Renderable.selectable}):
+    - [`Off]: nothing.
+    - [`Text]: its text, from its source.
+    - [`Cells]: every cell it paints, as a terminal selects: its text as [`Text]
+      does, and its other cells, blanks and borders included, as the frame on
+      the screen shows them.
+
+    Editors ({!Renderable.Private.set_owned_text}) select their own text and
+    take no part in the view's selection: their cells are neither highlighted
+    nor copied, and no end lies in them.
+
+    Each of the selection's two ends, the anchor and the focus, is a position in
+    the text of a node with text rows ({!Renderable.val-text_rows}), which
     scrolling, streaming and rewrapping leave in place, or a cell that shows no
     grapheme, such as a border or a blank past a line's end, of the node that
     paints it, which moves with that node, not with its children, and is held
     within its box.
 
-    The selection lies in the {e scope} its press found: the nearest node at or
-    above the pressed node that is the root of its layer, the modal node for the
-    top layer, a scroll box ({!Renderable.Private.set_region}) that does not
-    read [`Cells], or a node that reads [`Cells] whose parent does not. A press
-    that finds no node has the modal node for its scope, or the root without
-    one. A scope inside the selection's, where no node from its parent up to the
-    selection's scope reads [`Cells], is taken whole or not at all: once the
-    band covers each cell of its view, all of its text, rows out of view
-    included, or, when it reads [`Cells], every cell its view shows; else
-    nothing, and a pointer over it is as over a blank. Any other scroll box in
-    the scope is a {e window} on the rows its view shows.
+    The selection lies in the {e scope} its press found, the nearest node at or
+    above the pressed node that is:
+    - the root of its layer, the modal node for the top layer;
+    - a scroll box ({!Renderable.Private.set_region}) that does not read
+      [`Cells];
+    - or a node that reads [`Cells] whose parent does not.
+
+    A press that finds no node has the modal node for its scope, or the root
+    without one. A scope nested in the selection's is {e atomic} where no node
+    from its parent up to the selection's scope reads [`Cells]: it is taken
+    whole once the band covers each cell of its view, and not at all otherwise,
+    and a pointer over it is as over a blank. Whole, it gives all of its text,
+    rows out of view included, or, when it reads [`Cells], every cell its view
+    shows. Any other scroll box in the scope is a {e window}: the band runs
+    through it, over the rows its view shows.
 
     A left press of one click on a cell that shows no grapheme, of a node that
     reads [`Cells] or of no node in a scope that does, anchors there. Any other
@@ -389,6 +402,7 @@ val theme : t -> Theme.t
     characters are Ghostty's: the apostrophe, the quotation mark, the grave
     accent, [│], [|], [:], [;], [,], [$], and the parentheses, square brackets,
     braces and angle brackets. A press that finds no text clears the selection.
+
     While the press is held, the pointer's cell, held in the scope's view, is
     the focus, with the unit around it in the text it resolves to as a press
     does, or alone over a scope taken whole. The scroll box the press found
@@ -397,14 +411,16 @@ val theme : t -> Theme.t
     the pointer, held in the scope's view, lies within the box's columns, and
     sideways while it lies within its rows, so that past a corner of the box it
     scrolls on neither axis. A single click the pointer does not leave selects
-    nothing. When the press ends, a focus of one click on a cell that shows no
-    text, or no grapheme of a text that reads [`Cells], stays that cell: of the
-    nearest node at or above the cell's in the scope that reads [`Text] or
-    [`Cells] and is no editor when that node reads [`Cells], or of the scope
-    when there is no such node. Otherwise it becomes the far end of what the
-    selection holds: the end of its last or first text, or the far corner of a
-    scope taken whole that reads [`Cells] and shows no text. A selection that
-    then holds nothing clears.
+    nothing.
+
+    When the press ends, a focus of one click on a cell that shows no text, or
+    no grapheme of a text that reads [`Cells], stays that cell: of the nearest
+    node at or above the cell's in the scope that reads [`Text] or [`Cells] and
+    is no editor when that node reads [`Cells], or of the scope when there is no
+    such node. Otherwise it becomes the far end of what the selection holds: the
+    end of its last or first text, or the far corner of a scope taken whole that
+    reads [`Cells] and shows no text. A selection that then holds nothing
+    clears.
 
     A left press with Shift, on a node that does not read [`Off] and while a
     selection that is not behind the modal node exists, moves the end of the
@@ -427,9 +443,7 @@ val theme : t -> Theme.t
     reading [`Cells] paints, blanks included, is drawn again with the role of
     its node's theme, as a terminal shows its selection: each row to the view's
     edge but the last, which stops at the later end. A cell no node paints reads
-    as the scope. Editors take no part in the selection: their cells are neither
-    highlighted nor copied, and no end lies in them. Inert cells keep their
-    style.
+    as the scope. Inert cells keep their style.
 
     The ends name text, so scrolling, appending, streaming and rewrapping leave
     them on the text they hold. An edit of an end's text

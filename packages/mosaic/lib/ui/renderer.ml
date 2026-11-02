@@ -44,14 +44,16 @@ type pointer_state = {
   mutable series_y : int;
 }
 
-(* ───── Text Selection ─────
+(* ───── Selection ─────
 
    The view selection is an anchor span and a focus, in the source of text
    nodes or on cells, within the scope its press found. Each node reads what
    the selection takes of it, nothing, its text or every cell it paints, from
    the nearest declaration on it or an ancestor. A scope is the root of a
    layer, a scroll box that does not read [`Cells], or a node that reads
-   [`Cells] whose parent does not. Between the ends lies the terminal's
+   [`Cells] whose parent does not. Below a scope that does not read [`Cells],
+   a nested scope is taken whole or not at all; below one that does, a scroll
+   box is a window on the rows it shows. Between the ends lies the terminal's
    row-major band, derived from layout whenever a node paints or a copy
    runs. *)
 
@@ -84,8 +86,9 @@ type selection = {
   scope : Renderable.t;
       (* The nearest scope at or above the node its press found. *)
   box : Renderable.t;
-      (* The scroll box the press found, or the scope: a drag past its top or
-         bottom edge scrolls it. *)
+      (* The nearest scroll box at or above the node its press found, else
+         the root of the press's layer: a gesture scrolls it while the
+         pointer holds near or past its edges. *)
   mutable anchor : end_;
   mutable focus : end_;
       (* The focus at rest. While a gesture drags the selection, the focus
@@ -451,7 +454,7 @@ let focus_request_accepted requested target =
           | Some ancestor -> ancestor == focus
           | None -> false))
 
-(* ───── Text Selection ───── *)
+(* ───── Selection ───── *)
 
 let[@inline] cell v = int_of_float (Float.round v)
 let layer_root t = Option.value (top_layer t) ~default:t.root
@@ -1216,9 +1219,11 @@ let selected_range_of t node =
 
 (* ───── Copy ─────
 
-   A copy reproduces the lines the user saw: the fragments of the
-   texts the band selects, row by row, joined by spaces, a line break, or a
-   blank line where the layout leaves a margin or gap. *)
+   A copy reproduces the lines the user saw: the fragments of the texts the
+   band selects and the runs of cells it highlights without text, row by
+   row, joined by spaces, a line break and one more for each highlighted
+   row between them, or a blank line where the layout leaves a margin or
+   gap. *)
 
 (* A fragment: its text, the cell of its first cluster, the cell after its
    last, the nodes that enclose it, and its place in the tree. *)
@@ -2238,8 +2243,8 @@ let extend_selection t direction =
 
    Scrolling, streaming and rewrapping leave the ends where they are, since
    they name text. An edit of an end's text maps the end through the
-   one span it changed; an end whose node is hidden or unmounted clears the
-   selection. *)
+   one span it changed; an end whose node is hidden or unmounted, or whose
+   reading may change with a declaration, clears the selection. *)
 
 (* The bytes [a] and [b] share from their start. *)
 let common_prefix a b =
@@ -2354,8 +2359,10 @@ let text_changed_of t node =
           else t.ctx.schedule ())
   | Some _ | None -> ()
 
-(* [node] and its descendants are about to stop being shown: a selection
-   with an end among them clears, and its gesture ends. *)
+(* [node] and its descendants are about to stop being shown, or the
+   declaration that decides what the selection takes of them is about to
+   change: a selection with an end among them clears, and its gesture
+   ends. *)
 let hiding_of t node =
   match t.selection_state.current with
   | Some sel

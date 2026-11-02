@@ -2,11 +2,15 @@
     proposes a new value through [on_scroll]; only [apply_props] or [set_scroll]
     accepts it. Wheel events at a boundary bubble to the enclosing viewport.
 
-    A scroll box is a region of the view's text selection
-    ({!Renderable.Private.set_region}): a selection that starts in it stays in
-    it, held in its viewport, and while the pointer of the gesture that drags it
-    is within three cells of an edge or past it, the box proposes to scroll
-    towards that edge, faster nearer it, until the gesture ends.
+    A scroll box is a region of the view's selection
+    ({!Renderable.Private.set_region}). Unless it and its parent both read
+    [`Cells], a selection that starts in it stays in it, held in its viewport;
+    otherwise the selection runs through it as through a window on the rows it
+    shows. While the pointer of a gesture that starts in it is within three
+    cells of an edge or past it, the box proposes to scroll towards that edge,
+    faster nearer it, until the gesture ends: up or down while the pointer, held
+    in the selection's scope, lies within the box's columns, and sideways while
+    it lies within its rows.
 
     {1:keys Keys}
 
