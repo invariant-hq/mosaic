@@ -209,6 +209,7 @@ module Cmd = struct
     | Static_clear
     | Abort_paste
     | Keep_frame of bool
+    | Set_mouse of Matrix.Terminal.mouse_mode
     | Focus_next
     | Focus_prev
 
@@ -230,6 +231,7 @@ module Cmd = struct
   let static_clear = Static_clear
   let abort_paste = Abort_paste
   let keep_frame keep = Keep_frame keep
+  let set_mouse mode = Set_mouse mode
   let focus_next = Focus_next
   let focus_prev = Focus_prev
 
@@ -253,6 +255,7 @@ module Cmd = struct
     | Static_clear -> Static_clear
     | Abort_paste -> Abort_paste
     | Keep_frame keep -> Keep_frame keep
+    | Set_mouse mode -> Set_mouse mode
     | Focus_next -> Focus_next
     | Focus_prev -> Focus_prev
 end
@@ -663,6 +666,14 @@ let rec process_cmd runtime (cmd : _ Cmd.t) =
   | Cmd.Keep_frame keep ->
       runtime.keep <- keep;
       Matrix.keep_frame runtime.matrix_app keep
+  | Cmd.Set_mouse mode ->
+      Matrix.set_mouse runtime.matrix_app mode;
+      (* The terminal takes the mouse: a press it held reports no release,
+         and its own selection is the one on the screen. *)
+      if mode = `Off then begin
+        Renderer.pointer_lost runtime.renderer;
+        Renderer.clear_selection runtime.renderer
+      end
   | Cmd.Focus_next -> Queue.push `Next runtime.focus_moves
   | Cmd.Focus_prev -> Queue.push `Prev runtime.focus_moves
 

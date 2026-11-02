@@ -766,6 +766,58 @@ let%expect_test "Cmd.copy_selection sends the dragged text to the clipboard" =
     pipe: nothing
     |}]
 
+(* Cmd.set_mouse `Off gives the mouse to the terminal: reporting stops, the
+   view's selection clears, and tracking stays off once the program takes
+   the terminal back from a Cmd.exec. *)
+let%expect_test "Cmd.set_mouse off gives the mouse to the terminal" =
+  let log = ref [] in
+  let application =
+    {
+      Mosaic.init = (fun () -> ((), Mosaic.Cmd.none));
+      update =
+        (fun msg () ->
+          match msg with
+          | `Off -> ((), Mosaic.Cmd.set_mouse `Off)
+          | `Exec -> ((), Mosaic.Cmd.exec (fun () -> `Heard "back"))
+          | `Heard entry ->
+              log := entry :: !log;
+              ((), Mosaic.Cmd.none));
+      view = (fun () -> Mosaic.text "hello world");
+      subscriptions =
+        (fun () ->
+          Mosaic.Sub.batch
+            [
+              Mosaic.Sub.on_keys ~phase:Capture
+                [
+                  (Mosaic.Shortcut.char 'm', `Off);
+                  (Mosaic.Shortcut.char 'e', `Exec);
+                ];
+              Mosaic.Sub.on_selection (function
+                | Some text -> Some (`Heard ("selected " ^ text))
+                | None -> Some (`Heard "cleared"));
+            ]);
+    }
+  in
+  let t = terminal ~profile:Matrix_test.Profile.vte ~width:20 ~height:1 () in
+  let reporting = ref [] in
+  let note () =
+    reporting :=
+      Option.is_some (Vte.mouse (Matrix_test.Terminal.vte t.term)) :: !reporting
+  in
+  run t application (fun _ ->
+      feed t "\027[<0;1;1M\027[<32;5;1M\027[<0;5;1m";
+      note ();
+      feed t "m";
+      note ();
+      feed t "e";
+      note ());
+  equal ~msg:"heard" (list string)
+    [ "selected hello"; "cleared"; "back" ]
+    (List.rev !log);
+  equal ~msg:"reporting: on, off, still off after the exec" (list bool)
+    [ true; false; false ] (List.rev !reporting);
+  [%expect {| |}]
+
 let%expect_test "model focus follows a remounted editor" =
   let observed = ref Mosaic.Editor.empty in
   let application =

@@ -925,6 +925,7 @@ module Cmd : sig
     | Static_clear  (** {!val-static_clear}. *)
     | Abort_paste  (** {!val-abort_paste}. *)
     | Keep_frame of bool  (** {!val-keep_frame}. *)
+    | Set_mouse of Matrix.Terminal.mouse_mode  (** {!val-set_mouse}. *)
     | Focus_next  (** {!val-focus_next}. *)
     | Focus_prev  (** {!val-focus_prev}. *)
 
@@ -1045,6 +1046,13 @@ module Cmd : sig
       update that quit, and the frame stays, with the cursor below it. With
       [false], the live region is erased. The latest [keep_frame] holds,
       whichever way the program ends. In [`Alt] mode it does nothing. *)
+
+  val set_mouse : Matrix.Terminal.mouse_mode -> 'msg t
+  (** [set_mouse mode] sets the program's mouse tracking to [mode]
+      ({!Matrix.set_mouse}), which holds until the next [set_mouse]. With
+      [`Off], the terminal keeps the mouse and selects its own cells: a press
+      held then ends as its release would be lost, and the text selected in the
+      view clears, which {!Sub.val-on_selection} hears. *)
 
   val abort_paste : 'msg t
   (** [abort_paste] ends the bracketed paste in progress, if any, and drops what
