@@ -1,383 +1,424 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0] - 2026-11-03
 
-Every entry compares the state of this branch with 0.1.0. The last section,
-"Migrating from 0.1.0", lists each removed or renamed API with what replaces
-it.
+0.2.0 changes most of the API of all three packages, and some programs that
+still compile will behave differently. Before you upgrade from 0.1, read
+[Migrating from 0.1](doc/migrating-from-0.1.md): it lists every renamed and
+removed API, with code before and after. Note that Matrix, and so Mosaic, no
+longer runs on Windows in this release.
+
+Each package below starts with what is new. Then come the changes the compiler
+won't catch, then the breaking changes and why we made them.
 
 ### Mosaic
 
-#### Added
+The biggest change is that your model now owns all interactive state. In 0.1,
+widgets kept their own: an input held its text, a tree its open nodes, a scroll
+box its offset, and the view only passed starting values. Nothing kept the two
+in step. A value the app forgot to pass back drifted away from the model, and a
+value forced from the view undid what the user had just typed. Both of our own
+editing examples had that bug. Now a widget shows the state you give it and
+proposes changes through `on_change`, and your `update` decides what to keep:
 
-- **A renderer's tree without Mosaic.** A program driving `Renderer` and `Renderable` itself declares what Mosaic's elements do: `Renderable.set_on_focus_request`, `set_on_click`, `set_on_size` (size reports a renderer admits in rounds) and `set_on_lifecycle_pass` (a hook at the start of each frame, before the layout), `set_place_theme`, `child_at` and `uid`, `detach_all` and `place_children` (detaching and reordering many children in one pass), `set_viewport_cull` (a container that draws only the children its viewport shows, as a scroll box's content does) with `refresh_positions` (the positions of the children it did not draw), `measure` and `child_clip`, which read back what `set_measure` and `set_child_clip` set (a widget's intrinsic size and the region its children are clipped to), and `cell_size` and `width_method`, which a widget that draws pixels or measures text reads; `Renderer.live` and `set_on_live_change` tell it when to keep drawing. They were in `Renderable.Private`
-- **Running under Eio and Lwt.** The libraries `mosaic.eio` and `mosaic.lwt` are built when `eio` or `lwt` is installed (optional dependencies of the `mosaic` package). `Mosaic_eio.run domain_mgr app` runs a program from an Eio fiber: the program takes its steps on a domain that `domain_mgr` creates and waits there with Eio, the work of `Cmd.perform` and `Sub.worker` runs as fibers of the calling domain, where it may call Eio, and cancelling the calling fiber ends the program, which gives the terminal back before `run` raises. `Mosaic_lwt.run app` is a promise that runs a program on a domain of its own, with its work on Lwt's thread. Cancelling the promise requests the program's stop, even before the program has begun, and rejects the promise at once while the program gives the terminal back on its domain; code that must wait for the terminal requests the stop it passed as `~stop` and waits for the promise. The examples `24-eio` and `26-lwt` run on them, `27-threads` feeds a program from a worker and stops it from a watchdog thread, and the tests run the three in a pseudo-terminal
-- **Tests of a program (`mosaic.test`).** `Mosaic_test.run term app body` runs `app` with `Mosaic.run` on a `Matrix_test` session of `term`, with its work off the loop on the session's queue, then runs `body s`
-- **Driving a program by its steps.** `Mosaic.start app f` runs `app` and leaves the waiting to `f`. `Mosaic.step r ~now` has the program take and act on its run's next step (`` `Stepped ``, `` `Idle `` until one of `Mosaic.fds r` is readable or `Mosaic.deadline r` comes, `` `Stopped `` once it is over), so a program can wait with its own event loop. `Mosaic.dispatch r msg` gives the program a message from any thread, domain or fiber. The run itself stays Mosaic's, and the caller never holds its `Matrix.app`
-- **Editor values.** `Mosaic.Editor` is an immutable editing state: the text, the caret, the selection, the viewport and the undo history. `Editor.viewport` and `with_viewport` read and set the position a surface shows it from, and `goal_column` and `with_goal_column` the column vertical motion returns to (CodeMirror's `goalColumn`); an operation that changes nothing is its argument, its goal column included. `input` and `textarea` take one as `~state` and propose the next through `~on_change`. The undo history keeps every change as its inverse, each costing the size of its change, with no bound on its length, and groups typing into steps with no clock: typing, `delete_backward` and `delete_forward` each join the step they continue at the caret, until the caret moves, the selection changes or the kind of edit changes. A space after other text, other text after two or more spaces, and a line break start a new step; a paste, a word or line deletion and `clear` are steps of their own. A text edit copies the text and indexes again only the lines it touches (`Matrix_text.Layout.Source.edit`), so a key typed at line 5,000 of a 500 KB document costs about 0.4 ms unwrapped and 0.7 ms word-wrapped, editing and drawing, where indexing and laying out the whole text took about 7.8 ms and 21 ms
-- **Scroll positions.** `Mosaic.Scroll` is a position the application declares and `scroll_box` follows: `Scroll.at` a row and column, `Scroll.follow` an edge as the content changes, `Scroll.reveal` a line and column with the smallest movement, and `Scroll.with_position` replaces axes with absolute positions
-- **Items.** `Mosaic_ui.Items` is the sequence of items a collection widget shows, read by position: `Items.of_list` and `Items.of_array` hold the application's list or array without copying it, `Items.make ~length f` reads `f i` when it reads position `i`, `Items.map_list f l` reads `f` of the list's element there, and `Items.same` tells in constant time that two declarations hold the same data. It is the list source that `select`, `tab_select` and `table` already used to skip a list declared again, made public
-- **Keyed lists.** `Mosaic.Keyed` is a persistent ordered map (`empty ~compare`, `add`, `remove`, `find_opt`, `cardinal`, `min_binding_opt`, `max_binding_opt`, `fold`, `iter`, `find_map`, `of_list`) that reads by position in logarithmic time (`nth`, `rank`, `fold_range`) and compares two versions in the time of what changed between them (`symmetric_diff`, for maps of one `order`), and `keyed m item` shows its bindings in its order, comparing the map with the one the same place declared last and skipping what the two share: a render calls `item` only for the bindings added and those whose value is another, so a log kept in a `Keyed.t` costs a render what changed in it. A binding's view is any view, keeps its own widgets and focus, and is reconciled again when the viewport width changes; an `item` that is another function each render views every binding again, in place. `Items.of_keyed` gives a collection widget the same map
-- **Element kinds.** `Mosaic.Element.kind ~name ~create ~node ~update ~equal ()` makes a kind of element for a widget of the program's own, with `?layout`, `?focusable`, `?events` (its widget's events, given to the element's handler) and `?handler` (the handler of each declaration, for an event that outlives a reconciliation), and `Mosaic.element kind ~on props children` declares one with every element's labels. Two elements match only when they have one kind, so a kind is made once, at top level. `Mosaic.Element.props kind view` reads the props a view declares. The built-in elements, `modal` included, are kinds of their own
-- **Cursors.** `Mosaic_ui.Cursor` is a collection's state as a value: the cursor item, compared with the collection's `equal` so reordering or filtering never moves it to another item, the scroll in items, and the anchor a range starts from. `Cursor.step` computes what a key's action does, as APG's list box gives the keys: next and previous without wrapping (`Next_wrap` and `Prev_wrap` wrap), first and last, a page less one item, typeahead on the items' names, activation, toggling, extending a range from the anchor (proposed as items to add or remove, so the application keeps which items are chosen) and choosing all. Typeahead extends its prefix while a name still starts with it and restarts at a character none continues with, with no clock. A key costs the items it moves over whatever their number, since a cursor tries the position where it last saw its item first. `Cursor.nearest` keeps the user's place when items are removed: the item that followed the cursor item, else the one before it. `Cursor.default_keys` and `Cursor.wrapping_keys` bind the list box's keys
-- **Tree steps.** `Tree.State.step items state action` computes what a key's action does to a tree's state, as APG's tree view gives the keys: next and previous shown node (with wrapping variants), first and last, a node expanded or its first child, a node collapsed or its parent, `Expand_siblings` for `*`, toggling, activation, and typeahead over the shown nodes' labels with the cursor's rule. A selected node inside a collapsed node acts as its nearest shown ancestor. `Tree.State.equal` compares the typed prefix too; the tree widget's own keys are unchanged
-- **Glyphs and columns.** `Mosaic_ui.Glyphs` names the characters widgets draw to show state (the cursor mark focused and unfocused, checks, tree nodes, the ellipsis, scroll and tab indicators, arrows) in two sets, `Glyphs.unicode` and `Glyphs.ascii`, with an ASCII glyph for every Unicode one. `Mosaic_ui.Column` describes a collection's columns: `Column.make ?header ?width ?alignment ?overflow ?min_width ?max_width cell` with cells from `Column.text`, `Column.rich` and `Column.empty`, and `Column.widths` resolves `` `Auto ``, `` `Fixed `` and `` `Fraction `` widths as `table` resolves its columns' widths. No widget uses either yet
-- **Combobox values.** `Mosaic_ui.Combobox` is an editable choice as a value: the field's `Editor.t`, the list's `Cursor.t` and whether the list is expanded, the items being what the application derives from the text. `Combobox.edit` installs the text an editing key proposed and expands the list when the text changed; `Combobox.step` gives APG's combobox keys with list autocomplete: Down and Up expand the list, then move its cursor; Enter commits the cursor item, replacing the text with its name; Escape collapses the list, then clears the text; Tab collapses it without committing. `Combobox.default_keys` binds them. No widget uses it yet
-- **Focus traversal.** `Cmd.focus_next` and `Cmd.focus_prev` dispatch the `on_focus_request` of the next or previous stop in view order, counted from the focused element in the next view, so an update that adds an element can move focus to it; with nothing focused they start from the first or last stop. `Mosaic.Focus.next` and `Mosaic.Focus.prev` pick the next or previous of the application's own focus identifiers, for an order the view does not state. `Renderer.request_focus` makes the same move for a renderer driven without Mosaic
-- **Modal dialogs and inert subtrees.** `modal ?on_close child` shows `child` in the top layer, as HTML's `showModal` does: wherever the view declares it, the modal is laid out against the root, centring `child`, and drawn above everything, clipped by none of its ancestors, and every element outside it is inert: focus, the pointer and Tab stay within it, and Escape's default action, after the `Bubble` listeners and unless prevented, dispatches `on_close`. `box ~inert:true` (and `Box.Props.make ?inert`) makes a subtree inert, as HTML's `inert` attribute: its elements take neither focus nor the pointer, and Tab passes them by. A focus declared on an inert element does not count, so it is not a second focused element. `Renderable.set_inert` and `Renderer.set_modal` do the same for a renderer driven without Mosaic, and `Reconciler.modal` and `Reconciler.request_close` serve a runtime of its own
-- **New elements.** `button ?disabled ~on_activate label`; `rich_text` for a list of `Text.fragment`; `memo ~key view`, which reuses the subtree while the view function and the key are the same; `diff`, which renders unified and split patches with per-line signs, highlighted source lines, sub-line highlight spans and line click hits, and finds a source line's row with `Diff.source_line_row`; and `viewport_switch`, which picks a subtree by terminal width before layout and keeps compatible keyed children across the switch. Every element takes `?on_click` and `?on_size:(w:int -> h:int -> 'msg option)`
-- **A shared layout.** Every element takes `?layout`, a whole `Toffee.Style.t` that its layout labels override: `text ~layout:row line` is laid out by `row` itself, and `text ~layout:row ~flex_grow:1. line` by `row` with one field changed, keeping the fields that no label sets, such as `box_generation_mode`. A layout built once and shared by many elements costs nothing per element, and the reconciler compares an element's layout physically before comparing it by value. The MLX forms take it too, and `diff` names its choice of one column or two `?view`
-- **Highlighting.** `Code.syntax` gives a code view its highlighted spans and `Code.Highlighter` runs a highlighter for it: `sync` and `threaded` take a function of `~language ~content`, and `sync_incremental`, `threaded_incremental` and `async` take a `'state request` carrying `range`, the bytes of the content the view needs, and `previous`, the content of the view's latest result, the state the highlighter returned with it and the one edit from it in bytes, and return the captures with the new state. The range is the whole content on a view's first request and for `sync` and `threaded`, and otherwise the lines the view shows and a screen above and below them; a result holds every capture of the whole highlight that meets it, whole, so the range bounds which captures come back and never what they depend on. A result restyles its range and the other bytes keep earlier results' captures, and a view asks for the rows it shows outside every range asked for since its content changed. Requests are cancelled when superseded, a stale result is never shown, and a view with no result shows its text plain. A threaded highlighter runs on the executor of the view's renderer (`Renderer.create ?executor`, `Renderable.off_loop`), which in a Mosaic program is `process_perform`. While a result is pending, the text keeps the styling of the bytes it shares with the last result. `Code.Props.make` and the `code` element take `?conceal`, and `Syntax_highlight.conceals` names the captures that conceal. `doc/highlighting.md` shows a tree-sitter highlighter built this way
-- **Highlighted editing.** `textarea ~syntax` takes the syntax settings of a code view, and a highlighter receives each accepted text with the edit from its latest result. `~annotations` holds the styles the application resolves itself, such as search matches, drawn over the syntax colors (`Text_buffer.Annotations.merge`)
-- **Running a program in the terminal.** `Cmd.exec f` gives the terminal to `f` (an editor, a pager) and dispatches its result once the terminal is taken again; `Cmd.suspend` stops the job as Ctrl+Z does in a shell
-- **Workers.** `Sub.worker ~id f` runs `f stop mailbox` off the loop while `id` is declared, and requests its stop (`Sub.Stop.requested`, `Sub.Stop.on_request`) in the update that drops it or when the run ends; its messages are dropped from then on. `mailbox.dispatch` blocks only off the loop's thread while 65,536 posts to the run are pending, as `Matrix.post` does, and `mailbox.send` returns once `update` has applied the message, for work that must keep pace with the loop
-- **One-shot timers.** `Sub.after ~id delay msg` dispatches `msg` once, `delay` seconds after `id` appears in the subscriptions. Dropping `id` first cancels it, so a debounce is an `after` declared under a new id by each update that restarts the wait
-- **Shortcuts.** `Mosaic.Shortcut` names a key with its modifiers, `Shortcut.find` and `find_opt` give the value of the last of a list of bindings that matches a key, and `Sub.on_keys` binds shortcuts to messages; editors take `?key_bindings:(Shortcut.t * action) list`. `Sub.on_key_release` reports key releases, which never reach widgets
-- **A stalled paste can be ended.** `Sub.on_paste_stalled seconds msg` reports a paste in progress that has received nothing for `seconds`, and `Cmd.abort_paste` ends and drops it. A paste whose end marker never comes takes every later key as content, Ctrl+C included, so `Mosaic.run` ends one that has been silent for 5 s unless the application declares its own `on_paste_stalled`
-- **Terminal commands.** `Cmd.copy_to_clipboard`, `Cmd.copy_selection`, `Cmd.clear_selection`, `Cmd.bell`, `Cmd.notify ~title ~body`, `Cmd.set_mouse` (mouse tracking at run time: with `` `Off `` the terminal selects its own cells, and the view's selection clears), and `Cmd.query_color_scheme` with `Sub.on_color_scheme`
-- **The terminal's palette.** `Sub.on_palette f` gives the application the terminal's palette (`Ansi.Palette.t`, asked with `Matrix.query_palette`), from which `Theme.default` derives a theme. The program asks for it as it begins and again after each report of the color scheme, and `Cmd.query_palette` asks again, for an application that subscribes later; a terminal that reports no foreground or no background gives none
-- **Themes.** `Mosaic.Theme` gives an interface's roles their styles. A role names a purpose: text (`Plain`, `Muted`, `Emphasis`, `Accent`, `Link`, `Ok`, `Warning`, `Error`, `Added`, `Removed`), lines (`Border`) and the surfaces widgets draw text on (`Canvas`, `Panel`, `Field`, `Cursor`, `Selected`, `Highlight`), all one `Theme.role`. `Theme.style` gives a role's style and `Theme.mark ?alone` that of a state glyph such as `✗`. `Theme.plain` draws text in the terminal's own foreground and background with bold or underline, and state glyphs in their palette entry; `Theme.default palette` adds the entries the terminal reports where they are legible (`Ansi.Palette.legible`, at 3 for a glyph that is the only sign of its state). Neither uses dim or combines bold with an entry. `with_style` sets a role's style, `with_glyphs` the glyph set, and `Theme.check` lists the roles, surfaces included, a theme draws below their target. `themed f child` draws `child` with `f` applied to the theme in scope around it, the nearest `themed` deciding last, and no element of its own; the root's theme is `Theme.default` of the colors the terminal reports, `Theme.plain` until it reports them. The scope is read as nodes are drawn (`Renderable.theme`), so a theme that changes redraws without building the view again, and reading it allocates nothing once each `themed` has been applied. `Renderable.set_theme` and `Renderer.set_theme` do the same for a renderer driven without Mosaic, a node's own function applying after the scope of its place in the view, embedded nodes included, and `Canvas.theme` lets a canvas draw by role. A theme also gives the style of highlighted source (`Theme.syntax`, `Theme.with_syntax`, from `Syntax_style.plain` and `Syntax_style.of_palette`), and `Markdown.Style.of_theme` gives Markdown's element styles by role. The built-in widgets draw by the theme in scope (see Changed)
-- **Mouse events in a node's cells.** `Event.Mouse.local ev` is the cell under the cursor counted from the top-left cell of the node whose handler sees `ev`, and `Event.Mouse.size ev` that node's width and height, for every element's `on_mouse` and `on_click`, beside the screen position `Event.Mouse.x` and `y`. `Event.Mouse.at_node` is an event as a node of a given place and size sees it, which `Renderer.dispatch_mouse` gives each node, so a test gives a handler the event it would see. A canvas compares the pointer with what it drew at its own origin, and lays a drawing out again at the size in the event, so a program keeps no size of its own
-- **Selection of text or of cells.** A drag selects between its press and the pointer, and each element declares what it takes with `` ?selectable:[ `Off | `Text | `Cells ] `` (`Renderable.set_selectable`), the nearest declaration deciding. `` `Text ``, the default, takes text from its source: a drag pressed in a scroll box stays in it and scrolls it when the pointer passes its top or bottom, keeping what scrolls away, and a scroll box beside the drag is taken whole once the drag covers its view, or not at all. `` `Cells `` selects as a terminal or Claude Code does: a band of cells from the press to the pointer, across panes and through scroll boxes, each giving the rows it shows, which copies borders and box drawing as they are drawn and each blank row it highlights as a line. On the top element it makes the whole view select so; on one pane, that pane alone, and a drag pressed in the pane stays in it. `` `Off `` takes nothing, as Claude Code's `NoSelect` does: controls and drawings declare it unless they say otherwise, and a press on such content leaves the selection alone. Editors keep their own selection and take no part in the view's. A double click selects a word and a triple click a line, and a drag after either extends by words or lines; Shift+press moves the nearer end where the terminal passes it on. A selection holds positions in the text, so scrolling, streaming and rewrapping leave it on the text chosen, and an edit of that text carries it along. While text is selected, Escape clears it, Ctrl+C copies it and clears it instead of ending the program, Shift with an arrow, Home or End extends it, and any other key or a paste clears it; Ctrl+C copies a focused input's selection and keeps it. A copy gives the rows as the screen shows them: a soft wrap adds nothing, text behind an ellipsis is included, texts on one row are joined by the cells between them, and blocks with a margin or gap between them by a blank line, where "foo" over "bar" copied as "foobar". `Sub.on_selection` hears a selection made or cleared and `Sub.on_copy` each copy, so an application that copies on select answers `on_selection` with `Cmd.copy_selection` and shows each copy. The band draws with the theme's `Highlight` role: over the selected text under `` `Text ``, and over every cell it covers, blanks included, under `` `Cells ``, as a terminal shows its selection. The terminal's own selection stays one modifier away (Shift in most terminals), for what has no text
-- **Counted clicks.** `Event.Mouse.Down` carries `clicks`, the press's place in a series of presses of one button, each within 500 ms of the last and a cell of the first, so an element acts on a double click at its press. A drag whose release the terminal never reports, as the window loses focus or the pointer leaves it, ends with the next press, motion or focus loss (`Renderer.pointer_lost`), and a motion that some terminals report at the pressed cell no longer turns a click into a drag
-- `scroll_box` takes `?show_scrollbars` for a bare scrolling surface, and `?scrollbar_style`, `?vertical_bar_style` and `?horizontal_bar_style` for its bars' appearance
-- `markdown` takes a `?highlighter` and a `?syntax_style` that highlight fenced code blocks
-- Each element takes the labels its widget's `create` took alone: `scroll_box ?scroll_accel` (and `Scroll_box.Props.make ?scroll_accel`, with `Mosaic.Scroll_box.Scroll_accel`), and `markdown ?render_node ?render_code` (and `Markdown.Props.make ?render_node ?render_code`), in their MLX forms too
-- `table` takes `?selection_visible`, `?show_scroll_indicator`, `?activate_on_click`, `?wheel_navigation` and `?on_hover`, shows overflow indicators, and pages over its measured visible rows with PageUp and PageDown
-- A drag that reaches a scroll box's edge scrolls it and keeps the selection in step with the new viewport
-- Scroll containers cull their content: children outside the viewport are neither updated nor rendered, and layout runs again only when the tree is dirty. The content holds its children in chunks of at most 256 in the layout tree, so a frame that adds, changes or removes a line of a long transcript lays out that line's chunk and the content's chunks rather than every line: appending a line to 20,000 takes 32 ms where it took 440 ms
-- Scroll containers send scroll hints, so scrolling by one row in alternate-screen mode reaches the terminal as a hardware scroll plus the rows at the edge
-- `Renderer.layout_frame` and `Renderer.paint_frame` split a frame in two, and `Renderer.render_frame` is the two together; `Renderer.pending_work`, `is_settled` and `render_frame_until_settled` tell when the work a frame scheduled is done
+```ocaml
+(* in the view; model.name is an Editor.t *)
+input ~state:model.name ~on_change:(fun e -> Name_edited e) ()
 
-#### Changed
+(* in update *)
+| Name_edited e -> ({ model with name = e }, Cmd.none)
+```
 
-- **A widget is made from its props.** Each widget's `create` takes its node's labels (`?index`, `?id`, `?style`, `?visible`, `?z_index`, `?opacity`; `?layout_style` for `Markdown`), its callbacks, and its `Props.t` last: `Box.create ~parent (Box.Props.make ~border:true ())`, `Text_input.create ~parent ~on_change (Text_input.Props.make ~state ())`. The labels of a widget's properties are `Props.make`'s alone, with their defaults, as the elements' are `Mosaic`'s. `Diff.create` takes its patch in its props (`Diff.Props.make ~patch`) and `Canvas.create`, which has no props, is unchanged. The reconciler makes a widget from the props its element declares, so mounting an element no longer makes the widget's default props and then applies its own: mounting and unmounting a keyed list of 20,000 texts allocates 7.45 M words where it allocated 7.63 M
-- **A capped log's frame costs what changed.** A scroll box's column that drops its first line and appends one lays out, culls and places only what changed, the chunks of 256 lines its layout holds, and the lines shown: the layout tree keeps the rounded layouts of a subtree moved by whole cells, the column passes over its unchanged chunks whole and keeps their cull indexes, which are relative to the chunk, a keyed map's placement checks only the bindings a render added or changed, and children leaving near either end of a parent are found from that end. Such a frame of a 50,000-line keyed log allocates 1.45 M words where it allocated 5.49 M, and takes 7 ms where it took 40 ms
-- **Views cost less per element.** An element that declares no layout label, attribute or handler shares one layout, one record of attributes and one record of handlers with every such element: a text that declares nothing allocates 20 words where it allocated 75. A fiber keeps its records while the element's equal them, unkeyed children match with no table, and a list whose children all stayed in place is kept, so reconciling a list equal to the one mounted allocates nothing per element. `map` is a node: a render stores its function at its place, and a handler's message goes through it when the handler fires, so `map` costs the same whatever the size of its view, and a `memo` under it is reused whatever its function, where a map that captured a value rebuilt every memo below it. Appending a line to a 20,000-line log and dropping it allocates 1.81 M words where it allocated 6.76 M
-- **Leaving the last frame.** A program in primary mode leaves its last frame on the screen when it ends, with the cursor below it, where the live region was erased: it draws the view of the model it ends with after the update that quit, and nothing is applied meanwhile. `Cmd.keep_frame false` erases it (`Matrix.keep_frame`)
-- **The application owns the state of every widget.** A widget proposes a change and the model decides whether to store it. `input` and `textarea` take `~state:Editor.t ~on_change`; `slider` takes `~state ~on_change`; `scroll_bar` takes `~state ~scroll_size ~viewport_size ~on_change`; `select`, `tab_select` and `table` hold typed values (`Select.item v label`, `Tab_select.item v label`, `Table.row v cells`) and take `~equal ~selected ~on_change`; `tree` takes `~state:Tree.State.t ~on_change`; `scroll_box` takes `~scroll:Scroll.t ~on_scroll`. The callbacks for a widget's meaning (`on_change`, `on_activate`, `on_submit`, `on_scroll`) return `'msg`
-- **The application declares focus.** Every element takes `?focused` and `?on_focus_request`. A left press on an element that is not focused dispatches its `on_focus_request`, and the application accepts it by declaring the element focused; a click never focuses by itself, and removing the focused element leaves nothing focused. `Sub.on_focus_lost msg` reports a view that stops declaring the focused element its predecessor declared, and its message is applied before the frame is drawn, so an application that answers it with a new focus never presents a frame without one, even the frame a key's turn draws early
-- **Listeners have a phase.** `Sub.on_key`, `on_keys`, `on_mouse` and `on_paste` take `?phase`. A `Bubble` listener, the default, runs after the elements and sees every event no element stopped, whether or not one prevented it; a widget behavior that acts stops the key, and `on_keys` skips a prevented key, so `Sub.on_keys [ (Shortcut.char 'q', Quit) ]` does not quit while `q` is typed into a focused input. `Sub.on_mouse` reads `Event.Mouse.default_prevented` to tell the events an element prevented. A `Capture` listener runs before the elements and sees every event. Stopping an event never hides it from another listener of the application
-- **Events go along a path, as in the DOM.** A key or a paste, like a mouse event, goes along a path taken when it is dispatched: the target's handlers, then its behavior (the character a key types, the text a paste inserts), then each ancestor's handlers. The behavior runs on the node focused when it runs. `stop_propagation` keeps an event from the nodes after the current one and cancels no behavior; `prevent_default` cancels the behavior and the renderer's defaults, and a behavior that acts stops the event. A press reaches its handlers before its defaults (text selection, the caret, the click), which a handler can prevent. `Renderer.dispatch_key`, `dispatch_paste` and `dispatch_mouse` take a path from `Renderer.focus_path` or `Renderer.mouse_path` and an `Event` value
-- **Widgets list the keys they act on.** `select`, `tab_select`, `table`, `tree`, `scroll_box`, `scroll_bar`, `textarea`, `text_input` and `button` document every key their behavior acts on when focused. Those keys are consumed and reach no ancestor and no `Bubble` listener, and every other key passes on
-- **Ctrl+C quits by default.** In raw mode Ctrl+C is a key, and quitting is its default action, which a handler or a listener that uses the key prevents
-- **Tab moves focus.** Tab's default action, after the `Bubble` listeners and unless something prevented it, is `Cmd.focus_next`, and Shift+Tab's `Cmd.focus_prev` (from CSI Z, the kitty protocol or modifyOtherKeys). A stop is a shown element with `?on_focus_request`, so an element that asks for focus on a click is also reached by Tab; Ctrl+I, the same byte as Tab in the legacy encoding, moves focus too. A binding of `Sub.on_keys` prevents its key, so an application that binds Tab there keeps it; a `Sub.on_key` listener or an element's `?on_key` that gives Tab a meaning and does not call `Event.Key.prevent_default` now also moves focus
-- **Shortcuts match exactly.** A shortcut matches the key and its modifiers, then the base-layout key, and a later binding of the same shortcut overrides an earlier one. `char ~shift:true 'r'` is `'R'`, `Line_feed` bindings are Ctrl+J, and a letter typed without a chord is matched with Caps Lock undone when the terminal reports the lock and then, as a capital nothing binds, as its lowercase letter, so `char 'q'` matches q typed with Caps Lock on. Editors insert the keystroke's text, and a paste reaches widgets whole once it completes
-- **Running a program.** `Mosaic.run` and `Mosaic.start` take `?input ?output ?env ?stop ?config ?process_perform`, where `run` took `?matrix`. The terminal's options are a `Matrix.config`, and the run takes any terminal's descriptors. `init` runs before the terminal is taken, and its commands and the first subscriptions run inside the run, so an exception in either gives the terminal back
-- **Work runs off the loop's domain.** By default `Cmd.perform` and `Sub.worker` run on threads of one helper domain, started with the first work and ended when it has none, so computing work does not hold up keys and an idle program takes no wakeups. While the helper domain runs, `Unix.fork` raises. An exception raised in a `Cmd.perform` ends the run, which gives the terminal back and raises it with the worker's backtrace
-- **`Cmd.batch` order is promised.** A batch starts its commands in list order, depth first, so terminal commands take effect in that order; the messages of work done off the loop arrive as it finishes. `Cmd.quit` ends the run once its update's commands have started, and drops the events read after it
-- **Timers.** `Sub.every`, `Sub.after`, `Sub.on_tick` and `Sub.worker` take an `~id`, and the run raises `Invalid_argument` when two subscriptions declare the same one. `Sub.every ~id period f` fires on a grid that does not drift and dispatches `f k`, where `k` is the number of periods that ended since its previous call: `1` on time, more after a stall. Timers that come due in the same turn fire in the order of their grid points, and a pending timer costs nothing until it fires
-- **Animation asks for frames.** An `on_tick` subscription or a live element, such as a spinner, asks for each next frame, and frames stop when none asks. `Sub.on_tick` ticks once per frame with the time since that subscription's previous tick, `0.` on its first, so an animation started after a pause does not jump by the pause. A frame drawn early for input ticks nothing and moves no element's animation (`Renderer.layout_frame ?animate`), so animations keep the frame rate while the user types
-- **Frame deltas are seconds.** Every frame delta is in seconds and named `~dt`, as `Sub.on_tick`'s, where it was `~delta` in milliseconds, so a callback written for milliseconds does not compile (canvas `on_draw`, `Renderable.render`, `set_on_frame` and `set_on_update`, `Renderer.render_frame`, and `Renderer.add_frame_callback`, whose callback takes `~dt`). `Spinner.frame_set`'s `interval` is `period`, in seconds, and `Scroll_box.Scroll_accel.tick` takes `~seconds`
-- **Text follows the screen's width method.** A text buffer holds no width method: `line_width` and `max_line_width` take the method to count by. Text, Code, editors, spinners, canvases and static output measure and paint by the screen's method at the time, and the renderer measures every node again when it changes, so a terminal that reports its method after the first frame does not leave widgets laid out by the old one
-- **Primary frames are laid out once.** In primary mode the runtime lays a frame out when it learns the rows the frame requires, and paints that layout into the live region; frames and input geometry are laid out against every row of the terminal but the live region's origin
-- **Boxes take their border widths.** A box or button lays its border out from `border_width`: a side of width 0 draws no line, and a border width that is not a whole number of cells, 0 or more, raises `Invalid_argument`
-- **A memo is its view function and its key.** `memo ~key view` reuses its subtree while `view` is the same function and `key` is equal, so a view function allocated per render rebuilds on every render. A key must be immutable data, and the render that first holds a function, an object or an abstract value in a key raises `Invalid_argument`, whatever the rest of the key: the render that mounts a memo looks into all of its key, and a later one only into the parts that are not, physically, those of the key it is compared with, so a keystroke beside a memo keyed on 16,000 lines costs what it costs beside one keyed on 1,000
-- **Styles compare by value.** `Syntax_theme` is `Syntax_style`, with the scopes `property` and `constructor` added, and `Markdown.style` is `Markdown.Style.t`, built with `Markdown.Style.make`
-- **Widgets draw by roles.** With no color label given, a widget draws with the roles and surfaces of the theme in scope, where it drew in fixed colors: text in the `Plain` role under its own style, which merges over the role (plain and rich text alike), selected text over the `Highlight` surface (reverse by default), where it showed no selection unless `selection_bg` or `selection_fg` was given; a box's border in the `Border` role, where it was white, and while focused in heavy lines in bold, where it was bright cyan, so focus shows with no styling at all; an input or textarea on the `Field` surface (the terminal's own colors by default), where its text was white, its placeholder and ghost text in the `Muted` role, where they were bright black and gray, and its selection over `Highlight`, where it was blue. Text in the terminal's own colors stays legible on a light terminal, where white text was not. The caret keeps the terminal's color unless `cursor_color` is given, where the editors wrote white with OSC 12. Every color label stays and, given, replaces the role or surface it names (`Box.Props.make ?border_color ?focused_border_color`, the editors' `?text_color`, `?background_color`, `?focused_text_color`, `?focused_background_color`, `?placeholder_color`, `?selection_color`, `?ghost_text_color`); a program that wants the old look gives them, or one `themed` at its root. A focused editor's text color falls back to `text_color` and its background to `background_color` Lists draw by roles too: `select`, `tab_select`, `table` and `tree` draw their text in the `Plain` role, where it was white or light gray, descriptions, indicators and tree icons in `Muted`, a table's lines and a tree's guides in `Border` and a table's header in `Emphasis` (with no background, where it was dark gray), and the selected item on the `Cursor` surface while focused, where it was yellow on dark blue focused or not. The selected item of a select is marked `❯` while focused and `›` otherwise (the theme's `cursor` and `cursor_inactive` glyphs, `>` and `-` in ASCII), where it was `▶` both ways, and a tab selector marks its selected tab's first cell the same way, so the selection and the focus show with no styling at all; a focused select or tab selector no longer fills a dark gray background. The selected row of a table or a tree is drawn on the `Selected` surface (bold and underlined by default) while unfocused, and a tree's icons are the theme's glyphs unless `expand_icon`, `collapse_icon` or `leaf_icon` is given. A table cell's style is merged over its row, so a styled cell on the selected row keeps the row's surface, where a plain cell's style replaced the row's colors. `tab_select ~description_color` colors the description line while the selector is unfocused, where it was stored and never drawn, and `selected_description_color` while it is focused Sliders, scroll bars and progress bars draw their track or unfilled part as a line in `Border` and their thumb or filled part as blocks in `Plain`, where they drew dark and medium gray backgrounds, so they show with no styling at all (a progress bar showed nothing at `--color=never`); a scroll bar's arrows are the theme's glyphs in `Border`, where they were white; a spinner is drawn in `Plain`, where it was white, and line numbers in `Muted`, where they were gray. `Scroll_bar.style` keeps every field, each replacing its role when given Highlighted source, Markdown and diffs given no style draw with the theme in scope too: `Theme.syntax`, the theme's style of highlighted source, is `Syntax_style.plain` (keywords bold, comments italic) until the terminal reports its colors and then `Syntax_style.of_palette`, which gives keywords, strings, types, functions and constants their palette entry where it reaches the contrast of text, as `Theme.default` chooses its entries (`Ansi.Palette.legible`); Markdown elements take `Markdown.Style.of_theme` (headings in `Emphasis`, code spans in `Accent`, links in `Link`, quotes, list markers and concealed punctuation in `Muted`, rules and table lines in `Border`), where they took fixed RGB colors that measured below 2:1 on light terminals; a diff draws changed lines on no background with `+` and `-` in `Added` and `Removed`, where it drew dark green and red backgrounds. A view follows the theme as it changes, without a new declaration. `Syntax_style.default`, `Markdown.Style.default` and `Diff.default_theme` keep their colors and give the old look when passed
-- A tab width below 1 raises `Invalid_argument` in `Text_buffer.create`, `Text_buffer.set_tab_width`, the Text and Code props and the elements built from them
-- Streaming appends to a `markdown` element render only the tail, `table` keeps its automatic column widths across renders, and `line_number` indexes its props
+| Widget | The state it takes |
+| --- | --- |
+| `input`, `textarea` | `Editor.t` |
+| `scroll_box` | `Scroll.t` |
+| `tree` | `Tree.State.t` |
+| `slider`, `scroll_bar` | their value |
+| `select`, `tab_select`, `table` | the selected item, as a value of your own type |
+
+Focus works the same way. Your model says which element is focused with
+`?focused`. A click, or Tab, asks for focus through `?on_focus_request`. Tab
+and Shift+Tab walk the elements in the order they appear, so you no longer keep
+a list of them by hand.
+
+Mosaic is also much faster on the thing we care about most, long transcripts.
+With `keyed` lists and `memo`, a frame costs as much as what changed in it. In
+our benchmark, a keystroke under a 20,000-block transcript takes about 0.3 ms,
+the same as under 5,000 blocks.
+
+#### Also new
+
+- Widgets draw with a theme instead of fixed colors. `Mosaic.Theme` names
+  roles such as `Plain`, `Muted`, `Accent` and `Border`, and `themed` restyles
+  a subtree. The default theme uses the terminal's own palette, so widgets
+  stay readable on light terminals, where 0.1's white text did not.
+- You can select and copy text anywhere in the view: drag, double- or
+  triple-click, extend with Shift and the arrow keys, then press Ctrl+C. Each
+  element chooses what a selection takes from it with `?selectable`. By
+  default it takes the text. With `` `Cells `` it takes every cell the element
+  draws, borders included, the way a terminal selects. To copy as soon as the
+  user selects, answer `Sub.on_selection` with `Cmd.copy_selection`.
+- `modal` draws a dialog above the whole view and keeps focus, the mouse and
+  Tab inside it. Escape sends its `on_close` message.
+- Key, mouse and paste events travel from their target up through its parents,
+  as in the DOM, and a handler can stop them or prevent their default action.
+  `Sub.on_keys` binds shortcuts to messages.
+- You can run a program under Eio with `Mosaic_eio.run`, under Lwt with
+  `Mosaic_lwt.run`, or under any other event loop with `Mosaic.start` and
+  `step`. In tests, `Mosaic_test.run` runs it on an emulated terminal.
+- `Cmd.perform` and the new `Sub.worker` run on a helper domain, so slow work
+  no longer holds up input. `Sub.after` fires once, which is what you want for
+  debouncing.
+- Syntax highlighting is pluggable. `Code.Highlighter` wraps a highlighter
+  that runs synchronously, on a thread or asynchronously. After an edit, Mosaic
+  asks an incremental highlighter only for the lines around the view. See
+  [doc/highlighting.md](doc/highlighting.md).
+- `Cmd.exec` hands the terminal to an editor or a pager and takes it back
+  afterwards, and `Cmd.suspend` stops the program as Ctrl+Z does. Smaller
+  commands copy to the clipboard, send a desktop notification, ring the bell
+  and switch mouse tracking on or off.
+- New elements: `button`, `rich_text`, `diff` for unified and side-by-side
+  patches, `picture` for images, and `viewport_switch`, which picks a subtree
+  by terminal width. Elements also take `?on_click` and `?on_size`.
+- `Mosaic.Element.kind` turns a widget of your own into an element that the
+  reconciler diffs like the built-in ones.
+
+#### Changes the compiler won't catch
+
+- Tab and Shift+Tab now move focus. If your program uses Tab for something
+  else, call `Event.Key.prevent_default` in the handler that uses it, or bind
+  it with `Sub.on_keys`.
+- A click no longer focuses an element by itself. It sends the element's
+  `?on_focus_request` message, and the element is focused once your view says
+  `~focused:true`.
+- A widget given no color draws with the theme, in the terminal's own colors.
+  To get 0.1's look back, pass the widget its color arguments, or restyle the
+  roles once with `themed` at the root.
+- Ctrl+C still quits, but now as a default action that a handler can prevent.
+  While text is selected, it copies the selection instead.
+- Key, mouse and paste listeners now see events that an element prevented, as
+  DOM listeners do. Check `default_prevented` on the event to skip them.
+  Before, a listener could miss a press and have no way to know.
+- In inline mode, the last frame stays on screen when the program ends, so a
+  summary or a choice stays in the scrollback. `Cmd.keep_frame false` erases it
+  as 0.1 did.
+- Frames are drawn only when something asks for one. A `canvas` that animates
+  on its own needs `~live:true`; without it, it moves only when something else
+  redraws.
+- An exception raised in `Cmd.perform` now ends the program, and `Mosaic.run`
+  raises it again once the terminal is restored. In 0.1 it killed only its
+  thread, and the program carried on without the result it was waiting for.
+- `Unix.fork` raises while background work is running, because OCaml forbids
+  forking once several domains run. Use `Unix.create_process`.
+- `init` runs before the terminal is taken, so an exception it raises leaves
+  the terminal alone.
+- Two subscriptions with the same `~id`, a border width that isn't a whole
+  number of cells, and a tab width below 1 now raise `Invalid_argument`.
+
+#### Breaking changes
+
+The compiler will point you to each of these. The [migration
+guide](doc/migrating-from-0.1.md#mosaic) has the full lists and code before
+and after.
+
+- Stateful widgets take their state as an argument, as shown in the table
+  above, and report changes through `~on_change`. `select`, `tab_select` and
+  `table` take items that carry your own values instead of reporting indices,
+  so reordering or filtering the items keeps the selection. See [Widget
+  state](doc/migrating-from-0.1.md#widget-state).
+- Callbacks that report a widget's own change (`on_change`, `on_activate`,
+  `on_submit` and `on_scroll`) return `'msg` instead of `'msg option`. The
+  widget has already decided there is a change, so there is nothing left to
+  filter. Raw event callbacks still return `'msg option`.
+- Focus is declared with `?focused` and `?on_focus_request`, which replace
+  `?id`, `?ref`, `?autofocus`, `?focusable` and `Cmd.focus`. Focus kept by the
+  widgets drifted away from the app, and a stored `ref` could outlive its
+  element. Read sizes with `?on_size`, and mount a renderable of your own with
+  `embed`. See [Focus](doc/migrating-from-0.1.md#focus).
+- `Event.Key.data` returns a `Matrix.Input.Keystroke.t`. In 0.1 one key had a
+  different value in each terminal encoding: Shift+a was `A` in one and `a`
+  with Shift in another. Now it is `Char 'A'` everywhere, and Ctrl+C is
+  `Char 'c'` with `ctrl` set.
+- A mouse release reports `dragged` instead of `is_dragging`. It is true only
+  when the pointer left the pressed cell, because some terminals report motion
+  inside a cell and that turned clicks into drags. A press reports its
+  `clicks`, for double and triple clicks.
+- `Sub.every` and `Sub.on_tick` take an `~id`, and `Sub.every` passes the
+  number of periods that elapsed. In 0.1 a timer that missed periods replayed
+  each of them: a 0.1 s timer sent 100 messages after a 10 s stall.
+- `Sub.on_key_all`, `on_mouse_all` and `on_paste_all` are gone. Pass
+  `~phase:Capture` to `Sub.on_key`, `on_mouse` or `on_paste` instead. Events
+  now follow the DOM's capture-then-bubble order, where 0.1 had a different
+  rule for each kind of event.
+- `Mosaic.run` takes a `Matrix.config` as `?config`, where it took a Matrix
+  app as `?matrix`, because Mosaic now runs Matrix's loop itself. Eio programs
+  call `Mosaic_eio.run`, which replaces the forty lines of glue each of them
+  had to copy. See [Running a
+  program](doc/migrating-from-0.1.md#running-a-program).
+- `?selectable` takes `` `Off ``, `` `Text `` or `` `Cells `` instead of a
+  bool, so an element can choose between selecting its text and selecting
+  every cell it draws. `false` becomes `` `Off ``, and `true` can usually go,
+  since `` `Text `` is the default. `Text.set_selectable` is gone; call
+  `Renderable.set_selectable` on the node.
+- The per-widget selection colors and `code ?on_selection` are gone.
+  Selections draw with the theme's `Highlight` role, and `Sub.on_selection`
+  hears the selection, which now spans every widget.
+- The tree-sitter bindings moved to their own package,
+  [ocaml-tree-sitter](https://github.com/invariant-hq/ocaml-tree-sitter), and
+  `code ?spans` and `textarea ?spans` became `?syntax`. Every Mosaic install
+  used to compile 36 MB of generated C that Mosaic didn't use. In our
+  measurement, a fresh install went from 90 seconds to 60.
+- `Syntax_theme` is now `Syntax_style`. `Markdown.style` is a
+  `Markdown.Style.t` value built with `Markdown.Style.make`, where it was a
+  function. A style function built in the view made every code block highlight
+  again on every refresh.
+- Durations are in seconds everywhere. A `canvas` draw function takes `~dt`
+  where it took `~delta` in milliseconds, and `Spinner.frame_set` takes
+  `period` where it took `interval`. We renamed the labels so that code written
+  for milliseconds fails to compile instead of running 1,000 times too slowly.
+- On a canvas, `?respect_alpha` gave way to `?blend` on each write, and
+  `Canvas.set_cell ~glyph` to `set_uchar ~uchar`.
+
+If you build on `mosaic.ui` directly:
+
+- `Mosaic_ui.Vnode` is gone; build views with `Mosaic`'s elements. There were
+  two vocabularies for one tree, and every label was spelled twice. `Mosaic.t`
+  is abstract.
+- `Mosaic_ui.Edit_buffer` became `Mosaic_ui.Editor`, an immutable value, so
+  replayed models no longer share editing state.
+- A widget's `create` takes its `Props.t` last instead of repeating every
+  label: `Box.create ~parent (Box.Props.make ~border:true ())`.
+- `Reconciler.create` takes `~deliver`, `Reconciler.render` takes
+  `~viewport_width`, and `Renderer.dispatch_key` takes the focus path and an
+  `Event.Key.t`. See [mosaic.ui](doc/migrating-from-0.1.md#mosaicui).
 
 #### Fixed
 
-- A message dispatched from another thread was applied only at the next event or frame, outside the turn's budget, so a flood of them held the screen; it is applied when the loop takes it
-- A message from `Cmd.perform` could be lost to a race between threads
-- A canvas that clears itself in its draw, as its documentation advises, asked for another frame each time, so an idle canvas woke the program every frame; it asks for none, and a canvas that animates by `dt` takes `~live:true`
-- A focused `scroll_box` took the arrows and h/j/k/l along an axis it does not scroll; those keys pass on to shortcuts
-- The wheel over a part of the screen with no scrollable element reaches the focused scrollable
-- `tree` and `select` read the mouse in the widget's coordinates, and `scroll_bar` applies changes of its orientation and arrow color
-- The reconciler keeps the first of two children with the same key, places children in time linear in their number whatever their order, and no longer detaches and attaches again the nodes it reuses when keyed elements are reordered, so focus survives the reorder. Rotating 8,000 keyed children by one, which moved each child alone, took 308 ms and takes 5.5 ms
-- Text measurement fed back on the previous frame's width: text that does not wrap measures untruncated, and wrapped text measures at its natural width under max-content, so a node can grow back after a shrink
-- Adjacent flex children painted over each other; a node's cells follow its rounded absolute edges, and a clipping container keeps at least one cell
-- Render work scheduled during a frame waited for unrelated input; it settles on the next frame, and a superseded render pass no longer leaves cells in adjacent widgets
-- `textarea` clamps its scroll offset on resize
-- `table` and `tree` apply the `focused_selected_*` colors declared as props
-- Word motions in an editor treat a line break as a boundary
-- A single-line editor reserves the caret's cell, so an empty focused input shows its cursor
-- `select`, `tab_select` and `table` convert their list for display only when the view declares another list than the one it declared last, physically, where every declaration converted and compared every option or row. A declaration finds the selection, and a callback its value, in time linear in its position. A key in a select of 100,000 options took 6 ms and takes 0.2 ms, and in a table of 100,000 rows 8 ms and 0.2 ms
-- Destroying a node, unmounting a view, and dropping rows or embedded nodes from a view take time linear in the nodes they remove. Each node was detached from its parent alone, which took time quadratic in their number, 0.75 s for 20,000 rows. Dropping children allocates nothing for each child their parent keeps, where it allocated 2 words per kept child in a scroll box and 6 in another box: a log of 20,000 lines that drops a line allocated 40,000 words more than it does
-- A text selection in a scroll box read each text's position from the last frame that painted it, so a text below a row out of view, or one never painted, could be selected where it no longer is, or missed. A selection now holds positions in the text, and reads where a text lies from the layout
-- `box ~border_color:Ansi.Color.white` drew no border, since the label was compared with its default; any `border_color` turns the border on, as the documentation says
-- Each element takes every label of its widget's `Props.make`: `Mosaic_mlx.box` takes `?inert`, `code` `?truncate` and `line_number` `?line_numbers` (and their MLX forms)
-- A `picture` is laid out as a replaced element (`Toffee.Style.set_item_is_replaced`), as an image is in CSS. Its measurement and its final layout disagreed: in a block 31 cells wide a picture of 20 by 10 cells was measured 31 by 16 and laid out 31 by 15.5. A block no longer stretches it to its width (a picture of 20 by 10 cells in a block 30 wide was 30 by 15, and is 20 by 10), nor a grid's `normal` alignment (in a grid 30 wide it was 44 by 22, and the line after it 44 wide); a flex container stretches it as before
-- A `scroll_box` element laid its content out for vertical scrolling whatever its axes: with `~scroll_x:true` the content was no wider than the box, so it never scrolled horizontally, and with `~scroll_y:false` it could be taller than the box. It is laid out as `Scroll_box.create` lays it out, and a declaration that changes an axis applies it
-
-#### Removed
-
-- The bundled `tree-sitter` package (`tree-sitter`, `tree-sitter.json`, `tree-sitter.ocaml`): highlighting is backend-neutral (`Code.Highlighter`), and the bindings are packaged on their own
-- `Mosaic_ui.Edit_buffer`, `Mosaic_ui.Text.set_selectable`, `Cmd.focus`, `Sub.on_key_all`, `on_mouse_all` and `on_paste_all`, and the elements' `?id`, `?ref`, `?autofocus` and `?focusable`, with the replacements listed under "Migrating from 0.1.0"
-- `Mosaic_ui.Vnode`. A view is built with `Mosaic`'s elements alone (MLX being syntax over them), and `Mosaic.t` is abstract. `Mosaic.Reconciler` reconciles a `unit Mosaic.t`, and `embed` brings an application's own renderable into a view
+- A text node that had shrunk didn't grow back when it got its room back.
+- Flex children next to each other could paint over each other.
+- `scroll_box ~scroll_x:true` didn't scroll horizontally.
+- Messages sent from `Cmd.perform` could be lost.
+- An empty, focused `input` showed no cursor.
 
 ### Matrix
 
-#### Added
+Matrix has a new runtime. In 0.1 you handed `Matrix.run` a set of callbacks,
+and it called them from inside its own loop. Now you run the loop.
+`Matrix.run` holds the terminal for the length of a function and gives it back
+however that function ends. Inside it, you ask `Matrix.next` for the next step
+and draw with `Matrix.draw`:
 
-- **Mouse tracking at run time.** `Matrix.set_mouse app mode` sets the mouse tracking a run keeps, as `config`'s `mouse` sets it at the start, and it holds when the run gives the terminal back and takes it again (`release`, `stop_job`). With `` `Off `` the terminal keeps the mouse and selects its own cells
-- **Devices.** `Matrix.Device` is the terminal a run drives as the runtime sees it: bytes in and out, a clock, a wait for input or a time, a wake, the window's size, the input's settings, the signals of its session and its environment, with `Device.unix` the device over descriptors that `Matrix.run` uses, and `Device.in_process` the hooks of a terminal emulated in the program's process. `Matrix.run ~config:(Matrix.on_device d config)` runs on `d`: a server that runs a program for each remote session, as wish serves Bubble Tea programs over SSH, an embedding that emulates a terminal for a program in its own process, and `Matrix_test` drive runs this way
-- **Writing beside a screen's frames.** `Matrix_screen.send_pictures` writes the kitty pixels a frame needs before it, for a frame written inside a synchronized update; `static_rows` and `static_sixels` write rows with their pictures into the scrollback above a live region, and `delete_transcript` deletes their images once the scrollback is erased: what `Matrix.run` writes around frames, for a runtime of a program's own on a screen
-- **Reading a grid's pictures and cells.** `Matrix_grid.picture_at g idx` is the tile a picture cell shows (its picture, its box and its place in the box), `has_pictures` tells whether a grid holds any, and `picture_id` and `picture_rgba` read a picture back, for a program that writes a grid elsewhere than to a screen. `Matrix_grid.Unsafe` reads cells without their index check, as `Array.unsafe_get` does, for a loop whose bounds prove its indices
-- **Stop requests.** `Matrix.Stop.create ()` is made before the run and given to `Matrix.run ~stop` (and `Mosaic.run`, `Mosaic.start`). `Matrix.Stop.request` from any thread, domain or fiber makes every later step `Stopped`, and wakes a run that waits for its descriptors. A stop requested before the run began stops it at its first step
-- **Driving a run by steps.** `Matrix.step app ~now` is the next step at the time the caller gives, or `None` when the run has nothing to do until one of `Matrix.fds app` is readable or `Matrix.deadline app` comes; it never waits. `Matrix.next` is that loop waiting with `select(2)`, and allocates nothing while idle. A program with an event loop of its own waits with that loop, and a test or a replay gives the steps the times of its own clock. A step is a function of the run's state, its input and `now`, which must never decrease (`Invalid_argument` otherwise) and must be on the clock `deadline` answers in, `Matrix.clock` or a test's own
-- **A run on any terminal, with its session's environment.** `Matrix.run ?input ?output ?env` takes the terminal on any pair of descriptors, and guesses its capabilities from the environment of the session it runs (`TERM` and its terminfo description, `COLORTERM`, `TERM_PROGRAM`, and the variables that tell a multiplexer or a remote session, such as `TMUX` and `SSH_TTY`), so a served session runs with its client's. A served session runs on a pseudo-terminal pair the program pumps, and receives its size in band (`CSI 48 ; rows ; cols ; height ; width t`), before the run and on each change
-- **Tests on an emulated terminal (`matrix.test`).** A `Matrix_test.Terminal` is matrix's emulator playing a `Profile` (`vte`, `pipe`): it answers the program's probe, keeps its title, modes and requests, and gives the bytes of keys, text, pastes, mouse, focus and scheme changes in the encoding the program set. `Terminal.set_palette` changes the palette its user configured, with `Vte.set_palette`, as when they pick another theme, and gives the report of the change (the color scheme's, under mode 2031). `Matrix_test.run term program body` runs a program unchanged, `Mosaic.run` or a `Matrix.next` loop, on that terminal with a clock only the test moves. `input`, `resize`, `settle`, `advance` and `set_time` drive it, each settled, and a frame asked for by input, a timer or a message is drawn at that instant while an animation keeps its interval. `attach` drives a program that takes its own steps. The program runs on the test's thread, suspended by an effect where it waits, and one that waits outside `run` raises `Invalid_argument`. `check_presented` checks that the terminal shows the frame the run believes it presented. `Screen` gives typed reads, goldens and a diff; `Child` runs a real program on a pseudo-terminal, answered by the profile
-- **The terminal device (`matrix.tty`).** `Tty` has what the operating system knows of a terminal and does to it: `is_tty`, `is_controlling`, `window`, `readable`, the monotonic clock `now`, the line settings `raw`, `restore` and `flush_input`, `enable_vt` for a Windows console, `terminfo`, which finds a terminal type's description as ncurses does, and `Signal`, the process's signals shared by every holder of a terminal in it by one policy per signal
-- **Replies and encoders beside the decoders.** `Input.Reply` is what a terminal sends in answer to a query, and `Input.Reply.encode` writes it as a terminal does; an OSC reply keeps its terminator, and `Reply.rgb_of_spec` reads X11 color strings as XParseColor does, the color names of X.Org's rgb.txt included. `Input.Keystroke.encode` and `encode_release` give the bytes a terminal sends for a keystroke in a keyboard state (DECCKM, DECKPAM, LNM, modifyOtherKeys, the kitty protocol's flags), `Input.Mouse_report.encode` a report in a tracking mode and format, and `Input.Decoder.encode_paste` and `encode_focus` the paste markers and focus reports; the decoder reads each back, less what the encoding cannot carry. `Input.Keystroke.make key` is a press of `key` with the fields a decoder reports for it alone, each overridable
-- **Application queries.** `Matrix.query app ~owed q` sends the application's queries as a batch closed by DA1, owed as the runtime's own are, and delivers their replies as `Matrix.Reply` events ending with the DA1 reply. A query sent with `Terminal.send` is not owed, and its reply never reaches the application as a reply
-- `Ansi.query` asks for the terminal's colors: `Foreground_color` (OSC 10), `Background_color` (OSC 11), `Cursor_color` (OSC 12) and `Palette_entry i` (OSC 4). Each is answered by an `Input.Reply.Color`, a control string, so `Matrix.query` sends them with one string reply owed for each
-- **The VTE keeps the modes keys and the mouse follow, and the host's requests.** DECNKM (DECKPAM, DECKPNM), the kitty keyboard flags on a stack for each screen, modifyOtherKeys, mouse tracking and format, and modes 1004, 2026, 2031 and 2048 (`Vte.keyboard`, `Vte.mouse`, `Vte.modes`); the bell, OSC 9 and 777 notifications and OSC 52 writes as `Vte.requests`. `Vte.create ?identity ?extensions` answers DA1, DA2 and XTVERSION as an identity (`Vte.vt100` by default) and implements only the extensions given. `Vte.set_color_scheme` and `CSI ? 996 n`. `Vte.last_column` reads the Last Column Flag
-- **A palette in the VTE.** `Vte.create ?palette:Ansi.Palette.t` gives the terminal the palette its user configured, the default foreground and background, the cursor's color and the 256 entries, read back with `Vte.palette` and replaced by the user with `Vte.set_palette`. Programs set them with OSC 4, 10, 11 and 12, ask for them with a `?` spec, and reset them to the given palette with OSC 104 and 110 to 112; RIS restores the given palette and DECSTR keeps it. A color the palette does not give is not reported, so the VTE plays a terminal that answers part of its palette. Cells keep the default intent (`Ansi.Color.default_fg`, `default_bg`), and a renderer resolves default and indexed colors through `Vte.palette`
-- **Line feed/new line mode in the VTE.** `CSI 20 h` (LNM) makes LF, VT and FF also return to the first column, reported as `Vte.modes`'s `new_line`
-- **Primary-mode static output.** `Matrix.static_replace` swaps all static content in the write of the next frame, and the live region keeps its rows whatever is written above it
-- **Terminal commands.** `Terminal.copy_to_clipboard` (OSC 52), `Terminal.notify ~title ~body`, `Terminal.bell` and `Terminal.query_color_scheme`, with tmux passthrough. A notification is written once, in the form `Caps.t.notification` gives: iTerm2's OSC 9, which iTerm2, kitty, WezTerm and foot read, or OSC 777 for rxvt-unicode
-- **Debugging any program with `MATRIX_DEBUG`.** A run on descriptors reads the environment variable `MATRIX_DEBUG` as it begins: `overlay` draws a `Matrix.Debug_overlay` over each frame and times the frame itself, with an `app` row for the time the application spent handling steps outside `draw` (`Debug_overlay.record ?app`), and `frames` or `frames=DIR` dumps each frame drawn, with its hit grid (`Matrix.dump_frame`). A Mosaic program gets both with no code. A run on a test's terminal reads none, and an item that names no tool raises `Invalid_argument` from `run`
-- `Terminal.enable_meta_sends_escape`, `enable_resize_reports` and `enable_color_scheme_reports`; `Terminal.write_cursor_style` and `write_cursor_color` write the cursor's appearance in one batch
-- `Matrix.frame_dt app` is the time in seconds between the latest two frames, `0.` until the second
-- `Matrix.set_scroll_hint` turns scrolling in alternate-screen mode into a hardware scroll plus the rows at the edge
-- **`Ansi.sanitize` for untrusted text.** It keeps what shows, in order. Every control function goes but HT and the line ends (CR, VT, FF and NEL end lines as LF does), and so do the characters a terminal shows as nothing (Default_Ignorable_Code_Point, all bidirectional controls among them), except the variation selectors, joiners and flag tags that change how the character before them shows. `Ansi.strip` keeps CR, BS and BEL, and must not be used on untrusted text
-- **Styled text (`Ansi.span`).** A span is a text in a style, `{ text; style }`, made with `Ansi.span ?style text`, and a line of styled text is a list of spans. `Ansi.sanitize_spans` sanitizes a line as `Ansi.sanitize` sanitizes the joined text, each grapheme in the style of the span its first byte is in, so a letter and its accent, a ZWJ sequence or a CR and its LF cut between two spans stay one
-- `Ansi.Color.to_depth` reduces a color to what a terminal of a given depth shows (`Truecolor`, `Ansi256`, `Ansi16`, `Ansi8`, `Mono`), by the squared RGB distance xterm uses, reading no environment
-- `Ansi.Color.contrast a b` is the WCAG 2 contrast ratio of two colors, from 1 to 21, so a program judges a text color against its background (4.5 for text, 3 for graphical objects)
-- **Palettes.** `Ansi.Palette.t` is a terminal's palette, the colors its user configured: the default foreground and background, the cursor's color and the 256 entries, the cursor and each entry possibly unknown. `Ansi.Palette.default` is the palette `Ansi.Color` assumes. `Ansi.Palette.contrast p ~fg ~bg` is the contrast of two colors as that terminal shows them, and `Ansi.Palette.legible p i` is entry `i`, or else `i + 8`, the first known whose contrast against the background reaches a target, by default that of text (the lower of 4.5 and the contrast of the user's own pair)
-- **The terminal's palette.** `Matrix.query_palette app` asks the terminal for its palette (OSC 10, 11, 12 and 4 for entries 0 to 15, ended by DA1), and one `Palette` event answers each ask with the colors it reported, or `None` when it reported no foreground or background, never answers, or the input is not a terminal; an ask made while another waits to be sent shares its answer, and the replies never come as `Reply` events. A terminal reports its color scheme when its user changes its palette, so a program that follows the palette asks again on each `Color_scheme`
-- **Update boundaries in the VTE.** `Vte.advance t b off len` applies bytes up to and including one that opens or ends a synchronized update (mode 2026), whatever sequence does it and however the bytes are split, and returns how many it applied; `Vte.replies t` takes the replies of the bytes applied. A reader takes the screen at each update's end, the picture the update presents. `Vte.feed` applies every byte as before. `Ansi.Parser.feed` returns the number of bytes it read, and `Ansi.Parser.stop`, called from its callback, makes it return after the token. `Matrix_test.Child.wait` checks readiness where an update ends and where one opens, and leaves the output after the point it returns at for the next call
-- `Ansi.Parser.at_boundary` tells whether the bytes fed so far end inside a character, a sequence or a string, without ending the stream as `Parser.finish` does
-- `Ansi.Writer.of_bytes` writes into caller-owned bytes that it never replaces, raising `Ansi.Writer.Buffer_full` on a write that does not fit; `Screen.render_into` with such a writer renders a frame in memory the caller bounds, and a frame that does not fit commits nothing
-- **Lines that join (`Matrix_grid.Lines`).** A line set records horizontal and vertical lines, light, heavy or double, and `Grid.draw_lines` draws each of their cells with the glyph of the arms that meet there: Unicode's box-drawing characters, with mixed weights such as ╟ and ┯ where Unicode has them, round corners, ASCII, or a set of eleven glyphs of any width. Charts draw their axes and frames with it
-- **Output for command-line programs (`matrix.cli`).** A pure library for programs that print to a terminal they do not own, on `matrix.ansi`, `matrix.text` and `matrix.grid` alone. Each output receives what `Ansi.Styling.decide` decides from the program's `--color` choice, the environment, and whether the terminal is dumb and the depth of its colors (`Caps.t.dumb`, `Caps.t.colors`): `Never` writes no style, `NO_COLOR` removes the colors and keeps bold and the other attributes, `FORCE_COLOR` or `CLICOLOR_FORCE` (unless `0` or `false`) writes colors into a pipe, `CLICOLOR=0` removes them, and a pipe or a dumb terminal gets plain text; `Matrix_cli.Progress.decide` gives it the mode its progress shows in for the program's `--progress` choice (`Progress.choices`: `auto`, `tty`, `plain`, `quiet`, `json`, BuildKit's names): `auto` redraws rows on a terminal that is not dumb outside CI (`CI` set to anything but empty, `0` or `false`, where cargo counts any value) and prints lines elsewhere, and `tty` redraws rows on such a terminal in CI too. An adapter (`Matrix_cli.adapter`, `adapt`, `formatter`) rewrites what a program prints for that decision, its SGR at the output's depth, OSC 8 kept, every other control function dropped and every line end a LF, so Fmt's and Logs' printers obey it. `matrix.cli.unix` writes to the standard outputs (`Matrix_cli_unix.stdout`, `stderr`, `make`), each with its decision for the program's `?color` choice, an `Ansi.Styling.choice` (named for `--color` by `Ansi.Styling.choices`; `Matrix_cli` keeps no alias of `Ansi.Styling`'s types), one write per `print` or per flush of its `formatter`, after what the program left in `Stdlib.stdout`, `Stdlib.stderr` and `Format`'s standard formatters (`Fmt.pr` without a flush) so that `2>&1` keeps the order, with `width` from `COLUMNS` or the terminal, `print_grid` printing a grid (a `Matrix_cli.Table.grid`) at the output's styling, rows trimmed, in one write, and `adapt_std_formatters ()` routes `Format`'s standard formatters, and so `Fmt` and `Logs_fmt`, through them. `live out f` redraws a region of rows below the output while `f` runs, with the cursor hidden until it goes off the screen or ends, from `show live (fun ~width ~height -> grids)`, a frame given the width of its rows and the rows the region shows of it and returning the grids its rows show, one under another (`[]` for none, the first giving way when they are taller), at most ten times a second, and on a clock with `live ~tick:seconds`, which calls the frames again for a spinner or an elapsed time, with the lines printed through any output on the terminal going above it; a `live` inside another on the same terminal joins its region, its rows below the outer's and its last rows above the region when it ends, as ocaml-console joins nested runs; `suspend` takes it off the screen for a child, `write_raw` writes unadapted bytes, `notify` and `bell` reach the terminal. The region is redrawn on a resize and after a stop, erased by Ctrl+Z, held while the job is in the background, torn down by SIGINT, SIGTERM, SIGHUP and SIGQUIT and ended by `exit` as by the scope's end (before the `at_exit` functions registered earlier, which print below it), both within a bounded wait for a terminal that stopped reading, and its last frame stays whole, however tall; on a pipe or in CI the lines go out as printed and the last frame once, at the scope's end, when it raises or at `exit`, `Matrix_cli_unix.progress out` gives an output's mode, taken by `make`, `stdout` and `stderr` as `?progress` beside `?color`, and under `quiet` or `json` a region draws and prints no frame, and on a `json` output `print` writes each line as an `output` event. `Matrix_cli_unix.tasks out f` reports a program's work as a tree of tasks under a root, told from any thread, domain or fiber (`Task.start`, `run`, `items`, `bytes`, `rename`, `log`, `succeed`, `fail`, `cancel`, `state`), shown in the output's mode: under `tty` a row for each running task, with a bar, its counts, its rate in bytes and its time in aligned columns, the latest lines of its output in a window (`?lines`), the tasks under it behind guides, ended ones staying marked while their top task runs and folding into a line such as `10 done, 2 failed` when the rows run out, and the summary below (`Task.rows`, one grid, for a `?frame` that adds its own), a top task moving above the region as it ended, with each failed task's output after it; under `plain` a line when a task starts, for each line of its output and when it ends, each naming the task by its path and saying `failed` or `cancelled` in words, then a summary; under `quiet` each failed task's ending line and all its output; under `json` ocaml-console's events, one object a line, with ids unique on the output; the root ends as `f` ends unless `f` ended it, a transient task prints only when it fails, a count below the last starts the rate again, and the `Task` preamble shows the wrapper that shows an Eio cancellation as cancelled. `Matrix_cli_unix.Prompt` asks at the terminal, each prompt with `?color` and `?default`, its question adapted to the terminal's styling, followed by its hint (`[y/N]`, a default) and a space, a default answering an empty line and a run where nobody can answer, and what the program prints there waiting until the answer: `line` reads standard input in canonical mode, `confirm` takes y or n as the POSIX locale reads them and asks again otherwise, `secret` asks on the controlling terminal with the echo off as getpass(3) does, discarding what was typed before, and with `~mask:true` shows a star a character, reading decoded keys, pastes and input-method text, with the terminal's erase and kill characters, Ctrl+W and end-of-file, and erases the stars by rows when the line ends, `choose` picks an item from a menu drawn on the controlling terminal whatever `CI` or `--progress` say (Up and Down or k and j move, Enter picks, Escape gives the default), its answer staying in the scrollback, and `keys` gives the keys typed as a sequence with Ctrl+C, the quit character and Ctrl+Z left to the terminal. A prompt puts the terminal's settings back on every way out, before a stop and when a signal ends the process, and asks again after `fg`; `line` and `secret` take a live region off the screen while they ask, and `keys` leaves it for a menu. A prompt blocks only the thread that asks, so an Eio program asks through `Eio_unix.run_in_systhread`, which keeps its other fibers running. `Matrix_cli.Table.widths` shares a room between columns by their floor, min-content and max-content widths and grow weights, as RFC 1942 and CSS Tables 3 lay tables out: a table whose columns do not grow is as wide as its content, a table given a width grows its columns to fill it, and below min-content the columns go down to their floors, where words break. `Table.place` gives the region of every row and cell, spanning cells included, and `Table.draw` draws the frame with `Matrix_grid.Lines`, so a double edge meets single rules as ╟ and ╢. `Table.grid` lays out and draws a table whose cells hold styled text, a cell being a line of `Ansi.span`s (`Table.cell ?style text` for one style) that wraps and truncates as one text, each part in its style and the ellipsis in the style of the first grapheme it hides, each column aligned left, centered or right and wrapping at words or truncating with an ellipsis; in a narrow room the wrapped columns break words before the truncated ones lose text. `Matrix_cli.Tree` gives the guides before a node's first line (`prefix`) and its other lines (`rails`)
-- `Grid.extent g idx` is the extent of the grapheme that covers a cell, its start index and width, read from that cell alone; `Grid.create_like`, `clear_rect`, `to_text`, `resize_clear`, `set_grapheme`, `clip_region`, `intersects_clip`, `is_protected` and `erase_unprotected` are new
-- `Matrix_grid.draw_spans g ~x ~y spans` draws a line of `Ansi.span`s from a column, each in its style, as `Ansi.sanitize_spans` leaves its text and with a line end drawn as a space, and is the column after it. A line wider than `?width` cells, the room to the grid's right edge by default, is cut with an ellipsis in the style of the first grapheme it hides
-- `Grid.to_ansi ?styling` writes rows at a color depth, with their attributes alone at `` `Mono ``, or as their text alone at `` `Plain ``, so a program prints a grid for the destination it writes to
-- **The styling of a destination (`Ansi.Styling`).** `Ansi.Styling.decide ?color getenv ~tty ~dumb colors` is how much of a style a terminal, a pipe or a file receives: the program's choice first (`` `Always ``, `` `Never ``, or `` `Auto ``, named for a `--color` option by `Styling.choices`), then `NO_COLOR` (colors removed, attributes kept), `FORCE_COLOR` or `CLICOLOR_FORCE` (unless `0` or `false`), `CLICOLOR=0`, and no style on a destination that is not a terminal or on a dumb one. It reads nothing itself: the caller gives the environment as a function and the terminal's colors and dumbness (`Caps.t.colors`, `Caps.t.dumb`), the colors as any type of fewer depths than `Ansi.Color.depth`, such as `Caps.t.colors` with no coercion. `Grid.to_ansi ?styling` and `Screen.Region.create ?styling` take its type, `Ansi.Styling.t`
-- `Grid.to_ansi ~trim:true` ends each row at its last cell that shows something, so a row printed into the scrollback carries no trailing blanks
-- **Rows redrawn below a program's output (`Screen.Region`).** A region is a few rows a program redraws at the bottom of the scrollback while its other output goes above them, on a terminal it does not own. It is drawn from a blank origin row of its own and never moves the cursor above it: a line printed above goes out as ordinary output, a write erases only from the origin down and draws its rows with autowrap off, so a foreign line, a resize or a terminal that rewraps its rows can leave a stale copy of the region's rows and never erase anyone's line. The cursor rests at the start of the origin, or in its second column on a terminal that lifts a cursor resting in the first on a resize (WezTerm, `create ~lifts_resting_cursor`), `moved` has the next write move to a row of its own below a line someone left unended, and on a terminal that wraps eagerly the last column stays empty. Each function returns the bytes of one write: `draw`, `suspend` (the rows erased and the cursor shown for another writer), `close` (the last frame stays whole, its first rows in the scrollback when it is taller than the screen, or none), and `teardown` for a signal handler. A region places the cursor between writes where the program asks, resting on the origin, shown or hidden, or shown on one of its cells (`Region.cursor`). A program that writes the rows itself brackets them with `start` and `finish`, which say whether the write is afresh or the rows show what the last write left; `keep` leaves the rows the last write drew where they are, deleting the origin's row under them, and `clear` erases the screen, from which the region draws afresh
-- **Frames drawn relative to the cursor.** `Screen.render ~relative:true` reaches each run of a frame from the row the cursor is on, by line feeds down, which scroll on the screen's last row where a cursor motion would stop, and CUU up, then the column (CHA), and ends back on that row, so a program that draws below a line of its own, as a region's rows, writes only the cells that changed wherever the terminal has moved that line
-- `Screen.apply_capabilities ~colors ~styling` writes frames and static rows at an `Ansi.Styling.t` for a terminal that shows `colors`: at a color depth with each color reduced to it, at `` `Mono `` with attributes and hyperlinks and no color, and at `` `Plain `` with no SGR and no OSC 8. At `` `Mono `` and `` `Plain `` a picture's half blocks, made of colors, are written as spaces. A kitty picture's placeholders carry the image's id in their foreground, which shows as no color, so at `` `Mono `` they keep it at the terminal's `colors` and the picture shows; at `` `Plain `` it is written as half blocks, so as spaces. Sixels are no SGR and still show over those spaces
-- `Screen.Hit_grid.draw ~src ~dst ~x ~y` paints one hit grid's regions onto another at an offset, its empty cells leaving the destination unchanged
-- `Matrix_text` adds a streaming grapheme segmenter (`Segmenter`), a text layout with wrapping and row queries (`Layout`) over a source indexed per logical line, whose `Source.edit` indexes again only the lines an edit touches and carries the layouts the source keeps, and whose layouts build a line's rows when they are asked, `find_pos`, `find_wrap_pos`, `width_at`, `iter_units`, `iter_word_breaks`, `uchar_width`, the `` `Unicode_wide `` width method, and `grapheme_cluster_break`, the Grapheme_Cluster_Break property of a character (UAX #29)
-- `Pty.wait` reaps a child and returns its status
-- `Tty.keys` reads keys as they are typed with the interrupt, quit and suspend characters still the terminal's, and `Tty.no_echo` turns the echo off and discards typeahead as getpass(3) does
-- `Tty.background fd` says the process's job is in the background of its controlling terminal `fd`, whose writes land among the shell's
-- `Caps.t.dumb` says the terminal performs no control function (`TERM` unset, `dumb` or `unknown`, outside a Windows console), and `Caps.t.eager_wrap` that it moves to the next line as soon as it prints in the last column (`am` without `xenl` in its description), where a program that keeps the cursor on its row writes nothing
-- `Caps.t.lifts_resting_cursor` says the terminal moves a cursor resting in the first column up a row when its width changes, as WezTerm does (its issue 7994), from WezTerm's identity or a `TERM` that names it
+```ocaml
+let () =
+  Matrix.run @@ fun app ->
+  let rec loop count =
+    match Matrix.next app with
+    | Stopped | Event (Key { key = Escape; _ }) -> ()
+    | Event (Key _) ->
+        Matrix.request_redraw app;
+        loop (count + 1)
+    | Frame ->
+        Matrix.draw app (fun grid ->
+            Matrix.Grid.draw_text grid ~x:0 ~y:0
+              ~text:(Printf.sprintf "%d keys" count));
+        loop count
+    | Event _ | Timer _ | Posted _ -> loop count
+  in
+  loop 0
+```
 
-#### Changed
+Because the loop is yours, you can also hand it to another event loop.
+`Matrix.step` runs one turn without waiting for input, and `Matrix.fds` and
+`Matrix.deadline` tell Eio, Lwt or your own loop what to wait for.
+`Matrix.post` sends a message from any thread or domain.
 
-- **The run is a scope, and the application pulls its steps.** `Matrix.run ?input ?output ?env ?stop ?config (fun app -> ...)` takes the terminal for the scope and gives it back on every way out. Inside, `Matrix.next app` returns the next `Event`, `Timer`, `Posted` message, `Frame` or `Stopped`, in an order matrix keeps: one step of each kind that has some, then events, timers and posts until done or one frame interval has passed, then the frame. A frame is drawn with `Matrix.draw app ?primary_required_rows (fun grid -> ...)`, which writes the pending static rows and grows the live region before the function draws, and writes nothing for a frame that did not change. The options are a `Matrix.config` (`?mode`, `?raw_mode`, `?mouse`, `?bracketed_paste`, `?kitty_keyboard`, `?key_releases`, `?fps`, `?explicit_width`, `?min_tui_height`, `?caps`)
-- **Frames on demand.** A frame comes only when asked for with `request_redraw`, on a grid of `fps` frames a second (60 by default) that keeps its phase while frames keep coming, so an animation shows every tick; the first frame after a pause comes at once and starts the grid again, and an animation asks again from each frame. A frame asked for by discrete input (a key pressed, repeated or released, text, a mouse button, the end of a paste, a change of focus) comes early, in the turn that read the input, and leaves the grid where it was: `fps` bounds the frames on the grid, and the loop's own turns bound those discrete input asks for, so input read while a frame is drawn shares the next turn's frame; `Matrix.early app` tells such a frame, in which an animation that counts frames does not move. An idle run waits with no deadline and costs no wakeups
-- **Time.** One monotonic clock, `Matrix.clock ()`, in integer nanoseconds. Deadlines are `Matrix.at` timers in one heap, cancelled with `Matrix.cancel`
-- **Threads.** `Matrix.post app msg` is the one call another thread, domain or fiber makes; the app is typed by its messages (`'msg app`), and every other call raises off the loop's thread. A post off the loop's thread blocks while 65,536 posts are pending, until the loop has taken half of them or the run has ended, so a producer faster than the loop keeps pace with it instead of growing the heap until collecting it starves the loop; a post on the loop's thread, or to a run on a terminal `Matrix_test` emulates, never blocks
-- **Resize.** The terminal's size is applied when the next frame is drawn: a storm of reports is one `Resize` with the usable size, returned just before that frame. Neither frames nor input wait for an answer from the terminal
-- **Signals.** C handlers write the wake pipe. SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGTSTP and SIGABRT are taken only at their default action, and SIGTSTP, SIGWINCH and SIGCONT only by a run on the controlling terminal. A termination signal gives the terminal back and is raised again, so the process ends with its status (143 for SIGTERM); SIGTSTP gives the terminal back and stops the process; a SIGCONT it did not cause sets the terminal again; SIGABRT restores the terminal from its handler. Ctrl+C has no meaning in matrix. `Input.Keystroke.is_interrupt` tells it apart, and the application decides what it does
-- **Giving the terminal away.** `Matrix.release app f` waits for owed replies, resets the modes, leaves the alternate screen, cooks the terminal keeping typeahead for `f`, gives `f` the default SIGTSTP, SIGTERM and SIGHUP and discards SIGINT and SIGQUIT received meanwhile, drops events typed after the step that released, and takes the terminal back with the input left unread discarded. In primary mode it first writes what the frame had planned for the transcript, erases the live region and shows the cursor at the start of its origin, so a program run meanwhile writes below the transcript, and the next frame starts on a row of its own below that output. `Matrix.stop_job` stops the job as the suspend character would
-- **Input is decoded with no clock.** `Input.Decoder` reads one ordered stream of keystrokes (`Input.Keystroke`), mouse reports (`Input.Mouse_report`), paste, focus and replies (`Input.Reply`), and the runtime says when the terminal was silent. A keystroke has one value in every encoding: `Char` is the character typed with Shift consumed (Shift+a is `'A'`), Ctrl+j is the old `Line_feed`, keypad keys are main keys with `keypad`, releases are `Key_release`, Alt does not set Meta, and bytes that are not UTF-8 are `Invalid`. A reply is never typed while its batch of queries is owed, and a control string begins only while a string reply is owed. Calling a decoder from inside its own callback raises `Invalid_argument`
-- **The application's events are `Matrix.event`.** A paste streams as `Paste_start`, `Paste_data` and `Paste_end` with no limit, and `Matrix.abort_paste` ends one; focus is `Focus_in` and `Focus_out`; `Text` carries text a terminal reports without a key; `Reply` carries the replies to `Matrix.query`
-- **Capabilities are derived.** `Terminal.Caps.derive` is a pure function of the environment, read once, and the answers so far, by one precedence: user policy, cited corrections, the answer of the terminal doing the work, identity, guesses. A late answer can take back a guess, and the runtime then changes the modes by their difference. Identity comes from the environment only when the terminal is directly attached; inside tmux, questions go to tmux itself, its facts come from its version when it is silent, and only questions about the outer terminal are wrapped, once passthrough has answered. `KITTY_WINDOW_ID` does not imply SIXEL, a color scheme report does not imply mode 2031, and SIXEL and the kitty protocols follow the terminal's answers on Windows as everywhere else
-- **The description of `TERM` is a guess.** `Caps.env ?terminfo` takes the description the terminfo database has for `TERM`, which `run`'s default environment reads with `Tty.terminfo`. It only ever adds a fact, below every answer and identity: direct color from `RGB`, `Tc` or `setrgbf` with `setrgbb`, 256 colors from `colors`, bracketed paste from `BE`, focus reports from `fe`, synchronized output from a `Sync` that is mode 2026, and an eager wrap from `am` without `xenl`
-- **Input modes.** The startup probe sends S7C1T first, so no reply comes with 8-bit controls. Focus (1004), color scheme (2031) and resize (2048) reports are set without asking. metaSendsEscape (1036) is set where the terminal has it reset, and reset on exit. The kitty flags are pushed on the screen the run draws on once the terminal answers. A batch of queries stays owed until its DA1, however late, or for max(5 s, 4 RTT) if the terminal never answers, while the runtime waits for an answer at most max(500 ms, 4 RTT), and the ESC and sequence waits scale with the round trip
-- **Width methods.** A terminal that answers DECRQM 2027 with 0 (not recognized) or not at all is measured by character (`Wcwidth`) unless its identity says it places grapheme clusters; one that answers reset (2) is measured as `Unicode`, and the runtime sets the mode for the run and resets it on exit, so a terminal that had it set keeps it. `Terminal.set_unicode_width` is `Terminal.enable_grapheme_mode`. With `explicit_width` the screen measures with wcwidth, as the terminal is told to. The runtime sets the terminal's width method and the screen's together whenever the capabilities change, and repaints
-- **Unicode 18.0.** `matrix.text`'s tables and its grapheme segmenter follow Unicode 18.0.0, so `a्ष` is one grapheme. Under every method, text-default pictographs such as ❤ U+2764 and ⚠ U+26A0 take one cell (VS16 still widens an emoji to two) and Hangul conjoining vowels and finals take none. Under `Unicode`, a conjunct takes its first consonant's cell in every script, an emoji modifier sequence on a text-default base (☝🏽) takes two, and a spacing mark that starts a cluster takes none. Under `Wcwidth` a unit is a scalar of positive width with the zero-width scalars after it, as a terminal measuring with wcwidth places them
-- **Text layout.** `Matrix_text.Layout` hangs the blanks at the end of a row that wraps, as CSS Text 3 hangs white space at the end of a pre-wrap line, so `a b c d e` at 5 cells is `a b c` / `d e`. Lines are truncated at a width of 0 or less, and a tab width below 1 raises `Invalid_argument`
-- **`matrix.glyph` is split.** Text semantics are `matrix.text` (`Matrix_text`) and cell storage is `matrix.grid`; the grid stores its graphemes and hyperlinks itself, and all screen buffers share one store
-- **The grid's cells.** `Grid` reads and writes its cell planes with direct loads and stores, so a full repaint takes a third of the time it took. Cell accessors check their index and raise `Invalid_argument`. Compositing is chosen per call: `draw_region` blends, and `blit_region` copies colors as they are, where it blended a translucent source. `fill_rect` with a transparent color changes nothing, where it cleared the text; `clear_rect` clears. A drawn space erases the text under it whatever its background, the blank a write leaves of a grapheme it cuts takes the written background, `draw_text` skips standalone zero-width characters, `draw_box` rejects a border character wider than a cell, and `Grid.create` raises above `Grid.max_width`. `Grid.active_height` counts a row that shows only a background, an attribute or a hyperlink
-- **Colors at the terminal's depth.** Colors are written at the depth the terminal has (`Color.to_depth`), and a style's emitters take `?depth`. An RGB color reduced to 256 colors becomes the nearest of entries 16 to 255, whose colors every such terminal shares, with a tie going to the higher entry, as in xterm: `rgb(255,0,0)` is `38;5;196` where it was `38;5;9`
-- **The parser reports syntax.** `Ansi.Parser` gives text, controls, escape and control sequences, and the opening, data and close of control strings, and leaves their meaning to its caller. UTF-8 C1 code points are dropped, a string ended by CAN, SUB, ESC or the end of input is aborted, 0 is the default for counts and positions, and a parameter with sub-parameters that SGR does not define has no effect. `Ansi.strip` is built on the parser, so it removes whole escape sequences, DEL and C1
-- **`Ansi.render` writes a line of spans.** It takes an `Ansi.span list` and writes its text as `Ansi.sanitize_spans` leaves it, so a span's text shows as text, only its style colors it, and a character cut between two spans stays whole
-- **Prefixed module names.** The sublibraries install `Matrix_grid`, `Matrix_screen`, `Matrix_input`, `Matrix_text`, `Matrix_terminal`, `Matrix_terminfo` and `Matrix_image`, so they cannot collide with other packages' top-level modules; `Ansi`, `Vte`, `Pty` and `Tty` keep bare names. `Matrix` re-exports each sublibrary the runtime links under its short name: `Ansi`, `Grid`, `Input`, `Screen`, `Terminal`, `Terminfo`, `Text` and `Tty`
-- **Terminal descriptions (`matrix.terminfo`).** `Matrix_terminfo.of_string` reads a compiled entry of the terminfo database in both of term(5)'s formats, the legacy one (0432) and ncurses' 32-bit one (01036), with the extended section of user-defined capabilities (`RGB`, `BE`, `Smulx`…) and their names. `flag`, `number` and `string` read any capability by its name, and `flags`, `numbers` and `strings` list them. `expand` evaluates parameterized strings as ncurses' tparm does, and `pieces` cuts a string at its `$<…>` delays. The 0.1.0 reader rejected every 01036 entry (`xterm-256color`), lost every string after the first absent one, ignored `%i` and read no extended capability
-- **The terminal core links no unix.** `matrix.ansi`, `text`, `grid`, `input`, `screen`, `image`, `charts`, `vte` and `terminal` link no unix, which a test checks, so a unikernel can use them; the screen reads no clock, and an application that shows frame timing gives it to `Matrix.Debug_overlay` itself
-- **Primary mode draws a region (`Screen.Region`).** The live region is drawn below a blank row of its own, its origin, by relative motions from the cursor's row, so a frame never erases a row above the origin, whatever the shell, another process or the terminal's rewraps did to the rows, and no frame waits for a cursor report. The live region has the rows the application states (`min_tui_height`, `primary_required_rows`), at most one row less than the terminal. An application that states neither has, as before, the rows from the cursor's row down to the terminal's last row: the first frame has one row and asks for one cursor position report, and the live region grows when the answer comes; it asks again after a resize, a release or a SIGCONT, and an input that cannot answer leaves it one row. Static rows go above it in the write of the next frame and take their rows from it down to `min_tui_height`, or none with `preserve_live_region:true`. The cursor is hidden between frames, resting on the origin, unless the application shows it, and then rests on the cell it asked for. On WezTerm, which moves a cursor resting in the first column up a row on every width change (issue 7994), the cursor rests in the second column. With the mouse on, a cursor report after each frame that may have moved the origin says where mouse rows count from. No scrolling margins (DECSTBM) are set or reset in primary mode. Breaking: a static row is a line the terminal wraps as any output, where it was cut at the right margin, and a terminal that rewraps its lines on a resize rewraps it; the origin's row stays blank above the live region while the run lasts; and when the run ends its last frame stays on the screen, with the cursor below it, where the live region was erased: `Matrix.keep_frame app false` erases it
-- **The VTE.** `Vte.feed`, `feed_string` and `resize` return the replies as `Input.Reply.t list`, `[]` with no allocation when there are none. Rows run from the screen, `0` to `rows - 1`, up into the scrollback, `-1` the newest line; `Vte.text t y` is a row's text and `Vte.blit_row` copies its cells, and `Vte.blit_view` draws the view some lines up. `Vte.modes` holds the modes. `Vte.cursor_pos` never reports column `cols`, which it did while a wrap was pending; `Vte.last_column` tells that state. A resize keeps the text, SUB shows U+2E2E, national character sets need `CSI ? 42 h`, the rows a scroll brings in take the pen's background, LF moves down only, and BS is pure movement
-- **`matrix.screen`.** The cursor is one zero-based value (`Screen.cursor`, `Screen.set_cursor`), `Screen.build` and `add_hit_region` return `unit`, and the post-process registry, the runtime metrics and the mouse mode go. Rendering is transactional: a failed write leaves the presented buffer and hit grid as they were. `Screen.resize` leaves every buffer blank and makes the next render full, where it kept the grid's contents. The render and present paths allocate nothing at steady state, and each frame reaches the terminal in a single write
-- `Matrix.dump_frame` writes the frame being drawn, as ANSI text and beside it as plain text (`.txt`), and raises `Invalid_argument` outside the function given to `draw`
-- `Screen.Hit_grid` fills its cells with direct stores: a wheel event in a 250x70 Mosaic application costs a fifth of what it did
-- `matrix.image` is a library of its own (`Matrix_image`); its string constructors are one `text`, and `draw` takes the image before the grid. `with_hit_rect` clips its rectangle to the image
-- **Charts are figures (`matrix.charts`, rewritten).** A figure is an immutable value: marks (`line`, `area`, `dot`, `rect`, `bar_y`, `bar_x`, `raster`, `text`, `arrow`, `spark`, and `hline`, `vline`, `candles`, `histogram`, `circle` built on them) read the program's rows through accessors, as today's `~x:fst ~y:snd`, and are combined with `layer`, `title`, `name`, `scale`, `rename`, `attrs` and `margins`. Roles read scales by name (`"x"`, `"y"`, `"color"`), fitted on the union of their marks' values, rounded outward and widened to zero by bars and areas; `Scale.linear`, `log`, `time` and `band` specify one, and a second y axis is a renamed scale. Axes and legends follow from the scales, and `axis` and `legend` replace them. `layout` places a figure in a region and answers pointer questions (`Layout.value`, `position`, `hit`, `zoom`, `pan`); `draw` writes it into a grid at an origin. Ticks come from a scored search with density in cells and never leave the domain; labels share their decimals and read against an offset or factor note beyond seven digits; time scales tick and label at calendar boundaries. A value lies in the same cell at every resolution (`` `Cell ``, `` `Half ``, `` `Quadrant ``, `` `Sextant ``, `` `Braille ``, `` `Octant ``, eighths for bars). A hit names the mark and the row of the program's array that inks the cell, for every mark. A program keeps its `View.t` and its data, so a sparkline is a `float list` in the model drawn with `spark`. At 256 colors a color scale keeps its lightness in order, and at 16 or fewer it draws shades. 58 public values replace 130
-- `matrix.pty` is POSIX-only. `Pty.spawn` raises the child's error when the program cannot run or `cwd` cannot be entered. The child starts with every signal's default action, none blocked, and only its standard descriptors; both descriptors of `open_pty` are close-on-exec; and on macOS, OpenBSD and NetBSD a child's output is kept until it is read. `Pty.close ~wait:false` keeps the child in the handle until `Pty.wait` reaps it. One thread may read from a handle while another writes, resizes the terminal or signals the child, where any two threads needed a lock
-- `Terminal.reset_state` puts back only the modes the handle changed, where it reset every protocol mode, and always shows the cursor and resets the SGR attributes
-- Raw mode clears `IEXTEN`, so the kernel stops swallowing `^O` and `^V`, and leaves `O_NONBLOCK` as it was; the run waits on `Matrix.fds`
-- The runtime no longer installs a handler for uncaught exceptions: the run gives the terminal back and raises the exception again, and the application decides whether to record backtraces
-- **A run writes its frames at its styling.** `Matrix.config ?color` (`` `Auto `` by default, `` `Always `` or `` `Never ``, the choices of a `--color` option) and the run's environment decide it by `Ansi.Styling.decide`. `NO_COLOR` or `CLICOLOR=0` writes attributes, such as bold and reverse, and no color, and kitty pictures still show, their placeholders' foreground being the image's id; `` `Never `` writes no style and no hyperlink; an output that is not a terminal, or a dumb terminal (`TERM` unset, `dumb` or `unknown`), gets no style unless `FORCE_COLOR`, `CLICOLOR_FORCE` or `` `Always `` asks for colors; and a terminal of 16 colors gets 16 (SGR 30-37 and 90-97), where it got 256. The variables are read with the rest of the run's environment (`Caps.variable`), so a run on an emulated terminal reads its session's `NO_COLOR` and never the process's. A program that wants its colors whatever its user set passes `~color:`Always`
+Frames now come only when you ask for one with `Matrix.request_redraw`, so an
+idle program doesn't wake up at all. 0.1 drew 30 frames a second whether
+anything changed or not. A key's frame is drawn in the same turn that read the
+key: in our benchmark, the median time from a key press to the screen is under
+0.4 ms.
+
+#### Also new
+
+- `matrix.test` runs a program's own loop on an emulated terminal, with a
+  clock that only the test moves. Send input, resize and advance time, then
+  read the screen with `Matrix_test.Screen`.
+- Inline mode no longer erases the shell's output when the terminal is
+  resized, when it runs under tmux, or when another process writes. In our
+  tests on five terminal emulators, it lost no lines.
+- A key decodes to the same value whichever encoding the terminal uses. Pastes
+  arrive in pieces with no size limit, and the terminal's answers to queries no
+  longer show up as key presses.
+- `Matrix_grid.draw_picture` shows RGBA images, sent as kitty graphics, sixels
+  or half blocks, whichever the terminal supports. `Matrix_grid.Lines` joins
+  box-drawing lines where they meet.
+- `matrix.cli` and `matrix.cli.unix` are for command-line programs that don't
+  take over the screen: progress shown below the program's output, task trees
+  with progress bars, prompts and tables. They follow `--color`, `NO_COLOR`,
+  pipes and CI.
+- `Matrix.query_palette` reads the user's palette, so you can pick colors that
+  fit their theme.
+- `Matrix.run` accepts the descriptors and environment of any terminal, and
+  `Matrix.on_device` runs one program per remote session, for example one per
+  SSH connection.
+- `Matrix.release` lends the terminal to an editor or a shell and takes it
+  back, and `Matrix.stop_job` suspends the program as Ctrl+Z does. The
+  `Terminal` module adds clipboard, notification and bell commands, and
+  `Matrix.set_mouse` switches mouse tracking while the program runs.
+- We rewrote `matrix.charts` around figures. Marks such as `line`, `area`,
+  `bar_y` and `spark` share named scales, and axes and legends follow from
+  those scales. A figure's layout also answers zoom, pan and hit tests.
+- Set `MATRIX_DEBUG=overlay` to see frame timings, or `MATRIX_DEBUG=frames=DIR`
+  to save every frame, in any Matrix or Mosaic program, without rebuilding it.
+- `matrix.text` follows Unicode 18.0 and lays out wrapped text, and
+  `Ansi.sanitize` makes untrusted text safe to print. `Vte.feed` returns the
+  replies the emulated terminal sends back.
+
+#### Changes the compiler won't catch
+
+- Matrix no longer runs on Windows. `Matrix.run`, and so `Mosaic.run`, raises
+  `Failure` there: the new runtime waits on POSIX descriptors and has no
+  Windows path yet. `matrix.pty` is POSIX-only too, because its ConPTY backend
+  was unsound.
+- Frames are drawn only on request. Call `Matrix.request_redraw` whenever your
+  view changes, and again from each `Frame` while something animates. A
+  program that relied on 0.1's 30 frames a second will stop updating its
+  screen.
+- Ctrl+C is an ordinary key, and Matrix no longer quits on it. To quit, test
+  `Input.Keystroke.is_interrupt` and return from the run. Mosaic programs still
+  quit on Ctrl+C by default.
+- SIGINT, SIGTERM, SIGHUP and SIGQUIT restore the terminal and then end the
+  process with the signal's status, so `run` doesn't return. 0.1 exited with a
+  wrong status and replaced handlers the program had installed. Now a handler
+  you install first wins.
+- The cursor starts hidden in both modes. Show it with
+  `Matrix.set_cursor app ~visible:true`.
+- Output follows the user's color settings. `NO_COLOR` drops colors, a
+  16-color terminal gets 16 colors and a pipe gets no styling at all. Pass
+  ``~color:`Always`` to `Matrix.config` to keep colors whatever the user set.
+- In inline mode, the last frame stays on screen at exit.
+  `Matrix.keep_frame app false` erases it.
+- Pictographs such as ❤ and ⚠ take one cell unless a VS16 follows them, as
+  terminals draw them. Matrix counted them as two, which shifted the rest of
+  the row.
+- Drawing a space now erases the text under it, `blit_region` copies colors as
+  they are, and a transparent `fill_rect` changes nothing. To tint cells, draw
+  a translucent `fill_rect`.
+- Matrix installs no handler for uncaught exceptions. The run restores the
+  terminal and raises the exception again.
+
+`Pty.spawn`, `Screen.resize`, `Terminal.reset_state` and `Vte.cursor_pos` also
+behave differently in smaller ways; the [guide lists
+them](doc/migrating-from-0.1.md#matrix-behaviour-changes).
+
+#### Breaking changes
+
+The [migration guide](doc/migrating-from-0.1.md#matrix) has the full lists.
+
+- The callback runtime is gone. `Matrix.create`, `attach`, the `on_*`
+  callbacks, `close`, `stop`, `suspend` and `resume` give way to the loop shown
+  above, `Matrix.Stop` and `Matrix.release`. The old runtime ran application
+  code from inside Matrix's loop, and its call order was promised only by a
+  comment. See [the runtime](doc/migrating-from-0.1.md#matrix-runtime).
+- The options of `create` moved into `Matrix.config`, given as `run ~config`.
+- Input events are `Matrix.event`. `Input.Key` is now `Input.Keystroke`,
+  `Input.Mouse` is `Input.Mouse_report`, and `Input.Parser` is
+  `Input.Decoder`. A paste arrives as `Paste_start`, `Paste_data` and
+  `Paste_end`: 0.1 cut a paste off after 5 seconds of silence and typed the
+  rest as keys. `Input.Keymap` moved to Mosaic as `Mosaic.Shortcut`.
+- Library modules have a prefix: `Grid` is `Matrix_grid`, `Screen` is
+  `Matrix_screen`, and so on. The short names clashed with any other library,
+  or file of your own, that had a module with the same name. Inside `Matrix`,
+  the short names still work.
+- The `matrix-eio` package is gone. Any event loop can now wait on the run's
+  descriptors, and Mosaic programs use `Mosaic_eio.run`.
+- `matrix.glyph` is gone. Measure and segment text with `matrix.text`.
+- `Ansi.Color.t` is abstract, so that a palette color stays a palette color all
+  the way to the terminal. Build colors with `Color.of_rgb`, `Color.indexed` or
+  named values such as `Color.red`.
+- `Ansi.render` takes spans built with `Ansi.span`. It now sanitizes the text,
+  so a string from elsewhere can't move the cursor or restyle what follows.
+- `Terminal.set_raw`, `restore` and `size` moved to `Tty`, along with
+  everything else that calls the operating system, so `matrix.terminal` no
+  longer links `unix`.
+- `Matrix.Image` is `Matrix_image`, and `Image.render grid img` is
+  `Matrix_image.draw img grid`.
+- `Matrix.static_write` takes a grid where it took a string and a row count
+  that you had to get right yourself.
+- The debug overlay and frame dumps are no longer options of the run. Use
+  `MATRIX_DEBUG`, or `Matrix.Debug_overlay` and `Matrix.dump_frame`.
+- `Matrix_grid.create` takes no pool and no blending flag, and each drawing
+  call says whether it blends. The screen's cursor setters became one
+  `Matrix_screen.set_cursor`, and `Screen.post_process` is gone.
+- `Vte.feed` returns the terminal's replies, which used to pile up in a queue
+  that nothing drained. `Vte.create` takes a `?palette` instead of default
+  colors.
+- `matrix.charts` has the new API described above. A sparkline is a
+  `float list` drawn with `spark`.
 
 #### Fixed
 
-- The runtime stops at the end of its input instead of spinning on a descriptor that was hung up
-- A mouse report on the first row of the primary live region counts as its row 0; it mapped to -1, above the region
-- Primary mode erases no row of the shell's or of the transcript: a resize, a terminal that rewraps its rows (tmux, VTE), a line another process writes, an input that is not a terminal (`prog < file`), a stop and continue from elsewhere, and WezTerm's lifted cursor each overwrote or erased transcript rows, which the cursor reports and the absolute rows the runtime drew at could not follow
-- Terminal setup rolls back when probing or protocol negotiation fails, so no path leaves the terminal raw
-- The kitty keyboard stack stays balanced when the flags change, and teardown resets only the title and cursor appearance the application set; the cursor's style is written on the first frame and after the terminal is taken back
-- Stray cursor-position replies to the probe no longer change `explicit_width` or `scaled_text` for the session, and the environment is no longer read behind the caller's back (a `$TMUX` set in the developer's shell wrapped the probe)
-- Long replies are never typed whatever their length or split, modified F1 to F4, SS3 with modifiers and Alt with an introducer decode, SGR motion reads its button from the report, and Ctrl with punctuation, the Cygwin and libuv function keys and the rxvt keys decode in every split
-- `Screen` keeps apart two cells the terminal would read as one grapheme, such as a letter and a lone emoji modifier, which shifted the rest of the row, and paints every cell of a frame after a resize
-- A wide grapheme's cells in a `Grid` stay together across fills, clipping, resizes and ANSI export; a translucent background over a wide character blends over its start cell's background for both halves; a glyph in the terminal's default colors covers its destination; and clipped draws no longer leak grapheme ids
-- Grapheme segmentation keeps combining marks on ASCII bases, and wrapping keeps periods inside their token
-- The VTE keeps a grapheme whole across an SGR, and across any control function that neither sets the cursor position nor changes cells: a style change after a letter, inside a ZWJ sequence or a conjunct, or between two regional indicators cut the grapheme in two cells or joined a mark to the wrong cell, and U+2764, an SGR and VS16 stayed one cell wide where `Matrix_text` measures two. The grapheme keeps the pen of its first character, and the new pen applies from the next one
-- The VTE keeps the cursor style DECSCUSR sets (`Vte.cursor_style`), answers DECRQM for the modes it keeps and OSC 10, 11, 12 and 4 color queries from its palette, and fixes the scrollback's order, wide graphemes at the right margin, wrapping in insert mode, DECRC's restore of the style, DECSET and DECRST with several parameters, reverse index, and erasing the scrollback with ED 3
-- Charts draw no tick outside the shown window and widen the margins for end labels, which were cut or labelled the window's edge; put tick labels a padding away from their axis; draw the title above the plot; drop a value not above 0 on a log scale, which was drawn at 1e-10; keep zoomed windows non-empty; and hit-test areas, histograms, rules and rects
-
-#### Removed
-
-- The `matrix-eio` package: an Eio program waits for the run's descriptors with Eio itself, as `Mosaic_eio.run` does
-- The `matrix.glyph` library, the `Input.Event`, `Input.Parser` and `Input.Keymap` modules, the Windows ConPTY backend of `matrix.pty`, and `Matrix.create`, `attach` and the runtime's other entry points, with the replacements listed under "Migrating from 0.1.0"
+- Ctrl+V and Ctrl+O didn't reach the application.
+- The runtime used a full CPU core once its input closed.
+- A failed setup left the terminal in raw mode.
+- A mouse report on the first row of the inline region came in as row -1.
+- A combining mark after an ASCII letter was split from the letter.
 
 ### Toffee
 
-#### Added
+Toffee's layouts match Chromium's more often. We ported fixes from Taffy and
+checked others against Chromium, for percentages, aspect ratios, absolute
+positioning, baselines and scroll extents. A `row-reverse` scroll container
+can now scroll, for one.
 
-- **Replaced elements.** `Style.set_item_is_replaced` makes a leaf a replaced element, such as an image, whose measure function gives its natural size, as Taffy's `item_is_replaced` does. A block container keeps its natural width instead of stretching it to its own (CSS 2 §10.3.4, Taffy #1002), and a grid's `normal` alignment sizes it as `Start` (CSS Grid §6.2, Taffy #1281); a flex container stretches it as any item. Its measure function is given the size the layout fixes, or else its style's, in a measurement and in a final layout alike (Taffy #1157), so a width sets its height through its ratio and the two agree: an image of 100 by 50 that is 60 wide is 30 tall
-- `retain_children tree parent keep` keeps the children at the indices for which `keep` holds and removes the others in one pass, in time linear in the number of children and with no allocation per child, where removing them one by one with `remove_child` takes time quadratic in it
-- `Style.set_box_sizing` sets a style's box sizing, the one field `Style.make` takes that had no setter
-- `Length_percentage.resolve_rect_or_zero` and `Length_percentage_auto.resolve_rect_or_zero` resolve a rect of padding, border or margin side by side, as `resolve_or_zero` resolves one, and a rect of zero lengths without allocating
+Relayout is also much cheaper, which matters for Mosaic's long transcripts.
+Each node caches up to 24 measurements, where 0.1 had nine fixed slots that
+kept evicting each other. With nine, appending a line to a 20,000-line log
+measured text 500,000 times; with 24, it measures 20,000 times. Rounding skips the subtrees that didn't
+move, laying out an unchanged tree returns at once, and reading a layout
+allocates nothing.
 
-#### Changed
+#### Changes the compiler won't catch
 
-- The sublibraries' modules are prefixed: `Toffee_style`, `Toffee_tree`, `Toffee_geometry`, `Toffee_compute` and `Toffee_compute_block`, `_flexbox`, `_grid` and `_helpers`. The library names and `Toffee.Style` and `Toffee.Geometry` stay
-- Layout rounds only the subtrees whose layout or position changed: `Toffee_tree.ROUND_TREE` requires `is_rounded`, and its `set_final_layout` takes `~x` and `~y`, the parent's unrounded absolute position. A node's layout value is replaced only when it or its subtree changed
-- A subtree moved by whole cells keeps its rounded layouts when every value its rounding met was whole, as a terminal's are: rounding returned its unrounded values and would return them again, so a column's children below a removed line are not rounded again and keep their layout values. `ROUND_TREE.is_rounded` allows it
-- A rounded location is the node's rounded position in the root's coordinates minus its parent's, as in Taffy, matching how sizes were already rounded: the sum of the locations from the root is the box's snapped edge, and boxes at a fractional offset tile without gaps. A box under a parent at a fractional position may move by one cell
-- The layout cache is Taffy's: a node keeps its final layout and up to 24 measurements (Taffy keeps nine, fewer than the questions a flex column asks each child in one layout), each found by its full key (the requested axis, the parent's width, the parent's height when the node's style resolves a percentage or calc height, minimum height or maximum height against it, and per axis the known dimension or else the available space) and evicted by second chance; the sizing mode and margin collapsibility are recorded per cache. Relayouts no longer re-measure nodes measured at more widths than the old fixed slots held. A node keeps its results when only its parent's height changes and nothing in its style reads it, so an append to a log lays out only the chunk of lines it changed `Cache_tree.cache_get` and `cache_store` take the `Layout_input.t`, and `Cache.t` is abstract
-- Concrete sizes, rectangles and points are `Geometry.Sizef.t`, `Rectf.t` and `Pointf.t`, records of floats stored flat, so building one allocates a single block and reading one allocates nothing. `Layout.t`'s fields and a measure function's result have these types; reading a layout (`layout.size.width`) is unchanged. `Size`, `Rect` and `Point` keep their polymorphic types for optional and style values, and their operations on floats moved to the float modules
+- A flex or grid root without a width fills the available width, less its
+  margins, as a block root already did and as browsers do. Before, its
+  children had no width to resolve percentages against. To size it to its
+  content as before, give it a width, or lay it out in
+  `Available_space.max_content`.
+- A root with margins sits at its margins instead of at (0, 0).
+- Locations are rounded from absolute positions, as in Taffy and browsers, so
+  boxes at fractional offsets tile without gaps or overlaps. A box under a
+  parent at a fractional position may move by one cell.
+- A measure function receives the size of the content box, clamped by the
+  leaf's minimum and maximum sizes, where it received the border box. A padded
+  text was measured at one height and laid out at another, so the line after
+  it drew over it.
+- Percentages inside a flex item whose size comes from its content resolve as
+  if that size were unknown, as browsers do.
+
+#### Breaking changes
+
+- Geometry is unboxed. Measure functions return a `Sizef.t`, and the fields of
+  `Layout.t` are `Sizef.t`, `Pointf.t` and `Rectf.t`, records of plain floats.
+  Reading a layout used to allocate a box for every float. The float
+  operations moved into those modules too, and `Size.max_concrete` is
+  `Sizef.max`.
+- `Layout.content_size` is now `Layout.scrollable_overflow`, which can reach
+  before the origin, as CSS defines it. For scroll extents, use
+  `Layout.scroll_width` and `Layout.scroll_height`.
+- Library modules have a prefix (`Toffee_style`, `Toffee_tree` and so on), for
+  the same reason as Matrix's. `Toffee.Style` and `Toffee.Geometry` still work.
+- `Size.equal_option` and `Available_space.maybe_set` are now
+  `Size.equal_with` and `Available_space.set_or_self`.
+- If you write your own layout algorithm or tree, the cache takes the node's
+  `Layout_input.t` and its style, `Layout_input.t` has a new field, outputs
+  carry a `Scrollable_overflow.t`, and `ROUND_TREE` adds `is_rounded`. See
+  [Toffee](doc/migrating-from-0.1.md#toffee) in the guide.
 
 #### Fixed
 
-- Block layout follows Taffy's fixes: in-flow children get an indefinite (max-content) available height, so a grid's auto rows of scroll containers no longer collapse; children's percentage heights, min-heights and vertical insets resolve against the container's definite height, and a box measured for its content size ignores its own height as their basis; percentage widths, margins and padding resolve against the containing block's content box width; and an automatic height follows from `aspect-ratio` and a stretched width
-- Flexbox measures an item's intrinsic contribution under the same sizing mode as its other measurements, applying the item's own preferred size on top, and a column container clamps it by the flex basis alone
-- Flexbox clamps a known cross size by the item's own min/max when measuring, so a percent-width item under `max-width` is no longer measured at a width the final layout never gives it (which let the next sibling paint over it)
-- A measurement of a node whose height, minimum height or maximum height is a percentage is cached for the parent height it was taken against. A grid measures its items against its inner height before and after it knows it, and an item took the size of the other measurement: with `min-height: 85%` and one cell of content it came out as tall as the root
-- A block's measurement stores none of its children's layouts, which a layout of the block taken from its cache then kept: a text measured at its min-content width stayed wrapped there
-- A measurement that lays out descendants (a block's in-flow children, the items a flex row or a grid aligns on their baselines) makes the node's cached final layout compute again, so a relayout no longer keeps the measurement's layouts below the node (`Cache.forget_final_layout`)
-- A leaf's measurement gives its measure function the known size of its content box, clamped by its minimum and maximum sizes, as its final layout gives that size as available space, and applies the aspect ratio as the final layout does: a text with padding in a column was measured wrapping at its border box's width, 2 lines short of what it lays out
-
-#### Removed
-
-- The compatibility aliases `Size.equal_option` and `Available_space.maybe_set`
-
-### Migrating from 0.1.0
-
-Each item names an API of 0.1.0 that is removed or renamed, whose call no
-longer compiles, or whose call compiles and now means more, and what replaces
-it or keeps its meaning. The changes in behavior are described under Changed
-above.
-
-#### Packages and libraries
-
-- The `tree-sitter` package (`tree-sitter`, `tree-sitter.json`, `tree-sitter.ocaml`) → the bindings at <https://github.com/invariant-hq/ocaml-tree-sitter>, which keep the library names; feed their captures to `Syntax_highlight.of_triples` or run them in a `Code.Highlighter` (`doc/highlighting.md`)
-- The `matrix-eio` package and `Matrix_eio.create` → `Mosaic_eio.run` (library `mosaic.eio`) for a Mosaic program; a Matrix program waits for `Matrix.fds` and `Matrix.deadline` with Eio and calls `Matrix.step`
-- The `matrix.glyph` library (`Glyph`, `Matrix.Glyph`) → `matrix.text` (`Matrix_text`, also `Matrix.Text`) for measuring and segmenting text; the grid stores graphemes itself, so `Glyph.t` and `Glyph.Pool` have no replacement
-- `Matrix.Image` → `Matrix_image` in the library `matrix.image`
-- The main modules of the sublibraries are prefixed: `Grid` → `Matrix_grid`, `Screen` → `Matrix_screen`, `Input` → `Matrix_input`, `Terminal` → `Matrix_terminal`, `Terminfo` → `Matrix_terminfo`, `Style` → `Toffee_style`, `Tree` → `Toffee_tree`, `Geometry` → `Toffee_geometry`, `Compute` → `Toffee_compute`, and `Compute_block`, `Compute_flexbox`, `Compute_grid` and `Compute_helpers` → `Toffee_compute_block`, `Toffee_compute_flexbox`, `Toffee_compute_grid` and `Toffee_compute_helpers`. Inside `Matrix`, the short names `Grid`, `Screen`, `Input`, `Terminal` and `Terminfo` still work
-
-#### `matrix`
-
-- `Matrix.create`, `Matrix.attach` and `Matrix.run ~on_render ...` → `Matrix.run ?input ?output ?env ?stop ?config (fun app -> ...)`, which pulls steps with `Matrix.next`. `on_input` is an `Event e` step, `on_resize` an `Event (Resize (cols, rows))` step, `on_render` a `Frame` step that calls `Matrix.draw`, and `on_frame ~dt` reads `Matrix.frame_dt app`
-- The options of `create` and `attach` → `Matrix.config ?mode ?raw_mode ?mouse ?bracketed_paste ?kitty_keyboard ?key_releases ?fps ?explicit_width ?min_tui_height ?caps ?color ()`, given as `run ~config`. `?target_fps` → `~fps`; `?mouse_enabled:false` → `~mouse:`Off``, and `?mouse` takes a mode where it took an option; `?initial_caps` → `~caps`; `?output` → `run ~output:fd`; `?cursor_visible:true` → `Matrix.set_cursor app ~visible:true` before the first frame
-- `create`'s `?focus_reporting` (focus reports are always on), `?respect_alpha` (each draw takes `?blend`), `?exit_on_ctrl_c` (test `Input.Keystroke.is_interrupt` on a `Key` event and return from the run), `?signal_handlers` and `Matrix.install_signal_handlers` (the run takes the signals left at their default action), `?resize_debounce` and `?start_idle` → no replacement. `?input_timeout` → a `Matrix.at` timer, cancelled with `Matrix.cancel`
-- The I/O arguments of `attach` (`write_output`, `now`, `wake`, `read_events`, `terminal_size`, `set_raw_mode`, `query_cursor_position`, `cleanup` and the rest) → `Matrix.run ?input ?output ?env` on any terminal's descriptors, or `Matrix.step`, `fds` and `deadline` for a program with its own event loop, or `Matrix_test` in tests
-- `type Matrix.app` → `type 'msg Matrix.app`; another thread calls only `Matrix.post`
-- `Matrix.grid`, `Matrix.prepare`, `Matrix.submit` and `run ?primary_required_rows` → `Matrix.draw app ?primary_required_rows (fun grid -> ...)` on a `Frame` step
-- `Matrix.close` and `Matrix.stop` → return from the function given to `run`, or `Matrix.Stop.request` on the `Matrix.Stop.t` given as `run ~stop`. `Matrix.running` → a step is `Stopped` once the run is over
-- `Matrix.start`, `pause`, `request_live` and `drop_live` → call `Matrix.request_redraw` from each `Frame` while animating, and stop calling it to pause
-- `Matrix.suspend` and `Matrix.resume` → `Matrix.release app f`; `Matrix.stop_job` suspends the job as Ctrl+Z does
-- `?debug_overlay`, `?debug_overlay_corner`, `?debug_overlay_capacity`, `Matrix.set_debug_overlay`, `toggle_debug_overlay` and the type `debug_overlay_corner` → `MATRIX_DEBUG=overlay` in the environment, or `Matrix.Debug_overlay.create ?corner ?capacity ()`, with `record` and `draw` inside `Matrix.draw`, where the application keeps its own on and off
-- `?frame_dump_every`, `?frame_dump_dir`, `?frame_dump_pattern`, `?frame_dump_hits` and `Matrix.configure_frame_dump` → `MATRIX_DEBUG=frames=DIR` in the environment for every frame, or the application counts frames and calls `Matrix.dump_frame ?hits ?dir ?pattern app` inside `Matrix.draw`
-- `Matrix.static_write app ~rows s` → `Matrix.static_write ?preserve_live_region ?rows app grid`, with the rows drawn into a `Grid.t`
-- `Matrix.set_cursor_color app ~r ~g ~b ~a` → `Matrix.set_cursor_color app ~r ~g ~b`
-- `kitty_keyboard`'s `` `Disabled `` → `` `Off ``; `` `Enabled flags `` → `` `Auto ``, which pushes the protocol once the terminal answers
-
-#### `matrix.input`
-
-- `Input` holds `Keystroke`, `Mouse_report`, `Reply` and `Decoder`. `Input.t` → `Matrix.event` in a run, or `Input.Decoder.event` when decoding: `Key` is a press or repeat and `Key_release` a release, `Mouse` and `Scroll` → `Mouse` of a `Mouse_report.t`, `Focus` and `Blur` → `Focus_in` and `Focus_out`, `Paste s` → `Paste_start`, `Paste_data s` and `Paste_end`, and `Clipboard` and `Osc` → `Reply` events, which come only for queries sent with `Matrix.query`
-- `Input.Key.t` → `Input.Keystroke.key`: `Unknown n` → `Unidentified n`; the media and volume keys → `Media Play`, `Media Track_next`, `Media Volume_up` and so on; the side-specific modifier keys → `Modifier Left_shift` and so on, and `Iso_level3_shift` → `Modifier Level3_shift`; the `KP_*` keys → the main key with `keypad = true` (`KP_enter` is `Enter`); `Line_feed` → `Char 'j'` with Ctrl; a control character → its letter with Ctrl (Ctrl+C is `Char 'c'`); `Char` carries the shifted character (Shift+a is `Char 'A'`)
-- `Input.Key.event` → `Input.Keystroke.t`: `modifier` → `mods`, `associated_text` → `text`, `base_key` → `base`, `event_type` → the `repeat` field and the `Key_release` event, and `shifted_key` → `Char` itself. `Input.Key.modifier` → `Input.Keystroke.mods` and `no_modifier` → `no_mods`
-- `Input.Key.make`, `Key.of_char`, `Input.key`, `char`, `key_event`, `char_event`, `press` and `repeat` → `Input.Keystroke.make ?mods ?text ?base ?keypad ?repeat key`. The `equal` and `equal_*` functions → `(=)`, and the `is_*` predicates and `Input.match_ctrl_char` → a match on the values. `Key.pp` → `Keystroke.pp_key`, `Key.pp_event` → `Keystroke.pp`, `Input.pp` → `Matrix.pp_event` or `Decoder.pp_event`
-- `Input.Mouse.event` → `Input.Mouse_report.t`, a record `{ kind; x; y; shift; alt; ctrl }`: `Button_press` → `Press b`, `Button_release` → `Release (Some b)` (a legacy release is `Release None`), `Motion` → `Motion (Some b)` or `Motion None`, the wheel buttons → `` Scroll `Up `` and the other directions, and `Button n` → `Extra n`
-- `Input.Caps.event` → `Input.Reply.t`: `Device_attributes` → `Primary_attributes` or `Secondary_attributes`, `Mode_report` → one `Mode` per mode, `Pixel_resolution` → `Text_area_pixels`, `Cursor_position (row, col)` → `Cursor { row; col; page }` counting from 0, `Xtversion` → `Version`, `Kitty_graphics_reply` → `Graphics`, and `Kitty_keyboard` → `Keyboard_flags`
-- `Input.Parser` → `Input.Decoder`: `feed p buf off len ~now ~on_event ~on_caps` → `Decoder.feed d buf ~off ~len f`; `deadline` and `drain` → the caller calls `Decoder.idle` when the terminal has been silent; `pending` → `Decoder.pending`, a variant; a reply decodes as `Reply` only after `Decoder.expect` declares it owed
-- `Input.Keymap` → `Mosaic.Shortcut`
-
-#### `matrix.terminal`, `matrix.terminfo` and `matrix.tty`
-
-- `Terminal.capabilities` is `Terminal.Caps.t`: `term` goes (read `TERM`), `kitty_keyboard` is the flags last reported, `unicode_width` is a `Matrix_text.width_method`, `rgb` is `colors` (`` `Ansi16 ``, `` `Ansi256 `` or `` `Truecolor ``, so a 16-color terminal is told from a 256-color one by `TERM` and its description), and a record literal gives the new fields `dumb`, `eager_wrap`, `lifts_resting_cursor`, `grapheme_mode`, `notification`, `meta_sends_escape`, `multiplexer` and `identity`. `Terminal.make ~output ?tty ?initial_caps ()` → `Terminal.make ~output ?tty caps`
-- `Terminal.terminal_info` (the type and the function) and `set_terminal_info` → the `identity` field of the capabilities. `Terminal.apply_capability_event` → `Caps.add`, then `Caps.derive` and `Terminal.set_capabilities`. `Terminal.probe` → `Caps.ask`, `add`, `cursor`, `answered` and `next`, which `Matrix.run` drives
-- `Terminal.set_unicode_width` → `Terminal.enable_grapheme_mode`; the type `Terminal.unicode_width` → `Matrix_text.width_method`; the type `Terminal.cursor_style` → `Ansi.cursor_style`
-- `Terminal.set_raw` → `Tty.raw`, `restore` → `Tty.restore`, `size` → `Tty.window` (an option), `is_tty` → `Tty.is_tty`, `flush_input` → `Tty.flush_input`, and `enable_vt` → `Tty.enable_vt`, whose `Tty.console` must be given to `Tty.restore_console` before the program ends
-- `Terminfo.load ?term ()` → `Tty.terminfo name`, or `Matrix_terminfo.of_string` on a file's contents; `` `Parse_error `` → `` `Invalid ``. `Terminfo.get t cap` and the `'a cap` constructors → `Matrix_terminfo.flag`, `number` and `string` by capability name (`Cursor_position` is `string t "cup"`), with `expand` for parameters and `pieces` for delays
-
-#### `matrix.ansi`
-
-- `Ansi.parse` → `Ansi.Parser.parse`. `Ansi.to_buffer t buf` → `Buffer.add_string buf (Ansi.to_string t)`. `Ansi.csi_u_on` → `Ansi.csi_u_push ~flags:1`, `csi_u_off` → `Ansi.csi_u_pop`. The query `Color_scheme_query` → `Color_scheme_report`
-- `Ansi.render [ (style, text); ... ]` → `Ansi.render [ Ansi.span ~style text; ... ]`. A text is written as `Ansi.sanitize` leaves it, so a control function a program put in a segment's text is written apart, with `Ansi.literal` or `Ansi.to_string`
-- `Ansi.Color.t` is abstract: `Black` to `Bright_white` → `Color.black` to `Color.bright_white`, `Extended i` → `Color.indexed i`, `Rgb` → `Color.of_rgb`, `Rgba` → `Color.of_rgba`, and a match on the constructors → a match on `Color.intent c` with `Color.to_rgba` for the components
-- `Color.default` → `Color.transparent` for paint that lets what is under it show, or `Color.default_fg` and `default_bg` for the terminal's colors. `Color.blend ?mode ~src ~dst ()` → `Color.blend ~src ~dst`. `Color.downgrade ?level c` → `Color.to_depth depth c`. `Color.pack` and `unpack` → `Color.Packed.encode` and `decode`
-- `Ansi.Parser.token` is replaced by syntax tokens (`Text`, `Control`, `Esc`, `Csi`, `Open`, `Data`, `Close`), and the types `Parser.control` and `Parser.sgr_attr` go: read a `Csi` by its `final` with `Parser.Params`, and apply SGR with `Style.apply_sgr`. `Parser.has_pending p` → `not (Parser.at_boundary p)`; `Parser.pending` has no replacement. `Parser.feed` returns the number of bytes it read, which a caller that never calls `Parser.stop` ignores
-- `Ansi.Writer.make buf` → `Writer.of_bytes buf` or `Writer.create n`, `pos` → `len`, `slice` → `contents`; `make_counting` → write into `Writer.create` and read `len`
-- `Sgr_state.update ~fg_r ~fg_g ... ~bg_a` → `Sgr_state.update ~fg ~bg`, which take `Ansi.Color.t`
-
-#### `matrix.grid`, `matrix.screen` and `matrix.image`
-
-- `Grid.create ?glyph_pool ?respect_alpha` → `Matrix_grid.create ~width ~height ?width_method ()`, and `create_like` shares a grid's storage. `Grid.glyph_pool`, `is_inline`, `respect_alpha` and `set_respect_alpha` → no replacement: compositing is chosen per call (`draw_region` blends, `blit_region` copies, `set_uchar ~blend`)
-- `Grid.set_cell ~glyph` → `set_uchar` or `set_grapheme`. `get_code` → `get_codepoint`, `get_glyph` → `get_text` (or `cell_text_length` and `blit_cell_text`), `get_fg_r` and the other channel reads → `get_fg` and `get_bg` with `Ansi.Color.to_rgba_f`, `get_background` → `get_bg`, and `hyperlink_url` and `hyperlink_url_direct` → `get_link`, which returns the URL
-- `Grid.scroll g ~top ~bottom n` → `Grid.shift` of the region with `~dx:0 ~dy:(-n) ~color`. `Grid.diff_cells` → `Grid.cells_equal`. `Grid.to_ansi ?reset` → `to_ansi`. `line_glyphs`, `default_line_glyphs`, `ascii_line_glyphs` and `draw_line ?glyphs` → `line_symbols`, `default_line_symbols`, `ascii_line_symbols` and `draw_line ?symbols`
-- `Screen.create ?glyph_pool ?respect_alpha ?mouse_enabled` → `Matrix_screen.create ?width_method ?cursor_visible ?explicit_width ()`. `Screen.grid` and `hit_grid` → `next_grid` and `next_hit_grid`. `Screen.render ?height_limit` → `render ~viewport`, and `render_to_bytes` → `render_into` with `Ansi.Writer.of_bytes`
-- The screen's cursor setters (`set_cursor_visible`, `set_cursor_position`, `clear_cursor_position`, `set_cursor_style`, `set_cursor_color`, `reset_cursor_color`) and `cursor_info` → `Matrix_screen.set_cursor` and `cursor` with the record `{ position; style; blinking; color; visible }`, where `position` is zero-based
-- `Screen.post_process`, `remove_post_process`, `clear_post_processes`, `record_runtime_metrics`, `set_mouse_enabled` and the timing fields of `frame_metrics` → no replacement: draw an effect into `next_grid` before rendering, time a render with a clock around it, and set mouse modes on the terminal (`Matrix_terminal.set_mouse_mode`). `Hit_grid.rect` → `Matrix_grid.region`; `Hit_grid.blit` → `Hit_grid.draw`
-- `Image.string` and `Image.line` → `Matrix_image.text`. `Image.render ?hits ?x ?y grid img` → `Matrix_image.draw ?hits ?x ?y img grid`
-
-#### `matrix.text` and `matrix.vte`
-
-- `Glyph.String.measure`, `measure_sub`, `grapheme_count`, `iter_graphemes` and `iter_line_breaks` → the same names in `Matrix_text`; `iter_grapheme_info` → `iter_units`, whose position has `units`; `iter_wrap_breaks` → `Matrix_text.iter_wrap_breaks`. The width method `` `No_zwj `` → no replacement
-- `Vte.create ?glyph_pool ?respect_alpha` → no such arguments; `?default_fg ?default_bg` → `?palette`, for example `{ Ansi.Palette.default with foreground = (r, g, b) }`
-- `Vte.feed` and `feed_string` return the replies; `ignore` them or write `Matrix_input.Reply.encode replies`
-- `Vte.auto_wrap_mode`, `insert_mode`, `cursor_key_mode`, `bracketed_paste_mode`, `origin_mode`, `cursor_visible` and `is_alternate_screen` → the fields of `Vte.modes t`. `Vte.set_cursor_pos`, `set_cursor_visible`, `scroll_up` and `scroll_down` → feed the sequence (`Ansi.cursor_position`, `Ansi.enable Cursor_visible`, `Ansi.scroll_up`)
-- `Vte.scrollback_lines t` → `List.init n (fun i -> Vte.text t (i - n))` with `n = Vte.scrollback_size t`; `Vte.render_with_scrollback t ~offset dst` → `Vte.blit_view t ~offset dst`
-
-#### `matrix.charts`
-
-- `empty () |> add m`, `make [ ms ]` and the chart-building `line`, `scatter`, `bar`, ... `|> ...` → a figure of marks, `layer [ ms ]`; `with_title s` → `title s`; `with_theme t` → `layout ~theme:t`; `with_x_scale`, `with_y_scale` → `scale "x"`, `scale "y"`; `with_y2_scale` and `~y_axis:`Y2` → `rename "y" n` on the marks and `axis ~side:`Right n`
-- Mark options: `~style` → `~color:(const c)` and `attrs`; `~label` → `~color:(series label)`; `~id` → `name`; `~resolution:`Braille2x4`, `` `Block2x2 ``, `` `Wave `` → `~dots:`Braille`, `` `Quadrant ``, `` `Steps ``; `line_gaps` keeps its name; `scatter ~mode` → `dot ~dots`; `bar ~direction` → `bar_y` or `bar_x`; `stacked_bar` → rows of one category under `bar_y ~color:(cat f) ~label`; `heatmap` → `raster`; `fill_between` → `area ~y2`; `shade` and `column_bg` → `rect`; `rule` → `hline`, `vline`; `Mark.ohlc` → `ohlc`
-- `Axis`, `Gridlines` and `manual_frame` → `axis ?side ?show ?title ?grid ?format ?spacing ?style ?tick_style ?label_style ?title_style`, `frame` and `margins`; a tick count → `?spacing` or `Scale.linear ~ticks`; a border around the region → the host draws it (`Matrix_grid.draw_box`, a mosaic `box ~border`); `Label_format.mmdd_utc`, `hhmmss_utc` → `Scale.time`
-- `Charset` and `Theme.with_charset` → `Theme.t.glyphs` and its presets; `Legend` → `legend` and `Layout.legend`; `Transform.ema`, `sma`, `gaussian` → `ema`, `sma`, `gaussian`
-- `draw chart grid ~width ~height` → `draw (layout ~width ~height fig) grid ~x ~y`; `View.window`, `zoom_around`, ... and `Layout.zoom_view_around_px`, `pan_view_by_px`, `clamp_view` → `View.zoom`, `pan`, `clamp` and `Layout.zoom`, `pan`; `data_of_px`, `px_of_data` and the category conversions → `Layout.value` and `position`; `hit_test` → `Layout.hit`, whose row indexes the program's own array; `Overlay` → the `overlays` of `draw`, in cells
-- `Sparkline` → a `float list` newest first in the program's state, `List.take n (v :: l)`, drawn with `spark`; a fixed maximum → `scale "y" (Scale.linear ~domain:(0., max) ())`
-- `Sparkline`'s rising maximum (`~auto_max:true`) kept the largest value ever pushed; `spark` scales to the largest value of the list the program keeps, so the top falls once that value leaves the list, and an explicit domain gives a ceiling that never falls
-
-#### `mosaic`
-
-- `text ?selectable:bool` and `code ?selectable:bool` → `` ?selectable:[ `Off | `Text | `Cells ] ``, which every element takes: `~selectable:false` → `` ~selectable:`Off ``, and `~selectable:true` → nothing, since an element that nothing declares for reads `` `Text ``, or `` ~selectable:`Text `` inside one that declares `` `Off ``
-- `text`'s and `code`'s `?selection_bg` and `?selection_fg`, and `input`'s and `textarea`'s `?selection_color` and `?selection_fg` → the theme's `Highlight` role (`themed`). `code ?on_selection` → `Sub.on_selection`, which hears the view's selection as text
-- `?id`, `?ref`, `?autofocus` and `?focusable` on every element → `?focused` and `?on_focus_request`; size reads go through `?on_size` and an application-owned renderable through `embed`. `Cmd.focus` → declare `~focused:true`, with `Cmd.focus_next` and `focus_prev`, or `Mosaic.Focus.next` and `prev` over the application's own identifiers, for traversal
-- A `Sub.on_key` listener or an element's `?on_key` that returns a message for Tab or Shift+Tab, where Tab did nothing by default, now also moves focus to the next or previous element with `?on_focus_request`. To keep Tab for the application alone, call `Event.Key.prevent_default` on it, or bind it with `Sub.on_keys`, which prevents the keys it binds: `Sub.on_key (fun k -> if Shortcut.matches Shortcut.tab k then Some Next_page else None)` → `Sub.on_keys [ (Shortcut.tab, Next_page) ]`. A form that moved focus on Tab with `Mosaic.Focus.next` drops that code: each field's `?on_focus_request` is what Tab now delivers, in view order
-- The callbacks for a widget's meaning (`on_change`, `on_activate`, `on_submit`, `on_scroll`) return `'msg` where they returned `'msg option`, and `Mosaic.t`, which was `'msg option Vnode.t`, is abstract
-- `input` and `textarea`'s `?value`, `?cursor`, `?selection`, `?on_input` and `?on_cursor` → `~state:Editor.t ~on_change`, with `Editor.of_string`, `Editor.text`, `Editor.cursor` and `Editor.selection`; `input ?max_length` → `Editor.of_string ?max_length`. `textarea ?spans` and `code ?spans` → `?syntax:Code.syntax`, and `textarea` takes `?annotations`
-- `slider ?value ?on_value_change` → `slider ~state ~on_change`. `scroll_bar ?on_change` → `scroll_bar ~state ~scroll_size ~viewport_size ~on_change`
-- `select ?selected_index` and `tab_select ?selected` → `~equal ~selected ~on_change` over items built with `Select.item value ?description label` and `Tab_select.item value ?description label`. `table ?rows ?selected_row` → rows built with `Table.row value cells` and `~equal ~selected ~on_change`
-- `tree ?selected_index ?expand_depth ?on_expand` → `~state:Tree.State.t ~on_change`, with `Tree.State.make`; `Tree.item` takes `~id`
-- `scroll_box ?sticky_scroll ?sticky_start ?on_scroll` → `~scroll:Scroll.t ~on_scroll`, where `Scroll.follow` is the sticky edge
-- `canvas ?respect_alpha`, `Canvas.respect_alpha` and `set_respect_alpha` → `?blend` on each write. `Canvas.set_cell ~glyph` → `Canvas.set_uchar ~uchar`, `draw_line ?glyphs` → `?symbols`, and `on_draw`'s `~delta` → `~dt`, in seconds
-- `Markdown.style` and `default_style` → `Markdown.Style.t` and `Markdown.Style.default`, built with `Markdown.Style.make`. `Syntax_theme` → `Syntax_style`, and `Syntax_theme.apply theme ~content ranges` → `Syntax_highlight.to_spans ~style (Syntax_highlight.of_triples ~content ranges)`
-- `Spinner.frame_set`'s `interval`, in milliseconds → `period`, in seconds
-- A widget given no color draws with the roles of the theme in scope, where it drew in fixed colors (see Changed), and the calls keep compiling. A program that wants 0.1.0's colors gives the labels that held them, such as `select ~selected_background:(Ansi.Color.of_rgb 51 68 85) ~selected_text_color:(Ansi.Color.of_rgb 255 255 0)`, `box ~border_color:Ansi.Color.white ~focused_border_color:Ansi.Color.bright_cyan`, `input ~text_color:Ansi.Color.white ~cursor_color:Ansi.Color.white`, `code ~syntax:(Code.syntax ~style:Syntax_style.default ...)`, `markdown ~md_style:Markdown.Style.default ~syntax_style:Syntax_style.default` and `diff ~theme:Diff.default_theme`, or restyles a role or surface for the whole view with one `themed` at its root, such as `themed (Theme.with_style Cursor (Ansi.Style.make ~bg ~fg ()))`
-- `Sub.every period f` → `Sub.every ~id period f`, where `f` takes the number of periods that ended. `Sub.on_tick f` → `Sub.on_tick ~id f`. `Sub.on_key_all`, `on_mouse_all` and `on_paste_all` → `Sub.on_key`, `on_mouse` and `on_paste` with `~phase:Capture`
-- `Mosaic.run ?matrix` → `Mosaic.run ?input ?output ?env ?stop ?config`, with the terminal's options in a `Matrix.config`. `Reconciler.render t vnode` → `Reconciler.render t ~viewport_width vnode`. `Reconciler.create ~container` → `Reconciler.create ~container ~deliver`, where `deliver` takes the messages of the view's handlers, so a view need no longer be mapped to `unit` before `render`
-
-#### `mosaic.ui`
-
-- `Selection`, `Renderer.selection`, `Renderable.set_selection` and `unset_selection` → the renderer's own selection, read with `Renderer.selection_text` and `take_selection_changes` and cleared with `clear_selection`; `Renderable.set_selectable` declares what the selection takes of a subtree, `` `Off ``, `` `Text `` or `` `Cells ``, which `Renderable.selectable` reads. `Text.set_selectable t false` → `` Renderable.set_selectable (Text.node t) (Some `Off) ``, and the `?selectable` of `Text.Props.make` and `Code.Props.make` takes `` [ `Off | `Text | `Cells ] `` where `create` took a `bool`. `Text_surface.set_selection_bg` and `set_selection_fg` → the theme's `Highlight` role; `Text_surface.set_local_selection` and `update_local_selection` → none, the renderer maps the pointer to text
-- `Event.Mouse.Up`'s `is_dragging` → `dragged`, `true` when the pointer left the pressed cell. `Drag`'s `is_dragging` → none, it was always `true`. `Down` gains `clicks`, so a pattern that names `Down`'s fields lists it or ends with `; _`
-- A widget's `create` with its properties' labels → `create` with its node's labels and callbacks and the props from `Props.make`: `Box.create ~parent ~border:true ()` → `Box.create ~parent (Box.Props.make ~border:true ())`, `Diff.create ~parent ~layout patch` → `Diff.create ~parent (Diff.Props.make ~patch ~layout ())`
-- `Edit_buffer` → `Editor`, an immutable value whose operations return a new `Editor.t`; `Edit_buffer.create ?max_length s` → `Editor.of_string ?max_length s`. `Text_input` and `Textarea` take `~state` and `~on_change` in `create` and `Props.make`, read their value with `state`, and take `set_on_change` in place of `set_on_input` and `set_on_cursor`
-- `Vnode.<element>` → `Mosaic.<element>`, with the labels of `Mosaic`'s elements: a prebuilt `Toffee.Style.t` goes through `~layout` where `Vnode` took `~style` (`Vnode.text ~style:row s` → `Mosaic.text ~layout:row s`), `?id`, `?ref`, `?autofocus` and `?focusable` → `?focused` and `?on_focus_request`, and `select`, `tab_select`, `table`, `slider` and `scroll_bar` take the typed values and `~state` listed under `mosaic` above. `Vnode.map`, `fragment`, `empty`, `embed` and the layout helpers (`px`, `pct`, `auto`, `size`, `gap`, `padding`, `margin`, `inset`) → the same in `Mosaic`. `'msg Vnode.t` → `'msg Mosaic.t`, which is abstract, so a view is taken apart by no pattern; a test observes the widgets a reconciler mounts from it (`Mosaic.Reconciler`)
-- `Code.create ?spans` and `Code.set_spans` → `Code.Props.make ?syntax` and `Code.set_syntax`. `Scroll_box`'s `?sticky_scroll`, `?sticky_start`, `set_sticky_scroll`, `set_sticky_start` and `reset_sticky` → `?scroll` and `Scroll_box.set_scroll` with a `Scroll.t`; `?scrollbar_props`, `?vertical_bar_props` and `?horizontal_bar_props` → `?scrollbar_style`, `?vertical_bar_style` and `?horizontal_bar_style`; `Scroll_accel.tick ~now`, in milliseconds → `~seconds`. `Tree.set_on_expand` → `set_on_change`
-- `Text_buffer.create ?width_method`, `width_method` and `set_width_method` → the `~width_method` of `line_width` and `max_line_width`. `Text_buffer.line_spans` → `Text_buffer.styled_text`. `Text_surface.display_info` → `Text_surface.layout`
-- `Renderable.set_default_key_handler` and `set_paste_handler` → `set_key_behavior` and `set_paste_behavior`. `Renderable.line_info` and `set_line_info_provider` → `text_rows` and `set_text_rows_provider`. `render` and `set_on_frame` take `~dt`, in seconds
-- `Renderer.create ?glyph_pool` and `Renderer.glyph_pool` → no replacement. `Renderer.render_frame ~delta` → `~dt`. `Renderer.dispatch_key r k` → `Renderer.dispatch_key r (Renderer.focus_path r) (Event.Key.of_input k)`, and `dispatch_paste` likewise; `dispatch_mouse` and `dispatch_scroll` → `Renderer.mouse_path` then `dispatch_mouse`. `add_post_process`, `remove_post_process` and `clear_post_processes` → no replacement
-
-#### `toffee`
-
-- `Size.equal_option eq` → `Size.equal_with (Option.equal eq)`. `Available_space.maybe_set` → `Available_space.set_or_self`
-- `Cache_tree.cache_get tree node ~known_dimensions ~available_space ~run_mode` → `Cache_tree.cache_get tree node inputs`, and `cache_store` likewise, with the node's `Layout_input.t`. `Cache.get` and `Cache.store` take the `Layout_input.t` too, and the node's style before it (`Cache.get cache style inputs`); `Cache.compute_cache_slot`, `is_roughly_equal`, `cache_entry` and `t`'s fields → no replacement
-- A measure function returns a `Geometry.Sizef.t`: `Size.{ width; height }` → `Sizef.{ width; height }`, `Size.make w h` → `Sizef.make w h`, `Size.zero` → `Sizef.zero`. A pattern on a layout's size or location names the float type: `let Size.{ width; height } = Layout.size l` → `let Sizef.{ width; height } = Layout.size l`
-- `Size.zero`, `add`, `sub`, `( + )`, `( - )`, `mul_scalar`, `div_scalar`, `( * )`, `( / )`, `max`, `min`, `has_non_zero_area`, `equal`, `clamp`, `min_or_self`, `max_or_self`, `add_or_zero`, `sub_or_zero`, `max_concrete`, `min_with_option`, `max_with_option`, `add_with_option`, `sub_with_option`, `maybe_add`, `maybe_sub`, `maybe_min` and `maybe_max` → the same in `Sizef` (`max_concrete`, which took `Float.max`, → `Sizef.max`, which takes `Stdlib.max` as `Size.max` did); `Rect.zero`, `add`, `( + )`, `horizontal_axis_sum`, `vertical_axis_sum`, `sum_axes` and `grid_axis_sum` → `Rectf`; `Point.zero`, `add`, `sub`, `( + )`, `( - )`, `mul_scalar`, `div_scalar`, `( * )` and `( / )` → `Pointf`. `Sizef.of_size`, `to_size` and `some`, `Rectf.of_rect` and `to_rect`, and `Pointf.of_point` and `to_point` convert
-- A `Toffee_tree.ROUND_TREE` implementation adds `is_rounded`, and its `set_final_layout` takes `~x ~y`
+- A grid's auto rows collapsed when they held scroll containers.
 
 ## [0.1.0] - 2026-02-26
 
