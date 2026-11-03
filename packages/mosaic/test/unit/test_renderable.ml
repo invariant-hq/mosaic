@@ -25,7 +25,7 @@ let create_default_values () =
   let t = make_ctx () in
   let root = make_root t in
   let child = Renderable.create ~parent:root () in
-  starts_with ~affix:"node-" (Renderable.id child);
+  starts_with ~prefix:"node-" (Renderable.id child);
   is_true ~msg:"visible" (Renderable.visible child);
   equal ~msg:"z_index" int 0 (Renderable.z_index child);
   is_true ~msg:"opacity" (Float.equal 1.0 (Renderable.opacity child));
@@ -1255,169 +1255,173 @@ let mouse_unmount_stops_remaining_handlers () =
     !default_ran
 
 let () =
-  run "mosaic.renderable"
-    [
-      test "mouse unmount stops remaining handlers"
-        mouse_unmount_stops_remaining_handlers;
-      group "Construction"
-        [
-          test "default values" create_default_values;
-          test "custom id" create_custom_id;
-          test "custom z_index" create_custom_z_index;
-          test "custom opacity" create_custom_opacity;
-          test "custom live" create_custom_live;
-          test "custom visible" create_custom_visible;
-          test "attaches to parent" create_attaches_to_parent;
-          test "follows child_target" create_follows_child_target;
-          test "child_target rejects non-descendant"
-            set_child_target_non_descendant_raises;
-          test "child_target rejects different tree"
-            set_child_target_different_tree_raises;
-          test "child_target rejects destroyed target"
-            set_child_target_destroyed_target_raises;
-          test "destroyed parent raises" create_destroyed_parent_raises;
-          test "with index inserts at position" create_with_index;
-        ];
-      group "Hierarchy"
-        [
-          test "children insertion order" children_insertion_order;
-          test "attach moves between parents" attach_moves_between_parents;
-          test "detach removes from parent" detach_removes;
-          test "detach blurs focused node" detach_blurs_focused;
-          test "detach parent blurs focused descendant"
-            detach_parent_blurs_focused_descendant;
-          test "attach to self raises" attach_self_raises;
-          test "attach destroyed raises" attach_destroyed_raises;
-        ];
-      group "Destroy"
-        [
-          test "marks destroyed" destroy_marks_destroyed;
-          test "detaches from parent" destroy_detaches;
-          test "destroy parent blurs focused descendant"
-            destroy_parent_blurs_focused_descendant;
-          test "destroy unregisters node once" destroy_unregisters_node_once;
-          test "clears handlers" destroy_clears_handlers;
-          test "is idempotent" destroy_idempotent;
-          test "create on destroyed raises" create_on_destroyed_raises;
-          test "recursively destroys subtree" destroy_recursively_all;
-          test "recursively destroys a wide subtree"
-            destroy_recursively_wide_subtree;
-          test "releases a destroyed subtree" destroy_releases_wide_subtree;
-          test "orphans the children of a wide node"
-            destroy_orphans_wide_children;
-          test "detach_all detaches from several parents" detach_all_wide;
-        ];
-      group "Visual properties"
-        [
-          test "set_visible toggle" visible_toggle;
-          test "set_visible false blurs" visible_false_blurs;
-          test "set_visible no-op on same value" visible_noop_same_value;
-          test "set_z_index" set_z_index;
-          test "set_z_index no-op on same value" z_index_noop_same_value;
-          test "set_opacity clamps 0-1" opacity_clamp;
-          test "set_opacity no-op on same value" opacity_noop_same_value;
-          test "set_buffered toggle" buffered_toggle;
-          test "set_live toggle" live_toggle;
-          test "set_child_clip schedules render" set_child_clip_schedules;
-        ];
-      group "Focus"
-        [
-          test "returns false if not focusable" focus_not_focusable;
-          test "returns true if focusable" focus_focusable;
-          test "delegates to context" focus_delegates;
-          test "set_focusable false blurs focused node"
-            set_focusable_false_blurs;
-          test "blur removes focus" blur_removes_focus;
-          test "blur delegates to context" blur_delegates;
-          test "blur is no-op if not focused" blur_noop_if_not_focused;
-          test "cursor with provider" cursor_with_provider;
-          test "cursor None without provider" cursor_none_without_provider;
-          test "clear_cursor_provider" clear_cursor_provider;
-          test "set_cursor_provider schedules render"
-            set_cursor_provider_schedules;
-          test "clear_cursor_provider schedules when present"
-            clear_cursor_provider_schedules_when_present;
-        ];
-      group "Key events"
-        [
-          test "on_key accumulates newest first" on_key_order;
-          test "prevent_default preserves regular key handlers"
-            emit_key_prevent_default_preserves_handlers;
-          test "stop_propagation keeps the node's other handlers"
-            emit_key_runs_handlers_after_stop_propagation;
-          test "run_key_behavior runs the behavior" run_key_behavior_runs;
-          test "prevent_default keeps the behavior from running"
-            prevent_default_keeps_the_behavior;
-        ];
-      group "Mouse events"
-        [
-          test "on_mouse accumulates handlers" on_mouse_accumulates;
-          test "a mouse event reaches the node, then its parent"
-            emit_mouse_runs_the_node_then_its_parent;
-        ];
-      group "Paste events"
-        [
-          test "set_paste_behavior replaces" paste_replaces;
-          test "set_paste_behavior None clears" paste_none_clears;
-        ];
-      group "Live count"
-        [
-          test "live visible contributes 1" live_count_contributes;
-          test "hide reduces live_count" live_count_hide_reduces;
-          test "propagates up tree" live_count_propagates;
-          test "detach adjusts ancestors" live_count_detach_adjusts;
-          test "attach adjusts ancestors" live_count_attach_adjusts;
-          test "on_live_count_change callback" live_count_change_callback;
-        ];
-      group "Selection"
-        [
-          test "selectable without a declaration" selectable_without_declaration;
-          test "the nearest declaration wins" nearest_declaration_wins;
-          test "removing a declaration inherits" removing_a_declaration_inherits;
-          test "a reattached node inherits its new parent"
-            reattached_node_inherits_its_new_parent;
-        ];
-      group "Lifecycle"
-        [
-          test "on_frame runs in pre_render_update" on_frame_runs;
-          test "on_resize fires when dimensions change" on_resize_fires;
-        ];
-      group "Layout"
-        [
-          test "defaults to 0,0,0,0" layout_defaults;
-          test "update_layout sets position and size" layout_update;
-          test "zero layout keeps zero extent" zero_layout_keeps_zero_extent;
-          test "adjacent fractional edges share a cell boundary"
-            adjacent_fractional_edges_share_cell_boundary;
-          test "bounds returns clip_rect" bounds_returns_clip_rect;
-          test "set_translate offsets position" translate_offsets;
-          test "mark_dirty sets layout_dirty" mark_dirty;
-          test "hidden returns zero dimensions" hidden_zero_dimensions;
-          test "set_style schedules render" set_style_schedules;
-          test "style roundtrip" style_roundtrip;
-          test "set_style display:none updates visible flag"
-            set_style_display_none_updates_visible;
-          test "set_style while hidden stays hidden"
-            set_style_while_hidden_stays_hidden;
-          test "set_style while hidden restores on show"
-            set_style_while_hidden_restores_on_show;
-        ];
-      group "Children z-order"
-        [
-          test "sorted by z_index" children_z_sorted;
-          test "empty for no children" children_z_empty;
-          test "iter_children_z visits all" iter_children_z_visits_all;
-          test "children_in_viewport filters for small sets"
-            children_in_viewport_filters_small_sets;
-        ];
-      group "Render hooks"
-        [
-          test "render_before fires" render_before_hook;
-          test "render_after fires" render_after_hook;
-          test "before -> render -> after order" render_hook_order;
-          test "set_render_before schedules render" set_render_before_schedules;
-          test "set_render_after schedules render" set_render_after_schedules;
-          test "a buffered node renders at local coordinates"
-            buffered_render_uses_local_coordinates;
-        ];
-    ]
+  exit
+    (run "mosaic.renderable"
+       [
+         test "mouse unmount stops remaining handlers"
+           mouse_unmount_stops_remaining_handlers;
+         group "Construction"
+           [
+             test "default values" create_default_values;
+             test "custom id" create_custom_id;
+             test "custom z_index" create_custom_z_index;
+             test "custom opacity" create_custom_opacity;
+             test "custom live" create_custom_live;
+             test "custom visible" create_custom_visible;
+             test "attaches to parent" create_attaches_to_parent;
+             test "follows child_target" create_follows_child_target;
+             test "child_target rejects non-descendant"
+               set_child_target_non_descendant_raises;
+             test "child_target rejects different tree"
+               set_child_target_different_tree_raises;
+             test "child_target rejects destroyed target"
+               set_child_target_destroyed_target_raises;
+             test "destroyed parent raises" create_destroyed_parent_raises;
+             test "with index inserts at position" create_with_index;
+           ];
+         group "Hierarchy"
+           [
+             test "children insertion order" children_insertion_order;
+             test "attach moves between parents" attach_moves_between_parents;
+             test "detach removes from parent" detach_removes;
+             test "detach blurs focused node" detach_blurs_focused;
+             test "detach parent blurs focused descendant"
+               detach_parent_blurs_focused_descendant;
+             test "attach to self raises" attach_self_raises;
+             test "attach destroyed raises" attach_destroyed_raises;
+           ];
+         group "Destroy"
+           [
+             test "marks destroyed" destroy_marks_destroyed;
+             test "detaches from parent" destroy_detaches;
+             test "destroy parent blurs focused descendant"
+               destroy_parent_blurs_focused_descendant;
+             test "destroy unregisters node once" destroy_unregisters_node_once;
+             test "clears handlers" destroy_clears_handlers;
+             test "is idempotent" destroy_idempotent;
+             test "create on destroyed raises" create_on_destroyed_raises;
+             test "recursively destroys subtree" destroy_recursively_all;
+             test "recursively destroys a wide subtree"
+               destroy_recursively_wide_subtree;
+             test "releases a destroyed subtree" destroy_releases_wide_subtree;
+             test "orphans the children of a wide node"
+               destroy_orphans_wide_children;
+             test "detach_all detaches from several parents" detach_all_wide;
+           ];
+         group "Visual properties"
+           [
+             test "set_visible toggle" visible_toggle;
+             test "set_visible false blurs" visible_false_blurs;
+             test "set_visible no-op on same value" visible_noop_same_value;
+             test "set_z_index" set_z_index;
+             test "set_z_index no-op on same value" z_index_noop_same_value;
+             test "set_opacity clamps 0-1" opacity_clamp;
+             test "set_opacity no-op on same value" opacity_noop_same_value;
+             test "set_buffered toggle" buffered_toggle;
+             test "set_live toggle" live_toggle;
+             test "set_child_clip schedules render" set_child_clip_schedules;
+           ];
+         group "Focus"
+           [
+             test "returns false if not focusable" focus_not_focusable;
+             test "returns true if focusable" focus_focusable;
+             test "delegates to context" focus_delegates;
+             test "set_focusable false blurs focused node"
+               set_focusable_false_blurs;
+             test "blur removes focus" blur_removes_focus;
+             test "blur delegates to context" blur_delegates;
+             test "blur is no-op if not focused" blur_noop_if_not_focused;
+             test "cursor with provider" cursor_with_provider;
+             test "cursor None without provider" cursor_none_without_provider;
+             test "clear_cursor_provider" clear_cursor_provider;
+             test "set_cursor_provider schedules render"
+               set_cursor_provider_schedules;
+             test "clear_cursor_provider schedules when present"
+               clear_cursor_provider_schedules_when_present;
+           ];
+         group "Key events"
+           [
+             test "on_key accumulates newest first" on_key_order;
+             test "prevent_default preserves regular key handlers"
+               emit_key_prevent_default_preserves_handlers;
+             test "stop_propagation keeps the node's other handlers"
+               emit_key_runs_handlers_after_stop_propagation;
+             test "run_key_behavior runs the behavior" run_key_behavior_runs;
+             test "prevent_default keeps the behavior from running"
+               prevent_default_keeps_the_behavior;
+           ];
+         group "Mouse events"
+           [
+             test "on_mouse accumulates handlers" on_mouse_accumulates;
+             test "a mouse event reaches the node, then its parent"
+               emit_mouse_runs_the_node_then_its_parent;
+           ];
+         group "Paste events"
+           [
+             test "set_paste_behavior replaces" paste_replaces;
+             test "set_paste_behavior None clears" paste_none_clears;
+           ];
+         group "Live count"
+           [
+             test "live visible contributes 1" live_count_contributes;
+             test "hide reduces live_count" live_count_hide_reduces;
+             test "propagates up tree" live_count_propagates;
+             test "detach adjusts ancestors" live_count_detach_adjusts;
+             test "attach adjusts ancestors" live_count_attach_adjusts;
+             test "on_live_count_change callback" live_count_change_callback;
+           ];
+         group "Selection"
+           [
+             test "selectable without a declaration"
+               selectable_without_declaration;
+             test "the nearest declaration wins" nearest_declaration_wins;
+             test "removing a declaration inherits"
+               removing_a_declaration_inherits;
+             test "a reattached node inherits its new parent"
+               reattached_node_inherits_its_new_parent;
+           ];
+         group "Lifecycle"
+           [
+             test "on_frame runs in pre_render_update" on_frame_runs;
+             test "on_resize fires when dimensions change" on_resize_fires;
+           ];
+         group "Layout"
+           [
+             test "defaults to 0,0,0,0" layout_defaults;
+             test "update_layout sets position and size" layout_update;
+             test "zero layout keeps zero extent" zero_layout_keeps_zero_extent;
+             test "adjacent fractional edges share a cell boundary"
+               adjacent_fractional_edges_share_cell_boundary;
+             test "bounds returns clip_rect" bounds_returns_clip_rect;
+             test "set_translate offsets position" translate_offsets;
+             test "mark_dirty sets layout_dirty" mark_dirty;
+             test "hidden returns zero dimensions" hidden_zero_dimensions;
+             test "set_style schedules render" set_style_schedules;
+             test "style roundtrip" style_roundtrip;
+             test "set_style display:none updates visible flag"
+               set_style_display_none_updates_visible;
+             test "set_style while hidden stays hidden"
+               set_style_while_hidden_stays_hidden;
+             test "set_style while hidden restores on show"
+               set_style_while_hidden_restores_on_show;
+           ];
+         group "Children z-order"
+           [
+             test "sorted by z_index" children_z_sorted;
+             test "empty for no children" children_z_empty;
+             test "iter_children_z visits all" iter_children_z_visits_all;
+             test "children_in_viewport filters for small sets"
+               children_in_viewport_filters_small_sets;
+           ];
+         group "Render hooks"
+           [
+             test "render_before fires" render_before_hook;
+             test "render_after fires" render_after_hook;
+             test "before -> render -> after order" render_hook_order;
+             test "set_render_before schedules render"
+               set_render_before_schedules;
+             test "set_render_after schedules render" set_render_after_schedules;
+             test "a buffered node renders at local coordinates"
+               buffered_render_uses_local_coordinates;
+           ];
+       ])

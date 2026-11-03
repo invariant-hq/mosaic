@@ -843,60 +843,61 @@ let test_tasks_fold () =
   exited 0 (T.Child.exit c ~within:10.)
 
 let () =
-  run "matrix.cli.pty"
-    [
-      group "live"
-        [
-          test "lines above, the last frame stays" test_progress;
-          test "a frame taller than the screen" test_tall;
-          test "a line waits for its end" test_partial;
-          test "a frame of grids" test_stack;
-          test "a tick" test_tick;
-          test "the height of a frame" test_height;
-          test "SIGINT" test_sigint;
-          test "exit" test_exit;
-          test "a live inside a live" test_nested;
-          test "resizes" test_resize;
-          test "a child's output" test_suspend;
-          test "raw bytes" test_raw;
-          test "Ctrl+Z and fg" test_stop;
-          test "in the background" test_background;
-          test "Ctrl+S, then Ctrl+C" test_flow_control;
-          test "a pipe" test_pipe;
-        ];
-      group "outputs"
-        [
-          test "colors and NO_COLOR" test_color;
-          test "a grid" test_print_grid;
-          test "Format's formatters" test_fmt;
-          test "Format's buffers keep their order" test_format_order;
-          test "a notification" test_notify;
-          test "how progress shows" test_progress_of;
-          test "quiet and json" test_quiet_json;
-        ];
-      group "tasks"
-        [
-          test "plain" test_tasks_plain;
-          test "quiet" test_tasks_quiet;
-          test "json" test_tasks_json;
-          test "ids of nested works" test_tasks_ids;
-          test "lines from threads" test_tasks_threads;
-          test "endings" test_tasks_endings;
-          test "rows" test_tasks_tty;
-          test "a fold" test_tasks_fold;
-        ];
-      group "prompts"
-        [
-          test "a line" test_line;
-          test "a line asked on a thread" test_line_thread;
-          test "a confirmation" test_confirm;
-          test "lines held while asked" test_line_held;
-          test "a secret" test_secret;
-          test "a masked secret" test_secret_mask;
-          test "a choice" test_choose;
-          test "a styled question" test_secret_styled;
-          test "Ctrl+C in a secret" test_secret_interrupted;
-          test "Ctrl+Z in a secret" test_secret_stop;
-          test "keys" test_keys;
-        ];
-    ]
+  exit
+    (run "matrix.cli.pty"
+       [
+         group "live"
+           [
+             test "lines above, the last frame stays" test_progress;
+             test "a frame taller than the screen" test_tall;
+             test "a line waits for its end" test_partial;
+             test "a frame of grids" test_stack;
+             test "a tick" test_tick;
+             test "the height of a frame" test_height;
+             test "SIGINT" test_sigint;
+             test "exit" test_exit;
+             test "a live inside a live" test_nested;
+             test "resizes" test_resize;
+             test "a child's output" test_suspend;
+             test "raw bytes" test_raw;
+             test "Ctrl+Z and fg" test_stop;
+             test "in the background" test_background;
+             test "Ctrl+S, then Ctrl+C" test_flow_control;
+             test "a pipe" test_pipe;
+           ];
+         group "outputs"
+           [
+             test "colors and NO_COLOR" test_color;
+             test "a grid" test_print_grid;
+             test "Format's formatters" test_fmt;
+             test "Format's buffers keep their order" test_format_order;
+             test "a notification" test_notify;
+             test "how progress shows" test_progress_of;
+             test "quiet and json" test_quiet_json;
+           ];
+         group "tasks"
+           [
+             test "plain" test_tasks_plain;
+             test "quiet" test_tasks_quiet;
+             test "json" test_tasks_json;
+             test "ids of nested works" test_tasks_ids;
+             test "lines from threads" test_tasks_threads;
+             test "endings" test_tasks_endings;
+             test "rows" test_tasks_tty;
+             test "a fold" test_tasks_fold;
+           ];
+         group "prompts"
+           [
+             test "a line" test_line;
+             test "a line asked on a thread" test_line_thread;
+             test "a confirmation" test_confirm;
+             test "lines held while asked" test_line_held;
+             test "a secret" test_secret;
+             test "a masked secret" test_secret_mask;
+             test "a choice" test_choose;
+             test "a styled question" test_secret_styled;
+             test "Ctrl+C in a secret" test_secret_interrupted;
+             test "Ctrl+Z in a secret" test_secret_stop;
+             test "keys" test_keys;
+           ];
+       ])

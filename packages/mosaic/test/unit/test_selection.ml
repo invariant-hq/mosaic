@@ -3026,315 +3026,324 @@ let a_drag_in_a_nested_text_box_leaves_the_box_around_it () =
   equal ~msg:"the box around it" int 0 (Scroll_box.scroll_top outer)
 
 let () =
-  run "mosaic.selection"
-    [
-      group "Cells to source"
-        [
-          test "a hanging blank counts once" a_hanging_blank_counts_once;
-          test "a drag takes both end cells" a_drag_takes_both_end_cells;
-          test "a drag past the rows selects to the end"
-            a_drag_past_the_rows_selects_to_the_end;
-          test "a truncated line leaves the next line whole"
-            a_truncated_line_leaves_the_next_line_whole;
-          test "a zero-width cluster is copied" a_zero_width_cluster_is_copied;
-          test "a click on an ellipsis selects nothing"
-            a_click_on_an_ellipsis_selects_nothing;
-        ];
-      group "Model"
-        [
-          test "a press in a margin starts at the nearest text"
-            a_press_in_a_margin_starts_at_the_nearest_text;
-          test "a press below the last text starts at its end"
-            a_press_below_the_last_text_starts_at_its_end;
-          test "a press with no text in its region clears"
-            a_press_with_no_text_clears;
-          test "a press beside a nested box resolves to the next text"
-            a_press_beside_a_nested_box_resolves_to_the_next_text;
-          test "the ends name text through a rewrap"
-            the_ends_name_text_through_a_rewrap;
-          test "the release keeps the band where it was"
-            the_release_keeps_the_band_where_it_was;
-        ];
-      group "Region and band"
-        [
-          test "a drag out of a scroll box downward reaches the footer"
-            a_drag_out_of_a_scroll_box_downward_reaches_the_footer;
-          test "a drag out of a scroll box sideways reaches its text"
-            a_drag_out_of_a_scroll_box_sideways_reaches_its_text;
-          test "a selection at rest stays under the wheel"
-            a_selection_at_rest_stays_under_the_wheel;
-          test "hidden text takes no part" hidden_text_takes_no_part;
-          test "a selection leaves the top layer out"
-            a_selection_leaves_the_top_layer_out;
-          test "a selection in the top layer stays in it"
-            a_selection_in_the_top_layer_stays_in_it;
-          test "a nested box gives the rows it shows"
-            a_nested_box_gives_the_rows_it_shows;
-          test "a drag into a nested box selects to the pointer"
-            a_drag_into_a_nested_box_selects_to_the_pointer;
-          test "a nested box covered is highlighted"
-            a_nested_box_covered_is_highlighted;
-        ];
-      group "Copy"
-        [
-          test "stacked texts copy on their own lines"
-            stacked_texts_copy_on_their_own_lines;
-          test "side-by-side text copies row by row"
-            side_by_side_text_copies_row_by_row;
-          test "paragraphs copy with a blank line"
-            paragraphs_copy_with_a_blank_line;
-          test "a bordered box copies as drawn" a_bordered_box_copies_as_drawn;
-          test "the markdown table copies as drawn"
-            the_markdown_table_copies_as_drawn;
-          test "a border is highlighted" a_border_is_highlighted;
-          test "an unselectable border is left out"
-            an_unselectable_border_is_left_out;
-          test "an ellipsis copies what it hides"
-            an_ellipsis_copies_what_it_hides;
-          test "a soft wrap adds nothing" a_soft_wrap_adds_nothing;
-          test "a fragment drops a terminator at either end"
-            a_fragment_drops_a_terminator_at_either_end;
-          test "trailing whitespace is copied" trailing_whitespace_is_copied;
-          test "a selection across unselectable text leaves it out"
-            a_selection_across_unselectable_text_leaves_it_out;
-        ];
-      group "Selectability"
-        [
-          test "an absent selectable keeps a button's default"
-            an_absent_selectable_keeps_a_buttons_default;
-          test "an absent selectable keeps a slider's default"
-            an_absent_selectable_keeps_a_sliders_default;
-          test "an absent selectable keeps a user kind's declaration"
-            an_absent_selectable_keeps_a_user_kinds_declaration;
-          test "a press on unselectable content changes nothing"
-            a_press_on_unselectable_content_changes_nothing;
-          test "a selectable text inside an unselectable box"
-            a_selectable_text_inside_an_unselectable_box;
-          test "a line number's child follows its ancestors"
-            a_line_numbers_child_follows_its_ancestors;
-        ];
-      group "Pointer gestures"
-        [
-          test "a drag back to the pressed cell selects its grapheme"
-            a_drag_back_to_the_pressed_cell_selects_its_grapheme;
-          test "the band stops at the text beside its end"
-            the_band_stops_at_the_text_beside_its_end;
-          test "a double click selects a word" a_double_click_selects_a_word;
-          test "a double click selects at the press"
-            a_double_click_selects_at_the_press;
-          test "a double click past a row's end" a_double_click_past_a_rows_end;
-          test "a triple click selects the logical line"
-            a_triple_click_selects_the_logical_line;
-          test "a triple click in a margin selects the nearest line"
-            a_triple_click_in_a_margin_selects_the_nearest_line;
-          test "a drag after a double click extends by words"
-            a_drag_after_a_double_click_extends_by_words;
-          test "the band reaches the unit under the pointer"
-            the_band_reaches_the_unit_under_the_pointer;
-          test "a word drag goes through a nested box"
-            a_word_drag_goes_through_a_nested_box;
-          test "a line drag through a nested box settles where it was"
-            a_line_drag_through_a_nested_box_settles_where_it_was;
-          test "a line drag into a gap settles where it was"
-            a_line_drag_into_a_gap_settles_where_it_was;
-          test "a drag after a triple click extends by lines"
-            a_drag_after_a_triple_click_extends_by_lines;
-          test "the unit under the pointer follows a scroll"
-            the_unit_under_the_pointer_follows_a_scroll;
-          test "a shift press moves the nearer end"
-            a_shift_press_moves_the_nearer_end;
-          test "a shift press moves the focus on a tie"
-            a_shift_press_moves_the_focus_on_a_tie;
-          test "a shift press adds words after a double click"
-            a_shift_press_adds_words_after_a_double_click;
-          test "a shift double click sets the unit"
-            a_shift_double_click_sets_the_unit;
-          test "a shift press without a selection is ordinary"
-            a_shift_press_without_a_selection_is_ordinary;
-          test "a shift press reaches past the box"
-            a_shift_press_reaches_past_the_box;
-          test "a shift press over an inert selection is ordinary"
-            a_shift_press_over_an_inert_selection_is_ordinary;
-          test "a ctrl press is ordinary" a_ctrl_press_is_ordinary;
-        ];
-      group "Highlight"
-        [
-          test "the band is highlighted to the screen edge"
-            the_band_is_highlighted_to_the_screen_edge;
-          test "the cells after a soft wrap are highlighted"
-            the_cells_after_a_soft_wrap_are_highlighted;
-          test "buffered texts are highlighted where they lie"
-            buffered_texts_are_highlighted_where_they_lie;
-        ];
-      group "Editors"
-        [
-          test "a press in an editor clears the view selection"
-            a_press_in_an_editor_clears_the_view_selection;
-          test "the view selection leaves editors out"
-            the_view_selection_leaves_editors_out;
-          test "the copy falls back to the focused editor"
-            the_copy_falls_back_to_the_focused_editor;
-          test "an editor drags its own selection"
-            an_editor_drags_its_own_selection;
-          test "an editor's drag survives a chorded press"
-            an_editors_drag_survives_a_chorded_press;
-          test "an editor selects words" an_editor_selects_words;
-          test "an editor selects lines" an_editor_selects_lines;
-        ];
-      group "Keys"
-        [
-          test "a selection is live while it holds text outside a modal"
-            a_selection_is_live_while_it_holds_text_outside_a_modal;
-          test "extension moves the focus by a grapheme"
-            extension_moves_the_focus_by_a_grapheme;
-          test "an extension after a word keeps its first grapheme"
-            extension_after_a_word_keeps_its_first_grapheme;
-          test "extension moves the focus to its row's ends"
-            extension_moves_the_focus_to_its_rows_ends;
-          test "extension moves the focus by a row"
-            extension_moves_the_focus_by_a_row;
-          test "extension crosses to the next text"
-            extension_crosses_to_the_next_text;
-          test "extension crosses to the text beside by a grapheme"
-            extension_crosses_to_the_text_beside_by_a_grapheme;
-          test "extension moves a cell focus down the screen"
-            extension_moves_a_cell_focus_down_the_screen;
-          test "a row move scrolls a window, then leaves it"
-            a_row_move_scrolls_a_window_then_leaves_it;
-          test "extension selects by graphemes" extension_selects_by_graphemes;
-          test "a drag keeps its focus from the keys"
-            a_drag_keeps_its_focus_from_the_keys;
-        ];
-      group "Changes"
-        [
-          test "a release settles the selection" a_release_settles_the_selection;
-          test "a click settles nothing" a_click_settles_nothing;
-          test "a double click settles at its release"
-            a_double_click_settles_at_its_release;
-          test "a lost release settles" a_lost_release_settles;
-          test "a clear is heard once" a_clear_is_heard_once;
-          test "a shift press settles the moved selection"
-            a_shift_press_settles_the_moved_selection;
-          test "an extension settles nothing" an_extension_settles_nothing;
-          test "line breaks alone are held" line_breaks_alone_are_held;
-          test "a press on unselectable content queues nothing"
-            a_press_on_unselectable_content_queues_nothing;
-        ];
-      group "Change under a selection"
-        [
-          test "following and appending keep the selection"
-            following_and_appending_keep_the_selection;
-          test "a resize keeps the selection" a_resize_keeps_the_selection;
-          test "an edit before the ends moves them"
-            an_edit_before_the_ends_moves_them;
-          test "an edit counts clusters" an_edit_counts_clusters;
-          test "an end inside the edit moves to its start"
-            an_end_inside_the_edit_moves_to_its_start;
-          test "an end at the edit's end moves with it"
-            an_end_at_the_edits_end_moves_with_it;
-          test "an insertion at an end leaves it"
-            an_insertion_at_an_end_leaves_it;
-          test "a streaming paragraph closes bold before an end"
-            a_streaming_paragraph_closes_bold_before_an_end;
-          test "the selection clears when its ends meet"
-            the_selection_clears_when_its_ends_meet;
-          test "an edit during a drag follows its anchor"
-            an_edit_during_a_drag_follows_its_anchor;
-          test "an end's node hidden clears the selection"
-            an_ends_node_hidden_clears_the_selection;
-          test "an end's node unmounted clears the selection"
-            an_ends_node_unmounted_clears_the_selection;
-          test "an end's unmount ends its drag" an_ends_unmount_ends_its_drag;
-          test "an end in a streaming list survives a chunk"
-            an_end_in_a_streaming_list_survives_a_chunk;
-          test "an end in a streaming table survives a chunk"
-            an_end_in_a_streaming_table_survives_a_chunk;
-          test "an end in a streaming quote survives a chunk"
-            an_end_in_a_streaming_quote_survives_a_chunk;
-          test "a key move lays out a text no paint reached"
-            a_key_move_lays_out_a_text_no_paint_reached;
-        ];
-      group "Text"
-        [
-          test "a press beside a nested box resolves past its texts"
-            a_press_beside_a_nested_box_resolves_past_its_texts;
-          test "a drag out of a scroll box downward stays in it"
-            a_drag_out_of_a_scroll_box_downward_stays_in_it;
-          test "a drag out of a scroll box sideways stays in it"
-            a_drag_out_of_a_scroll_box_sideways_stays_in_it;
-          test "a nested box covered is selected whole"
-            a_nested_box_covered_is_selected_whole;
-          test "a nested box partly covered is left out"
-            a_nested_box_partly_covered_is_left_out;
-          test "a bordered box between paragraphs"
-            a_bordered_box_between_paragraphs;
-          test "the markdown table copies row by row"
-            the_markdown_table_copies_row_by_row;
-          test "a word drag selects a nested box once covered"
-            a_word_drag_selects_a_nested_box_once_covered;
-          test "a line drag over a nested box settles where it was"
-            a_line_drag_over_a_nested_box_settles_where_it_was;
-          test "a shift press is held in the region"
-            a_shift_press_is_held_in_the_region;
-          test "the fill after a hard break" the_fill_after_a_hard_break;
-          test "no fill after a soft wrap" no_fill_after_a_soft_wrap;
-          test "extension crosses out of a nested box"
-            extension_crosses_out_of_a_nested_box;
-          test "a row move past the view scrolls the region"
-            a_row_move_past_the_view_scrolls_the_region;
-          test "a copy lays out a text no paint reached"
-            a_copy_lays_out_a_text_no_paint_reached;
-        ];
-      group "Readings"
-        [
-          test "a text drag takes nothing of a cells pane beside it"
-            a_text_drag_takes_nothing_of_a_cells_pane_beside_it;
-          test "a cells drag stays in its pane" a_cells_drag_stays_in_its_pane;
-          test "a text box beside a cells pane takes nothing of it"
-            a_text_box_beside_a_cells_pane_takes_nothing_of_it;
-          test "a text box in a cells window copies its shown rows"
-            a_text_box_in_a_cells_window_copies_its_shown_rows;
-          test "a cells figure in a text document is taken whole"
-            a_cells_figure_in_a_text_document_is_taken_whole;
-          test "equal panes copy a line apart" equal_panes_copy_a_line_apart;
-          test "a cells figure without text stays taken at the release"
-            a_cells_figure_without_text_stays_taken_at_the_release;
-          test "an editor is never highlighted" an_editor_is_never_highlighted;
-        ];
-      group "Cells"
-        [
-          test "a band copies a line for each highlighted row"
-            a_band_copies_a_line_for_each_highlighted_row;
-          test "a band of blanks alone clears" a_band_of_blanks_alone_clears;
-          test "a release on the scroll bar keeps the band"
-            a_release_on_the_scroll_bar_keeps_the_band;
-          test "a release over an overlay keeps the selection"
-            a_release_over_an_overlay_keeps_the_selection;
-          test "a release past a line's end keeps the band"
-            a_release_past_a_line_end_keeps_the_band;
-          test "a cell end moves with its node" a_cell_end_moves_with_its_node;
-          test "a cell end scrolled out sideways stands at the edge"
-            a_cell_end_scrolled_out_sideways_stands_at_the_edge;
-          test "a cell end on a gap stays as the text above grows"
-            a_cell_end_on_a_gap_stays_as_the_text_above_grows;
-          test "a multi-click on a border resolves to the nearest text"
-            a_multi_click_on_a_border_resolves_to_the_nearest_text;
-          test "a declaration change clears the selection"
-            a_declaration_change_clears_the_selection;
-          test "a declaration change ends its drag"
-            a_declaration_change_ends_its_drag;
-          test "a cell focus scrolled out moves from the window's edge"
-            a_cell_focus_scrolled_out_moves_from_the_windows_edge;
-        ];
-      group "Autoscroll"
-        [
-          test "a window scrolls only with the pointer within its columns"
-            a_window_scrolls_only_with_the_pointer_within_its_columns;
-          test "a text box scrolls at the pointer's speed"
-            a_text_box_scrolls_at_the_pointers_speed;
-          test "a drag in a window scrolls its scope too"
-            a_drag_in_a_window_scrolls_its_scope_too;
-          test "a drag in a nested text box leaves the box around it"
-            a_drag_in_a_nested_text_box_leaves_the_box_around_it;
-        ];
-    ]
+  exit
+    (run "mosaic.selection"
+       [
+         group "Cells to source"
+           [
+             test "a hanging blank counts once" a_hanging_blank_counts_once;
+             test "a drag takes both end cells" a_drag_takes_both_end_cells;
+             test "a drag past the rows selects to the end"
+               a_drag_past_the_rows_selects_to_the_end;
+             test "a truncated line leaves the next line whole"
+               a_truncated_line_leaves_the_next_line_whole;
+             test "a zero-width cluster is copied"
+               a_zero_width_cluster_is_copied;
+             test "a click on an ellipsis selects nothing"
+               a_click_on_an_ellipsis_selects_nothing;
+           ];
+         group "Model"
+           [
+             test "a press in a margin starts at the nearest text"
+               a_press_in_a_margin_starts_at_the_nearest_text;
+             test "a press below the last text starts at its end"
+               a_press_below_the_last_text_starts_at_its_end;
+             test "a press with no text in its region clears"
+               a_press_with_no_text_clears;
+             test "a press beside a nested box resolves to the next text"
+               a_press_beside_a_nested_box_resolves_to_the_next_text;
+             test "the ends name text through a rewrap"
+               the_ends_name_text_through_a_rewrap;
+             test "the release keeps the band where it was"
+               the_release_keeps_the_band_where_it_was;
+           ];
+         group "Region and band"
+           [
+             test "a drag out of a scroll box downward reaches the footer"
+               a_drag_out_of_a_scroll_box_downward_reaches_the_footer;
+             test "a drag out of a scroll box sideways reaches its text"
+               a_drag_out_of_a_scroll_box_sideways_reaches_its_text;
+             test "a selection at rest stays under the wheel"
+               a_selection_at_rest_stays_under_the_wheel;
+             test "hidden text takes no part" hidden_text_takes_no_part;
+             test "a selection leaves the top layer out"
+               a_selection_leaves_the_top_layer_out;
+             test "a selection in the top layer stays in it"
+               a_selection_in_the_top_layer_stays_in_it;
+             test "a nested box gives the rows it shows"
+               a_nested_box_gives_the_rows_it_shows;
+             test "a drag into a nested box selects to the pointer"
+               a_drag_into_a_nested_box_selects_to_the_pointer;
+             test "a nested box covered is highlighted"
+               a_nested_box_covered_is_highlighted;
+           ];
+         group "Copy"
+           [
+             test "stacked texts copy on their own lines"
+               stacked_texts_copy_on_their_own_lines;
+             test "side-by-side text copies row by row"
+               side_by_side_text_copies_row_by_row;
+             test "paragraphs copy with a blank line"
+               paragraphs_copy_with_a_blank_line;
+             test "a bordered box copies as drawn"
+               a_bordered_box_copies_as_drawn;
+             test "the markdown table copies as drawn"
+               the_markdown_table_copies_as_drawn;
+             test "a border is highlighted" a_border_is_highlighted;
+             test "an unselectable border is left out"
+               an_unselectable_border_is_left_out;
+             test "an ellipsis copies what it hides"
+               an_ellipsis_copies_what_it_hides;
+             test "a soft wrap adds nothing" a_soft_wrap_adds_nothing;
+             test "a fragment drops a terminator at either end"
+               a_fragment_drops_a_terminator_at_either_end;
+             test "trailing whitespace is copied" trailing_whitespace_is_copied;
+             test "a selection across unselectable text leaves it out"
+               a_selection_across_unselectable_text_leaves_it_out;
+           ];
+         group "Selectability"
+           [
+             test "an absent selectable keeps a button's default"
+               an_absent_selectable_keeps_a_buttons_default;
+             test "an absent selectable keeps a slider's default"
+               an_absent_selectable_keeps_a_sliders_default;
+             test "an absent selectable keeps a user kind's declaration"
+               an_absent_selectable_keeps_a_user_kinds_declaration;
+             test "a press on unselectable content changes nothing"
+               a_press_on_unselectable_content_changes_nothing;
+             test "a selectable text inside an unselectable box"
+               a_selectable_text_inside_an_unselectable_box;
+             test "a line number's child follows its ancestors"
+               a_line_numbers_child_follows_its_ancestors;
+           ];
+         group "Pointer gestures"
+           [
+             test "a drag back to the pressed cell selects its grapheme"
+               a_drag_back_to_the_pressed_cell_selects_its_grapheme;
+             test "the band stops at the text beside its end"
+               the_band_stops_at_the_text_beside_its_end;
+             test "a double click selects a word" a_double_click_selects_a_word;
+             test "a double click selects at the press"
+               a_double_click_selects_at_the_press;
+             test "a double click past a row's end"
+               a_double_click_past_a_rows_end;
+             test "a triple click selects the logical line"
+               a_triple_click_selects_the_logical_line;
+             test "a triple click in a margin selects the nearest line"
+               a_triple_click_in_a_margin_selects_the_nearest_line;
+             test "a drag after a double click extends by words"
+               a_drag_after_a_double_click_extends_by_words;
+             test "the band reaches the unit under the pointer"
+               the_band_reaches_the_unit_under_the_pointer;
+             test "a word drag goes through a nested box"
+               a_word_drag_goes_through_a_nested_box;
+             test "a line drag through a nested box settles where it was"
+               a_line_drag_through_a_nested_box_settles_where_it_was;
+             test "a line drag into a gap settles where it was"
+               a_line_drag_into_a_gap_settles_where_it_was;
+             test "a drag after a triple click extends by lines"
+               a_drag_after_a_triple_click_extends_by_lines;
+             test "the unit under the pointer follows a scroll"
+               the_unit_under_the_pointer_follows_a_scroll;
+             test "a shift press moves the nearer end"
+               a_shift_press_moves_the_nearer_end;
+             test "a shift press moves the focus on a tie"
+               a_shift_press_moves_the_focus_on_a_tie;
+             test "a shift press adds words after a double click"
+               a_shift_press_adds_words_after_a_double_click;
+             test "a shift double click sets the unit"
+               a_shift_double_click_sets_the_unit;
+             test "a shift press without a selection is ordinary"
+               a_shift_press_without_a_selection_is_ordinary;
+             test "a shift press reaches past the box"
+               a_shift_press_reaches_past_the_box;
+             test "a shift press over an inert selection is ordinary"
+               a_shift_press_over_an_inert_selection_is_ordinary;
+             test "a ctrl press is ordinary" a_ctrl_press_is_ordinary;
+           ];
+         group "Highlight"
+           [
+             test "the band is highlighted to the screen edge"
+               the_band_is_highlighted_to_the_screen_edge;
+             test "the cells after a soft wrap are highlighted"
+               the_cells_after_a_soft_wrap_are_highlighted;
+             test "buffered texts are highlighted where they lie"
+               buffered_texts_are_highlighted_where_they_lie;
+           ];
+         group "Editors"
+           [
+             test "a press in an editor clears the view selection"
+               a_press_in_an_editor_clears_the_view_selection;
+             test "the view selection leaves editors out"
+               the_view_selection_leaves_editors_out;
+             test "the copy falls back to the focused editor"
+               the_copy_falls_back_to_the_focused_editor;
+             test "an editor drags its own selection"
+               an_editor_drags_its_own_selection;
+             test "an editor's drag survives a chorded press"
+               an_editors_drag_survives_a_chorded_press;
+             test "an editor selects words" an_editor_selects_words;
+             test "an editor selects lines" an_editor_selects_lines;
+           ];
+         group "Keys"
+           [
+             test "a selection is live while it holds text outside a modal"
+               a_selection_is_live_while_it_holds_text_outside_a_modal;
+             test "extension moves the focus by a grapheme"
+               extension_moves_the_focus_by_a_grapheme;
+             test "an extension after a word keeps its first grapheme"
+               extension_after_a_word_keeps_its_first_grapheme;
+             test "extension moves the focus to its row's ends"
+               extension_moves_the_focus_to_its_rows_ends;
+             test "extension moves the focus by a row"
+               extension_moves_the_focus_by_a_row;
+             test "extension crosses to the next text"
+               extension_crosses_to_the_next_text;
+             test "extension crosses to the text beside by a grapheme"
+               extension_crosses_to_the_text_beside_by_a_grapheme;
+             test "extension moves a cell focus down the screen"
+               extension_moves_a_cell_focus_down_the_screen;
+             test "a row move scrolls a window, then leaves it"
+               a_row_move_scrolls_a_window_then_leaves_it;
+             test "extension selects by graphemes"
+               extension_selects_by_graphemes;
+             test "a drag keeps its focus from the keys"
+               a_drag_keeps_its_focus_from_the_keys;
+           ];
+         group "Changes"
+           [
+             test "a release settles the selection"
+               a_release_settles_the_selection;
+             test "a click settles nothing" a_click_settles_nothing;
+             test "a double click settles at its release"
+               a_double_click_settles_at_its_release;
+             test "a lost release settles" a_lost_release_settles;
+             test "a clear is heard once" a_clear_is_heard_once;
+             test "a shift press settles the moved selection"
+               a_shift_press_settles_the_moved_selection;
+             test "an extension settles nothing" an_extension_settles_nothing;
+             test "line breaks alone are held" line_breaks_alone_are_held;
+             test "a press on unselectable content queues nothing"
+               a_press_on_unselectable_content_queues_nothing;
+           ];
+         group "Change under a selection"
+           [
+             test "following and appending keep the selection"
+               following_and_appending_keep_the_selection;
+             test "a resize keeps the selection" a_resize_keeps_the_selection;
+             test "an edit before the ends moves them"
+               an_edit_before_the_ends_moves_them;
+             test "an edit counts clusters" an_edit_counts_clusters;
+             test "an end inside the edit moves to its start"
+               an_end_inside_the_edit_moves_to_its_start;
+             test "an end at the edit's end moves with it"
+               an_end_at_the_edits_end_moves_with_it;
+             test "an insertion at an end leaves it"
+               an_insertion_at_an_end_leaves_it;
+             test "a streaming paragraph closes bold before an end"
+               a_streaming_paragraph_closes_bold_before_an_end;
+             test "the selection clears when its ends meet"
+               the_selection_clears_when_its_ends_meet;
+             test "an edit during a drag follows its anchor"
+               an_edit_during_a_drag_follows_its_anchor;
+             test "an end's node hidden clears the selection"
+               an_ends_node_hidden_clears_the_selection;
+             test "an end's node unmounted clears the selection"
+               an_ends_node_unmounted_clears_the_selection;
+             test "an end's unmount ends its drag" an_ends_unmount_ends_its_drag;
+             test "an end in a streaming list survives a chunk"
+               an_end_in_a_streaming_list_survives_a_chunk;
+             test "an end in a streaming table survives a chunk"
+               an_end_in_a_streaming_table_survives_a_chunk;
+             test "an end in a streaming quote survives a chunk"
+               an_end_in_a_streaming_quote_survives_a_chunk;
+             test "a key move lays out a text no paint reached"
+               a_key_move_lays_out_a_text_no_paint_reached;
+           ];
+         group "Text"
+           [
+             test "a press beside a nested box resolves past its texts"
+               a_press_beside_a_nested_box_resolves_past_its_texts;
+             test "a drag out of a scroll box downward stays in it"
+               a_drag_out_of_a_scroll_box_downward_stays_in_it;
+             test "a drag out of a scroll box sideways stays in it"
+               a_drag_out_of_a_scroll_box_sideways_stays_in_it;
+             test "a nested box covered is selected whole"
+               a_nested_box_covered_is_selected_whole;
+             test "a nested box partly covered is left out"
+               a_nested_box_partly_covered_is_left_out;
+             test "a bordered box between paragraphs"
+               a_bordered_box_between_paragraphs;
+             test "the markdown table copies row by row"
+               the_markdown_table_copies_row_by_row;
+             test "a word drag selects a nested box once covered"
+               a_word_drag_selects_a_nested_box_once_covered;
+             test "a line drag over a nested box settles where it was"
+               a_line_drag_over_a_nested_box_settles_where_it_was;
+             test "a shift press is held in the region"
+               a_shift_press_is_held_in_the_region;
+             test "the fill after a hard break" the_fill_after_a_hard_break;
+             test "no fill after a soft wrap" no_fill_after_a_soft_wrap;
+             test "extension crosses out of a nested box"
+               extension_crosses_out_of_a_nested_box;
+             test "a row move past the view scrolls the region"
+               a_row_move_past_the_view_scrolls_the_region;
+             test "a copy lays out a text no paint reached"
+               a_copy_lays_out_a_text_no_paint_reached;
+           ];
+         group "Readings"
+           [
+             test "a text drag takes nothing of a cells pane beside it"
+               a_text_drag_takes_nothing_of_a_cells_pane_beside_it;
+             test "a cells drag stays in its pane"
+               a_cells_drag_stays_in_its_pane;
+             test "a text box beside a cells pane takes nothing of it"
+               a_text_box_beside_a_cells_pane_takes_nothing_of_it;
+             test "a text box in a cells window copies its shown rows"
+               a_text_box_in_a_cells_window_copies_its_shown_rows;
+             test "a cells figure in a text document is taken whole"
+               a_cells_figure_in_a_text_document_is_taken_whole;
+             test "equal panes copy a line apart" equal_panes_copy_a_line_apart;
+             test "a cells figure without text stays taken at the release"
+               a_cells_figure_without_text_stays_taken_at_the_release;
+             test "an editor is never highlighted"
+               an_editor_is_never_highlighted;
+           ];
+         group "Cells"
+           [
+             test "a band copies a line for each highlighted row"
+               a_band_copies_a_line_for_each_highlighted_row;
+             test "a band of blanks alone clears" a_band_of_blanks_alone_clears;
+             test "a release on the scroll bar keeps the band"
+               a_release_on_the_scroll_bar_keeps_the_band;
+             test "a release over an overlay keeps the selection"
+               a_release_over_an_overlay_keeps_the_selection;
+             test "a release past a line's end keeps the band"
+               a_release_past_a_line_end_keeps_the_band;
+             test "a cell end moves with its node"
+               a_cell_end_moves_with_its_node;
+             test "a cell end scrolled out sideways stands at the edge"
+               a_cell_end_scrolled_out_sideways_stands_at_the_edge;
+             test "a cell end on a gap stays as the text above grows"
+               a_cell_end_on_a_gap_stays_as_the_text_above_grows;
+             test "a multi-click on a border resolves to the nearest text"
+               a_multi_click_on_a_border_resolves_to_the_nearest_text;
+             test "a declaration change clears the selection"
+               a_declaration_change_clears_the_selection;
+             test "a declaration change ends its drag"
+               a_declaration_change_ends_its_drag;
+             test "a cell focus scrolled out moves from the window's edge"
+               a_cell_focus_scrolled_out_moves_from_the_windows_edge;
+           ];
+         group "Autoscroll"
+           [
+             test "a window scrolls only with the pointer within its columns"
+               a_window_scrolls_only_with_the_pointer_within_its_columns;
+             test "a text box scrolls at the pointer's speed"
+               a_text_box_scrolls_at_the_pointers_speed;
+             test "a drag in a window scrolls its scope too"
+               a_drag_in_a_window_scrolls_its_scope_too;
+             test "a drag in a nested text box leaves the box around it"
+               a_drag_in_a_nested_text_box_leaves_the_box_around_it;
+           ];
+       ])

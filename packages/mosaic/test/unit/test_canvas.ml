@@ -321,7 +321,7 @@ let pp_output () =
   let canvas = Canvas.create ~parent:root ~id:"test-canvas" () in
   let s = Format.asprintf "%a" Canvas.pp canvas in
   contains ~msg:"contains id" ~sub:"test-canvas" s;
-  starts_with ~affix:"Canvas" s
+  starts_with ~prefix:"Canvas" s
 
 (* ── Runner ── *)
 
@@ -351,48 +351,54 @@ let doors_on_draw () =
       doors_drawing (Canvas.create ~parent ~style:doors_style ()) doors_draw)
 
 let () =
-  run "mosaic.canvas"
-    [
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "grid starts at 1x1" create_grid_starts_at_1x1;
-          test "grid follows the screen width method"
-            create_grid_follows_screen_width_method;
-        ];
-      group "Auto-resize"
-        [
-          test "resizes grid on render" auto_resize_on_render;
-          test "fires on_resize callback" auto_resize_fires_callback;
-          test "on_resize sees new dimensions" on_resize_sees_new_dimensions;
-          test "skips zero dimensions" no_render_for_zero_dimensions;
-        ];
-      group "Clear"
-        [
-          test "schedules render" clear_schedules_render;
-          test "in the canvas's draw schedules nothing"
-            clear_in_draw_schedules_nothing;
-        ];
-      group "request_render"
-        [ test "schedules render" request_render_schedules ];
-      group "Drawing"
-        [
-          test "draw_text writes to grid" draw_text_writes_to_grid;
-          test "fill_rect fills cells" fill_rect_fills_cells;
-          test "set_uchar writes cell" set_uchar_writes_glyph;
-          test "width/height accessors" width_height_accessors;
-        ];
-      group "on_draw"
-        [
-          test "fires during render" on_draw_fires_during_render;
-          test "has correct dimensions" on_draw_has_correct_dimensions;
-          test "forwards delta" on_draw_forwards_delta;
-          test "None clears callback" on_draw_none_clears_callback;
-          test "on_resize fires before on_draw" on_resize_fires_before_on_draw;
-          test "can draw inside callback" on_draw_can_draw;
-        ];
-      group "Persistence"
-        [ test "content persists across frames" content_persists_across_frames ];
-      group "pp" [ test "produces output" pp_output ];
-      group "Both doors" [ test "on_draw (the element's draw)" doors_on_draw ];
-    ]
+  exit
+    (run "mosaic.canvas"
+       [
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "grid starts at 1x1" create_grid_starts_at_1x1;
+             test "grid follows the screen width method"
+               create_grid_follows_screen_width_method;
+           ];
+         group "Auto-resize"
+           [
+             test "resizes grid on render" auto_resize_on_render;
+             test "fires on_resize callback" auto_resize_fires_callback;
+             test "on_resize sees new dimensions" on_resize_sees_new_dimensions;
+             test "skips zero dimensions" no_render_for_zero_dimensions;
+           ];
+         group "Clear"
+           [
+             test "schedules render" clear_schedules_render;
+             test "in the canvas's draw schedules nothing"
+               clear_in_draw_schedules_nothing;
+           ];
+         group "request_render"
+           [ test "schedules render" request_render_schedules ];
+         group "Drawing"
+           [
+             test "draw_text writes to grid" draw_text_writes_to_grid;
+             test "fill_rect fills cells" fill_rect_fills_cells;
+             test "set_uchar writes cell" set_uchar_writes_glyph;
+             test "width/height accessors" width_height_accessors;
+           ];
+         group "on_draw"
+           [
+             test "fires during render" on_draw_fires_during_render;
+             test "has correct dimensions" on_draw_has_correct_dimensions;
+             test "forwards delta" on_draw_forwards_delta;
+             test "None clears callback" on_draw_none_clears_callback;
+             test "on_resize fires before on_draw"
+               on_resize_fires_before_on_draw;
+             test "can draw inside callback" on_draw_can_draw;
+           ];
+         group "Persistence"
+           [
+             test "content persists across frames"
+               content_persists_across_frames;
+           ];
+         group "pp" [ test "produces output" pp_output ];
+         group "Both doors"
+           [ test "on_draw (the element's draw)" doors_on_draw ];
+       ])

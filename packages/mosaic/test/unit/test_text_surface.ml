@@ -733,151 +733,156 @@ let clipped_wide_start_stays_inside_node () =
   equal string "a" (Matrix_grid.get_text grid 3)
 
 let () =
-  run "mosaic.text_surface"
-    [
-      group "Shared geometry paint"
-        [
-          test "style boundaries and grid defaults cannot split geometry"
-            styled_cluster_paints_as_one;
-          test "scissor rows retain source identity"
-            clipped_text_uses_absolute_source_rows;
-          test "clipped wide start cannot paint before its node"
-            clipped_wide_start_stays_inside_node;
-        ];
-      group "Construction"
-        [
-          test "defaults" defaults;
-          test "oversized geometry is released after switching widths"
-            oversized_layout_is_released_on_width_switch;
-          test "selection changes compare normalized ranges"
-            selection_updates_compare_normalized_ranges;
-        ];
-      group "Wrapping — None"
-        [
-          test "single line" wrap_none_single_line;
-          test "multiline" wrap_none_multiline;
-        ];
-      group "Wrapping — Char"
-        [
-          test "splits at width" wrap_char_splits;
-          test "short line no wrap" wrap_char_short_line_no_wrap;
-          test "line_sources map" wrap_char_line_sources;
-          test "wrap_indices" wrap_char_wrap_indices;
-        ];
-      group "Wrapping — Word"
-        [
-          test "CJK wraps across styles" cjk_wrap_across_styles;
-          test "breaks at word boundary" wrap_word_at_boundary;
-          test "preserves line sources" wrap_word_preserves_sources;
-        ];
-      group "set_wrap"
-        [ test "changes mode and recomputes" set_wrap_changes_mode ];
-      group "wrap_width"
-        [
-          test "explicit override" explicit_wrap_width;
-          test "None derives from node" wrap_width_none_derives_from_node;
-        ];
-      group "Truncation"
-        [
-          test "long line truncated with ellipsis" truncate_long_line;
-          test "short line unchanged" truncate_short_line_unchanged;
-        ];
-      group "Display info"
-        [
-          test "grapheme offsets" display_info_grapheme_offsets;
-          test "max_line_width" display_info_max_line_width;
-        ];
-      group "Viewport / scroll"
-        [
-          test "scroll_x clamps" scroll_x_clamps;
-          test "scroll_y clamps" scroll_y_clamps;
-          test "scroll_height = display lines"
-            scroll_height_equals_display_lines;
-          test "scroll_width = max width" scroll_width_equals_max_width;
-        ];
-      group "Selection — set_selection"
-        [
-          test "set and get" selection_set_and_get;
-          test "clamps to bounds" selection_clamps_to_bounds;
-          test "normalized" selection_normalized;
-          test "returns true when changed" selection_returns_true_when_changed;
-          test "selected_text" selected_text_basic;
-          test "empty when no selection" selected_text_empty_when_no_selection;
-        ];
-      group "Selection — reset"
-        [ test "clears active state" reset_selection_clears ];
-      group "Cache invalidation"
-        [
-          test "invalidate clears cache" invalidate_clears_cache;
-          test "restyling retains geometry" restyling_retains_geometry;
-          test "reading geometry preserves layout invalidation"
-            reading_new_geometry_does_not_skip_layout_invalidation;
-          test "buffer version triggers recompute"
-            buffer_version_triggers_recompute;
-          test "buffer tab width triggers recompute"
-            buffer_tab_width_triggers_recompute;
-          test "measure probe does not poison display"
-            measure_probe_does_not_poison_display;
-          test "width cache reuses and releases obsolete geometry"
-            replacement_releases_geometry;
-          test "alternating width probes stay consistent"
-            alternating_width_probes_stay_consistent;
-          test "truncation is keyed by width" truncation_is_keyed_by_width;
-        ];
-      group "Measurement"
-        [
-          test "max_content returns natural width"
-            measure_max_content_returns_natural_width;
-          test "max_content multiline" measure_max_content_multiline;
-          test "min_content char wrap" measure_min_content_char_wrap;
-          test "min_content word wrap" measure_min_content_word_wrap;
-          test "definite caps with wrap" measure_definite_caps_with_wrap;
-          test "definite no wrap uncapped" measure_definite_no_wrap_uncapped;
-          test "truncate ignores previous layout width"
-            measure_truncate_ignores_previous_layout_width;
-          test "word max_content ignores layout width"
-            measure_word_max_content_ignores_layout_width;
-          test "word max_content unbreakable run"
-            measure_word_max_content_unbreakable_run;
-          test "known width overrides" measure_known_width_overrides;
-          test "known height overrides" measure_known_height_overrides;
-          test "empty buffer" measure_empty_buffer;
-          test "height grows for wrapped" measure_height_grows_for_wrapped;
-        ];
-      group "Convenience getters"
-        [
-          test "max_scroll_x wider content" max_scroll_x_wider_content;
-          test "max_scroll_x fits" max_scroll_x_fits;
-          test "max_scroll_y taller content" max_scroll_y_taller_content;
-          test "max_scroll_y fits" max_scroll_y_fits;
-        ];
-      group "Selection — multi-line"
-        [
-          test "multi-line selection" selection_multiline_text;
-          test "full content selection" selection_full_content;
-          test "selection with styled text" selection_with_styled_text;
-        ];
-      group "Wrapping — edge cases"
-        [
-          test "long word falls back to char" wrap_word_long_word_fallback;
-          test "empty lines preserved" wrap_word_empty_lines_preserved;
-          test "single char words" wrap_word_single_char_words;
-        ];
-      group "Properties"
-        [
-          prop "display_line_count >= line_count" small_string (fun s ->
-              let surface = make_surface ~width:5 ~content:s ~wrap:`Char () in
-              let buf = Text_surface.buffer surface in
-              let lines = Text_buffer.line_count buf in
-              ge ~msg:"display lines cover the buffer" ~than:lines
-                (Text_surface.display_line_count surface));
-          prop "scroll_x always >= 0" small_string (fun s ->
-              let surface = make_surface ~width:5 ~content:s () in
-              Text_surface.set_scroll_x surface (-100);
-              ge ~than:0 (Text_surface.scroll_x surface));
-          prop "scroll_y always >= 0" small_string (fun s ->
-              let surface = make_surface ~height:3 ~content:s () in
-              Text_surface.set_scroll_y surface (-100);
-              ge ~than:0 (Text_surface.scroll_y surface));
-        ];
-    ]
+  exit
+    (run "mosaic.text_surface"
+       [
+         group "Shared geometry paint"
+           [
+             test "style boundaries and grid defaults cannot split geometry"
+               styled_cluster_paints_as_one;
+             test "scissor rows retain source identity"
+               clipped_text_uses_absolute_source_rows;
+             test "clipped wide start cannot paint before its node"
+               clipped_wide_start_stays_inside_node;
+           ];
+         group "Construction"
+           [
+             test "defaults" defaults;
+             test "oversized geometry is released after switching widths"
+               oversized_layout_is_released_on_width_switch;
+             test "selection changes compare normalized ranges"
+               selection_updates_compare_normalized_ranges;
+           ];
+         group "Wrapping — None"
+           [
+             test "single line" wrap_none_single_line;
+             test "multiline" wrap_none_multiline;
+           ];
+         group "Wrapping — Char"
+           [
+             test "splits at width" wrap_char_splits;
+             test "short line no wrap" wrap_char_short_line_no_wrap;
+             test "line_sources map" wrap_char_line_sources;
+             test "wrap_indices" wrap_char_wrap_indices;
+           ];
+         group "Wrapping — Word"
+           [
+             test "CJK wraps across styles" cjk_wrap_across_styles;
+             test "breaks at word boundary" wrap_word_at_boundary;
+             test "preserves line sources" wrap_word_preserves_sources;
+           ];
+         group "set_wrap"
+           [ test "changes mode and recomputes" set_wrap_changes_mode ];
+         group "wrap_width"
+           [
+             test "explicit override" explicit_wrap_width;
+             test "None derives from node" wrap_width_none_derives_from_node;
+           ];
+         group "Truncation"
+           [
+             test "long line truncated with ellipsis" truncate_long_line;
+             test "short line unchanged" truncate_short_line_unchanged;
+           ];
+         group "Display info"
+           [
+             test "grapheme offsets" display_info_grapheme_offsets;
+             test "max_line_width" display_info_max_line_width;
+           ];
+         group "Viewport / scroll"
+           [
+             test "scroll_x clamps" scroll_x_clamps;
+             test "scroll_y clamps" scroll_y_clamps;
+             test "scroll_height = display lines"
+               scroll_height_equals_display_lines;
+             test "scroll_width = max width" scroll_width_equals_max_width;
+           ];
+         group "Selection — set_selection"
+           [
+             test "set and get" selection_set_and_get;
+             test "clamps to bounds" selection_clamps_to_bounds;
+             test "normalized" selection_normalized;
+             test "returns true when changed"
+               selection_returns_true_when_changed;
+             test "selected_text" selected_text_basic;
+             test "empty when no selection"
+               selected_text_empty_when_no_selection;
+           ];
+         group "Selection — reset"
+           [ test "clears active state" reset_selection_clears ];
+         group "Cache invalidation"
+           [
+             test "invalidate clears cache" invalidate_clears_cache;
+             test "restyling retains geometry" restyling_retains_geometry;
+             test "reading geometry preserves layout invalidation"
+               reading_new_geometry_does_not_skip_layout_invalidation;
+             test "buffer version triggers recompute"
+               buffer_version_triggers_recompute;
+             test "buffer tab width triggers recompute"
+               buffer_tab_width_triggers_recompute;
+             test "measure probe does not poison display"
+               measure_probe_does_not_poison_display;
+             test "width cache reuses and releases obsolete geometry"
+               replacement_releases_geometry;
+             test "alternating width probes stay consistent"
+               alternating_width_probes_stay_consistent;
+             test "truncation is keyed by width" truncation_is_keyed_by_width;
+           ];
+         group "Measurement"
+           [
+             test "max_content returns natural width"
+               measure_max_content_returns_natural_width;
+             test "max_content multiline" measure_max_content_multiline;
+             test "min_content char wrap" measure_min_content_char_wrap;
+             test "min_content word wrap" measure_min_content_word_wrap;
+             test "definite caps with wrap" measure_definite_caps_with_wrap;
+             test "definite no wrap uncapped" measure_definite_no_wrap_uncapped;
+             test "truncate ignores previous layout width"
+               measure_truncate_ignores_previous_layout_width;
+             test "word max_content ignores layout width"
+               measure_word_max_content_ignores_layout_width;
+             test "word max_content unbreakable run"
+               measure_word_max_content_unbreakable_run;
+             test "known width overrides" measure_known_width_overrides;
+             test "known height overrides" measure_known_height_overrides;
+             test "empty buffer" measure_empty_buffer;
+             test "height grows for wrapped" measure_height_grows_for_wrapped;
+           ];
+         group "Convenience getters"
+           [
+             test "max_scroll_x wider content" max_scroll_x_wider_content;
+             test "max_scroll_x fits" max_scroll_x_fits;
+             test "max_scroll_y taller content" max_scroll_y_taller_content;
+             test "max_scroll_y fits" max_scroll_y_fits;
+           ];
+         group "Selection — multi-line"
+           [
+             test "multi-line selection" selection_multiline_text;
+             test "full content selection" selection_full_content;
+             test "selection with styled text" selection_with_styled_text;
+           ];
+         group "Wrapping — edge cases"
+           [
+             test "long word falls back to char" wrap_word_long_word_fallback;
+             test "empty lines preserved" wrap_word_empty_lines_preserved;
+             test "single char words" wrap_word_single_char_words;
+           ];
+         group "Properties"
+           [
+             prop "display_line_count >= line_count" small_string (fun s ->
+                 let surface =
+                   make_surface ~width:5 ~content:s ~wrap:`Char ()
+                 in
+                 let buf = Text_surface.buffer surface in
+                 let lines = Text_buffer.line_count buf in
+                 ge ~msg:"display lines cover the buffer" ~than:lines
+                   (Text_surface.display_line_count surface));
+             prop "scroll_x always >= 0" small_string (fun s ->
+                 let surface = make_surface ~width:5 ~content:s () in
+                 Text_surface.set_scroll_x surface (-100);
+                 ge ~than:0 (Text_surface.scroll_x surface));
+             prop "scroll_y always >= 0" small_string (fun s ->
+                 let surface = make_surface ~height:3 ~content:s () in
+                 Text_surface.set_scroll_y surface (-100);
+                 ge ~than:0 (Text_surface.scroll_y surface));
+           ];
+       ])

@@ -2120,142 +2120,143 @@ let test_kitty_pixels_apart () =
   equal ~msg:"once" string "" (Ansi.Writer.contents w)
 
 let () =
-  run "matrix.screen"
-    [
-      group "Bytes per change" [ test "a 160x48 frame" bytes_per_change ];
-      group "Core Rendering"
-        [
-          test "Create renderer" test_create_renderer;
-          test "Zero-sized frame" test_zero_sized_frame;
-          test "Single cell frame" test_single_cell_frame;
-          test "Simple text rendering" test_simple_text_rendering;
-          test "Hyperlink rendering" test_hyperlink_rendering;
-          test "Row offset applied" test_row_offset_applied;
-          test "Viewport expansion renders new rows"
-            test_viewport_expansion_renders_new_rows;
-          test "Viewport clips active hit grid"
-            test_viewport_clips_active_hit_grid;
-          test "Styled frame resets SGR" test_styled_frame_resets_sgr;
-          test "Color depth reaches SGR emission"
-            test_color_depth_reaches_sgr_emission;
-        ];
-      group "Diff Algorithm"
-        [
-          test "Diff only changed cells" test_diff_only_changed_cells;
-          test "No diff when unchanged" test_no_diff_when_unchanged;
-          test "Wide character diff" test_wide_char_diff;
-          test "Changed grapheme diff" test_changed_grapheme_diff;
-          test "Changed hyperlink diff" test_changed_hyperlink_diff;
-          test "Null cell clear uses cell colors"
-            test_null_cell_clear_uses_cell_colors;
-          test "All cells changed" test_all_cells_changed;
-          test "Partial row update" test_partial_row_update;
-          test "Color only change" test_color_only_change;
-          test "Attribute only change" test_attribute_only_change;
-          test "Adjacent cells stay apart" test_adjacent_cells_stay_apart;
-          test "A full render writes empty cells"
-            test_full_render_writes_empty_cells;
-          test "Empty cells reset the rendition"
-            test_empty_cells_reset_the_rendition;
-        ];
-      group "Frame Building"
-        [
-          test "handed-out grid is cleared once"
-            test_handed_out_grid_is_cleared_once;
-          test "Build visual (no hits)" test_build_visual;
-          test "A render without a build is blank"
-            test_render_without_build_is_blank;
-          test "Resize repaints every cell" test_resize_repaints_every_cell;
-          test "Resize smaller" test_resize_smaller;
-          test "Resize clears both buffers" test_resize_clears_both_buffers;
-          test "Resize clears pending next buffer"
-            test_resize_clears_pending_next_buffer;
-          test "Resize same size preserves diff baseline"
-            test_resize_same_size_preserves_diff_baseline;
-          test "Cursor clamped on resize" test_cursor_clamped_on_resize;
-        ];
-      group "Hit Grid Integration"
-        [
-          test "Hit grid integration" test_hit_grid_integration;
-          test "Hit grid draw" test_hit_grid_draw;
-          test "Hit grid cleared each frame" test_hit_grid_cleared_each_frame;
-          test "Hit grid swap happens on render" test_hit_grid_swap_on_render;
-          test "Add hit region helper" test_add_hit_region_helper;
-          test "A 1x1 frame keeps its hit regions"
-            test_single_cell_frame_keeps_hits;
-        ];
-      group "Statistics" [ test "Stats tracking" test_stats_tracking ];
-      group "Configuration"
-        [
-          test "Update config" test_update_config;
-          test "Reset" test_reset;
-          test "Reset triggers diff" test_reset_triggers_next_diff;
-        ];
-      group "Edge Cases"
-        [
-          test "Extremely wide characters" test_extremely_wide_char;
-          test "Buffer overflow prevention" test_buffer_overflow_prevention;
-          test "Render into a full writer commits nothing"
-            test_render_into_full_writer;
-          test "Render into caller writer appends and commits once"
-            test_render_into_appends_and_commits_once;
-          test "Large hyperlinked Screen.render succeeds"
-            test_render_large_hyperlinked_frame_succeeds;
-          test "Resize triggers full redraw" test_resize_full_redraw;
-          test "Resize clears hit grids" test_resize_hit_grid_cleared;
-          test "Wide grapheme emission" test_wide_grapheme_emission;
-          test "Explicit width sequences" test_explicit_width_sequences;
-          test "Turning explicit width off repositions the cursor"
-            test_explicit_width_off_repositions;
-          test "Hyperlink capability gating" test_hyperlink_capability_gating;
-          test "Scroll hint clips to viewport"
-            test_scroll_hint_clips_to_viewport;
-          test "Scroll hint applies row offset"
-            test_scroll_hint_applies_row_offset;
-          test "Scroll hint by the whole region is ignored"
-            test_scroll_hint_by_whole_region_is_ignored;
-          test "Cursor style and color" test_cursor_style_and_color;
-        ];
-      group "Region"
-        [
-          test "Below the lines before it" test_region_below;
-          test "Foreign lines" test_region_foreign;
-          test "Moved" test_region_moved;
-          test "A frame taller than the screen" test_region_tall;
-          test "Rows cut to the width" test_region_width;
-          test "A cut copy gives its graphemes back"
-            test_region_cut_releases_graphemes;
-          test "Close" test_region_close;
-          test "Suspend" test_region_suspend;
-          test "Teardown" test_region_teardown;
-          test "A background left set" test_region_background;
-          test "Plain rows" test_region_plain;
-          test "The cursor between writes" test_region_cursor;
-          test "A line written at a cursor in the region"
-            test_region_cursor_foreign;
-          test "Rows the caller writes" test_region_start_finish;
-          test "Keep" test_region_keep;
-          test "Clear" test_region_clear;
-          test "Any order of writes loses no line" test_region_random;
-        ];
-      group "Pictures"
-        [
-          test "Half blocks" test_picture_blocks;
-          test "At each styling" test_stylings;
-          test "Kitty at each styling" test_picture_kitty_stylings;
-          test "Kitty placeholders" test_picture_kitty;
-          test "Sixel over half blocks" test_picture_sixel;
-          test "Static rows" test_picture_static_rows;
-          test "Kitty pixels apart from the render" test_kitty_pixels_apart;
-        ];
-      group "Relative render"
-        [
-          test "Rows reached from the cursor's" test_relative_render;
-          test "A sixel between saved positions" test_relative_sixel;
-        ];
-      group "Performance Characteristics"
-        [
-          test "Double buffer reuse" test_double_buffer_reuse;
-          test "Transform before render" test_transform_before_render;
-        ];
-    ]
+  exit
+    (run "matrix.screen"
+       [
+         group "Bytes per change" [ test "a 160x48 frame" bytes_per_change ];
+         group "Core Rendering"
+           [
+             test "Create renderer" test_create_renderer;
+             test "Zero-sized frame" test_zero_sized_frame;
+             test "Single cell frame" test_single_cell_frame;
+             test "Simple text rendering" test_simple_text_rendering;
+             test "Hyperlink rendering" test_hyperlink_rendering;
+             test "Row offset applied" test_row_offset_applied;
+             test "Viewport expansion renders new rows"
+               test_viewport_expansion_renders_new_rows;
+             test "Viewport clips active hit grid"
+               test_viewport_clips_active_hit_grid;
+             test "Styled frame resets SGR" test_styled_frame_resets_sgr;
+             test "Color depth reaches SGR emission"
+               test_color_depth_reaches_sgr_emission;
+           ];
+         group "Diff Algorithm"
+           [
+             test "Diff only changed cells" test_diff_only_changed_cells;
+             test "No diff when unchanged" test_no_diff_when_unchanged;
+             test "Wide character diff" test_wide_char_diff;
+             test "Changed grapheme diff" test_changed_grapheme_diff;
+             test "Changed hyperlink diff" test_changed_hyperlink_diff;
+             test "Null cell clear uses cell colors"
+               test_null_cell_clear_uses_cell_colors;
+             test "All cells changed" test_all_cells_changed;
+             test "Partial row update" test_partial_row_update;
+             test "Color only change" test_color_only_change;
+             test "Attribute only change" test_attribute_only_change;
+             test "Adjacent cells stay apart" test_adjacent_cells_stay_apart;
+             test "A full render writes empty cells"
+               test_full_render_writes_empty_cells;
+             test "Empty cells reset the rendition"
+               test_empty_cells_reset_the_rendition;
+           ];
+         group "Frame Building"
+           [
+             test "handed-out grid is cleared once"
+               test_handed_out_grid_is_cleared_once;
+             test "Build visual (no hits)" test_build_visual;
+             test "A render without a build is blank"
+               test_render_without_build_is_blank;
+             test "Resize repaints every cell" test_resize_repaints_every_cell;
+             test "Resize smaller" test_resize_smaller;
+             test "Resize clears both buffers" test_resize_clears_both_buffers;
+             test "Resize clears pending next buffer"
+               test_resize_clears_pending_next_buffer;
+             test "Resize same size preserves diff baseline"
+               test_resize_same_size_preserves_diff_baseline;
+             test "Cursor clamped on resize" test_cursor_clamped_on_resize;
+           ];
+         group "Hit Grid Integration"
+           [
+             test "Hit grid integration" test_hit_grid_integration;
+             test "Hit grid draw" test_hit_grid_draw;
+             test "Hit grid cleared each frame" test_hit_grid_cleared_each_frame;
+             test "Hit grid swap happens on render" test_hit_grid_swap_on_render;
+             test "Add hit region helper" test_add_hit_region_helper;
+             test "A 1x1 frame keeps its hit regions"
+               test_single_cell_frame_keeps_hits;
+           ];
+         group "Statistics" [ test "Stats tracking" test_stats_tracking ];
+         group "Configuration"
+           [
+             test "Update config" test_update_config;
+             test "Reset" test_reset;
+             test "Reset triggers diff" test_reset_triggers_next_diff;
+           ];
+         group "Edge Cases"
+           [
+             test "Extremely wide characters" test_extremely_wide_char;
+             test "Buffer overflow prevention" test_buffer_overflow_prevention;
+             test "Render into a full writer commits nothing"
+               test_render_into_full_writer;
+             test "Render into caller writer appends and commits once"
+               test_render_into_appends_and_commits_once;
+             test "Large hyperlinked Screen.render succeeds"
+               test_render_large_hyperlinked_frame_succeeds;
+             test "Resize triggers full redraw" test_resize_full_redraw;
+             test "Resize clears hit grids" test_resize_hit_grid_cleared;
+             test "Wide grapheme emission" test_wide_grapheme_emission;
+             test "Explicit width sequences" test_explicit_width_sequences;
+             test "Turning explicit width off repositions the cursor"
+               test_explicit_width_off_repositions;
+             test "Hyperlink capability gating" test_hyperlink_capability_gating;
+             test "Scroll hint clips to viewport"
+               test_scroll_hint_clips_to_viewport;
+             test "Scroll hint applies row offset"
+               test_scroll_hint_applies_row_offset;
+             test "Scroll hint by the whole region is ignored"
+               test_scroll_hint_by_whole_region_is_ignored;
+             test "Cursor style and color" test_cursor_style_and_color;
+           ];
+         group "Region"
+           [
+             test "Below the lines before it" test_region_below;
+             test "Foreign lines" test_region_foreign;
+             test "Moved" test_region_moved;
+             test "A frame taller than the screen" test_region_tall;
+             test "Rows cut to the width" test_region_width;
+             test "A cut copy gives its graphemes back"
+               test_region_cut_releases_graphemes;
+             test "Close" test_region_close;
+             test "Suspend" test_region_suspend;
+             test "Teardown" test_region_teardown;
+             test "A background left set" test_region_background;
+             test "Plain rows" test_region_plain;
+             test "The cursor between writes" test_region_cursor;
+             test "A line written at a cursor in the region"
+               test_region_cursor_foreign;
+             test "Rows the caller writes" test_region_start_finish;
+             test "Keep" test_region_keep;
+             test "Clear" test_region_clear;
+             test "Any order of writes loses no line" test_region_random;
+           ];
+         group "Pictures"
+           [
+             test "Half blocks" test_picture_blocks;
+             test "At each styling" test_stylings;
+             test "Kitty at each styling" test_picture_kitty_stylings;
+             test "Kitty placeholders" test_picture_kitty;
+             test "Sixel over half blocks" test_picture_sixel;
+             test "Static rows" test_picture_static_rows;
+             test "Kitty pixels apart from the render" test_kitty_pixels_apart;
+           ];
+         group "Relative render"
+           [
+             test "Rows reached from the cursor's" test_relative_render;
+             test "A sixel between saved positions" test_relative_sixel;
+           ];
+         group "Performance Characteristics"
+           [
+             test "Double buffer reuse" test_double_buffer_reuse;
+             test "Transform before render" test_transform_before_render;
+           ];
+       ])

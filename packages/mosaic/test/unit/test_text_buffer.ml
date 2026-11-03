@@ -26,7 +26,7 @@ let create_custom_tab_width () =
   equal ~msg:"tab_width" int 4 (Text_buffer.tab_width buf)
 
 let create_tab_width_below_1_raises () =
-  raises_match (Exn.invalid_arg ~substring:"tab width") (fun () ->
+  raises_match (Exn.invalid_arg ~sub:"tab width") (fun () ->
       ignore (Text_buffer.create ~tab_width:0 () : Text_buffer.t))
 
 (* ── Content — set_text ── *)
@@ -366,7 +366,7 @@ let tab_width_default () =
 
 let set_tab_width_below_1_raises () =
   let buf = Text_buffer.create () in
-  raises_match (Exn.invalid_arg ~substring:"tab width") (fun () ->
+  raises_match (Exn.invalid_arg ~sub:"tab width") (fun () ->
       Text_buffer.set_tab_width buf (-1));
   equal ~msg:"unchanged" int 2 (Text_buffer.tab_width buf)
 
@@ -470,146 +470,150 @@ let printable_string = Gen.string_of (Gen.char_range 'a' 'z')
 (* ── Runner ── *)
 
 let () =
-  run "mosaic.text_buffer"
-    [
-      group "Construction"
-        [
-          test "defaults" create_defaults;
-          test "custom tab_width" create_custom_tab_width;
-          test "a tab width below 1 raises" create_tab_width_below_1_raises;
-        ];
-      group "Content — set_text"
-        [
-          test "single line" set_text_single_line;
-          test "multiline" set_text_multiline;
-          test "empty string" set_text_empty;
-          test "replaces previous" set_text_replaces_previous;
-          test "increments version" set_text_increments_version;
-        ];
-      group "Content — set_styled_text"
-        [
-          test "single span" set_styled_text_single_span;
-          test "multiple spans" set_styled_text_multiple_spans;
-        ];
-      group "Content — append"
-        [
-          test "append to existing" append_to_existing;
-          test "multiple appends" append_multiple;
-          test "append after read" append_after_read;
-          test "append_styled" append_styled_to_existing;
-          test "append_styled after read" append_styled_after_read;
-        ];
-      group "Content — clear"
-        [
-          test "resets content" clear_resets_content;
-          test "removes highlights" clear_removes_highlights;
-          test "increments version" clear_increments_version;
-        ];
-      group "Grapheme count"
-        [
-          test "ASCII" grapheme_count_ascii;
-          test "empty" grapheme_count_empty;
-          test "multibyte UTF-8" grapheme_count_multibyte;
-        ];
-      group "Line information"
-        [
-          test "single line" line_count_single;
-          test "multiple lines" line_count_multi;
-          test "trailing newline" line_count_trailing_newline;
-          test "line_width per line" line_width_per_line;
-          test "line_width out of range" line_width_out_of_range;
-          test "max_line_width" max_line_width_basic;
-        ];
-      group "Styled text"
-        [
-          test "preserves lines and styles"
-            styled_text_preserves_lines_and_styles;
-          test "append order and retained snapshot"
-            styled_text_keeps_append_order_and_snapshot;
-        ];
-      group "text_in_range"
-        [
-          test "middle of content" text_in_range_middle;
-          test "from start" text_in_range_from_start;
-          test "clamped to end" text_in_range_clamped_to_end;
-          test "empty range" text_in_range_empty;
-          test "out of bounds" text_in_range_out_of_bounds;
-        ];
-      group "Highlights"
-        [
-          test "add and query" highlight_add_and_query;
-          test "range filters" highlight_range_filters;
-          test "sorts by priority" highlight_sorts_by_priority;
-          test "remove by ref_id" highlight_remove_by_ref;
-          test "clear all" highlight_clear_all;
-        ];
-      group "Tab width"
-        [
-          test "default is 2" tab_width_default;
-          test "a tab width below 1 raises" set_tab_width_below_1_raises;
-          test "no-op on same value" set_tab_width_noop_same;
-          test "increments version on change" set_tab_width_increments_version;
-        ];
-      group "Width method"
-        [
-          test "max_line_width follows the method" max_line_width_follows_method;
-        ];
-      group "Versioning"
-        [ test "increments on mutations" version_increments_on_mutations ];
-      group "Default style"
-        [
-          test "applied to set_text" default_style_applied_to_set_text;
-          test "set_default_style does not restyle"
-            set_default_style_does_not_restyle;
-          test "default style preserves prepared paint"
-            default_style_preserves_prepared_paint;
-        ];
-      group "Properties"
-        [
-          prop "line_count >= 1" printable_string (fun s ->
-              let buf = Text_buffer.create () in
-              Text_buffer.set_text buf s;
-              satisfies ~claim:"at least 1 line" int
-                (fun n -> n >= 1)
-                (Text_buffer.line_count buf));
-          prop "grapheme_count >= 0" printable_string (fun s ->
-              let buf = Text_buffer.create () in
-              Text_buffer.set_text buf s;
-              satisfies ~claim:"non-negative" int
-                (fun n -> n >= 0)
-                (Text_buffer.grapheme_count buf));
-          prop "plain_text round-trip" printable_string (fun s ->
-              let buf = Text_buffer.create () in
-              Text_buffer.set_text buf s;
-              equal text s (Text_buffer.plain_text buf));
-          prop "version changes with text"
-            (Gen.pair printable_string printable_string) (fun (s1, s2) ->
-              let buf = Text_buffer.create () in
-              Text_buffer.set_text buf s1;
-              let v1 = Text_buffer.version buf in
-              Text_buffer.set_text buf s2;
-              let v2 = Text_buffer.version buf in
-              satisfies
-                ~claim:"unchanged for equal text, increasing for different text"
-                int
-                (fun v -> if String.equal s1 s2 then v = v1 else v > v1)
-                v2);
-          prop "highlights_in_range subset" small_nat (fun n ->
-              let buf = Text_buffer.create () in
-              Text_buffer.set_text buf "hello world test";
-              let end_offset = min (n + 1) 16 in
-              let start_offset = min n end_offset in
-              let h =
-                Text_buffer.Highlight.make ~start_offset ~end_offset
-                  ~style:red_style ~ref_id:1 ()
-              in
-              Text_buffer.add_highlight buf h;
-              let hl =
-                Text_buffer.highlights_in_range buf ~start:start_offset
-                  ~len:(end_offset - start_offset)
-              in
-              satisfies ~claim:"at most 1 highlight" int
-                (fun n -> n <= 1)
-                (List.length hl));
-        ];
-    ]
+  exit
+    (run "mosaic.text_buffer"
+       [
+         group "Construction"
+           [
+             test "defaults" create_defaults;
+             test "custom tab_width" create_custom_tab_width;
+             test "a tab width below 1 raises" create_tab_width_below_1_raises;
+           ];
+         group "Content — set_text"
+           [
+             test "single line" set_text_single_line;
+             test "multiline" set_text_multiline;
+             test "empty string" set_text_empty;
+             test "replaces previous" set_text_replaces_previous;
+             test "increments version" set_text_increments_version;
+           ];
+         group "Content — set_styled_text"
+           [
+             test "single span" set_styled_text_single_span;
+             test "multiple spans" set_styled_text_multiple_spans;
+           ];
+         group "Content — append"
+           [
+             test "append to existing" append_to_existing;
+             test "multiple appends" append_multiple;
+             test "append after read" append_after_read;
+             test "append_styled" append_styled_to_existing;
+             test "append_styled after read" append_styled_after_read;
+           ];
+         group "Content — clear"
+           [
+             test "resets content" clear_resets_content;
+             test "removes highlights" clear_removes_highlights;
+             test "increments version" clear_increments_version;
+           ];
+         group "Grapheme count"
+           [
+             test "ASCII" grapheme_count_ascii;
+             test "empty" grapheme_count_empty;
+             test "multibyte UTF-8" grapheme_count_multibyte;
+           ];
+         group "Line information"
+           [
+             test "single line" line_count_single;
+             test "multiple lines" line_count_multi;
+             test "trailing newline" line_count_trailing_newline;
+             test "line_width per line" line_width_per_line;
+             test "line_width out of range" line_width_out_of_range;
+             test "max_line_width" max_line_width_basic;
+           ];
+         group "Styled text"
+           [
+             test "preserves lines and styles"
+               styled_text_preserves_lines_and_styles;
+             test "append order and retained snapshot"
+               styled_text_keeps_append_order_and_snapshot;
+           ];
+         group "text_in_range"
+           [
+             test "middle of content" text_in_range_middle;
+             test "from start" text_in_range_from_start;
+             test "clamped to end" text_in_range_clamped_to_end;
+             test "empty range" text_in_range_empty;
+             test "out of bounds" text_in_range_out_of_bounds;
+           ];
+         group "Highlights"
+           [
+             test "add and query" highlight_add_and_query;
+             test "range filters" highlight_range_filters;
+             test "sorts by priority" highlight_sorts_by_priority;
+             test "remove by ref_id" highlight_remove_by_ref;
+             test "clear all" highlight_clear_all;
+           ];
+         group "Tab width"
+           [
+             test "default is 2" tab_width_default;
+             test "a tab width below 1 raises" set_tab_width_below_1_raises;
+             test "no-op on same value" set_tab_width_noop_same;
+             test "increments version on change"
+               set_tab_width_increments_version;
+           ];
+         group "Width method"
+           [
+             test "max_line_width follows the method"
+               max_line_width_follows_method;
+           ];
+         group "Versioning"
+           [ test "increments on mutations" version_increments_on_mutations ];
+         group "Default style"
+           [
+             test "applied to set_text" default_style_applied_to_set_text;
+             test "set_default_style does not restyle"
+               set_default_style_does_not_restyle;
+             test "default style preserves prepared paint"
+               default_style_preserves_prepared_paint;
+           ];
+         group "Properties"
+           [
+             prop "line_count >= 1" printable_string (fun s ->
+                 let buf = Text_buffer.create () in
+                 Text_buffer.set_text buf s;
+                 satisfies ~claim:"at least 1 line" int
+                   (fun n -> n >= 1)
+                   (Text_buffer.line_count buf));
+             prop "grapheme_count >= 0" printable_string (fun s ->
+                 let buf = Text_buffer.create () in
+                 Text_buffer.set_text buf s;
+                 satisfies ~claim:"non-negative" int
+                   (fun n -> n >= 0)
+                   (Text_buffer.grapheme_count buf));
+             prop "plain_text round-trip" printable_string (fun s ->
+                 let buf = Text_buffer.create () in
+                 Text_buffer.set_text buf s;
+                 equal text s (Text_buffer.plain_text buf));
+             prop "version changes with text"
+               (Gen.pair printable_string printable_string) (fun (s1, s2) ->
+                 let buf = Text_buffer.create () in
+                 Text_buffer.set_text buf s1;
+                 let v1 = Text_buffer.version buf in
+                 Text_buffer.set_text buf s2;
+                 let v2 = Text_buffer.version buf in
+                 satisfies
+                   ~claim:
+                     "unchanged for equal text, increasing for different text"
+                   int
+                   (fun v -> if String.equal s1 s2 then v = v1 else v > v1)
+                   v2);
+             prop "highlights_in_range subset" small_nat (fun n ->
+                 let buf = Text_buffer.create () in
+                 Text_buffer.set_text buf "hello world test";
+                 let end_offset = min (n + 1) 16 in
+                 let start_offset = min n end_offset in
+                 let h =
+                   Text_buffer.Highlight.make ~start_offset ~end_offset
+                     ~style:red_style ~ref_id:1 ()
+                 in
+                 Text_buffer.add_highlight buf h;
+                 let hl =
+                   Text_buffer.highlights_in_range buf ~start:start_offset
+                     ~len:(end_offset - start_offset)
+                 in
+                 satisfies ~claim:"at most 1 highlight" int
+                   (fun n -> n <= 1)
+                   (List.length hl));
+           ];
+       ])

@@ -639,46 +639,49 @@ let doors_text_style () =
               ())))
 
 let () =
-  run "mosaic.diff"
-    [
-      group "Reconciliation"
-        [
-          test "unified update reuses children" unified_update_reuses_children;
-          test "empty patch drops children" empty_patch_drops_children;
-          test "syntax compares styles by value" syntax_compares_styles_by_value;
-        ];
-      group "Spans"
-        [
-          test "span counts surface graphemes" span_counts_surface_graphemes;
-          test "span after zero-width row" span_after_zero_width_row;
-          test "span after CRLF row" span_after_crlf_row;
-          test "span after combining mark" span_after_combining_mark;
-          test "span after wide character" span_after_wide_character;
-          test "span follows word wrap" span_follows_word_wrap;
-        ];
-      group "Rows and lines"
-        [
-          test "final CR adds no line number" final_cr_adds_no_line_number;
-          test "lone CR row keeps numbers" lone_cr_row_keeps_numbers;
-        ];
-      group "Split alignment"
-        [
-          test "asymmetric resize realigns" asymmetric_resize_realigns;
-          test "split aligns lone CR row" split_aligns_lone_cr_row;
-          test "async wrapped split settles" async_wrapped_split_settles;
-        ];
-      group "Both doors"
-        [
-          test "patch" doors_patch_label;
-          test "layout" doors_layout;
-          test "theme" doors_theme;
-          test "highlight" doors_highlight;
-          test "line_highlights" doors_line_highlights;
-          test "line_spans" doors_line_spans;
-          test "line_signs" doors_line_signs;
-          test "show_line_numbers" doors_show_line_numbers;
-          test "wrap" doors_wrap;
-          test "selectable" doors_selectable;
-          test "text_style" doors_text_style;
-        ];
-    ]
+  exit
+    (run "mosaic.diff"
+       [
+         group "Reconciliation"
+           [
+             test "unified update reuses children"
+               unified_update_reuses_children;
+             test "empty patch drops children" empty_patch_drops_children;
+             test "syntax compares styles by value"
+               syntax_compares_styles_by_value;
+           ];
+         group "Spans"
+           [
+             test "span counts surface graphemes" span_counts_surface_graphemes;
+             test "span after zero-width row" span_after_zero_width_row;
+             test "span after CRLF row" span_after_crlf_row;
+             test "span after combining mark" span_after_combining_mark;
+             test "span after wide character" span_after_wide_character;
+             test "span follows word wrap" span_follows_word_wrap;
+           ];
+         group "Rows and lines"
+           [
+             test "final CR adds no line number" final_cr_adds_no_line_number;
+             test "lone CR row keeps numbers" lone_cr_row_keeps_numbers;
+           ];
+         group "Split alignment"
+           [
+             test "asymmetric resize realigns" asymmetric_resize_realigns;
+             test "split aligns lone CR row" split_aligns_lone_cr_row;
+             test "async wrapped split settles" async_wrapped_split_settles;
+           ];
+         group "Both doors"
+           [
+             test "patch" doors_patch_label;
+             test "layout" doors_layout;
+             test "theme" doors_theme;
+             test "highlight" doors_highlight;
+             test "line_highlights" doors_line_highlights;
+             test "line_spans" doors_line_spans;
+             test "line_signs" doors_line_signs;
+             test "show_line_numbers" doors_show_line_numbers;
+             test "wrap" doors_wrap;
+             test "selectable" doors_selectable;
+             test "text_style" doors_text_style;
+           ];
+       ])

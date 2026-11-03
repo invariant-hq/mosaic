@@ -187,14 +187,15 @@ let matches_does_not_allocate_per_event () =
     (allocated < 1024.)
 
 let () =
-  run "mosaic.shortcut"
-    [
-      test "exact non-lock modifiers and repeats" exact_modifiers;
-      test "Shift is consumed into the key" shift_and_case;
-      test "Caps Lock" caps_lock;
-      test "base-layout matching" base_layout;
-      test "a later binding wins" later_binding_wins;
-      test "keypad keys and line feed" keypad_and_line_feed;
-      test "matching allocation is independent of event count"
-        matches_does_not_allocate_per_event;
-    ]
+  exit
+    (run "mosaic.shortcut"
+       [
+         test "exact non-lock modifiers and repeats" exact_modifiers;
+         test "Shift is consumed into the key" shift_and_case;
+         test "Caps Lock" caps_lock;
+         test "base-layout matching" base_layout;
+         test "a later binding wins" later_binding_wins;
+         test "keypad keys and line feed" keypad_and_line_feed;
+         test "matching allocation is independent of event count"
+           matches_does_not_allocate_per_event;
+       ])

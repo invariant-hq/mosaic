@@ -1347,211 +1347,217 @@ let paint_caret_color () =
     (caret (paint_input ~cursor_color:paint_red ()))
 
 let () =
-  run "mosaic.text-input"
-    [
-      group "Paint"
-        [
-          test "legible on a light terminal" paint_legible_on_light;
-          test "the Field surface, label first" paint_field_surface;
-          test "caret color" paint_caret_color;
-        ];
-      test "typed bindings override defaults and recompile"
-        typed_bindings_override_defaults_and_recompile;
-      group "Single-line declarations"
-        [
-          test "multiline history is ignored by single-line input"
-            multiline_history_is_ignored_by_single_line_input;
-          test "reject invalid declarations" invalid_declarations_are_rejected;
-          test "invalid replacement preserves accepted state"
-            invalid_replacement_preserves_accepted_state;
-          test "cursor declarations share source and paste normalizes"
-            cursor_declarations_share_validated_source;
-        ];
-      group "Props"
-        [
-          test "default equals make()" props_default_equals_make;
-          test "equal on identical" props_equal_identical;
-          test "detects value diff" props_detects_value_diff;
-          test "detects placeholder diff" props_detects_placeholder_diff;
-          test "detects max_length diff" props_detects_max_length_diff;
-          test "detects text_color diff" props_detects_text_color_diff;
-          test "detects background_color diff"
-            props_detects_background_color_diff;
-          test "detects cursor_style diff" props_detects_cursor_style_diff;
-          test "detects cursor_color diff" props_detects_cursor_color_diff;
-          test "detects cursor_blinking diff" props_detects_cursor_blinking_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches_to_parent;
-          test "node returns renderable" create_node_returns_renderable;
-          test "buffer returns edit buffer" create_buffer_returns_edit_buffer;
-          test "initial value matches" create_initial_value_matches;
-          test "default value is empty" create_default_value_is_empty;
-        ];
-      group "Value"
-        [
-          test "returns current text" value_returns_current_text;
-          test "set_value replaces text" set_value_replaces_text;
-          test "set_value requests render" set_value_requests_render;
-          test "set_value updates buffer" set_value_updates_buffer;
-        ];
-      group "State proposals"
-        [
-          test "complete state" changes_propose_complete_state;
-          test "rejected edits preserve accepted state"
-            rejected_edits_leave_state_and_history_intact;
-          test "rejected caret does not affect next edit"
-            rejected_cursor_does_not_affect_next_edit;
-          test "transformed acceptance is next event base"
-            transformed_acceptance_is_next_event_base;
-          test "blur does not propose" blur_and_submit_do_not_propose_edits;
-        ];
-      group "Callbacks -- on_submit"
-        [
-          test "fires on Enter" on_submit_fires_on_enter;
-          test "receives current value" on_submit_receives_current_value;
-          test "set_on_submit None disables" set_on_submit_none_disables;
-        ];
-      group "Key handling"
-        [
-          test "character input inserts text" key_char_inserts_text;
-          test "Left/Right moves cursor" key_left_right_moves_cursor;
-          test "Home/End moves cursor" key_home_end_moves_cursor;
-          test "Backspace deletes backward" key_backspace_deletes_backward;
-          test "Delete key deletes forward" key_delete_deletes_forward;
-          test "Ctrl+W deletes word backward" key_ctrl_w_deletes_word_backward;
-          test "Ctrl+K deletes to end" key_ctrl_k_deletes_to_end;
-          test "Ctrl+U deletes to start" key_ctrl_u_deletes_to_start;
-          test "Enter fires submit" key_enter_fires_submit;
-          test "Ctrl+J fires submit" ctrl_j_fires_submit;
-          test "keypad Enter fires submit" key_kp_enter_fires_submit;
-          test "keypad Left moves cursor" key_kp_left_moves_cursor;
-          test "max_length rejects excess typing"
-            key_max_length_rejects_excess_typing;
-        ];
-      group "Emacs keybindings"
-        [
-          test "Ctrl+A moves to start" ctrl_a_moves_to_start;
-          test "Ctrl+Shift+A selects to start" ctrl_shift_a_selects_to_start;
-          test "Ctrl+A base key moves to start" ctrl_a_base_key_moves_to_start;
-          test "Ctrl+E moves to end" ctrl_e_moves_to_end;
-          test "Ctrl+B moves left" ctrl_b_moves_left;
-          test "Ctrl+F moves right" ctrl_f_moves_right;
-          test "Ctrl+D deletes forward" ctrl_d_deletes_forward;
-          test "Ctrl+Shift+D deletes line" ctrl_shift_d_deletes_line;
-        ];
-      group "Alt keybindings"
-        [
-          test "Alt+B moves word backward" alt_b_moves_word_backward;
-          test "Meta alone does not match Alt"
-            meta_only_does_not_match_alt_binding;
-          test "Alt+F moves word forward" alt_f_moves_word_forward;
-          test "Alt+D deletes word forward" alt_d_deletes_word_forward;
-          test "Alt+Backspace deletes word backward"
-            alt_backspace_deletes_word_backward;
-        ];
-      group "Ctrl/Alt+Arrow word movement"
-        [
-          test "Ctrl+Left moves word backward" ctrl_left_moves_word_backward;
-          test "Ctrl+Right moves word forward" ctrl_right_moves_word_forward;
-        ];
-      group "Super+Arrow keybindings"
-        [
-          test "Super+Left moves to start" super_left_moves_to_start;
-          test "Super+Right moves to end" super_right_moves_to_end;
-          test "Super+Up moves to start" super_up_moves_to_start;
-          test "Super+Down moves to end" super_down_moves_to_end;
-          test "Super+Shift+Left selects to start"
-            super_shift_left_selects_to_start;
-          test "Super+Shift+Right selects to end"
-            super_shift_right_selects_to_end;
-        ];
-      group "Ctrl+-/. undo/redo"
-        [
-          test "Ctrl+- undoes" ctrl_minus_undoes;
-          test "Ctrl+. redoes" ctrl_dot_redoes;
-        ];
-      group "Selection keybindings"
-        [
-          test "Shift+Right creates selection" shift_right_creates_selection;
-          test "Shift+Left creates selection" shift_left_creates_selection;
-          test "Shift+Home selects to start" shift_home_selects_to_start;
-          test "Shift+End selects to end" shift_end_selects_to_end;
-          test "Super+A selects all" super_a_selects_all;
-          test "type with selection replaces" type_with_selection_replaces;
-        ];
-      group "Undo / Redo via keyboard"
-        [
-          test "Ctrl+Z undoes" ctrl_z_undoes;
-          test "Ctrl+Shift+Z redoes" ctrl_shift_z_redoes;
-          test "Super+Z undoes" super_z_undoes;
-        ];
-      group "Paste handling"
-        [
-          test "handle_paste inserts text" handle_paste_inserts_text;
-          test "handle_paste strips newlines" handle_paste_strips_newlines;
-          test "handle_paste strips ansi" handle_paste_strips_ansi;
-          test "handle_paste with selection replaces"
-            handle_paste_with_selection_replaces;
-        ];
-      group "Rendering"
-        [ test "zero-size does not crash" render_zero_size_no_crash ];
-      group "Cursor provider"
-        [
-          test "returns None when unfocused" cursor_returns_none_when_unfocused;
-          test "returns Some when focused" cursor_returns_some_when_focused;
-          test "returns None when hidden" cursor_returns_none_when_hidden;
-          test "style is Block by default" cursor_style_is_block_by_default;
-          test "has correct color" cursor_has_correct_color;
-          test "has correct blinking" cursor_has_correct_blinking;
-        ];
-      group "apply_props"
-        [
-          test "value change updates buffer"
-            apply_props_value_change_updates_buffer;
-          test "max_length change updates buffer"
-            apply_props_max_length_change_updates_buffer;
-          test "truncated value preserves cursor"
-            apply_props_truncated_value_preserves_cursor;
-          test "cursor change updates buffer"
-            apply_props_cursor_change_updates_buffer;
-          test "selection change updates buffer"
-            apply_props_selection_change_updates_buffer;
-          test "selection None clears buffer selection"
-            apply_props_selection_none_clears_buffer_selection;
-          test "schedules render" apply_props_schedules_render;
-        ];
-      group "Edge cases"
-        [
-          test "cursor Left at start is noop" cursor_left_at_start_is_noop;
-          test "cursor Right at end is noop" cursor_right_at_end_is_noop;
-          test "Backspace at start is noop" backspace_at_start_is_noop;
-          test "Delete at end is noop" delete_at_end_is_noop;
-          test "operations on empty input are safe"
-            operations_on_empty_input_are_safe;
-        ];
-      group "prevent_default"
-        [ test "prevent_default blocks input" prevent_default_blocks_input ];
-      group "Pretty-printing"
-        [
-          test "non-empty output" pp_produces_non_empty_output;
-          test "contains Input prefix" pp_contains_input_prefix;
-        ];
-      group "Both doors"
-        [
-          test "state" doors_state;
-          test "placeholder" doors_placeholder;
-          test "text_color" doors_text_color;
-          test "background_color" doors_background_color;
-          test "focused_text_color" doors_focused_text_color;
-          test "focused_background_color" doors_focused_background_color;
-          test "placeholder_color" doors_placeholder_color;
-          test "cursor_style" doors_cursor_style;
-          test "cursor_color" doors_cursor_color;
-          test "cursor_blinking" doors_cursor_blinking;
-          test "selectable" doors_selectable;
-          test "show_cursor" doors_show_cursor;
-          test "key_bindings" doors_key_bindings;
-        ];
-    ]
+  exit
+    (run "mosaic.text-input"
+       [
+         group "Paint"
+           [
+             test "legible on a light terminal" paint_legible_on_light;
+             test "the Field surface, label first" paint_field_surface;
+             test "caret color" paint_caret_color;
+           ];
+         test "typed bindings override defaults and recompile"
+           typed_bindings_override_defaults_and_recompile;
+         group "Single-line declarations"
+           [
+             test "multiline history is ignored by single-line input"
+               multiline_history_is_ignored_by_single_line_input;
+             test "reject invalid declarations"
+               invalid_declarations_are_rejected;
+             test "invalid replacement preserves accepted state"
+               invalid_replacement_preserves_accepted_state;
+             test "cursor declarations share source and paste normalizes"
+               cursor_declarations_share_validated_source;
+           ];
+         group "Props"
+           [
+             test "default equals make()" props_default_equals_make;
+             test "equal on identical" props_equal_identical;
+             test "detects value diff" props_detects_value_diff;
+             test "detects placeholder diff" props_detects_placeholder_diff;
+             test "detects max_length diff" props_detects_max_length_diff;
+             test "detects text_color diff" props_detects_text_color_diff;
+             test "detects background_color diff"
+               props_detects_background_color_diff;
+             test "detects cursor_style diff" props_detects_cursor_style_diff;
+             test "detects cursor_color diff" props_detects_cursor_color_diff;
+             test "detects cursor_blinking diff"
+               props_detects_cursor_blinking_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches_to_parent;
+             test "node returns renderable" create_node_returns_renderable;
+             test "buffer returns edit buffer" create_buffer_returns_edit_buffer;
+             test "initial value matches" create_initial_value_matches;
+             test "default value is empty" create_default_value_is_empty;
+           ];
+         group "Value"
+           [
+             test "returns current text" value_returns_current_text;
+             test "set_value replaces text" set_value_replaces_text;
+             test "set_value requests render" set_value_requests_render;
+             test "set_value updates buffer" set_value_updates_buffer;
+           ];
+         group "State proposals"
+           [
+             test "complete state" changes_propose_complete_state;
+             test "rejected edits preserve accepted state"
+               rejected_edits_leave_state_and_history_intact;
+             test "rejected caret does not affect next edit"
+               rejected_cursor_does_not_affect_next_edit;
+             test "transformed acceptance is next event base"
+               transformed_acceptance_is_next_event_base;
+             test "blur does not propose" blur_and_submit_do_not_propose_edits;
+           ];
+         group "Callbacks -- on_submit"
+           [
+             test "fires on Enter" on_submit_fires_on_enter;
+             test "receives current value" on_submit_receives_current_value;
+             test "set_on_submit None disables" set_on_submit_none_disables;
+           ];
+         group "Key handling"
+           [
+             test "character input inserts text" key_char_inserts_text;
+             test "Left/Right moves cursor" key_left_right_moves_cursor;
+             test "Home/End moves cursor" key_home_end_moves_cursor;
+             test "Backspace deletes backward" key_backspace_deletes_backward;
+             test "Delete key deletes forward" key_delete_deletes_forward;
+             test "Ctrl+W deletes word backward"
+               key_ctrl_w_deletes_word_backward;
+             test "Ctrl+K deletes to end" key_ctrl_k_deletes_to_end;
+             test "Ctrl+U deletes to start" key_ctrl_u_deletes_to_start;
+             test "Enter fires submit" key_enter_fires_submit;
+             test "Ctrl+J fires submit" ctrl_j_fires_submit;
+             test "keypad Enter fires submit" key_kp_enter_fires_submit;
+             test "keypad Left moves cursor" key_kp_left_moves_cursor;
+             test "max_length rejects excess typing"
+               key_max_length_rejects_excess_typing;
+           ];
+         group "Emacs keybindings"
+           [
+             test "Ctrl+A moves to start" ctrl_a_moves_to_start;
+             test "Ctrl+Shift+A selects to start" ctrl_shift_a_selects_to_start;
+             test "Ctrl+A base key moves to start"
+               ctrl_a_base_key_moves_to_start;
+             test "Ctrl+E moves to end" ctrl_e_moves_to_end;
+             test "Ctrl+B moves left" ctrl_b_moves_left;
+             test "Ctrl+F moves right" ctrl_f_moves_right;
+             test "Ctrl+D deletes forward" ctrl_d_deletes_forward;
+             test "Ctrl+Shift+D deletes line" ctrl_shift_d_deletes_line;
+           ];
+         group "Alt keybindings"
+           [
+             test "Alt+B moves word backward" alt_b_moves_word_backward;
+             test "Meta alone does not match Alt"
+               meta_only_does_not_match_alt_binding;
+             test "Alt+F moves word forward" alt_f_moves_word_forward;
+             test "Alt+D deletes word forward" alt_d_deletes_word_forward;
+             test "Alt+Backspace deletes word backward"
+               alt_backspace_deletes_word_backward;
+           ];
+         group "Ctrl/Alt+Arrow word movement"
+           [
+             test "Ctrl+Left moves word backward" ctrl_left_moves_word_backward;
+             test "Ctrl+Right moves word forward" ctrl_right_moves_word_forward;
+           ];
+         group "Super+Arrow keybindings"
+           [
+             test "Super+Left moves to start" super_left_moves_to_start;
+             test "Super+Right moves to end" super_right_moves_to_end;
+             test "Super+Up moves to start" super_up_moves_to_start;
+             test "Super+Down moves to end" super_down_moves_to_end;
+             test "Super+Shift+Left selects to start"
+               super_shift_left_selects_to_start;
+             test "Super+Shift+Right selects to end"
+               super_shift_right_selects_to_end;
+           ];
+         group "Ctrl+-/. undo/redo"
+           [
+             test "Ctrl+- undoes" ctrl_minus_undoes;
+             test "Ctrl+. redoes" ctrl_dot_redoes;
+           ];
+         group "Selection keybindings"
+           [
+             test "Shift+Right creates selection" shift_right_creates_selection;
+             test "Shift+Left creates selection" shift_left_creates_selection;
+             test "Shift+Home selects to start" shift_home_selects_to_start;
+             test "Shift+End selects to end" shift_end_selects_to_end;
+             test "Super+A selects all" super_a_selects_all;
+             test "type with selection replaces" type_with_selection_replaces;
+           ];
+         group "Undo / Redo via keyboard"
+           [
+             test "Ctrl+Z undoes" ctrl_z_undoes;
+             test "Ctrl+Shift+Z redoes" ctrl_shift_z_redoes;
+             test "Super+Z undoes" super_z_undoes;
+           ];
+         group "Paste handling"
+           [
+             test "handle_paste inserts text" handle_paste_inserts_text;
+             test "handle_paste strips newlines" handle_paste_strips_newlines;
+             test "handle_paste strips ansi" handle_paste_strips_ansi;
+             test "handle_paste with selection replaces"
+               handle_paste_with_selection_replaces;
+           ];
+         group "Rendering"
+           [ test "zero-size does not crash" render_zero_size_no_crash ];
+         group "Cursor provider"
+           [
+             test "returns None when unfocused"
+               cursor_returns_none_when_unfocused;
+             test "returns Some when focused" cursor_returns_some_when_focused;
+             test "returns None when hidden" cursor_returns_none_when_hidden;
+             test "style is Block by default" cursor_style_is_block_by_default;
+             test "has correct color" cursor_has_correct_color;
+             test "has correct blinking" cursor_has_correct_blinking;
+           ];
+         group "apply_props"
+           [
+             test "value change updates buffer"
+               apply_props_value_change_updates_buffer;
+             test "max_length change updates buffer"
+               apply_props_max_length_change_updates_buffer;
+             test "truncated value preserves cursor"
+               apply_props_truncated_value_preserves_cursor;
+             test "cursor change updates buffer"
+               apply_props_cursor_change_updates_buffer;
+             test "selection change updates buffer"
+               apply_props_selection_change_updates_buffer;
+             test "selection None clears buffer selection"
+               apply_props_selection_none_clears_buffer_selection;
+             test "schedules render" apply_props_schedules_render;
+           ];
+         group "Edge cases"
+           [
+             test "cursor Left at start is noop" cursor_left_at_start_is_noop;
+             test "cursor Right at end is noop" cursor_right_at_end_is_noop;
+             test "Backspace at start is noop" backspace_at_start_is_noop;
+             test "Delete at end is noop" delete_at_end_is_noop;
+             test "operations on empty input are safe"
+               operations_on_empty_input_are_safe;
+           ];
+         group "prevent_default"
+           [ test "prevent_default blocks input" prevent_default_blocks_input ];
+         group "Pretty-printing"
+           [
+             test "non-empty output" pp_produces_non_empty_output;
+             test "contains Input prefix" pp_contains_input_prefix;
+           ];
+         group "Both doors"
+           [
+             test "state" doors_state;
+             test "placeholder" doors_placeholder;
+             test "text_color" doors_text_color;
+             test "background_color" doors_background_color;
+             test "focused_text_color" doors_focused_text_color;
+             test "focused_background_color" doors_focused_background_color;
+             test "placeholder_color" doors_placeholder_color;
+             test "cursor_style" doors_cursor_style;
+             test "cursor_color" doors_cursor_color;
+             test "cursor_blinking" doors_cursor_blinking;
+             test "selectable" doors_selectable;
+             test "show_cursor" doors_show_cursor;
+             test "key_bindings" doors_key_bindings;
+           ];
+       ])

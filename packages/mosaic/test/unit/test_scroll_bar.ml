@@ -587,85 +587,88 @@ let paint_glyphs () =
   is_true ~msg:"the track's line" (includes (at `Plain r) "\u{2502}")
 
 let () =
-  run "mosaic.scroll_bar"
-    [
-      group "Paint" [ test "track and arrows" paint_glyphs ];
-      test "declared state and rejected proposals"
-        declared_state_and_rejected_proposals;
-      group "Props"
-        [
-          test "default values" props_defaults;
-          test "equal on identical" props_equal_identical;
-          test "detects orientation diff" props_detects_orientation_diff;
-          test "detects show_arrows diff" props_detects_show_arrows_diff;
-          test "detects track_color diff" props_detects_track_color_diff;
-          test "detects thumb_color diff" props_detects_thumb_color_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "default position is 0" create_default_position_zero;
-          test "default sizes are 0" create_default_sizes_zero;
-        ];
-      group "Position clamping"
-        [
-          test "clamps to range" set_position_clamps_to_range;
-          test "fires on_change" set_position_fires_on_change;
-          test "no-op same value" set_position_noop_same_value;
-        ];
-      group "Scroll size / viewport size"
-        [
-          test "set_scroll_size reclamps" set_scroll_size_reclamps_position;
-          test "set_viewport_size reclamps" set_viewport_size_reclamps_position;
-        ];
-      group "scroll_by"
-        [
-          test "absolute" scroll_by_absolute;
-          test "viewport" scroll_by_viewport;
-          test "content" scroll_by_content;
-          test "step default" scroll_by_step_default;
-          test "step custom" scroll_by_step_custom;
-          test "clamps" scroll_by_clamps;
-        ];
-      group "Auto-visibility"
-        [
-          test "hidden when no overflow" auto_visibility_hidden_when_no_overflow;
-          test "visible when overflow" auto_visibility_visible_when_overflow;
-          test "manual override" manual_visibility_overrides;
-          test "reset restores auto" reset_visibility_restores_auto;
-        ];
-      group "Show arrows"
-        [
-          test "default false" show_arrows_default_false;
-          test "true shows 3 children" show_arrows_true;
-          test "toggle" set_show_arrows_toggles;
-        ];
-      group "apply_props"
-        [
-          test "updates appearance" apply_props_updates_appearance;
-          test "appearance preserves scroll state"
-            apply_style_preserves_scroll_state;
-          test "updates orientation" apply_props_updates_orientation;
-        ];
-      group "Arrow repeat"
-        [ test "holding repeats in seconds" arrow_hold_repeats_in_seconds ];
-      group "set_on_change"
-        [ test "replaces callback" set_on_change_replaces_callback ];
-      group "Pretty-printing"
-        [
-          test "produces output" pp_produces_output;
-          test "contains ScrollBar" pp_contains_scroll_bar;
-        ];
-      group "Both doors"
-        [
-          test "position (the element's state)" doors_position;
-          test "scroll_size" doors_scroll_size;
-          test "viewport_size" doors_viewport_size;
-          test "orientation" doors_orientation;
-          test "show_arrows" doors_show_arrows;
-          test "track_color" doors_track_color;
-          test "thumb_color" doors_thumb_color;
-          test "arrow_fg" doors_arrow_fg;
-          test "arrow_bg" doors_arrow_bg;
-        ];
-    ]
+  exit
+    (run "mosaic.scroll_bar"
+       [
+         group "Paint" [ test "track and arrows" paint_glyphs ];
+         test "declared state and rejected proposals"
+           declared_state_and_rejected_proposals;
+         group "Props"
+           [
+             test "default values" props_defaults;
+             test "equal on identical" props_equal_identical;
+             test "detects orientation diff" props_detects_orientation_diff;
+             test "detects show_arrows diff" props_detects_show_arrows_diff;
+             test "detects track_color diff" props_detects_track_color_diff;
+             test "detects thumb_color diff" props_detects_thumb_color_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "default position is 0" create_default_position_zero;
+             test "default sizes are 0" create_default_sizes_zero;
+           ];
+         group "Position clamping"
+           [
+             test "clamps to range" set_position_clamps_to_range;
+             test "fires on_change" set_position_fires_on_change;
+             test "no-op same value" set_position_noop_same_value;
+           ];
+         group "Scroll size / viewport size"
+           [
+             test "set_scroll_size reclamps" set_scroll_size_reclamps_position;
+             test "set_viewport_size reclamps"
+               set_viewport_size_reclamps_position;
+           ];
+         group "scroll_by"
+           [
+             test "absolute" scroll_by_absolute;
+             test "viewport" scroll_by_viewport;
+             test "content" scroll_by_content;
+             test "step default" scroll_by_step_default;
+             test "step custom" scroll_by_step_custom;
+             test "clamps" scroll_by_clamps;
+           ];
+         group "Auto-visibility"
+           [
+             test "hidden when no overflow"
+               auto_visibility_hidden_when_no_overflow;
+             test "visible when overflow" auto_visibility_visible_when_overflow;
+             test "manual override" manual_visibility_overrides;
+             test "reset restores auto" reset_visibility_restores_auto;
+           ];
+         group "Show arrows"
+           [
+             test "default false" show_arrows_default_false;
+             test "true shows 3 children" show_arrows_true;
+             test "toggle" set_show_arrows_toggles;
+           ];
+         group "apply_props"
+           [
+             test "updates appearance" apply_props_updates_appearance;
+             test "appearance preserves scroll state"
+               apply_style_preserves_scroll_state;
+             test "updates orientation" apply_props_updates_orientation;
+           ];
+         group "Arrow repeat"
+           [ test "holding repeats in seconds" arrow_hold_repeats_in_seconds ];
+         group "set_on_change"
+           [ test "replaces callback" set_on_change_replaces_callback ];
+         group "Pretty-printing"
+           [
+             test "produces output" pp_produces_output;
+             test "contains ScrollBar" pp_contains_scroll_bar;
+           ];
+         group "Both doors"
+           [
+             test "position (the element's state)" doors_position;
+             test "scroll_size" doors_scroll_size;
+             test "viewport_size" doors_viewport_size;
+             test "orientation" doors_orientation;
+             test "show_arrows" doors_show_arrows;
+             test "track_color" doors_track_color;
+             test "thumb_color" doors_thumb_color;
+             test "arrow_fg" doors_arrow_fg;
+             test "arrow_bg" doors_arrow_bg;
+           ];
+       ])

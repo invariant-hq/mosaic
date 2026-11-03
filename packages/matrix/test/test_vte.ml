@@ -1261,17 +1261,17 @@ let palette_set_query_reset () =
   Vte.clear_dirty vte;
   feed vte "\x1b]11;#000000\x07";
   is_false ~msg:"setting the same colour changes nothing" (Vte.is_dirty vte);
-  raises_match ~msg:"257 entries" (Exn.invalid_arg ~substring:"256") (fun () ->
+  raises_match ~msg:"257 entries" (Exn.invalid_arg ~sub:"256") (fun () ->
       Vte.create
         ~palette:{ given with entries = Array.make 257 None }
         ~rows:1 ~cols:1 ());
-  raises_match ~msg:"a channel of 256" (Exn.invalid_arg ~substring:"channel")
+  raises_match ~msg:"a channel of 256" (Exn.invalid_arg ~sub:"channel")
     (fun () ->
       Vte.create
         ~palette:{ given with cursor = Some (256, 0, 0) }
         ~rows:1 ~cols:1 ());
-  raises_match ~msg:"an entry's channel of -1"
-    (Exn.invalid_arg ~substring:"channel") (fun () ->
+  raises_match ~msg:"an entry's channel of -1" (Exn.invalid_arg ~sub:"channel")
+    (fun () ->
       Vte.create
         ~palette:{ given with entries = [| Some (0, -1, 0) |] }
         ~rows:1 ~cols:1 ())
@@ -1353,7 +1353,7 @@ let user_colors () =
   equal ~msg:"a palette of the pair alone answers the pair alone" string
     "\x1b]11;rgb:ffff/ffff/ffff\x07"
     (answers vte "\x1b]11;?\x07\x1b]12;?\x07\x1b]4;1;?\x07");
-  raises_match ~msg:"257 entries" (Exn.invalid_arg ~substring:"256") (fun () ->
+  raises_match ~msg:"257 entries" (Exn.invalid_arg ~sub:"256") (fun () ->
       Vte.set_palette vte { light with entries = Array.make 257 None })
 
 (* An OSC acts only when it ends with ST or BEL; one cut short does nothing.
@@ -2552,11 +2552,11 @@ let scrollback_keeps_cells () =
 (* A width the grid cannot hold is refused before anything changes. *)
 let too_wide () =
   let cols = Grid.max_width + 1 in
-  raises_match (Exn.invalid_arg ~substring:"Vte.create") (fun () ->
+  raises_match (Exn.invalid_arg ~sub:"Vte.create") (fun () ->
       Vte.create ~rows:1 ~cols ());
   let vte = Vte.create ~scrollback:10 ~rows:3 ~cols:4 () in
   feed vte "1\r\n2\r\n3";
-  raises_match (Exn.invalid_arg ~substring:"Vte.resize") (fun () ->
+  raises_match (Exn.invalid_arg ~sub:"Vte.resize") (fun () ->
       resize vte ~rows:1 ~cols);
   equal ~msg:"resize changed nothing"
     (pair string (list string))
@@ -3160,10 +3160,11 @@ let update_tests =
   ]
 
 let () =
-  run "matrix.vte"
-    [
-      group "vte" tests;
-      group "user and host" user_tests;
-      group "graphics" [ test "kitty graphics" kitty_graphics ];
-      group "updates" update_tests;
-    ]
+  exit
+    (run "matrix.vte"
+       [
+         group "vte" tests;
+         group "user and host" user_tests;
+         group "graphics" [ test "kitty graphics" kitty_graphics ];
+         group "updates" update_tests;
+       ])

@@ -59,12 +59,14 @@ let cancelled () =
   | _ -> ()
 
 let () =
-  run
-    ~argv:[| Sys.argv.(0) |]
-    ("mosaic.examples " ^ Filename.basename (Filename.dirname exe))
-    [
-      group "Example"
-        [
-          test "quits on q" quits; test "cancelled by its event loop" cancelled;
-        ];
-    ]
+  exit
+    (run
+       ~argv:[| Sys.argv.(0) |]
+       ("mosaic.examples " ^ Filename.basename (Filename.dirname exe))
+       [
+         group "Example"
+           [
+             test "quits on q" quits;
+             test "cancelled by its event loop" cancelled;
+           ];
+       ])

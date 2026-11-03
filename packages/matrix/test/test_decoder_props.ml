@@ -274,7 +274,7 @@ let unit_gen =
           (fun c -> Alt c)
           (of_list (String.to_seq "abcXYZ019 ;:~\x01\x0d\x7f" |> List.of_seq))
       );
-      (1, pure Lone_esc);
+      (1, constant Lone_esc);
       (* A paste's start marker alone would make the units after it
          content. *)
       ( 4,
@@ -299,7 +299,7 @@ let placed_gen =
   let n = String.length (unit_bytes u) in
   let lo = match u with Paste _ -> 6 | _ -> 1 in
   let+ inside =
-    if n - 1 < lo then pure []
+    if n - 1 < lo then constant []
     else list ~size:(int_range 0 2) (int_range lo (n - 1))
   and+ after = bool in
   { u; inside = List.sort_uniq compare inside; after = after || u = Lone_esc }
@@ -444,15 +444,15 @@ let action_gen =
   frequency
     [
       (8, map (fun s -> A_feed s) bytes_gen);
-      (2, pure A_idle);
-      (1, pure A_finish);
-      (1, pure A_reset);
-      (1, pure A_cut_paste);
+      (2, constant A_idle);
+      (1, constant A_finish);
+      (1, constant A_reset);
+      (1, constant A_cut_paste);
       ( 1,
         map
           (fun (c, s) -> A_expect (c, s))
           (pair (int_range 0 2) (int_range 0 2)) );
-      (1, pure A_settle);
+      (1, constant A_settle);
     ]
 
 let pp_action ppf = function
@@ -667,7 +667,7 @@ let prop_round_trip r =
 let unencodable () =
   List.iter
     (fun (msg, r) ->
-      raises_match ~msg (Exn.invalid_arg ~substring:"Reply.encode") (fun () ->
+      raises_match ~msg (Exn.invalid_arg ~sub:"Reply.encode") (fun () ->
           R.encode [ r ]))
     R.
       [
@@ -950,42 +950,43 @@ let prop_mouse ((e : M.encoding), (m : M.t)) =
     | l -> failf "%S reads %s" bytes (show_events l)
 
 let () =
-  run "matrix.input.decoder.props"
-    [
-      group "decoder"
-        [
-          prop ~count:(count 20_000) "split invariance"
-            (Gen.with_pp pp_split split_gen)
-            prop_split;
-          prop ~count:(count 20_000) "silence follows the rule"
-            (Gen.with_pp pp_units units_gen)
-            prop_silence;
-          test "a cut reply is never typed" never_typed;
-          prop ~count:(count 5000) "no call order raises, memory stays bounded"
-            actions prop_total;
-          test "a long reply's memory is released" string_memory;
-        ];
-      group "encode"
-        [
-          prop ~count:(count 5000) "decoding an encoded reply gives it back"
-            (Gen.with_pp R.pp reply) prop_round_trip;
-          test "what has no bytes raises" unencodable;
-          prop ~count:(count 20_000) "a keystroke read encodes to itself"
-            (Gen.with_pp
-               (fun ppf (e, k) ->
-                 Format.fprintf ppf "%a %a" pp_keyboard e K.pp k)
-               (Gen.pair keyboard_gen keystroke_gen))
-            prop_key_projection;
-          prop ~count:(count 20_000)
-            "every kitty enhancement carries every fact"
-            (Gen.with_pp
-               (fun ppf (_, k) -> K.pp ppf k)
-               (Gen.pair (Gen.pair Gen.bool Gen.bool) keystroke_gen))
-            prop_key_exact;
-          prop ~count:(count 20_000) "a mouse report reads back"
-            (Gen.with_pp
-               (fun ppf (_, m) -> M.pp ppf m)
-               (Gen.pair mouse_encoding_gen mouse_gen))
-            prop_mouse;
-        ];
-    ]
+  exit
+    (run "matrix.input.decoder.props"
+       [
+         group "decoder"
+           [
+             prop ~count:(count 20_000) "split invariance"
+               (Gen.with_pp pp_split split_gen)
+               prop_split;
+             prop ~count:(count 20_000) "silence follows the rule"
+               (Gen.with_pp pp_units units_gen)
+               prop_silence;
+             test "a cut reply is never typed" never_typed;
+             prop ~count:(count 5000)
+               "no call order raises, memory stays bounded" actions prop_total;
+             test "a long reply's memory is released" string_memory;
+           ];
+         group "encode"
+           [
+             prop ~count:(count 5000) "decoding an encoded reply gives it back"
+               (Gen.with_pp R.pp reply) prop_round_trip;
+             test "what has no bytes raises" unencodable;
+             prop ~count:(count 20_000) "a keystroke read encodes to itself"
+               (Gen.with_pp
+                  (fun ppf (e, k) ->
+                    Format.fprintf ppf "%a %a" pp_keyboard e K.pp k)
+                  (Gen.pair keyboard_gen keystroke_gen))
+               prop_key_projection;
+             prop ~count:(count 20_000)
+               "every kitty enhancement carries every fact"
+               (Gen.with_pp
+                  (fun ppf (_, k) -> K.pp ppf k)
+                  (Gen.pair (Gen.pair Gen.bool Gen.bool) keystroke_gen))
+               prop_key_exact;
+             prop ~count:(count 20_000) "a mouse report reads back"
+               (Gen.with_pp
+                  (fun ppf (_, m) -> M.pp ppf m)
+                  (Gen.pair mouse_encoding_gen mouse_gen))
+               prop_mouse;
+           ];
+       ])

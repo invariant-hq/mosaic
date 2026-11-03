@@ -182,9 +182,11 @@ let as_table () =
     [ (0, 40); (1, 40); (2, 30); (0, 18) ]
 
 let () =
-  run "mosaic.column"
-    [
-      group "Glyphs" [ test "an ASCII glyph for every Unicode one" ascii_set ];
-      group "Column widths"
-        [ test "rules" rules; test "as a table resolves them" as_table ];
-    ]
+  exit
+    (run "mosaic.column"
+       [
+         group "Glyphs"
+           [ test "an ASCII glyph for every Unicode one" ascii_set ];
+         group "Column widths"
+           [ test "rules" rules; test "as a table resolves them" as_table ];
+       ])

@@ -54,28 +54,29 @@ let scrollback_render =
 let exact = Sys.getenv_opt "THUMPER_MACHINE" = Some "exact"
 
 let () =
-  Thumper.run "vte"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
-    [
-      Thumper.group "vte"
-        [
-          ascii 40;
-          feed_run "feed/unicode-short" `Unicode (repeat 4 "a中é👨‍💻");
-          ascii 4096;
-          ascii 16384;
-          ascii 65536;
-          unicode `Unicode "feed/unicode";
-          unicode `Wcwidth "feed/wcwidth";
-          feed_run "feed/updates" `Unicode frames_text;
-          scrollback_append;
-          scrollback_render;
-        ];
-    ]
+  exit
+    (Thumper.run "vte"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else Thumper.Metric.[ wall_time; alloc_words ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
+       [
+         Thumper.group "vte"
+           [
+             ascii 40;
+             feed_run "feed/unicode-short" `Unicode (repeat 4 "a中é👨‍💻");
+             ascii 4096;
+             ascii 16384;
+             ascii 65536;
+             unicode `Unicode "feed/unicode";
+             unicode `Wcwidth "feed/wcwidth";
+             feed_run "feed/updates" `Unicode frames_text;
+             scrollback_append;
+             scrollback_render;
+           ];
+       ])

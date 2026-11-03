@@ -1298,167 +1298,173 @@ let paint_surfaces () =
     (has Bold s && has Underline s && not (has Inverse s))
 
 let () =
-  run "mosaic.tree"
-    [
-      group "Paint"
-        [
-          test "legible on a light terminal" paint_legible_on_light;
-          test "icons are the theme's glyphs" paint_glyphs;
-          test "row surfaces" paint_surfaces;
-        ];
-      group "State.step"
-        [
-          test "moves over shown nodes" step_moves;
-          test "Right and Left" step_right_left;
-          test "* expands siblings" step_siblings;
-          test "typeahead over shown nodes" step_typeahead;
-          test "a cursor inside a collapsed node" step_hidden_cursor;
-        ];
-      test "accepted state and stable IDs" rejected_state_and_reorder;
-      test "setters work without callbacks" setters_work_without_callbacks;
-      test "rejected expansion preserves state"
-        rejected_expansion_keeps_accepted_state;
-      group "Props"
-        [
-          test "default values" props_defaults;
-          test "equal on identical" props_equal_identical;
-          test "detects items difference" props_detects_items_diff;
-          test "detects selected_index difference"
-            props_detects_selected_index_diff;
-          test "detects expand_depth difference" props_detects_expand_depth_diff;
-          test "detects show_guides difference" props_detects_show_guides_diff;
-          test "detects color difference" props_detects_color_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "is focusable" create_is_focusable;
-          test "is buffered" create_is_buffered;
-          test "clamps initial index" create_clamps_initial_index;
-          test "empty items index zero" create_empty_items_index_zero;
-        ];
-      group "Selection"
-        [
-          test "set_selected_index clamps" set_selected_index_clamps;
-          test "set_selected_index is silent" set_selected_index_is_silent;
-          test "no-op on same index" set_selected_index_noop_same;
-          test "selected_item returns item" selected_item_returns_item;
-          test "selected_item empty tree" selected_item_empty_tree;
-        ];
-      group "Navigation"
-        [
-          test "move down" move_down_basic;
-          test "move up" move_up_basic;
-          test "j moves down" move_down_j;
-          test "k moves up" move_up_k;
-          test "no wrap at end" move_down_no_wrap;
-          test "no wrap at start" move_up_no_wrap;
-          test "wrap at end" move_down_wrap;
-          test "wrap at start" move_up_wrap;
-          test "fast scroll down" fast_scroll_down;
-          test "fast scroll up" fast_scroll_up;
-          test "enter fires on_activate" enter_fires_on_activate;
-          test "on_activate on empty tree" on_activate_empty_tree;
-          test "unhandled key ignored" unhandled_key_ignored;
-          test "navigation on empty tree" navigation_on_empty_tree;
-        ];
-      group "Expand/Collapse Keys"
-        [
-          test "Right expands collapsed" right_expands_collapsed;
-          test "Right moves to first child" right_moves_to_first_child;
-          test "Right on leaf no-op" right_on_leaf_noop;
-          test "Left collapses expanded" left_collapses_expanded;
-          test "Left moves to parent" left_moves_to_parent;
-          test "Left on top-level leaf no-op" left_on_top_level_leaf_noop;
-          test "Space toggles expand" space_toggles_expand;
-        ];
-      group "Expansion"
-        [
-          test "expand makes children visible" expand_makes_children_visible;
-          test "collapse hides children" collapse_hides_children;
-          test "expand_all shows everything" expand_all_shows_everything;
-          test "collapse_all shows top level" collapse_all_shows_top_level;
-          test "toggle_expand works" toggle_expand_works;
-          test "expand is silent" expand_is_silent;
-          test "collapse is silent" collapse_is_silent;
-          test "expand leaf no-op" expand_leaf_noop;
-          test "collapse adjusts selected index" collapse_adjusts_selected_index;
-          test "expand_depth -1 expands all" expand_depth_negative_one;
-          test "expand_depth 1 expands first level" expand_depth_one;
-        ];
-      group "Items"
-        [
-          test "set_items replaces" set_items_replaces;
-          test "set_items clamps index" set_items_clamps_index;
-          test "set_items empty" set_items_empty;
-        ];
-      group "Queries"
-        [
-          test "depth_of root" depth_of_root;
-          test "depth_of child" depth_of_child;
-          test "depth_of out of bounds" depth_of_out_of_bounds;
-        ];
-      group "Mouse"
-        [
-          test "click selects" mouse_click_selects;
-          test "click icon toggles" mouse_click_icon_toggles;
-          test "click selects away from origin"
-            mouse_click_selects_away_from_origin;
-          test "click icon toggles away from origin"
-            mouse_click_icon_toggles_away_from_origin;
-          test "scroll down moves" mouse_scroll_down_moves;
-          test "scroll up moves" mouse_scroll_up_moves;
-          test "click beyond items ignored" mouse_click_beyond_items_ignored;
-        ];
-      group "Setter no-ops"
-        [
-          test "default background is transparent"
-            default_background_is_transparent;
-          test "set_background no-op" set_background_noop;
-          test "set_wrap_selection no-op" set_wrap_noop;
-          test "set_indent_size no-op" set_indent_size_noop;
-          test "set_show_guides no-op" set_show_guides_noop;
-          test "set_text_color no-op" set_text_color_noop;
-          test "set_fast_scroll_step no-op" set_fast_scroll_step_noop;
-        ];
-      group "Setter positive"
-        [
-          test "toggle show_guides" set_show_guides_toggle;
-          test "indent_size changes" set_indent_size_changes;
-          test "wrap_selection enables wrapping"
-            set_wrap_selection_enables_wrapping;
-          test "fast_scroll_step changes behavior"
-            set_fast_scroll_step_changes_behavior;
-        ];
-      group "apply_props"
-        [
-          test "updates all properties" apply_props_updates;
-          test "same props no extra render" apply_props_same_no_extra_render;
-          test "preserves uncontrolled selection"
-            apply_props_restores_declared_selection;
-          test "controlled selection is silent"
-            apply_props_controlled_selection_is_silent;
-        ];
-      group "Both doors"
-        [
-          test "items" doors_items_label;
-          test "state" doors_state_label;
-          test "indent_size" doors_indent_size;
-          test "show_guides" doors_show_guides;
-          test "guide_style" doors_guide_style;
-          test "expand_icon" doors_expand_icon;
-          test "collapse_icon" doors_collapse_icon;
-          test "leaf_icon" doors_leaf_icon;
-          test "background" doors_background;
-          test "text_color" doors_text_color;
-          test "selected_background" doors_selected_background;
-          test "selected_text_color" doors_selected_text_color;
-          test "focused_selected_background" doors_focused_selected_background;
-          test "focused_selected_text_color" doors_focused_selected_text_color;
-          test "guide_color" doors_guide_color;
-          test "icon_color" doors_icon_color;
-          test "wrap_selection" doors_wrap_selection;
-          test "key_bindings" doors_key_bindings;
-          test "fast_scroll_step" doors_fast_scroll_step;
-        ];
-    ]
+  exit
+    (run "mosaic.tree"
+       [
+         group "Paint"
+           [
+             test "legible on a light terminal" paint_legible_on_light;
+             test "icons are the theme's glyphs" paint_glyphs;
+             test "row surfaces" paint_surfaces;
+           ];
+         group "State.step"
+           [
+             test "moves over shown nodes" step_moves;
+             test "Right and Left" step_right_left;
+             test "* expands siblings" step_siblings;
+             test "typeahead over shown nodes" step_typeahead;
+             test "a cursor inside a collapsed node" step_hidden_cursor;
+           ];
+         test "accepted state and stable IDs" rejected_state_and_reorder;
+         test "setters work without callbacks" setters_work_without_callbacks;
+         test "rejected expansion preserves state"
+           rejected_expansion_keeps_accepted_state;
+         group "Props"
+           [
+             test "default values" props_defaults;
+             test "equal on identical" props_equal_identical;
+             test "detects items difference" props_detects_items_diff;
+             test "detects selected_index difference"
+               props_detects_selected_index_diff;
+             test "detects expand_depth difference"
+               props_detects_expand_depth_diff;
+             test "detects show_guides difference"
+               props_detects_show_guides_diff;
+             test "detects color difference" props_detects_color_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "is focusable" create_is_focusable;
+             test "is buffered" create_is_buffered;
+             test "clamps initial index" create_clamps_initial_index;
+             test "empty items index zero" create_empty_items_index_zero;
+           ];
+         group "Selection"
+           [
+             test "set_selected_index clamps" set_selected_index_clamps;
+             test "set_selected_index is silent" set_selected_index_is_silent;
+             test "no-op on same index" set_selected_index_noop_same;
+             test "selected_item returns item" selected_item_returns_item;
+             test "selected_item empty tree" selected_item_empty_tree;
+           ];
+         group "Navigation"
+           [
+             test "move down" move_down_basic;
+             test "move up" move_up_basic;
+             test "j moves down" move_down_j;
+             test "k moves up" move_up_k;
+             test "no wrap at end" move_down_no_wrap;
+             test "no wrap at start" move_up_no_wrap;
+             test "wrap at end" move_down_wrap;
+             test "wrap at start" move_up_wrap;
+             test "fast scroll down" fast_scroll_down;
+             test "fast scroll up" fast_scroll_up;
+             test "enter fires on_activate" enter_fires_on_activate;
+             test "on_activate on empty tree" on_activate_empty_tree;
+             test "unhandled key ignored" unhandled_key_ignored;
+             test "navigation on empty tree" navigation_on_empty_tree;
+           ];
+         group "Expand/Collapse Keys"
+           [
+             test "Right expands collapsed" right_expands_collapsed;
+             test "Right moves to first child" right_moves_to_first_child;
+             test "Right on leaf no-op" right_on_leaf_noop;
+             test "Left collapses expanded" left_collapses_expanded;
+             test "Left moves to parent" left_moves_to_parent;
+             test "Left on top-level leaf no-op" left_on_top_level_leaf_noop;
+             test "Space toggles expand" space_toggles_expand;
+           ];
+         group "Expansion"
+           [
+             test "expand makes children visible" expand_makes_children_visible;
+             test "collapse hides children" collapse_hides_children;
+             test "expand_all shows everything" expand_all_shows_everything;
+             test "collapse_all shows top level" collapse_all_shows_top_level;
+             test "toggle_expand works" toggle_expand_works;
+             test "expand is silent" expand_is_silent;
+             test "collapse is silent" collapse_is_silent;
+             test "expand leaf no-op" expand_leaf_noop;
+             test "collapse adjusts selected index"
+               collapse_adjusts_selected_index;
+             test "expand_depth -1 expands all" expand_depth_negative_one;
+             test "expand_depth 1 expands first level" expand_depth_one;
+           ];
+         group "Items"
+           [
+             test "set_items replaces" set_items_replaces;
+             test "set_items clamps index" set_items_clamps_index;
+             test "set_items empty" set_items_empty;
+           ];
+         group "Queries"
+           [
+             test "depth_of root" depth_of_root;
+             test "depth_of child" depth_of_child;
+             test "depth_of out of bounds" depth_of_out_of_bounds;
+           ];
+         group "Mouse"
+           [
+             test "click selects" mouse_click_selects;
+             test "click icon toggles" mouse_click_icon_toggles;
+             test "click selects away from origin"
+               mouse_click_selects_away_from_origin;
+             test "click icon toggles away from origin"
+               mouse_click_icon_toggles_away_from_origin;
+             test "scroll down moves" mouse_scroll_down_moves;
+             test "scroll up moves" mouse_scroll_up_moves;
+             test "click beyond items ignored" mouse_click_beyond_items_ignored;
+           ];
+         group "Setter no-ops"
+           [
+             test "default background is transparent"
+               default_background_is_transparent;
+             test "set_background no-op" set_background_noop;
+             test "set_wrap_selection no-op" set_wrap_noop;
+             test "set_indent_size no-op" set_indent_size_noop;
+             test "set_show_guides no-op" set_show_guides_noop;
+             test "set_text_color no-op" set_text_color_noop;
+             test "set_fast_scroll_step no-op" set_fast_scroll_step_noop;
+           ];
+         group "Setter positive"
+           [
+             test "toggle show_guides" set_show_guides_toggle;
+             test "indent_size changes" set_indent_size_changes;
+             test "wrap_selection enables wrapping"
+               set_wrap_selection_enables_wrapping;
+             test "fast_scroll_step changes behavior"
+               set_fast_scroll_step_changes_behavior;
+           ];
+         group "apply_props"
+           [
+             test "updates all properties" apply_props_updates;
+             test "same props no extra render" apply_props_same_no_extra_render;
+             test "preserves uncontrolled selection"
+               apply_props_restores_declared_selection;
+             test "controlled selection is silent"
+               apply_props_controlled_selection_is_silent;
+           ];
+         group "Both doors"
+           [
+             test "items" doors_items_label;
+             test "state" doors_state_label;
+             test "indent_size" doors_indent_size;
+             test "show_guides" doors_show_guides;
+             test "guide_style" doors_guide_style;
+             test "expand_icon" doors_expand_icon;
+             test "collapse_icon" doors_collapse_icon;
+             test "leaf_icon" doors_leaf_icon;
+             test "background" doors_background;
+             test "text_color" doors_text_color;
+             test "selected_background" doors_selected_background;
+             test "selected_text_color" doors_selected_text_color;
+             test "focused_selected_background"
+               doors_focused_selected_background;
+             test "focused_selected_text_color"
+               doors_focused_selected_text_color;
+             test "guide_color" doors_guide_color;
+             test "icon_color" doors_icon_color;
+             test "wrap_selection" doors_wrap_selection;
+             test "key_bindings" doors_key_bindings;
+             test "fast_scroll_step" doors_fast_scroll_step;
+           ];
+       ])

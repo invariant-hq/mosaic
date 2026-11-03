@@ -621,46 +621,47 @@ let test_restore_all_long () =
                 Signal.set_reset h "")))
 
 let () =
-  run "matrix.tty"
-    [
-      group "device"
-        [
-          test "is_tty" test_is_tty;
-          test "is_controlling" test_is_controlling;
-          test "window" test_window;
-          test "background" test_background;
-          test "readable" test_readable;
-          test "now" test_now;
-        ];
-      group "settings"
-        [
-          test "raw and restore" test_raw_and_restore;
-          test "raw on a pipe" test_raw_not_a_terminal;
-          test "the key interval" test_keys;
-          test "no echo" test_no_echo;
-          test "enable_vt elsewhere than on Windows" test_enable_vt_elsewhere;
-        ];
-      group "descriptions"
-        [
-          test "the order of the databases" test_terminfo_order;
-          test "hexadecimal directories" test_terminfo_hex_directory;
-          test "a description in TERMINFO" test_terminfo_encoded;
-          test "a broken description" test_terminfo_invalid;
-          test "names that are no file" test_terminfo_names;
-        ];
-      group "signals"
-        [
-          test "which a holder takes" test_signals;
-          test "taken at the default" test_take_at_default;
-          test "taken over a handler" test_take_always;
-          test "outside the policy" test_take_outside_the_policy;
-          test "a signal that lands while one is taken"
-            test_received_keeps_a_signal_that_lands;
-          test "the holders a signal concerns" test_holders_concerned;
-          test "wake" test_wake;
-          test "a released holder" test_released_holder;
-          test "a write cut by termination" test_write_cut_by_termination;
-          test "restore_all" test_restore_all;
-          test "restore_all with long reset bytes" test_restore_all_long;
-        ];
-    ]
+  exit
+    (run "matrix.tty"
+       [
+         group "device"
+           [
+             test "is_tty" test_is_tty;
+             test "is_controlling" test_is_controlling;
+             test "window" test_window;
+             test "background" test_background;
+             test "readable" test_readable;
+             test "now" test_now;
+           ];
+         group "settings"
+           [
+             test "raw and restore" test_raw_and_restore;
+             test "raw on a pipe" test_raw_not_a_terminal;
+             test "the key interval" test_keys;
+             test "no echo" test_no_echo;
+             test "enable_vt elsewhere than on Windows" test_enable_vt_elsewhere;
+           ];
+         group "descriptions"
+           [
+             test "the order of the databases" test_terminfo_order;
+             test "hexadecimal directories" test_terminfo_hex_directory;
+             test "a description in TERMINFO" test_terminfo_encoded;
+             test "a broken description" test_terminfo_invalid;
+             test "names that are no file" test_terminfo_names;
+           ];
+         group "signals"
+           [
+             test "which a holder takes" test_signals;
+             test "taken at the default" test_take_at_default;
+             test "taken over a handler" test_take_always;
+             test "outside the policy" test_take_outside_the_policy;
+             test "a signal that lands while one is taken"
+               test_received_keeps_a_signal_that_lands;
+             test "the holders a signal concerns" test_holders_concerned;
+             test "wake" test_wake;
+             test "a released holder" test_released_holder;
+             test "a write cut by termination" test_write_cut_by_termination;
+             test "restore_all" test_restore_all;
+             test "restore_all with long reset bytes" test_restore_all_long;
+           ];
+       ])

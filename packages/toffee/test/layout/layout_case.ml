@@ -132,5 +132,6 @@ let case ?(rounding = true) ?width ?height name tree ~border_box ~content_box =
   ]
 
 let run category cases =
-  Windtrap.run "Toffee Layout Tests"
-    [ Windtrap.group category (List.concat cases) ]
+  exit
+    (Windtrap.run "Toffee Layout Tests"
+       [ Windtrap.group category (List.concat cases) ])

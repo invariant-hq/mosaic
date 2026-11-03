@@ -1535,7 +1535,7 @@ let grapheme_cluster_break_agrees_with_segmentation () =
 (* One rule for a tab width below 1, in measuring and in layouts. *)
 let tab_width_below_one_raises () =
   let raises name f =
-    raises_match ~msg:name (Exn.invalid_arg ~substring:"tab width") (fun () ->
+    raises_match ~msg:name (Exn.invalid_arg ~sub:"tab width") (fun () ->
         ignore (f () : int))
   in
   raises "measure" (fun () -> measure ~width_method:`Unicode ~tab_width:0 "\t");
@@ -1551,117 +1551,124 @@ let tab_width_below_one_raises () =
     (measure ~width_method:`Unicode ~tab_width:1 "\t")
 
 let () =
-  run "matrix.text"
-    [
-      group "Layout"
-        [
-          test "wide grapheme positions and metric switches"
-            wide_grapheme_positions;
-          test "source boundaries retain invisible clusters and CRLF"
-            layout_source_boundaries;
-          test "truncation retains source coverage" layout_truncated_source;
-          test "soft-wrap caret affinity" layout_affinity;
-          test "whole clusters under both width methods" layout_whole_clusters;
-          test "Thai spacing mark wrapping and source coverage"
-            thai_spacing_mark_layout;
-          test "zero-width snapping and visible iteration"
-            layout_zero_width_snapping;
-          test "bounded row and horizontal iteration" layout_bounded_iteration;
-          test "measurement and rows agree at edges" layout_edge_cases;
-        ];
-      cases "Measured widths" measured_rows
-        ~name:(fun r -> r.id ^ " " ^ r.what)
-        check_measured;
-      group "Conformance"
-        [ test "UAX #29 grapheme boundaries" run_grapheme_conformance ];
-      group "Measurement"
-        [
-          cases "semantics" measurement_rows
-            ~name:(fun (name, _, _, _, _) -> name)
-            (fun (name, input, width_method, tab_width, expected) ->
-              check_width name expected (measure ~width_method ~tab_width input));
-          test "ASCII fast path" ascii_fast_path_consistency;
-          test "scalar width agrees with measurement"
-            scalar_width_agrees_with_measurement;
-          test "multi-grapheme regression" measure_multi_grapheme_regression;
-          test "malformed UTF-8" malformed_utf8_measurement;
-          test "measure_sub validation" measure_sub_validation;
-          test "measure_sub matches independent slices"
-            measure_sub_matches_slice;
-          test "malformed wcwidth positions" malformed_wcwidth_positions;
-          test "wcwidth decoder matches Stdlib" wcwidth_decoder_matches_stdlib;
-          test "Unicode 18" unicode_18;
-          test "grapheme cluster break values" grapheme_cluster_break_values;
-          test "grapheme cluster break agrees with segmentation"
-            grapheme_cluster_break_agrees_with_segmentation;
-        ];
-      group "Segmenter"
-        [
-          test "units" segmenter_units;
-          test "split invariance" segmenter_split_invariance;
-          test "ASCII runs" segmenter_ascii_run;
-          test "reset" segmenter_reset;
-          test "width never decreases" segmenter_width_monotone;
-          test "pairs that never continue" segmenter_may_continue;
-          test "folds agree" folds_agree_with_segmenter;
-        ];
-      group "Graphemes"
-        [
-          test "iteration" grapheme_iteration;
-          test "info skips zero-width" grapheme_info_skips_zero_width;
-          test "info keeps combining marks with ASCII base"
-            grapheme_info_ascii_base_with_combining_mark;
-        ];
-      group "Tab width" [ test "below 1 raises" tab_width_below_one_raises ];
-      group "Wrap Breaks"
-        [
-          cases "CJK opportunities" cjk_break_cases
-            ~name:(fun (name, _, _, _) -> name)
-            cjk_breaks;
-          cases "CJK rows" cjk_layout_cases
-            ~name:(fun (name, _, _, _) -> name)
-            cjk_layout;
-          test "ASCII spaces" wrap_breaks_ascii_spaces;
-          test "ASCII punctuation" wrap_breaks_ascii_punctuation;
-          test "periods stay inside tokens"
-            wrap_breaks_keep_periods_inside_tokens;
-          test "ASCII brackets" wrap_breaks_ascii_brackets;
-          test "tabs" wrap_breaks_tabs;
-          test "Unicode spaces" wrap_breaks_unicode_spaces;
-          test "soft hyphen" wrap_breaks_soft_hyphen;
-          test "EN space range" wrap_breaks_en_space_range;
-          test "no break in plain text" wrap_breaks_no_break_in_plain_text;
-          test "grapheme aware" wrap_breaks_grapheme_aware;
-          test "empty string" wrap_breaks_empty_string;
-          test "ZWJ sequence" wrap_breaks_zwj_sequence;
-          test "ASCII space break point" wrap_break_points_ascii_space;
-          test "Unicode space break point" wrap_break_points_unicode_space;
-          test "mixed CJK/ASCII transitions"
-            wrap_breaks_mixed_cjk_ascii_transitions;
-          test "fullwidth CJK punctuation" wrap_breaks_fullwidth_cjk_punctuation;
-        ];
-      group "Line Breaks"
-        [
-          test "LF" line_breaks_lf;
-          test "CR" line_breaks_cr;
-          test "CRLF" line_breaks_crlf;
-          test "mixed" line_breaks_mixed;
-          test "empty" line_breaks_empty;
-          test "no newlines" line_breaks_no_newlines;
-          test "consecutive LF" line_breaks_consecutive_lf;
-        ];
-      group "Positions"
-        [
-          test "width_at" width_at_positions;
-          test "wcwidth semantics" wcwidth_position_semantics;
-          test "unicode semantics" unicode_position_semantics;
-        ];
-      group "Width Tables"
-        [
-          test "emoji presentation widths" emoji_presentation_widths;
-          test "text-default pictographs are narrow"
-            text_default_pictograph_widths;
-          test "C1 control widths" c1_control_widths;
-          test "Hangul conjoining jamo are zero width" hangul_conjoining_widths;
-        ];
-    ]
+  exit
+    (run "matrix.text"
+       [
+         group "Layout"
+           [
+             test "wide grapheme positions and metric switches"
+               wide_grapheme_positions;
+             test "source boundaries retain invisible clusters and CRLF"
+               layout_source_boundaries;
+             test "truncation retains source coverage" layout_truncated_source;
+             test "soft-wrap caret affinity" layout_affinity;
+             test "whole clusters under both width methods"
+               layout_whole_clusters;
+             test "Thai spacing mark wrapping and source coverage"
+               thai_spacing_mark_layout;
+             test "zero-width snapping and visible iteration"
+               layout_zero_width_snapping;
+             test "bounded row and horizontal iteration"
+               layout_bounded_iteration;
+             test "measurement and rows agree at edges" layout_edge_cases;
+           ];
+         cases "Measured widths" measured_rows
+           ~id:(fun r -> r.id ^ " " ^ r.what)
+           check_measured;
+         group "Conformance"
+           [ test "UAX #29 grapheme boundaries" run_grapheme_conformance ];
+         group "Measurement"
+           [
+             cases "semantics" measurement_rows
+               ~id:(fun (name, _, _, _, _) -> name)
+               (fun (name, input, width_method, tab_width, expected) ->
+                 check_width name expected
+                   (measure ~width_method ~tab_width input));
+             test "ASCII fast path" ascii_fast_path_consistency;
+             test "scalar width agrees with measurement"
+               scalar_width_agrees_with_measurement;
+             test "multi-grapheme regression" measure_multi_grapheme_regression;
+             test "malformed UTF-8" malformed_utf8_measurement;
+             test "measure_sub validation" measure_sub_validation;
+             test "measure_sub matches independent slices"
+               measure_sub_matches_slice;
+             test "malformed wcwidth positions" malformed_wcwidth_positions;
+             test "wcwidth decoder matches Stdlib"
+               wcwidth_decoder_matches_stdlib;
+             test "Unicode 18" unicode_18;
+             test "grapheme cluster break values" grapheme_cluster_break_values;
+             test "grapheme cluster break agrees with segmentation"
+               grapheme_cluster_break_agrees_with_segmentation;
+           ];
+         group "Segmenter"
+           [
+             test "units" segmenter_units;
+             test "split invariance" segmenter_split_invariance;
+             test "ASCII runs" segmenter_ascii_run;
+             test "reset" segmenter_reset;
+             test "width never decreases" segmenter_width_monotone;
+             test "pairs that never continue" segmenter_may_continue;
+             test "folds agree" folds_agree_with_segmenter;
+           ];
+         group "Graphemes"
+           [
+             test "iteration" grapheme_iteration;
+             test "info skips zero-width" grapheme_info_skips_zero_width;
+             test "info keeps combining marks with ASCII base"
+               grapheme_info_ascii_base_with_combining_mark;
+           ];
+         group "Tab width" [ test "below 1 raises" tab_width_below_one_raises ];
+         group "Wrap Breaks"
+           [
+             cases "CJK opportunities" cjk_break_cases
+               ~id:(fun (name, _, _, _) -> name)
+               cjk_breaks;
+             cases "CJK rows" cjk_layout_cases
+               ~id:(fun (name, _, _, _) -> name)
+               cjk_layout;
+             test "ASCII spaces" wrap_breaks_ascii_spaces;
+             test "ASCII punctuation" wrap_breaks_ascii_punctuation;
+             test "periods stay inside tokens"
+               wrap_breaks_keep_periods_inside_tokens;
+             test "ASCII brackets" wrap_breaks_ascii_brackets;
+             test "tabs" wrap_breaks_tabs;
+             test "Unicode spaces" wrap_breaks_unicode_spaces;
+             test "soft hyphen" wrap_breaks_soft_hyphen;
+             test "EN space range" wrap_breaks_en_space_range;
+             test "no break in plain text" wrap_breaks_no_break_in_plain_text;
+             test "grapheme aware" wrap_breaks_grapheme_aware;
+             test "empty string" wrap_breaks_empty_string;
+             test "ZWJ sequence" wrap_breaks_zwj_sequence;
+             test "ASCII space break point" wrap_break_points_ascii_space;
+             test "Unicode space break point" wrap_break_points_unicode_space;
+             test "mixed CJK/ASCII transitions"
+               wrap_breaks_mixed_cjk_ascii_transitions;
+             test "fullwidth CJK punctuation"
+               wrap_breaks_fullwidth_cjk_punctuation;
+           ];
+         group "Line Breaks"
+           [
+             test "LF" line_breaks_lf;
+             test "CR" line_breaks_cr;
+             test "CRLF" line_breaks_crlf;
+             test "mixed" line_breaks_mixed;
+             test "empty" line_breaks_empty;
+             test "no newlines" line_breaks_no_newlines;
+             test "consecutive LF" line_breaks_consecutive_lf;
+           ];
+         group "Positions"
+           [
+             test "width_at" width_at_positions;
+             test "wcwidth semantics" wcwidth_position_semantics;
+             test "unicode semantics" unicode_position_semantics;
+           ];
+         group "Width Tables"
+           [
+             test "emoji presentation widths" emoji_presentation_widths;
+             test "text-default pictographs are narrow"
+               text_default_pictograph_widths;
+             test "C1 control widths" c1_control_widths;
+             test "Hangul conjoining jamo are zero width"
+               hangul_conjoining_widths;
+           ];
+       ])

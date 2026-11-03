@@ -665,42 +665,43 @@ let resolution_matches_reference () =
   done
 
 let () =
-  run "mosaic.syntax_highlight"
-    [
-      group "Annotations"
-        [
-          test "shared capture batches are safe across domains"
-            shared_capture_batches_are_safe_across_domains;
-          test "source-bound paint retains geometry"
-            annotations_are_source_bound_and_preserve_geometry;
-          test "byte boundaries match styled graphemes"
-            annotation_boundaries_match_styled_graphemes;
-          test "conceal projection is reused across themes"
-            conceal_projection_is_reused_across_themes;
-          test "bounds are validated" annotations_validate_bounds;
-          test "merge puts the overlay over the base"
-            merge_puts_the_overlay_over_the_base;
-          test "unordered annotations preserve overlay order"
-            unordered_annotations_preserve_overlay_order;
-        ];
-      group "Ranges"
-        [
-          test "scope vocabulary fallback and extensions"
-            vocabulary_fallback_and_extensions;
-          test "styles compare by value" styles_compare_by_value;
-          test "of_triples applies style" of_triples_applies_style;
-          test "overlapping same scope keeps later range active"
-            overlapping_same_scope_keeps_later_range_active;
-          test "specificity cascades from parent to child"
-            specificity_cascades_from_parent_to_child;
-          test "invalid range raises" invalid_range_raises;
-          test "resolution matches the reference on random overlaps"
-            resolution_matches_reference;
-        ];
-      group "Metadata"
-        [
-          test "conceal replaces range" conceal_replaces_range;
-          test "injection container suppresses container style"
-            injection_container_suppresses_container_style;
-        ];
-    ]
+  exit
+    (run "mosaic.syntax_highlight"
+       [
+         group "Annotations"
+           [
+             test "shared capture batches are safe across domains"
+               shared_capture_batches_are_safe_across_domains;
+             test "source-bound paint retains geometry"
+               annotations_are_source_bound_and_preserve_geometry;
+             test "byte boundaries match styled graphemes"
+               annotation_boundaries_match_styled_graphemes;
+             test "conceal projection is reused across themes"
+               conceal_projection_is_reused_across_themes;
+             test "bounds are validated" annotations_validate_bounds;
+             test "merge puts the overlay over the base"
+               merge_puts_the_overlay_over_the_base;
+             test "unordered annotations preserve overlay order"
+               unordered_annotations_preserve_overlay_order;
+           ];
+         group "Ranges"
+           [
+             test "scope vocabulary fallback and extensions"
+               vocabulary_fallback_and_extensions;
+             test "styles compare by value" styles_compare_by_value;
+             test "of_triples applies style" of_triples_applies_style;
+             test "overlapping same scope keeps later range active"
+               overlapping_same_scope_keeps_later_range_active;
+             test "specificity cascades from parent to child"
+               specificity_cascades_from_parent_to_child;
+             test "invalid range raises" invalid_range_raises;
+             test "resolution matches the reference on random overlaps"
+               resolution_matches_reference;
+           ];
+         group "Metadata"
+           [
+             test "conceal replaces range" conceal_replaces_range;
+             test "injection container suppresses container style"
+               injection_container_suppresses_container_style;
+           ];
+       ])

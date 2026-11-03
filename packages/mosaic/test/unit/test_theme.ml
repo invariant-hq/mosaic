@@ -1212,39 +1212,41 @@ let markdown_follows_theme () =
   restyle (Mosaic.markdown ~layout:(size 30 4) "- item") ~x:0 ~y:0 8
 
 let () =
-  run "mosaic.theme"
-    [
-      group "Default styles"
-        [
-          test "syntax, legible" syntax_default;
-          test "markdown, legible" markdown_default;
-          test "diff, legible" diff_default;
-          test "code follows the theme" code_follows_theme;
-          test "markdown follows the theme" markdown_follows_theme;
-        ];
-      group "Values"
-        [
-          test "plain's surfaces and glyphs" plain_surfaces;
-          test "default's surfaces" default_surfaces;
-          test "modifiers" modifiers;
-        ];
-      group "Role tables"
-        [
-          test "27 palettes" theme_palettes;
-          test "adjudicated classes" theme_classes;
-          test "with_style, equal, check" theme_with_style;
-          prop "any palette" gen_palette (fun c -> theme_laws ~msg:"random" c);
-        ];
-      group "Scope"
-        [
-          test "nested themed" nested;
-          test "fragments and viewport switches" fragments;
-          test "the root's theme" root_theme;
-          test "the theme follows the view" theme_follows_view;
-          test "memo" memo;
-          test "embedded node" embed;
-          test "embedded node with its own theme" embed_own_theme;
-          test "a node's own theme" imperative;
-        ];
-      group "Cost" [ test "reading the scope" read_allocates_nothing ];
-    ]
+  exit
+    (run "mosaic.theme"
+       [
+         group "Default styles"
+           [
+             test "syntax, legible" syntax_default;
+             test "markdown, legible" markdown_default;
+             test "diff, legible" diff_default;
+             test "code follows the theme" code_follows_theme;
+             test "markdown follows the theme" markdown_follows_theme;
+           ];
+         group "Values"
+           [
+             test "plain's surfaces and glyphs" plain_surfaces;
+             test "default's surfaces" default_surfaces;
+             test "modifiers" modifiers;
+           ];
+         group "Role tables"
+           [
+             test "27 palettes" theme_palettes;
+             test "adjudicated classes" theme_classes;
+             test "with_style, equal, check" theme_with_style;
+             prop "any palette" gen_palette (fun c ->
+                 theme_laws ~msg:"random" c);
+           ];
+         group "Scope"
+           [
+             test "nested themed" nested;
+             test "fragments and viewport switches" fragments;
+             test "the root's theme" root_theme;
+             test "the theme follows the view" theme_follows_view;
+             test "memo" memo;
+             test "embedded node" embed;
+             test "embedded node with its own theme" embed_own_theme;
+             test "a node's own theme" imperative;
+           ];
+         group "Cost" [ test "reading the scope" read_allocates_nothing ];
+       ])

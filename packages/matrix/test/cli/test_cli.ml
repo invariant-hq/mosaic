@@ -43,11 +43,11 @@ let width_tests =
           (widths [ col ~floor:2 5 10; col ~floor:2 8 8 ] 3);
         equal ~msg:"no columns" ints [] (widths [] 10));
     test "widths rejects a column out of order" (fun () ->
-        raises_match (Exn.invalid_arg ~substring:"Table.widths") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"Table.widths") (fun () ->
             ignore (widths [ col 5 4 ] 10));
-        raises_match (Exn.invalid_arg ~substring:"Table.widths") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"Table.widths") (fun () ->
             ignore (widths [ col ~floor:3 2 4 ] 10));
-        raises_match (Exn.invalid_arg ~substring:"Table.widths") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"Table.widths") (fun () ->
             ignore (widths [ col ~grow:(-1) 2 4 ] 10)));
   ]
 
@@ -90,9 +90,9 @@ let place_tests =
             (Table.place ~x:0 ~y:0 light [| 1; 1 |]
                [ Table.Spanned (1, spans) ])
         in
-        raises_match (Exn.invalid_arg ~substring:"Table.place") (bad [ 1 ]);
-        raises_match (Exn.invalid_arg ~substring:"Table.place") (bad [ 3 ]);
-        raises_match (Exn.invalid_arg ~substring:"Table.place") (bad [ 0; 2 ]));
+        raises_match (Exn.invalid_arg ~sub:"Table.place") (bad [ 1 ]);
+        raises_match (Exn.invalid_arg ~sub:"Table.place") (bad [ 3 ]);
+        raises_match (Exn.invalid_arg ~sub:"Table.place") (bad [ 0; 2 ]));
     test "a double edge over spanned rows keeps single inner tees" (fun () ->
         equal ~msg:"frame" string
           "╔══════╤════════╤═════╗\n\
@@ -274,7 +274,7 @@ let text_tests =
         let g = Table.grid { light with edge = None } ~room:10 [||] [] in
         equal ~msg:"size" (pair int int) (1, 1) (Grid.width g, Grid.height g));
     test "grid rejects a row without a cell for each column" (fun () ->
-        raises_match (Exn.invalid_arg ~substring:"Table.grid") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"Table.grid") (fun () ->
             ignore
               (Table.grid light ~room:10 text_cols
                  [ Table.Cells [| Table.cell "a" |] ])));
@@ -1027,14 +1027,15 @@ let clock_tests =
   ]
 
 let () =
-  run "matrix.cli"
-    [
-      group "widths" width_tests;
-      group "placing" place_tests;
-      group "tables of text" text_tests;
-      group "trees" tree_tests;
-      group "ocaml-console" console_tests;
-      group "policy" policy_tests;
-      group "adapting" adapt_tests;
-      group "clock" clock_tests;
-    ]
+  exit
+    (run "matrix.cli"
+       [
+         group "widths" width_tests;
+         group "placing" place_tests;
+         group "tables of text" text_tests;
+         group "trees" tree_tests;
+         group "ocaml-console" console_tests;
+         group "policy" policy_tests;
+         group "adapting" adapt_tests;
+         group "clock" clock_tests;
+       ])

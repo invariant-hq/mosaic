@@ -425,25 +425,26 @@ let consumed_keys =
   ]
 
 let () =
-  run "mosaic.navigation-keys"
-    (List.concat_map
-       (fun (name, build, forward) ->
-         List.map
-           (fun mlx ->
-             let api = if mlx then "MLX" else "Mosaic" in
-             group
-               (name ^ " " ^ api)
-               [
-                 test "matching, interception and model ownership" (fun () ->
-                     exact_matching_and_accepted_state build forward ~mlx);
-                 test "custom binding lifecycle" (fun () ->
-                     custom_binding_lifecycle build forward ~mlx);
-                 test "subscription and widget resolution agree" (fun () ->
-                     subscriptions_and_widgets_agree build ~mlx);
-               ])
-           [ false; true ])
-       widgets
-    @ [
-        group "consumed keys"
-          (List.map (fun (name, check) -> test name check) consumed_keys);
-      ])
+  exit
+    (run "mosaic.navigation-keys"
+       (List.concat_map
+          (fun (name, build, forward) ->
+            List.map
+              (fun mlx ->
+                let api = if mlx then "MLX" else "Mosaic" in
+                group
+                  (name ^ " " ^ api)
+                  [
+                    test "matching, interception and model ownership" (fun () ->
+                        exact_matching_and_accepted_state build forward ~mlx);
+                    test "custom binding lifecycle" (fun () ->
+                        custom_binding_lifecycle build forward ~mlx);
+                    test "subscription and widget resolution agree" (fun () ->
+                        subscriptions_and_widgets_agree build ~mlx);
+                  ])
+              [ false; true ])
+          widgets
+       @ [
+           group "consumed keys"
+             (List.map (fun (name, check) -> test name check) consumed_keys);
+         ]))

@@ -570,76 +570,78 @@ let doors_render_code_label () =
               ~render_code:doors_render_code ())))
 
 let () =
-  run "mosaic.markdown"
-    [
-      group "Construction"
-        [
-          test "default content" create_default_content;
-          test "with content" create_with_content;
-          test "node is valid" node_is_valid;
-          test "node has parent" node_has_parent;
-        ];
-      group "Content"
-        [
-          test "set_content updates" set_content_updates_accessor;
-          test "same content no-op" set_content_same_is_noop;
-          test "set_content empty" set_content_empty_clears;
-          test "set_content appending" set_content_appending;
-        ];
-      group "Configuration"
-        [
-          test "set_conceal toggles" set_conceal_toggles;
-          test "set_conceal same no-op" set_conceal_same_is_noop;
-          test "set_streaming toggles" set_streaming_toggles;
-          test "set_streaming same no-op" set_streaming_same_is_noop;
-          test "set_style custom" set_style_custom;
-          test "set_highlighter re-renders existing block"
-            set_highlighter_rerenders_existing_block;
-          test "a drag selects the rendered text" drag_selects_rendered_text;
-          test "an unselectable markdown selects nothing"
-            unselectable_markdown_selects_nothing;
-        ];
-      group "Lifecycle"
-        [
-          test "streaming mode" create_streaming;
-          test "no conceal mode" create_no_conceal;
-          test "custom render_node returning None"
-            create_custom_render_node_none;
-          test "custom render_code" create_custom_render_code;
-          test "highlighter receives fence language"
-            highlighter_receives_fence_language;
-          test "render_code takes precedence over highlighter"
-            render_code_takes_precedence_over_highlighter;
-          test "view refreshes do not highlight again"
-            view_refreshes_do_not_highlight_again;
-          test "style change restyles without highlighting"
-            style_change_restyles_without_highlighting;
-          test "element style rebuilt renders nothing"
-            element_style_rebuilt_renders_nothing;
-          test "element style change re-renders" element_style_change_rerenders;
-          test "element styles are values" element_style_values;
-          test "pp does not crash" pp_does_not_crash;
-        ];
-      group "Incremental updates"
-        [
-          test "unchanged apply_props does not re-render"
-            apply_props_same_content_no_rerender;
-          test "streaming append reuses prefix blocks"
-            streaming_append_reuses_prefix_blocks;
-          test "containers grow in place" containers_grow_in_place;
-          test "a block last again loses its margin"
-            a_block_last_again_loses_its_margin;
-        ];
-      group "Both doors"
-        [
-          test "content" doors_content;
-          test "style (the element's md_style)" doors_style_label;
-          test "conceal" doors_conceal;
-          test "streaming" doors_streaming;
-          test "selectable" doors_selectable;
-          test "render_node" doors_render_node_label;
-          test "render_code" doors_render_code_label;
-          test "highlighter" doors_highlighter;
-          test "syntax_style" doors_syntax_style;
-        ];
-    ]
+  exit
+    (run "mosaic.markdown"
+       [
+         group "Construction"
+           [
+             test "default content" create_default_content;
+             test "with content" create_with_content;
+             test "node is valid" node_is_valid;
+             test "node has parent" node_has_parent;
+           ];
+         group "Content"
+           [
+             test "set_content updates" set_content_updates_accessor;
+             test "same content no-op" set_content_same_is_noop;
+             test "set_content empty" set_content_empty_clears;
+             test "set_content appending" set_content_appending;
+           ];
+         group "Configuration"
+           [
+             test "set_conceal toggles" set_conceal_toggles;
+             test "set_conceal same no-op" set_conceal_same_is_noop;
+             test "set_streaming toggles" set_streaming_toggles;
+             test "set_streaming same no-op" set_streaming_same_is_noop;
+             test "set_style custom" set_style_custom;
+             test "set_highlighter re-renders existing block"
+               set_highlighter_rerenders_existing_block;
+             test "a drag selects the rendered text" drag_selects_rendered_text;
+             test "an unselectable markdown selects nothing"
+               unselectable_markdown_selects_nothing;
+           ];
+         group "Lifecycle"
+           [
+             test "streaming mode" create_streaming;
+             test "no conceal mode" create_no_conceal;
+             test "custom render_node returning None"
+               create_custom_render_node_none;
+             test "custom render_code" create_custom_render_code;
+             test "highlighter receives fence language"
+               highlighter_receives_fence_language;
+             test "render_code takes precedence over highlighter"
+               render_code_takes_precedence_over_highlighter;
+             test "view refreshes do not highlight again"
+               view_refreshes_do_not_highlight_again;
+             test "style change restyles without highlighting"
+               style_change_restyles_without_highlighting;
+             test "element style rebuilt renders nothing"
+               element_style_rebuilt_renders_nothing;
+             test "element style change re-renders"
+               element_style_change_rerenders;
+             test "element styles are values" element_style_values;
+             test "pp does not crash" pp_does_not_crash;
+           ];
+         group "Incremental updates"
+           [
+             test "unchanged apply_props does not re-render"
+               apply_props_same_content_no_rerender;
+             test "streaming append reuses prefix blocks"
+               streaming_append_reuses_prefix_blocks;
+             test "containers grow in place" containers_grow_in_place;
+             test "a block last again loses its margin"
+               a_block_last_again_loses_its_margin;
+           ];
+         group "Both doors"
+           [
+             test "content" doors_content;
+             test "style (the element's md_style)" doors_style_label;
+             test "conceal" doors_conceal;
+             test "streaming" doors_streaming;
+             test "selectable" doors_selectable;
+             test "render_node" doors_render_node_label;
+             test "render_code" doors_render_code_label;
+             test "highlighter" doors_highlighter;
+             test "syntax_style" doors_syntax_style;
+           ];
+       ])

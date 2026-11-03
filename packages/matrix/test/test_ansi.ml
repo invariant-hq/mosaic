@@ -2290,4 +2290,4 @@ let tests =
     group "Styling" styling_tests;
   ]
 
-let () = run "matrix.ansi" tests
+let () = exit (run "matrix.ansi" tests)

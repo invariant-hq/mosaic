@@ -391,27 +391,28 @@ let doors_disabled () =
     ~create:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
 
 let () =
-  run "Button"
-    [
-      test "keyboard press semantics" key_presses_only;
-      test "modifiers and capture" modifiers_and_capture;
-      test "activation consumes the key" activation_consumes_the_key;
-      test "pointer focus acceptance" pointer_focus_before_activation;
-      test "complete primary click gesture" click_requires_complete_gesture;
-      test "disabled blocks input" disabled_blocks_input;
-      test "MLX labels and deferred mapping" mlx_and_mapping;
-      test "visible focus and disabled states preserve label styling"
-        visible_states_preserve_label_style;
-      test "border reaches the box" doors_border;
-      test "border_style reaches the box" doors_border_style;
-      test "border_sides reaches the box" doors_border_sides;
-      test "border_width reaches the box" doors_border_width;
-      test "border_color reaches the box" doors_border_color;
-      test "focused_border_color reaches the box" doors_focused_border_color;
-      test "background reaches the box" doors_background;
-      test "fill reaches the box" doors_fill;
-      test "title reaches the box" doors_title;
-      test "title_alignment reaches the box" doors_title_alignment;
-      test "text_style reaches the text" doors_text_style;
-      test "disabled reaches the text" doors_disabled;
-    ]
+  exit
+    (run "Button"
+       [
+         test "keyboard press semantics" key_presses_only;
+         test "modifiers and capture" modifiers_and_capture;
+         test "activation consumes the key" activation_consumes_the_key;
+         test "pointer focus acceptance" pointer_focus_before_activation;
+         test "complete primary click gesture" click_requires_complete_gesture;
+         test "disabled blocks input" disabled_blocks_input;
+         test "MLX labels and deferred mapping" mlx_and_mapping;
+         test "visible focus and disabled states preserve label styling"
+           visible_states_preserve_label_style;
+         test "border reaches the box" doors_border;
+         test "border_style reaches the box" doors_border_style;
+         test "border_sides reaches the box" doors_border_sides;
+         test "border_width reaches the box" doors_border_width;
+         test "border_color reaches the box" doors_border_color;
+         test "focused_border_color reaches the box" doors_focused_border_color;
+         test "background reaches the box" doors_background;
+         test "fill reaches the box" doors_fill;
+         test "title reaches the box" doors_title;
+         test "title_alignment reaches the box" doors_title_alignment;
+         test "text_style reaches the text" doors_text_style;
+         test "disabled reaches the text" doors_disabled;
+       ])

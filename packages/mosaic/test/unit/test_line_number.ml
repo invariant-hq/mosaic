@@ -349,36 +349,37 @@ let paint_role () =
           (Mosaic.line_number ~size:doors_size ~fg:blue (Mosaic.text "a\nb"))))
 
 let () =
-  run "mosaic.line_number"
-    [
-      group "Paint" [ test "by role, label first" paint_role ];
-      group "Props"
-        [
-          test "detects line color difference"
-            props_equal_detects_line_color_diff;
-          test "detects length mismatch" props_equal_detects_length_mismatch;
-        ];
-      group "Rendering"
-        [
-          test "line colors render in gutter" line_colors_render_in_gutter;
-          test "apply_props refreshes line colors"
-            apply_props_refreshes_line_colors;
-          test "signs reserve measured width" signs_reserve_measured_width;
-          test "numbers follow scrolled rows"
-            gutter_numbers_follow_scrolled_rows;
-          test "numbers only first rows" gutter_numbers_only_first_rows;
-        ];
-      group "Both doors"
-        [
-          test "fg" doors_fg;
-          test "bg" doors_bg;
-          test "min_width" doors_min_width;
-          test "padding_right" doors_padding_right;
-          test "show_line_numbers" doors_show_line_numbers;
-          test "line_number_offset" doors_line_number_offset;
-          test "line_colors" doors_line_colors;
-          test "line_signs" doors_line_signs;
-          test "line_numbers" doors_line_numbers;
-          test "hidden_line_numbers" doors_hidden_line_numbers;
-        ];
-    ]
+  exit
+    (run "mosaic.line_number"
+       [
+         group "Paint" [ test "by role, label first" paint_role ];
+         group "Props"
+           [
+             test "detects line color difference"
+               props_equal_detects_line_color_diff;
+             test "detects length mismatch" props_equal_detects_length_mismatch;
+           ];
+         group "Rendering"
+           [
+             test "line colors render in gutter" line_colors_render_in_gutter;
+             test "apply_props refreshes line colors"
+               apply_props_refreshes_line_colors;
+             test "signs reserve measured width" signs_reserve_measured_width;
+             test "numbers follow scrolled rows"
+               gutter_numbers_follow_scrolled_rows;
+             test "numbers only first rows" gutter_numbers_only_first_rows;
+           ];
+         group "Both doors"
+           [
+             test "fg" doors_fg;
+             test "bg" doors_bg;
+             test "min_width" doors_min_width;
+             test "padding_right" doors_padding_right;
+             test "show_line_numbers" doors_show_line_numbers;
+             test "line_number_offset" doors_line_number_offset;
+             test "line_colors" doors_line_colors;
+             test "line_signs" doors_line_signs;
+             test "line_numbers" doors_line_numbers;
+             test "hidden_line_numbers" doors_hidden_line_numbers;
+           ];
+       ])

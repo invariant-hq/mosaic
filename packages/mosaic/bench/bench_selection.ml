@@ -96,44 +96,45 @@ let cursor_down_up () =
 let exact = Sys.getenv_opt "THUMPER_MACHINE" = Some "exact"
 
 let () =
-  Thumper.run "selection"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words; promoted_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      ::
-      (if exact then []
-       else
-         [
-           Thumper.Budget.no_slower_than 0.05;
-           Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words
-             ~max_regression:0.5 ();
-         ]))
-    [
-      Thumper.bench "select/positional-5000" (fun () ->
-          Select.Props.make ~options:select_options ~selected_index:last ());
-      Thumper.bench "select/value-5000" (fun () ->
-          Mosaic.select ~equal:String.equal ~selected ~on_change:Fun.id
-            ~on_activate:Fun.id select_items);
-      Thumper.bench "tabs/positional-5000" (fun () ->
-          Tab_select.Props.make ~options:tab_options ~selected:last ());
-      Thumper.bench "tabs/value-5000" (fun () ->
-          Mosaic.tab_select ~equal:String.equal ~selected ~on_change:Fun.id
-            ~on_activate:Fun.id tab_items);
-      Thumper.bench "table/positional-5000" (fun () ->
-          Table.Props.make ~columns ~rows:positional_rows ~selected_row:last ());
-      Thumper.bench "table/value-5000" (fun () ->
-          Mosaic.table ~columns ~rows:value_rows ~equal:String.equal ~selected
-            ~on_change:Fun.id ~on_activate:Fun.id ());
-      Thumper.bench "cursor/step-100000" cursor_down_up;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> make_tree_selection 1_000)
-        "tree/selection-roundtrip-1000" tree_selection_roundtrip;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> make_tree_selection 10_000)
-        "tree/selection-roundtrip-10000" tree_selection_roundtrip;
-    ]
+  exit
+    (Thumper.run "selection"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else Thumper.Metric.[ wall_time; alloc_words; promoted_words ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         ::
+         (if exact then []
+          else
+            [
+              Thumper.Budget.no_slower_than 0.05;
+              Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words 0.5;
+            ]))
+       [
+         Thumper.bench "select/positional-5000" (fun () ->
+             Select.Props.make ~options:select_options ~selected_index:last ());
+         Thumper.bench "select/value-5000" (fun () ->
+             Mosaic.select ~equal:String.equal ~selected ~on_change:Fun.id
+               ~on_activate:Fun.id select_items);
+         Thumper.bench "tabs/positional-5000" (fun () ->
+             Tab_select.Props.make ~options:tab_options ~selected:last ());
+         Thumper.bench "tabs/value-5000" (fun () ->
+             Mosaic.tab_select ~equal:String.equal ~selected ~on_change:Fun.id
+               ~on_activate:Fun.id tab_items);
+         Thumper.bench "table/positional-5000" (fun () ->
+             Table.Props.make ~columns ~rows:positional_rows ~selected_row:last
+               ());
+         Thumper.bench "table/value-5000" (fun () ->
+             Mosaic.table ~columns ~rows:value_rows ~equal:String.equal
+               ~selected ~on_change:Fun.id ~on_activate:Fun.id ());
+         Thumper.bench "cursor/step-100000" cursor_down_up;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> make_tree_selection 1_000)
+           "tree/selection-roundtrip-1000" tree_selection_roundtrip;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> make_tree_selection 10_000)
+           "tree/selection-roundtrip-10000" tree_selection_roundtrip;
+       ])

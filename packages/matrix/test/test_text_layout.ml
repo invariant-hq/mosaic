@@ -476,7 +476,7 @@ let gen_session =
           map
             (fun (at, removed, s) -> Replace (at, removed, s))
             (triple (int_range 0 60) (int_range 0 6) (text (int_range 0 3))) );
-        (1, pure Undo);
+        (1, constant Undo);
       ]
   in
   let geometry =
@@ -676,45 +676,47 @@ let edit_bounds () =
     (Layout.Source.text source)
 
 let () =
-  run "matrix.text_layout"
-    [
-      group "Regressions"
-        [
-          test "past a row's end snaps a zero-width run"
-            past_row_end_snaps_zero_width_run;
-          test "nearest boundary snaps a zero-width run"
-            nearest_boundary_snaps_zero_width_run;
-          test "ellipsis edge snaps a zero-width run"
-            ellipsis_edge_snaps_zero_width_run;
-          test "omitted suffix end locates after the ellipsis"
-            omitted_suffix_end_locates_after_ellipsis;
-          test "coverage maps rows outside as hit does"
-            coverage_maps_rows_outside;
-          test "truncation without cells" truncation_without_cells;
-          test "blanks hang where a word fills a row"
-            blanks_hang_where_a_word_fills_a_row;
-        ];
-      group "Hit and locate"
-        [
-          prop ~count:1000 "visible unambiguous boundaries round-trip" gen_case
-            exact_round_trip;
-          prop ~count:1000 "hit snaps canonically" gen_case canonical_snapping;
-          prop ~count:1000 "locate is monotonic" gen_case locate_is_monotonic;
-        ];
-      group "Wrapping"
-        [
-          prop ~count:1000 "blanks hang where rows wrap" gen_case
-            wrapped_rows_fit;
-        ];
-      group "Cells"
-        [
-          prop ~count:1000 "cells skip zero-width clusters" gen_case
-            cells_skip_zero_width;
-        ];
-      group "Edits"
-        [
-          test "bytes out of bounds" edit_bounds;
-          prop ~count:500 "edits match indexing from scratch" gen_session
-            edits_match_fresh_indexing;
-        ];
-    ]
+  exit
+    (run "matrix.text_layout"
+       [
+         group "Regressions"
+           [
+             test "past a row's end snaps a zero-width run"
+               past_row_end_snaps_zero_width_run;
+             test "nearest boundary snaps a zero-width run"
+               nearest_boundary_snaps_zero_width_run;
+             test "ellipsis edge snaps a zero-width run"
+               ellipsis_edge_snaps_zero_width_run;
+             test "omitted suffix end locates after the ellipsis"
+               omitted_suffix_end_locates_after_ellipsis;
+             test "coverage maps rows outside as hit does"
+               coverage_maps_rows_outside;
+             test "truncation without cells" truncation_without_cells;
+             test "blanks hang where a word fills a row"
+               blanks_hang_where_a_word_fills_a_row;
+           ];
+         group "Hit and locate"
+           [
+             prop ~count:1000 "visible unambiguous boundaries round-trip"
+               gen_case exact_round_trip;
+             prop ~count:1000 "hit snaps canonically" gen_case
+               canonical_snapping;
+             prop ~count:1000 "locate is monotonic" gen_case locate_is_monotonic;
+           ];
+         group "Wrapping"
+           [
+             prop ~count:1000 "blanks hang where rows wrap" gen_case
+               wrapped_rows_fit;
+           ];
+         group "Cells"
+           [
+             prop ~count:1000 "cells skip zero-width clusters" gen_case
+               cells_skip_zero_width;
+           ];
+         group "Edits"
+           [
+             test "bytes out of bounds" edit_bounds;
+             prop ~count:500 "edits match indexing from scratch" gen_session
+               edits_match_fresh_indexing;
+           ];
+       ])

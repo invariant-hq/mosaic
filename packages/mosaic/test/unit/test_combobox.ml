@@ -89,15 +89,16 @@ let keys () =
   is_true ~msg:"letters go to the text" (bound (Shortcut.char 'a') = None)
 
 let () =
-  run "mosaic.combobox"
-    [
-      group "Combobox"
-        [
-          test "editing" editing;
-          test "Down and Up" opening;
-          test "Enter commits" committing;
-          test "Escape" escaping;
-          test "Tab leaves" leaving;
-          test "keys" keys;
-        ];
-    ]
+  exit
+    (run "mosaic.combobox"
+       [
+         group "Combobox"
+           [
+             test "editing" editing;
+             test "Down and Up" opening;
+             test "Enter commits" committing;
+             test "Escape" escaping;
+             test "Tab leaves" leaving;
+             test "keys" keys;
+           ];
+       ])

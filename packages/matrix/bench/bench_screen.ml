@@ -347,14 +347,15 @@ let benchmarks =
 let exact = Sys.getenv_opt "THUMPER_MACHINE" = Some "exact"
 
 let () =
-  Thumper.run "screen"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
-    [ benchmarks ]
+  exit
+    (Thumper.run "screen"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else Thumper.Metric.[ wall_time; alloc_words ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
+       [ benchmarks ])

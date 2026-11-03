@@ -68,8 +68,11 @@ let test_worker_on_fibers () =
   is_true ~msg:"the worker's message ended the run" (Matrix_test.ended s)
 
 let () =
-  run "mosaic.eio_mock"
-    [
-      group "Workers"
-        [ test "a worker on Eio's mock fibers settles" test_worker_on_fibers ];
-    ]
+  exit
+    (run "mosaic.eio_mock"
+       [
+         group "Workers"
+           [
+             test "a worker on Eio's mock fibers settles" test_worker_on_fibers;
+           ];
+       ])

@@ -335,69 +335,71 @@ let paint_without_styling () =
   is_true ~msg:"the empty part" (includes text "\u{2500}")
 
 let () =
-  run "mosaic.progress_bar"
-    [
-      group "Paint" [ test "shows with no styling" paint_without_styling ];
-      group "Props"
-        [
-          test "default values" props_defaults;
-          test "equal on identical" props_equal_identical;
-          test "detects value diff" props_detects_value_diff;
-          test "detects min diff" props_detects_min_diff;
-          test "detects max diff" props_detects_max_diff;
-          test "detects orientation diff" props_detects_orientation_diff;
-          test "detects filled_color diff" props_detects_filled_color_diff;
-          test "detects empty_color diff" props_detects_empty_color_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "default value = 0" create_default_value;
-          test "custom value" create_custom_value;
-        ];
-      group "Value management"
-        [
-          test "set_value updates" set_value_updates;
-          test "set_value noop same" set_value_noop_same;
-          test "set_min schedules render" set_min_schedules_render;
-          test "set_max schedules render" set_max_schedules_render;
-        ];
-      group "Setters"
-        [
-          test "set_orientation schedules render"
-            set_orientation_schedules_render;
-          test "set_orientation noop same" set_orientation_noop_same;
-          test "set_filled_color schedules render"
-            set_filled_color_schedules_render;
-          test "set_empty_color schedules render"
-            set_empty_color_schedules_render;
-        ];
-      group "Rendering"
-        [
-          test "horizontal full at 100%" horizontal_full_at_100_percent;
-          test "horizontal empty at 0%" horizontal_empty_at_0_percent;
-          test "horizontal half block at 50%"
-            horizontal_half_block_at_50_percent;
-          test "vertical fills bottom up" vertical_fills_bottom_up;
-          test "vertical half block at boundary" vertical_half_block_at_boundary;
-        ];
-      group "apply_props"
-        [
-          test "replaces all" apply_props_replaces_all;
-          test "schedules render" apply_props_schedules_render;
-        ];
-      group "Pretty-printing"
-        [
-          test "produces output" pp_produces_output;
-          test "contains Progress_bar" pp_contains_progress_bar;
-        ];
-      group "Both doors"
-        [
-          test "value" doors_value;
-          test "min" doors_min;
-          test "max" doors_max;
-          test "orientation" doors_orientation;
-          test "filled_color" doors_filled_color;
-          test "empty_color" doors_empty_color;
-        ];
-    ]
+  exit
+    (run "mosaic.progress_bar"
+       [
+         group "Paint" [ test "shows with no styling" paint_without_styling ];
+         group "Props"
+           [
+             test "default values" props_defaults;
+             test "equal on identical" props_equal_identical;
+             test "detects value diff" props_detects_value_diff;
+             test "detects min diff" props_detects_min_diff;
+             test "detects max diff" props_detects_max_diff;
+             test "detects orientation diff" props_detects_orientation_diff;
+             test "detects filled_color diff" props_detects_filled_color_diff;
+             test "detects empty_color diff" props_detects_empty_color_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "default value = 0" create_default_value;
+             test "custom value" create_custom_value;
+           ];
+         group "Value management"
+           [
+             test "set_value updates" set_value_updates;
+             test "set_value noop same" set_value_noop_same;
+             test "set_min schedules render" set_min_schedules_render;
+             test "set_max schedules render" set_max_schedules_render;
+           ];
+         group "Setters"
+           [
+             test "set_orientation schedules render"
+               set_orientation_schedules_render;
+             test "set_orientation noop same" set_orientation_noop_same;
+             test "set_filled_color schedules render"
+               set_filled_color_schedules_render;
+             test "set_empty_color schedules render"
+               set_empty_color_schedules_render;
+           ];
+         group "Rendering"
+           [
+             test "horizontal full at 100%" horizontal_full_at_100_percent;
+             test "horizontal empty at 0%" horizontal_empty_at_0_percent;
+             test "horizontal half block at 50%"
+               horizontal_half_block_at_50_percent;
+             test "vertical fills bottom up" vertical_fills_bottom_up;
+             test "vertical half block at boundary"
+               vertical_half_block_at_boundary;
+           ];
+         group "apply_props"
+           [
+             test "replaces all" apply_props_replaces_all;
+             test "schedules render" apply_props_schedules_render;
+           ];
+         group "Pretty-printing"
+           [
+             test "produces output" pp_produces_output;
+             test "contains Progress_bar" pp_contains_progress_bar;
+           ];
+         group "Both doors"
+           [
+             test "value" doors_value;
+             test "min" doors_min;
+             test "max" doors_max;
+             test "orientation" doors_orientation;
+             test "filled_color" doors_filled_color;
+             test "empty_color" doors_empty_color;
+           ];
+       ])

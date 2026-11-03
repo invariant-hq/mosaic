@@ -373,4 +373,4 @@ let props =
       prop_unit_split_invariance;
   ]
 
-let () = run "matrix.vte.props" [ group "vte" props ]
+let () = exit (run "matrix.vte.props" [ group "vte" props ])

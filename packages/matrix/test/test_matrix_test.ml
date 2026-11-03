@@ -284,8 +284,8 @@ let test_set_time () =
   equal ~msg:"no step" (list string) [] !order;
   T.input s (T.Terminal.text term "a");
   equal ~msg:"the key first" (list string) [ "key"; "timer" ] (List.rev !order);
-  raises_match ~msg:"back in time" (Exn.invalid_arg ~substring:"set_time")
-    (fun () -> T.set_time s 0)
+  raises_match ~msg:"back in time" (Exn.invalid_arg ~sub:"set_time") (fun () ->
+      T.set_time s 0)
 
 (* The host and the end of a run ---------------------------------------- *)
 
@@ -309,7 +309,7 @@ let test_requests_and_end () =
       (List.length (T.Terminal.requests term));
     T.input s (T.Terminal.text term "q");
     is_true ~msg:"ended" (T.ended s);
-    raises_match ~msg:"input after the end" (Exn.invalid_arg ~substring:"ended")
+    raises_match ~msg:"input after the end" (Exn.invalid_arg ~sub:"ended")
       (fun () -> T.input s "a")
   in
   is_false ~msg:"the alternate screen is left"
@@ -369,7 +369,7 @@ let test_diff () =
 let test_wait_outside_run () =
   let term = T.Terminal.create ~cols:20 ~rows:2 () in
   let s = T.create term in
-  raises_match ~msg:"refused" (Exn.invalid_arg ~substring:"outside") (fun () ->
+  raises_match ~msg:"refused" (Exn.invalid_arg ~sub:"outside") (fun () ->
       Matrix.run ~config:(T.config s) @@ fun app ->
       let rec loop () =
         match Matrix.next app with Stopped -> () | _ -> loop ()
@@ -773,55 +773,56 @@ let test_palette_shared () =
     replies
 
 let () =
-  run "matrix.test"
-    [
-      group "Sessions"
-        [
-          test "a session settles at its time" test_settles_at_its_time;
-          test "a program that takes its own steps" test_stepped;
-          test "the probe is answered in no time" test_probe;
-          test "a silent terminal costs its wait" test_silent;
-          test "a pipe" test_pipe;
-          test "the terminal's colors" test_colors;
-          test "the palette" test_palette;
-          test "a palette of the pair alone" test_palette_pair_only;
-          test "a palette never answered" test_palette_never_answered;
-          test "no palette from a pipe" test_palette_pipe;
-          test "asks that wait share an answer" test_palette_shared;
-        ];
-      group "Input"
-        [
-          test "keys in the program's encoding"
-            test_keys_in_the_program's_encoding;
-          test "mouse, paste, focus and scheme" test_mouse_paste_focus;
-          test "a resize" test_resize;
-        ];
-      group "Time"
-        [
-          test "advance visits each deadline" test_advance;
-          test "an animation keeps its rate" test_animation;
-          test "set_time puts a key before a due timer" test_set_time;
-        ];
-      group "Host and end"
-        [
-          test "requests, and the end" test_requests_and_end;
-          test "a wait outside run" test_wait_outside_run;
-        ];
-      group "Goldens"
-        [ test "text, styles, find" test_goldens; test "diff" test_diff ];
-      group "Oracle"
-        [ test "the terminal shows the presented frame" test_presented ];
-      group "Pictures"
-        [
-          test "kitty placeholders" test_picture_kitty;
-          test "sixel over half blocks" test_picture_sixel;
-          test "half blocks" test_picture_blocks;
-          test "in the transcript" test_picture_static;
-        ];
-      group "Child"
-        [
-          test "a child, resized, and its goodbye" test_child;
-          test "a wait that times out" test_child_timeout;
-          test "a wait sees each finished frame" test_child_updates;
-        ];
-    ]
+  exit
+    (run "matrix.test"
+       [
+         group "Sessions"
+           [
+             test "a session settles at its time" test_settles_at_its_time;
+             test "a program that takes its own steps" test_stepped;
+             test "the probe is answered in no time" test_probe;
+             test "a silent terminal costs its wait" test_silent;
+             test "a pipe" test_pipe;
+             test "the terminal's colors" test_colors;
+             test "the palette" test_palette;
+             test "a palette of the pair alone" test_palette_pair_only;
+             test "a palette never answered" test_palette_never_answered;
+             test "no palette from a pipe" test_palette_pipe;
+             test "asks that wait share an answer" test_palette_shared;
+           ];
+         group "Input"
+           [
+             test "keys in the program's encoding"
+               test_keys_in_the_program's_encoding;
+             test "mouse, paste, focus and scheme" test_mouse_paste_focus;
+             test "a resize" test_resize;
+           ];
+         group "Time"
+           [
+             test "advance visits each deadline" test_advance;
+             test "an animation keeps its rate" test_animation;
+             test "set_time puts a key before a due timer" test_set_time;
+           ];
+         group "Host and end"
+           [
+             test "requests, and the end" test_requests_and_end;
+             test "a wait outside run" test_wait_outside_run;
+           ];
+         group "Goldens"
+           [ test "text, styles, find" test_goldens; test "diff" test_diff ];
+         group "Oracle"
+           [ test "the terminal shows the presented frame" test_presented ];
+         group "Pictures"
+           [
+             test "kitty placeholders" test_picture_kitty;
+             test "sixel over half blocks" test_picture_sixel;
+             test "half blocks" test_picture_blocks;
+             test "in the transcript" test_picture_static;
+           ];
+         group "Child"
+           [
+             test "a child, resized, and its goodbye" test_child;
+             test "a wait that times out" test_child_timeout;
+             test "a wait sees each finished frame" test_child_updates;
+           ];
+       ])

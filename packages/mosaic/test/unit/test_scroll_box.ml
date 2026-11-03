@@ -721,71 +721,74 @@ let doors_scroll_accel () =
            (Scroll_box.Props.make ~scroll_accel:doors_accel ())))
 
 let () =
-  run "mosaic.scroll_box"
-    [
-      test "accel linear always one" accel_linear_always_one;
-      test "accel macos first tick one" accel_macos_first_tick_one;
-      test "accel macos accelerates on rapid events"
-        accel_macos_accelerates_on_rapid_events;
-      test "accel macos resets after timeout" accel_macos_resets_after_timeout;
-      test "accel macos respects cap" accel_macos_respects_cap;
-      test "accel reset clears history" accel_reset_clears_history;
-      test "props defaults" props_defaults;
-      test "props equal identical" props_equal_identical;
-      test "props detects scroll x diff" props_detects_scroll_x_diff;
-      test "props detects scroll y diff" props_detects_scroll_y_diff;
-      test "props detects background diff" props_detects_background_diff;
-      test "create attaches" create_attaches;
-      test "create default scroll zero" create_default_scroll_zero;
-      test "create child target set" create_child_target_set;
-      test "create vertical bar attached to root"
-        create_vertical_bar_attached_to_root;
-      test "create viewport has overflow hidden"
-        create_viewport_has_overflow_hidden;
-      test "vertical bar visible when content overflows"
-        vertical_bar_visible_when_content_overflows;
-      test "wrapping row keeps the bar beside the content"
-        wrapping_row_keeps_bar_beside_content;
-      test "set scroll top clamps" set_scroll_top_clamps;
-      test "scroll to sets both" scroll_to_sets_both;
-      test "scroll by adjusts relative" scroll_by_adjusts_relative;
-      test "on scroll fires" on_scroll_fires;
-      test "wheel consumes only when scroll position changes"
-        wheel_consumes_only_when_scroll_position_changes;
-      test "wheel without usable axis bubbles" wheel_without_usable_axis_bubbles;
-      test "wheel without overflow bubbles" wheel_without_overflow_bubbles;
-      test "nested wheel bubbles at inner boundary"
-        nested_wheel_bubbles_at_inner_boundary;
-      test "set background updates" set_background_updates;
-      test "set on scroll replaces" set_on_scroll_replaces;
-      test "set scroll accel replaces" set_scroll_accel_replaces;
-      test "apply props updates" apply_props_updates;
-      test "scrollbar appearance preserves axes"
-        scrollbar_appearance_preserves_axes;
-      test "scrollbar appearance preserves resolved position"
-        scrollbar_appearance_preserves_resolved_position;
-      test "removed scrollbar appearance restores defaults"
-        removed_scrollbar_appearance_restores_default;
-      test "axis appearance replaces and restores shared style"
-        axis_styles_replace_shared_and_restore_it;
-      test "appearance keeps scrollbars hidden"
-        appearance_keeps_scrollbars_hidden;
-      test "pp produces output" pp_produces_output;
-      test "pp contains scroll box" pp_contains_scroll_box;
-      test "symbolic follow reflow" symbolic_follow_reflow;
-      test "symbolic reveal is idempotent" symbolic_reveal_is_idempotent;
-      test "proposals use accepted state" proposals_use_accepted_state;
-      test "orthogonal follow is preserved" orthogonal_follow_is_preserved;
-      group "Both doors"
-        [
-          test "scroll" doors_scroll;
-          test "scroll_x" doors_scroll_x;
-          test "scroll_y" doors_scroll_y;
-          test "background" doors_background;
-          test "scroll_accel" doors_scroll_accel;
-          test "show_scrollbars" doors_show_scrollbars;
-          test "scrollbar_style" doors_scrollbar_style;
-          test "vertical_bar_style" doors_vertical_bar_style;
-          test "horizontal_bar_style" doors_horizontal_bar_style;
-        ];
-    ]
+  exit
+    (run "mosaic.scroll_box"
+       [
+         test "accel linear always one" accel_linear_always_one;
+         test "accel macos first tick one" accel_macos_first_tick_one;
+         test "accel macos accelerates on rapid events"
+           accel_macos_accelerates_on_rapid_events;
+         test "accel macos resets after timeout"
+           accel_macos_resets_after_timeout;
+         test "accel macos respects cap" accel_macos_respects_cap;
+         test "accel reset clears history" accel_reset_clears_history;
+         test "props defaults" props_defaults;
+         test "props equal identical" props_equal_identical;
+         test "props detects scroll x diff" props_detects_scroll_x_diff;
+         test "props detects scroll y diff" props_detects_scroll_y_diff;
+         test "props detects background diff" props_detects_background_diff;
+         test "create attaches" create_attaches;
+         test "create default scroll zero" create_default_scroll_zero;
+         test "create child target set" create_child_target_set;
+         test "create vertical bar attached to root"
+           create_vertical_bar_attached_to_root;
+         test "create viewport has overflow hidden"
+           create_viewport_has_overflow_hidden;
+         test "vertical bar visible when content overflows"
+           vertical_bar_visible_when_content_overflows;
+         test "wrapping row keeps the bar beside the content"
+           wrapping_row_keeps_bar_beside_content;
+         test "set scroll top clamps" set_scroll_top_clamps;
+         test "scroll to sets both" scroll_to_sets_both;
+         test "scroll by adjusts relative" scroll_by_adjusts_relative;
+         test "on scroll fires" on_scroll_fires;
+         test "wheel consumes only when scroll position changes"
+           wheel_consumes_only_when_scroll_position_changes;
+         test "wheel without usable axis bubbles"
+           wheel_without_usable_axis_bubbles;
+         test "wheel without overflow bubbles" wheel_without_overflow_bubbles;
+         test "nested wheel bubbles at inner boundary"
+           nested_wheel_bubbles_at_inner_boundary;
+         test "set background updates" set_background_updates;
+         test "set on scroll replaces" set_on_scroll_replaces;
+         test "set scroll accel replaces" set_scroll_accel_replaces;
+         test "apply props updates" apply_props_updates;
+         test "scrollbar appearance preserves axes"
+           scrollbar_appearance_preserves_axes;
+         test "scrollbar appearance preserves resolved position"
+           scrollbar_appearance_preserves_resolved_position;
+         test "removed scrollbar appearance restores defaults"
+           removed_scrollbar_appearance_restores_default;
+         test "axis appearance replaces and restores shared style"
+           axis_styles_replace_shared_and_restore_it;
+         test "appearance keeps scrollbars hidden"
+           appearance_keeps_scrollbars_hidden;
+         test "pp produces output" pp_produces_output;
+         test "pp contains scroll box" pp_contains_scroll_box;
+         test "symbolic follow reflow" symbolic_follow_reflow;
+         test "symbolic reveal is idempotent" symbolic_reveal_is_idempotent;
+         test "proposals use accepted state" proposals_use_accepted_state;
+         test "orthogonal follow is preserved" orthogonal_follow_is_preserved;
+         group "Both doors"
+           [
+             test "scroll" doors_scroll;
+             test "scroll_x" doors_scroll_x;
+             test "scroll_y" doors_scroll_y;
+             test "background" doors_background;
+             test "scroll_accel" doors_scroll_accel;
+             test "show_scrollbars" doors_show_scrollbars;
+             test "scrollbar_style" doors_scrollbar_style;
+             test "vertical_bar_style" doors_vertical_bar_style;
+             test "horizontal_bar_style" doors_horizontal_bar_style;
+           ];
+       ])

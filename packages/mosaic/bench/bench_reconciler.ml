@@ -168,41 +168,44 @@ let elements =
 let exact = Sys.getenv_opt "THUMPER_MACHINE" = Some "exact"
 
 let () =
-  Thumper.run "reconciler"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else
-                Thumper.Metric.
-                  [ wall_time; alloc_words; promoted_words; minor_collections ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      ::
-      (if exact then []
-       else
-         [
-           Thumper.Budget.no_slower_than 0.05;
-           (* Promotions and minor collections depend on where the minor
+  exit
+    (Thumper.run "reconciler"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else
+                   Thumper.Metric.
+                     [
+                       wall_time; alloc_words; promoted_words; minor_collections;
+                     ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         ::
+         (if exact then []
+          else
+            [
+              Thumper.Budget.no_slower_than 0.05;
+              (* Promotions and minor collections depend on where the minor
               heap stands when a sample starts, so they are rarely exact:
               kept, with room for that noise. *)
-           Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words
-             ~max_regression:0.5 ();
-           Thumper.Budget.relative ~metric:Thumper.Metric.minor_collections
-             ~max_regression:0.5 ();
-         ]))
-    [
-      Thumper.group "reconcile"
-        [
-          steady_keyed_list 500;
-          reorder_keyed_list 500;
-          steady_keyed_list 5000;
-          reorder_keyed_list 5000;
-          nested_maps 1000;
-        ];
-      Thumper.group "mount-and-unmount" [ mount_and_unmount 20_000 ];
-      Thumper.group "mount-and-empty" [ mount_and_empty 20_000 ];
-      Thumper.group "mount-retype-and-empty" [ mount_retype_and_empty 20_000 ];
-      Thumper.group "element" elements;
-    ]
+              Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words 0.5;
+              Thumper.Budget.relative ~metric:Thumper.Metric.minor_collections
+                0.5;
+            ]))
+       [
+         Thumper.group "reconcile"
+           [
+             steady_keyed_list 500;
+             reorder_keyed_list 500;
+             steady_keyed_list 5000;
+             reorder_keyed_list 5000;
+             nested_maps 1000;
+           ];
+         Thumper.group "mount-and-unmount" [ mount_and_unmount 20_000 ];
+         Thumper.group "mount-and-empty" [ mount_and_empty 20_000 ];
+         Thumper.group "mount-retype-and-empty"
+           [ mount_retype_and_empty 20_000 ];
+         Thumper.group "element" elements;
+       ])

@@ -1542,139 +1542,143 @@ let keyed_width_change () =
   equal ~msg:"wide" string "wide b" (screen_row renderer 1)
 
 let () =
-  run "mosaic.reconciler"
-    [
-      test "plain/rich transitions reuse text and select wrapped content"
-        plain_rich_transitions_reuse_text_and_select_wrapped_content;
-      group "Focus"
-        [
-          test "duplicate visible focus is rejected"
-            duplicate_visible_focus_is_rejected;
-          test "hidden subtrees do not contribute focus"
-            hidden_subtrees_do_not_contribute_focus;
-          test "inert elements do not contribute focus"
-            inert_elements_do_not_contribute_focus;
-        ];
-      group "Keyed"
-        [
-          test "keeps the order" keyed_keeps_order;
-          prop ~count:100 "edits keep the order" Gen.int keyed_edits_keep_order;
-          test "views what changed" keyed_views_what_changed;
-          test "a capturing item keeps the nodes"
-            keyed_capturing_item_keeps_nodes;
-          test "items are any view" keyed_items_are_any_view;
-          test "focus inside a binding" keyed_focus;
-          test "a width change" keyed_width_change;
-        ];
-      group "Memo"
-        [
-          test "equal value keys" memo_reuses_equal_value_keys;
-          test "message mapper refresh keeps the memo"
-            memo_follows_message_mapper;
-          test "nested memo keys" nested_memo_keeps_independent_keys;
-          test "keyed parent ownership" memo_belongs_to_keyed_parent;
-          test "removed memo releases view" removed_memo_releases_view;
-          test "memos in one slot keep their views"
-            memos_in_one_slot_keep_their_views;
-          test "view function is part of identity"
-            memo_view_function_is_part_of_identity;
-          test "keys of different types do not alias"
-            memo_keys_of_different_types_do_not_alias;
-          test "float keys compare by bits" memo_compares_float_bits;
-          test "spans keep sibling order" memo_spans_keep_sibling_order;
-          test "reused memo follows the viewport" reused_memo_follows_viewport;
-          test "functions in keys are rejected at memo"
-            memo_rejects_functions_in_key;
-        ];
-      group "Construction"
-        [
-          test "container returns root" create_returns_container;
-          test "render rejects nonpositive viewport width"
-            render_rejects_nonpositive_viewport_width;
-        ];
-      group "Basic rendering"
-        [
-          test "single box" render_single_box;
-          test "single text" render_single_text;
-          test "empty" render_empty;
-          test "fragment" render_fragment;
-          test "nested fragments" render_nested_fragments;
-          test "viewport switch selects only matching branch"
-            viewport_switch_selects_only_matching_branch;
-          test "viewport switch reconciles across resize threshold"
-            viewport_switch_reconciles_selected_branch_on_resize;
-          test "a scroll box wheels without taking focus"
-            scroll_box_wheels_without_taking_focus;
-          test "declared scroll survives rerender and remount"
-            declared_scroll_survives_rerender_and_remount;
-          test "single spinner" render_single_spinner;
-          test "spinner follows declared live" spinner_follows_declared_live;
-          test "unkeyed table reports its own hover"
-            unkeyed_table_reports_its_own_hover;
-          test "single progress_bar" render_single_progress_bar;
-          test "scroll_bar orientation applies at mount"
-            scroll_bar_orientation_applies_at_mount;
-          test "scroll_bar orientation updates on rerender"
-            scroll_bar_orientation_updates_on_rerender;
-        ];
-      group "Re-rendering"
-        [
-          test "reuses box" rerender_reuses_box;
-          test "reuses text" rerender_reuses_text;
-          test "reuses spinner" rerender_reuses_spinner;
-          test "reuses progress_bar" rerender_reuses_progress_bar;
-          test "updates visibility" rerender_updates_visibility;
-          test "updates z_index" rerender_updates_z_index;
-          test "updates opacity" rerender_updates_opacity;
-          test "rejected input preserves accepted state"
-            rejected_input_preserves_accepted_state;
-          test "rejected textarea preserves accepted state"
-            rejected_textarea_preserves_accepted_state;
-          test "accepted editor state preserves cursor"
-            accepted_editor_state_preserves_cursor;
-        ];
-      group "Keyed reconciliation"
-        [
-          test "reorder" keyed_reorder;
-          test "removal" keyed_removal;
-          test "addition" keyed_addition;
-          test "reorder preserves focus" keyed_reorder_preserves_focus;
-          test "unkeyed positional" unkeyed_positional;
-          test "duplicate keys keep the first occurrence stable"
-            duplicate_keys_first_occurrence_stays_stable;
-          test "any order in a column" (keyed_orders ~cull:false);
-          test "any order in a culling column" (keyed_orders ~cull:true);
-        ];
-      group "Kind mismatch"
-        [
-          test "box to text" kind_mismatch_destroys_old;
-          test "text to slider" kind_mismatch_text_to_slider;
-          test "spinner to progress_bar" kind_mismatch_spinner_to_progress_bar;
-        ];
-      group "Children"
-        [
-          test "fewer children destroys extra" fewer_children_destroys_extra;
-          test "more children creates new" more_children_creates_new;
-          test "nested boxes" nested_boxes;
-        ];
-      group "Embed"
-        [
-          test "attaches" embed_attaches;
-          test "removed detaches" embed_removed_detaches;
-        ];
-      group "Callbacks"
-        [
-          test "on_key handler fires" on_key_handler_fires;
-          test "on_key handler updates on rerender"
-            on_key_handler_updates_on_rerender;
-        ];
-      group "Unmount"
-        [
-          test "empties container" unmount_empties_container;
-          test "destroys nodes" unmount_destroys_nodes;
-          test "allows reuse" unmount_allows_reuse;
-          test "tears down a wide view" unmount_tears_down_wide_view;
-          test "tears down rows at the root" unmount_wide_root;
-          test "shrinks a wide list" shrink_wide_list;
-        ];
-    ]
+  exit
+    (run "mosaic.reconciler"
+       [
+         test "plain/rich transitions reuse text and select wrapped content"
+           plain_rich_transitions_reuse_text_and_select_wrapped_content;
+         group "Focus"
+           [
+             test "duplicate visible focus is rejected"
+               duplicate_visible_focus_is_rejected;
+             test "hidden subtrees do not contribute focus"
+               hidden_subtrees_do_not_contribute_focus;
+             test "inert elements do not contribute focus"
+               inert_elements_do_not_contribute_focus;
+           ];
+         group "Keyed"
+           [
+             test "keeps the order" keyed_keeps_order;
+             prop ~count:100 "edits keep the order" Gen.int
+               keyed_edits_keep_order;
+             test "views what changed" keyed_views_what_changed;
+             test "a capturing item keeps the nodes"
+               keyed_capturing_item_keeps_nodes;
+             test "items are any view" keyed_items_are_any_view;
+             test "focus inside a binding" keyed_focus;
+             test "a width change" keyed_width_change;
+           ];
+         group "Memo"
+           [
+             test "equal value keys" memo_reuses_equal_value_keys;
+             test "message mapper refresh keeps the memo"
+               memo_follows_message_mapper;
+             test "nested memo keys" nested_memo_keeps_independent_keys;
+             test "keyed parent ownership" memo_belongs_to_keyed_parent;
+             test "removed memo releases view" removed_memo_releases_view;
+             test "memos in one slot keep their views"
+               memos_in_one_slot_keep_their_views;
+             test "view function is part of identity"
+               memo_view_function_is_part_of_identity;
+             test "keys of different types do not alias"
+               memo_keys_of_different_types_do_not_alias;
+             test "float keys compare by bits" memo_compares_float_bits;
+             test "spans keep sibling order" memo_spans_keep_sibling_order;
+             test "reused memo follows the viewport"
+               reused_memo_follows_viewport;
+             test "functions in keys are rejected at memo"
+               memo_rejects_functions_in_key;
+           ];
+         group "Construction"
+           [
+             test "container returns root" create_returns_container;
+             test "render rejects nonpositive viewport width"
+               render_rejects_nonpositive_viewport_width;
+           ];
+         group "Basic rendering"
+           [
+             test "single box" render_single_box;
+             test "single text" render_single_text;
+             test "empty" render_empty;
+             test "fragment" render_fragment;
+             test "nested fragments" render_nested_fragments;
+             test "viewport switch selects only matching branch"
+               viewport_switch_selects_only_matching_branch;
+             test "viewport switch reconciles across resize threshold"
+               viewport_switch_reconciles_selected_branch_on_resize;
+             test "a scroll box wheels without taking focus"
+               scroll_box_wheels_without_taking_focus;
+             test "declared scroll survives rerender and remount"
+               declared_scroll_survives_rerender_and_remount;
+             test "single spinner" render_single_spinner;
+             test "spinner follows declared live" spinner_follows_declared_live;
+             test "unkeyed table reports its own hover"
+               unkeyed_table_reports_its_own_hover;
+             test "single progress_bar" render_single_progress_bar;
+             test "scroll_bar orientation applies at mount"
+               scroll_bar_orientation_applies_at_mount;
+             test "scroll_bar orientation updates on rerender"
+               scroll_bar_orientation_updates_on_rerender;
+           ];
+         group "Re-rendering"
+           [
+             test "reuses box" rerender_reuses_box;
+             test "reuses text" rerender_reuses_text;
+             test "reuses spinner" rerender_reuses_spinner;
+             test "reuses progress_bar" rerender_reuses_progress_bar;
+             test "updates visibility" rerender_updates_visibility;
+             test "updates z_index" rerender_updates_z_index;
+             test "updates opacity" rerender_updates_opacity;
+             test "rejected input preserves accepted state"
+               rejected_input_preserves_accepted_state;
+             test "rejected textarea preserves accepted state"
+               rejected_textarea_preserves_accepted_state;
+             test "accepted editor state preserves cursor"
+               accepted_editor_state_preserves_cursor;
+           ];
+         group "Keyed reconciliation"
+           [
+             test "reorder" keyed_reorder;
+             test "removal" keyed_removal;
+             test "addition" keyed_addition;
+             test "reorder preserves focus" keyed_reorder_preserves_focus;
+             test "unkeyed positional" unkeyed_positional;
+             test "duplicate keys keep the first occurrence stable"
+               duplicate_keys_first_occurrence_stays_stable;
+             test "any order in a column" (keyed_orders ~cull:false);
+             test "any order in a culling column" (keyed_orders ~cull:true);
+           ];
+         group "Kind mismatch"
+           [
+             test "box to text" kind_mismatch_destroys_old;
+             test "text to slider" kind_mismatch_text_to_slider;
+             test "spinner to progress_bar"
+               kind_mismatch_spinner_to_progress_bar;
+           ];
+         group "Children"
+           [
+             test "fewer children destroys extra" fewer_children_destroys_extra;
+             test "more children creates new" more_children_creates_new;
+             test "nested boxes" nested_boxes;
+           ];
+         group "Embed"
+           [
+             test "attaches" embed_attaches;
+             test "removed detaches" embed_removed_detaches;
+           ];
+         group "Callbacks"
+           [
+             test "on_key handler fires" on_key_handler_fires;
+             test "on_key handler updates on rerender"
+               on_key_handler_updates_on_rerender;
+           ];
+         group "Unmount"
+           [
+             test "empties container" unmount_empties_container;
+             test "destroys nodes" unmount_destroys_nodes;
+             test "allows reuse" unmount_allows_reuse;
+             test "tears down a wide view" unmount_tears_down_wide_view;
+             test "tears down rows at the root" unmount_wide_root;
+             test "shrinks a wide list" shrink_wide_list;
+           ];
+       ])

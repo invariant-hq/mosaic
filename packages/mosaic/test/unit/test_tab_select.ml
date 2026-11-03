@@ -738,101 +738,104 @@ let paint_description_colors () =
     (fg_is blue (cell_style (paint ~focused:true view) ~x:0 ~y:2))
 
 let () =
-  run "mosaic.tab_select"
-    [
-      group "Paint"
-        [
-          test "legible on a light terminal" paint_legible_on_light;
-          test "focus shows at every styling" paint_focus_shows;
-          test "description colors" paint_description_colors;
-        ];
-      test "proposals do not drift" proposals_do_not_drift;
-      test "absent selection is preserved" absent_selection_is_preserved;
-      group "Props"
-        [
-          test "default values" props_defaults;
-          test "equal on identical" props_equal_identical;
-          test "detects options difference" props_detects_options_diff;
-          test "detects selected difference" props_detects_selected_diff;
-          test "detects wrap difference" props_detects_wrap_diff;
-          test "detects color difference" props_detects_color_diff;
-          test "detects selected_description_color difference"
-            props_detects_selected_description_color_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "is focusable" create_is_focusable;
-          test "is buffered" create_is_buffered;
-          test "clamps initial index" create_clamps_initial_index;
-          test "empty list has no selection" create_empty_list_has_no_selection;
-        ];
-      group "Selection"
-        [
-          test "set_selected clamps" set_selected_clamps;
-          test "fires on_change" set_selected_fires_on_change;
-          test "no-op on same index" set_selected_noop_same;
-          test "selected_item returns item" selected_item_returns_item;
-          test "selected_item empty list" selected_item_empty_list;
-        ];
-      group "Navigation"
-        [
-          test "move right" move_right_basic;
-          test "move left" move_left_basic;
-          test "] moves right" move_right_bracket;
-          test "[ moves left" move_left_bracket;
-          test "no wrap at end" move_right_no_wrap;
-          test "no wrap at start" move_left_no_wrap;
-          test "wrap at end" move_right_wrap;
-          test "wrap at start" move_left_wrap;
-          test "enter fires on_activate" enter_fires_on_activate;
-          test "navigation fires on_change" navigation_fires_on_change;
-          test "navigation syncs props.selected" navigation_syncs_props_selected;
-        ];
-      group "Options"
-        [
-          test "set_options replaces" set_options_replaces;
-          test "set_options clamps index" set_options_clamps_index;
-          test "set_options empty" set_options_empty;
-        ];
-      group "Setter no-ops"
-        [
-          test "set_background no-op" set_background_noop;
-          test "set_wrap_selection no-op" set_wrap_noop;
-          test "set_show_underline no-op" set_show_underline_noop;
-          test "set_show_description no-op" set_show_description_noop;
-        ];
-      group "apply_props"
-        [
-          test "updates all properties" apply_props_updates;
-          test "preserves uncontrolled selection"
-            apply_props_restores_declared_selection;
-          test "controlled selection is silent"
-            apply_props_controlled_selection_is_silent;
-        ];
-      group "Rendering"
-        [
-          test "truncation keeps CJK graphemes intact"
-            truncation_keeps_cjk_graphemes_intact;
-          test "truncation never splits emoji" truncation_never_splits_emoji;
-        ];
-      group "Both doors"
-        [
-          test "options" doors_options;
-          test "selected" doors_selected;
-          test "tab_width" doors_tab_width;
-          test "background" doors_background;
-          test "text_color" doors_text_color;
-          test "focused_background" doors_focused_background;
-          test "focused_text_color" doors_focused_text_color;
-          test "selected_background" doors_selected_background;
-          test "selected_text_color" doors_selected_text_color;
-          test "selected_description_color" doors_selected_description_color;
-          test "description_color (drawn by no tab)" doors_description_color;
-          test "show_underline" doors_show_underline;
-          test "show_description" doors_show_description;
-          test "show_scroll_arrows" doors_show_scroll_arrows;
-          test "wrap_selection" doors_wrap_selection;
-          test "key_bindings" doors_key_bindings;
-        ];
-    ]
+  exit
+    (run "mosaic.tab_select"
+       [
+         group "Paint"
+           [
+             test "legible on a light terminal" paint_legible_on_light;
+             test "focus shows at every styling" paint_focus_shows;
+             test "description colors" paint_description_colors;
+           ];
+         test "proposals do not drift" proposals_do_not_drift;
+         test "absent selection is preserved" absent_selection_is_preserved;
+         group "Props"
+           [
+             test "default values" props_defaults;
+             test "equal on identical" props_equal_identical;
+             test "detects options difference" props_detects_options_diff;
+             test "detects selected difference" props_detects_selected_diff;
+             test "detects wrap difference" props_detects_wrap_diff;
+             test "detects color difference" props_detects_color_diff;
+             test "detects selected_description_color difference"
+               props_detects_selected_description_color_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "is focusable" create_is_focusable;
+             test "is buffered" create_is_buffered;
+             test "clamps initial index" create_clamps_initial_index;
+             test "empty list has no selection"
+               create_empty_list_has_no_selection;
+           ];
+         group "Selection"
+           [
+             test "set_selected clamps" set_selected_clamps;
+             test "fires on_change" set_selected_fires_on_change;
+             test "no-op on same index" set_selected_noop_same;
+             test "selected_item returns item" selected_item_returns_item;
+             test "selected_item empty list" selected_item_empty_list;
+           ];
+         group "Navigation"
+           [
+             test "move right" move_right_basic;
+             test "move left" move_left_basic;
+             test "] moves right" move_right_bracket;
+             test "[ moves left" move_left_bracket;
+             test "no wrap at end" move_right_no_wrap;
+             test "no wrap at start" move_left_no_wrap;
+             test "wrap at end" move_right_wrap;
+             test "wrap at start" move_left_wrap;
+             test "enter fires on_activate" enter_fires_on_activate;
+             test "navigation fires on_change" navigation_fires_on_change;
+             test "navigation syncs props.selected"
+               navigation_syncs_props_selected;
+           ];
+         group "Options"
+           [
+             test "set_options replaces" set_options_replaces;
+             test "set_options clamps index" set_options_clamps_index;
+             test "set_options empty" set_options_empty;
+           ];
+         group "Setter no-ops"
+           [
+             test "set_background no-op" set_background_noop;
+             test "set_wrap_selection no-op" set_wrap_noop;
+             test "set_show_underline no-op" set_show_underline_noop;
+             test "set_show_description no-op" set_show_description_noop;
+           ];
+         group "apply_props"
+           [
+             test "updates all properties" apply_props_updates;
+             test "preserves uncontrolled selection"
+               apply_props_restores_declared_selection;
+             test "controlled selection is silent"
+               apply_props_controlled_selection_is_silent;
+           ];
+         group "Rendering"
+           [
+             test "truncation keeps CJK graphemes intact"
+               truncation_keeps_cjk_graphemes_intact;
+             test "truncation never splits emoji" truncation_never_splits_emoji;
+           ];
+         group "Both doors"
+           [
+             test "options" doors_options;
+             test "selected" doors_selected;
+             test "tab_width" doors_tab_width;
+             test "background" doors_background;
+             test "text_color" doors_text_color;
+             test "focused_background" doors_focused_background;
+             test "focused_text_color" doors_focused_text_color;
+             test "selected_background" doors_selected_background;
+             test "selected_text_color" doors_selected_text_color;
+             test "selected_description_color" doors_selected_description_color;
+             test "description_color (drawn by no tab)" doors_description_color;
+             test "show_underline" doors_show_underline;
+             test "show_description" doors_show_description;
+             test "show_scroll_arrows" doors_show_scroll_arrows;
+             test "wrap_selection" doors_wrap_selection;
+             test "key_bindings" doors_key_bindings;
+           ];
+       ])

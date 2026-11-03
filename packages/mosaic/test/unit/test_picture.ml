@@ -262,24 +262,25 @@ let explicit_size () =
   equal ~msg:"width 6 in a block" box_t (0, 0, 6, 3) (box picture)
 
 let () =
-  run "mosaic.picture"
-    [
-      group "Measurement"
-        [
-          test "A block parent measures it as it lays it out"
-            block_parent_measures_as_it_lays_out;
-          prop ~count:500 "Its measurement is its final layout" Gen.int
-            measurement_is_final_layout;
-        ];
-      group "Parents"
-        [
-          test "A stretched column" stretched_column;
-          test "A narrow column" narrow_column;
-          test "A column on a narrow screen" column_on_a_narrow_screen;
-          test "A block keeps its natural size" block_keeps_natural_size;
-          test "A narrow block" narrow_block;
-          test "A row" row;
-          test "A grid keeps its natural size" grid_keeps_natural_size;
-          test "An explicit size" explicit_size;
-        ];
-    ]
+  exit
+    (run "mosaic.picture"
+       [
+         group "Measurement"
+           [
+             test "A block parent measures it as it lays it out"
+               block_parent_measures_as_it_lays_out;
+             prop ~count:500 "Its measurement is its final layout" Gen.int
+               measurement_is_final_layout;
+           ];
+         group "Parents"
+           [
+             test "A stretched column" stretched_column;
+             test "A narrow column" narrow_column;
+             test "A column on a narrow screen" column_on_a_narrow_screen;
+             test "A block keeps its natural size" block_keeps_natural_size;
+             test "A narrow block" narrow_block;
+             test "A row" row;
+             test "A grid keeps its natural size" grid_keeps_natural_size;
+             test "An explicit size" explicit_size;
+           ];
+       ])

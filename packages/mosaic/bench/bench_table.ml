@@ -59,28 +59,30 @@ let steady_hover =
 let exact = Sys.getenv_opt "THUMPER_MACHINE" = Some "exact"
 
 let () =
-  Thumper.run "table"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else
-                Thumper.Metric.
-                  [ wall_time; alloc_words; promoted_words; minor_collections ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      ::
-      (if exact then []
-       else
-         [
-           Thumper.Budget.no_slower_than 0.05;
-           (* Promotions and minor collections depend on where the minor
+  exit
+    (Thumper.run "table"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else
+                   Thumper.Metric.
+                     [
+                       wall_time; alloc_words; promoted_words; minor_collections;
+                     ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         ::
+         (if exact then []
+          else
+            [
+              Thumper.Budget.no_slower_than 0.05;
+              (* Promotions and minor collections depend on where the minor
               heap stands when a sample starts, so they are rarely exact:
               kept, with room for that noise. *)
-           Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words
-             ~max_regression:0.5 ();
-           Thumper.Budget.relative ~metric:Thumper.Metric.minor_collections
-             ~max_regression:0.5 ();
-         ]))
-    [ Thumper.group "viewport" [ steady_hover ] ]
+              Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words 0.5;
+              Thumper.Budget.relative ~metric:Thumper.Metric.minor_collections
+                0.5;
+            ]))
+       [ Thumper.group "viewport" [ steady_hover ] ])

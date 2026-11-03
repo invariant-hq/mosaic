@@ -61,7 +61,7 @@ let complete job outcome =
 
 (* A tab width below 1 is a mistake, raised by the call that makes it. *)
 let props_reject_tab_width_below_1 () =
-  raises_match (Exn.invalid_arg ~substring:"tab width") (fun () ->
+  raises_match (Exn.invalid_arg ~sub:"tab width") (fun () ->
       ignore (Code.Props.make ~tab_width:0 () : Code.Props.t))
 
 let plain_without_syntax () =
@@ -1130,86 +1130,92 @@ let doors_selectable () =
            (Code.Props.make ~content:"hello world" ~selectable:`Off ())))
 
 let () =
-  run "mosaic.code"
-    [
-      group "Syntax"
-        [
-          test "equivalent captures do not repaint"
-            equivalent_capture_declaration_does_not_repaint;
-          test "theme changes reuse captures"
-            theme_changes_reuse_highlighter_captures;
-          test "pending result uses latest theme"
-            pending_result_uses_latest_theme;
-          test "stale async capture falls back" stale_async_capture_falls_back;
-          test "plain without syntax" plain_without_syntax;
-          test "props reject a tab width below 1" props_reject_tab_width_below_1;
-          test "precomputed highlights apply style"
-            precomputed_highlights_apply_style;
-          test "sync highlighter applies style" sync_highlighter_applies_style;
-          test "async highlighter applies completed result"
-            async_highlighter_applies_completed_result;
-          test "pending append keeps highlighted prefix"
-            pending_append_keeps_highlighted_prefix;
-          test "pending edit keeps shared prefix and suffix"
-            pending_edit_keeps_shared_prefix_and_suffix;
-          test "pending edit inside a range keeps its other bytes"
-            pending_edit_inside_a_range_keeps_its_other_bytes;
-          test "pending edit drops a touched concealing range"
-            pending_edit_drops_a_touched_concealing_range;
-          test "stale result styles shared bytes"
-            stale_result_styles_shared_bytes;
-          test "new producer starts plain" new_producer_starts_plain;
-          test "async content changes coalesce" async_content_changes_coalesce;
-          test "async configuration changes coalesce"
-            async_configuration_changes_coalesce;
-          test "async clear discards pending request"
-            async_clear_discards_pending_request;
-          test "async line info stabilizes on completion"
-            async_rows_stabilize_on_completion;
-          test "async starter exception falls back to plain text"
-            async_starter_exception_falls_back_to_plain_text;
-          test "async poll exception falls back to plain text"
-            async_poll_exception_falls_back_to_plain_text;
-          test "invalid highlights fall back to plain text"
-            invalid_highlights_fall_back_to_plain_text;
-          test "conceal metadata applies" conceal_metadata_applies;
-          test "conceal is a view property" conceal_is_a_view_property;
-        ];
-      group "Incremental"
-        [
-          test "previous carries the state and the edit"
-            previous_carries_state_and_edit;
-          test "requests hold on random scripts"
-            incremental_requests_hold_on_random_scripts;
-        ];
-      group "Workers"
-        [
-          test "bounded queue cancels obsolete work"
-            threaded_requests_are_bounded_and_cancelled;
-          test "failure and idle restart" threaded_failure_and_idle_restart;
-          test "destroy cancels once" destroy_cancels_job_once;
-        ];
-      group "Updates"
-        [
-          test "set_content reapplies syntax" set_content_reapplies_syntax;
-          test "set_syntax None renders plain" set_syntax_none_renders_plain;
-          test "apply_props updates syntax style"
-            apply_props_updates_syntax_style;
-          test "syntax compares styles by value" syntax_compares_styles_by_value;
-          test "text_style restamps plain content"
-            text_style_restamps_plain_content;
-          test "is_highlighting false for sync highlights"
-            is_highlighting_false_for_sync_highlights;
-        ];
-      group "Both doors"
-        [
-          test "content" doors_content;
-          test "syntax" doors_syntax;
-          test "conceal" doors_conceal;
-          test "text_style" doors_text_style;
-          test "wrap" doors_wrap;
-          test "tab_width" doors_tab_width;
-          test "truncate" doors_truncate;
-          test "selectable" doors_selectable;
-        ];
-    ]
+  exit
+    (run "mosaic.code"
+       [
+         group "Syntax"
+           [
+             test "equivalent captures do not repaint"
+               equivalent_capture_declaration_does_not_repaint;
+             test "theme changes reuse captures"
+               theme_changes_reuse_highlighter_captures;
+             test "pending result uses latest theme"
+               pending_result_uses_latest_theme;
+             test "stale async capture falls back"
+               stale_async_capture_falls_back;
+             test "plain without syntax" plain_without_syntax;
+             test "props reject a tab width below 1"
+               props_reject_tab_width_below_1;
+             test "precomputed highlights apply style"
+               precomputed_highlights_apply_style;
+             test "sync highlighter applies style"
+               sync_highlighter_applies_style;
+             test "async highlighter applies completed result"
+               async_highlighter_applies_completed_result;
+             test "pending append keeps highlighted prefix"
+               pending_append_keeps_highlighted_prefix;
+             test "pending edit keeps shared prefix and suffix"
+               pending_edit_keeps_shared_prefix_and_suffix;
+             test "pending edit inside a range keeps its other bytes"
+               pending_edit_inside_a_range_keeps_its_other_bytes;
+             test "pending edit drops a touched concealing range"
+               pending_edit_drops_a_touched_concealing_range;
+             test "stale result styles shared bytes"
+               stale_result_styles_shared_bytes;
+             test "new producer starts plain" new_producer_starts_plain;
+             test "async content changes coalesce"
+               async_content_changes_coalesce;
+             test "async configuration changes coalesce"
+               async_configuration_changes_coalesce;
+             test "async clear discards pending request"
+               async_clear_discards_pending_request;
+             test "async line info stabilizes on completion"
+               async_rows_stabilize_on_completion;
+             test "async starter exception falls back to plain text"
+               async_starter_exception_falls_back_to_plain_text;
+             test "async poll exception falls back to plain text"
+               async_poll_exception_falls_back_to_plain_text;
+             test "invalid highlights fall back to plain text"
+               invalid_highlights_fall_back_to_plain_text;
+             test "conceal metadata applies" conceal_metadata_applies;
+             test "conceal is a view property" conceal_is_a_view_property;
+           ];
+         group "Incremental"
+           [
+             test "previous carries the state and the edit"
+               previous_carries_state_and_edit;
+             test "requests hold on random scripts"
+               incremental_requests_hold_on_random_scripts;
+           ];
+         group "Workers"
+           [
+             test "bounded queue cancels obsolete work"
+               threaded_requests_are_bounded_and_cancelled;
+             test "failure and idle restart" threaded_failure_and_idle_restart;
+             test "destroy cancels once" destroy_cancels_job_once;
+           ];
+         group "Updates"
+           [
+             test "set_content reapplies syntax" set_content_reapplies_syntax;
+             test "set_syntax None renders plain" set_syntax_none_renders_plain;
+             test "apply_props updates syntax style"
+               apply_props_updates_syntax_style;
+             test "syntax compares styles by value"
+               syntax_compares_styles_by_value;
+             test "text_style restamps plain content"
+               text_style_restamps_plain_content;
+             test "is_highlighting false for sync highlights"
+               is_highlighting_false_for_sync_highlights;
+           ];
+         group "Both doors"
+           [
+             test "content" doors_content;
+             test "syntax" doors_syntax;
+             test "conceal" doors_conceal;
+             test "text_style" doors_text_style;
+             test "wrap" doors_wrap;
+             test "tab_width" doors_tab_width;
+             test "truncate" doors_truncate;
+             test "selectable" doors_selectable;
+           ];
+       ])

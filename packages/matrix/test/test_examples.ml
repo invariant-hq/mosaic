@@ -150,15 +150,17 @@ let test_cursor_from_the_first_frame () =
     (Matrix_test.Screen.cursor (Matrix_test.Terminal.screen term) <> None)
 
 let () =
-  run "matrix.examples"
-    [
-      group "Examples"
-        [
-          test "Matrix.next's loop" test_next;
-          test "Matrix_test's preamble" test_matrix_test;
-          test "a dump of every thirtieth frame" test_dump_every_thirtieth_frame;
-          test "Debug_overlay's preamble" test_debug_overlay;
-          test "a cursor shown from the first frame"
-            test_cursor_from_the_first_frame;
-        ];
-    ]
+  exit
+    (run "matrix.examples"
+       [
+         group "Examples"
+           [
+             test "Matrix.next's loop" test_next;
+             test "Matrix_test's preamble" test_matrix_test;
+             test "a dump of every thirtieth frame"
+               test_dump_every_thirtieth_frame;
+             test "Debug_overlay's preamble" test_debug_overlay;
+             test "a cursor shown from the first frame"
+               test_cursor_from_the_first_frame;
+           ];
+       ])

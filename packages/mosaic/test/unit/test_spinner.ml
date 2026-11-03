@@ -259,55 +259,57 @@ let paint_role () =
           ~x:0 ~y:0))
 
 let () =
-  run "mosaic.spinner"
-    [
-      group "Paint" [ test "by role, label first" paint_role ];
-      group "Props"
-        [
-          test "default values" props_defaults;
-          test "equal on identical" props_equal_identical;
-          test "detects frame_set diff" props_detects_frame_set_diff;
-          test "detects color diff" props_detects_color_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "initial frame_index = 0" create_initial_frame_index;
-          test "initial elapsed = 0" create_initial_elapsed;
-          test "live on creation" create_is_live;
-          test "static frame set is not live" static_frame_set_is_not_live;
-        ];
-      group "Frame advancement"
-        [
-          test "advances after interval" on_frame_advances_after_interval;
-          test "accumulates delta" on_frame_accumulates_delta;
-          test "wraps around" on_frame_wraps_around;
-          test "short delta no advance" on_frame_short_delta_no_advance;
-          test "large delta skips frames" on_frame_large_delta_skips_frames;
-        ];
-      group "Setters"
-        [
-          test "set_frame_set resets elapsed" set_frame_set_resets_elapsed;
-          test "set_frame_set clamps index" set_frame_set_clamps_index;
-          test "set_color schedules render" set_color_schedules_render;
-          test "set_color noop same" set_color_noop_same;
-        ];
-      group "apply_props"
-        [
-          test "replaces props" apply_props_replaces_props;
-          test "resets on frame_set change"
-            apply_props_resets_on_frame_set_change;
-          test "schedules render" apply_props_schedules_render;
-        ];
-      group "Measure"
-        [
-          test "width matches max frame width" measure_width_is_max_frame_width;
-        ];
-      group "Pretty-printing"
-        [
-          test "produces output" pp_produces_output;
-          test "contains Spinner" pp_contains_spinner;
-        ];
-      group "Both doors"
-        [ test "frame_set" doors_frame_set; test "color" doors_color ];
-    ]
+  exit
+    (run "mosaic.spinner"
+       [
+         group "Paint" [ test "by role, label first" paint_role ];
+         group "Props"
+           [
+             test "default values" props_defaults;
+             test "equal on identical" props_equal_identical;
+             test "detects frame_set diff" props_detects_frame_set_diff;
+             test "detects color diff" props_detects_color_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "initial frame_index = 0" create_initial_frame_index;
+             test "initial elapsed = 0" create_initial_elapsed;
+             test "live on creation" create_is_live;
+             test "static frame set is not live" static_frame_set_is_not_live;
+           ];
+         group "Frame advancement"
+           [
+             test "advances after interval" on_frame_advances_after_interval;
+             test "accumulates delta" on_frame_accumulates_delta;
+             test "wraps around" on_frame_wraps_around;
+             test "short delta no advance" on_frame_short_delta_no_advance;
+             test "large delta skips frames" on_frame_large_delta_skips_frames;
+           ];
+         group "Setters"
+           [
+             test "set_frame_set resets elapsed" set_frame_set_resets_elapsed;
+             test "set_frame_set clamps index" set_frame_set_clamps_index;
+             test "set_color schedules render" set_color_schedules_render;
+             test "set_color noop same" set_color_noop_same;
+           ];
+         group "apply_props"
+           [
+             test "replaces props" apply_props_replaces_props;
+             test "resets on frame_set change"
+               apply_props_resets_on_frame_set_change;
+             test "schedules render" apply_props_schedules_render;
+           ];
+         group "Measure"
+           [
+             test "width matches max frame width"
+               measure_width_is_max_frame_width;
+           ];
+         group "Pretty-printing"
+           [
+             test "produces output" pp_produces_output;
+             test "contains Spinner" pp_contains_spinner;
+           ];
+         group "Both doors"
+           [ test "frame_set" doors_frame_set; test "color" doors_color ];
+       ])

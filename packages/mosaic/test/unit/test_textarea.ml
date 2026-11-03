@@ -1821,244 +1821,256 @@ let doors_key_bindings () =
               ())))
 
 let () =
-  run "mosaic.textarea"
-    [
-      group "Caret affinity"
-        [
-          test "visual end stays on the preceding wrapped row"
-            visual_end_keeps_previous_wrapped_row;
-        ];
-      group "Props"
-        [
-          test "default equals make()" props_default_equals_make;
-          test "equal on identical" props_equal_identical;
-          test "detects value diff" props_detects_value_diff;
-          test "detects placeholder diff" props_detects_placeholder_diff;
-          test "detects wrap diff" props_detects_wrap_diff;
-          test "detects text_color diff" props_detects_text_color_diff;
-          test "detects cursor_style diff" props_detects_cursor_style_diff;
-          test "detects cursor_blinking diff" props_detects_cursor_blinking_diff;
-          test "detects annotations diff" props_detects_annotations_diff;
-          test "detects selection diff" props_detects_selection_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches_to_parent;
-          test "initial value" create_initial_value;
-          test "default value is empty" create_default_value_is_empty;
-          test "buffer accessible" create_buffer_accessible;
-          test "surface accessible" create_surface_accessible;
-          test "registers line info provider"
-            create_registers_text_rows_provider;
-        ];
-      group "Syntax"
-        [
-          test "highlights and shows pending edits"
-            syntax_highlights_and_shows_pending_edits;
-          test "a mismatch shows plain" syntax_mismatch_shows_plain;
-          test "annotations go over syntax" annotations_go_over_syntax;
-          test "requests ask for the rows shown" requests_ask_for_the_rows_shown;
-          test "scrolling asks for rows outside" scrolling_asks_for_rows_outside;
-          test "a failed range is not asked again"
-            failed_range_is_not_asked_again;
-          test "a stateless highlighter is asked for everything"
-            stateless_highlighter_is_asked_for_everything;
-        ];
-      group "Paint"
-        [
-          test "focus repaints without changing geometry"
-            focus_repaints_without_changing_geometry;
-          test "focus preserves explicit styles and restyles fallback"
-            focus_preserves_explicit_styles_and_restyles_fallback;
-        ];
-      group "Value"
-        [
-          test "returns current text" value_returns_current_text;
-          test "set_value replaces text" set_value_replaces_text;
-          test "set_value requests render" set_value_requests_render;
-        ];
-      group "State proposals"
-        [
-          test "complete state" changes_propose_complete_state;
-          test "rejected edits preserve accepted state"
-            rejected_edits_leave_state_and_history_intact;
-          test "rejected caret does not affect next edit"
-            rejected_cursor_does_not_affect_next_edit;
-          test "rejected movement preserves preferred column"
-            rejected_movement_preserves_preferred_column;
-          test "a deferred proposal is a complete value"
-            deferred_proposal_is_a_complete_value;
-          test "transformed acceptance is next event base"
-            transformed_acceptance_is_next_event_base;
-          test "blur does not propose" blur_and_submit_do_not_propose_edits;
-        ];
-      group "Callbacks -- on_submit"
-        [
-          test "fires on Ctrl+Enter" on_submit_fires_on_meta_enter;
-          test "receives current value" on_submit_receives_current_value;
-          test "set_on_submit None disables" set_on_submit_none_disables;
-          test "Enter does not fire submit" enter_does_not_fire_submit;
-        ];
-      group "Key handling"
-        [
-          test "character input inserts text" key_char_inserts_text;
-          test "Enter inserts newline" key_enter_inserts_newline;
-          test "keypad Enter inserts newline" key_kp_enter_inserts_newline;
-          test "Ctrl+J inserts newline" ctrl_j_inserts_newline;
-          test "Left/Right moves cursor" key_left_right_moves_cursor;
-          test "Up moves to previous line" key_up_moves_to_previous_line;
-          test "Down moves to next line" key_down_moves_to_next_line;
-          test "Backspace deletes backward" key_backspace_deletes_backward;
-          test "Backspace at line start joins" key_backspace_at_line_start_joins;
-          test "Delete key deletes forward" key_delete_deletes_forward;
-        ];
-      group "Emacs keybindings"
-        [
-          test "Ctrl+A moves to line start" ctrl_a_moves_to_line_start;
-          test "Ctrl+Shift+A selects to line start"
-            ctrl_shift_a_selects_to_line_start;
-          test "Ctrl+A base key moves to line start"
-            ctrl_a_base_key_moves_to_line_start;
-          test "Ctrl+E moves to line end" ctrl_e_moves_to_line_end;
-          test "logical boundary collapses selection without crossing line"
-            logical_boundary_collapses_selection_without_crossing_line;
-          test "Ctrl+B moves left" ctrl_b_moves_left;
-          test "Ctrl+F moves right" ctrl_f_moves_right;
-          test "Ctrl+D deletes forward" ctrl_d_deletes_forward;
-          test "Ctrl+K deletes to line end" ctrl_k_deletes_to_line_end;
-          test "Ctrl+U deletes to line start" ctrl_u_deletes_to_line_start;
-          test "Ctrl+W deletes word backward after newline"
-            ctrl_w_deletes_word_backward_after_newline;
-          test "Ctrl+Shift+D deletes line" ctrl_shift_d_deletes_line;
-        ];
-      group "Alt keybindings"
-        [
-          test "Alt+B moves word backward" alt_b_moves_word_backward;
-          test "Meta alone does not match Alt"
-            meta_only_does_not_match_alt_binding;
-          test "Alt+F moves word forward" alt_f_moves_word_forward;
-          test "Alt+D deletes word forward" alt_d_deletes_word_forward;
-        ];
-      group "Super+Arrow keybindings"
-        [
-          test "Super+Left moves to visual line start"
-            super_left_moves_to_visual_line_start;
-          test "Super+Right moves to visual line end"
-            super_right_moves_to_visual_line_end;
-          test "Super+Up moves to buffer start" super_up_moves_to_buffer_start;
-          test "Super+Down moves to buffer end" super_down_moves_to_buffer_end;
-        ];
-      group "Selection keybindings"
-        [
-          test "Shift+Right creates selection" shift_right_creates_selection;
-          test "Super+A selects all" super_a_selects_all;
-          test "type with selection replaces" type_with_selection_replaces;
-        ];
-      group "Undo / Redo"
-        [
-          test "Ctrl+Z undoes" ctrl_z_undoes;
-          test "Ctrl+Shift+Z redoes" ctrl_shift_z_redoes;
-        ];
-      group "Visual line navigation"
-        [
-          test "Alt+A moves to visual line start"
-            alt_a_moves_to_visual_line_start;
-          test "Alt+E moves to visual line end" alt_e_moves_to_visual_line_end;
-        ];
-      group "Ctrl+A/E wrap-around"
-        [
-          test "Ctrl+A wraps to previous line end"
-            ctrl_a_wraps_to_previous_line_end;
-          test "Ctrl+A does not wrap on first line"
-            ctrl_a_does_not_wrap_on_first_line;
-          test "Ctrl+E wraps to next line start" ctrl_e_wraps_to_next_line_start;
-          test "Ctrl+E does not wrap on last line"
-            ctrl_e_does_not_wrap_on_last_line;
-        ];
-      group "Alt+Enter submit"
-        [ test "Alt+Enter fires submit" alt_enter_fires_submit ];
-      group "Ctrl+K at line end"
-        [
-          test "Ctrl+K at line end does nothing" ctrl_k_at_line_end_does_nothing;
-        ];
-      group "Paste handling"
-        [
-          test "handle_paste inserts text" handle_paste_inserts_text;
-          test "handle_paste preserves newlines" handle_paste_preserves_newlines;
-          test "handle_paste strips ansi" handle_paste_strips_ansi;
-          test "handle_paste with selection replaces"
-            handle_paste_with_selection_replaces;
-        ];
-      group "Mouse"
-        [
-          test "selection syncs to buffer" mouse_selection_syncs_to_buffer;
-          test "click reports cursor without selection"
-            mouse_click_reports_cursor_without_selection;
-          test "press leaves a sibling editor alone"
-            press_leaves_sibling_editor_alone;
-          test "selection disabled when not selectable"
-            mouse_selection_disabled_when_not_selectable;
-          test "wheel scrolls surface" mouse_wheel_scrolls_surface;
-          test "remounted surface keeps the wheel viewport"
-            remounted_surface_keeps_wheel_viewport;
-          test "following viewport settles" following_viewport_settles;
-          test "rejected wheel proposal does not scroll"
-            rejected_wheel_proposal_does_not_scroll;
-          test "resize after newline clamps scroll_y"
-            resize_after_newline_clamps_scroll_y;
-        ];
-      group "Cursor provider"
-        [
-          test "returns None when unfocused" cursor_returns_none_when_unfocused;
-          test "returns Some when focused" cursor_returns_some_when_focused;
-          test "returns None when hidden" cursor_returns_none_when_hidden;
-          test "style is Block by default" cursor_style_is_block_by_default;
-          test "has correct color" cursor_has_correct_color;
-        ];
-      group "apply_props"
-        [
-          test "value change updates buffer" apply_props_value_change;
-          test "echoed value preserves cursor"
-            apply_props_echoed_value_preserves_cursor;
-          test "selection change updates buffer"
-            apply_props_selection_change_updates_buffer;
-          test "selection None clears buffer selection"
-            apply_props_selection_none_clears_buffer_selection;
-          test "selectable off clears selection"
-            apply_props_selectable_off_clears_selection;
-          test "schedules render" apply_props_schedules_render;
-        ];
-      group "Rendering"
-        [ test "zero-size does not crash" render_zero_size_no_crash ];
-      group "Edge cases"
-        [
-          test "operations on empty textarea are safe"
-            operations_on_empty_textarea_are_safe;
-        ];
-      group "Pretty-printing"
-        [
-          test "non-empty output" pp_produces_non_empty_output;
-          test "contains Textarea prefix" pp_contains_textarea_prefix;
-        ];
-      group "Both doors"
-        [
-          test "state" doors_state;
-          test "annotations" doors_annotations;
-          test "syntax" doors_syntax;
-          test "ghost_text" doors_ghost_text;
-          test "ghost_text_color" doors_ghost_text_color;
-          test "placeholder" doors_placeholder;
-          test "wrap" doors_wrap;
-          test "text_color" doors_text_color;
-          test "background_color" doors_background_color;
-          test "focused_text_color" doors_focused_text_color;
-          test "focused_background_color" doors_focused_background_color;
-          test "placeholder_color" doors_placeholder_color;
-          test "cursor_style" doors_cursor_style;
-          test "cursor_color" doors_cursor_color;
-          test "cursor_blinking" doors_cursor_blinking;
-          test "selectable" doors_selectable;
-          test "show_cursor" doors_show_cursor;
-          test "key_bindings" doors_key_bindings;
-        ];
-    ]
+  exit
+    (run "mosaic.textarea"
+       [
+         group "Caret affinity"
+           [
+             test "visual end stays on the preceding wrapped row"
+               visual_end_keeps_previous_wrapped_row;
+           ];
+         group "Props"
+           [
+             test "default equals make()" props_default_equals_make;
+             test "equal on identical" props_equal_identical;
+             test "detects value diff" props_detects_value_diff;
+             test "detects placeholder diff" props_detects_placeholder_diff;
+             test "detects wrap diff" props_detects_wrap_diff;
+             test "detects text_color diff" props_detects_text_color_diff;
+             test "detects cursor_style diff" props_detects_cursor_style_diff;
+             test "detects cursor_blinking diff"
+               props_detects_cursor_blinking_diff;
+             test "detects annotations diff" props_detects_annotations_diff;
+             test "detects selection diff" props_detects_selection_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches_to_parent;
+             test "initial value" create_initial_value;
+             test "default value is empty" create_default_value_is_empty;
+             test "buffer accessible" create_buffer_accessible;
+             test "surface accessible" create_surface_accessible;
+             test "registers line info provider"
+               create_registers_text_rows_provider;
+           ];
+         group "Syntax"
+           [
+             test "highlights and shows pending edits"
+               syntax_highlights_and_shows_pending_edits;
+             test "a mismatch shows plain" syntax_mismatch_shows_plain;
+             test "annotations go over syntax" annotations_go_over_syntax;
+             test "requests ask for the rows shown"
+               requests_ask_for_the_rows_shown;
+             test "scrolling asks for rows outside"
+               scrolling_asks_for_rows_outside;
+             test "a failed range is not asked again"
+               failed_range_is_not_asked_again;
+             test "a stateless highlighter is asked for everything"
+               stateless_highlighter_is_asked_for_everything;
+           ];
+         group "Paint"
+           [
+             test "focus repaints without changing geometry"
+               focus_repaints_without_changing_geometry;
+             test "focus preserves explicit styles and restyles fallback"
+               focus_preserves_explicit_styles_and_restyles_fallback;
+           ];
+         group "Value"
+           [
+             test "returns current text" value_returns_current_text;
+             test "set_value replaces text" set_value_replaces_text;
+             test "set_value requests render" set_value_requests_render;
+           ];
+         group "State proposals"
+           [
+             test "complete state" changes_propose_complete_state;
+             test "rejected edits preserve accepted state"
+               rejected_edits_leave_state_and_history_intact;
+             test "rejected caret does not affect next edit"
+               rejected_cursor_does_not_affect_next_edit;
+             test "rejected movement preserves preferred column"
+               rejected_movement_preserves_preferred_column;
+             test "a deferred proposal is a complete value"
+               deferred_proposal_is_a_complete_value;
+             test "transformed acceptance is next event base"
+               transformed_acceptance_is_next_event_base;
+             test "blur does not propose" blur_and_submit_do_not_propose_edits;
+           ];
+         group "Callbacks -- on_submit"
+           [
+             test "fires on Ctrl+Enter" on_submit_fires_on_meta_enter;
+             test "receives current value" on_submit_receives_current_value;
+             test "set_on_submit None disables" set_on_submit_none_disables;
+             test "Enter does not fire submit" enter_does_not_fire_submit;
+           ];
+         group "Key handling"
+           [
+             test "character input inserts text" key_char_inserts_text;
+             test "Enter inserts newline" key_enter_inserts_newline;
+             test "keypad Enter inserts newline" key_kp_enter_inserts_newline;
+             test "Ctrl+J inserts newline" ctrl_j_inserts_newline;
+             test "Left/Right moves cursor" key_left_right_moves_cursor;
+             test "Up moves to previous line" key_up_moves_to_previous_line;
+             test "Down moves to next line" key_down_moves_to_next_line;
+             test "Backspace deletes backward" key_backspace_deletes_backward;
+             test "Backspace at line start joins"
+               key_backspace_at_line_start_joins;
+             test "Delete key deletes forward" key_delete_deletes_forward;
+           ];
+         group "Emacs keybindings"
+           [
+             test "Ctrl+A moves to line start" ctrl_a_moves_to_line_start;
+             test "Ctrl+Shift+A selects to line start"
+               ctrl_shift_a_selects_to_line_start;
+             test "Ctrl+A base key moves to line start"
+               ctrl_a_base_key_moves_to_line_start;
+             test "Ctrl+E moves to line end" ctrl_e_moves_to_line_end;
+             test "logical boundary collapses selection without crossing line"
+               logical_boundary_collapses_selection_without_crossing_line;
+             test "Ctrl+B moves left" ctrl_b_moves_left;
+             test "Ctrl+F moves right" ctrl_f_moves_right;
+             test "Ctrl+D deletes forward" ctrl_d_deletes_forward;
+             test "Ctrl+K deletes to line end" ctrl_k_deletes_to_line_end;
+             test "Ctrl+U deletes to line start" ctrl_u_deletes_to_line_start;
+             test "Ctrl+W deletes word backward after newline"
+               ctrl_w_deletes_word_backward_after_newline;
+             test "Ctrl+Shift+D deletes line" ctrl_shift_d_deletes_line;
+           ];
+         group "Alt keybindings"
+           [
+             test "Alt+B moves word backward" alt_b_moves_word_backward;
+             test "Meta alone does not match Alt"
+               meta_only_does_not_match_alt_binding;
+             test "Alt+F moves word forward" alt_f_moves_word_forward;
+             test "Alt+D deletes word forward" alt_d_deletes_word_forward;
+           ];
+         group "Super+Arrow keybindings"
+           [
+             test "Super+Left moves to visual line start"
+               super_left_moves_to_visual_line_start;
+             test "Super+Right moves to visual line end"
+               super_right_moves_to_visual_line_end;
+             test "Super+Up moves to buffer start"
+               super_up_moves_to_buffer_start;
+             test "Super+Down moves to buffer end"
+               super_down_moves_to_buffer_end;
+           ];
+         group "Selection keybindings"
+           [
+             test "Shift+Right creates selection" shift_right_creates_selection;
+             test "Super+A selects all" super_a_selects_all;
+             test "type with selection replaces" type_with_selection_replaces;
+           ];
+         group "Undo / Redo"
+           [
+             test "Ctrl+Z undoes" ctrl_z_undoes;
+             test "Ctrl+Shift+Z redoes" ctrl_shift_z_redoes;
+           ];
+         group "Visual line navigation"
+           [
+             test "Alt+A moves to visual line start"
+               alt_a_moves_to_visual_line_start;
+             test "Alt+E moves to visual line end"
+               alt_e_moves_to_visual_line_end;
+           ];
+         group "Ctrl+A/E wrap-around"
+           [
+             test "Ctrl+A wraps to previous line end"
+               ctrl_a_wraps_to_previous_line_end;
+             test "Ctrl+A does not wrap on first line"
+               ctrl_a_does_not_wrap_on_first_line;
+             test "Ctrl+E wraps to next line start"
+               ctrl_e_wraps_to_next_line_start;
+             test "Ctrl+E does not wrap on last line"
+               ctrl_e_does_not_wrap_on_last_line;
+           ];
+         group "Alt+Enter submit"
+           [ test "Alt+Enter fires submit" alt_enter_fires_submit ];
+         group "Ctrl+K at line end"
+           [
+             test "Ctrl+K at line end does nothing"
+               ctrl_k_at_line_end_does_nothing;
+           ];
+         group "Paste handling"
+           [
+             test "handle_paste inserts text" handle_paste_inserts_text;
+             test "handle_paste preserves newlines"
+               handle_paste_preserves_newlines;
+             test "handle_paste strips ansi" handle_paste_strips_ansi;
+             test "handle_paste with selection replaces"
+               handle_paste_with_selection_replaces;
+           ];
+         group "Mouse"
+           [
+             test "selection syncs to buffer" mouse_selection_syncs_to_buffer;
+             test "click reports cursor without selection"
+               mouse_click_reports_cursor_without_selection;
+             test "press leaves a sibling editor alone"
+               press_leaves_sibling_editor_alone;
+             test "selection disabled when not selectable"
+               mouse_selection_disabled_when_not_selectable;
+             test "wheel scrolls surface" mouse_wheel_scrolls_surface;
+             test "remounted surface keeps the wheel viewport"
+               remounted_surface_keeps_wheel_viewport;
+             test "following viewport settles" following_viewport_settles;
+             test "rejected wheel proposal does not scroll"
+               rejected_wheel_proposal_does_not_scroll;
+             test "resize after newline clamps scroll_y"
+               resize_after_newline_clamps_scroll_y;
+           ];
+         group "Cursor provider"
+           [
+             test "returns None when unfocused"
+               cursor_returns_none_when_unfocused;
+             test "returns Some when focused" cursor_returns_some_when_focused;
+             test "returns None when hidden" cursor_returns_none_when_hidden;
+             test "style is Block by default" cursor_style_is_block_by_default;
+             test "has correct color" cursor_has_correct_color;
+           ];
+         group "apply_props"
+           [
+             test "value change updates buffer" apply_props_value_change;
+             test "echoed value preserves cursor"
+               apply_props_echoed_value_preserves_cursor;
+             test "selection change updates buffer"
+               apply_props_selection_change_updates_buffer;
+             test "selection None clears buffer selection"
+               apply_props_selection_none_clears_buffer_selection;
+             test "selectable off clears selection"
+               apply_props_selectable_off_clears_selection;
+             test "schedules render" apply_props_schedules_render;
+           ];
+         group "Rendering"
+           [ test "zero-size does not crash" render_zero_size_no_crash ];
+         group "Edge cases"
+           [
+             test "operations on empty textarea are safe"
+               operations_on_empty_textarea_are_safe;
+           ];
+         group "Pretty-printing"
+           [
+             test "non-empty output" pp_produces_non_empty_output;
+             test "contains Textarea prefix" pp_contains_textarea_prefix;
+           ];
+         group "Both doors"
+           [
+             test "state" doors_state;
+             test "annotations" doors_annotations;
+             test "syntax" doors_syntax;
+             test "ghost_text" doors_ghost_text;
+             test "ghost_text_color" doors_ghost_text_color;
+             test "placeholder" doors_placeholder;
+             test "wrap" doors_wrap;
+             test "text_color" doors_text_color;
+             test "background_color" doors_background_color;
+             test "focused_text_color" doors_focused_text_color;
+             test "focused_background_color" doors_focused_background_color;
+             test "placeholder_color" doors_placeholder_color;
+             test "cursor_style" doors_cursor_style;
+             test "cursor_color" doors_cursor_color;
+             test "cursor_blinking" doors_cursor_blinking;
+             test "selectable" doors_selectable;
+             test "show_cursor" doors_show_cursor;
+             test "key_bindings" doors_key_bindings;
+           ];
+       ])

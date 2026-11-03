@@ -165,26 +165,27 @@ let fill_defaults_to_black () =
   equal ~msg:"unfilled cell keeps the terminal default" int 0 untouched_alpha
 
 let () =
-  Windtrap.run "matrix.image"
-    [
-      group "render"
-        [
-          test "text width_method is applied during render"
-            text_width_method_is_applied_during_render;
-          test "box without fill preserves background"
-            box_without_fill_preserves_background;
-          test "cropped padding stays empty" cropped_padding_stays_empty;
-          test "composed clips stay empty" composed_clips_stay_empty;
-          test "custom hits follow crop" custom_hits_follow_crop;
-          test "a crop of nothing clips" crop_of_nothing_clips;
-          test "a hit rectangle is clipped to the image"
-            hit_rect_is_clipped_to_the_image;
-          test "a hit region on empty is empty" hit_rect_on_empty_is_empty;
-        ];
-      group "defaults"
-        [
-          test "hsnap defaults to `Center" hsnap_defaults_to_center;
-          test "vsnap defaults to `Middle" vsnap_defaults_to_middle;
-          test "fill defaults to black" fill_defaults_to_black;
-        ];
-    ]
+  exit
+    (Windtrap.run "matrix.image"
+       [
+         group "render"
+           [
+             test "text width_method is applied during render"
+               text_width_method_is_applied_during_render;
+             test "box without fill preserves background"
+               box_without_fill_preserves_background;
+             test "cropped padding stays empty" cropped_padding_stays_empty;
+             test "composed clips stay empty" composed_clips_stay_empty;
+             test "custom hits follow crop" custom_hits_follow_crop;
+             test "a crop of nothing clips" crop_of_nothing_clips;
+             test "a hit rectangle is clipped to the image"
+               hit_rect_is_clipped_to_the_image;
+             test "a hit region on empty is empty" hit_rect_on_empty_is_empty;
+           ];
+         group "defaults"
+           [
+             test "hsnap defaults to `Center" hsnap_defaults_to_center;
+             test "vsnap defaults to `Middle" vsnap_defaults_to_middle;
+             test "fill defaults to black" fill_defaults_to_black;
+           ];
+       ])

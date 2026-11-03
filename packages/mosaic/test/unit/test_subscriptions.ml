@@ -571,44 +571,47 @@ let root_theme_follows_a_change () =
       equal ~msg:"no view built" int views_before !views)
 
 let () =
-  Windtrap.run "subscriptions"
-    [
-      test "Sub.on_tick produces messages" sub_on_tick_produces_messages;
-      test "Sub.every produces messages" sub_every_produces_messages;
-      test "Sub.after mapping and validation" sub_after_map_and_validation;
-      test "Sub.every mapping preserves identity"
-        sub_every_map_preserves_identity;
-      test "timer model accumulates elapsed" timer_model_accumulates_elapsed;
-      test "timer model goes idle at zero" timer_model_goes_idle_at_zero;
-      test "Sub.batch flattens" sub_batch_flattens;
-      test "Sub.map transforms messages" sub_map_transforms_messages;
-      test "Shortcut.matches plain keys" shortcut_matches_plain_keys;
-      test "Sub.on_key_release delivers releases"
-        sub_on_key_release_delivers_releases;
-      test "Shortcut matches ctrl base key" shortcut_matches_ctrl_base_key;
-      test "Shortcut Shift with a letter is the capital"
-        shortcut_shift_letter_is_the_capital;
-      test "Shortcut Alt matches Matrix Alt" shortcut_alt_matches_alt;
-      test "Sub.on_keys binding resolution" sub_on_keys_resolution;
-      test "Sub.on_keys allocation across overrides"
-        sub_on_keys_does_not_compile_or_allocate_per_override;
-      test "Cmd.copy_to_clipboard maps without changing payload"
-        cmd_copy_to_clipboard_maps_without_changing_payload;
-      test "Cmd.clear_selection maps to itself"
-        cmd_clear_selection_maps_to_itself;
-      test "Cmd.copy_selection maps to itself" cmd_copy_selection_maps_to_itself;
-      test "Cmd.query_color_scheme maps to itself"
-        cmd_query_color_scheme_maps_to_itself;
-      test "Sub.on_color_scheme delivers reports"
-        sub_on_color_scheme_delivers_reports;
-      test "Sub.on_color_scheme maps messages" sub_on_color_scheme_maps_messages;
-      test "the palette as the program begins" palette_on_start;
-      test "the palette after the user changes it" palette_after_scheme;
-      test "the palette asked by a late subscriber" palette_asked_late;
-      test "a palette of the pair alone" palette_pair_only;
-      test "no palette without the pair" palette_none;
-      test "the root's theme follows the terminal's colors"
-        root_theme_follows_colors;
-      test "the root's theme follows a change of the colors"
-        root_theme_follows_a_change;
-    ]
+  exit
+    (Windtrap.run "subscriptions"
+       [
+         test "Sub.on_tick produces messages" sub_on_tick_produces_messages;
+         test "Sub.every produces messages" sub_every_produces_messages;
+         test "Sub.after mapping and validation" sub_after_map_and_validation;
+         test "Sub.every mapping preserves identity"
+           sub_every_map_preserves_identity;
+         test "timer model accumulates elapsed" timer_model_accumulates_elapsed;
+         test "timer model goes idle at zero" timer_model_goes_idle_at_zero;
+         test "Sub.batch flattens" sub_batch_flattens;
+         test "Sub.map transforms messages" sub_map_transforms_messages;
+         test "Shortcut.matches plain keys" shortcut_matches_plain_keys;
+         test "Sub.on_key_release delivers releases"
+           sub_on_key_release_delivers_releases;
+         test "Shortcut matches ctrl base key" shortcut_matches_ctrl_base_key;
+         test "Shortcut Shift with a letter is the capital"
+           shortcut_shift_letter_is_the_capital;
+         test "Shortcut Alt matches Matrix Alt" shortcut_alt_matches_alt;
+         test "Sub.on_keys binding resolution" sub_on_keys_resolution;
+         test "Sub.on_keys allocation across overrides"
+           sub_on_keys_does_not_compile_or_allocate_per_override;
+         test "Cmd.copy_to_clipboard maps without changing payload"
+           cmd_copy_to_clipboard_maps_without_changing_payload;
+         test "Cmd.clear_selection maps to itself"
+           cmd_clear_selection_maps_to_itself;
+         test "Cmd.copy_selection maps to itself"
+           cmd_copy_selection_maps_to_itself;
+         test "Cmd.query_color_scheme maps to itself"
+           cmd_query_color_scheme_maps_to_itself;
+         test "Sub.on_color_scheme delivers reports"
+           sub_on_color_scheme_delivers_reports;
+         test "Sub.on_color_scheme maps messages"
+           sub_on_color_scheme_maps_messages;
+         test "the palette as the program begins" palette_on_start;
+         test "the palette after the user changes it" palette_after_scheme;
+         test "the palette asked by a late subscriber" palette_asked_late;
+         test "a palette of the pair alone" palette_pair_only;
+         test "no palette without the pair" palette_none;
+         test "the root's theme follows the terminal's colors"
+           root_theme_follows_colors;
+         test "the root's theme follows a change of the colors"
+           root_theme_follows_a_change;
+       ])

@@ -355,60 +355,62 @@ let viewport_switch_rejects_nonpositive_threshold () =
 (* ── Runner ── *)
 
 let () =
-  run "mosaic.elements"
-    [
-      group "Default focusable"
-        [
-          test "box not focusable" box_not_focusable_by_default;
-          test "input focusable" input_focusable_by_default;
-          test "select focusable" select_focusable_by_default;
-          test "tab_select focusable" tab_select_focusable_by_default;
-          test "spinner not focusable" spinner_not_focusable_by_default;
-          test "progress_bar not focusable"
-            progress_bar_not_focusable_by_default;
-        ];
-      group "Leaf constraints"
-        [
-          test "text has no children" text_has_no_children;
-          test "box carries children" box_carries_children;
-          test "spinner has no children" spinner_has_no_children;
-          test "progress_bar has no children" progress_bar_has_no_children;
-        ];
-      group "Live defaults"
-        [
-          test "spinner live by default" spinner_live_by_default;
-          test "progress_bar not live by default"
-            progress_bar_not_live_by_default;
-        ];
-      group "Layout"
-        [
-          test "a label overrides one field of the layout"
-            layout_label_overrides_one_field;
-        ];
-      group "Map identity sharing"
-        [ test "keeps an element's layout" map_keeps_layout ];
-      group "Map transformation"
-        [
-          test "transforms on_key" map_transforms_on_key;
-          test "transforms widget callbacks" map_transforms_widget_callbacks;
-          test "transforms complete input callback"
-            map_transforms_input_on_change_callback;
-          test "embed unchanged" map_embed_identity;
-          test "viewport switch maps both branches"
-            viewport_switch_maps_both_branches;
-        ];
-      group "Map node"
-        [ test "a memo under a capturing map" memo_under_capturing_map ];
-      group "Element kinds"
-        [
-          test "mounted, updated and skipped" meter_mounted_updated_and_skipped;
-          test "a kind made per call remounts" kind_per_call_remounts;
-          test "events reach the handler" meter_events_reach_the_handler;
-          test "props of a view" props_of_a_view;
-        ];
-      group "Viewport switch"
-        [
-          test "rejects nonpositive threshold"
-            viewport_switch_rejects_nonpositive_threshold;
-        ];
-    ]
+  exit
+    (run "mosaic.elements"
+       [
+         group "Default focusable"
+           [
+             test "box not focusable" box_not_focusable_by_default;
+             test "input focusable" input_focusable_by_default;
+             test "select focusable" select_focusable_by_default;
+             test "tab_select focusable" tab_select_focusable_by_default;
+             test "spinner not focusable" spinner_not_focusable_by_default;
+             test "progress_bar not focusable"
+               progress_bar_not_focusable_by_default;
+           ];
+         group "Leaf constraints"
+           [
+             test "text has no children" text_has_no_children;
+             test "box carries children" box_carries_children;
+             test "spinner has no children" spinner_has_no_children;
+             test "progress_bar has no children" progress_bar_has_no_children;
+           ];
+         group "Live defaults"
+           [
+             test "spinner live by default" spinner_live_by_default;
+             test "progress_bar not live by default"
+               progress_bar_not_live_by_default;
+           ];
+         group "Layout"
+           [
+             test "a label overrides one field of the layout"
+               layout_label_overrides_one_field;
+           ];
+         group "Map identity sharing"
+           [ test "keeps an element's layout" map_keeps_layout ];
+         group "Map transformation"
+           [
+             test "transforms on_key" map_transforms_on_key;
+             test "transforms widget callbacks" map_transforms_widget_callbacks;
+             test "transforms complete input callback"
+               map_transforms_input_on_change_callback;
+             test "embed unchanged" map_embed_identity;
+             test "viewport switch maps both branches"
+               viewport_switch_maps_both_branches;
+           ];
+         group "Map node"
+           [ test "a memo under a capturing map" memo_under_capturing_map ];
+         group "Element kinds"
+           [
+             test "mounted, updated and skipped"
+               meter_mounted_updated_and_skipped;
+             test "a kind made per call remounts" kind_per_call_remounts;
+             test "events reach the handler" meter_events_reach_the_handler;
+             test "props of a view" props_of_a_view;
+           ];
+         group "Viewport switch"
+           [
+             test "rejects nonpositive threshold"
+               viewport_switch_rejects_nonpositive_threshold;
+           ];
+       ])

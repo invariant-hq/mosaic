@@ -191,21 +191,22 @@ let test_pieces () =
   equal ~msg:"nothing" (list piece) [] (T.pieces "")
 
 let () =
-  run "matrix.terminfo"
-    [
-      group "descriptions"
-        [
-          test "the 32-bit format" test_extended_number_format;
-          test "direct colour" test_direct_colour;
-          test "the legacy format" test_legacy_format;
-          test "not an entry" test_not_an_entry;
-          test "damaged entries" test_damaged;
-        ];
-      group "parameters"
-        [
-          cases "expand" expansions ~name:(fun (n, _, _, _) -> n) test_expand;
-          test "string parameters" test_string_params;
-          test "static variables" test_static_variables;
-        ];
-      group "delays" [ test "pieces" test_pieces ];
-    ]
+  exit
+    (run "matrix.terminfo"
+       [
+         group "descriptions"
+           [
+             test "the 32-bit format" test_extended_number_format;
+             test "direct colour" test_direct_colour;
+             test "the legacy format" test_legacy_format;
+             test "not an entry" test_not_an_entry;
+             test "damaged entries" test_damaged;
+           ];
+         group "parameters"
+           [
+             cases "expand" expansions ~id:(fun (n, _, _, _) -> n) test_expand;
+             test "string parameters" test_string_params;
+             test "static variables" test_static_variables;
+           ];
+         group "delays" [ test "pieces" test_pieces ];
+       ])

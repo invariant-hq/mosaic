@@ -218,16 +218,17 @@ let line_number_takes_line_numbers () =
            (Line_number.Props.make ~line_numbers:[ (0, 42) ] ())))
 
 let () =
-  run "mosaic.mlx"
-    [
-      test "annotated textarea through Mosaic and MLX"
-        annotated_textarea_flows_through_mosaic_and_mlx;
-      test "rich children and high-level text share the widget"
-        rich_children_and_high_level_text_share_the_widget;
-      test "children and model-owned editor" children_and_editor_state;
-      test "children and model-owned scroll" scroll_children_and_state;
-      test "line-number children contract" line_number_requires_one_child;
-      test "box takes inert" box_takes_inert;
-      test "code takes truncate" code_takes_truncate;
-      test "line_number takes line_numbers" line_number_takes_line_numbers;
-    ]
+  exit
+    (run "mosaic.mlx"
+       [
+         test "annotated textarea through Mosaic and MLX"
+           annotated_textarea_flows_through_mosaic_and_mlx;
+         test "rich children and high-level text share the widget"
+           rich_children_and_high_level_text_share_the_widget;
+         test "children and model-owned editor" children_and_editor_state;
+         test "children and model-owned scroll" scroll_children_and_state;
+         test "line-number children contract" line_number_requires_one_child;
+         test "box takes inert" box_takes_inert;
+         test "code takes truncate" code_takes_truncate;
+         test "line_number takes line_numbers" line_number_takes_line_numbers;
+       ])

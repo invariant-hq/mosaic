@@ -17,24 +17,6 @@
 
 (implicit_transitive_deps false)
 
-(pin
- (url
-  "git+https://github.com/invariant-hq/thumper.git#0d42dc6964e30525b0595b6d5be04a1eda76c90e")
- (package
-  (name thumper)))
-
-(pin
- (url
-  "git+https://github.com/invariant-hq/windtrap.git#31121058567da1edb72603f42514eb1276ca37cc")
- (package
-  (name windtrap)))
-
-(pin
- (url
-  "git+https://github.com/invariant-hq/windtrap.git#31121058567da1edb72603f42514eb1276ca37cc")
- (package
-  (name ppx_windtrap)))
-
 (package
  (name matrix)
  (synopsis "Fast, modern terminal toolkit for OCaml")
@@ -44,9 +26,18 @@
   (ocaml
    (>= 5.4))
   dune
-  (windtrap :with-test)
-  (ppx_windtrap :with-test)
-  (thumper :with-test))
+  (windtrap
+   (and
+    :with-test
+    (>= 0.3.1)))
+  (ppx_windtrap
+   (and
+    :with-test
+    (>= 0.3.1)))
+  (thumper
+   (and
+    :with-test
+    (>= 0.1.0))))
  (tags
   (terminal ansi input grid rendering unicode pty vte)))
 
@@ -59,8 +50,14 @@
   (ocaml
    (>= 5.1))
   dune
-  (windtrap :with-test)
-  (thumper :with-test))
+  (windtrap
+   (and
+    :with-test
+    (>= 0.3.1)))
+  (thumper
+   (and
+    :with-test
+    (>= 0.1.0))))
  (tags
   (css layout flexbox grid "css-grid" taffy "layout-engine")))
 
@@ -76,9 +73,18 @@
   matrix
   toffee
   cmarkit
-  (windtrap :with-test)
-  (ppx_windtrap :with-test)
-  (thumper :with-test)
+  (windtrap
+   (and
+    :with-test
+    (>= 0.3.1)))
+  (ppx_windtrap
+   (and
+    :with-test
+    (>= 0.3.1)))
+  (thumper
+   (and
+    :with-test
+    (>= 0.1.0)))
   (eio_main :with-test)
   (lwt :with-test))
  (depopts eio lwt)

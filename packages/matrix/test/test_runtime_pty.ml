@@ -28,16 +28,12 @@ let contains ~from out sub =
   in
   go from
 
-(* Reads until one of [subs] appears after [from], and is the first of them
-   that has. *)
-let await_any ?(timeout = 60.) ?(from = 0) s subs =
+(* Reads what the program writes until [stop ()] holds, for at most
+   [timeout] seconds. *)
+let read_until ~timeout s stop =
   let deadline = Unix.gettimeofday () +. timeout in
   let buf = Bytes.create 4096 in
-  let found () =
-    let out = Buffer.contents s.output in
-    List.find_opt (contains ~from out) subs
-  in
-  while found () = None && Unix.gettimeofday () < deadline do
+  while (not (stop ())) && Unix.gettimeofday () < deadline do
     match Unix.select [ Pty.in_fd s.pty ] [] [] 0.05 with
     | [], _, _ -> ()
     | _ -> (
@@ -45,7 +41,16 @@ let await_any ?(timeout = 60.) ?(from = 0) s subs =
         | n when n > 0 -> Buffer.add_subbytes s.output buf 0 n
         | _ -> ()
         | exception Unix.Unix_error _ -> ())
-  done;
+  done
+
+(* Reads until one of [subs] appears after [from], and is the first of them
+   that has. *)
+let await_any ?(timeout = 60.) ?(from = 0) s subs =
+  let found () =
+    let out = Buffer.contents s.output in
+    List.find_opt (contains ~from out) subs
+  in
+  read_until ~timeout s (fun () -> found () <> None);
   match found () with
   | Some sub -> sub
   | None ->
@@ -73,10 +78,8 @@ let rec wait_exit ?(timeout = 60.) ?also s =
       else (
         Unix.sleepf 0.02;
         (* Keep draining what it writes. *)
-        (try await ~timeout:0.01 s "\000\001" with _ -> ());
-        Option.iter
-          (fun t -> try await ~timeout:0.01 t "\000\001" with _ -> ())
-          also;
+        read_until ~timeout:0.01 s (Fun.const false);
+        Option.iter (fun t -> read_until ~timeout:0.01 t (Fun.const false)) also;
         wait_exit ~timeout:(timeout -. 0.03) ?also s)
   | _, status -> status
 
@@ -521,7 +524,7 @@ let test_keys_faster_than_frames () =
   let expected = "KEYS:" ^ letters ^ "." in
   let deadline = Unix.gettimeofday () +. 10. in
   while shown () <> expected && Unix.gettimeofday () < deadline do
-    try await ~timeout:0.05 s "\000\001" with _ -> ()
+    read_until ~timeout:0.05 s (Fun.const false)
   done;
   equal ~msg:"every key painted" string expected (shown ());
   send s "q";
@@ -578,7 +581,7 @@ let test_back_pressure () =
     && Vte.text vte (rows - 1) = String.make cols 'e'
   in
   while (not (complete ())) && Unix.gettimeofday () < deadline do
-    try await ~timeout:0.05 s " " with _ -> ()
+    read_until ~timeout:0.05 s (Fun.const false)
   done;
   let written = Buffer.length s.output - from in
   is_true
@@ -613,58 +616,59 @@ let supported =
   Sys.os_type = "Unix" && Sys.file_exists child && Sys.file_exists job
 
 let () =
-  run "matrix.runtime.pty"
-    [
-      group "Signals"
-        (if not supported then []
-         else
-           [
-             test "SIGTERM ends with its status" test_sigterm;
-             test "SIGTSTP in an orphaned group"
-               test_sigtstp_in_an_orphaned_group;
-             test "SIGTSTP stops the job" test_sigtstp_stops_the_job;
-             test "continued in the background, it stops again"
-               test_background_continue_stops_again;
-             test "unsolicited SIGCONT" test_unsolicited_sigcont;
-             test "SIGINT during a release is discarded"
-               test_sigint_during_release;
-             test "SIGABRT restores the terminal"
-               test_sigabrt_restores_the_terminal;
-           ]);
-      group "Several runs"
-        (if not supported then []
-         else
-           [
-             test "a termination signal ends every run"
-               test_termination_ends_every_run;
-             test "an abort resets every run" test_abort_resets_every_run;
-             test "a termination signal resets a served session"
-               test_termination_resets_a_served_session;
-           ]);
-      group "Exit"
-        (if not supported then []
-         else [ test "exit inside a run" test_exit_inside_a_run ]);
-      group "Frames"
-        (if not supported then []
-         else
-           [
-             test "keys faster than frames are painted"
-               test_keys_faster_than_frames;
-             test "SIGWINCH has the next frame drawn at the new size"
-               test_sigwinch;
-             test "a terminal that takes no output holds the run"
-               test_back_pressure;
-           ]);
-      group "Handoff"
-        (if not supported then []
-         else [ test "a child's terminal" test_handoff ]);
-      group "Probe"
-        (if not supported then []
-         else
-           [
-             test "the alternate screen leaves the shell's text"
-               (test_probe_leaves_the_shell_text []);
-             test "the primary screen leaves the shell's text"
-               (test_probe_leaves_the_shell_text [ "primary" ]);
-           ]);
-    ]
+  exit
+    (run "matrix.runtime.pty"
+       [
+         group "Signals"
+           (if not supported then []
+            else
+              [
+                test "SIGTERM ends with its status" test_sigterm;
+                test "SIGTSTP in an orphaned group"
+                  test_sigtstp_in_an_orphaned_group;
+                test "SIGTSTP stops the job" test_sigtstp_stops_the_job;
+                test "continued in the background, it stops again"
+                  test_background_continue_stops_again;
+                test "unsolicited SIGCONT" test_unsolicited_sigcont;
+                test "SIGINT during a release is discarded"
+                  test_sigint_during_release;
+                test "SIGABRT restores the terminal"
+                  test_sigabrt_restores_the_terminal;
+              ]);
+         group "Several runs"
+           (if not supported then []
+            else
+              [
+                test "a termination signal ends every run"
+                  test_termination_ends_every_run;
+                test "an abort resets every run" test_abort_resets_every_run;
+                test "a termination signal resets a served session"
+                  test_termination_resets_a_served_session;
+              ]);
+         group "Exit"
+           (if not supported then []
+            else [ test "exit inside a run" test_exit_inside_a_run ]);
+         group "Frames"
+           (if not supported then []
+            else
+              [
+                test "keys faster than frames are painted"
+                  test_keys_faster_than_frames;
+                test "SIGWINCH has the next frame drawn at the new size"
+                  test_sigwinch;
+                test "a terminal that takes no output holds the run"
+                  test_back_pressure;
+              ]);
+         group "Handoff"
+           (if not supported then []
+            else [ test "a child's terminal" test_handoff ]);
+         group "Probe"
+           (if not supported then []
+            else
+              [
+                test "the alternate screen leaves the shell's text"
+                  (test_probe_leaves_the_shell_text []);
+                test "the primary screen leaves the shell's text"
+                  (test_probe_leaves_the_shell_text [ "primary" ]);
+              ]);
+       ])

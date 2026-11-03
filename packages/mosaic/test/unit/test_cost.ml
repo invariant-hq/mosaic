@@ -895,60 +895,61 @@ let per_line () =
     bytes
 
 let () =
-  run "mosaic.cost"
-    [
-      (* First, in this order: a heap peak is the process's highest yet. *)
-      group "Memory"
-        [
-          test "four cached widths of a megabyte" cached_widths;
-          test "a million rows" million_rows;
-          test "per line" per_line;
-        ];
-      group "Repaint follows the visible area"
-        [
-          test "hidden rows" hidden_rows;
-          test "hidden columns" hidden_columns;
-          test "hidden overlays" hidden_overlay_count;
-          test "hidden wrapped rows" hidden_wrapped_rows;
-          test "visible rows and runs" visible_work;
-        ];
-      group "Frames follow the visible area"
-        [ test "a scrolled transcript" hidden_transcript_rows ];
-      group "A text selection follows the visible area"
-        [
-          test "a drag's motion and frame" (selection_drag `Text);
-          test "a word drag's motion and frame" (selection_word_drag `Text);
-          test "a key extension across texts" (selection_key_crossing `Text);
-          test "a copy" (selection_copy `Text);
-        ];
-      group "A cell selection follows the visible area"
-        [
-          test "a drag's motion and frame" (selection_drag `Cells);
-          test "a word drag's motion and frame" (selection_word_drag `Cells);
-          test "a key extension across texts" (selection_key_crossing `Cells);
-          test "a copy" (selection_copy `Cells);
-        ];
-      group "An element that declares nothing shares its records"
-        [ test "a text" default_text ];
-      group "An unchanged list costs nothing per element"
-        [ test "a fresh but equal list of texts" unchanged_list ];
-      group "A map costs nothing per element"
-        [ test "under four maps" nested_maps ];
-      group "A memo's key is checked where it changed"
-        [ test "a keystroke beside a memo" memo_key_check ];
-      group "A keyed log costs what changed"
-        [ test "append, capped append and edit" keyed_log_changes ];
-      group "A capped log's frame costs what changed"
-        [ test "5,000 and 50,000 lines" capped_log_frames ];
-      group "A shared layout costs nothing per element"
-        [ test "a text given ~layout" shared_layout ];
-      group "Keys follow the items moved over"
-        [ test "a cursor's Down and Up" cursor_keys ];
-      group "Placement is linear in the children"
-        [ test "rotated keyed children" rotated_children ];
-      group "Removal keeps nothing per kept child"
-        [
-          test "a column" (removed_children ~cull:false);
-          test "a culling column" (removed_children ~cull:true);
-        ];
-    ]
+  exit
+    (run "mosaic.cost"
+       [
+         (* First, in this order: a heap peak is the process's highest yet. *)
+         group "Memory"
+           [
+             test "four cached widths of a megabyte" cached_widths;
+             test "a million rows" million_rows;
+             test "per line" per_line;
+           ];
+         group "Repaint follows the visible area"
+           [
+             test "hidden rows" hidden_rows;
+             test "hidden columns" hidden_columns;
+             test "hidden overlays" hidden_overlay_count;
+             test "hidden wrapped rows" hidden_wrapped_rows;
+             test "visible rows and runs" visible_work;
+           ];
+         group "Frames follow the visible area"
+           [ test "a scrolled transcript" hidden_transcript_rows ];
+         group "A text selection follows the visible area"
+           [
+             test "a drag's motion and frame" (selection_drag `Text);
+             test "a word drag's motion and frame" (selection_word_drag `Text);
+             test "a key extension across texts" (selection_key_crossing `Text);
+             test "a copy" (selection_copy `Text);
+           ];
+         group "A cell selection follows the visible area"
+           [
+             test "a drag's motion and frame" (selection_drag `Cells);
+             test "a word drag's motion and frame" (selection_word_drag `Cells);
+             test "a key extension across texts" (selection_key_crossing `Cells);
+             test "a copy" (selection_copy `Cells);
+           ];
+         group "An element that declares nothing shares its records"
+           [ test "a text" default_text ];
+         group "An unchanged list costs nothing per element"
+           [ test "a fresh but equal list of texts" unchanged_list ];
+         group "A map costs nothing per element"
+           [ test "under four maps" nested_maps ];
+         group "A memo's key is checked where it changed"
+           [ test "a keystroke beside a memo" memo_key_check ];
+         group "A keyed log costs what changed"
+           [ test "append, capped append and edit" keyed_log_changes ];
+         group "A capped log's frame costs what changed"
+           [ test "5,000 and 50,000 lines" capped_log_frames ];
+         group "A shared layout costs nothing per element"
+           [ test "a text given ~layout" shared_layout ];
+         group "Keys follow the items moved over"
+           [ test "a cursor's Down and Up" cursor_keys ];
+         group "Placement is linear in the children"
+           [ test "rotated keyed children" rotated_children ];
+         group "Removal keeps nothing per kept child"
+           [
+             test "a column" (removed_children ~cull:false);
+             test "a culling column" (removed_children ~cull:true);
+           ];
+       ])

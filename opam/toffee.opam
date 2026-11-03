@@ -12,8 +12,8 @@ bug-reports: "https://github.com/tmattio/mosaic/issues"
 depends: [
   "ocaml" {>= "5.1"}
   "dune" {>= "3.19"}
-  "windtrap" {with-test}
-  "thumper" {with-test}
+  "windtrap" {with-test & >= "0.3.1"}
+  "thumper" {with-test & >= "0.1.0"}
   "odoc" {with-doc}
 ]
 build: [

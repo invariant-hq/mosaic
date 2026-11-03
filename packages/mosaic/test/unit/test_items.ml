@@ -10,12 +10,10 @@ let reading () =
   equal (list string) l
     (contents (Items.make ~length:3 (fun i -> List.nth l i)));
   equal int 0 (Items.length (Items.of_list []));
-  raises_match (Exn.invalid_arg ?substring:None) (fun () ->
-      Items.get (Items.of_list l) 3);
-  raises_match (Exn.invalid_arg ?substring:None) (fun () ->
+  raises_match Exn.invalid_arg (fun () -> Items.get (Items.of_list l) 3);
+  raises_match Exn.invalid_arg (fun () ->
       Items.get (Items.of_array [| 1 |]) (-1));
-  raises_match (Exn.invalid_arg ?substring:None) (fun () ->
-      Items.make ~length:(-1) Fun.id)
+  raises_match Exn.invalid_arg (fun () -> Items.make ~length:(-1) Fun.id)
 
 let sameness () =
   let l = List.init 3 succ in
@@ -69,13 +67,14 @@ let equality () =
     (eq (Items.of_list [ 1; 2 ]) (Items.of_list [ 1; 2; 3 ]))
 
 let () =
-  run "mosaic.items"
-    [
-      group "Items"
-        [
-          test "reading by position" reading;
-          test "the same items" sameness;
-          test "equal items" equality;
-          test "a mapped list" mapped;
-        ];
-    ]
+  exit
+    (run "mosaic.items"
+       [
+         group "Items"
+           [
+             test "reading by position" reading;
+             test "the same items" sameness;
+             test "equal items" equality;
+             test "a mapped list" mapped;
+           ];
+       ])

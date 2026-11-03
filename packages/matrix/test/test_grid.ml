@@ -2301,7 +2301,7 @@ let lines_tests =
           (Grid.to_text g);
         equal ~msg:"origin" (pair int int) (2, 1) (Lines.x l, Lines.y l));
     test "create rejects a negative size" (fun () ->
-        raises_match (Exn.invalid_arg ~substring:"Lines.create") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"Lines.create") (fun () ->
             ignore (Lines.create ~x:0 ~y:0 ~width:(-1) ~height:1)));
   ]
 
@@ -2409,9 +2409,8 @@ let tests =
         let border =
           { Grid.Border.single with horizontal = Uchar.of_int 0x4E2D }
         in
-        raises_match ~msg:"a wide horizontal"
-          (Exn.invalid_arg ~substring:"draw_box") (fun () ->
-            Grid.draw_box grid ~x:0 ~y:0 ~width:6 ~height:3 ~border ()));
+        raises_match ~msg:"a wide horizontal" (Exn.invalid_arg ~sub:"draw_box")
+          (fun () -> Grid.draw_box grid ~x:0 ~y:0 ~width:6 ~height:3 ~border ()));
     test "accessors check their index" (fun () ->
         let grid = Grid.create ~width:3 ~height:2 () in
         let buf = Bytes.create 8 in
@@ -2419,8 +2418,7 @@ let tests =
           (fun idx ->
             let raises name f =
               raises_match ~msg:(Printf.sprintf "%s %d" name idx)
-                (Exn.invalid_arg ~substring:name) (fun () ->
-                  ignore (f () : string))
+                (Exn.invalid_arg ~sub:name) (fun () -> ignore (f () : string))
             in
             let str f () = string_of_int (f ()) in
             let bool f () = string_of_bool (f ()) in
@@ -2446,7 +2444,7 @@ let tests =
           [ -1; 6; max_int ]);
     test "draw_text rejects a tab width below 1" (fun () ->
         let grid = Grid.create ~width:4 ~height:1 () in
-        raises_match ~msg:"tab width 0" (Exn.invalid_arg ~substring:"tab width")
+        raises_match ~msg:"tab width 0" (Exn.invalid_arg ~sub:"tab width")
           (fun () -> Grid.draw_text grid ~x:0 ~y:0 ~tab_width:0 ~text:"\t"));
     test "many distinct graphemes" many_distinct_graphemes;
     test "cell text of empty and continuation cells"
@@ -2807,10 +2805,10 @@ let solid ~width ~height (r, g, b) =
 let picture_tests =
   [
     test "picture checks its pixels" (fun () ->
-        raises_match (Exn.invalid_arg ~substring:"Matrix_grid.picture")
-          (fun () -> ignore (Grid.picture ~width:2 ~height:1 "1234"));
-        raises_match (Exn.invalid_arg ~substring:"Matrix_grid.picture")
-          (fun () -> ignore (Grid.picture ~width:0 ~height:1 ""));
+        raises_match (Exn.invalid_arg ~sub:"Matrix_grid.picture") (fun () ->
+            ignore (Grid.picture ~width:2 ~height:1 "1234"));
+        raises_match (Exn.invalid_arg ~sub:"Matrix_grid.picture") (fun () ->
+            ignore (Grid.picture ~width:0 ~height:1 ""));
         equal ~msg:"size" (pair int int) (3, 2)
           (Grid.picture_size (solid ~width:3 ~height:2 (0, 0, 0))));
     test "a picture cell reads as U+FFFC and keeps its background" (fun () ->
@@ -2860,8 +2858,8 @@ let picture_tests =
               [ cols; rows; col; row ]
         | None -> fail "a picture cell has a tile");
         equal ~msg:"another cell" bool true (Grid.picture_at g 0 = None);
-        raises_match (Exn.invalid_arg ~substring:"Matrix_grid.picture_at")
-          (fun () -> ignore (Grid.picture_at g 8));
+        raises_match (Exn.invalid_arg ~sub:"Matrix_grid.picture_at") (fun () ->
+            ignore (Grid.picture_at g 8));
         equal ~msg:"its pixels" string
           (String.sub (Grid.picture_rgba p) 0 4)
           "\t\b\007\255";
@@ -2898,10 +2896,11 @@ let picture_tests =
   ]
 
 let () =
-  run "matrix.grid"
-    [
-      group "grid" tests;
-      group "draw_spans" draw_spans_tests;
-      group "lines" lines_tests;
-      group "pictures" picture_tests;
-    ]
+  exit
+    (run "matrix.grid"
+       [
+         group "grid" tests;
+         group "draw_spans" draw_spans_tests;
+         group "lines" lines_tests;
+         group "pictures" picture_tests;
+       ])

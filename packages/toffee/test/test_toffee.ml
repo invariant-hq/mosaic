@@ -3301,146 +3301,150 @@ let test_whole_move_keeps_rounded_layouts () =
     (Layout.size (final leaf)).height
 
 let () =
-  run "Toffee Tests"
-    [
-      group "basic"
-        [
-          test "Create tree and node" test_create_tree;
-          test "Simple leaf layout" test_simple_leaf_layout;
-        ];
-      group "flexbox"
-        [
-          test "Flexbox row" test_flexbox_row;
-          test "Flexbox column" test_flexbox_column;
-          test "Flex grow" test_flex_grow;
-        ];
-      group "spacing" [ test "Padding" test_padding; test "Margin" test_margin ];
-      group "sizing"
-        [
-          test "Aspect ratio" test_aspect_ratio;
-          test "Box sizing" test_box_sizing;
-        ];
-      group "caching"
-        [
-          test "Measure count flexbox" test_measure_count_flexbox;
-          test "Measure count grid" test_measure_count_grid;
-          test "Measure count flex in grid" test_measure_count_flex_in_grid;
-          test "Second chance eviction" test_cache_second_chance;
-          test "Update in place" test_cache_update_in_place;
-          test "A hit allocates nothing" test_cache_hit_allocates_nothing;
-          test "Margin collapse not cached"
-            test_cache_margin_collapse_not_cached;
-          test "A known size is not an available space"
-            test_cache_known_size_is_not_available_space;
-          test "Mode and axis" test_cache_mode_and_axis;
-          test "Width measure does not answer height"
-            test_cache_width_measure_does_not_answer_height;
-          test "Maximum height follows the parent height"
-            test_cache_max_height_follows_parent_height;
-          test "Minimum height follows the parent height"
-            test_cache_min_height_follows_parent_height;
-          test "Block measurement keeps its children's layouts"
-            test_block_measurement_keeps_child_layouts;
-          test "Block measurement lays out its children"
-            test_block_measurement_lays_out_children;
-          test "Baseline measurement lays out the items"
-            test_baseline_measurement_lays_out_items;
-          test "Grid baseline measurement lays out the items"
-            test_grid_baseline_measurement_lays_out_items;
-          prop ~count:1000 "Every cache hit is a computation" Gen.int
-            every_cache_hit_is_a_computation;
-          test "A chunk keeps its final layout" test_chunk_keeps_final_layout;
-          test "A hidden child is laid out hidden again"
-            test_hidden_child_relaid_out;
-          prop ~count:1000 "A relayout is a fresh layout" Gen.int
-            relayout_is_fresh_layout;
-          test "A layout below the root, then of the root"
-            test_layout_below_root_then_root;
-          test "A layout asked again does nothing"
-            test_layout_asked_again_does_nothing;
-          test "A change between layouts is laid out"
-            test_change_between_layouts_is_laid_out;
-          prop ~count:2000 "A leaf's measurement is its final layout" Gen.int
-            (leaf_measurement_is_its_final_layout ~replaced:false);
-          prop ~count:2000 "A replaced leaf's measurement is its final layout"
-            Gen.int
-            (leaf_measurement_is_its_final_layout ~replaced:true);
-          test "A padded text is measured as it is laid out"
-            test_padded_text_measured_as_laid_out;
-          test "A replaced leaf transfers its size through its ratio"
-            test_replaced_leaf_transfers_its_size;
-          test "A block keeps a replaced child's natural size"
-            test_block_keeps_replaced_natural_size;
-          test "A grid's normal alignment keeps a replaced item's natural size"
-            test_grid_normal_keeps_replaced_natural_size;
-          test "A flex container stretches a replaced item"
-            test_flex_stretches_replaced_item;
-          test "Percentages follow a resized root"
-            test_percentages_follow_a_resized_root;
-        ];
-      group "automatic_minimum"
-        [
-          test "A definite item is not measured at min-content"
-            test_definite_item_not_measured_at_min_content;
-          prop ~count:2000 "An automatic minimum is its value" Gen.int
-            automatic_minimum_is_its_value;
-        ];
-      group "min_max_overrides"
-        [
-          test "Min overrides max" test_min_overrides_max;
-          test "Max overrides size" test_max_overrides_size;
-          test "Min overrides size" test_min_overrides_size;
-          test "Max width clamps measured wrap"
-            test_max_width_clamps_measured_wrap;
-        ];
-      group "root_constraints"
-        [
-          test "Root with percentage size" test_root_with_percentage_size;
-          test "Root with no size" test_root_with_no_size;
-          test "Root with larger size" test_root_with_larger_size;
-          test "Root padding and border larger than size"
-            test_root_padding_and_border_larger_than_definite_size;
-        ];
-      group "rounding"
-        [
-          test "Rounding without gaps" test_rounding_doesnt_leave_gaps;
-          prop ~count:300 "Incremental rounding matches full rounding" Gen.int
-            incremental_rounding_matches_full_rounding;
-          prop ~count:300 "Incremental rounding of whole layouts" Gen.int
-            (incremental_rounding_matches_full_rounding ~whole:true);
-          test "Rects resolve side by side" test_resolve_rects;
-          test "A whole move keeps rounded layouts"
-            test_whole_move_keeps_rounded_layouts;
-          prop ~count:300 "Drawn edges are the rounded edges" Gen.int
-            drawn_edges_are_rounded_edges;
-          test "Equal relayout keeps layouts" test_equal_relayout_keeps_layouts;
-          test "Moved child rounded at its new position"
-            test_moved_child_rounded_at_new_position;
-        ];
-      group "display_none"
-        [
-          test "Toggle root display none" test_toggle_root_display_none;
-          test "Toggle root display none with children"
-            test_toggle_root_display_none_with_children;
-          test "Toggle flex child display none"
-            test_toggle_flex_child_display_none;
-          test "Toggle flex container display none"
-            test_toggle_flex_container_display_none;
-          test "Toggle grid child display none"
-            test_toggle_grid_child_display_none;
-          test "A node moved into a hidden subtree is hidden"
-            test_moved_into_hidden_subtree_is_hidden;
-        ];
-      group "relayout" [ test "Relayout is stable" test_relayout_stable ];
-      group "children"
-        [
-          prop ~count:500 "retain_children is remove_child, one by one" Gen.int
-            retain_children_is_remove_child;
-          test "retain_children when the choice raises"
-            test_retain_children_choice_raises;
-          test "retain_children of an invalid parent"
-            test_retain_children_invalid_parent;
-          test "retain_children allocates nothing per child"
-            test_retain_children_allocation;
-        ];
-    ]
+  exit
+    (run "Toffee Tests"
+       [
+         group "basic"
+           [
+             test "Create tree and node" test_create_tree;
+             test "Simple leaf layout" test_simple_leaf_layout;
+           ];
+         group "flexbox"
+           [
+             test "Flexbox row" test_flexbox_row;
+             test "Flexbox column" test_flexbox_column;
+             test "Flex grow" test_flex_grow;
+           ];
+         group "spacing"
+           [ test "Padding" test_padding; test "Margin" test_margin ];
+         group "sizing"
+           [
+             test "Aspect ratio" test_aspect_ratio;
+             test "Box sizing" test_box_sizing;
+           ];
+         group "caching"
+           [
+             test "Measure count flexbox" test_measure_count_flexbox;
+             test "Measure count grid" test_measure_count_grid;
+             test "Measure count flex in grid" test_measure_count_flex_in_grid;
+             test "Second chance eviction" test_cache_second_chance;
+             test "Update in place" test_cache_update_in_place;
+             test "A hit allocates nothing" test_cache_hit_allocates_nothing;
+             test "Margin collapse not cached"
+               test_cache_margin_collapse_not_cached;
+             test "A known size is not an available space"
+               test_cache_known_size_is_not_available_space;
+             test "Mode and axis" test_cache_mode_and_axis;
+             test "Width measure does not answer height"
+               test_cache_width_measure_does_not_answer_height;
+             test "Maximum height follows the parent height"
+               test_cache_max_height_follows_parent_height;
+             test "Minimum height follows the parent height"
+               test_cache_min_height_follows_parent_height;
+             test "Block measurement keeps its children's layouts"
+               test_block_measurement_keeps_child_layouts;
+             test "Block measurement lays out its children"
+               test_block_measurement_lays_out_children;
+             test "Baseline measurement lays out the items"
+               test_baseline_measurement_lays_out_items;
+             test "Grid baseline measurement lays out the items"
+               test_grid_baseline_measurement_lays_out_items;
+             prop ~count:1000 "Every cache hit is a computation" Gen.int
+               every_cache_hit_is_a_computation;
+             test "A chunk keeps its final layout" test_chunk_keeps_final_layout;
+             test "A hidden child is laid out hidden again"
+               test_hidden_child_relaid_out;
+             prop ~count:1000 "A relayout is a fresh layout" Gen.int
+               relayout_is_fresh_layout;
+             test "A layout below the root, then of the root"
+               test_layout_below_root_then_root;
+             test "A layout asked again does nothing"
+               test_layout_asked_again_does_nothing;
+             test "A change between layouts is laid out"
+               test_change_between_layouts_is_laid_out;
+             prop ~count:2000 "A leaf's measurement is its final layout" Gen.int
+               (leaf_measurement_is_its_final_layout ~replaced:false);
+             prop ~count:2000
+               "A replaced leaf's measurement is its final layout" Gen.int
+               (leaf_measurement_is_its_final_layout ~replaced:true);
+             test "A padded text is measured as it is laid out"
+               test_padded_text_measured_as_laid_out;
+             test "A replaced leaf transfers its size through its ratio"
+               test_replaced_leaf_transfers_its_size;
+             test "A block keeps a replaced child's natural size"
+               test_block_keeps_replaced_natural_size;
+             test
+               "A grid's normal alignment keeps a replaced item's natural size"
+               test_grid_normal_keeps_replaced_natural_size;
+             test "A flex container stretches a replaced item"
+               test_flex_stretches_replaced_item;
+             test "Percentages follow a resized root"
+               test_percentages_follow_a_resized_root;
+           ];
+         group "automatic_minimum"
+           [
+             test "A definite item is not measured at min-content"
+               test_definite_item_not_measured_at_min_content;
+             prop ~count:2000 "An automatic minimum is its value" Gen.int
+               automatic_minimum_is_its_value;
+           ];
+         group "min_max_overrides"
+           [
+             test "Min overrides max" test_min_overrides_max;
+             test "Max overrides size" test_max_overrides_size;
+             test "Min overrides size" test_min_overrides_size;
+             test "Max width clamps measured wrap"
+               test_max_width_clamps_measured_wrap;
+           ];
+         group "root_constraints"
+           [
+             test "Root with percentage size" test_root_with_percentage_size;
+             test "Root with no size" test_root_with_no_size;
+             test "Root with larger size" test_root_with_larger_size;
+             test "Root padding and border larger than size"
+               test_root_padding_and_border_larger_than_definite_size;
+           ];
+         group "rounding"
+           [
+             test "Rounding without gaps" test_rounding_doesnt_leave_gaps;
+             prop ~count:300 "Incremental rounding matches full rounding"
+               Gen.int incremental_rounding_matches_full_rounding;
+             prop ~count:300 "Incremental rounding of whole layouts" Gen.int
+               (incremental_rounding_matches_full_rounding ~whole:true);
+             test "Rects resolve side by side" test_resolve_rects;
+             test "A whole move keeps rounded layouts"
+               test_whole_move_keeps_rounded_layouts;
+             prop ~count:300 "Drawn edges are the rounded edges" Gen.int
+               drawn_edges_are_rounded_edges;
+             test "Equal relayout keeps layouts"
+               test_equal_relayout_keeps_layouts;
+             test "Moved child rounded at its new position"
+               test_moved_child_rounded_at_new_position;
+           ];
+         group "display_none"
+           [
+             test "Toggle root display none" test_toggle_root_display_none;
+             test "Toggle root display none with children"
+               test_toggle_root_display_none_with_children;
+             test "Toggle flex child display none"
+               test_toggle_flex_child_display_none;
+             test "Toggle flex container display none"
+               test_toggle_flex_container_display_none;
+             test "Toggle grid child display none"
+               test_toggle_grid_child_display_none;
+             test "A node moved into a hidden subtree is hidden"
+               test_moved_into_hidden_subtree_is_hidden;
+           ];
+         group "relayout" [ test "Relayout is stable" test_relayout_stable ];
+         group "children"
+           [
+             prop ~count:500 "retain_children is remove_child, one by one"
+               Gen.int retain_children_is_remove_child;
+             test "retain_children when the choice raises"
+               test_retain_children_choice_raises;
+             test "retain_children of an invalid parent"
+               test_retain_children_invalid_parent;
+             test "retain_children allocates nothing per child"
+               test_retain_children_allocation;
+           ];
+       ])

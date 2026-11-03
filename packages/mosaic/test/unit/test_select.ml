@@ -1086,153 +1086,158 @@ let paint_selected_background () =
     (bg_is doors_red (cell_style r ~x:5 ~y:0))
 
 let () =
-  run "mosaic.select"
-    [
-      group "Paint"
-        [
-          test "legible on a light terminal" paint_legible_on_light;
-          test "focus shows at every styling" paint_focus_shows;
-          test "the selected item's mark" paint_marks;
-          test "selected_background" paint_selected_background;
-        ];
-      group "Intrinsic sizing"
-        [
-          test "content, descriptions and spacing" intrinsic_content_size;
-          test "available and known dimensions" intrinsic_constraints;
-          test "option changes invalidate size" intrinsic_options_invalidation;
-          test "terminal width policy" intrinsic_width_policy;
-          test "last item needs no trailing gap"
-            intrinsic_spacing_paints_last_item;
-        ];
-      group "Typed bindings"
-        [
-          test "exact modifiers, repeat, release and base layout"
-            bindings_use_exact_key_events;
-          test "custom bindings override and update"
-            custom_bindings_override_and_update;
-          test "raw handlers prevent navigation"
-            raw_handler_can_prevent_navigation;
-        ];
-      test "proposals do not drift" proposals_do_not_drift;
-      test "absent selection is preserved" absent_selection_is_preserved;
-      group "Props"
-        [
-          test "default values" props_defaults;
-          test "equal on identical" props_equal_identical;
-          test "detects options difference" props_detects_options_diff;
-          test "detects selected_index difference"
-            props_detects_selected_index_diff;
-          test "detects wrap difference" props_detects_wrap_diff;
-          test "detects color difference" props_detects_color_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "is focusable" create_is_focusable;
-          test "is buffered" create_is_buffered;
-          test "clamps initial index" create_clamps_initial_index;
-          test "empty list has no selection" create_empty_list_has_no_selection;
-        ];
-      group "Selection"
-        [
-          test "set_selected_index clamps" set_selected_index_clamps;
-          test "fires on_change" set_selected_index_fires_on_change;
-          test "no-op on same index" set_selected_index_noop_same;
-          test "selected_item returns item" selected_item_returns_item;
-          test "selected_item empty list" selected_item_empty_list;
-        ];
-      group "Navigation"
-        [
-          test "move down" move_down_basic;
-          test "move up" move_up_basic;
-          test "j moves down" move_down_j;
-          test "k moves up" move_up_k;
-          test "no wrap at end" move_down_no_wrap;
-          test "no wrap at start" move_up_no_wrap;
-          test "wrap at end" move_down_wrap;
-          test "wrap at start" move_up_wrap;
-          test "fast scroll down" fast_scroll_down;
-          test "fast scroll up" fast_scroll_up;
-          test "enter fires on_activate" enter_fires_on_activate;
-          test "KP_enter fires on_activate" kp_enter_fires_on_activate;
-          test "on_change fires on key navigation"
-            on_change_fires_on_key_navigation;
-          test "on_activate on empty list" on_activate_empty_list;
-          test "unhandled key ignored" unhandled_key_ignored;
-          test "navigation on empty list" navigation_on_empty_list;
-          test "single option navigation" single_option_navigation;
-          test "fast scroll clamps past end" fast_scroll_clamps_past_end;
-          test "fast scroll clamps past start" fast_scroll_clamps_past_start;
-        ];
-      group "Mouse"
-        [
-          test "click selects item" mouse_click_selects_item;
-          test "click uses local coordinates" mouse_click_uses_local_coordinates;
-          test "click fires on_change" mouse_click_fires_on_change;
-          test "click same item no-op" mouse_click_same_item_noop;
-          test "click beyond items ignored" mouse_click_beyond_items_ignored;
-          test "scroll down moves" mouse_scroll_down_moves;
-          test "scroll up moves" mouse_scroll_up_moves;
-          test "click stops propagation" mouse_click_stops_propagation;
-        ];
-      group "Options"
-        [
-          test "set_options replaces" set_options_replaces;
-          test "set_options clamps index" set_options_clamps_index;
-          test "set_options empty" set_options_empty;
-          test "set_options preserves valid index"
-            set_options_preserves_valid_index;
-          test "set_options does not fire on_change"
-            set_options_does_not_fire_on_change;
-        ];
-      group "Setter no-ops"
-        [
-          test "set_background no-op" set_background_noop;
-          test "set_wrap_selection no-op" set_wrap_noop;
-          test "set_show_description no-op" set_show_description_noop;
-          test "set_item_spacing no-op" set_item_spacing_noop;
-          test "set_text_color no-op" set_text_color_noop;
-          test "set_focused_background no-op" set_focused_background_noop;
-          test "set_selected_text_color no-op" set_selected_text_color_noop;
-          test "set_fast_scroll_step no-op" set_fast_scroll_step_noop;
-        ];
-      group "Setter positive"
-        [
-          test "toggle show_description" set_show_description_toggle;
-          test "toggle show_scroll_indicator" set_show_scroll_indicator_toggle;
-          test "wrap_selection enables wrapping"
-            set_wrap_selection_enables_wrapping;
-          test "item_spacing schedules render" set_item_spacing_schedules;
-          test "fast_scroll_step changes behavior"
-            set_fast_scroll_step_changes_behavior;
-        ];
-      group "apply_props"
-        [
-          test "updates all properties" apply_props_updates;
-          test "same options no extra render"
-            apply_props_same_options_no_extra_render;
-          test "preserves uncontrolled selection"
-            apply_props_restores_declared_selection;
-          test "controlled selection is silent"
-            apply_props_controlled_selection_is_silent;
-        ];
-      group "Both doors"
-        [
-          test "options" doors_options;
-          test "selected_index" doors_selected_index;
-          test "background" doors_background;
-          test "text_color" doors_text_color;
-          test "focused_background" doors_focused_background;
-          test "focused_text_color" doors_focused_text_color;
-          test "selected_background" doors_selected_background;
-          test "selected_text_color" doors_selected_text_color;
-          test "description_color" doors_description_color;
-          test "selected_description_color" doors_selected_description_color;
-          test "show_description" doors_show_description;
-          test "show_scroll_indicator" doors_show_scroll_indicator;
-          test "wrap_selection" doors_wrap_selection;
-          test "item_spacing" doors_item_spacing;
-          test "fast_scroll_step" doors_fast_scroll_step;
-          test "key_bindings" doors_key_bindings;
-        ];
-    ]
+  exit
+    (run "mosaic.select"
+       [
+         group "Paint"
+           [
+             test "legible on a light terminal" paint_legible_on_light;
+             test "focus shows at every styling" paint_focus_shows;
+             test "the selected item's mark" paint_marks;
+             test "selected_background" paint_selected_background;
+           ];
+         group "Intrinsic sizing"
+           [
+             test "content, descriptions and spacing" intrinsic_content_size;
+             test "available and known dimensions" intrinsic_constraints;
+             test "option changes invalidate size"
+               intrinsic_options_invalidation;
+             test "terminal width policy" intrinsic_width_policy;
+             test "last item needs no trailing gap"
+               intrinsic_spacing_paints_last_item;
+           ];
+         group "Typed bindings"
+           [
+             test "exact modifiers, repeat, release and base layout"
+               bindings_use_exact_key_events;
+             test "custom bindings override and update"
+               custom_bindings_override_and_update;
+             test "raw handlers prevent navigation"
+               raw_handler_can_prevent_navigation;
+           ];
+         test "proposals do not drift" proposals_do_not_drift;
+         test "absent selection is preserved" absent_selection_is_preserved;
+         group "Props"
+           [
+             test "default values" props_defaults;
+             test "equal on identical" props_equal_identical;
+             test "detects options difference" props_detects_options_diff;
+             test "detects selected_index difference"
+               props_detects_selected_index_diff;
+             test "detects wrap difference" props_detects_wrap_diff;
+             test "detects color difference" props_detects_color_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "is focusable" create_is_focusable;
+             test "is buffered" create_is_buffered;
+             test "clamps initial index" create_clamps_initial_index;
+             test "empty list has no selection"
+               create_empty_list_has_no_selection;
+           ];
+         group "Selection"
+           [
+             test "set_selected_index clamps" set_selected_index_clamps;
+             test "fires on_change" set_selected_index_fires_on_change;
+             test "no-op on same index" set_selected_index_noop_same;
+             test "selected_item returns item" selected_item_returns_item;
+             test "selected_item empty list" selected_item_empty_list;
+           ];
+         group "Navigation"
+           [
+             test "move down" move_down_basic;
+             test "move up" move_up_basic;
+             test "j moves down" move_down_j;
+             test "k moves up" move_up_k;
+             test "no wrap at end" move_down_no_wrap;
+             test "no wrap at start" move_up_no_wrap;
+             test "wrap at end" move_down_wrap;
+             test "wrap at start" move_up_wrap;
+             test "fast scroll down" fast_scroll_down;
+             test "fast scroll up" fast_scroll_up;
+             test "enter fires on_activate" enter_fires_on_activate;
+             test "KP_enter fires on_activate" kp_enter_fires_on_activate;
+             test "on_change fires on key navigation"
+               on_change_fires_on_key_navigation;
+             test "on_activate on empty list" on_activate_empty_list;
+             test "unhandled key ignored" unhandled_key_ignored;
+             test "navigation on empty list" navigation_on_empty_list;
+             test "single option navigation" single_option_navigation;
+             test "fast scroll clamps past end" fast_scroll_clamps_past_end;
+             test "fast scroll clamps past start" fast_scroll_clamps_past_start;
+           ];
+         group "Mouse"
+           [
+             test "click selects item" mouse_click_selects_item;
+             test "click uses local coordinates"
+               mouse_click_uses_local_coordinates;
+             test "click fires on_change" mouse_click_fires_on_change;
+             test "click same item no-op" mouse_click_same_item_noop;
+             test "click beyond items ignored" mouse_click_beyond_items_ignored;
+             test "scroll down moves" mouse_scroll_down_moves;
+             test "scroll up moves" mouse_scroll_up_moves;
+             test "click stops propagation" mouse_click_stops_propagation;
+           ];
+         group "Options"
+           [
+             test "set_options replaces" set_options_replaces;
+             test "set_options clamps index" set_options_clamps_index;
+             test "set_options empty" set_options_empty;
+             test "set_options preserves valid index"
+               set_options_preserves_valid_index;
+             test "set_options does not fire on_change"
+               set_options_does_not_fire_on_change;
+           ];
+         group "Setter no-ops"
+           [
+             test "set_background no-op" set_background_noop;
+             test "set_wrap_selection no-op" set_wrap_noop;
+             test "set_show_description no-op" set_show_description_noop;
+             test "set_item_spacing no-op" set_item_spacing_noop;
+             test "set_text_color no-op" set_text_color_noop;
+             test "set_focused_background no-op" set_focused_background_noop;
+             test "set_selected_text_color no-op" set_selected_text_color_noop;
+             test "set_fast_scroll_step no-op" set_fast_scroll_step_noop;
+           ];
+         group "Setter positive"
+           [
+             test "toggle show_description" set_show_description_toggle;
+             test "toggle show_scroll_indicator"
+               set_show_scroll_indicator_toggle;
+             test "wrap_selection enables wrapping"
+               set_wrap_selection_enables_wrapping;
+             test "item_spacing schedules render" set_item_spacing_schedules;
+             test "fast_scroll_step changes behavior"
+               set_fast_scroll_step_changes_behavior;
+           ];
+         group "apply_props"
+           [
+             test "updates all properties" apply_props_updates;
+             test "same options no extra render"
+               apply_props_same_options_no_extra_render;
+             test "preserves uncontrolled selection"
+               apply_props_restores_declared_selection;
+             test "controlled selection is silent"
+               apply_props_controlled_selection_is_silent;
+           ];
+         group "Both doors"
+           [
+             test "options" doors_options;
+             test "selected_index" doors_selected_index;
+             test "background" doors_background;
+             test "text_color" doors_text_color;
+             test "focused_background" doors_focused_background;
+             test "focused_text_color" doors_focused_text_color;
+             test "selected_background" doors_selected_background;
+             test "selected_text_color" doors_selected_text_color;
+             test "description_color" doors_description_color;
+             test "selected_description_color" doors_selected_description_color;
+             test "show_description" doors_show_description;
+             test "show_scroll_indicator" doors_show_scroll_indicator;
+             test "wrap_selection" doors_wrap_selection;
+             test "item_spacing" doors_item_spacing;
+             test "fast_scroll_step" doors_fast_scroll_step;
+             test "key_bindings" doors_key_bindings;
+           ];
+       ])

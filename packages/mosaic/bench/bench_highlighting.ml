@@ -63,34 +63,34 @@ let fresh_captures (renderer, code, content, first, second, style) =
 let exact = Sys.getenv_opt "THUMPER_MACHINE" = Some "exact"
 
 let () =
-  Thumper.run "highlighting"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words; promoted_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      ::
-      (if exact then []
-       else
-         [
-           Thumper.Budget.no_slower_than 0.05;
-           Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words
-             ~max_regression:0.5 ();
-         ]))
-    [
-      Thumper.bench_with_setup
-        ~setup:(fun () -> highlighted_code 100_000)
-        "theme-roundtrip/100kb-1000-ranges" repaint;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> highlighted_code 1_000_000)
-        "theme-roundtrip/1mb-1000-ranges" repaint;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> plain_code 100_000)
-        "capture-roundtrip/100kb-1000-ranges" fresh_captures;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> plain_code 1_000_000)
-        "capture-roundtrip/1mb-1000-ranges" fresh_captures;
-    ]
+  exit
+    (Thumper.run "highlighting"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else Thumper.Metric.[ wall_time; alloc_words; promoted_words ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         ::
+         (if exact then []
+          else
+            [
+              Thumper.Budget.no_slower_than 0.05;
+              Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words 0.5;
+            ]))
+       [
+         Thumper.bench_with_setup
+           ~setup:(fun () -> highlighted_code 100_000)
+           "theme-roundtrip/100kb-1000-ranges" repaint;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> highlighted_code 1_000_000)
+           "theme-roundtrip/1mb-1000-ranges" repaint;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> plain_code 100_000)
+           "capture-roundtrip/100kb-1000-ranges" fresh_captures;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> plain_code 1_000_000)
+           "capture-roundtrip/1mb-1000-ranges" fresh_captures;
+       ])

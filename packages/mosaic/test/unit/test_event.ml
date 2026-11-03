@@ -301,65 +301,66 @@ let scroll_direction_equal () =
 (* ── Runner ── *)
 
 let () =
-  run "mosaic.event"
-    [
-      group "Key"
-        [
-          test "of_input roundtrip" key_of_input_roundtrip;
-          test "fresh default not prevented" key_fresh_default;
-          test "prevent_default sets flag" key_prevent_default;
-          test "prevent_default is sticky" key_prevent_default_sticky;
-          test "equal ignores dispatch control" key_equal_ignores_dispatch;
-          test "equal detects different keys" key_equal_different_keys;
-        ];
-      group "Paste"
-        [
-          test "of_text roundtrip" paste_roundtrip;
-          test "fresh dispatch state" paste_fresh_dispatch;
-          test "prevent_default sets flag" paste_prevent_default;
-          test "equal compares text only" paste_equal_text_only;
-          test "equal detects different text" paste_equal_different;
-          test "empty paste" paste_empty;
-        ];
-      group "Mouse construction"
-        [
-          test "make stores fields" mouse_make_stores_fields;
-          test "target defaults to None" mouse_target_default;
-          test "target Some when provided" mouse_target_some;
-          test "fresh dispatch state" mouse_fresh_dispatch;
-          test "dispatch control" mouse_dispatch_control;
-          test "as a node sees it" mouse_at_node;
-        ];
-      group "Mouse equality"
-        [
-          test "ignores dispatch control" mouse_equal_ignores_dispatch;
-          test "detects different kind" mouse_equal_different_kind;
-          test "detects different coordinates" mouse_equal_different_coords;
-          test "detects different modifiers" mouse_equal_different_mods;
-          test "detects different target" mouse_equal_different_target;
-          test "None vs Some target" mouse_equal_none_vs_some_target;
-        ];
-      group "Mouse button"
-        [
-          test "same named" button_same_named;
-          test "same numbered" button_same_numbered;
-          test "different" button_different;
-          test "named vs numbered" button_named_vs_numbered;
-        ];
-      group "Mouse kind"
-        [
-          test "Down" kind_down;
-          test "Up with dragged" kind_up;
-          test "Move" kind_move;
-          test "Drag" kind_drag;
-          test "Drag_end" kind_drag_end;
-          test "Drop with source" kind_drop;
-          test "Over with source" kind_over;
-          test "Out" kind_out;
-          test "Scroll" kind_scroll;
-          test "cross-variant" kind_cross_variant;
-          test "printing" kind_pp;
-        ];
-      group "Scroll direction"
-        [ test "equal and not equal" scroll_direction_equal ];
-    ]
+  exit
+    (run "mosaic.event"
+       [
+         group "Key"
+           [
+             test "of_input roundtrip" key_of_input_roundtrip;
+             test "fresh default not prevented" key_fresh_default;
+             test "prevent_default sets flag" key_prevent_default;
+             test "prevent_default is sticky" key_prevent_default_sticky;
+             test "equal ignores dispatch control" key_equal_ignores_dispatch;
+             test "equal detects different keys" key_equal_different_keys;
+           ];
+         group "Paste"
+           [
+             test "of_text roundtrip" paste_roundtrip;
+             test "fresh dispatch state" paste_fresh_dispatch;
+             test "prevent_default sets flag" paste_prevent_default;
+             test "equal compares text only" paste_equal_text_only;
+             test "equal detects different text" paste_equal_different;
+             test "empty paste" paste_empty;
+           ];
+         group "Mouse construction"
+           [
+             test "make stores fields" mouse_make_stores_fields;
+             test "target defaults to None" mouse_target_default;
+             test "target Some when provided" mouse_target_some;
+             test "fresh dispatch state" mouse_fresh_dispatch;
+             test "dispatch control" mouse_dispatch_control;
+             test "as a node sees it" mouse_at_node;
+           ];
+         group "Mouse equality"
+           [
+             test "ignores dispatch control" mouse_equal_ignores_dispatch;
+             test "detects different kind" mouse_equal_different_kind;
+             test "detects different coordinates" mouse_equal_different_coords;
+             test "detects different modifiers" mouse_equal_different_mods;
+             test "detects different target" mouse_equal_different_target;
+             test "None vs Some target" mouse_equal_none_vs_some_target;
+           ];
+         group "Mouse button"
+           [
+             test "same named" button_same_named;
+             test "same numbered" button_same_numbered;
+             test "different" button_different;
+             test "named vs numbered" button_named_vs_numbered;
+           ];
+         group "Mouse kind"
+           [
+             test "Down" kind_down;
+             test "Up with dragged" kind_up;
+             test "Move" kind_move;
+             test "Drag" kind_drag;
+             test "Drag_end" kind_drag_end;
+             test "Drop with source" kind_drop;
+             test "Over with source" kind_over;
+             test "Out" kind_out;
+             test "Scroll" kind_scroll;
+             test "cross-variant" kind_cross_variant;
+             test "printing" kind_pp;
+           ];
+         group "Scroll direction"
+           [ test "equal and not equal" scroll_direction_equal ];
+       ])

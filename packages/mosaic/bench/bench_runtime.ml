@@ -887,76 +887,77 @@ let startup_benches =
 let exact = Sys.getenv_opt "THUMPER_MACHINE" = Some "exact"
 
 let () =
-  Thumper.run "runtime"
-    ~config:
-      Thumper.Config.(
-        default |> deadline 300.
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words; promoted_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      ::
-      (if exact then []
-       else
-         [
-           Thumper.Budget.no_slower_than 0.05;
-           Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words
-             ~max_regression:0.5 ();
-         ]))
-    (* Per-input cost must not grow with mounted content: the 20,000-block
+  exit
+    (Thumper.run "runtime"
+       ~config:
+         Thumper.Config.(
+           default |> deadline 300.
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else Thumper.Metric.[ wall_time; alloc_words; promoted_words ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         ::
+         (if exact then []
+          else
+            [
+              Thumper.Budget.no_slower_than 0.05;
+              Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words 0.5;
+            ]))
+       (* Per-input cost must not grow with mounted content: the 20,000-block
        transcript repeats the input workloads. The primary-mode group runs them
        in an inline region shorter than the terminal. *)
-    (loop_benches :: startup_benches
-     :: (list_benches @ log_benches @ keyed_log_benches ~exact)
-    @ [
-        Thumper.group "nested-dialog"
-          [
-            Thumper.bench_with_setup
-              ~setup:
-                (setup_shape ~mode:`Alt ~blocks:5000 (nested ~mode:`Alt 5000)
-                   Keystroke)
-              ~teardown:close "type-and-erase" (measure Keystroke);
-          ];
-      ]
-    @ List.map
-        (fun (mode, blocks, workloads) ->
-          Thumper.group
-            (match mode with
-            | `Alt -> Printf.sprintf "transcript-%d" blocks
-            | `Primary -> Printf.sprintf "primary-transcript-%d" blocks)
-            (List.map
-               (fun (name, workload) ->
-                 Thumper.bench_with_setup
-                   ~setup:(setup ~mode ~blocks workload)
-                   ~teardown:close name (measure workload))
-               workloads))
-        [
-          ( `Alt,
-            5000,
-            [
-              ("type-and-erase", Keystroke);
-              ("wheel-roundtrip-2x8", Wheel_burst);
-              ("resize-roundtrip-249x69", Resize (249, 69));
-              ("resize-roundtrip-250x69", Resize (250, 69));
-              (* More widths than a node's layout cache keeps measurements
+       (loop_benches :: startup_benches
+        :: (list_benches @ log_benches @ keyed_log_benches ~exact)
+       @ [
+           Thumper.group "nested-dialog"
+             [
+               Thumper.bench_with_setup
+                 ~setup:
+                   (setup_shape ~mode:`Alt ~blocks:5000 (nested ~mode:`Alt 5000)
+                      Keystroke)
+                 ~teardown:close "type-and-erase" (measure Keystroke);
+             ];
+         ]
+       @ List.map
+           (fun (mode, blocks, workloads) ->
+             Thumper.group
+               (match mode with
+               | `Alt -> Printf.sprintf "transcript-%d" blocks
+               | `Primary -> Printf.sprintf "primary-transcript-%d" blocks)
+               (List.map
+                  (fun (name, workload) ->
+                    Thumper.bench_with_setup
+                      ~setup:(setup ~mode ~blocks workload)
+                      ~teardown:close name (measure workload))
+                  workloads))
+           [
+             ( `Alt,
+               5000,
+               [
+                 ("type-and-erase", Keystroke);
+                 ("wheel-roundtrip-2x8", Wheel_burst);
+                 ("resize-roundtrip-249x69", Resize (249, 69));
+                 ("resize-roundtrip-250x69", Resize (250, 69));
+                 (* More widths than a node's layout cache keeps measurements
                  for, so that every step lays out at a width the caches no
                  longer hold, as a user dragging a window's edge does. *)
-              ( Printf.sprintf "resize-sweep-%d-widths"
-                  (Toffee.Cache.cache_size + 1),
-                Sweep (Toffee.Cache.cache_size + 1) );
-            ] );
-          ( `Alt,
-            20000,
-            [
-              ("type-and-erase", Keystroke);
-              ("wheel-roundtrip-2x8", Wheel_burst);
-              ("resize-roundtrip-249x69", Resize (249, 69));
-              ("resize-roundtrip-250x69", Resize (250, 69));
-            ] );
-          ( `Primary,
-            5000,
-            [
-              ("type-and-erase", Keystroke); ("wheel-roundtrip-2x8", Wheel_burst);
-            ] );
-        ])
+                 ( Printf.sprintf "resize-sweep-%d-widths"
+                     (Toffee.Cache.cache_size + 1),
+                   Sweep (Toffee.Cache.cache_size + 1) );
+               ] );
+             ( `Alt,
+               20000,
+               [
+                 ("type-and-erase", Keystroke);
+                 ("wheel-roundtrip-2x8", Wheel_burst);
+                 ("resize-roundtrip-249x69", Resize (249, 69));
+                 ("resize-roundtrip-250x69", Resize (250, 69));
+               ] );
+             ( `Primary,
+               5000,
+               [
+                 ("type-and-erase", Keystroke);
+                 ("wheel-roundtrip-2x8", Wheel_burst);
+               ] );
+           ]))

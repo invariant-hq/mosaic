@@ -191,8 +191,8 @@ let color_gen ~bg =
   let open Gen in
   frequency
     [
-      (4, pure None);
-      (1, pure (Some (if bg then Color.default_bg else Color.default_fg)));
+      (4, constant None);
+      (1, constant (Some (if bg then Color.default_bg else Color.default_fg)));
       (3, map (fun i -> Some (Color.indexed i)) (int_range 0 255));
       ( 3,
         map3
@@ -234,10 +234,14 @@ let style_gen =
   let open Gen in
   let* fg = color_gen ~bg:false in
   let* bg = color_gen ~bg:true in
-  let* attrs = frequency [ (2, pure Ansi.Attr.empty); (3, attrs_gen) ] in
+  let* attrs = frequency [ (2, constant Ansi.Attr.empty); (3, attrs_gen) ] in
   let+ link =
     frequency
-      [ (5, pure None); (1, pure (Some "http://a")); (1, pure (Some "b:c")) ]
+      [
+        (5, constant None);
+        (1, constant (Some "http://a"));
+        (1, constant (Some "b:c"));
+      ]
   in
   let style = Ansi.Style.make ?fg ?bg ?link () in
   Ansi.Style.with_attrs attrs style
@@ -261,7 +265,7 @@ let op_gen ~cols ~rows =
         let+ color =
           frequency
             [
-              (1, pure Color.default_bg);
+              (1, constant Color.default_bg);
               (2, map Color.indexed (int_range 0 255));
               ( 1,
                 map3 Color.of_rgb (int_range 0 255) (int_range 0 255)
@@ -287,11 +291,11 @@ let cursor_gen ~cols ~rows =
   let* pos =
     frequency
       [
-        (1, pure None);
+        (1, constant None);
         (4, map2 (fun x y -> Some (x, y)) (int_range 0 cols) (int_range 0 rows));
       ]
   in
-  let* visible = frequency [ (1, pure false); (2, pure true) ] in
+  let* visible = frequency [ (1, constant false); (2, constant true) ] in
   let* style = of_list [ `Block; `Line; `Underline ] in
   let+ blinking = bool in
   { pos; visible; style; blinking }
@@ -301,7 +305,7 @@ let frame_gen ~mode ~max_cols ~max_rows ~min_cols ~min_rows (cols, rows) =
   let* size =
     frequency
       [
-        (3, pure None);
+        (3, constant None);
         ( 1,
           map2
             (fun c r -> Some (c, r))
@@ -313,17 +317,17 @@ let frame_gen ~mode ~max_cols ~max_rows ~min_cols ~min_rows (cols, rows) =
   let* suspend =
     frequency
       [
-        (6, pure None);
+        (6, constant None);
         (1, map (fun child -> Some { child }) (int_range 0 (rows + 1)));
       ]
   in
   let* statics =
     match mode with
-    | `Alt -> pure []
+    | `Alt -> constant []
     | `Primary ->
         frequency
           [
-            (3, pure []);
+            (3, constant []);
             ( 1,
               list ~size:(int_range 1 2)
                 (frequency
@@ -332,22 +336,23 @@ let frame_gen ~mode ~max_cols ~max_rows ~min_cols ~min_rows (cols, rows) =
                        map2
                          (fun rows preserve -> Write { rows; preserve })
                          (int_range 1 3)
-                         (frequency [ (3, pure false); (1, pure true) ]) );
+                         (frequency [ (3, constant false); (1, constant true) ])
+                     );
                      ( 1,
                        map2
                          (fun rows preserve -> Replace { rows; preserve })
                          (int_range 0 3) bool );
-                     (1, pure Clear_static);
+                     (1, constant Clear_static);
                    ]) );
           ]
   in
   let* scroll =
     match mode with
-    | `Primary -> pure None
+    | `Primary -> constant None
     | `Alt ->
         frequency
           [
-            (3, pure None);
+            (3, constant None);
             ( 1,
               map3
                 (fun top bottom delta ->
@@ -358,10 +363,10 @@ let frame_gen ~mode ~max_cols ~max_rows ~min_cols ~min_rows (cols, rows) =
   in
   let* required =
     match mode with
-    | `Alt -> pure None
+    | `Alt -> constant None
     | `Primary ->
         frequency
-          [ (2, pure None); (1, map Option.some (int_range 1 (rows + 1))) ]
+          [ (2, constant None); (1, map Option.some (int_range 1 (rows + 1))) ]
   in
   let* ops = list ~size:(int_range 0 8) (op_gen ~cols ~rows) in
   let+ cursor = cursor_gen ~cols ~rows in
@@ -369,7 +374,7 @@ let frame_gen ~mode ~max_cols ~max_rows ~min_cols ~min_rows (cols, rows) =
 
 let rec frames_gen ~mode ~max_cols ~max_rows ~min_cols ~min_rows size n =
   let open Gen in
-  if n = 0 then pure []
+  if n = 0 then constant []
   else
     let* frame, size =
       frame_gen ~mode ~max_cols ~max_rows ~min_cols ~min_rows size
@@ -390,23 +395,23 @@ let case_gen =
   let* cols = int_range min_cols max_cols in
   let* rows = int_range min_rows max_rows in
   let* shell =
-    match mode with `Alt -> pure 0 | `Primary -> int_range 0 (rows - 1)
+    match mode with `Alt -> constant 0 | `Primary -> int_range 0 (rows - 1)
   in
   let* prompt = bool in
   let* sync = bool in
   let* reposition = bool in
   let* min_live =
-    match mode with `Alt -> pure 1 | `Primary -> int_range 0 rows
+    match mode with `Alt -> constant 1 | `Primary -> int_range 0 rows
   in
   let* keep = bool in
   let* styling =
     frequency
       [
-        (4, pure `Truecolor);
-        (1, pure `Ansi256);
-        (1, pure `Ansi16);
-        (1, pure `Mono);
-        (1, pure `Plain);
+        (4, constant `Truecolor);
+        (1, constant `Ansi256);
+        (1, constant `Ansi16);
+        (1, constant `Mono);
+        (1, constant `Plain);
       ]
   in
   let* n = int_range 1 6 in
@@ -416,8 +421,9 @@ let case_gen =
   let* report =
     match (mode, width_method) with
     | `Alt, (`Unicode | `Wcwidth) ->
-        frequency [ (3, pure None); (1, map Option.some (int_range 0 (n - 1))) ]
-    | _ -> pure None
+        frequency
+          [ (3, constant None); (1, map Option.some (int_range 0 (n - 1))) ]
+    | _ -> constant None
   in
   let+ frames =
     frames_gen ~mode ~max_cols ~max_rows ~min_cols ~min_rows (cols, rows) n
@@ -1113,12 +1119,13 @@ let run_case case =
   if primary then check_end r
 
 let () =
-  run "matrix.render.props"
-    [
-      group "oracle"
-        [
-          prop ~count:(count 2000) "the terminal shows each frame"
-            (Gen.with_pp pp_case case_gen)
-            run_case;
-        ];
-    ]
+  exit
+    (run "matrix.render.props"
+       [
+         group "oracle"
+           [
+             prop ~count:(count 2000) "the terminal shows each frame"
+               (Gen.with_pp pp_case case_gen)
+               run_case;
+           ];
+       ])

@@ -876,129 +876,18 @@ let step f editor =
   editor := f before;
   before
 
+(* Moves the model by [next], returning the previous value. *)
+let advance next model =
+  let before = !model in
+  model := next before;
+  before
+
 let caret_moved before after =
   (Editor.cursor before, Editor.selection before)
   <> (Editor.cursor after, Editor.selection after)
 
-let commands =
-  [
-    command "insert" gen_insert ~next:inserted_model (fun m s editor ->
-        let before = step (Editor.insert s) editor in
-        equal ~msg:"insert changes the text iff the model does" bool
-          ((inserted_model m s).text <> m.text)
-          (text_changed before !editor));
-    call "delete_backward"
-      ~next:(fun m ->
-        match delete_selection m Deleting_backward with
-        | Some m -> m
-        | None ->
-            if m.cursor = 0 then m
-            else
-              let m = save m (Some Deleting_backward) in
-              {
-                m with
-                text = drop_range m.text (m.cursor - 1) m.cursor;
-                cursor = m.cursor - 1;
-                anchor = None;
-              })
-      (fun m editor ->
-        let before = step Editor.delete_backward editor in
-        equal ~msg:"delete_backward changes the text" bool
-          (model_selection m <> None || m.cursor > 0)
-          (text_changed before !editor));
-    call "delete_forward"
-      ~next:(fun m ->
-        match delete_selection m Deleting_forward with
-        | Some m -> m
-        | None ->
-            if m.cursor >= model_length m then m
-            else
-              let m = save m (Some Deleting_forward) in
-              {
-                m with
-                text = drop_range m.text m.cursor (m.cursor + 1);
-                anchor = None;
-              })
-      (fun m editor ->
-        let before = step Editor.delete_forward editor in
-        equal ~msg:"delete_forward changes the text" bool
-          (model_selection m <> None || m.cursor < model_length m)
-          (text_changed before !editor));
-    command "move_left" Gen.bool
-      ~next:(fun m select ->
-        without_edit m
-          (match model_selection m with
-          | Some (lo, _) when not select ->
-              { m with cursor = lo; anchor = None }
-          | _ -> move_to m ~select (max 0 (m.cursor - 1))))
-      (fun m select editor ->
-        let before = step (Editor.move_left ~select) editor in
-        equal ~msg:"move_left moves the cursor or selection" bool
-          ((model_selection m <> None && not select) || m.cursor > 0)
-          (caret_moved before !editor));
-    command "move_right" Gen.bool
-      ~next:(fun m select ->
-        without_edit m
-          (match model_selection m with
-          | Some (_, hi) when not select ->
-              { m with cursor = hi; anchor = None }
-          | _ -> move_to m ~select (min (model_length m) (m.cursor + 1))))
-      (fun m select editor ->
-        let before = step (Editor.move_right ~select) editor in
-        equal ~msg:"move_right moves the cursor or selection" bool
-          ((model_selection m <> None && not select)
-          || m.cursor < model_length m)
-          (caret_moved before !editor));
-    command "set_cursor"
-      (Gen.pair gen_offset Gen.bool)
-      ~next:(fun m (pos, select) ->
-        without_edit m (move_to m ~select (clamp m pos)))
-      (fun _ (pos, select) editor ->
-        ignore (step (Editor.set_cursor ~select pos) editor : Editor.t));
-    call "select_all"
-      ~next:(fun m ->
-        let cursor = model_length m in
-        without_edit m { m with cursor; anchor = anchor_of ~cursor (Some 0) })
-      (fun _ editor -> ignore (step Editor.select_all editor : Editor.t));
-    call "clear_selection"
-      ~next:(fun m -> without_edit m { m with anchor = None })
-      (fun _ editor -> ignore (step Editor.clear_selection editor : Editor.t));
-    call "undo"
-      ~next:(fun m ->
-        match m.undo with
-        | [] -> m
-        | snap :: rest ->
-            {
-              (restore m snap) with
-              undo = rest;
-              redo = snapshot_of m :: m.redo;
-              open_kind = None;
-            })
-      (fun m editor ->
-        let before = step Editor.undo editor in
-        equal ~msg:"undo changes the text iff there is history" bool
-          (m.undo <> [])
-          (text_changed before !editor));
-    call "redo"
-      ~next:(fun m ->
-        match m.redo with
-        | [] -> m
-        | snap :: rest ->
-            {
-              (restore m snap) with
-              redo = rest;
-              undo = snapshot_of m :: m.undo;
-              open_kind = None;
-            })
-      (fun m editor ->
-        let before = step Editor.redo editor in
-        equal ~msg:"redo changes the text iff there is history" bool
-          (m.redo <> [])
-          (text_changed before !editor));
-  ]
-
-let model_invariant m editor =
-  let e = !editor in
+let model_invariant model editor =
+  let m = !model and e = !editor in
   equal ~msg:"text" string m.text (Editor.text e);
   equal ~msg:"length" int (model_length m) (Editor.length e);
   equal ~msg:"cursor" int m.cursor (Editor.cursor e);
@@ -1014,6 +903,200 @@ let model_invariant m editor =
   cover "a selection is live" (model_selection m <> None);
   cover "undo history is non-empty" (m.undo <> []);
   cover "redo history is non-empty" (m.redo <> [])
+
+(* The model is the reference side of an editor, the editor under test its
+   system side. The invariant compares them after every call. *)
+let editor =
+  abstract "e"
+    ~pp:(fun ppf model -> pp_model ppf !model)
+    ~invariant:model_invariant
+
+(* Each command moves the model and states, from the model before the call,
+   what the call does to the editor: whether its text changes or its caret
+   moves. The system's answer is read from the editor before and after. *)
+let commands =
+  [
+    command "empty"
+      (Gen.unit @-> makes editor)
+      (fun () ->
+        ref
+          {
+            text = "";
+            cursor = 0;
+            anchor = None;
+            undo = [];
+            redo = [];
+            open_kind = None;
+          })
+      (fun () -> ref Editor.empty);
+    (* insert changes the text iff the model does. *)
+    command "insert"
+      (editor ^-> gen_insert @-> returns bool)
+      (fun model s ->
+        let m = advance (fun m -> inserted_model m s) model in
+        (inserted_model m s).text <> m.text)
+      (fun editor s ->
+        let before = step (Editor.insert s) editor in
+        text_changed before !editor);
+    (* delete_backward changes the text. *)
+    command "delete_backward"
+      (editor ^-> returns bool)
+      (fun model ->
+        let m =
+          advance
+            (fun m ->
+              match delete_selection m Deleting_backward with
+              | Some m -> m
+              | None ->
+                  if m.cursor = 0 then m
+                  else
+                    let m = save m (Some Deleting_backward) in
+                    {
+                      m with
+                      text = drop_range m.text (m.cursor - 1) m.cursor;
+                      cursor = m.cursor - 1;
+                      anchor = None;
+                    })
+            model
+        in
+        model_selection m <> None || m.cursor > 0)
+      (fun editor ->
+        let before = step Editor.delete_backward editor in
+        text_changed before !editor);
+    (* delete_forward changes the text. *)
+    command "delete_forward"
+      (editor ^-> returns bool)
+      (fun model ->
+        let m =
+          advance
+            (fun m ->
+              match delete_selection m Deleting_forward with
+              | Some m -> m
+              | None ->
+                  if m.cursor >= model_length m then m
+                  else
+                    let m = save m (Some Deleting_forward) in
+                    {
+                      m with
+                      text = drop_range m.text m.cursor (m.cursor + 1);
+                      anchor = None;
+                    })
+            model
+        in
+        model_selection m <> None || m.cursor < model_length m)
+      (fun editor ->
+        let before = step Editor.delete_forward editor in
+        text_changed before !editor);
+    (* move_left moves the cursor or selection. *)
+    command "move_left"
+      (editor ^-> Gen.bool @-> returns bool)
+      (fun model select ->
+        let m =
+          advance
+            (fun m ->
+              without_edit m
+                (match model_selection m with
+                | Some (lo, _) when not select ->
+                    { m with cursor = lo; anchor = None }
+                | _ -> move_to m ~select (max 0 (m.cursor - 1))))
+            model
+        in
+        (model_selection m <> None && not select) || m.cursor > 0)
+      (fun editor select ->
+        let before = step (Editor.move_left ~select) editor in
+        caret_moved before !editor);
+    (* move_right moves the cursor or selection. *)
+    command "move_right"
+      (editor ^-> Gen.bool @-> returns bool)
+      (fun model select ->
+        let m =
+          advance
+            (fun m ->
+              without_edit m
+                (match model_selection m with
+                | Some (_, hi) when not select ->
+                    { m with cursor = hi; anchor = None }
+                | _ -> move_to m ~select (min (model_length m) (m.cursor + 1))))
+            model
+        in
+        (model_selection m <> None && not select) || m.cursor < model_length m)
+      (fun editor select ->
+        let before = step (Editor.move_right ~select) editor in
+        caret_moved before !editor);
+    command "set_cursor"
+      (editor ^-> Gen.pair gen_offset Gen.bool @-> returns unit)
+      (fun model (pos, select) ->
+        ignore
+          (advance
+             (fun m -> without_edit m (move_to m ~select (clamp m pos)))
+             model
+            : model))
+      (fun editor (pos, select) ->
+        ignore (step (Editor.set_cursor ~select pos) editor : Editor.t));
+    command "select_all"
+      (editor ^-> returns unit)
+      (fun model ->
+        ignore
+          (advance
+             (fun m ->
+               let cursor = model_length m in
+               without_edit m
+                 { m with cursor; anchor = anchor_of ~cursor (Some 0) })
+             model
+            : model))
+      (fun editor -> ignore (step Editor.select_all editor : Editor.t));
+    command "clear_selection"
+      (editor ^-> returns unit)
+      (fun model ->
+        ignore
+          (advance (fun m -> without_edit m { m with anchor = None }) model
+            : model))
+      (fun editor -> ignore (step Editor.clear_selection editor : Editor.t));
+    (* undo changes the text iff there is history. *)
+    command "undo"
+      (editor ^-> returns bool)
+      (fun model ->
+        let m =
+          advance
+            (fun m ->
+              match m.undo with
+              | [] -> m
+              | snap :: rest ->
+                  {
+                    (restore m snap) with
+                    undo = rest;
+                    redo = snapshot_of m :: m.redo;
+                    open_kind = None;
+                  })
+            model
+        in
+        m.undo <> [])
+      (fun editor ->
+        let before = step Editor.undo editor in
+        text_changed before !editor);
+    (* redo changes the text iff there is history. *)
+    command "redo"
+      (editor ^-> returns bool)
+      (fun model ->
+        let m =
+          advance
+            (fun m ->
+              match m.redo with
+              | [] -> m
+              | snap :: rest ->
+                  {
+                    (restore m snap) with
+                    redo = rest;
+                    undo = snapshot_of m :: m.undo;
+                    open_kind = None;
+                  })
+            model
+        in
+        m.redo <> [])
+      (fun editor ->
+        let before = step Editor.redo editor in
+        text_changed before !editor);
+  ]
 
 (* ── History equivalence ── *)
 
@@ -1082,14 +1165,14 @@ let gen_op =
   Gen.frequency
     [
       (6, Gen.map (fun s -> Insert s) fragment);
-      (2, Gen.pure Delete_backward);
-      (1, Gen.pure Delete_forward);
-      (1, Gen.pure Delete_word_backward);
-      (1, Gen.pure Delete_word_forward);
-      (1, Gen.pure Delete_to_line_start);
-      (1, Gen.pure Delete_to_line_end);
-      (1, Gen.pure Delete_line);
-      (1, Gen.pure Clear);
+      (2, Gen.constant Delete_backward);
+      (1, Gen.constant Delete_forward);
+      (1, Gen.constant Delete_word_backward);
+      (1, Gen.constant Delete_word_forward);
+      (1, Gen.constant Delete_to_line_start);
+      (1, Gen.constant Delete_to_line_end);
+      (1, Gen.constant Delete_line);
+      (1, Gen.constant Clear);
       (1, Gen.map (fun s -> Move_left s) flag);
       (1, Gen.map (fun s -> Move_right s) flag);
       (1, Gen.map (fun s -> Move_word_backward s) flag);
@@ -1099,10 +1182,10 @@ let gen_op =
       (2, Gen.map (fun (p, s) -> Set_cursor (p, s)) (Gen.pair pos flag));
       (1, Gen.map (fun p -> Set_caret_upstream p) pos);
       (1, Gen.map (fun (a, c) -> Select (a, c)) (Gen.pair pos pos));
-      (1, Gen.pure Select_all);
-      (1, Gen.pure Clear_selection);
-      (4, Gen.pure Undo);
-      (3, Gen.pure Redo);
+      (1, Gen.constant Select_all);
+      (1, Gen.constant Clear_selection);
+      (4, Gen.constant Undo);
+      (3, Gen.constant Redo);
     ]
 
 let edit = function
@@ -1310,146 +1393,139 @@ let undo_retains_no_old_index () =
   ignore (Sys.opaque_identity !editor)
 
 let () =
-  run "Editor"
-    [
-      group "Persistence"
-        [
-          test "persistent text and selection" persistent_edits;
-          test "independent history branches" independent_history_branches;
-          test "clear restores original caret" clear_restores_original_caret;
-          test "large cursor transitions share source"
-            cursor_shares_large_source;
-          test "restored source shared by cursor branches"
-            restored_source_is_shared_by_cursor_branches;
-          test "values carry no identity" values_carry_no_identity;
-          test "combining insertion at limit" combining_insertion_and_limit;
-          test "no-op edits preserve identity" no_op_identity;
-          test "a no-op keeps the goal column" no_op_keeps_the_goal_column;
-          test "the viewport" viewport;
-        ];
-      group "Construction"
-        [
-          test "empty" create_empty;
-          test "hello" create_hello;
-          test "preserves newlines" create_preserves_newlines;
-          test "max_length truncates initial"
-            create_max_length_truncates_initial;
-          test "negative max_length is clamped"
-            create_negative_max_length_clamped;
-          test "zero max_length" create_zero_max_length;
-          test "multibyte Unicode" create_multibyte_unicode;
-          test "default length is unlimited" default_length_is_unlimited;
-        ];
-      group "Cursor"
-        [
-          test "set_cursor moves" set_cursor_moves;
-          test "set_cursor clamps" set_cursor_clamps;
-          test "set_cursor clears selection" set_cursor_clears_selection;
-          test "set_cursor with select" set_cursor_with_select;
-        ];
-      group "Selection"
-        [
-          test "no selection initially" no_selection_initially;
-          test "select_all sets selection" select_all_sets_selection;
-          test "selected_text without selection" selected_text_no_selection;
-          test "clear_selection keeps the cursor" clear_selection_keeps_cursor;
-          test "selection by movement" selection_by_movement;
-          test "select_all on empty" select_all_empty;
-          test "select_all on empty leaves no phantom selection"
-            select_all_on_empty_leaves_no_phantom_selection;
-        ];
-      group "Insertion"
-        [
-          test "at end appends" insert_at_end_appends;
-          test "at middle" insert_at_middle;
-          test "empty is a no-op" insert_empty_is_noop;
-          test "same selected text is a no-op" insert_same_selected_text_is_noop;
-          test "replaces selection" insert_replaces_selection;
-          test "preserves newlines" insert_preserves_newlines;
-          test "enforces max_length" insert_enforces_max_length;
-          test "at the limit preserves the suffix"
-            insert_at_limit_preserves_suffix;
-          test "moves the cursor" insert_moves_cursor;
-          test "wide characters" insert_wide_chars;
-        ];
-      group "Deletion"
-        [
-          test "delete_backward" delete_backward;
-          test "delete_forward" delete_forward;
-          test "delete_word_backward" delete_word_backward;
-          test "delete_word_backward and newlines"
-            delete_word_backward_and_newlines;
-          test "delete_word_forward" delete_word_forward;
-          test "CJK words stay grouped" cjk_words_stay_grouped;
-          test "delete_line" delete_line;
-          test "delete to line edges" delete_to_line_edges;
-          test "newline editing" newline_editing;
-        ];
-      group "Movement"
-        [
-          test "left and right" move_left_and_right;
-          test "select creates selection" move_select_creates_selection;
-          test "home and end" move_home_and_end;
-          test "by word" move_by_word;
-          test "by line" move_by_line;
-        ];
-      group "Undo and redo"
-        [
-          test "no history" undo_no_history;
-          test "history keeps every edit" undo_history_keeps_every_edit;
-          test "restores text and cursor" undo_restores_text_and_cursor;
-          test "restores no selection" undo_restores_no_selection;
-          test "restores selection" undo_restores_selection;
-          test "redo after undo" redo_after_undo;
-          test "edit after undo clears redo" edit_after_undo_clears_redo;
-          test "multiple steps" multiple_undo_steps;
-          test "deletions" deletions_undo;
-        ];
-      group "Undo steps"
-        [
-          test "typing is one step" typing_is_one_step;
-          test "a caret move ends a step" caret_move_ends_step;
-          test "a selection change ends a step" selection_change_ends_step;
-          test "an operation that changes nothing keeps it open"
-            no_op_keeps_step;
-          test "a change of kind ends a step" kind_change_ends_step;
-          test "deletions in one direction join" deletions_join;
-          test "a paste is a step of its own" paste_is_own_step;
-          test "a replacement starts a step" replacement_starts_step;
-          test "word boundaries" word_boundaries;
-          test "line breaks" line_breaks;
-          test "a caret snapped past the step ends it" snapped_caret_ends_step;
-          test "undo and redo end a step" undo_and_redo_end_step;
-          test "word deletion is a step of its own" word_deletion_is_own_step;
-        ];
-      group "History"
-        [
-          prop ~count:500 "matches snapshot history over edit scripts"
-            gen_script history_matches_snapshots;
-          test "retains no old states, texts or indexes"
-            history_retains_no_old_states;
-          test "undo of a megabyte retains no old index"
-            undo_retains_no_old_index;
-        ];
-      group "Shared source index"
-        [
-          test "insertion merges a combining mark at the length limit"
-            resegment_inserted_combining_mark;
-          test "deletion rebases a merged flag cluster"
-            resegment_deleted_separator;
-          test "length limits retain invisible clusters"
-            invisible_clusters_count_towards_limit;
-        ];
-      stateful "text, cursor, selection and history stay consistent"
-        ~model:
-          {
-            text = "";
-            cursor = 0;
-            anchor = None;
-            undo = [];
-            redo = [];
-            open_kind = None;
-          }
-        ~scope:(fun run -> run (ref Editor.empty))
-        ~pp_model ~invariant:model_invariant commands;
-    ]
+  exit
+    (run "Editor"
+       [
+         group "Persistence"
+           [
+             test "persistent text and selection" persistent_edits;
+             test "independent history branches" independent_history_branches;
+             test "clear restores original caret" clear_restores_original_caret;
+             test "large cursor transitions share source"
+               cursor_shares_large_source;
+             test "restored source shared by cursor branches"
+               restored_source_is_shared_by_cursor_branches;
+             test "values carry no identity" values_carry_no_identity;
+             test "combining insertion at limit" combining_insertion_and_limit;
+             test "no-op edits preserve identity" no_op_identity;
+             test "a no-op keeps the goal column" no_op_keeps_the_goal_column;
+             test "the viewport" viewport;
+           ];
+         group "Construction"
+           [
+             test "empty" create_empty;
+             test "hello" create_hello;
+             test "preserves newlines" create_preserves_newlines;
+             test "max_length truncates initial"
+               create_max_length_truncates_initial;
+             test "negative max_length is clamped"
+               create_negative_max_length_clamped;
+             test "zero max_length" create_zero_max_length;
+             test "multibyte Unicode" create_multibyte_unicode;
+             test "default length is unlimited" default_length_is_unlimited;
+           ];
+         group "Cursor"
+           [
+             test "set_cursor moves" set_cursor_moves;
+             test "set_cursor clamps" set_cursor_clamps;
+             test "set_cursor clears selection" set_cursor_clears_selection;
+             test "set_cursor with select" set_cursor_with_select;
+           ];
+         group "Selection"
+           [
+             test "no selection initially" no_selection_initially;
+             test "select_all sets selection" select_all_sets_selection;
+             test "selected_text without selection" selected_text_no_selection;
+             test "clear_selection keeps the cursor"
+               clear_selection_keeps_cursor;
+             test "selection by movement" selection_by_movement;
+             test "select_all on empty" select_all_empty;
+             test "select_all on empty leaves no phantom selection"
+               select_all_on_empty_leaves_no_phantom_selection;
+           ];
+         group "Insertion"
+           [
+             test "at end appends" insert_at_end_appends;
+             test "at middle" insert_at_middle;
+             test "empty is a no-op" insert_empty_is_noop;
+             test "same selected text is a no-op"
+               insert_same_selected_text_is_noop;
+             test "replaces selection" insert_replaces_selection;
+             test "preserves newlines" insert_preserves_newlines;
+             test "enforces max_length" insert_enforces_max_length;
+             test "at the limit preserves the suffix"
+               insert_at_limit_preserves_suffix;
+             test "moves the cursor" insert_moves_cursor;
+             test "wide characters" insert_wide_chars;
+           ];
+         group "Deletion"
+           [
+             test "delete_backward" delete_backward;
+             test "delete_forward" delete_forward;
+             test "delete_word_backward" delete_word_backward;
+             test "delete_word_backward and newlines"
+               delete_word_backward_and_newlines;
+             test "delete_word_forward" delete_word_forward;
+             test "CJK words stay grouped" cjk_words_stay_grouped;
+             test "delete_line" delete_line;
+             test "delete to line edges" delete_to_line_edges;
+             test "newline editing" newline_editing;
+           ];
+         group "Movement"
+           [
+             test "left and right" move_left_and_right;
+             test "select creates selection" move_select_creates_selection;
+             test "home and end" move_home_and_end;
+             test "by word" move_by_word;
+             test "by line" move_by_line;
+           ];
+         group "Undo and redo"
+           [
+             test "no history" undo_no_history;
+             test "history keeps every edit" undo_history_keeps_every_edit;
+             test "restores text and cursor" undo_restores_text_and_cursor;
+             test "restores no selection" undo_restores_no_selection;
+             test "restores selection" undo_restores_selection;
+             test "redo after undo" redo_after_undo;
+             test "edit after undo clears redo" edit_after_undo_clears_redo;
+             test "multiple steps" multiple_undo_steps;
+             test "deletions" deletions_undo;
+           ];
+         group "Undo steps"
+           [
+             test "typing is one step" typing_is_one_step;
+             test "a caret move ends a step" caret_move_ends_step;
+             test "a selection change ends a step" selection_change_ends_step;
+             test "an operation that changes nothing keeps it open"
+               no_op_keeps_step;
+             test "a change of kind ends a step" kind_change_ends_step;
+             test "deletions in one direction join" deletions_join;
+             test "a paste is a step of its own" paste_is_own_step;
+             test "a replacement starts a step" replacement_starts_step;
+             test "word boundaries" word_boundaries;
+             test "line breaks" line_breaks;
+             test "a caret snapped past the step ends it"
+               snapped_caret_ends_step;
+             test "undo and redo end a step" undo_and_redo_end_step;
+             test "word deletion is a step of its own" word_deletion_is_own_step;
+           ];
+         group "History"
+           [
+             prop ~count:500 "matches snapshot history over edit scripts"
+               gen_script history_matches_snapshots;
+             test "retains no old states, texts or indexes"
+               history_retains_no_old_states;
+             test "undo of a megabyte retains no old index"
+               undo_retains_no_old_index;
+           ];
+         group "Shared source index"
+           [
+             test "insertion merges a combining mark at the length limit"
+               resegment_inserted_combining_mark;
+             test "deletion rebases a merged flag cluster"
+               resegment_deleted_separator;
+             test "length limits retain invisible clusters"
+               invisible_clusters_count_towards_limit;
+           ];
+         stateful "text, cursor, selection and history stay consistent" commands;
+       ])

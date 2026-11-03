@@ -1469,171 +1469,181 @@ let paint_cell_merges () =
     (fg_is blue s && has Inverse s)
 
 let () =
-  run "mosaic.table"
-    [
-      group "Paint"
-        [
-          test "legible on a light terminal" paint_legible_on_light;
-          test "row surfaces" paint_surfaces;
-          test "a cell's style merges over its row" paint_cell_merges;
-        ];
-      test "proposals do not drift" proposals_do_not_drift;
-      test "absent selection is preserved" absent_selection_is_preserved;
-      group "Props"
-        [
-          test "default values" props_defaults;
-          test "equal on identical" props_equal_identical;
-          test "detects columns difference" props_detects_columns_diff;
-          test "detects rows difference" props_detects_rows_diff;
-          test "detects selected_row difference" props_detects_selected_row_diff;
-          test "detects border difference" props_detects_border_diff;
-          test "detects wrap difference" props_detects_wrap_diff;
-          test "detects color difference" props_detects_color_diff;
-          test "detects presentation differences"
-            props_detects_presentation_diff;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "is focusable" create_is_focusable;
-          test "is buffered" create_is_buffered;
-          test "clamps initial index" create_clamps_initial_index;
-          test "empty rows have no selection" create_empty_rows_has_no_selection;
-        ];
-      group "Selection"
-        [
-          test "set_selected_row clamps" set_selected_row_clamps;
-          test "fires on_change" set_selected_row_fires_on_change;
-          test "no-op on same index" set_selected_row_noop_same;
-          test "row_count correct" row_count_correct;
-          test "row_count empty" row_count_empty;
-        ];
-      group "Navigation"
-        [
-          test "move down" move_down_basic;
-          test "move up" move_up_basic;
-          test "j moves down" move_down_j;
-          test "k moves up" move_up_k;
-          test "no wrap at end" move_down_no_wrap;
-          test "no wrap at start" move_up_no_wrap;
-          test "wrap at end" move_down_wrap;
-          test "wrap at start" move_up_wrap;
-          test "fast scroll down" fast_scroll_down;
-          test "fast scroll up" fast_scroll_up;
-          test "page down uses bordered body height"
-            page_down_uses_bordered_body_height;
-          test "page up accounts for row separators"
-            page_up_accounts_for_row_separators;
-          test "page navigation clamps when selection wraps"
-            page_navigation_clamps_when_selection_wraps;
-          test "enter fires on_activate" enter_fires_on_activate;
-          test "KP_enter fires on_activate" kp_enter_fires_on_activate;
-          test "on_change fires on key navigation"
-            on_change_fires_on_key_navigation;
-          test "on_activate on empty table" on_activate_empty_table;
-          test "unhandled key ignored" unhandled_key_ignored;
-          test "navigation on empty table" navigation_on_empty_table;
-          test "single row navigation" single_row_navigation;
-          test "fast scroll clamps past end" fast_scroll_clamps_past_end;
-          test "fast scroll clamps past start" fast_scroll_clamps_past_start;
-        ];
-      group "Mouse"
-        [
-          test "click selects row" mouse_click_selects_row;
-          test "click fires on_change" mouse_click_fires_on_change;
-          test "click can activate exact row" mouse_click_can_activate_exact_row;
-          test "hover reports exact rows" mouse_hover_reports_exact_rows;
-          test "hover excludes separators" mouse_hover_excludes_row_separators;
-          test "hover and click exclude table chrome"
-            mouse_hover_and_click_exclude_table_chrome;
-          test "scrolling reports the row under the pointer"
-            scrolling_reports_row_under_pointer;
-          test "changed rows report the row under the pointer"
-            changed_rows_report_row_under_pointer;
-          test "scroll down moves" mouse_scroll_down_moves;
-          test "scroll up moves" mouse_scroll_up_moves;
-          test "scroll can bubble" mouse_scroll_can_bubble;
-          test "selection can be visually hidden"
-            selection_can_be_visually_hidden;
-          test "scroll indicator handles tiny layouts"
-            scroll_indicator_handles_tiny_layouts;
-        ];
-      group "Data"
-        [
-          test "set_rows replaces" set_rows_replaces;
-          test "set_rows clamps index" set_rows_clamps_index;
-          test "set_rows empty" set_rows_empty;
-          test "set_rows preserves valid index" set_rows_preserves_valid_index;
-          test "set_columns replaces" set_columns_replaces;
-        ];
-      group "Cell equality"
-        [
-          test "plain equal" cell_equal_plain;
-          test "plain different" cell_equal_plain_diff;
-          test "rich vs plain" cell_equal_rich_vs_plain;
-        ];
-      group "Rendering"
-        [
-          test "rich span styles apply" rich_cell_span_styles_apply;
-          test "auto widths follow the screen width method"
-            auto_widths_follow_screen_width_method;
-          test "auto widths recompute after set_rows"
-            auto_widths_recompute_after_set_rows;
-        ];
-      group "Setter no-ops"
-        [
-          test "set_border no-op" set_border_noop;
-          test "set_wrap_selection no-op" set_wrap_noop;
-          test "set_show_header no-op" set_show_header_noop;
-          test "set_text_color no-op" set_text_color_noop;
-          test "set_fast_scroll_step no-op" set_fast_scroll_step_noop;
-        ];
-      group "Setter positive"
-        [
-          test "set_cell_padding pads each side" set_cell_padding_pads_each_side;
-          test "toggle border" set_border_toggle;
-          test "toggle show_header" set_show_header_toggle;
-          test "toggle show_column_separator" set_show_column_separator_toggle;
-          test "wrap_selection enables wrapping"
-            set_wrap_selection_enables_wrapping;
-          test "fast_scroll_step changes behavior"
-            set_fast_scroll_step_changes_behavior;
-        ];
-      group "apply_props"
-        [
-          test "updates all properties" apply_props_updates;
-          test "same data no extra render" apply_props_same_no_extra_render;
-          test "preserves uncontrolled selection"
-            apply_props_restores_declared_selection;
-          test "controlled selection is silent"
-            apply_props_controlled_selection_is_silent;
-        ];
-      group "Both doors"
-        [
-          test "columns" doors_columns_label;
-          test "rows" doors_rows;
-          test "selected_row" doors_selected_row;
-          test "border" doors_border;
-          test "border_style" doors_border_style;
-          test "show_header" doors_show_header;
-          test "show_column_separator" doors_show_column_separator;
-          test "show_row_separator" doors_show_row_separator;
-          test "cell_padding" doors_cell_padding;
-          test "header_color" doors_header_color;
-          test "header_background" doors_header_background;
-          test "text_color" doors_text_color;
-          test "background" doors_background;
-          test "selected_text_color" doors_selected_text_color;
-          test "selected_background" doors_selected_background;
-          test "focused_selected_text_color" doors_focused_selected_text_color;
-          test "focused_selected_background" doors_focused_selected_background;
-          test "selection_visible" doors_selection_visible;
-          test "show_scroll_indicator" doors_show_scroll_indicator;
-          test "activate_on_click" doors_activate_on_click;
-          test "wheel_navigation" doors_wheel_navigation;
-          test "row_styles" doors_row_styles;
-          test "wrap_selection" doors_wrap_selection;
-          test "key_bindings" doors_key_bindings;
-          test "fast_scroll_step" doors_fast_scroll_step;
-        ];
-    ]
+  exit
+    (run "mosaic.table"
+       [
+         group "Paint"
+           [
+             test "legible on a light terminal" paint_legible_on_light;
+             test "row surfaces" paint_surfaces;
+             test "a cell's style merges over its row" paint_cell_merges;
+           ];
+         test "proposals do not drift" proposals_do_not_drift;
+         test "absent selection is preserved" absent_selection_is_preserved;
+         group "Props"
+           [
+             test "default values" props_defaults;
+             test "equal on identical" props_equal_identical;
+             test "detects columns difference" props_detects_columns_diff;
+             test "detects rows difference" props_detects_rows_diff;
+             test "detects selected_row difference"
+               props_detects_selected_row_diff;
+             test "detects border difference" props_detects_border_diff;
+             test "detects wrap difference" props_detects_wrap_diff;
+             test "detects color difference" props_detects_color_diff;
+             test "detects presentation differences"
+               props_detects_presentation_diff;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "is focusable" create_is_focusable;
+             test "is buffered" create_is_buffered;
+             test "clamps initial index" create_clamps_initial_index;
+             test "empty rows have no selection"
+               create_empty_rows_has_no_selection;
+           ];
+         group "Selection"
+           [
+             test "set_selected_row clamps" set_selected_row_clamps;
+             test "fires on_change" set_selected_row_fires_on_change;
+             test "no-op on same index" set_selected_row_noop_same;
+             test "row_count correct" row_count_correct;
+             test "row_count empty" row_count_empty;
+           ];
+         group "Navigation"
+           [
+             test "move down" move_down_basic;
+             test "move up" move_up_basic;
+             test "j moves down" move_down_j;
+             test "k moves up" move_up_k;
+             test "no wrap at end" move_down_no_wrap;
+             test "no wrap at start" move_up_no_wrap;
+             test "wrap at end" move_down_wrap;
+             test "wrap at start" move_up_wrap;
+             test "fast scroll down" fast_scroll_down;
+             test "fast scroll up" fast_scroll_up;
+             test "page down uses bordered body height"
+               page_down_uses_bordered_body_height;
+             test "page up accounts for row separators"
+               page_up_accounts_for_row_separators;
+             test "page navigation clamps when selection wraps"
+               page_navigation_clamps_when_selection_wraps;
+             test "enter fires on_activate" enter_fires_on_activate;
+             test "KP_enter fires on_activate" kp_enter_fires_on_activate;
+             test "on_change fires on key navigation"
+               on_change_fires_on_key_navigation;
+             test "on_activate on empty table" on_activate_empty_table;
+             test "unhandled key ignored" unhandled_key_ignored;
+             test "navigation on empty table" navigation_on_empty_table;
+             test "single row navigation" single_row_navigation;
+             test "fast scroll clamps past end" fast_scroll_clamps_past_end;
+             test "fast scroll clamps past start" fast_scroll_clamps_past_start;
+           ];
+         group "Mouse"
+           [
+             test "click selects row" mouse_click_selects_row;
+             test "click fires on_change" mouse_click_fires_on_change;
+             test "click can activate exact row"
+               mouse_click_can_activate_exact_row;
+             test "hover reports exact rows" mouse_hover_reports_exact_rows;
+             test "hover excludes separators"
+               mouse_hover_excludes_row_separators;
+             test "hover and click exclude table chrome"
+               mouse_hover_and_click_exclude_table_chrome;
+             test "scrolling reports the row under the pointer"
+               scrolling_reports_row_under_pointer;
+             test "changed rows report the row under the pointer"
+               changed_rows_report_row_under_pointer;
+             test "scroll down moves" mouse_scroll_down_moves;
+             test "scroll up moves" mouse_scroll_up_moves;
+             test "scroll can bubble" mouse_scroll_can_bubble;
+             test "selection can be visually hidden"
+               selection_can_be_visually_hidden;
+             test "scroll indicator handles tiny layouts"
+               scroll_indicator_handles_tiny_layouts;
+           ];
+         group "Data"
+           [
+             test "set_rows replaces" set_rows_replaces;
+             test "set_rows clamps index" set_rows_clamps_index;
+             test "set_rows empty" set_rows_empty;
+             test "set_rows preserves valid index"
+               set_rows_preserves_valid_index;
+             test "set_columns replaces" set_columns_replaces;
+           ];
+         group "Cell equality"
+           [
+             test "plain equal" cell_equal_plain;
+             test "plain different" cell_equal_plain_diff;
+             test "rich vs plain" cell_equal_rich_vs_plain;
+           ];
+         group "Rendering"
+           [
+             test "rich span styles apply" rich_cell_span_styles_apply;
+             test "auto widths follow the screen width method"
+               auto_widths_follow_screen_width_method;
+             test "auto widths recompute after set_rows"
+               auto_widths_recompute_after_set_rows;
+           ];
+         group "Setter no-ops"
+           [
+             test "set_border no-op" set_border_noop;
+             test "set_wrap_selection no-op" set_wrap_noop;
+             test "set_show_header no-op" set_show_header_noop;
+             test "set_text_color no-op" set_text_color_noop;
+             test "set_fast_scroll_step no-op" set_fast_scroll_step_noop;
+           ];
+         group "Setter positive"
+           [
+             test "set_cell_padding pads each side"
+               set_cell_padding_pads_each_side;
+             test "toggle border" set_border_toggle;
+             test "toggle show_header" set_show_header_toggle;
+             test "toggle show_column_separator"
+               set_show_column_separator_toggle;
+             test "wrap_selection enables wrapping"
+               set_wrap_selection_enables_wrapping;
+             test "fast_scroll_step changes behavior"
+               set_fast_scroll_step_changes_behavior;
+           ];
+         group "apply_props"
+           [
+             test "updates all properties" apply_props_updates;
+             test "same data no extra render" apply_props_same_no_extra_render;
+             test "preserves uncontrolled selection"
+               apply_props_restores_declared_selection;
+             test "controlled selection is silent"
+               apply_props_controlled_selection_is_silent;
+           ];
+         group "Both doors"
+           [
+             test "columns" doors_columns_label;
+             test "rows" doors_rows;
+             test "selected_row" doors_selected_row;
+             test "border" doors_border;
+             test "border_style" doors_border_style;
+             test "show_header" doors_show_header;
+             test "show_column_separator" doors_show_column_separator;
+             test "show_row_separator" doors_show_row_separator;
+             test "cell_padding" doors_cell_padding;
+             test "header_color" doors_header_color;
+             test "header_background" doors_header_background;
+             test "text_color" doors_text_color;
+             test "background" doors_background;
+             test "selected_text_color" doors_selected_text_color;
+             test "selected_background" doors_selected_background;
+             test "focused_selected_text_color"
+               doors_focused_selected_text_color;
+             test "focused_selected_background"
+               doors_focused_selected_background;
+             test "selection_visible" doors_selection_visible;
+             test "show_scroll_indicator" doors_show_scroll_indicator;
+             test "activate_on_click" doors_activate_on_click;
+             test "wheel_navigation" doors_wheel_navigation;
+             test "row_styles" doors_row_styles;
+             test "wrap_selection" doors_wrap_selection;
+             test "key_bindings" doors_key_bindings;
+             test "fast_scroll_step" doors_fast_scroll_step;
+           ];
+       ])

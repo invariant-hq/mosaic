@@ -64,10 +64,10 @@ let selectable_declares_on_the_node () =
 
 (* A tab width below 1 is a mistake, raised by the call that makes it. *)
 let props_reject_tab_width_below_1 () =
-  raises_match ~msg:"make" (Exn.invalid_arg ~substring:"tab width") (fun () ->
+  raises_match ~msg:"make" (Exn.invalid_arg ~sub:"tab width") (fun () ->
       ignore (Text.Props.make ~tab_width:0 () : Text.Props.t));
-  raises_match ~msg:"make_rich" (Exn.invalid_arg ~substring:"tab width")
-    (fun () -> ignore (Text.Props.make_rich ~tab_width:(-2) [] : Text.Props.t))
+  raises_match ~msg:"make_rich" (Exn.invalid_arg ~sub:"tab width") (fun () ->
+      ignore (Text.Props.make_rich ~tab_width:(-2) [] : Text.Props.t))
 
 let props_detects_tab_width_diff () =
   let a = Text.Props.make ~tab_width:4 () in
@@ -809,145 +809,149 @@ let paint_selection_highlight () =
   is_true ~msg:"over the run's color" (bg_is paint_blue s)
 
 let () =
-  run "mosaic.text"
-    [
-      group "Paint"
-        [
-          test "content merges over the role" paint_content_over_role;
-          test "selection by Highlight over the run" paint_selection_highlight;
-        ];
-      group "Content ownership"
-        [
-          test "rich props retain geometry and accept plain transitions"
-            rich_props_keep_geometry_and_accept_plain_transitions;
-          test "content observers agree" content_observers_agree;
-          test "fragment style changes repaint inherited components"
-            fragment_style_changes_repaint_inherited_components;
-          test "styled content keeps concrete styles on base changes"
-            styled_content_keeps_concrete_styles_on_base_change;
-          test "empty spans allow adjacent normalization"
-            empty_spans_do_not_prevent_adjacent_normalization;
-        ];
-      group "Props"
-        [
-          test "default equals make()" props_default_equals_make;
-          test "detects content diff" props_detects_content_diff;
-          test "detects text_style diff" props_detects_text_style_diff;
-          test "detects wrap diff" props_detects_wrap_diff;
-          test "detects selectable diff" props_detects_selectable_diff;
-          test "selectable declares on the node" selectable_declares_on_the_node;
-          test "detects tab_width diff" props_detects_tab_width_diff;
-          test "rejects a tab width below 1" props_reject_tab_width_below_1;
-          test "equal on identical" props_equal_identical;
-        ];
-      group "Construction"
-        [
-          test "attaches to parent" create_attaches;
-          test "accessors work" create_accessors;
-          test "initial content" create_with_content;
-          test "initial wrap" create_with_wrap;
-          test "initial tab_width" create_with_tab_width;
-        ];
-      group "Content — set_content"
-        [
-          test "updates buffer" set_content_updates;
-          test "updates line count" set_content_updates_line_count;
-        ];
-      group "Content — set_styled_text"
-        [
-          test "sets content" set_styled_text_sets_content;
-          test "props replace imperative styled content"
-            props_replace_imperative_styled_content;
-        ];
-      group "Content — set_text_style"
-        [ test "changes default style" set_text_style_changes_default ];
-      group "Clipping"
-        [
-          test "wide grapheme cut by a clip leaves the border"
-            wide_grapheme_cut_by_clip_leaves_border;
-        ];
-      group "Wrapping"
-        [
-          test "set_wrap delegates" set_wrap_delegates;
-          test "set_tab_width delegates" set_tab_width_delegates;
-        ];
-      group "Selection"
-        [ test "empty when no selection" selected_text_empty_no_selection ];
-      group "Highlights"
-        [
-          test "add and remove" add_and_remove_highlight;
-          test "clear all" clear_highlights_removes_all;
-        ];
-      group "Query"
-        [
-          test "line_count reflects buffer" line_count_reflects_buffer;
-          test "display_line_count delegates" display_line_count_delegates;
-        ];
-      group "Fragments — constructors"
-        [
-          test "text plain" fragment_text_plain;
-          test "text styled" fragment_text_styled;
-          test "span groups children" fragment_span_groups;
-          test "bold convenience" fragment_bold;
-          test "fg convenience" fragment_fg;
-        ];
-      group "Fragments — set_fragments"
-        [
-          test "set and read back" set_fragments_and_read_back;
-          test "updates buffer" set_fragments_updates_buffer;
-          test "styled fragments" set_fragments_styled;
-        ];
-      group "Fragments — fragments_equal"
-        [
-          test "same" fragments_equal_same;
-          test "different" fragments_equal_different;
-          test "both empty" fragments_equal_empty;
-          test "different style" fragments_equal_different_style;
-          test "nested" fragments_equal_nested;
-        ];
-      group "Fragments — normalization"
-        [
-          test "removes empty" set_fragments_normalizes_empty;
-          test "merges adjacent same-style" set_fragments_normalizes_merge;
-          test "no merge different styles"
-            set_fragments_no_merge_different_styles;
-        ];
-      group "Fragments — spans"
-        [
-          test "spans from fragments" spans_from_fragments;
-          test "set_spans roundtrip" set_spans_roundtrip;
-          test "append_span" append_span_adds;
-          test "clear_spans" clear_spans_removes_all;
-        ];
-      group "Fragments — plain_text"
-        [
-          test "from fragments" plain_text_from_fragments;
-          test "nested" plain_text_nested;
-        ];
-      group "Fragments — style inheritance"
-        [ test "span to text" style_inheritance_span_to_text ];
-      group "apply_props"
-        [
-          test "updates content" apply_props_updates_content;
-          test "updates wrap" apply_props_updates_wrap;
-          test "updates tab_width" apply_props_updates_tab_width;
-          test "updates text_style" apply_props_updates_text_style;
-          test "stamps content with text_style"
-            apply_props_stamps_content_with_text_style;
-          test "restamps on style change" apply_props_restamps_on_style_change;
-        ];
-      group "Both doors"
-        [
-          test "text_style" doors_text_style;
-          test "style" doors_style;
-          test "wrap" doors_wrap;
-          test "selectable" doors_selectable;
-          test "tab_width" doors_tab_width;
-          test "truncate" doors_truncate;
-          test "rich text_style" doors_rich_text_style;
-          test "rich wrap" doors_rich_wrap;
-          test "rich selectable" doors_rich_selectable;
-          test "rich tab_width" doors_rich_tab_width;
-          test "rich truncate" doors_rich_truncate;
-        ];
-    ]
+  exit
+    (run "mosaic.text"
+       [
+         group "Paint"
+           [
+             test "content merges over the role" paint_content_over_role;
+             test "selection by Highlight over the run"
+               paint_selection_highlight;
+           ];
+         group "Content ownership"
+           [
+             test "rich props retain geometry and accept plain transitions"
+               rich_props_keep_geometry_and_accept_plain_transitions;
+             test "content observers agree" content_observers_agree;
+             test "fragment style changes repaint inherited components"
+               fragment_style_changes_repaint_inherited_components;
+             test "styled content keeps concrete styles on base changes"
+               styled_content_keeps_concrete_styles_on_base_change;
+             test "empty spans allow adjacent normalization"
+               empty_spans_do_not_prevent_adjacent_normalization;
+           ];
+         group "Props"
+           [
+             test "default equals make()" props_default_equals_make;
+             test "detects content diff" props_detects_content_diff;
+             test "detects text_style diff" props_detects_text_style_diff;
+             test "detects wrap diff" props_detects_wrap_diff;
+             test "detects selectable diff" props_detects_selectable_diff;
+             test "selectable declares on the node"
+               selectable_declares_on_the_node;
+             test "detects tab_width diff" props_detects_tab_width_diff;
+             test "rejects a tab width below 1" props_reject_tab_width_below_1;
+             test "equal on identical" props_equal_identical;
+           ];
+         group "Construction"
+           [
+             test "attaches to parent" create_attaches;
+             test "accessors work" create_accessors;
+             test "initial content" create_with_content;
+             test "initial wrap" create_with_wrap;
+             test "initial tab_width" create_with_tab_width;
+           ];
+         group "Content — set_content"
+           [
+             test "updates buffer" set_content_updates;
+             test "updates line count" set_content_updates_line_count;
+           ];
+         group "Content — set_styled_text"
+           [
+             test "sets content" set_styled_text_sets_content;
+             test "props replace imperative styled content"
+               props_replace_imperative_styled_content;
+           ];
+         group "Content — set_text_style"
+           [ test "changes default style" set_text_style_changes_default ];
+         group "Clipping"
+           [
+             test "wide grapheme cut by a clip leaves the border"
+               wide_grapheme_cut_by_clip_leaves_border;
+           ];
+         group "Wrapping"
+           [
+             test "set_wrap delegates" set_wrap_delegates;
+             test "set_tab_width delegates" set_tab_width_delegates;
+           ];
+         group "Selection"
+           [ test "empty when no selection" selected_text_empty_no_selection ];
+         group "Highlights"
+           [
+             test "add and remove" add_and_remove_highlight;
+             test "clear all" clear_highlights_removes_all;
+           ];
+         group "Query"
+           [
+             test "line_count reflects buffer" line_count_reflects_buffer;
+             test "display_line_count delegates" display_line_count_delegates;
+           ];
+         group "Fragments — constructors"
+           [
+             test "text plain" fragment_text_plain;
+             test "text styled" fragment_text_styled;
+             test "span groups children" fragment_span_groups;
+             test "bold convenience" fragment_bold;
+             test "fg convenience" fragment_fg;
+           ];
+         group "Fragments — set_fragments"
+           [
+             test "set and read back" set_fragments_and_read_back;
+             test "updates buffer" set_fragments_updates_buffer;
+             test "styled fragments" set_fragments_styled;
+           ];
+         group "Fragments — fragments_equal"
+           [
+             test "same" fragments_equal_same;
+             test "different" fragments_equal_different;
+             test "both empty" fragments_equal_empty;
+             test "different style" fragments_equal_different_style;
+             test "nested" fragments_equal_nested;
+           ];
+         group "Fragments — normalization"
+           [
+             test "removes empty" set_fragments_normalizes_empty;
+             test "merges adjacent same-style" set_fragments_normalizes_merge;
+             test "no merge different styles"
+               set_fragments_no_merge_different_styles;
+           ];
+         group "Fragments — spans"
+           [
+             test "spans from fragments" spans_from_fragments;
+             test "set_spans roundtrip" set_spans_roundtrip;
+             test "append_span" append_span_adds;
+             test "clear_spans" clear_spans_removes_all;
+           ];
+         group "Fragments — plain_text"
+           [
+             test "from fragments" plain_text_from_fragments;
+             test "nested" plain_text_nested;
+           ];
+         group "Fragments — style inheritance"
+           [ test "span to text" style_inheritance_span_to_text ];
+         group "apply_props"
+           [
+             test "updates content" apply_props_updates_content;
+             test "updates wrap" apply_props_updates_wrap;
+             test "updates tab_width" apply_props_updates_tab_width;
+             test "updates text_style" apply_props_updates_text_style;
+             test "stamps content with text_style"
+               apply_props_stamps_content_with_text_style;
+             test "restamps on style change"
+               apply_props_restamps_on_style_change;
+           ];
+         group "Both doors"
+           [
+             test "text_style" doors_text_style;
+             test "style" doors_style;
+             test "wrap" doors_wrap;
+             test "selectable" doors_selectable;
+             test "tab_width" doors_tab_width;
+             test "truncate" doors_truncate;
+             test "rich text_style" doors_rich_text_style;
+             test "rich wrap" doors_rich_wrap;
+             test "rich selectable" doors_rich_selectable;
+             test "rich tab_width" doors_rich_tab_width;
+             test "rich truncate" doors_rich_truncate;
+           ];
+       ])

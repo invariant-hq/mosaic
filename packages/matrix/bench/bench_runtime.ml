@@ -74,40 +74,41 @@ let require condition message =
   if not condition then failwith ("runtime benchmark: " ^ message)
 
 let () =
-  run_on (backend ()) ~config @@ fun app ->
-  frame app ignore;
-  frame app ignore;
-  require (bytes app ignore = 0) "an unchanged frame wrote bytes";
-  require (bytes app (fill full_text.(1)) > 0) "a full frame wrote nothing";
-  require (bytes app (fill full_text.(0)) > 0) "a full frame wrote nothing";
-  require (bytes app ignore > 0) "clearing the frame wrote nothing";
-  (* A sample draws both texts, so it ends where it started. *)
-  let full =
-    Thumper.bench "frame/full-160x48-and-back" (fun () ->
-        frame app (fill full_text.(1));
-        frame app (fill full_text.(0)))
-  in
-  let no_changes =
-    Thumper.bench "frame/no-changes" (fun () -> frame app ignore)
-  in
-  let single_cell =
-    let next = ref false in
-    Thumper.bench "frame/single-cell" (fun () ->
-        next := not !next;
-        let char = if !next then 'X' else 'Y' in
-        frame app (fun grid ->
-            Matrix.Grid.set_uchar grid ~x:0 ~y:0 ~uchar:(Uchar.of_char char)
-              ~fg:Matrix.Ansi.Color.white ~bg:Matrix.Ansi.Color.black
-              ~attrs:Matrix.Ansi.Attr.empty ()))
-  in
-  Thumper.run "runtime"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
-    [ Thumper.group "render" [ no_changes; single_cell; full ] ]
+  exit
+    ( run_on (backend ()) ~config @@ fun app ->
+      frame app ignore;
+      frame app ignore;
+      require (bytes app ignore = 0) "an unchanged frame wrote bytes";
+      require (bytes app (fill full_text.(1)) > 0) "a full frame wrote nothing";
+      require (bytes app (fill full_text.(0)) > 0) "a full frame wrote nothing";
+      require (bytes app ignore > 0) "clearing the frame wrote nothing";
+      (* A sample draws both texts, so it ends where it started. *)
+      let full =
+        Thumper.bench "frame/full-160x48-and-back" (fun () ->
+            frame app (fill full_text.(1));
+            frame app (fill full_text.(0)))
+      in
+      let no_changes =
+        Thumper.bench "frame/no-changes" (fun () -> frame app ignore)
+      in
+      let single_cell =
+        let next = ref false in
+        Thumper.bench "frame/single-cell" (fun () ->
+            next := not !next;
+            let char = if !next then 'X' else 'Y' in
+            frame app (fun grid ->
+                Matrix.Grid.set_uchar grid ~x:0 ~y:0 ~uchar:(Uchar.of_char char)
+                  ~fg:Matrix.Ansi.Color.white ~bg:Matrix.Ansi.Color.black
+                  ~attrs:Matrix.Ansi.Attr.empty ()))
+      in
+      Thumper.run "runtime"
+        ~config:
+          Thumper.Config.(
+            default
+            |> metrics
+                 (if exact then [ Thumper.Metric.alloc_words ]
+                  else Thumper.Metric.[ wall_time; alloc_words ]))
+        ~budgets:
+          (Thumper.Budget.no_more_alloc_than 0.
+          :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
+        [ Thumper.group "render" [ no_changes; single_cell; full ] ] )

@@ -2983,261 +2983,274 @@ let accepted_focus_does_not_retarget_press () =
     (List.length !received)
 
 let () =
-  run "mosaic.renderer"
-    [
-      test "accepted focus does not retarget press"
-        accepted_focus_does_not_retarget_press;
-      test "mouse uses changed geometry before paint"
-        geometry_changes_route_mouse_before_paint;
-      test "fresh hits respect stacking and scissors"
-        fresh_hits_respect_stacking_and_scissors;
-      test "a width method change re-measures" width_method_change_remeasures;
-      test "layout updates settle before first paint"
-        layout_updates_settle_before_first_paint;
-      test "layout preparation never advances live widgets"
-        layout_preparation_does_not_advance_live_widgets;
-      test "scrollbar geometry settles before next input"
-        scrollbar_geometry_settles_before_next_input;
-      test "paste behavior runs on the focus current then"
-        paste_behavior_runs_on_the_focus_current_then;
-      group "Lifecycle"
-        [
-          test "creates with default style" creates_with_default_style;
-          test "creates with custom style" creates_with_custom_style;
-          test "width method reaches widgets" width_method_reaches_widgets;
-          test "adopted screen render is guarded"
-            adopted_screen_render_is_guarded;
-          test "zero-sized clipping node hides children"
-            zero_sized_clipping_node_hides_children;
-          test "starts dirty" starts_dirty;
-          test "clean after render" clean_after_render;
-          test "dirty after schedule" dirty_after_schedule;
-          test "render request during frame survives"
-            render_request_during_frame_survives;
-          test "callback runs each frame" callback_runs_each_frame;
-          test "a frame without animation" frame_without_animation;
-          test "callback receives delta" callback_receives_delta;
-          test "remove callback stops it" remove_callback_stops_it;
-          test "clear removes all callbacks" clear_removes_all_callbacks;
-          test "a lifecycle pass runs each frame" lifecycle_pass_runs_each_frame;
-          test "the tree's liveness" tree_liveness;
-          test "child_at and uid" child_at_and_uid;
-        ];
-      group "Viewport culling"
-        [
-          test "overflow-visible descendant reaching viewport renders"
-            overflow_visible_descendant_reaching_viewport_renders;
-          test "clipped offscreen subtree is not traversed for rendering"
-            clipped_offscreen_subtree_is_not_traversed_for_rendering;
-          test "scroll box culls offscreen children"
-            scroll_box_culls_offscreen_children;
-          test "scrolling paints revealed children"
-            scrolling_paints_revealed_children;
-          test "culled child is not hit-testable"
-            culled_child_is_not_hit_testable;
-          test "culled live child does not tick" culled_live_child_does_not_tick;
-          test "child straddling the viewport edge is kept"
-            child_straddling_the_viewport_edge_is_kept;
-          test "child ending on the viewport edge is culled"
-            child_ending_on_the_viewport_edge_is_culled;
-          test "zero-height child on the viewport edge is kept"
-            zero_height_child_on_the_viewport_edge_is_kept;
-          test "zero-width child on the viewport edge is kept"
-            zero_width_child_on_the_viewport_edge_is_kept;
-          test "zero-width wrapper keeps its overflowing row"
-            zero_width_wrapper_keeps_its_overflowing_row;
-          test "descendant reaching the viewport survives its offscreen parent"
-            descendant_reaching_the_viewport_survives_its_offscreen_parent;
-          test "child far before the viewport is kept"
-            child_far_before_the_viewport_is_kept;
-          test "a selection reads rows out of view where they are"
-            selection_reads_rows_out_of_view;
-          test "a selection reads the top layer's positions"
-            selection_reads_the_top_layer;
-          culling_matches_a_scan;
-          chunks_keep_every_box;
-          test "a chunk follows a grown member" chunk_follows_a_grown_member;
-          test "a member that stops being contained leaves its chunk"
-            member_leaves_its_chunk;
-        ];
-      group "Scroll hints"
-        [
-          test "scroll produces hint" scroll_produces_hint;
-          test "opposing scrolls cancel" opposing_scrolls_cancel;
-          test "two scrollers disqualify" two_scrollers_disqualify;
-          test "horizontal scroll disqualifies" horizontal_scroll_disqualifies;
-          test "narrow box disqualifies" narrow_box_disqualifies;
-          test "hinted scroll emits DECSTBM and correct rows"
-            hinted_scroll_emits_decstbm_and_correct_rows;
-        ];
-      group "Layout dirtiness"
-        [
-          test "style change relayouts after clean frame"
-            style_change_relayouts_after_clean_frame;
-          test "measure change relayouts after clean frame"
-            measure_change_relayouts_after_clean_frame;
-          test "add/remove child relayouts after clean frame"
-            add_remove_child_relayouts_after_clean_frame;
-          test "resize relayouts after clean frame"
-            resize_relayouts_after_clean_frame;
-          test "visibility toggle relayouts after clean frame"
-            visibility_toggle_relayouts_after_clean_frame;
-        ];
-      group "Settlement"
-        [
-          test "pending provider reports work" pending_provider_reports_work;
-          test "render_frame_until_settled reports pending code"
-            render_frame_until_settled_reports_pending_code;
-          test "render_frame_until_settled completes code"
-            render_frame_until_settled_completes_code;
-          test "settlement replaces superseded frame cells"
-            settlement_replaces_superseded_frame_cells;
-          test "presented cells cleared before next frame"
-            presented_cells_cleared_before_next_frame;
-        ];
-      group "Focus"
-        [
-          test "focus returns true for focusable"
-            focus_returns_true_for_focusable;
-          test "focus returns false for non-focusable"
-            focus_returns_false_for_non_focusable;
-          test "focused returns focused node" focused_returns_focused_node;
-          test "blur clears focus" blur_clears_focus;
-          test "focus different node blurs previous"
-            focus_different_node_blurs_previous;
-          test "left click requests focus" left_click_requests_focus;
-          test "left click without request does not focus"
-            left_click_without_request_does_not_focus;
-          test "left click on non-focusable does not focus"
-            left_click_on_non_focusable_does_not_focus;
-          test "click walks up to focusable parent"
-            click_walks_up_to_focusable_parent;
-          test "left click focuses selectable node"
-            left_click_focuses_selectable_node;
-          test "right click does not auto-focus" right_click_does_not_auto_focus;
-          test "shift left click preserves existing focus"
-            shift_left_click_preserves_existing_focus;
-          test "prevent default mouse down blocks auto-focus"
-            prevent_default_mouse_down_blocks_auto_focus;
-          test "focus fires on node" focus_fires_on_node;
-          test "blur fires on previous" blur_fires_on_previous;
-          test "refocus fires blur then focus" refocus_fires_blur_then_focus;
-        ];
-      group "Input"
-        [
-          test "key dispatches to focused" key_dispatches_to_focused;
-          test "key does nothing when no focus" key_does_nothing_when_no_focus;
-          test "key multiple handlers run" key_multiple_handlers_run;
-          test "prevent default stops default handler"
-            prevent_default_stops_default_handler;
-          test "paste dispatches to focused" paste_dispatches_to_focused;
-          test "paste does nothing when no focus"
-            paste_does_nothing_when_no_focus;
-          test "paste contains correct text" paste_contains_correct_text;
-          test "an unused key bubbles to the ancestors"
-            unused_key_bubbles_to_ancestors;
-          test "a behavior that acts consumes the key" acting_behavior_consumes;
-          test "stopping a key keeps its behavior" stop_keeps_behavior;
-          test "the path is fixed and the behavior follows focus"
-            path_is_fixed_behavior_follows_focus;
-          test "mouse handlers bubble until stopped" mouse_bubbles_until_stopped;
-          test "a prevented press starts no selection"
-            prevented_press_starts_no_selection;
-          test "a click on a selectable node" click_on_selectable_node;
-        ];
-      group "Mouse"
-        [
-          test "mouse events carry node cells" mouse_events_carry_node_cells;
-          test "click dispatches to positioned child"
-            click_dispatches_to_positioned_child;
-          test "click on empty area does not crash"
-            click_on_empty_area_does_not_crash;
-          test "overlapping children last child wins"
-            overlapping_children_last_child_wins;
-          test "click coordinates are absolute" click_coordinates_are_absolute;
-          test "press and release sequence" press_and_release_sequence;
-          test "move fires Move event" move_fires_move_event;
-          test "mouse event has correct modifiers"
-            mouse_event_has_correct_modifiers;
-          test "move over child fires Over" move_over_child_fires_over;
-          test "move away fires Out then Over" move_away_fires_out_then_over;
-          test "move within same child no Over/Out"
-            move_within_same_child_no_over_out;
-          test "hover returns hovered node" hover_returns_hovered_node;
-          test "hover None when pointer leaves" hover_none_when_pointer_leaves;
-          test "scroll dispatches to hit target" scroll_dispatches_to_hit_target;
-          test "scroll with modifiers" scroll_with_modifiers;
-          test "scroll on empty area" scroll_on_empty_area;
-          test "scroll on dead space reaches focused scrollable"
-            scroll_on_dead_space_reaches_focused_scrollable;
-        ];
-      group "Drag"
-        [
-          test "drag sets captured" drag_sets_captured;
-          test "captured receives all mouse events"
-            captured_receives_all_mouse_events;
-          test "release clears capture" release_clears_capture;
-          test "drag-end fires on release" drag_end_fires_on_release;
-          test "drop fires on target" drop_fires_on_target;
-          test "drop source identifies origin" drop_source_identifies_origin;
-          test "right button does not capture" right_button_does_not_capture;
-        ];
-      group "Selection"
-        [
-          test "selection starts None" selection_starts_none;
-          test "a click on selectable text selects nothing"
-            click_on_selectable_selects_nothing;
-          test "drag updates selection focus" drag_updates_selection_focus;
-          test "release finishes selection" release_finishes_selection;
-          test "unrelated button release preserves selection drag"
-            unrelated_button_release_preserves_selection_drag;
-          test "clear selection resets" clear_selection_resets;
-          test "selection drag auto-scrolls scroll box"
-            selection_drag_auto_scrolls_scroll_box;
-          test "selection drag auto-scrolls scroll box after leaving it"
-            selection_drag_auto_scrolls_scroll_box_when_pointer_leaves_it;
-          test
-            "selection release after leaving scroll box goes to anchor \
-             ancestors"
-            selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors;
-          test "a press on unselectable content keeps the selection"
-            press_on_unselectable_keeps_selection;
-          test "a click on a selectable blank clears the selection"
-            press_on_selectable_blank_clears_selection;
-        ];
-      group "Pointer gestures"
-        [
-          test "motion at the pressed cell is no drag"
-            motion_at_the_pressed_cell_is_no_drag;
-          test "motion back over the pressed cell is a drag"
-            motion_back_over_the_pressed_cell_is_a_drag;
-          test "a release says whether the pointer left"
-            release_says_whether_the_pointer_left;
-          test "a drag captures the node pressed" drag_captures_the_node_pressed;
-          test "a release that names no button is the held button's"
-            unnamed_release_is_the_held_buttons;
-          test "another button's release keeps the drag"
-            another_buttons_release_keeps_the_drag;
-          test "a press of the held button is a lost release"
-            press_of_the_held_button_is_a_lost_release;
-          test "a motion without a button is a lost release"
-            motion_without_a_button_is_a_lost_release;
-          test "pointer_lost settles the held press"
-            pointer_lost_settles_the_held_press;
-          test "a clear during a drag ends its selection"
-            clear_during_a_drag_ends_its_selection;
-          test "a refused press under another held press goes nowhere"
-            refused_press_under_another_held_press_goes_nowhere;
-          test "a refusal ends with a lost release"
-            refusal_ends_with_a_lost_release;
-          test "clicks count a series" clicks_count_a_series;
-          test "the clicks window is 500 ms" clicks_window_is_500_ms;
-          test "the clicks window runs from the previous press"
-            clicks_window_runs_from_the_previous_press;
-          test "clicks stay near the first press"
-            clicks_stay_near_the_first_press;
-          test "another button ends a series" another_button_ends_a_series;
-          test "a drag between presses keeps the series"
-            drag_between_presses_keeps_the_series;
-        ];
-    ]
+  exit
+    (run "mosaic.renderer"
+       [
+         test "accepted focus does not retarget press"
+           accepted_focus_does_not_retarget_press;
+         test "mouse uses changed geometry before paint"
+           geometry_changes_route_mouse_before_paint;
+         test "fresh hits respect stacking and scissors"
+           fresh_hits_respect_stacking_and_scissors;
+         test "a width method change re-measures" width_method_change_remeasures;
+         test "layout updates settle before first paint"
+           layout_updates_settle_before_first_paint;
+         test "layout preparation never advances live widgets"
+           layout_preparation_does_not_advance_live_widgets;
+         test "scrollbar geometry settles before next input"
+           scrollbar_geometry_settles_before_next_input;
+         test "paste behavior runs on the focus current then"
+           paste_behavior_runs_on_the_focus_current_then;
+         group "Lifecycle"
+           [
+             test "creates with default style" creates_with_default_style;
+             test "creates with custom style" creates_with_custom_style;
+             test "width method reaches widgets" width_method_reaches_widgets;
+             test "adopted screen render is guarded"
+               adopted_screen_render_is_guarded;
+             test "zero-sized clipping node hides children"
+               zero_sized_clipping_node_hides_children;
+             test "starts dirty" starts_dirty;
+             test "clean after render" clean_after_render;
+             test "dirty after schedule" dirty_after_schedule;
+             test "render request during frame survives"
+               render_request_during_frame_survives;
+             test "callback runs each frame" callback_runs_each_frame;
+             test "a frame without animation" frame_without_animation;
+             test "callback receives delta" callback_receives_delta;
+             test "remove callback stops it" remove_callback_stops_it;
+             test "clear removes all callbacks" clear_removes_all_callbacks;
+             test "a lifecycle pass runs each frame"
+               lifecycle_pass_runs_each_frame;
+             test "the tree's liveness" tree_liveness;
+             test "child_at and uid" child_at_and_uid;
+           ];
+         group "Viewport culling"
+           [
+             test "overflow-visible descendant reaching viewport renders"
+               overflow_visible_descendant_reaching_viewport_renders;
+             test "clipped offscreen subtree is not traversed for rendering"
+               clipped_offscreen_subtree_is_not_traversed_for_rendering;
+             test "scroll box culls offscreen children"
+               scroll_box_culls_offscreen_children;
+             test "scrolling paints revealed children"
+               scrolling_paints_revealed_children;
+             test "culled child is not hit-testable"
+               culled_child_is_not_hit_testable;
+             test "culled live child does not tick"
+               culled_live_child_does_not_tick;
+             test "child straddling the viewport edge is kept"
+               child_straddling_the_viewport_edge_is_kept;
+             test "child ending on the viewport edge is culled"
+               child_ending_on_the_viewport_edge_is_culled;
+             test "zero-height child on the viewport edge is kept"
+               zero_height_child_on_the_viewport_edge_is_kept;
+             test "zero-width child on the viewport edge is kept"
+               zero_width_child_on_the_viewport_edge_is_kept;
+             test "zero-width wrapper keeps its overflowing row"
+               zero_width_wrapper_keeps_its_overflowing_row;
+             test
+               "descendant reaching the viewport survives its offscreen parent"
+               descendant_reaching_the_viewport_survives_its_offscreen_parent;
+             test "child far before the viewport is kept"
+               child_far_before_the_viewport_is_kept;
+             test "a selection reads rows out of view where they are"
+               selection_reads_rows_out_of_view;
+             test "a selection reads the top layer's positions"
+               selection_reads_the_top_layer;
+             culling_matches_a_scan;
+             chunks_keep_every_box;
+             test "a chunk follows a grown member" chunk_follows_a_grown_member;
+             test "a member that stops being contained leaves its chunk"
+               member_leaves_its_chunk;
+           ];
+         group "Scroll hints"
+           [
+             test "scroll produces hint" scroll_produces_hint;
+             test "opposing scrolls cancel" opposing_scrolls_cancel;
+             test "two scrollers disqualify" two_scrollers_disqualify;
+             test "horizontal scroll disqualifies"
+               horizontal_scroll_disqualifies;
+             test "narrow box disqualifies" narrow_box_disqualifies;
+             test "hinted scroll emits DECSTBM and correct rows"
+               hinted_scroll_emits_decstbm_and_correct_rows;
+           ];
+         group "Layout dirtiness"
+           [
+             test "style change relayouts after clean frame"
+               style_change_relayouts_after_clean_frame;
+             test "measure change relayouts after clean frame"
+               measure_change_relayouts_after_clean_frame;
+             test "add/remove child relayouts after clean frame"
+               add_remove_child_relayouts_after_clean_frame;
+             test "resize relayouts after clean frame"
+               resize_relayouts_after_clean_frame;
+             test "visibility toggle relayouts after clean frame"
+               visibility_toggle_relayouts_after_clean_frame;
+           ];
+         group "Settlement"
+           [
+             test "pending provider reports work" pending_provider_reports_work;
+             test "render_frame_until_settled reports pending code"
+               render_frame_until_settled_reports_pending_code;
+             test "render_frame_until_settled completes code"
+               render_frame_until_settled_completes_code;
+             test "settlement replaces superseded frame cells"
+               settlement_replaces_superseded_frame_cells;
+             test "presented cells cleared before next frame"
+               presented_cells_cleared_before_next_frame;
+           ];
+         group "Focus"
+           [
+             test "focus returns true for focusable"
+               focus_returns_true_for_focusable;
+             test "focus returns false for non-focusable"
+               focus_returns_false_for_non_focusable;
+             test "focused returns focused node" focused_returns_focused_node;
+             test "blur clears focus" blur_clears_focus;
+             test "focus different node blurs previous"
+               focus_different_node_blurs_previous;
+             test "left click requests focus" left_click_requests_focus;
+             test "left click without request does not focus"
+               left_click_without_request_does_not_focus;
+             test "left click on non-focusable does not focus"
+               left_click_on_non_focusable_does_not_focus;
+             test "click walks up to focusable parent"
+               click_walks_up_to_focusable_parent;
+             test "left click focuses selectable node"
+               left_click_focuses_selectable_node;
+             test "right click does not auto-focus"
+               right_click_does_not_auto_focus;
+             test "shift left click preserves existing focus"
+               shift_left_click_preserves_existing_focus;
+             test "prevent default mouse down blocks auto-focus"
+               prevent_default_mouse_down_blocks_auto_focus;
+             test "focus fires on node" focus_fires_on_node;
+             test "blur fires on previous" blur_fires_on_previous;
+             test "refocus fires blur then focus" refocus_fires_blur_then_focus;
+           ];
+         group "Input"
+           [
+             test "key dispatches to focused" key_dispatches_to_focused;
+             test "key does nothing when no focus"
+               key_does_nothing_when_no_focus;
+             test "key multiple handlers run" key_multiple_handlers_run;
+             test "prevent default stops default handler"
+               prevent_default_stops_default_handler;
+             test "paste dispatches to focused" paste_dispatches_to_focused;
+             test "paste does nothing when no focus"
+               paste_does_nothing_when_no_focus;
+             test "paste contains correct text" paste_contains_correct_text;
+             test "an unused key bubbles to the ancestors"
+               unused_key_bubbles_to_ancestors;
+             test "a behavior that acts consumes the key"
+               acting_behavior_consumes;
+             test "stopping a key keeps its behavior" stop_keeps_behavior;
+             test "the path is fixed and the behavior follows focus"
+               path_is_fixed_behavior_follows_focus;
+             test "mouse handlers bubble until stopped"
+               mouse_bubbles_until_stopped;
+             test "a prevented press starts no selection"
+               prevented_press_starts_no_selection;
+             test "a click on a selectable node" click_on_selectable_node;
+           ];
+         group "Mouse"
+           [
+             test "mouse events carry node cells" mouse_events_carry_node_cells;
+             test "click dispatches to positioned child"
+               click_dispatches_to_positioned_child;
+             test "click on empty area does not crash"
+               click_on_empty_area_does_not_crash;
+             test "overlapping children last child wins"
+               overlapping_children_last_child_wins;
+             test "click coordinates are absolute"
+               click_coordinates_are_absolute;
+             test "press and release sequence" press_and_release_sequence;
+             test "move fires Move event" move_fires_move_event;
+             test "mouse event has correct modifiers"
+               mouse_event_has_correct_modifiers;
+             test "move over child fires Over" move_over_child_fires_over;
+             test "move away fires Out then Over" move_away_fires_out_then_over;
+             test "move within same child no Over/Out"
+               move_within_same_child_no_over_out;
+             test "hover returns hovered node" hover_returns_hovered_node;
+             test "hover None when pointer leaves"
+               hover_none_when_pointer_leaves;
+             test "scroll dispatches to hit target"
+               scroll_dispatches_to_hit_target;
+             test "scroll with modifiers" scroll_with_modifiers;
+             test "scroll on empty area" scroll_on_empty_area;
+             test "scroll on dead space reaches focused scrollable"
+               scroll_on_dead_space_reaches_focused_scrollable;
+           ];
+         group "Drag"
+           [
+             test "drag sets captured" drag_sets_captured;
+             test "captured receives all mouse events"
+               captured_receives_all_mouse_events;
+             test "release clears capture" release_clears_capture;
+             test "drag-end fires on release" drag_end_fires_on_release;
+             test "drop fires on target" drop_fires_on_target;
+             test "drop source identifies origin" drop_source_identifies_origin;
+             test "right button does not capture" right_button_does_not_capture;
+           ];
+         group "Selection"
+           [
+             test "selection starts None" selection_starts_none;
+             test "a click on selectable text selects nothing"
+               click_on_selectable_selects_nothing;
+             test "drag updates selection focus" drag_updates_selection_focus;
+             test "release finishes selection" release_finishes_selection;
+             test "unrelated button release preserves selection drag"
+               unrelated_button_release_preserves_selection_drag;
+             test "clear selection resets" clear_selection_resets;
+             test "selection drag auto-scrolls scroll box"
+               selection_drag_auto_scrolls_scroll_box;
+             test "selection drag auto-scrolls scroll box after leaving it"
+               selection_drag_auto_scrolls_scroll_box_when_pointer_leaves_it;
+             test
+               "selection release after leaving scroll box goes to anchor \
+                ancestors"
+               selection_release_after_leaving_scroll_box_goes_to_anchor_ancestors;
+             test "a press on unselectable content keeps the selection"
+               press_on_unselectable_keeps_selection;
+             test "a click on a selectable blank clears the selection"
+               press_on_selectable_blank_clears_selection;
+           ];
+         group "Pointer gestures"
+           [
+             test "motion at the pressed cell is no drag"
+               motion_at_the_pressed_cell_is_no_drag;
+             test "motion back over the pressed cell is a drag"
+               motion_back_over_the_pressed_cell_is_a_drag;
+             test "a release says whether the pointer left"
+               release_says_whether_the_pointer_left;
+             test "a drag captures the node pressed"
+               drag_captures_the_node_pressed;
+             test "a release that names no button is the held button's"
+               unnamed_release_is_the_held_buttons;
+             test "another button's release keeps the drag"
+               another_buttons_release_keeps_the_drag;
+             test "a press of the held button is a lost release"
+               press_of_the_held_button_is_a_lost_release;
+             test "a motion without a button is a lost release"
+               motion_without_a_button_is_a_lost_release;
+             test "pointer_lost settles the held press"
+               pointer_lost_settles_the_held_press;
+             test "a clear during a drag ends its selection"
+               clear_during_a_drag_ends_its_selection;
+             test "a refused press under another held press goes nowhere"
+               refused_press_under_another_held_press_goes_nowhere;
+             test "a refusal ends with a lost release"
+               refusal_ends_with_a_lost_release;
+             test "clicks count a series" clicks_count_a_series;
+             test "the clicks window is 500 ms" clicks_window_is_500_ms;
+             test "the clicks window runs from the previous press"
+               clicks_window_runs_from_the_previous_press;
+             test "clicks stay near the first press"
+               clicks_stay_near_the_first_press;
+             test "another button ends a series" another_button_ends_a_series;
+             test "a drag between presses keeps the series"
+               drag_between_presses_keeps_the_series;
+           ];
+       ])

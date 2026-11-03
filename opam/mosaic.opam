@@ -15,9 +15,9 @@ depends: [
   "matrix"
   "toffee"
   "cmarkit"
-  "windtrap" {with-test}
-  "ppx_windtrap" {with-test}
-  "thumper" {with-test}
+  "windtrap" {with-test & >= "0.3.1"}
+  "ppx_windtrap" {with-test & >= "0.3.1"}
+  "thumper" {with-test & >= "0.1.0"}
   "eio_main" {with-test}
   "lwt" {with-test}
   "odoc" {with-doc}

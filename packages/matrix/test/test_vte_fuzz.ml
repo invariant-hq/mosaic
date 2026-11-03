@@ -123,14 +123,14 @@ let csi =
   let* noise =
     frequency
       [
-        (8, pure "");
+        (8, constant "");
         (1, map (String.make 1) (char_range '\x00' '\x1F'));
         (1, of_list [ "\x7f"; "\xc3\xa9"; "\xc2\x9b"; "\x9b"; ":"; "?" ]);
       ]
   in
   let* where = int_range 0 2 in
   let body = String.concat sep params in
-  pure
+  constant
     (match where with
     | 0 -> "\x1b[" ^ noise ^ marker ^ body ^ inter ^ String.make 1 final
     | 1 -> "\x1b[" ^ marker ^ body ^ noise ^ inter ^ String.make 1 final
@@ -348,11 +348,11 @@ let op =
         let+ r = frequency [ (3, int_range 1 3); (2, int_range 1 30) ]
         and+ c = frequency [ (3, int_range 1 3); (2, int_range 1 100) ] in
         Resize (r, c) );
-      (1, pure Reset);
+      (1, constant Reset);
       ( 2,
         let+ o = int_range (-3) 20 and+ h = int_range 1 12 in
         Render (o, h) );
-      (1, pure Clear_dirty);
+      (1, constant Clear_dirty);
     ]
 
 type program = {
@@ -613,21 +613,22 @@ let prop_parser s =
 
 let () =
   ignore pp_bytes;
-  run "matrix.vte.fuzz"
-    [
-      group "parser"
-        [
-          prop ~count:(count 1000) "tokens do not depend on chunking"
-            (Gen.with_pp pp_split split)
-            prop_parser;
-        ];
-      group "vte"
-        [
-          prop ~count:(count 800) "operations keep the invariants"
-            (Gen.with_pp pp_program program)
-            prop_operations;
-          prop ~count:(count 300) "split invariance on arbitrary bytes"
-            (Gen.with_pp pp_split split)
-            prop_split;
-        ];
-    ]
+  exit
+    (run "matrix.vte.fuzz"
+       [
+         group "parser"
+           [
+             prop ~count:(count 1000) "tokens do not depend on chunking"
+               (Gen.with_pp pp_split split)
+               prop_parser;
+           ];
+         group "vte"
+           [
+             prop ~count:(count 800) "operations keep the invariants"
+               (Gen.with_pp pp_program program)
+               prop_operations;
+             prop ~count:(count 300) "split invariance on arbitrary bytes"
+               (Gen.with_pp pp_split split)
+               prop_split;
+           ];
+       ])

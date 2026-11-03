@@ -1280,102 +1280,106 @@ let test_notify_once () =
     (notified [ ("TERM", "rxvt-unicode-256color") ])
 
 let () =
-  run "Terminal"
-    [
-      group "non-tty"
-        [
-          test "no escape sequences on non-TTY" test_non_tty_no_escape_sequences;
-          test "state tracking on non-TTY" test_non_tty_state_tracking;
-          test "tty send" test_tty_send;
-        ];
-      group "clipboard"
-        [
-          cases "route" clipboard_routes
-            ~name:(fun (name, _, _, _) -> name)
-            test_clipboard_route;
-          test "Screen chunk boundaries" test_screen_clipboard_chunks;
-          test "non-TTY clipboard" test_non_tty_clipboard;
-          test "a notification is one sequence" test_notify_once;
-        ];
-      group "capabilities"
-        [
-          test "a description adds" test_description_adds;
-          test "a description's eager wrap" test_description_eager_wrap;
-          test "a description's silence" test_description_silence;
-          test "a description is a guess" test_description_below;
-          cases "precedence" precedence_cases
-            ~name:(fun (name, _, _, _) -> name)
-            test_derivation;
-          cases "width answers" width_answer_cases
-            ~name:(fun (name, _, _, _) -> name)
-            test_width_answer;
-          cases "Ghostty width" ghostty_width_cases
-            ~name:(fun (name, _, _, _) -> name)
-            test_derivation;
-          cases "tmux by version" tmux_cases
-            ~name:(fun (name, _, _, _) -> name)
-            test_derivation;
-          cases "multiplexer" multiplexer_cases
-            ~name:(fun (name, _, _, _) -> name)
-            test_derivation;
-          test "assumed capabilities derive to themselves" test_assume;
-          test "derivation is not monotone" test_not_monotone;
-          cases "graphics" graphics_cases
-            ~name:(fun (name, _, _, _, _) -> name)
-            test_graphics;
-        ];
-      group "batches"
-        [
-          test "probe" test_probe_payload;
-          test "widths" test_widths_payload;
-          test "probe inside a multiplexer" test_probe_payload_multiplexed;
-          cases "follow-up" next_cases
-            ~name:(fun (name, _, _, _) -> name)
-            test_next;
-          test "passthrough and outer groups" test_outer_groups;
-          test "graphics through tmux" test_graphics_tmux;
-          test "silence before DA1" test_silence_before_da1;
-          cases "probe cursor reports" probe_cursor_cases
-            ~name:(fun (name, _, _) -> name)
-            test_probe_cursor;
-        ];
-      group "cursor"
-        [
-          test "position clamping" test_cursor_position_clamping;
-          test "color clamping" test_color_clamping;
-        ];
-      group "mouse"
-        [
-          test "mouse mode on non-TTY" test_mouse_validation;
-          test "X10 disable" test_x10_mouse_disable;
-        ];
-      group "unicode" [ test "enable_grapheme_mode" test_enable_grapheme_mode ];
-      group "keyboard"
-        [ test "modifyOtherKeys toggle" test_modify_other_keys_toggle ];
-      group "protocols"
-        [
-          test "idempotent protocols" test_idempotent_protocols;
-          test "kitty flag change keeps stack balanced"
-            test_kitty_flag_change_keeps_stack_balanced;
-          test "reset state" test_reset_state;
-          test "reset state disables partial paste"
-            test_reset_state_disables_partially_enabled_paste;
-          test "reset state undoes partial modes"
-            test_reset_state_undoes_partial_modes;
-          test "reset state skips untouched appearance"
-            test_reset_state_skips_untouched_appearance;
-          test "reset state restores touched appearance"
-            test_reset_state_restores_touched_appearance;
-          test "reset state erases nothing" test_reset_state_erases_nothing;
-          test "the title comes back" test_title_comes_back;
-          test "cursor batch matches immediate output"
-            test_cursor_batch_matches_immediate_output;
-          test "cursor reset survives partial output"
-            test_cursor_reset_survives_partial_output;
-          test "cursor style and color alone" test_cursor_style_and_color_alone;
-          test "a change while the cursor is hidden"
-            test_hidden_cursor_change_reaches_the_terminal;
-          test "reset state resets cursor metadata"
-            test_reset_state_resets_cursor_metadata;
-        ];
-    ]
+  exit
+    (run "Terminal"
+       [
+         group "non-tty"
+           [
+             test "no escape sequences on non-TTY"
+               test_non_tty_no_escape_sequences;
+             test "state tracking on non-TTY" test_non_tty_state_tracking;
+             test "tty send" test_tty_send;
+           ];
+         group "clipboard"
+           [
+             cases "route" clipboard_routes
+               ~id:(fun (name, _, _, _) -> name)
+               test_clipboard_route;
+             test "Screen chunk boundaries" test_screen_clipboard_chunks;
+             test "non-TTY clipboard" test_non_tty_clipboard;
+             test "a notification is one sequence" test_notify_once;
+           ];
+         group "capabilities"
+           [
+             test "a description adds" test_description_adds;
+             test "a description's eager wrap" test_description_eager_wrap;
+             test "a description's silence" test_description_silence;
+             test "a description is a guess" test_description_below;
+             cases "precedence" precedence_cases
+               ~id:(fun (name, _, _, _) -> name)
+               test_derivation;
+             cases "width answers" width_answer_cases
+               ~id:(fun (name, _, _, _) -> name)
+               test_width_answer;
+             cases "Ghostty width" ghostty_width_cases
+               ~id:(fun (name, _, _, _) -> name)
+               test_derivation;
+             cases "tmux by version" tmux_cases
+               ~id:(fun (name, _, _, _) -> name)
+               test_derivation;
+             cases "multiplexer" multiplexer_cases
+               ~id:(fun (name, _, _, _) -> name)
+               test_derivation;
+             test "assumed capabilities derive to themselves" test_assume;
+             test "derivation is not monotone" test_not_monotone;
+             cases "graphics" graphics_cases
+               ~id:(fun (name, _, _, _, _) -> name)
+               test_graphics;
+           ];
+         group "batches"
+           [
+             test "probe" test_probe_payload;
+             test "widths" test_widths_payload;
+             test "probe inside a multiplexer" test_probe_payload_multiplexed;
+             cases "follow-up" next_cases
+               ~id:(fun (name, _, _, _) -> name)
+               test_next;
+             test "passthrough and outer groups" test_outer_groups;
+             test "graphics through tmux" test_graphics_tmux;
+             test "silence before DA1" test_silence_before_da1;
+             cases "probe cursor reports" probe_cursor_cases
+               ~id:(fun (name, _, _) -> name)
+               test_probe_cursor;
+           ];
+         group "cursor"
+           [
+             test "position clamping" test_cursor_position_clamping;
+             test "color clamping" test_color_clamping;
+           ];
+         group "mouse"
+           [
+             test "mouse mode on non-TTY" test_mouse_validation;
+             test "X10 disable" test_x10_mouse_disable;
+           ];
+         group "unicode"
+           [ test "enable_grapheme_mode" test_enable_grapheme_mode ];
+         group "keyboard"
+           [ test "modifyOtherKeys toggle" test_modify_other_keys_toggle ];
+         group "protocols"
+           [
+             test "idempotent protocols" test_idempotent_protocols;
+             test "kitty flag change keeps stack balanced"
+               test_kitty_flag_change_keeps_stack_balanced;
+             test "reset state" test_reset_state;
+             test "reset state disables partial paste"
+               test_reset_state_disables_partially_enabled_paste;
+             test "reset state undoes partial modes"
+               test_reset_state_undoes_partial_modes;
+             test "reset state skips untouched appearance"
+               test_reset_state_skips_untouched_appearance;
+             test "reset state restores touched appearance"
+               test_reset_state_restores_touched_appearance;
+             test "reset state erases nothing" test_reset_state_erases_nothing;
+             test "the title comes back" test_title_comes_back;
+             test "cursor batch matches immediate output"
+               test_cursor_batch_matches_immediate_output;
+             test "cursor reset survives partial output"
+               test_cursor_reset_survives_partial_output;
+             test "cursor style and color alone"
+               test_cursor_style_and_color_alone;
+             test "a change while the cursor is hidden"
+               test_hidden_cursor_change_reaches_the_terminal;
+             test "reset state resets cursor metadata"
+               test_reset_state_resets_cursor_metadata;
+           ];
+       ])

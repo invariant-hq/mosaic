@@ -259,18 +259,19 @@ let nearest () =
   | _ -> fail "the position of the new cursor item"
 
 let () =
-  run "mosaic.cursor"
-    [
-      group "Keys"
-        [
-          test "APG listbox keys" key_table;
-          test "moves" moves;
-          test "from no cursor item" from_no_cursor;
-          test "identity" identity;
-          test "a move reveals" reveal;
-          test "activation and toggling" activation;
-        ];
-      group "Typeahead" [ test "prefix" typeahead ];
-      group "Ranges" [ test "extend from the anchor" ranges ];
-      group "Nearest" [ test "after a removal" nearest ];
-    ]
+  exit
+    (run "mosaic.cursor"
+       [
+         group "Keys"
+           [
+             test "APG listbox keys" key_table;
+             test "moves" moves;
+             test "from no cursor item" from_no_cursor;
+             test "identity" identity;
+             test "a move reveals" reveal;
+             test "activation and toggling" activation;
+           ];
+         group "Typeahead" [ test "prefix" typeahead ];
+         group "Ranges" [ test "extend from the anchor" ranges ];
+         group "Nearest" [ test "after a removal" nearest ];
+       ])

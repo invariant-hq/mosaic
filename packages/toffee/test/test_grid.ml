@@ -522,26 +522,27 @@ let placement_tests =
   ]
 
 let () =
-  run "Toffee Grid Tests"
-    [
-      group "implicit_grid"
-        [
-          test "Size estimate explicit children"
-            test_compute_grid_size_estimate_explicit_children;
-          test "Size estimate negative implicit"
-            test_compute_grid_size_estimate_negative_implicit;
-        ];
-      group "explicit_grid"
-        [
-          test "Auto-fill exact fit"
-            test_explicit_grid_sizing_auto_fill_exact_fit;
-          test "Auto-fill with gaps"
-            test_explicit_grid_sizing_auto_fill_with_gaps;
-        ];
-      group "placement"
-        (List.map (fun (name, fn) -> test name fn) placement_tests
-        @ [
-            test "The search allocates nothing per cell"
-              test_placement_search_allocates_nothing_per_cell;
-          ]);
-    ]
+  exit
+    (run "Toffee Grid Tests"
+       [
+         group "implicit_grid"
+           [
+             test "Size estimate explicit children"
+               test_compute_grid_size_estimate_explicit_children;
+             test "Size estimate negative implicit"
+               test_compute_grid_size_estimate_negative_implicit;
+           ];
+         group "explicit_grid"
+           [
+             test "Auto-fill exact fit"
+               test_explicit_grid_sizing_auto_fill_exact_fit;
+             test "Auto-fill with gaps"
+               test_explicit_grid_sizing_auto_fill_with_gaps;
+           ];
+         group "placement"
+           (List.map (fun (name, fn) -> test name fn) placement_tests
+           @ [
+               test "The search allocates nothing per cell"
+                 test_placement_search_allocates_nothing_per_cell;
+             ]);
+       ])

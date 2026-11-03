@@ -4,31 +4,31 @@ open Mosaic_ui
 
 (* [satisfies] over [int] with the claim built from the bound, so a call
    site stays one line and the failure still shows both numbers. Thread
-   [?pos] when the failing line matters more than the test's name. *)
+   [?__POS__] when the failing line matters more than the test's name. *)
 
-let gt ?pos ?msg ~than n =
-  Windtrap.satisfies ?pos ?msg
+let gt ?__POS__ ?msg ~than n =
+  Windtrap.satisfies ?__POS__ ?msg
     ~claim:(Printf.sprintf "greater than %d" than)
     Windtrap.int
     (fun v -> v > than)
     n
 
-let ge ?pos ?msg ~than n =
-  Windtrap.satisfies ?pos ?msg
+let ge ?__POS__ ?msg ~than n =
+  Windtrap.satisfies ?__POS__ ?msg
     ~claim:(Printf.sprintf "at least %d" than)
     Windtrap.int
     (fun v -> v >= than)
     n
 
-let lt ?pos ?msg ~than n =
-  Windtrap.satisfies ?pos ?msg
+let lt ?__POS__ ?msg ~than n =
+  Windtrap.satisfies ?__POS__ ?msg
     ~claim:(Printf.sprintf "less than %d" than)
     Windtrap.int
     (fun v -> v < than)
     n
 
-let le ?pos ?msg ~than n =
-  Windtrap.satisfies ?pos ?msg
+let le ?__POS__ ?msg ~than n =
+  Windtrap.satisfies ?__POS__ ?msg
     ~claim:(Printf.sprintf "at most %d" than)
     Windtrap.int
     (fun v -> v <= than)

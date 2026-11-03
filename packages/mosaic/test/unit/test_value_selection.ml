@@ -355,29 +355,30 @@ let table_press_tests =
   ]
 
 let () =
-  run "value selection"
-    (table_press_tests
-    @ test "MLX preserves domain callback values" mlx_selection_values
-      :: List.map
-           (fun (name, build, forward, backward) ->
-             group name
-               [
-                 test "reorder, filter and accepted activation" (fun () ->
-                     reorder_and_filter build forward);
-                 test "absent and empty selection" (fun () ->
-                     absent_and_empty build forward backward);
-                 test "custom equality" (fun () -> custom_equality build);
-                 test "same list declared again" (fun () ->
-                     same_list_declared_again build);
-               ])
-           widgets
-    @ List.map
-        (fun (name, wheel_proposes, build) ->
-          test (name ^ " viewport follows the accepted value") (fun () ->
-              viewport_follows_value ~wheel_proposes build))
-        [
-          ("select", true, select);
-          ("tabs", false, tabs);
-          ("table", true, table);
-          ("tree", true, tree);
-        ])
+  exit
+    (run "value selection"
+       (table_press_tests
+       @ test "MLX preserves domain callback values" mlx_selection_values
+         :: List.map
+              (fun (name, build, forward, backward) ->
+                group name
+                  [
+                    test "reorder, filter and accepted activation" (fun () ->
+                        reorder_and_filter build forward);
+                    test "absent and empty selection" (fun () ->
+                        absent_and_empty build forward backward);
+                    test "custom equality" (fun () -> custom_equality build);
+                    test "same list declared again" (fun () ->
+                        same_list_declared_again build);
+                  ])
+              widgets
+       @ List.map
+           (fun (name, wheel_proposes, build) ->
+             test (name ^ " viewport follows the accepted value") (fun () ->
+                 viewport_follows_value ~wheel_proposes build))
+           [
+             ("select", true, select);
+             ("tabs", false, tabs);
+             ("table", true, table);
+             ("tree", true, tree);
+           ]))

@@ -74,14 +74,15 @@ let benchmarks =
     ]
 
 let () =
-  Thumper.run "charts"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
-    benchmarks
+  exit
+    (Thumper.run "charts"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else Thumper.Metric.[ wall_time; alloc_words ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
+       benchmarks)

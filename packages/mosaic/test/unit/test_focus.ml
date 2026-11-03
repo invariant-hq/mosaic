@@ -39,9 +39,10 @@ let explicit_equality () =
     [ Mosaic.Focus.next; Mosaic.Focus.prev ]
 
 let () =
-  run "Focus"
-    [
-      test "ordered traversal and wrapping" traversal;
-      test "empty and singleton rings" empty_and_singleton;
-      test "identifiers use the supplied equality" explicit_equality;
-    ]
+  exit
+    (run "Focus"
+       [
+         test "ordered traversal and wrapping" traversal;
+         test "empty and singleton rings" empty_and_singleton;
+         test "identifiers use the supplied equality" explicit_equality;
+       ])

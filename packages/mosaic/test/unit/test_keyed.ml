@@ -140,17 +140,18 @@ let items_of_keyed () =
     (Items.same items (Items.of_keyed (Keyed.add 4 "d" m)))
 
 let () =
-  run "mosaic.keyed"
-    [
-      group "Maps"
-        [
-          test "ordered" ordered;
-          test "add and remove" add_and_remove;
-          test "duplicates" duplicates;
-          test "positions" positions;
-          prop ~count:300 "symmetric_diff is the difference" Gen.int
-            symmetric_diff_is_the_difference;
-          test "orders" orders;
-        ];
-      group "Items" [ test "of_keyed" items_of_keyed ];
-    ]
+  exit
+    (run "mosaic.keyed"
+       [
+         group "Maps"
+           [
+             test "ordered" ordered;
+             test "add and remove" add_and_remove;
+             test "duplicates" duplicates;
+             test "positions" positions;
+             prop ~count:300 "symmetric_diff is the difference" Gen.int
+               symmetric_diff_is_the_difference;
+             test "orders" orders;
+           ];
+         group "Items" [ test "of_keyed" items_of_keyed ];
+       ])

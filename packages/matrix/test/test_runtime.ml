@@ -760,7 +760,10 @@ let idle_deadline_property
                 | _ -> ())
           in
           until_idle ()
-        done)
+        done;
+        (* Giving the terminal back waits for the answers its queries are
+           still owed, which no step does. *)
+        f.on_wait <- block_forever)
   done
 
 let test_idle_deadline_property =
@@ -4096,296 +4099,300 @@ let styling_tests =
   @ [ test "a kitty picture" test_kitty_stylings ]
 
 let () =
-  Windtrap.run "matrix.runtime"
-    [
-      group "Loop"
-        [
-          test "frames on demand" test_frames_on_demand;
-          test "frame requests" test_frame_requests;
-          test "frame_dt" test_frame_dt;
-          test "a late frame keeps the grid" test_late_frame_keeps_the_grid;
-          test "turn order" test_turn_order;
-          test "discrete input is drawn in its turn"
-            test_discrete_input_in_its_turn;
-          test "two keys in an interval are drawn in their turns"
-            test_discrete_twice_in_an_interval;
-          test "a flood of discrete input" test_discrete_flood;
-          test "discrete input keeps the grid" test_discrete_keeps_the_grid;
-          test "input read when nothing is queued"
-            test_input_read_when_nothing_is_queued;
-          test "timers" test_timers;
-          test "timer order against a sorted list" test_timer_order_property;
-          test "frames, a property" test_frame_property;
-          test "the turn budget, a property" test_turn_budget_property;
-          test "post from other domains" test_post_from_other_domains;
-          test "calls off the loop raise" test_calls_off_the_loop_raise;
-          test "post after the run" test_post_after_the_run;
-          test "a post from a systhread waits above the bound"
-            (test_posts_wait_above_the_bound (fun f ->
-                 let t = Thread.create f () in
-                 fun () -> Thread.join t));
-          test "a post from a domain waits above the bound"
-            (test_posts_wait_above_the_bound (fun f ->
-                 let d = Domain.spawn f in
-                 fun () -> Domain.join d));
-          test "a post on the loop's thread never waits"
-            test_loop_posts_never_wait;
-          test "the run's end ends a post's wait" test_run_end_ends_the_wait;
-          test "a step never waits" test_step_never_waits;
-          test "a stop requested before the run" test_stop_before_the_run;
-          test "an idle step leaves nothing due, a property"
-            test_idle_deadline_property;
-          test "frame calls outside a frame" test_frame_calls_outside_a_frame;
-        ];
-      group "A terminal in process"
-        [
-          test "a frame asked for outside a frame is drawn at once"
-            test_device_frames_asked_outside;
-          test "a device of its own" test_device_of_its_own;
-          test "an animation keeps its interval and its grid"
-            test_device_animation;
-          test "a resize is drawn at once" test_device_resize;
-          test "input is decoded whole" test_device_whole_writes;
-          test "a silent terminal costs its wait" test_device_silent;
-          test "an idle step leaves nothing due, a property"
-            test_device_idle_deadline_property;
-        ];
-      group "Lifecycle"
-        [
-          test "kitty flags are pushed on the run's screen"
-            test_kitty_flags_on_the_run's_screen;
-          test "the terminal is given back on an exception"
-            test_run_gives_back_on_exception;
-          test "end of input finalizes the parser"
-            test_end_of_input_finalizes_parser;
-          test "Escape expires without more input"
-            test_escape_expires_without_more_input;
-          test "startup preserves input and partial paste"
-            test_startup_preserves_input_and_partial_paste;
-          test "startup EOF finalizes input" test_startup_eof_finalizes_input;
-          test "a size reported before the run"
-            test_size_reported_before_the_run;
-          test "giving back runs every undo" test_give_back_runs_every_undo;
-          test "setup rolls back" test_setup_rolls_back;
-          test "nested runs" test_nested_runs;
-          test "runs on other terminals" test_runs_on_other_terminals;
-          test "focus restore runs only after blur once"
-            test_focus_restore_runs_only_after_blur_once;
-          test "late capability response requests a frame"
-            test_late_capability_response_requests_a_frame;
-          test "split capability response"
-            test_startup_capability_window_defers_split_response;
-          test "stray CPR does not flip capabilities"
-            test_stray_cpr_does_not_flip_capabilities;
-          test "startup and late CPR do not enable width"
-            test_startup_and_late_cpr_do_not_enable_width;
-          test "Ghostty profile reaches runtime"
-            test_ghostty_profile_reaches_runtime;
-          test "grapheme mode left as found" test_grapheme_mode_as_found;
-          test "cursor visibility preserves blinking"
-            test_cursor_visibility_preserves_blinking;
-          test "giving back leaves untouched appearance alone"
-            test_give_back_leaves_untouched_appearance_alone;
-          test "giving back restores touched cursor appearance"
-            test_give_back_restores_touched_cursor_appearance;
-        ];
-      group "Styling" styling_tests;
-      group "Frame output"
-        [
-          test "unchanged frame emits no bytes"
-            test_unchanged_frame_emits_no_bytes;
-          test "frame reuses render capacity" test_frame_reuses_render_capacity;
-          test "cursor-only frame emits output"
-            test_cursor_only_frame_emits_output;
-          test "first frame emits cursor style"
-            test_first_frame_emits_cursor_style;
-          test "visible cursor re-emits hidden visual state"
-            test_visible_cursor_reemits_hidden_visual_state;
-          test "frame above default capacity" test_frame_above_default_capacity;
-          test "partial frame restores transient modes"
-            test_partial_frame_restores_transient_modes;
-        ];
-      group "Resize"
-        [
-          test "resize before its frame" test_resize_before_its_frame;
-          test "zero and same size are ignored"
-            test_resize_zero_and_same_size_are_ignored;
-          test "resize reports usable size" test_resize_reports_usable_size;
-          test "primary render offset clamps after resize"
-            test_resize_clamps_primary_render_offset;
-        ];
-      group "Primary sizing"
-        [
-          test "required rows expand the region"
-            test_primary_required_rows_expand_the_region;
-          test "required rows ignored in alt mode"
-            test_primary_required_rows_ignored_in_alt_mode;
-          test "static rows take no live rows"
-            test_static_rows_take_no_live_rows;
-          test "prepare uses pending static effective region"
-            test_prepare_uses_pending_static_effective_region;
-          test "static_clear erases and draws afresh"
-            test_static_clear_resets_primary_layout;
-          test "static_replace replays inside next frame"
-            test_static_replace_replays_inside_next_frame;
-          test "a whole frame writes the rows that show"
-            test_primary_whole_frame_writes_rows_that_show;
-          test "stale rows are erased" test_primary_erases_stale_rows;
-          test "required rows to the terminal's height"
-            test_primary_required_rows_to_terminal_height;
-          test "no cursor report" test_primary_asks_no_cursor_report;
-        ];
-      group "Primary static output"
-        [
-          test "static writes are flushed FIFO"
-            test_static_writes_are_flushed_fifo;
-          test "static write snapshots selected rows"
-            test_static_write_snapshots_selected_rows;
-          test "the live region starts below the cursor"
-            test_primary_starts_below_the_cursor;
-          test "static_clear is immediate and forces a full repaint"
-            test_static_clear_is_immediate_and_forces_full_repaint;
-          test "pinned static write scrolls the transcript"
-            test_pinned_static_write_scrolls_transcript;
-          test "multiline static write at the pin"
-            test_multiline_static_write_at_the_pin;
-          test "static write moves the live region down"
-            test_static_write_moves_live_region_down;
-          test "one-row static area" test_primary_one_row_static_area;
-          test "static write and live repaint share one write"
-            test_static_write_and_live_repaint_share_sync_frame;
-          test "pinned static write keeps live size"
-            test_pinned_static_write_keeps_live_size;
-          test "required rows apply after static flush"
-            test_primary_required_rows_apply_after_static_flush;
-          test "required rows show in their frame"
-            test_required_rows_show_in_their_frame;
-          test "full-height static write scrolls into scrollback"
-            test_full_height_static_write_scrolls_into_scrollback;
-          test "a static row wider than the terminal wraps"
-            test_queued_static_snapshot_wraps_after_resize;
-          test "static snapshots scroll exactly once per row"
-            test_static_snapshots_scroll_exactly_once_per_row;
-          test "static snapshots clear suffixes and keep blank rows"
-            test_static_snapshot_clears_suffixes_and_keeps_blank_rows;
-          test "preserved static write keeps live region"
-            test_preserved_static_write_keeps_live_region;
-          test "preserved static write after transcript rows"
-            test_preserved_static_write_after_transcript_rows;
-          test "mixed static writes" test_mixed_static_writes;
-          test "full-height consecutive static writes"
-            test_full_height_consecutive_static_writes;
-          test "static_write is ignored in alt mode"
-            test_static_write_ignored_in_alt_mode;
-        ];
-      group "Through a terminal"
-        [
-          test "alt default cursor is shown" test_alt_default_cursor_is_shown;
-          test "the cursor hidden, or where it is put" test_primary_cursor;
-          test "full redraw keeps the cursor row"
-            test_primary_full_redraw_keeps_cursor_row;
-          test "full redraw paints background rows"
-            test_primary_full_redraw_paints_background_rows;
-          test "anchor scrolls shell rows"
-            test_primary_anchor_scrolls_shell_rows;
-          test "minimum height survives a shrink"
-            test_primary_minimum_height_survives_shrink;
-          test "resize keeps the live region below the transcript"
-            test_primary_resize_keeps_live_region_below_transcript;
-          test "a frame after a resize waits for nothing"
-            test_frame_after_a_resize_waits_for_nothing;
-          test "resize before the first frame"
-            test_resize_before_the_first_frame;
-          test "an input that is not a terminal"
-            test_primary_input_not_a_terminal;
-          test "continued below what the shell wrote"
-            test_primary_continued_below_the_shell;
-          test "a line another program writes stays"
-            test_primary_foreign_line_stays;
-          test "the end keeps the live region, or erases it"
-            test_primary_end_erases_or_keeps;
-          test "an unstated height takes the rows to the bottom"
-            test_primary_unstated_height_fills;
-          test "a stated height asks nothing"
-            test_primary_stated_height_asks_nothing;
-          test "an unstated height without answers"
-            test_primary_unstated_without_answers;
-          test "an unstated height after a resize"
-            test_primary_unstated_after_resize;
-          test "static rows take theirs from the live region"
-            test_primary_static_rows_take_live_rows;
-          test "the reset bytes" test_primary_reset_bytes;
-          test "resting in the second column"
-            test_primary_rest_in_the_second_column;
-        ];
-      group "Input"
-        [
-          test "waits follow the round trip" test_waits_follow_round_trip;
-          test "an unanswered batch is given up"
-            test_unanswered_batch_is_given_up;
-          test "late replies are never typed" test_late_replies_never_typed;
-          test "probe reports are never keys" test_probe_reports_never_keys;
-          test "the application's queries" test_application_query;
-          test "a late answer changes modes" test_late_answer_changes_modes;
-          test "metaSendsEscape set is kept" test_meta_sends_escape_kept;
-          test "paste streams and aborts" test_paste_streams_and_aborts;
-          test "Ctrl+C is a key" test_ctrl_c_is_a_key;
-          test "replies that are application facts" test_application_replies;
-          test "tmux groups" test_tmux_groups;
-          test "resize while a query is owed" test_resize_while_a_query_is_owed;
-          test "primary mouse rows" test_primary_mouse_rows;
-        ];
-      group "Release"
-        [
-          test "release during a frame" test_release_during_a_frame;
-          test "release reads nothing" test_release_reads_nothing;
-          test "release drops typeahead" test_release_drops_typeahead;
-          test "release settles only when owed"
-            test_release_settles_only_when_owed;
-          test "the settle counts from the send"
-            test_settle_counts_from_the_send;
-          test "release discards partial input"
-            test_release_discards_partial_input;
-          test "release hands over below the transcript"
-            test_release_hands_over_below_the_transcript;
-          test "release draws below the program"
-            test_release_draws_below_the_program;
-          test "release reads the size" test_release_reads_the_size;
-        ];
-      group "Signals"
-        [
-          test "dispositions while released"
-            (posix_signals test_release_signal_dispositions);
-          test "signals of a served terminal"
-            (posix_signals test_signals_of_a_served_terminal);
-          test "signals left to the application"
-            (posix_signals test_signals_left_to_the_application);
-          test "stop_job when SIGTSTP is ignored"
-            (posix_signals test_stop_job_when_tstp_is_ignored);
-        ];
-      group "Unix backend"
-        [
-          test "a post wakes the loop"
-            (unix_backend test_unix_post_wakes_the_loop);
-          test "the session's environment"
-            (unix_backend test_unix_session_environment);
-          test "a stop wakes the loop"
-            (unix_backend test_unix_stop_wakes_the_loop);
-          test "a reported size survives a release"
-            (unix_backend test_unix_reported_size_survives_a_release);
-          test "each run has its own wake"
-            (unix_backend test_unix_wakes_per_run);
-          test "a pseudo-terminal is not the controlling terminal"
-            (unix_backend test_unix_controlling);
-          test "a write cut by a signal goes on"
-            (unix_backend test_unix_write_cut_by_a_signal);
-          test "reset with no terminal input"
-            (unix_backend test_unix_reset_without_terminal_input);
-          test "the description of TERM" (unix_backend test_unix_description);
-          test "MATRIX_DEBUG's tools" (unix_backend test_unix_debug_tools);
-          test "MATRIX_DEBUG naming no tool"
-            (unix_backend test_unix_debug_unknown);
-          test "a test's terminal reads no MATRIX_DEBUG"
-            test_device_debug_ignored;
-        ];
-    ]
+  exit
+    (Windtrap.run "matrix.runtime"
+       [
+         group "Loop"
+           [
+             test "frames on demand" test_frames_on_demand;
+             test "frame requests" test_frame_requests;
+             test "frame_dt" test_frame_dt;
+             test "a late frame keeps the grid" test_late_frame_keeps_the_grid;
+             test "turn order" test_turn_order;
+             test "discrete input is drawn in its turn"
+               test_discrete_input_in_its_turn;
+             test "two keys in an interval are drawn in their turns"
+               test_discrete_twice_in_an_interval;
+             test "a flood of discrete input" test_discrete_flood;
+             test "discrete input keeps the grid" test_discrete_keeps_the_grid;
+             test "input read when nothing is queued"
+               test_input_read_when_nothing_is_queued;
+             test "timers" test_timers;
+             test "timer order against a sorted list" test_timer_order_property;
+             test "frames, a property" test_frame_property;
+             test "the turn budget, a property" test_turn_budget_property;
+             test "post from other domains" test_post_from_other_domains;
+             test "calls off the loop raise" test_calls_off_the_loop_raise;
+             test "post after the run" test_post_after_the_run;
+             test "a post from a systhread waits above the bound"
+               (test_posts_wait_above_the_bound (fun f ->
+                    let t = Thread.create f () in
+                    fun () -> Thread.join t));
+             test "a post from a domain waits above the bound"
+               (test_posts_wait_above_the_bound (fun f ->
+                    let d = Domain.spawn f in
+                    fun () -> Domain.join d));
+             test "a post on the loop's thread never waits"
+               test_loop_posts_never_wait;
+             test "the run's end ends a post's wait" test_run_end_ends_the_wait;
+             test "a step never waits" test_step_never_waits;
+             test "a stop requested before the run" test_stop_before_the_run;
+             test "an idle step leaves nothing due, a property"
+               test_idle_deadline_property;
+             test "frame calls outside a frame" test_frame_calls_outside_a_frame;
+           ];
+         group "A terminal in process"
+           [
+             test "a frame asked for outside a frame is drawn at once"
+               test_device_frames_asked_outside;
+             test "a device of its own" test_device_of_its_own;
+             test "an animation keeps its interval and its grid"
+               test_device_animation;
+             test "a resize is drawn at once" test_device_resize;
+             test "input is decoded whole" test_device_whole_writes;
+             test "a silent terminal costs its wait" test_device_silent;
+             test "an idle step leaves nothing due, a property"
+               test_device_idle_deadline_property;
+           ];
+         group "Lifecycle"
+           [
+             test "kitty flags are pushed on the run's screen"
+               test_kitty_flags_on_the_run's_screen;
+             test "the terminal is given back on an exception"
+               test_run_gives_back_on_exception;
+             test "end of input finalizes the parser"
+               test_end_of_input_finalizes_parser;
+             test "Escape expires without more input"
+               test_escape_expires_without_more_input;
+             test "startup preserves input and partial paste"
+               test_startup_preserves_input_and_partial_paste;
+             test "startup EOF finalizes input" test_startup_eof_finalizes_input;
+             test "a size reported before the run"
+               test_size_reported_before_the_run;
+             test "giving back runs every undo" test_give_back_runs_every_undo;
+             test "setup rolls back" test_setup_rolls_back;
+             test "nested runs" test_nested_runs;
+             test "runs on other terminals" test_runs_on_other_terminals;
+             test "focus restore runs only after blur once"
+               test_focus_restore_runs_only_after_blur_once;
+             test "late capability response requests a frame"
+               test_late_capability_response_requests_a_frame;
+             test "split capability response"
+               test_startup_capability_window_defers_split_response;
+             test "stray CPR does not flip capabilities"
+               test_stray_cpr_does_not_flip_capabilities;
+             test "startup and late CPR do not enable width"
+               test_startup_and_late_cpr_do_not_enable_width;
+             test "Ghostty profile reaches runtime"
+               test_ghostty_profile_reaches_runtime;
+             test "grapheme mode left as found" test_grapheme_mode_as_found;
+             test "cursor visibility preserves blinking"
+               test_cursor_visibility_preserves_blinking;
+             test "giving back leaves untouched appearance alone"
+               test_give_back_leaves_untouched_appearance_alone;
+             test "giving back restores touched cursor appearance"
+               test_give_back_restores_touched_cursor_appearance;
+           ];
+         group "Styling" styling_tests;
+         group "Frame output"
+           [
+             test "unchanged frame emits no bytes"
+               test_unchanged_frame_emits_no_bytes;
+             test "frame reuses render capacity"
+               test_frame_reuses_render_capacity;
+             test "cursor-only frame emits output"
+               test_cursor_only_frame_emits_output;
+             test "first frame emits cursor style"
+               test_first_frame_emits_cursor_style;
+             test "visible cursor re-emits hidden visual state"
+               test_visible_cursor_reemits_hidden_visual_state;
+             test "frame above default capacity"
+               test_frame_above_default_capacity;
+             test "partial frame restores transient modes"
+               test_partial_frame_restores_transient_modes;
+           ];
+         group "Resize"
+           [
+             test "resize before its frame" test_resize_before_its_frame;
+             test "zero and same size are ignored"
+               test_resize_zero_and_same_size_are_ignored;
+             test "resize reports usable size" test_resize_reports_usable_size;
+             test "primary render offset clamps after resize"
+               test_resize_clamps_primary_render_offset;
+           ];
+         group "Primary sizing"
+           [
+             test "required rows expand the region"
+               test_primary_required_rows_expand_the_region;
+             test "required rows ignored in alt mode"
+               test_primary_required_rows_ignored_in_alt_mode;
+             test "static rows take no live rows"
+               test_static_rows_take_no_live_rows;
+             test "prepare uses pending static effective region"
+               test_prepare_uses_pending_static_effective_region;
+             test "static_clear erases and draws afresh"
+               test_static_clear_resets_primary_layout;
+             test "static_replace replays inside next frame"
+               test_static_replace_replays_inside_next_frame;
+             test "a whole frame writes the rows that show"
+               test_primary_whole_frame_writes_rows_that_show;
+             test "stale rows are erased" test_primary_erases_stale_rows;
+             test "required rows to the terminal's height"
+               test_primary_required_rows_to_terminal_height;
+             test "no cursor report" test_primary_asks_no_cursor_report;
+           ];
+         group "Primary static output"
+           [
+             test "static writes are flushed FIFO"
+               test_static_writes_are_flushed_fifo;
+             test "static write snapshots selected rows"
+               test_static_write_snapshots_selected_rows;
+             test "the live region starts below the cursor"
+               test_primary_starts_below_the_cursor;
+             test "static_clear is immediate and forces a full repaint"
+               test_static_clear_is_immediate_and_forces_full_repaint;
+             test "pinned static write scrolls the transcript"
+               test_pinned_static_write_scrolls_transcript;
+             test "multiline static write at the pin"
+               test_multiline_static_write_at_the_pin;
+             test "static write moves the live region down"
+               test_static_write_moves_live_region_down;
+             test "one-row static area" test_primary_one_row_static_area;
+             test "static write and live repaint share one write"
+               test_static_write_and_live_repaint_share_sync_frame;
+             test "pinned static write keeps live size"
+               test_pinned_static_write_keeps_live_size;
+             test "required rows apply after static flush"
+               test_primary_required_rows_apply_after_static_flush;
+             test "required rows show in their frame"
+               test_required_rows_show_in_their_frame;
+             test "full-height static write scrolls into scrollback"
+               test_full_height_static_write_scrolls_into_scrollback;
+             test "a static row wider than the terminal wraps"
+               test_queued_static_snapshot_wraps_after_resize;
+             test "static snapshots scroll exactly once per row"
+               test_static_snapshots_scroll_exactly_once_per_row;
+             test "static snapshots clear suffixes and keep blank rows"
+               test_static_snapshot_clears_suffixes_and_keeps_blank_rows;
+             test "preserved static write keeps live region"
+               test_preserved_static_write_keeps_live_region;
+             test "preserved static write after transcript rows"
+               test_preserved_static_write_after_transcript_rows;
+             test "mixed static writes" test_mixed_static_writes;
+             test "full-height consecutive static writes"
+               test_full_height_consecutive_static_writes;
+             test "static_write is ignored in alt mode"
+               test_static_write_ignored_in_alt_mode;
+           ];
+         group "Through a terminal"
+           [
+             test "alt default cursor is shown" test_alt_default_cursor_is_shown;
+             test "the cursor hidden, or where it is put" test_primary_cursor;
+             test "full redraw keeps the cursor row"
+               test_primary_full_redraw_keeps_cursor_row;
+             test "full redraw paints background rows"
+               test_primary_full_redraw_paints_background_rows;
+             test "anchor scrolls shell rows"
+               test_primary_anchor_scrolls_shell_rows;
+             test "minimum height survives a shrink"
+               test_primary_minimum_height_survives_shrink;
+             test "resize keeps the live region below the transcript"
+               test_primary_resize_keeps_live_region_below_transcript;
+             test "a frame after a resize waits for nothing"
+               test_frame_after_a_resize_waits_for_nothing;
+             test "resize before the first frame"
+               test_resize_before_the_first_frame;
+             test "an input that is not a terminal"
+               test_primary_input_not_a_terminal;
+             test "continued below what the shell wrote"
+               test_primary_continued_below_the_shell;
+             test "a line another program writes stays"
+               test_primary_foreign_line_stays;
+             test "the end keeps the live region, or erases it"
+               test_primary_end_erases_or_keeps;
+             test "an unstated height takes the rows to the bottom"
+               test_primary_unstated_height_fills;
+             test "a stated height asks nothing"
+               test_primary_stated_height_asks_nothing;
+             test "an unstated height without answers"
+               test_primary_unstated_without_answers;
+             test "an unstated height after a resize"
+               test_primary_unstated_after_resize;
+             test "static rows take theirs from the live region"
+               test_primary_static_rows_take_live_rows;
+             test "the reset bytes" test_primary_reset_bytes;
+             test "resting in the second column"
+               test_primary_rest_in_the_second_column;
+           ];
+         group "Input"
+           [
+             test "waits follow the round trip" test_waits_follow_round_trip;
+             test "an unanswered batch is given up"
+               test_unanswered_batch_is_given_up;
+             test "late replies are never typed" test_late_replies_never_typed;
+             test "probe reports are never keys" test_probe_reports_never_keys;
+             test "the application's queries" test_application_query;
+             test "a late answer changes modes" test_late_answer_changes_modes;
+             test "metaSendsEscape set is kept" test_meta_sends_escape_kept;
+             test "paste streams and aborts" test_paste_streams_and_aborts;
+             test "Ctrl+C is a key" test_ctrl_c_is_a_key;
+             test "replies that are application facts" test_application_replies;
+             test "tmux groups" test_tmux_groups;
+             test "resize while a query is owed"
+               test_resize_while_a_query_is_owed;
+             test "primary mouse rows" test_primary_mouse_rows;
+           ];
+         group "Release"
+           [
+             test "release during a frame" test_release_during_a_frame;
+             test "release reads nothing" test_release_reads_nothing;
+             test "release drops typeahead" test_release_drops_typeahead;
+             test "release settles only when owed"
+               test_release_settles_only_when_owed;
+             test "the settle counts from the send"
+               test_settle_counts_from_the_send;
+             test "release discards partial input"
+               test_release_discards_partial_input;
+             test "release hands over below the transcript"
+               test_release_hands_over_below_the_transcript;
+             test "release draws below the program"
+               test_release_draws_below_the_program;
+             test "release reads the size" test_release_reads_the_size;
+           ];
+         group "Signals"
+           [
+             test "dispositions while released"
+               (posix_signals test_release_signal_dispositions);
+             test "signals of a served terminal"
+               (posix_signals test_signals_of_a_served_terminal);
+             test "signals left to the application"
+               (posix_signals test_signals_left_to_the_application);
+             test "stop_job when SIGTSTP is ignored"
+               (posix_signals test_stop_job_when_tstp_is_ignored);
+           ];
+         group "Unix backend"
+           [
+             test "a post wakes the loop"
+               (unix_backend test_unix_post_wakes_the_loop);
+             test "the session's environment"
+               (unix_backend test_unix_session_environment);
+             test "a stop wakes the loop"
+               (unix_backend test_unix_stop_wakes_the_loop);
+             test "a reported size survives a release"
+               (unix_backend test_unix_reported_size_survives_a_release);
+             test "each run has its own wake"
+               (unix_backend test_unix_wakes_per_run);
+             test "a pseudo-terminal is not the controlling terminal"
+               (unix_backend test_unix_controlling);
+             test "a write cut by a signal goes on"
+               (unix_backend test_unix_write_cut_by_a_signal);
+             test "reset with no terminal input"
+               (unix_backend test_unix_reset_without_terminal_input);
+             test "the description of TERM" (unix_backend test_unix_description);
+             test "MATRIX_DEBUG's tools" (unix_backend test_unix_debug_tools);
+             test "MATRIX_DEBUG naming no tool"
+               (unix_backend test_unix_debug_unknown);
+             test "a test's terminal reads no MATRIX_DEBUG"
+               test_device_debug_ignored;
+           ];
+       ])

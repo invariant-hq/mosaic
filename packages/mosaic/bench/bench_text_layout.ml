@@ -207,95 +207,97 @@ let visible_lines =
 let exact = Sys.getenv_opt "THUMPER_MACHINE" = Some "exact"
 
 let () =
-  Thumper.run "text_layout"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words; promoted_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      ::
-      (if exact then []
-       else
-         [
-           Thumper.Budget.no_slower_than 0.05;
-           Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words
-             ~max_regression:0.5 ();
-         ]))
-    [
-      Thumper.bench "text/plain-props" (fun () ->
-          Text.Props.make ~content:(Thumper.black_box "plain label") ());
-      Thumper.bench_with_setup
-        ~setup:(fun () -> fragment_text 1_000)
-        "fragments/normalize-1k" replace_fragments;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> fragment_text 10_000)
-        "fragments/normalize-10k" replace_fragments;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> focus_surface 128)
-        "focus/layout-128b" focus_layout;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> focus_surface 1_000_000)
-        "focus/layout-1mb" focus_layout;
-      Thumper.bench_with_setup ~setup:restyle_surface
-        "styles/same-text-layout-100k" restyle_layout;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> editor_text)
-        "index/create-1mb" Editor.of_string;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> make_surface plain)
-        "reflow/label" reflow;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> make_surface styled)
-        "reflow/styled-100k" reflow;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> make_surface styled)
-        "reflow/styled-100k-cold" cold_reflow;
-      Thumper.bench_with_setup
-        ~setup:(fun () ->
-          Editor.of_string editor_text |> Editor.set_cursor 500_000)
-        "edit/1mb-middle-undo" edit;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> paint_surface (tall 1_000) ~height:1_000 ~scroll_x:0)
-        "paint/tall-1k" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () ->
-          paint_surface (tall 100_000) ~height:100_000 ~scroll_x:0)
-        "paint/tall-100k" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () ->
-          paint_surface (String.make 100_000 'x') ~height:1 ~scroll_x:99_900)
-        "paint/horizontal-100k" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> paint_surface editor_text ~height:1 ~scroll_x:999_900)
-        "paint/horizontal-1m" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> make_surface styled)
-        "reflow/alternating-widths-100k" alternating_widths;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> viewport plain)
-        "paint/label" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> viewport ~scroll:`Middle (span (tall 100_000)))
-        "paint/tall-100k-middle" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () -> viewport ~wrap:`Word ~scroll:`Middle styled)
-        "paint/styled-100k-middle" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () ->
-          viewport ~setup:(dense_overlays 200) (span visible_lines))
-        "paint/overlays-dense-200" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () ->
-          viewport ~scroll:`Middle ~setup:(hidden_overlays 10_000)
-            (span (tall 100_000)))
-        "paint/overlays-hidden-10k" paint;
-      Thumper.bench_with_setup
-        ~setup:(fun () ->
-          let b = Text_buffer.create () in
-          Text_buffer.set_text b (String.make 400 'x');
-          b)
-        "styles/nested-revision-200" overlay_revision;
-    ]
+  exit
+    (Thumper.run "text_layout"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else Thumper.Metric.[ wall_time; alloc_words; promoted_words ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         ::
+         (if exact then []
+          else
+            [
+              Thumper.Budget.no_slower_than 0.05;
+              Thumper.Budget.relative ~metric:Thumper.Metric.promoted_words 0.5;
+            ]))
+       [
+         Thumper.bench "text/plain-props" (fun () ->
+             Text.Props.make ~content:(Thumper.black_box "plain label") ());
+         Thumper.bench_with_setup
+           ~setup:(fun () -> fragment_text 1_000)
+           "fragments/normalize-1k" replace_fragments;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> fragment_text 10_000)
+           "fragments/normalize-10k" replace_fragments;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> focus_surface 128)
+           "focus/layout-128b" focus_layout;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> focus_surface 1_000_000)
+           "focus/layout-1mb" focus_layout;
+         Thumper.bench_with_setup ~setup:restyle_surface
+           "styles/same-text-layout-100k" restyle_layout;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> editor_text)
+           "index/create-1mb" Editor.of_string;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> make_surface plain)
+           "reflow/label" reflow;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> make_surface styled)
+           "reflow/styled-100k" reflow;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> make_surface styled)
+           "reflow/styled-100k-cold" cold_reflow;
+         Thumper.bench_with_setup
+           ~setup:(fun () ->
+             Editor.of_string editor_text |> Editor.set_cursor 500_000)
+           "edit/1mb-middle-undo" edit;
+         Thumper.bench_with_setup
+           ~setup:(fun () ->
+             paint_surface (tall 1_000) ~height:1_000 ~scroll_x:0)
+           "paint/tall-1k" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () ->
+             paint_surface (tall 100_000) ~height:100_000 ~scroll_x:0)
+           "paint/tall-100k" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () ->
+             paint_surface (String.make 100_000 'x') ~height:1 ~scroll_x:99_900)
+           "paint/horizontal-100k" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () ->
+             paint_surface editor_text ~height:1 ~scroll_x:999_900)
+           "paint/horizontal-1m" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> make_surface styled)
+           "reflow/alternating-widths-100k" alternating_widths;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> viewport plain)
+           "paint/label" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> viewport ~scroll:`Middle (span (tall 100_000)))
+           "paint/tall-100k-middle" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () -> viewport ~wrap:`Word ~scroll:`Middle styled)
+           "paint/styled-100k-middle" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () ->
+             viewport ~setup:(dense_overlays 200) (span visible_lines))
+           "paint/overlays-dense-200" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () ->
+             viewport ~scroll:`Middle ~setup:(hidden_overlays 10_000)
+               (span (tall 100_000)))
+           "paint/overlays-hidden-10k" paint;
+         Thumper.bench_with_setup
+           ~setup:(fun () ->
+             let b = Text_buffer.create () in
+             Text_buffer.set_text b (String.make 400 'x');
+             b)
+           "styles/nested-revision-200" overlay_revision;
+       ])

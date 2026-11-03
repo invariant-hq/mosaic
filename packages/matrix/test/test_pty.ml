@@ -628,8 +628,8 @@ let test_reaped_child_is_never_signalled () =
     (Unix.waitpid [] (Option.get (Pty.pid pty)) : int * Unix.process_status);
   Pty.terminate pty;
   equal ~msg:"terminate forgets the id" (option int) None (Pty.pid pty);
-  raises_match ~msg:"the handle has no child"
-    (Exn.invalid_arg ~substring:"Pty.kill") (fun () -> Pty.kill pty);
+  raises_match ~msg:"the handle has no child" (Exn.invalid_arg ~sub:"Pty.kill")
+    (fun () -> Pty.kill pty);
   Pty.close pty
 
 let test_wait_reaps_the_child () =
@@ -637,8 +637,8 @@ let test_wait_reaps_the_child () =
   ignore (read_to_eof pty : string);
   is_true ~msg:"the child's status" (Pty.wait pty = Unix.WEXITED 3);
   equal ~msg:"wait forgets the id" (option int) None (Pty.pid pty);
-  raises_match ~msg:"a second wait" (Exn.invalid_arg ~substring:"Pty.wait")
-    (fun () -> ignore (Pty.wait pty : Unix.process_status));
+  raises_match ~msg:"a second wait" (Exn.invalid_arg ~sub:"Pty.wait") (fun () ->
+      ignore (Pty.wait pty : Unix.process_status));
   Pty.close pty
 
 (* A child that ignores SIGTERM exits with its own status, whether the handle
@@ -831,4 +831,4 @@ let tests =
       test "pty close" test_pty_close;
     ]
 
-let () = run "matrix.pty" [ group "pty" tests ]
+let () = exit (run "matrix.pty" [ group "pty" tests ])

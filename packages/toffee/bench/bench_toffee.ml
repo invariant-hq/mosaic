@@ -264,19 +264,20 @@ let mixed_dashboard_benchmark =
     (fun (tree, root) -> run_layout tree root available_space)
 
 let () =
-  Thumper.run "toffee"
-    ~config:
-      Thumper.Config.(
-        default
-        |> metrics
-             (if exact then [ Thumper.Metric.alloc_words ]
-              else Thumper.Metric.[ wall_time; alloc_words ]))
-    ~budgets:
-      (Thumper.Budget.no_more_alloc_than 0.
-      :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
-    [
-      deep_flex_benchmark;
-      wide_flex_benchmark;
-      grid_gallery_benchmark;
-      mixed_dashboard_benchmark;
-    ]
+  exit
+    (Thumper.run "toffee"
+       ~config:
+         Thumper.Config.(
+           default
+           |> metrics
+                (if exact then [ Thumper.Metric.alloc_words ]
+                 else Thumper.Metric.[ wall_time; alloc_words ]))
+       ~budgets:
+         (Thumper.Budget.no_more_alloc_than 0.
+         :: (if exact then [] else [ Thumper.Budget.no_slower_than 0.05 ]))
+       [
+         deep_flex_benchmark;
+         wide_flex_benchmark;
+         grid_gallery_benchmark;
+         mixed_dashboard_benchmark;
+       ])

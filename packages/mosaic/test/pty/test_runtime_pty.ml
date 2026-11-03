@@ -578,65 +578,68 @@ let measure () =
 let () =
   if Array.length Sys.argv > 1 && Sys.argv.(1) = "measure" then measure ()
   else
-    run "mosaic.runtime.pty"
-      [
-        group "Idle"
-          (if not supported then []
-           else
-             [
-               test "an idle program does not wake"
-                 (counts_switches test_idle_costs_no_wakeups);
-               test "an idle Matrix run does not wake"
-                 (counts_switches test_idle_matrix);
-               test "a program that ran a perform does not wake"
-                 (counts_switches test_idle_after_perform);
-               test "an idle canvas does not wake"
-                 (counts_switches test_idle_canvas);
-               test "a 1 s timer wakes once a second"
-                 (counts_switches test_idle_every);
-               test "a tick wakes once a frame" (counts_switches test_idle_tick);
-             ]);
-        group "Ticks"
-          (if not supported then []
-           else
-             [
-               test "keys typed add no tick" test_ticks_while_typing;
-               test "ticks keep the frame grid" test_ticks_keep_the_grid;
-             ]);
-        group "Time"
-          (if not supported then []
-           else [ test "R-T: a timer keeps its grid" test_timer_grid ]);
-        group "Latency"
-          (if not supported then []
-           else
-             [
-               test "R-L: every key is painted" (test_key_to_paint "latency");
-               test "R-L: with a busy worker" (test_key_to_paint "latency-busy");
-             ]);
-        group "Threads"
-          (if not supported then []
-           else
-             [
-               test "R-S: a storm of dispatches" test_storm;
-               test "R-F: a flood from a systhread" (test_flood "flood");
-               test "R-F: a flood from a domain" (test_flood "flood-domain");
-               test "R-X: an exception in a perform" test_perform_exception;
-               test "R-X2: an exception in init" test_init_exception;
-             ]);
-        group "Terminal gone"
-          (if not supported then []
-           else
-             [
-               test "a program ends with its terminal"
-                 (test_terminal_gone "idle");
-               test "one that ignores SIGHUP too"
-                 (test_terminal_gone "idle-nohup");
-             ]);
-        group "Handoff"
-          (if not supported then []
-           else
-             [
-               test "Cmd.exec gives a child the terminal" test_exec_handoff;
-               test "Cmd.suspend stops the job" test_suspend;
-             ]);
-      ]
+    exit
+      (run "mosaic.runtime.pty"
+         [
+           group "Idle"
+             (if not supported then []
+              else
+                [
+                  test "an idle program does not wake"
+                    (counts_switches test_idle_costs_no_wakeups);
+                  test "an idle Matrix run does not wake"
+                    (counts_switches test_idle_matrix);
+                  test "a program that ran a perform does not wake"
+                    (counts_switches test_idle_after_perform);
+                  test "an idle canvas does not wake"
+                    (counts_switches test_idle_canvas);
+                  test "a 1 s timer wakes once a second"
+                    (counts_switches test_idle_every);
+                  test "a tick wakes once a frame"
+                    (counts_switches test_idle_tick);
+                ]);
+           group "Ticks"
+             (if not supported then []
+              else
+                [
+                  test "keys typed add no tick" test_ticks_while_typing;
+                  test "ticks keep the frame grid" test_ticks_keep_the_grid;
+                ]);
+           group "Time"
+             (if not supported then []
+              else [ test "R-T: a timer keeps its grid" test_timer_grid ]);
+           group "Latency"
+             (if not supported then []
+              else
+                [
+                  test "R-L: every key is painted" (test_key_to_paint "latency");
+                  test "R-L: with a busy worker"
+                    (test_key_to_paint "latency-busy");
+                ]);
+           group "Threads"
+             (if not supported then []
+              else
+                [
+                  test "R-S: a storm of dispatches" test_storm;
+                  test "R-F: a flood from a systhread" (test_flood "flood");
+                  test "R-F: a flood from a domain" (test_flood "flood-domain");
+                  test "R-X: an exception in a perform" test_perform_exception;
+                  test "R-X2: an exception in init" test_init_exception;
+                ]);
+           group "Terminal gone"
+             (if not supported then []
+              else
+                [
+                  test "a program ends with its terminal"
+                    (test_terminal_gone "idle");
+                  test "one that ignores SIGHUP too"
+                    (test_terminal_gone "idle-nohup");
+                ]);
+           group "Handoff"
+             (if not supported then []
+              else
+                [
+                  test "Cmd.exec gives a child the terminal" test_exec_handoff;
+                  test "Cmd.suspend stops the job" test_suspend;
+                ]);
+         ])

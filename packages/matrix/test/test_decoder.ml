@@ -811,19 +811,19 @@ let owed_tests =
     test "settling more than is owed raises" (fun () ->
         let d = D.create () in
         D.expect d cursor;
-        raises_match (Exn.invalid_arg ~substring:"more than is owed") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"more than is owed") (fun () ->
             D.settle d (owed ~cursor:2 ()));
-        raises_match (Exn.invalid_arg ~substring:"more than is owed") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"more than is owed") (fun () ->
             D.settle d strings));
     test "negative counts raise" (fun () ->
         let d = D.create () in
-        raises_match (Exn.invalid_arg ~substring:"negative") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"negative") (fun () ->
             D.expect d (owed ~cursor:(-1) ()));
-        raises_match (Exn.invalid_arg ~substring:"negative") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"negative") (fun () ->
             D.settle d (owed ~strings:(-1) ())));
     test "feed checks its range" (fun () ->
         let d = D.create () in
-        raises_match (Exn.invalid_arg ~substring:"feed") (fun () ->
+        raises_match (Exn.invalid_arg ~sub:"feed") (fun () ->
             D.feed d (Bytes.create 2) ~off:1 ~len:2 ignore));
     test "the callback may settle, and the next bytes see it" (fun () ->
         let d = D.create () in
@@ -848,7 +848,7 @@ let owed_tests =
         List.iter
           (fun (name, call) ->
             let d = D.create () in
-            raises_match ~msg:name (Exn.invalid_arg ~substring:name) (fun () ->
+            raises_match ~msg:name (Exn.invalid_arg ~sub:name) (fun () ->
                 feed d "\x1b[200~ab" (fun _ -> call d));
             (* The decoder is free again once the exception has left it. *)
             let out = ref [] in
@@ -1297,7 +1297,7 @@ let measured =
 let measured_tests =
   [
     cases "xterm 398"
-      ~name:(fun (chord, config, _, _) -> chord ^ ", " ^ config)
+      ~id:(fun (chord, config, _, _) -> chord ^ ", " ^ config)
       measured
       (fun (_, _, bytes, e) -> check bytes e);
   ]
@@ -1635,7 +1635,7 @@ let stated_losses () =
 
 let unencodable () =
   let raises msg e k =
-    raises_match ~msg (Exn.invalid_arg ~substring:"Keystroke.encode") (fun () ->
+    raises_match ~msg (Exn.invalid_arg ~sub:"Keystroke.encode") (fun () ->
         K.encode e k)
   in
   raises "a media key in legacy bytes" (keyboard ()) (press (Media Play));
@@ -1708,22 +1708,23 @@ let made_as_decoded () =
 let make_tests = [ test "make agrees with the decoder" made_as_decoded ]
 
 let () =
-  run "matrix.input.decoder"
-    [
-      group "legacy keys" legacy_keys;
-      group "xterm keys" xterm_keys;
-      group "kitty keys" kitty_keys;
-      group "mouse" mouse;
-      group "focus and paste" paste;
-      group "replies" replies;
-      group "string replies" string_replies;
-      group "silence" silence;
-      group "owed" owed_tests;
-      group "regressions" regressions;
-      group "attacks" attacks;
-      group "measured" measured_tests;
-      group "encoding" encoding_tests;
-      group "key equivalence" equivalence_tests;
-      group "interrupt" interrupt_tests;
-      group "make" make_tests;
-    ]
+  exit
+    (run "matrix.input.decoder"
+       [
+         group "legacy keys" legacy_keys;
+         group "xterm keys" xterm_keys;
+         group "kitty keys" kitty_keys;
+         group "mouse" mouse;
+         group "focus and paste" paste;
+         group "replies" replies;
+         group "string replies" string_replies;
+         group "silence" silence;
+         group "owed" owed_tests;
+         group "regressions" regressions;
+         group "attacks" attacks;
+         group "measured" measured_tests;
+         group "encoding" encoding_tests;
+         group "key equivalence" equivalence_tests;
+         group "interrupt" interrupt_tests;
+         group "make" make_tests;
+       ])
