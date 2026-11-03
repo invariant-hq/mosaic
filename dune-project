@@ -7,7 +7,7 @@
 (opam_file_location inside_opam_directory)
 
 (source
- (github tmattio/mosaic))
+ (github invariant-hq/mosaic))
 
 (authors "Thibaut Mattio <thibaut.mattio@gmail.com>")
 

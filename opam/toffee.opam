@@ -7,8 +7,8 @@ maintainer: ["Thibaut Mattio <thibaut.mattio@gmail.com>"]
 authors: ["Thibaut Mattio <thibaut.mattio@gmail.com>"]
 license: "ISC"
 tags: ["css" "layout" "flexbox" "grid" "css-grid" "taffy" "layout-engine"]
-homepage: "https://github.com/tmattio/mosaic"
-bug-reports: "https://github.com/tmattio/mosaic/issues"
+homepage: "https://github.com/invariant-hq/mosaic"
+bug-reports: "https://github.com/invariant-hq/mosaic/issues"
 depends: [
   "ocaml" {>= "5.1"}
   "dune" {>= "3.19"}
@@ -30,5 +30,5 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/tmattio/mosaic.git"
+dev-repo: "git+https://github.com/invariant-hq/mosaic.git"
 x-maintenance-intent: ["(latest)"]
