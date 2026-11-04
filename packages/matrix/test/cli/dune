@@ -34,4 +34,4 @@
   (= %{os_type} Unix))
  (modules test_cli_pty)
  (deps cli_child.exe ../runtime_job.exe)
- (libraries windtrap matrix matrix.test unix))
+ (libraries windtrap matrix matrix.test matrix.pty unix))

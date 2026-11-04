@@ -9,7 +9,24 @@ let child =
 
 type session = { pty : Pty.t; pid : int; output : Buffer.t }
 
+(* A sandbox can forbid opening a pseudo-terminal, as opam-repository's
+   macOS builders do: a test that needs one skips. *)
+let pty_opens =
+  lazy
+    (match Pty.open_pty () with
+    | master, slave ->
+        Pty.close master;
+        Pty.close slave;
+        true
+    | exception Unix.Unix_error ((EPERM | EACCES | ENOENT | ENOSYS), _, _) ->
+        false)
+
+let needs_pty () =
+  if not (Lazy.force pty_opens) then
+    skip ~reason:"a pseudo-terminal, which this host cannot open" ()
+
 let spawn ?(args = []) ?(rows = 24) ?(cols = 80) () =
+  needs_pty ();
   let pty =
     Pty.spawn ~prog:child ~args
       ~winsize:Pty.{ rows; cols; xpixel = 0; ypixel = 0 }
@@ -108,10 +125,31 @@ let test_sigterm () =
       is_true ~msg:"cooked" (cooked s)
   | _ -> fail "expected the process to end by its signal"
 
+(* Whether the kernel discards a stop signal raised in a session's own
+   process group, which no job-control shell can continue. Linux and macOS
+   do, as POSIX has for an orphaned group; FreeBSD stops the process. *)
+let orphans_go_on =
+  lazy
+    (match Unix.fork () with
+    | 0 ->
+        ignore (Unix.setsid () : int);
+        Sys.set_signal Sys.sigtstp Signal_default;
+        Unix.kill (Unix.getpid ()) Sys.sigtstp;
+        Unix._exit 0
+    | pid -> (
+        match Unix.waitpid [ WUNTRACED ] pid with
+        | _, WSTOPPED _ ->
+            Unix.kill pid Sys.sigkill;
+            ignore (Unix.waitpid [] pid : int * Unix.process_status);
+            false
+        | _ -> true))
+
 (* A program in its own session is an orphaned process group, which a stop
    signal must not stop: the terminal is given back and taken again, and the
    run goes on. *)
 let test_sigtstp_in_an_orphaned_group () =
+  if not (Lazy.force orphans_go_on) then
+    skip ~reason:"a kernel that does not stop a session's own group" ();
   with_session @@ fun s ->
   await s "READY 1";
   let from = mark s in
@@ -198,6 +236,7 @@ let job =
   Filename.concat (Filename.dirname Sys.executable_name) "runtime_job.exe"
 
 let spawn_job () =
+  needs_pty ();
   let pty =
     Pty.spawn ~prog:job ~args:[ child ]
       ~winsize:Pty.{ rows = 24; cols = 80; xpixel = 0; ypixel = 0 }
@@ -310,6 +349,7 @@ let test_background_continue_stops_again () =
    abort resets both. *)
 
 let served_terminal ?(mode = "served") f =
+  needs_pty ();
   let master, slave = Pty.open_pty () in
   Pty.set_nonblock master;
   let path = String.trim (output_of ~stdin:(Pty.file_descr slave) "tty" []) in
@@ -434,6 +474,7 @@ let kitty_sizing s =
 let shell_text = [ "$ one"; "$ two"; "$ three" ]
 
 let test_probe_leaves_the_shell_text mode () =
+  needs_pty ();
   let pty =
     Pty.spawn ~prog:child ~args:mode
       ~env:[| "TERM=xterm-256color" |]

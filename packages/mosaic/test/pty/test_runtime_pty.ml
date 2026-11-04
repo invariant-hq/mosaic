@@ -27,7 +27,21 @@ type session = {
   mutable pending : string;
 }
 
+(* A sandbox can forbid opening a pseudo-terminal, as opam-repository's
+   macOS builders do: a test that needs one skips. *)
+let pty_opens =
+  lazy
+    (match Pty.open_pty () with
+    | master, slave ->
+        Pty.close master;
+        Pty.close slave;
+        true
+    | exception Unix.Unix_error ((EPERM | EACCES | ENOENT | ENOSYS), _, _) ->
+        false)
+
 let spawn ?(prog = program) name =
+  if not (Lazy.force pty_opens) then
+    skip ~reason:"a pseudo-terminal, which this host cannot open" ();
   Unix.putenv "MOSAIC_PTY_PROGRAM" name;
   let pty =
     Pty.spawn ~prog

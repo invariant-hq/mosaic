@@ -27,7 +27,24 @@ let contains s sub =
 let shows text term = T.Screen.find (T.Terminal.screen term) text <> []
 let has_line l term = List.mem l (lines term)
 
+(* A sandbox can forbid opening a pseudo-terminal, as opam-repository's
+   macOS builders do: a test that needs one skips. *)
+let pty_opens =
+  lazy
+    (match Pty.open_pty () with
+    | master, slave ->
+        Pty.close master;
+        Pty.close slave;
+        true
+    | exception Unix.Unix_error ((EPERM | EACCES | ENOENT | ENOSYS), _, _) ->
+        false)
+
+let needs_pty () =
+  if not (Lazy.force pty_opens) then
+    skip ~reason:"a pseudo-terminal, which this host cannot open" ()
+
 let spawn ?(cols = 40) ?(rows = 10) ?(env = []) mode f =
+  needs_pty ();
   let term = T.Terminal.create ~cols ~rows () in
   T.Child.with_spawn term ~env ~prog:child ~args:[ mode ] (fun c -> f term c)
 
@@ -459,6 +476,7 @@ let test_keys () =
 (* Ctrl+Z under a job-control shell stops the job with the region off the
    screen; continued, it draws the region again. *)
 let test_stop () =
+  needs_pty ();
   let term = T.Terminal.create ~cols:40 ~rows:10 () in
   T.Child.with_spawn term
     ~env:[ ("CLI_CHILD", "tstp") ]
@@ -478,6 +496,7 @@ let test_stop () =
 (* Continued in the background, the job draws nothing until its end, where
    its last frame is printed as a line. *)
 let test_background () =
+  needs_pty ();
   let term = T.Terminal.create ~cols:40 ~rows:10 () in
   T.Child.with_spawn term
     ~env:[ ("CLI_CHILD", "tstp-bg") ]
@@ -495,6 +514,7 @@ let test_background () =
 (* Ctrl+Z in a secret puts the echo back while the job is stopped, and asks
    again once it continues. *)
 let test_secret_stop () =
+  needs_pty ();
   let term = T.Terminal.create ~cols:40 ~rows:10 () in
   T.Child.with_spawn term
     ~env:[ ("CLI_CHILD", "secret") ]

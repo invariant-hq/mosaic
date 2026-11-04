@@ -133,7 +133,7 @@
  (package matrix)
  (modules test_matrix_test)
  (deps runtime_child.exe)
- (libraries windtrap matrix matrix.test matrix.vte unix))
+ (libraries windtrap matrix matrix.test matrix.vte matrix.pty unix))
 
 (executable
  (name runtime_child)

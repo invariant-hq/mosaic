@@ -1,6 +1,20 @@
 open Windtrap
 
+(* A sandbox can forbid opening a pseudo-terminal, as opam-repository's
+   macOS builders do: a test that needs one skips. *)
+let pty_opens =
+  lazy
+    (match Pty.open_pty () with
+    | master, slave ->
+        Pty.close master;
+        Pty.close slave;
+        true
+    | exception Unix.Unix_error ((EPERM | EACCES | ENOENT | ENOSYS), _, _) ->
+        false)
+
 let with_pty ?winsize f =
+  if not (Lazy.force pty_opens) then
+    skip ~reason:"a pseudo-terminal, which this host cannot open" ();
   let master, slave = Pty.open_pty ?winsize () in
   Fun.protect
     ~finally:(fun () ->
@@ -598,11 +612,19 @@ let test_restore_all () =
                 Signal.forget_settings h)))
 
 (* Reset bytes have no length but the terminal's: a holder's teardown can
-   be as long as what it set. *)
+   be as long as what it set. They go to a file, which takes them whole
+   whatever their length, where a pipe could hold less than they are and
+   block the write. *)
 let test_restore_all_long () =
   if Sys.unix then
     with_pty (fun _ input ->
-        with_pipe (fun r output ->
+        let path = Filename.temp_file "test_tty" ".out" in
+        let output = Unix.openfile path [ O_RDWR; O_CLOEXEC ] 0o600 in
+        Fun.protect
+          ~finally:(fun () ->
+            Unix.close output;
+            Sys.remove path)
+          (fun () ->
             with_holder ~output ~controlling:false (fun h ->
                 Signal.keep_settings h ~input;
                 let reset =
@@ -611,13 +633,8 @@ let test_restore_all_long () =
                 Signal.set_reset h reset;
                 Signal.set_reset h (reset ^ reset);
                 Signal.restore_all ();
-                let got = Buffer.create 40_000 and buf = Bytes.create 65536 in
-                while Buffer.length got < 40_000 do
-                  let n = Unix.read r buf 0 65536 in
-                  Buffer.add_subbytes got buf 0 n
-                done;
                 equal ~msg:"the last reset bytes, whole" string (reset ^ reset)
-                  (Buffer.contents got);
+                  (In_channel.with_open_bin path In_channel.input_all);
                 Signal.set_reset h "")))
 
 let () =

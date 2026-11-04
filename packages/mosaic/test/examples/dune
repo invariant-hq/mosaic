@@ -4,7 +4,7 @@
 
 (executable
  (name test_examples)
- (libraries windtrap matrix.test matrix.vte unix))
+ (libraries windtrap matrix.test matrix.vte matrix.pty unix))
 
 (rule
  (alias runtest)

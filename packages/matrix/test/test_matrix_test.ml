@@ -424,8 +424,24 @@ let test_presented () =
 let child =
   Filename.concat (Filename.dirname Sys.executable_name) "runtime_child.exe"
 
+(* A sandbox can forbid opening a pseudo-terminal, as opam-repository's
+   macOS builders do, and Windows has none: a test that needs one skips. *)
+let pty_opens =
+  lazy
+    (match Pty.open_pty () with
+    | master, slave ->
+        Pty.close master;
+        Pty.close slave;
+        true
+    | exception Unix.Unix_error ((EPERM | EACCES | ENOENT | ENOSYS), _, _) ->
+        false)
+
+let needs_pty () =
+  if not (Lazy.force pty_opens) then
+    skip ~reason:"a pseudo-terminal, which this host cannot open" ()
+
 let test_child () =
-  if Sys.win32 then skip ~reason:"a pseudo-terminal, which Windows lacks" ();
+  needs_pty ();
   let term = T.Terminal.create ~cols:30 ~rows:3 () in
   let shows text term = T.Screen.find (T.Terminal.screen term) text <> [] in
   let status =
@@ -444,7 +460,7 @@ let test_child () =
     "01 |GOODBYE\n02 |\n03 |\ncursor 2,1 block blinking\n" (text term)
 
 let test_child_timeout () =
-  if Sys.win32 then skip ~reason:"a pseudo-terminal, which Windows lacks" ();
+  needs_pty ();
   let term = T.Terminal.create ~cols:30 ~rows:3 () in
   T.Child.with_spawn term ~prog:child ~args:[ "goodbye" ] @@ fun c ->
   raises_match ~msg:"never ready"
@@ -458,7 +474,7 @@ let test_child_timeout () =
    update opens, and the frame where it ends, and the rest of the output
    waits for the next wait. *)
 let test_child_updates () =
-  if Sys.win32 then skip ~reason:"a pseudo-terminal, which Windows lacks" ();
+  needs_pty ();
   let term = T.Terminal.create ~cols:30 ~rows:3 () in
   let row0 term = T.Screen.row (T.Terminal.screen term) 0 in
   let shows text term = row0 term = text in

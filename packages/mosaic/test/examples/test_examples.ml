@@ -19,10 +19,24 @@ let find out sub =
   in
   go 0
 
+(* A sandbox can forbid opening a pseudo-terminal, as opam-repository's
+   macOS builders do: a test that needs one skips. *)
+let pty_opens =
+  lazy
+    (match Pty.open_pty () with
+    | master, slave ->
+        Pty.close master;
+        Pty.close slave;
+        true
+    | exception Unix.Unix_error ((EPERM | EACCES | ENOENT | ENOSYS), _, _) ->
+        false)
+
 (* Runs the example with [args], then [stty -a], which shows the terminal's
    settings as the example left them, and calls [f] once the title shows on
    the alternate screen. It is everything the session wrote. *)
 let session args f =
+  if not (Lazy.force pty_opens) then
+    skip ~reason:"a pseudo-terminal, which this host cannot open" ();
   let term = T.Terminal.create ~cols:80 ~rows:24 () in
   let status =
     T.Child.with_spawn term

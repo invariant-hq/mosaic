@@ -3546,11 +3546,28 @@ let test_stop_job_when_tstp_is_ignored () =
 
 (* Unix backend *)
 
+(* A sandbox can forbid opening a pseudo-terminal, as opam-repository's
+   macOS builders do, and Windows has none: a test that needs one skips. *)
+let pty_opens =
+  lazy
+    (match Pty.open_pty () with
+    | master, slave ->
+        Pty.close master;
+        Pty.close slave;
+        true
+    | exception Unix.Unix_error ((EPERM | EACCES | ENOENT | ENOSYS), _, _) ->
+        false)
+
+let needs_pty () =
+  if not (Lazy.force pty_opens) then
+    skip ~reason:"a pseudo-terminal, which this host cannot open" ()
+
 (* A post from another thread wakes a loop that waits for input that never
    comes. *)
 (* A pseudo-terminal the process opened is a terminal, not its controlling
    terminal. *)
 let test_unix_controlling () =
+  needs_pty ();
   let master, slave = Pty.open_pty () in
   Fun.protect
     ~finally:(fun () ->
@@ -3775,6 +3792,7 @@ let test_unix_write_cut_by_a_signal () =
    given its input by a pipe) sets modes on that terminal all the same: an
    abort resets them, as for any run. *)
 let test_unix_reset_without_terminal_input () =
+  needs_pty ();
   let master, slave = Pty.open_pty () in
   let devnull = Unix.openfile "/dev/null" [ O_RDONLY; O_CLOEXEC ] 0 in
   Fun.protect

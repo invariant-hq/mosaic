@@ -333,16 +333,29 @@ let test_spawn_while_a_domain_runs () =
           Unix.sleepf 0.001
         done)
   in
+  (* The child stays until the handle closes: FreeBSD may discard the output
+     of a child that exited before it was read. *)
+  let rec read_into pty buf off =
+    if off = Bytes.length buf || not (readable ~timeout:2. (Pty.in_fd pty)) then
+      off
+    else
+      match Pty.read pty buf off (Bytes.length buf - off) with
+      | 0 | (exception Unix.Unix_error (Unix.EIO, _, _)) -> off
+      | n -> read_into pty buf (off + n)
+  in
   let output =
     Fun.protect
       ~finally:(fun () ->
         Atomic.set stop true;
         Domain.join domain)
       (fun () ->
-        let pty = Pty.spawn ~prog:"echo" ~args:[ "hello" ] () in
-        let output = read_to_eof pty in
+        let pty =
+          Pty.spawn ~prog:"sh" ~args:[ "-c"; "echo hello; exec cat" ] ()
+        in
+        let buf = Bytes.create 7 in
+        let n = read_into pty buf 0 in
         Pty.close pty;
-        output)
+        Bytes.sub_string buf 0 n)
   in
   equal ~msg:"the child ran" string "hello\r\n" output
 
