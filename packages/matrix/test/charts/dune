@@ -1,5 +1,6 @@
 (library
  (name matrix_charts_expect)
+ (optional)
  (inline_tests)
  (libraries windtrap matrix.ansi matrix.grid matrix.charts)
  (preprocess

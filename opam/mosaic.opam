@@ -12,9 +12,9 @@ bug-reports: "https://github.com/invariant-hq/mosaic/issues"
 depends: [
   "ocaml" {>= "5.1"}
   "dune" {>= "3.19"}
-  "matrix"
-  "toffee"
-  "cmarkit"
+  "matrix" {= version}
+  "toffee" {= version}
+  "cmarkit" {>= "0.4.0"}
   "windtrap" {with-test & >= "0.3.1"}
   "ppx_windtrap" {with-test & >= "0.3.1"}
   "thumper" {with-test & >= "0.1.0"}

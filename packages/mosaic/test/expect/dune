@@ -1,5 +1,6 @@
 (library
  (name mosaic_expect)
+ (optional)
  (inline_tests)
  (libraries
   windtrap

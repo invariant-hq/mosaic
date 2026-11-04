@@ -70,9 +70,12 @@
   (ocaml
    (>= 5.1))
   dune
-  matrix
-  toffee
-  cmarkit
+  (matrix
+   (= :version))
+  (toffee
+   (= :version))
+  (cmarkit
+   (>= 0.4.0))
   (windtrap
    (and
     :with-test
