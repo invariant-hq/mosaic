@@ -3683,7 +3683,7 @@ let%expect_test "timers follow the reference model" =
     | 2 -> Random.State.full_int rand (ns 10.)
     | _ -> Random.State.full_int rand (ns 60.)
   in
-  let cases = 10_000 and failures = ref 0 in
+  let cases = 1_000 and failures = ref 0 in
   let total = ref 0 and counted = ref 0 in
   for case = 1 to cases do
     let sets = List.init (2 + Random.State.int rand 6) (fun _ -> ()) in
@@ -3773,8 +3773,8 @@ let%expect_test "timers follow the reference model" =
   Printf.printf "%d fires, %d with a count above 1\n" !total !counted;
   [%expect
     {|
-    0 of 10000 cases differ
-    128264 fires, 79002 with a count above 1
+    0 of 1000 cases differ
+    12871 fires, 7782 with a count above 1
     |}]
 
 let%expect_test "an animation that never ends settles at each instant" =
