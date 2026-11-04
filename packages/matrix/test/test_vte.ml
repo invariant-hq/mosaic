@@ -860,6 +860,22 @@ let blit_view_clamps () =
   Vte.blit_view vte ~offset:1 dst;
   equal ~msg:"alternate screen" (list string) [ "A"; "" ] (view ())
 
+(* A wide grapheme printed in one column is narrowed to it. Inserted again
+   before itself after a resize, the same grapheme is wide and narrow on one
+   row, and a copy of the row keeps each width. *)
+let blit_row_keeps_widths () =
+  let g = "\xef\xbc\xba\xcc\xb4" in
+  let vte = Vte.create ~rows:1 ~cols:1 () in
+  feed vte g;
+  ignore (Vte.resize vte ~rows:1 ~cols:4 : _ list);
+  feed vte ("\027[4h\r" ^ g);
+  let row = Grid.create ~width:4 ~height:1 () in
+  Vte.blit_row vte 0 row ~y:0;
+  equal ~msg:"its cells" (list string) [ g; ""; g; " " ]
+    (List.init 4 (Grid.get_text row));
+  equal ~msg:"their widths" (list int) [ 2; 0; 1; 1 ]
+    (List.init 4 (Grid.cell_width row))
+
 (* Rows run from the screen up into the scrollback: each has its text, its
    wrap mark and its cells, the same before and after it scrolls off. Other
    rows are blank. *)
@@ -2717,6 +2733,7 @@ let tests =
     test "blit_view order" blit_view_order;
     test "blit_view wrapped ring" blit_view_wrapped_ring;
     test "blit_view clamps" blit_view_clamps;
+    test "blit_row keeps widths" blit_row_keeps_widths;
     test "auto wrap mode" auto_wrap_mode;
     test "reverse wrap" reverse_wrap;
     test "insert mode" insert_mode;

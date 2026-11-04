@@ -249,15 +249,17 @@ let[@inline] write_cell t idx code bg =
     Buf.set_cell t.chars idx code
   end
 
-(** Create a cell copier for transferring complex cells between stores. Caches
-    by stable store key to avoid re-interning identical graphemes. *)
+(* A copier of complex cells from one store to another, which interns each
+   grapheme once. Cells naming one grapheme can differ in width, as a wide
+   grapheme narrowed at a row's end does, so each copy keeps its own cell's
+   width. *)
 let make_cell_copier ~src_store ~dst_store =
   let cache = Hashtbl.create 64 in
   fun code ->
     match Packed_cell.store_key code with
     | None -> code
     | Some key ->
-        let start_cell =
+        let copied =
           match Hashtbl.find_opt cache key with
           | Some g -> g
           | None ->
@@ -265,7 +267,12 @@ let make_cell_copier ~src_store ~dst_store =
               Hashtbl.add cache key g;
               g
         in
-        start_cell
+        if Packed_cell.is_empty copied then copied
+        else
+          Packed_cell.pack_start
+            (Packed_cell.unpack_idx copied)
+            (Packed_cell.unpack_gen copied)
+            (Packed_cell.grapheme_width code)
 
 (* {1 Creation & lifecycle} *)
 
