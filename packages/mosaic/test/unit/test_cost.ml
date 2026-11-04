@@ -536,13 +536,18 @@ let capped_log_frames () =
 let shared_layout () =
   let layout = Toffee.Style.(default |> set_flex_grow Float.nan) in
   (* [words] counts what reading the counters allocates too, which the
-     difference of two counts cancels. *)
+     difference of two counts cancels. Each value measured is kept opaque, as
+     flambda removes an allocation whose result goes unused. *)
   let copy =
     words (fun () ->
-        ignore (Toffee.Style.set_flex_grow 2. layout : Toffee.Style.t))
+        ignore
+          (Sys.opaque_identity (Toffee.Style.set_flex_grow 2. layout)
+            : Toffee.Style.t))
     - words ignore
   in
-  let text f = words (fun () -> ignore (f () : unit Mosaic.t)) in
+  let text f =
+    words (fun () -> ignore (Sys.opaque_identity (f ()) : unit Mosaic.t))
+  in
   let shared = text (fun () -> Mosaic.text ~layout "x")
   and overridden = text (fun () -> Mosaic.text ~layout ~flex_grow:2. "x") in
   if overridden - shared <> copy then

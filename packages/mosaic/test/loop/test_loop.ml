@@ -599,16 +599,23 @@ let%expect_test "perform dispatches from concurrent threads are all delivered" =
      count must be exact. *)
   (* Each burst must outlast the ~50 ms systhread tick so preemption lands
      mid-push with other threads still active — a shorter burst completes
-     within one scheduler slice and never races. *)
-  let thread_count = 3 in
-  let per_thread = 2_000_000 in
+     within one scheduler slice and never races. A burst is bounded by time,
+     not by count, so a slow machine sends fewer messages instead of taking
+     longer, and the count expected is the count sent. *)
+  let thread_count = 3 and burst = 0.3 in
+  let sent = Atomic.make 0 in
   let hammer =
     Mosaic.Cmd.batch
       (List.init thread_count (fun _ ->
            Mosaic.Cmd.perform (fun dispatch ->
-               for _ = 1 to per_thread do
-                 dispatch Tick
-               done)))
+               let stop = Unix.gettimeofday () +. burst and count = ref 0 in
+               while Unix.gettimeofday () < stop do
+                 for _ = 1 to 1024 do
+                   dispatch Tick
+                 done;
+                 count := !count + 1024
+               done;
+               ignore (Atomic.fetch_and_add sent !count : int))))
   in
   (* The work runs on threads the test keeps, and quiescence is their end:
      each dispatch has reached the loop's queue once its thread is joined. *)
@@ -619,11 +626,11 @@ let%expect_test "perform dispatches from concurrent threads are all delivered" =
     threads := []
   in
   let t = terminal ~width:48 ~height:2 () in
-  run ~process_perform ~quiesce t (app ~init_cmd:hammer ()) (fun _ -> snap t);
-  [%expect {|
-    |keys:[] ticks:6000000 size:- note:-
-    |
-    |}]
+  run ~process_perform ~quiesce t (app ~init_cmd:hammer ()) (fun _ ->
+      equal ~msg:"every dispatch is delivered" string
+        (Printf.sprintf "keys:[] ticks:%d size:- note:-" (Atomic.get sent))
+        (List.hd (String.split_on_char '\n' (screen t))));
+  [%expect {||}]
 
 let%expect_test "paste capture runs before the focused editor" =
   (* Capture listeners run in declaration order before the insertion. A later
