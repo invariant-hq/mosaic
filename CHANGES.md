@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.0] - 2026-11-03
+## [0.2.0] - 2026-11-04
 
 0.2.0 changes most of the API of all three packages, and some programs that
 still compile will behave differently. Before you upgrade from 0.1, read

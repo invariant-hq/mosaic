@@ -1,5 +1,15 @@
 ; A pseudo-terminal is POSIX: on Windows, Pty raises ENOSYS (see pty.mli).
 
+; The idle tests count the program's context switches, which tell as much
+; about the host as about the program: a quiet machine counts one a wakeup,
+; and opam-repository's shared builders counted four or five. A release
+; build, as an opam install is, leaves them to the hosts our CI knows.
+
+(env
+ (release
+  (env-vars
+   (WINDTRAP_EXCLUDE Idle))))
+
 (executable
  (name program)
  (enabled_if

@@ -578,10 +578,12 @@ let shared_layout () =
    time linear in the children whatever their order. Allocation cannot show
    it, as a rotation allocates in proportion to the children whether placement
    is linear or quadratic. The check compares the time of a rotation at 1,000
-   and at 16,000 children. Linear placement measures a ratio of 16 to 40,
-   more than 16 as the larger tree leaves the processor's caches, and
-   quadratic placement about 260. The threshold, 96, leaves each a margin of
-   2.4 or more.
+   and at 64,000 children. Linear placement measures a ratio of 64 times the
+   cost of the larger tree leaving the processor's caches: about 3 on a quiet
+   machine, and up to about 8 where tests running in parallel share the
+   caches. Quadratic placement measures 4,096 or more. The threshold, 2,048,
+   leaves each a margin of 2 or more. Sizes only 16 apart could not tell them
+   apart on a loaded machine.
 
    It reads the process's CPU time, which other processes do not inflate as
    they do the wall clock when tests run in parallel. A sample repeats the
@@ -628,12 +630,12 @@ let rotation_time n =
   !best
 
 let rotated_children () =
-  let small = rotation_time 1_000 and large = rotation_time 16_000 in
+  let small = rotation_time 1_000 and large = rotation_time 64_000 in
   let ratio = large /. small in
-  if ratio > 96. then
+  if ratio > 2048. then
     failf
-      "rotating 16,000 children takes %.0f times as long as 1,000 (%.3f ms, \
-       %.3f ms), over 96"
+      "rotating 64,000 children takes %.0f times as long as 1,000 (%.3f ms, \
+       %.3f ms), over 2,048"
       ratio (large *. 1e3) (small *. 1e3)
 
 (* ───── A memo's key ─────
@@ -686,8 +688,8 @@ let memo_key_check () =
    of 1,000 and of 16,000 allocates the same words. In a culling column, whose
    layout tree holds the children in chunks, a removed child costs words of
    its own, so every other child is left out there. The time of removing
-   every other child, then placing it back, is linear in the children, as
-   with rotations above. *)
+   every other child, then placing it back, is linear in the children, and
+   is checked at 1,000 and 64,000 children as rotations are above. *)
 
 let rows ~cull n =
   let renderer = Renderer.create () in
@@ -759,12 +761,12 @@ let removed_children ~cull () =
     (fun (what, small) (_, large) -> same ("removing " ^ what) ~small ~large)
     (removal_words ~cull 1_000 removals)
     (removal_words ~cull 16_000 removals);
-  let small = removal_time ~cull 1_000 and large = removal_time ~cull 16_000 in
+  let small = removal_time ~cull 1_000 and large = removal_time ~cull 64_000 in
   let ratio = large /. small in
-  if ratio > 96. then
+  if ratio > 2048. then
     failf
-      "removing every other of 16,000 children takes %.0f times as long as of \
-       1,000 (%.3f ms, %.3f ms), over 96"
+      "removing every other of 64,000 children takes %.0f times as long as of \
+       1,000 (%.3f ms, %.3f ms), over 2,048"
       ratio (large *. 1e3) (small *. 1e3)
 
 (* ───── Memory ───── *)
