@@ -6,17 +6,19 @@
     input, output and error. Its {e master} is the other end, which a terminal
     emulator holds. What the master writes, the program reads as typed input,
     and what the program writes, the master reads. A {e handle} ({!t}) holds the
-    descriptor of one side and, when {!spawn} made it, the {e child}, the
-    process that runs the program on the slave. The terminal {e hangs up} once
-    the processes running on it have closed it or exited, and the master then
-    reads the {e end of output} ({!section-io}).
+    descriptor of one side and, when {!spawn} made it, the {e child}: the
+    {e program} running on the slave and the {e keeper} of its session
+    ({!section-spawning}). The terminal {e hangs up} once the processes
+    running on it have closed it or exited, and the master then reads the
+    {e end of output} ({!section-io}).
 
     The life cycle of a handle from {!spawn} usually goes like this:
     + {!spawn} opens a pseudo-terminal and starts a program on its slave.
     + {!read} reads the program's output from the master, {!write} writes its
       input, and {!set_winsize} tells it the terminal's new size.
     + {!read} reaches the end of output.
-    + {!close} hangs up the terminal, then ends and reaps the child.
+    + {!close} hangs up the terminal, then ends the program and reaps the
+      child.
 
     {!with_spawn} does the first step and the last around a function.
 
@@ -30,9 +32,9 @@
     {!clear_nonblock}. Reading shares no state with the handle's other
     operations but the descriptor, and the system serves the two directions of a
     terminal independently. A terminal emulator can thus read in one thread and
-    write, resize the terminal and signal the child in another. A {!close} would
-    free the descriptor's number while the read may still use it, and a mode
-    change applies to the read too. Every other concurrent use of a handle needs
+    write, resize the terminal and signal the program in another. A {!close}
+    would free the descriptor's number while the read may still use it, and a
+    mode change applies to the read too. Every other concurrent use of a handle needs
     a lock. {!read}, {!write} and {!spawn} release the runtime lock while they
     block, so other threads run.
 
@@ -40,9 +42,10 @@
     any other platform, Windows included, {!open_pty} and {!spawn} raise
     [Unix.Unix_error (ENOSYS, _, _)].
 
-    This function runs a program and returns all it writes. It reads until the
-    end of output, which {!read} reports as [0] on some kernels and as [EIO] on
-    others, then {!with_spawn} closes the handle.
+    This function runs a program and returns all it writes, however soon the
+    program exits. It reads until the end of output, which {!read} reports as
+    [0] on some kernels and as [EIO] on others, then {!with_spawn} closes the
+    handle.
     {[
     let output prog args =
       Pty.with_spawn ~prog ~args (fun pty ->
@@ -88,12 +91,11 @@ val open_pty : ?winsize:winsize -> unit -> t * t
     standard descriptors with [Unix.dup2 ~cloexec:false]. A plain [Unix.dup2],
     like [Unix.create_process], clears the flag on a copy but leaves it set when
     the slave already is the target descriptor, as when the process runs with
-    its standard descriptors closed.
-
-    On macOS, OpenBSD and NetBSD the slave's last close discards the output the
-    master has not read. A program that runs its own child on the slave keeps
-    that output by holding its slave handle until it has read it, as {!spawn}
-    does. *)
+    its standard descriptors closed. Some kernels discard the output the master
+    has not read when the slave's last holder closes it, or when the leader of
+    the terminal's session exits: a program that runs its own child on the
+    slave reads the output before it lets either happen, as {!spawn}'s keeper
+    does ({!section-spawning}). *)
 
 val with_pty : ?winsize:winsize -> (t -> t -> 'a) -> 'a
 (** [with_pty f] is [f master slave] on a new pair from [open_pty ?winsize ()].
@@ -106,9 +108,24 @@ val with_pty : ?winsize:winsize -> (t -> t -> 'a) -> 'a
     the signals set to be ignored, such as [SIGPIPE] in many programs. So the
     child closes every descriptor but its standard ones, and holds open no pipe
     or terminal whose reader waits for its end. It also gives every signal its
-    default action and blocks none. The child leads a new session, whose
-    controlling terminal is the slave, and the slave is its standard input,
-    output and error.
+    default action and blocks none. The program runs in a new session, whose
+    controlling terminal is the slave, leads the session's foreground process
+    group, and has the slave as its standard input, output and error.
+
+    The session's leader is not the program but its {e keeper}, a process that
+    [spawn] forks to run the program and hold the terminal open. A kernel ties
+    a terminal to its session leader: when the leader exits, FreeBSD revokes
+    the terminal and drops the output the master has not read, and macOS
+    holds the exit until the master has read it. The keeper leads the session
+    in the program's stead: it starts the program, waits for it, exits once
+    the master has read all the program wrote or the terminal has hung up,
+    and exits as the program did, with its exit code or by its signal. So a
+    program's output is never lost to its exit, on any kernel. The keeper is
+    the program's parent, and the one process the handle reaps: a program
+    waits for the child with {!wait}, never with [Unix.waitpid] on {!pid}.
+    The keeper acts on no signal but the hangup's [SIGHUP], which the kernel
+    sends to the session's leader and the keeper passes on to the program's
+    process group.
 
     The child runs no OCaml code between the fork and the exec, only system
     calls that are safe in the child of a multithreaded process. So [spawn]
@@ -129,7 +146,7 @@ val spawn :
   unit ->
   t
 (** [spawn ~prog ~args ()] is the master handle of a new pseudo-terminal with
-    [prog] running on its slave, in a child whose process id is {!pid}. [env] is
+    [prog] running on its slave, in a process whose id is {!pid}. [env] is
     the child's environment as ["KEY=value"] strings, and defaults to the
     parent's. [cwd] is its working directory, and defaults to the parent's.
     [winsize] is as for {!open_pty}.
@@ -140,9 +157,10 @@ val spawn :
     with [EINVAL] if [prog], an element of [args] or of [env] holds a NUL byte,
     with [ENOENT] if [cwd] does, or with the child's error if the child cannot
     be set up or [prog] cannot be run. That error names the step that failed:
-    [setsid], [ioctl(TIOCSCTTY)], [dup2], [chdir] with [cwd] as argument, or
-    [execvp] with [prog], for instance with [ENOENT] when no such program is
-    found. The child has then exited and been reaped. *)
+    [setsid], [ioctl(TIOCSCTTY)], [dup2], [chdir] with [cwd] as argument,
+    [fork], [setpgid], [tcsetpgrp], or [execvp] with [prog], for instance with
+    [ENOENT] when no such program is found. The child has then exited and been
+    reaped. *)
 
 val with_spawn :
   ?env:string array ->
@@ -154,25 +172,27 @@ val with_spawn :
   'a
 (** [with_spawn ~prog ~args f] is [f pty] where [pty] is
     [spawn ?env ?cwd ?winsize ~prog ~args ()]. It closes [pty] when [f] returns
-    or raises, which ends and reaps the child ({!close}).
+    or raises, which ends the program and reaps the child ({!close}).
 
     Raises as {!spawn} does. *)
 
 (** {1:io Reading and writing}
 
-    What the child writes stays readable from the master until it is read. As
-    with a pipe, the child blocks in a write while the terminal's buffer is
-    full. The master reads the end of output once the terminal has hung up, and
-    {!read} then returns [0] or raises [Unix.Unix_error (EIO, _, _)].
+    What the program writes stays readable from the master until it is read,
+    whether the program runs or has exited, even by {!kill}. As with a pipe,
+    the program blocks in a write while the terminal's buffer is full. The
+    master reads the end of output once the terminal has hung up, and {!read}
+    then returns [0] or raises [Unix.Unix_error (EIO, _, _)].
 
-    Kernels differ in what becomes of the output once the child has exited.
-    Linux keeps it until it is read. On macOS, OpenBSD and NetBSD the child
-    leads the terminal's session, and its exit waits until the master has read
-    all its output, even after {!kill}. A child whose output nobody reads may
-    thus never finish exiting. FreeBSD and DragonFly may discard what the master
-    has not read within about a second of the child's exit. A program must
-    therefore read to the end of output, or {!close} the handle, before it waits
-    for the child ({!wait}). *)
+    The child exits once the program has exited and its unread output is safe:
+    at once on a kernel that keeps it (Linux), and otherwise once the master
+    has read it or the terminal has hung up ({!section-spawning}). A program
+    therefore reads to the end of output, or {!close}s the handle, before it
+    waits for the child ({!wait}), or {!wait} may block until another thread
+    does one of them. On every kernel but Linux the child's exit also revokes
+    the slave from any process still holding it, so the end of output follows
+    the program's exit; on Linux it comes once the last of them has closed the
+    slave. *)
 
 val read : t -> bytes -> int -> int -> int
 (** [read pty b off len] reads at most [len] bytes into [b] from [off] and
@@ -246,46 +266,57 @@ val in_fd : t -> Unix.file_descr
 val out_fd : t -> Unix.file_descr
 (** [out_fd pty] is {!file_descr}[ pty]. *)
 
-(** {1:process The child}
+(** {1:process The program}
 
-    Closing the master hangs up the terminal, and the kernel sends [SIGHUP] to
-    the child's session. A process is {e reaped} once its parent has collected
-    its exit status. A handle holds its child until the handle reaps it, by
-    {!wait} or {!close}. Until then the child's process id names the child and
-    no other process.
+    Closing the master hangs up the terminal, and the program's process group
+    receives [SIGHUP], and [SIGCONT] if it was stopped ({!section-spawning}).
+    A process is {e reaped} once its parent has collected its exit status. A
+    handle holds its child until the handle reaps it, by {!wait} or {!close}.
 
-    Before {!terminate}, {!kill} and {!close} signal the child, they ask the
-    system without blocking whether it has exited. A child that has exited is
-    reaped then and is not signalled, and {!wait} returns its status. When the
-    program has reaped the child itself with [Unix.waitpid] on {!pid}, the
-    system may have given its process id to another process. The handle then
-    forgets the id and signals nothing. A program waits for the child with
-    {!wait}, after which {!pid} is [None]. *)
+    {!terminate}, {!kill} and {!close} signal the program's process group, so
+    the processes it started in it too, as the terminal's interrupt key does.
+    Before they signal, they ask the system without blocking whether the
+    child has exited. A child that has exited is reaped then and is not
+    signalled, and {!wait} returns its status. So they signal only a program
+    whose keeper was running a moment before, while the program's process id
+    names the program and no other process: the keeper leaves the program
+    unreaped as long as it lives. When the calling program has reaped the
+    child itself, with [Unix.wait], the handle forgets it and signals nothing.
+    A program waits for the child with {!wait}, after which {!pid} is [None]. *)
 
 val pid : t -> int option
 (** [pid pty] is [Some p] while [pty] holds a child that it has not reaped,
-    where [p] is the child's process id, and [None] otherwise. *)
+    where [p] is the program's process id, and the id of its process group,
+    and [None] otherwise. The program is not a child of the calling process
+    ({!section-spawning}): [Unix.waitpid] on [p] fails with [ECHILD], unless
+    the calling process is a subreaper, which gets the program to reap once
+    the keeper has exited, and the handle then reaps it with the keeper. *)
 
 val wait : t -> Unix.process_status
-(** [wait pty] is the exit status of [pty]'s child. It reaps the child, and
-    [pty] then has no child. [wait] works on an open or closed handle.
+(** [wait pty] is the exit status of [pty]'s program: [WEXITED] with its exit
+    code, or [WSIGNALED] with the signal that ended it. It reaps the child,
+    and [pty] then has no child. [wait] works on an open or closed handle.
 
-    It blocks until the child has exited, and releases the runtime lock while it
-    blocks.
+    It blocks until the child has exited ({!section-io}), and releases the
+    runtime lock while it blocks.
 
     Raises [Invalid_argument] if [pty] has no child, as a handle from
     {!open_pty}, a handle closed with [wait] or a handle already waited for has
     none. Raises [Unix.Unix_error (ECHILD, _, _)] if the program has reaped the
     child itself, and [pty] then has no child. *)
 
+val poll : t -> Unix.process_status option
+(** [poll pty] is [Some (wait pty)] if the child has exited, and [None] while
+    it runs. It never blocks. Raises as {!wait} does. *)
+
 val close : ?wait:bool -> t -> unit
-(** [close pty] closes [pty]'s descriptor and, for a handle from {!spawn}, the
-    slave it holds, which hangs up the terminal. The output not yet read is
-    lost, and a child whose exit waits for its output to be read can finish. For
-    a handle with a child, [close] then sends [SIGTERM] to a child still running
-    ({!section-process}) and, when [wait] is [true] (the default), reaps the
-    child. It sends [SIGKILL] to a child that has not exited about 100 ms after
-    the [SIGTERM]. A second [close] does nothing.
+(** [close pty] closes [pty]'s descriptor, which for a handle from {!spawn}
+    hangs up the terminal: the output not yet read is lost, and the program
+    receives [SIGHUP]. For a handle with a child, [close] then sends [SIGTERM]
+    to a program still running ({!section-process}) and, when [wait] is
+    [true] (the default), reaps the child. It sends [SIGKILL] to a program
+    that has not exited about 100 ms after the [SIGTERM]. A second [close]
+    does nothing.
 
     With [wait], [close] blocks until the child is reaped. With [~wait:false],
     it blocks at most about 100 ms, and [pty] keeps its child, which the program
@@ -294,17 +325,17 @@ val close : ?wait:bool -> t -> unit
     [close] never raises. *)
 
 val terminate : t -> unit
-(** [terminate pty] sends [SIGTERM] to the child, unless it has exited or has
-    been reaped ({!section-process}), and leaves the terminal open. It ignores
-    the errors of [kill].
+(** [terminate pty] sends [SIGTERM] to the program's process group, unless the
+    child has exited or has been reaped ({!section-process}), and leaves the
+    terminal open. It ignores the errors of [kill].
 
     Raises [Invalid_argument] if [pty] has no child ({!wait}). *)
 
 val kill : t -> unit
-(** [kill pty] sends [SIGKILL] to the child, which cannot catch it, unless it
-    has exited or has been reaped ({!section-process}), and leaves the terminal
-    open. It ignores the errors of [kill]. On some kernels a killed child
-    finishes exiting only once its output is read ({!section-io}). {!close}
-    hangs up the terminal first.
+(** [kill pty] sends [SIGKILL], which cannot be caught, to the program's
+    process group, unless the child has exited or has been reaped
+    ({!section-process}), and leaves the terminal open. It ignores the errors
+    of [kill]. The output a killed program wrote stays readable to its end
+    ({!section-io}).
 
     Raises [Invalid_argument] if [pty] has no child. *)

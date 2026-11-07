@@ -308,6 +308,12 @@ key: in our benchmark, the median time from a key press to the screen is under
 - Matrix installs no handler for uncaught exceptions. The run restores the
   terminal and raises the exception again.
 
+- `Pty.spawn` keeps the program's output past its exit on every kernel, by
+  running it under a keeper that leads the session. `Pty.pid` is the program's
+  id and process group, not a child of your process: reap it with `Pty.wait`
+  or `Pty.poll`. `Pty.terminate`, `kill` and `close` signal the program's
+  process group.
+
 `Pty.spawn`, `Screen.resize`, `Terminal.reset_state` and `Vte.cursor_pos` also
 behave differently in smaller ways; the [guide lists
 them](doc/migrating-from-0.1.md#matrix-behaviour-changes).

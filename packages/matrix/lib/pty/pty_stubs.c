@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #ifdef __linux__
+#include <sys/prctl.h>
 #include <sys/syscall.h>
 #endif
 #endif  // MATRIX_HAS_POSIX_PTY
@@ -170,10 +171,11 @@ CAMLprim value ocaml_pty_set_winsize(value fd, value ws_val) {
   return ocaml_pty_set_winsize_byte(fd, ws_val);
 }
 
-// What the child of spawn needs between fork and exec, built by the parent.
+// What the keeper and the program need between fork and exec, built by the
+// parent.
 struct child {
   int slave;
-  int report;           // the write end of the error pipe
+  int report;           // the write end of the report pipe
   const char *cwd;      // NULL to stay in the parent's directory
   char **paths;         // where to look for the program, in order
   char **argv, **envp;  // NULL-terminated
@@ -184,10 +186,30 @@ struct child {
   sigset_t no_signals;
 };
 
-// The steps of the child that can fail, as the error names them.
-enum step { SETSID, SETCTTY, DUP2, CHDIR, EXEC };
-static const char *const step_names[] = {"setsid", "ioctl(TIOCSCTTY)",
-                                         "dup2", "chdir", "execvp"};
+// The steps of a spawn that can fail, as the error names them, and PROGRAM,
+// the message that carries the program's process id.
+enum step {
+  SETSID,
+  SETCTTY,
+  DUP2,
+  CHDIR,
+  FORK,
+  SETPGID,
+  TCSETPGRP,
+  EXEC,
+  PROGRAM
+};
+static const char *const step_names[] = {
+    "setsid", "ioctl(TIOCSCTTY)", "dup2",      "chdir",
+    "fork",   "setpgid",          "tcsetpgrp", "execvp"};
+
+// Writes a message on the report pipe: a step that failed with its errno,
+// or PROGRAM with the program's process id. One write of a few bytes to a
+// pipe is atomic, so the keeper's and the program's messages never mix.
+static void report(int fd, enum step step, int value) {
+  int message[2] = {step, value};
+  (void)!write(fd, message, sizeof message);
+}
 
 // Closes every descriptor from [low] up. POSIX has no call for this, nor a
 // way to list a process's descriptors: Linux (5.9) has close_range and the
@@ -206,19 +228,58 @@ static void close_from(int low, int limit) {
   for (int fd = low; fd < limit; fd++) close(fd);
 }
 
-// The child's side of spawn, which returns only on failure, with the step
-// that failed and errno set. The parent may run other threads, among them
-// OCaml domains, whose locks the fork copied in whatever state they were in:
-// POSIX lets the child of a multithreaded process call only async-signal-safe
-// functions until it execs. Every call here is one, except ioctl, a system
-// call that POSIX does not define, and close_range or closefrom, system calls
-// that it does not define either. Nothing here allocates: the parent built
-// the strings and arrays.
-static enum step exec_child(struct child *c) {
+// The program's process group, which the keeper's SIGHUP handler signals,
+// with SIGCONT as a shell does, so that a stopped program takes the hangup.
+static pid_t program_pid;
+
+static void hangup(int sig) {
+  kill(-program_pid, sig);
+  kill(-program_pid, SIGCONT);
+}
+
+// Runs the program as execvp does: a directory without the program, or that
+// is not a directory, moves on to the next; a file without permission is
+// remembered; any other failure ends the search. A file the kernel cannot
+// execute (ENOEXEC) is a script without #!, which /bin/sh runs. Returns
+// only on failure, with errno set.
+static void exec_program(struct child *c) {
+  int err = ENOENT;
+  for (char **path = c->paths; *path != NULL; path++) {
+    execve(*path, c->argv, c->envp);
+    if (errno == ENOEXEC) {
+      c->sh_argv[1] = *path;
+      execve("/bin/sh", c->sh_argv, c->envp);
+    }
+    if (errno == EACCES)
+      err = EACCES;
+    else if (errno != ENOENT && errno != ENOTDIR) {
+      err = errno;
+      break;
+    }
+  }
+  errno = err;
+}
+
+// The child of spawn: the keeper of the program's session (see spawn in
+// pty.mli). It opens the session on the slave, forks the program into the
+// foreground process group, waits for it, drains the terminal and exits as
+// the program did. It returns, in the keeper or in the program, only on
+// failure, with the step that failed and errno set.
+//
+// The parent may run other threads, among them OCaml domains, whose locks
+// the fork copied in whatever state they were in: POSIX lets the child of a
+// multithreaded process call only async-signal-safe functions until it
+// execs. Every call here is one, or a plain system call that POSIX leaves
+// off its list (ioctl, close_range, closefrom, waitid, setrlimit, prctl).
+// Nothing here allocates: the parent built the strings and arrays. Every
+// signal has been blocked since before the fork, so no handler of the
+// parent's runs here, and the keeper keeps them blocked: a signal from the
+// terminal, or from the parent, is the program's.
+static enum step keep(struct child *c) {
   // Keep the report off the std fds, which the slave replaces.
-  int report = fcntl(c->report, F_DUPFD_CLOEXEC, 3);
-  if (report == -1) return DUP2;
-  c->report = report;
+  int report_fd = fcntl(c->report, F_DUPFD_CLOEXEC, 3);
+  if (report_fd == -1) return DUP2;
+  c->report = report_fd;
   if (setsid() == -1) return SETSID;
   if (ioctl(c->slave, TIOCSCTTY, 0) == -1) return SETCTTY;
   // The slave is close-on-exec. dup2 clears the flag on a copy, but does
@@ -237,35 +298,69 @@ static enum step exec_child(struct child *c) {
   }
   close_from(4, c->fd_limit);
   if (c->cwd != NULL && chdir(c->cwd) == -1) return CHDIR;
-  // Exec keeps the signal mask, and the signals the parent ignores, such as
-  // the SIGPIPE that many programs ignore, stay ignored: start the program
-  // with every signal's default action and none blocked. Signals have been
-  // blocked since before the fork, so no handler of the parent's runs here.
-  // sigaction fails, harmlessly, for SIGKILL, SIGSTOP and the signals that
-  // the C library reserves.
+  // Exec keeps the signals the parent ignores, such as the SIGPIPE that many
+  // programs ignore: give every signal its default action, so the program
+  // starts with them. The keeper needs SIGCHLD's default too: ignored, it
+  // would reap the program by itself. sigaction fails, harmlessly, for
+  // SIGKILL, SIGSTOP and the signals that the C library reserves.
   for (int sig = 1; sig <= c->last_signal; sig++)
     sigaction(sig, &c->default_action, NULL);
-  pthread_sigmask(SIG_SETMASK, &c->no_signals, NULL);
-  // As execvp does: a directory without the program, or that is not a
-  // directory, moves on to the next; a file without permission is
-  // remembered; any other failure ends the search. A file the kernel cannot
-  // execute (ENOEXEC) is a script without #!, which /bin/sh runs.
-  int err = ENOENT;
-  for (char **path = c->paths; *path != NULL; path++) {
-    execve(*path, c->argv, c->envp);
-    if (errno == ENOEXEC) {
-      c->sh_argv[1] = *path;
-      execve("/bin/sh", c->sh_argv, c->envp);
-    }
-    if (errno == EACCES)
-      err = EACCES;
-    else if (errno != ENOENT && errno != ENOTDIR) {
-      err = errno;
-      break;
-    }
+  program_pid = fork();
+  if (program_pid == -1) return FORK;
+  if (program_pid == 0) {
+    // The program leads the foreground process group, so the terminal's
+    // signals and the parent's reach it and the processes it starts, and
+    // never the keeper. Every kernel lets a process with SIGTTOU blocked, as
+    // it is here, take the foreground from the background.
+    if (setpgid(0, 0) == -1) return SETPGID;
+    if (tcsetpgrp(0, getpid()) == -1) return TCSETPGRP;
+    pthread_sigmask(SIG_SETMASK, &c->no_signals, NULL);
+    exec_program(c);
+    return EXEC;
   }
-  errno = err;
-  return EXEC;
+  report(3, PROGRAM, program_pid);
+  close(3);
+  // The kernel sends the hangup's SIGHUP to the session's leader, the
+  // keeper, which passes it on to the program's process group. The handler
+  // is the keeper's alone: the program would signal its own group with it.
+  struct sigaction on_hangup = c->default_action;
+  on_hangup.sa_handler = hangup;
+  sigaction(SIGHUP, &on_hangup, NULL);
+  sigset_t hangups;
+  sigemptyset(&hangups);
+  sigaddset(&hangups, SIGHUP);
+  pthread_sigmask(SIG_UNBLOCK, &hangups, NULL);
+  // Learn of the program's exit without reaping it: unreaped, its id names
+  // it and no other process for as long as the handle may signal it.
+  siginfo_t status;
+  while (waitid(P_PID, program_pid, &status, WEXITED | WNOWAIT) == -1)
+    if (errno != EINTR) _exit(127);
+  // Wait until the master has read all the program wrote, or the terminal
+  // has hung up, after which the drain fails or returns at once. tcdrain
+  // returns at once on Linux, which keeps unread output after the slave's
+  // last close, and gives up with EAGAIN after kern.tty_drainwait (5
+  // minutes) on FreeBSD, where it is retried: POSIX gives it no timeout.
+  while (tcdrain(0) == -1 && (errno == EINTR || errno == EAGAIN)) {
+  }
+  if (status.si_code == CLD_EXITED) _exit(status.si_status);
+  // Die by the program's signal, so the parent sees the status the program
+  // ended with, without a core dump of the keeper: the program's, if any, is
+  // enough. Linux runs its crash handler (systemd-coredump, apport) for a
+  // dumpable process whatever the core limit; macOS writes a crash report
+  // for the keeper, which it cannot be told not to.
+  int sig = status.si_status;
+  struct rlimit no_core = {0, 0};
+  setrlimit(RLIMIT_CORE, &no_core);
+#ifdef __linux__
+  prctl(PR_SET_DUMPABLE, 0);
+#endif
+  sigaction(sig, &c->default_action, NULL);
+  sigset_t fatal;
+  sigemptyset(&fatal);
+  sigaddset(&fatal, sig);
+  pthread_sigmask(SIG_UNBLOCK, &fatal, NULL);
+  raise(sig);
+  _exit(128 + sig);
 }
 
 // A pipe whose ends are both close-on-exec. macOS has no pipe2: a fork by
@@ -287,13 +382,15 @@ static void check_strings(value v, const char *cmd) {
       caml_unix_error(EINVAL, cmd, Field(v, i));
 }
 
-// The child reports a failure before exec on a close-on-exec pipe: the
-// parent reads the step and errno, or the end of file that a successful
-// exec gives when it closes the pipe. So spawn returns once the program
-// runs, and raises the child's error otherwise, having reaped the child.
+// The keeper reports the program's process id, and the keeper or the
+// program a failure before exec, on a close-on-exec pipe, in either order;
+// the pipe ends when the keeper has closed its end and the program has
+// exec'd or exited. So spawn returns (keeper, program) once the program
+// runs, and raises the child's error otherwise, having reaped the keeper.
 CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
                                    value env, value cwd) {
   CAMLparam5(slave, paths, argv, env, cwd);
+  CAMLlocal1(res);
   check_strings(paths, "execvp");
   check_strings(argv, "execvp");
   check_strings(env, "execvp");
@@ -332,26 +429,34 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
   sigset_t all_signals, parent_signals;
   sigfillset(&all_signals);
   pthread_sigmask(SIG_SETMASK, &all_signals, &parent_signals);
-  pid_t pid = fork();
-  if (pid == 0) {
-    int failure[2];
-    failure[0] = exec_child(&c);
-    failure[1] = errno;
-    // One write of a few bytes to a pipe is atomic.
-    (void)!write(c.report, failure, sizeof failure);
+  pid_t keeper = fork();
+  if (keeper == 0) {
+    enum step failed = keep(&c);
+    report(c.report, failed, errno);
     _exit(127);
   }
   int fork_errno = errno;
   pthread_sigmask(SIG_SETMASK, &parent_signals, NULL);
   close(pipe_fds[1]);
-  int failure[2];
-  ssize_t n = 0;
-  if (pid != -1) {
+  // A keeper that is gone before it reported the program is a failed fork.
+  int message[2], failure[2] = {FORK, ECHILD}, program = 0, failed = 0;
+  if (keeper != -1) {
     caml_enter_blocking_section();
-    do n = read(pipe_fds[0], failure, sizeof failure);
-    while (n == -1 && errno == EINTR);
-    if (n == sizeof failure)
-      while (waitpid(pid, NULL, 0) == -1 && errno == EINTR);
+    for (;;) {
+      ssize_t n = read(pipe_fds[0], message, sizeof message);
+      if (n == -1 && errno == EINTR) continue;
+      if (n != sizeof message) break;
+      if (message[0] == PROGRAM)
+        program = message[1];
+      else {
+        failed = 1;
+        failure[0] = message[0];
+        failure[1] = message[1];
+      }
+    }
+    if (program == 0) failed = 1;
+    if (failed)
+      while (waitpid(keeper, NULL, 0) == -1 && errno == EINTR);
     caml_leave_blocking_section();
   }
   close(pipe_fds[0]);
@@ -361,15 +466,18 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
   caml_unix_cstringvect_free(c.argv);
   caml_unix_cstringvect_free(c.envp);
   caml_stat_free(c.sh_argv);
-  if (pid == -1) caml_unix_error(fork_errno, "fork", Nothing);
-  if (n == sizeof failure) {
+  if (keeper == -1) caml_unix_error(fork_errno, "fork", Nothing);
+  if (failed) {
     enum step step = failure[0];
     value arg = step == CHDIR  ? Some_val(cwd)
                 : step == EXEC ? Field(argv, 0)
                                : Nothing;
     caml_unix_error(failure[1], step_names[step], arg);
   }
-  CAMLreturn(Val_int(pid));
+  res = caml_alloc_tuple(2);
+  Store_field(res, 0, Val_int(keeper));
+  Store_field(res, 1, Val_int(program));
+  CAMLreturn(res);
 }
 
 #else  // Unsupported platforms, including Windows: fail loudly.
@@ -407,32 +515,3 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
 }
 
 #endif  // MATRIX_HAS_POSIX_PTY
-
-// Whether spawn holds the slave in the parent until close, so that the
-// child's exit is not the slave's last close. Two paths of the kernel decide.
-//
-// - The slave's last close waits a bounded time for the master to read the
-//   output, then discards what is left: 0.6 s on macOS (ptsclose sets
-//   t_timeout to 60 ticks), 5 s on OpenBSD and NetBSD (ttywflush).
-// - A session leader's exit, while the slave is still open elsewhere, waits
-//   without bound for its terminal's output to be read (ttywait with no
-//   timeout), then revokes the terminal, which ends the master's output.
-//
-// Holding the slave puts the child's exit on the second path, so its output
-// waits for the read. OpenBSD and NetBSD are held on the reading of their
-// sources, untested.
-//
-// The others gain nothing from holding it. Linux keeps the unread output
-// after the last close, and does not hang up a PTY when its session leader
-// exits, so a held slave would hide the end of output. FreeBSD's exit revokes
-// the terminal without waiting, flushing the output at once, where its last
-// close waits about 1 s. DragonFly's exit waits 1 s, no longer than its last
-// close waits.
-CAMLprim value ocaml_pty_hold_slave(value unit) {
-  (void)unit;
-#if defined(__APPLE__) || defined(__OpenBSD__) || defined(__NetBSD__)
-  return Val_true;
-#else
-  return Val_false;
-#endif
-}

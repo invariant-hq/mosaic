@@ -133,15 +133,15 @@ let pause s seconds =
 let wait_exit ?(timeout = 60.) s =
   let deadline = Unix.gettimeofday () +. timeout in
   let rec go () =
-    match Unix.waitpid [ Unix.WNOHANG ] s.pid with
-    | 0, _ ->
+    match Pty.poll s.pty with
+    | None ->
         if Unix.gettimeofday () > deadline then (
-          Unix.kill s.pid Sys.sigkill;
+          Pty.kill s.pty;
           fail "the program did not end")
         else (
           pump s;
           go ())
-    | _, status ->
+    | Some status ->
         pump s;
         status
   in
@@ -517,21 +517,26 @@ let test_terminal_gone name () =
   let s = spawn name in
   ignore (await s "N=0" : int);
   pause s 0.2;
-  (* The emulator closes its side: the kernel hangs the terminal up. *)
-  Unix.close (Pty.file_descr s.pty);
+  (* The emulator closes its side: the kernel hangs the terminal up. The
+     master is replaced by /dev/null so that close still has a descriptor of
+     its own to close. *)
+  let null = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0 in
+  Unix.dup2 null (Pty.file_descr s.pty);
+  Unix.close null;
   let deadline = Unix.gettimeofday () +. 60. in
   let rec reap () =
-    match Unix.waitpid [ Unix.WNOHANG ] s.pid with
-    | 0, _ when Unix.gettimeofday () < deadline ->
+    match Pty.poll s.pty with
+    | None when Unix.gettimeofday () < deadline ->
         Unix.sleepf 0.01;
         reap ()
-    | 0, _ ->
-        Unix.kill s.pid Sys.sigkill;
-        ignore (Unix.waitpid [] s.pid : int * Unix.process_status);
+    | None ->
+        Pty.kill s.pty;
+        ignore (Pty.wait s.pty : Unix.process_status);
         fail "the program outlived its terminal"
-    | _ -> ()
+    | Some _ -> ()
   in
-  reap ()
+  reap ();
+  Pty.close s.pty
 
 let supported =
   Sys.os_type = "Unix" && Sys.file_exists program && Sys.file_exists job

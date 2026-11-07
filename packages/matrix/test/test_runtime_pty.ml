@@ -7,7 +7,7 @@ open Windtrap
 let child =
   Filename.concat (Filename.dirname Sys.executable_name) "runtime_child.exe"
 
-type session = { pty : Pty.t; pid : int; output : Buffer.t }
+type session = { pty : Pty.t; output : Buffer.t }
 
 (* A sandbox can forbid opening a pseudo-terminal, as opam-repository's
    macOS builders do: a test that needs one skips. *)
@@ -33,7 +33,7 @@ let spawn ?(args = []) ?(rows = 24) ?(cols = 80) () =
       ()
   in
   Pty.set_nonblock pty;
-  { pty; pid = Option.get (Pty.pid pty); output = Buffer.create 4096 }
+  { pty; output = Buffer.create 4096 }
 
 (* Reads what the program writes until [sub] appears after [from]. The
    timeout guards against a program that never writes it; it measures
@@ -87,10 +87,10 @@ let mark s = Buffer.length s.output
    to [also]'s: on macOS, a terminal's settings are put back (TCSADRAIN)
    only once what was written to it has been read. *)
 let rec wait_exit ?(timeout = 60.) ?also s =
-  match Unix.waitpid [ Unix.WNOHANG ] s.pid with
-  | 0, _ ->
+  match Pty.poll s.pty with
+  | None ->
       if timeout <= 0. then (
-        Unix.kill s.pid Sys.sigkill;
+        Pty.kill s.pty;
         fail "the program did not end")
       else (
         Unix.sleepf 0.02;
@@ -98,7 +98,7 @@ let rec wait_exit ?(timeout = 60.) ?also s =
         read_until ~timeout:0.01 s (Fun.const false);
         Option.iter (fun t -> read_until ~timeout:0.01 t (Fun.const false)) also;
         wait_exit ~timeout:(timeout -. 0.03) ?also s)
-  | _, status -> status
+  | Some status -> status
 
 let cooked s =
   let t = Unix.tcgetattr (Pty.file_descr s.pty) in
@@ -116,7 +116,7 @@ let test_sigterm () =
   with_session @@ fun s ->
   await s "READY";
   let from = mark s in
-  Unix.kill s.pid Sys.sigterm;
+  Unix.kill (Option.get (Pty.pid s.pty)) Sys.sigterm;
   match wait_exit s with
   | WSIGNALED n ->
       equal ~msg:"ends by SIGTERM" int Sys.sigterm n;
@@ -125,36 +125,17 @@ let test_sigterm () =
       is_true ~msg:"cooked" (cooked s)
   | _ -> fail "expected the process to end by its signal"
 
-(* Whether the kernel discards a stop signal raised in a session's own
-   process group, which no job-control shell can continue. Linux and macOS
-   do, as POSIX has for an orphaned group; FreeBSD stops the process. *)
-let orphans_go_on =
-  lazy
-    (match Unix.fork () with
-    | 0 ->
-        ignore (Unix.setsid () : int);
-        Sys.set_signal Sys.sigtstp Signal_default;
-        Unix.kill (Unix.getpid ()) Sys.sigtstp;
-        Unix._exit 0
-    | pid -> (
-        match Unix.waitpid [ WUNTRACED ] pid with
-        | _, WSTOPPED _ ->
-            Unix.kill pid Sys.sigkill;
-            ignore (Unix.waitpid [] pid : int * Unix.process_status);
-            false
-        | _ -> true))
-
-(* A program in its own session is an orphaned process group, which a stop
-   signal must not stop: the terminal is given back and taken again, and the
-   run goes on. *)
-let test_sigtstp_in_an_orphaned_group () =
-  if not (Lazy.force orphans_go_on) then
-    skip ~reason:"a kernel that does not stop a session's own group" ();
+(* A program on a spawned terminal is a job of its session, as under a
+   shell: a stop signal stops it once it has given the terminal back, and
+   continued, it takes the terminal again and the run goes on. *)
+let test_sigtstp_stops_the_program () =
   with_session @@ fun s ->
   await s "READY 1";
   let from = mark s in
-  Unix.kill s.pid Sys.sigtstp;
+  Unix.kill (Option.get (Pty.pid s.pty)) Sys.sigtstp;
   await ~from s "\027[?1049l";
+  Unix.sleepf 0.1;
+  Unix.kill (Option.get (Pty.pid s.pty)) Sys.sigcont;
   await ~from s "\027[?1049h";
   await ~from s "READY 2";
   send s "q";
@@ -168,7 +149,7 @@ let test_unsolicited_sigcont () =
   with_session @@ fun s ->
   await s "READY 1";
   let from = mark s in
-  Unix.kill s.pid Sys.sigcont;
+  Unix.kill (Option.get (Pty.pid s.pty)) Sys.sigcont;
   await ~from s "\027[?1004h";
   await ~from s "READY";
   send s "q";
@@ -208,7 +189,7 @@ let test_sigint_during_release () =
   let from = mark s in
   send s "i";
   await ~from s "\027[?1049l";
-  Unix.kill s.pid Sys.sigint;
+  Unix.kill (Option.get (Pty.pid s.pty)) Sys.sigint;
   await ~from s "READY 2";
   send s "q";
   match wait_exit s with
@@ -243,7 +224,7 @@ let spawn_job () =
       ()
   in
   Pty.set_nonblock pty;
-  { pty; pid = Option.get (Pty.pid pty); output = Buffer.create 4096 }
+  { pty; output = Buffer.create 4096 }
 
 (* The job's process, which the shell reports. *)
 (* A job that stops before its first frame fails the test at once, saying
@@ -360,10 +341,10 @@ let served_terminal ?(mode = "served") f =
         ()
     in
     Pty.set_nonblock pty;
-    { pty; pid = Option.get (Pty.pid pty); output = Buffer.create 4096 }
+    { pty; output = Buffer.create 4096 }
   in
   let served =
-    { pty = master; pid = session.pid; output = Buffer.create 4096 }
+    { pty = master; output = Buffer.create 4096 }
   in
   Fun.protect
     ~finally:(fun () ->
@@ -382,7 +363,7 @@ let test_termination_ends_every_run () =
   await served "SERVED";
   is_false ~msg:"the served terminal is raw" (served_cooked slave);
   let from = mark s and served_from = mark served in
-  Unix.kill s.pid Sys.sigterm;
+  Unix.kill (Option.get (Pty.pid s.pty)) Sys.sigterm;
   (match wait_exit ~also:served s with
   | WSIGNALED n -> equal ~msg:"ends by SIGTERM" int Sys.sigterm n
   | _ -> fail "expected the process to end by its signal");
@@ -399,7 +380,7 @@ let test_termination_resets_a_served_session () =
   await served "SERVED";
   is_false ~msg:"the served terminal is raw" (served_cooked slave);
   let served_from = mark served in
-  Unix.kill s.pid Sys.sigterm;
+  Unix.kill (Option.get (Pty.pid s.pty)) Sys.sigterm;
   (match wait_exit ~also:served s with
   | WSIGNALED n -> equal ~msg:"ends by SIGTERM" int Sys.sigterm n
   | _ -> fail "expected the process to end by its signal");
@@ -483,7 +464,7 @@ let test_probe_leaves_the_shell_text mode () =
   in
   Pty.set_nonblock pty;
   let s =
-    { pty; pid = Option.get (Pty.pid pty); output = Buffer.create 4096 }
+    { pty; output = Buffer.create 4096 }
   in
   Fun.protect ~finally:(fun () -> finish s.pty) @@ fun () ->
   let vte = Vte.create ~scrollback:100 ~rows:24 ~cols:80 () in
@@ -531,10 +512,7 @@ let test_probe_leaves_the_shell_text mode () =
   send s "q";
   let status = ref None in
   until "the end" (fun () ->
-      (if !status = None then
-         match Unix.waitpid [ Unix.WNOHANG ] s.pid with
-         | 0, _ -> ()
-         | _, st -> status := Some st);
+      (if !status = None then status := Pty.poll s.pty);
       !status <> None);
   (* What the program wrote last. *)
   for _ = 1 to 5 do
@@ -612,9 +590,8 @@ let test_back_pressure () =
       Unix.sleepf 0.05)
     "abcde";
   Unix.sleepf 0.3;
-  (match Unix.waitpid [ Unix.WNOHANG ] s.pid with
-  | 0, _ -> ()
-  | _ -> fail "the program ended while its output was held");
+  if Pty.poll s.pty <> None then
+    fail "the program ended while its output was held";
   let deadline = Unix.gettimeofday () +. 10. in
   let complete () =
     let vte = shown ~rows ~cols s in
@@ -665,8 +642,7 @@ let () =
             else
               [
                 test "SIGTERM ends with its status" test_sigterm;
-                test "SIGTSTP in an orphaned group"
-                  test_sigtstp_in_an_orphaned_group;
+                test "SIGTSTP stops the program" test_sigtstp_stops_the_program;
                 test "SIGTSTP stops the job" test_sigtstp_stops_the_job;
                 test "continued in the background, it stops again"
                   test_background_continue_stops_again;

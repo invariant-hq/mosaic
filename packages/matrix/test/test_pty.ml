@@ -243,10 +243,11 @@ let test_spawn_with_cwd () =
     (output = "/tmp" || output = "/private/tmp");
   Pty.close pty
 
-(* Regression: the parent closed the slave once it had forked, so on macOS
-   the child's exit was the slave's last close, which discards the output the
-   master has not read within about 0.6s. With the slave held, the output
-   waits for the read, so the sleep only matters without the fix. *)
+(* Regression: the program led the terminal's session, and its exit lost the
+   output the master had not read: macOS discards it about 0.6 s after the
+   slave's last close, and FreeBSD at once when the session leader exits. The
+   keeper now holds the terminal until the master has read it, so the sleep
+   only matters without the fix. *)
 let test_spawn_output_read_late () =
   let pty = spawn_hello_and_await_exit () in
   Unix.sleepf 1.;
@@ -313,9 +314,10 @@ let test_slave_on_std_fd () =
   equal ~msg:"the child writes to its stdout and stderr" string "out\r\nerr\r\n"
     output
 
-(* The master reads the end of output once the child has exited, on every
-   platform. Holding the slave where the kernel does not hang up the terminal
-   when its session leader exits, as on Linux, would hide it. *)
+(* The master reads the end of output once the program has exited, on every
+   platform: the keeper exits with the program, and a keeper that held the
+   slave on, as on Linux, where nothing hangs up a terminal whose session
+   leader exits, would hide the end of output. *)
 let test_spawn_output_then_eof () =
   let pty = Pty.spawn ~prog:"echo" ~args:[ "hello" ] () in
   let output = read_to_eof pty in
@@ -617,28 +619,91 @@ let test_close_reaps_exited_child_without_delay () =
       (Printf.sprintf "close reaped an exited child in %.0fms" (elapsed *. 1000.))
     (elapsed < 0.05)
 
-(* An exiting child that waits for its output to be read must not make close
-   wait in turn. *)
+(* A keeper that waits for the program's output to be read must not make close
+   wait in turn: close hangs up first. *)
 let test_close_with_unread_output () =
   let pty = spawn_hello_and_await_exit () in
-  let pid = Option.get (Pty.pid pty) in
   Pty.close pty;
-  let reaped =
-    match Unix.waitpid [ Unix.WNOHANG ] pid with
-    | _ -> false
-    | exception Unix.Unix_error (Unix.ECHILD, _, _) -> true
+  equal ~msg:"close reaped the child" (option int) None (Pty.pid pty)
+
+(* The keeper exits as the program did: by its signal, where sh's own exit
+   code for a signal would be 128 + the signal. *)
+let test_wait_gives_the_program_s_signal () =
+  let pty = Pty.spawn ~prog:"sh" ~args:[ "-c"; "kill -s USR1 $$" ] () in
+  ignore (read_to_eof pty : string);
+  is_true ~msg:"the program's signal" (Pty.wait pty = Unix.WSIGNALED Sys.sigusr1);
+  Pty.close pty
+
+(* The program leads the foreground process group, so the terminal's
+   signals are its: the interrupt character written to the master sends
+   SIGINT to the foreground group, which the program traps. *)
+let test_program_is_the_foreground_group () =
+  let pty =
+    Pty.spawn ~prog:"sh"
+      ~args:[ "-c"; "trap 'echo int; exit 5' INT; echo ready; while :; do :; done" ]
+      ()
   in
-  is_true ~msg:"close reaped the child" reaped
+  let buf = Bytes.create 64 in
+  let n = read_with_select pty buf 0 64 2.0 in
+  equal ~msg:"ready" string "ready\r\n" (Bytes.sub_string buf 0 n);
+  ignore (Pty.write_string pty "\003" 0 1 : int);
+  let output = read_to_eof pty in
+  is_true ~msg:"the program trapped SIGINT" (output = "^Cint\r\n" || output = "int\r\n");
+  is_true ~msg:"its exit code" (Pty.wait pty = Unix.WEXITED 5);
+  Pty.close pty
+
+(* terminate signals the program's process group: here [sleep], which the
+   shell started in it and which holds the slave, ends with the shell, and
+   the master reads the end of output at once. A SIGTERM to the shell alone
+   would leave [sleep] holding the terminal open for 10 s. *)
+let test_terminate_signals_the_program_s_group () =
+  let pty = Pty.spawn ~prog:"sh" ~args:[ "-c"; "sleep 10 & wait" ] () in
+  Unix.sleepf 0.1;
+  Pty.terminate pty;
+  equal ~msg:"no output" string "" (read_to_eof pty);
+  is_true ~msg:"ended by SIGTERM" (Pty.wait pty = Unix.WSIGNALED Sys.sigterm);
+  Pty.close pty
+
+(* The kernel sends the hangup's SIGHUP to the session's leader, the keeper,
+   which passes it on to the program. The master is hung up by replacing
+   its descriptor with /dev/null, so that close still has one of its own to
+   close. *)
+let test_hangup_reaches_the_program () =
+  let pty =
+    Pty.spawn ~prog:"sh"
+      ~args:[ "-c"; "trap 'exit 7' HUP; echo ready; while :; do :; done" ]
+      ()
+  in
+  let buf = Bytes.create 64 in
+  ignore (read_with_select pty buf 0 64 2.0 : int);
+  let null = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0 in
+  Unix.dup2 null (Pty.file_descr pty);
+  Unix.close null;
+  is_true ~msg:"the program exited on SIGHUP" (Pty.wait pty = Unix.WEXITED 7);
+  Pty.close pty
+
+(* A hangup ends a stopped program too: the keeper passes the hangup's
+   SIGHUP on with a SIGCONT, as a shell does to its stopped jobs, where the
+   SIGHUP alone would stay pending in the stopped program. *)
+let test_hangup_ends_a_stopped_program () =
+  let pty = Pty.spawn ~prog:"sleep" ~args:[ "10" ] () in
+  Unix.kill (Option.get (Pty.pid pty)) Sys.sigstop;
+  Unix.sleepf 0.05;
+  let null = Unix.openfile "/dev/null" [ Unix.O_RDWR ] 0 in
+  Unix.dup2 null (Pty.file_descr pty);
+  Unix.close null;
+  is_true ~msg:"ended by SIGHUP" (Pty.wait pty = Unix.WSIGNALED Sys.sighup);
+  Pty.close pty
 
 (* Regression: a handle kept the process id of a child that the program had
    reaped itself, and terminate, kill and close signalled it, though the
    system may have given that id to another process. The handle now checks
-   first and forgets the id. *)
+   first and forgets the id. The program reaps the keeper with [Unix.wait],
+   as the keeper is the only child of this process just then. *)
 let test_reaped_child_is_never_signalled () =
   let pty = Pty.spawn ~prog:"sh" ~args:[ "-c"; "exit 0" ] () in
   ignore (read_to_eof pty : string);
-  ignore
-    (Unix.waitpid [] (Option.get (Pty.pid pty)) : int * Unix.process_status);
+  ignore (Unix.wait () : int * Unix.process_status);
   Pty.terminate pty;
   equal ~msg:"terminate forgets the id" (option int) None (Pty.pid pty);
   raises_match ~msg:"the handle has no child" (Exn.invalid_arg ~sub:"Pty.kill")
@@ -652,6 +717,25 @@ let test_wait_reaps_the_child () =
   equal ~msg:"wait forgets the id" (option int) None (Pty.pid pty);
   raises_match ~msg:"a second wait" (Exn.invalid_arg ~sub:"Pty.wait") (fun () ->
       ignore (Pty.wait pty : Unix.process_status));
+  Pty.close pty
+
+let test_poll () =
+  let pty = Pty.spawn ~prog:"sh" ~args:[ "-c"; "read line; exit 3" ] () in
+  is_true ~msg:"running" (Pty.poll pty = None);
+  ignore (Pty.write_string pty "\n" 0 1 : int);
+  ignore (read_to_eof pty : string);
+  let rec exited n =
+    match Pty.poll pty with
+    | Some status -> status
+    | None when n > 0 ->
+        Unix.sleepf 0.01;
+        exited (n - 1)
+    | None -> fail "the child did not exit within a second"
+  in
+  is_true ~msg:"the child's status" (exited 100 = Unix.WEXITED 3);
+  equal ~msg:"wait forgets the id" (option int) None (Pty.pid pty);
+  raises_match ~msg:"a second wait" (Exn.invalid_arg ~sub:"Pty.wait")
+    (fun () -> ignore (Pty.wait pty : Unix.process_status));
   Pty.close pty
 
 (* A child that ignores SIGTERM exits with its own status, whether the handle
@@ -709,41 +793,24 @@ let test_reap_through_signals () =
       ~args:[ "-c"; "trap '' TERM HUP; echo ready; while :; do :; done" ]
       ()
   in
-  let pid = Option.get (Pty.pid pty) in
   ignore (Unix.select [ Pty.in_fd pty ] [] [] 2. : _ * _ * _);
   with_interrupts (fun () -> Pty.close pty);
-  let reaped =
-    match Unix.waitpid [ Unix.WNOHANG ] pid with
-    | _ -> false
-    | exception Unix.Unix_error (Unix.ECHILD, _, _) -> true
-  in
-  is_true ~msg:"close reaped the child" reaped
+  equal ~msg:"close reaped the child" (option int) None (Pty.pid pty)
 
 (* Regression: close ~wait:false sent SIGTERM alone, so a child that
-   ignores it and the hangup's SIGHUP ran on, though close promises SIGKILL about 100 ms later. *)
+   ignores it and the hangup's SIGHUP ran on, though close promises SIGKILL
+   about 100 ms later. The test's timeout bounds the wait. *)
 let test_close_without_wait_kills () =
   let pty =
     Pty.spawn ~prog:"sh"
       ~args:[ "-c"; "trap '' TERM HUP; echo ready; while :; do :; done" ]
       ()
   in
-  let pid = Option.get (Pty.pid pty) in
   (* The traps are set once the child has written. *)
   ignore (Unix.select [ Pty.in_fd pty ] [] [] 2. : _ * _ * _);
   Pty.close ~wait:false pty;
-  let rec ended n =
-    match Unix.waitpid [ Unix.WNOHANG ] pid with
-    | 0, _ when n > 0 ->
-        Unix.sleepf 0.01;
-        ended (n - 1)
-    | 0, _ ->
-        Unix.kill pid Sys.sigkill;
-        ignore (Unix.waitpid [] pid : int * Unix.process_status);
-        false
-    | _ -> true
-    | exception Unix.Unix_error (Unix.ECHILD, _, _) -> true
-  in
-  is_true ~msg:"the child ended within a second" (ended 100)
+  is_true ~msg:"SIGKILL ended the program"
+    (Pty.wait pty = Unix.WSIGNALED Sys.sigkill)
 
 (* Regression: a second close used to call Unix.close on the stored fd number
    again. The kernel reallocates freed numbers to the next opened descriptor,
@@ -835,11 +902,20 @@ let tests =
         test_double_close_does_not_touch_reused_fd;
       test "a reaped child is never signalled"
         test_reaped_child_is_never_signalled;
+      test "wait gives the program's signal" test_wait_gives_the_program_s_signal;
+      test "the program is the foreground group"
+        test_program_is_the_foreground_group;
+      test "terminate signals the program's group"
+        test_terminate_signals_the_program_s_group;
+      test "hangup reaches the program" test_hangup_reaches_the_program;
+      test ~timeout:5. "hangup ends a stopped program"
+        test_hangup_ends_a_stopped_program;
       test "wait reaps the child" test_wait_reaps_the_child;
+      test "poll" test_poll;
       test "wait after terminate" test_wait_after_terminate;
       test "wait after close without wait" test_wait_after_close_without_wait;
       test "reap through signals" test_reap_through_signals;
-      test "close without wait kills" test_close_without_wait_kills;
+      test ~timeout:5. "close without wait kills" test_close_without_wait_kills;
       test "eof on close" test_eof_on_close;
       test "pty close" test_pty_close;
     ]

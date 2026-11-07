@@ -1,14 +1,21 @@
-(* The child of a {!spawn} handle. [Running pid] is a child the handle has
-   not seen reaped: until it is reaped, its id names it and no other process.
-   [Exited status] is a child the handle reaped while checking on it, whose
-   status {!wait} returns. *)
-type child = No_child | Running of int | Exited of Unix.process_status
+(* The child of a {!spawn} handle. [Running] is a child the handle has not
+   seen reaped: [keeper] is the process it reaps, which leads the program's
+   session and exits as the program did ({!spawn}), and [program] is the
+   program's process id and process group, which it signals. Until the keeper
+   is reaped, its id names it and no other process. The program's names the
+   program while the keeper lives, which leaves it unreaped: so [signal] asks
+   whether the keeper has exited just before it signals, and what remains is
+   a keeper that exits between the two, and a program id given out again as a
+   process group's in those microseconds. [Exited status] is a child the
+   handle reaped while checking on it, whose status {!wait} returns. *)
+type child =
+  | No_child
+  | Running of { keeper : int; program : int }
+  | Exited of Unix.process_status
 
 type t = {
   fd : Unix.file_descr;
   mutable child : child;
-  (* The slave of a {!spawn} PTY, held until [close] where [hold_slave]. *)
-  slave : Unix.file_descr option;
   (* [close] must be a true no-op the second time: the kernel can reallocate
      the fd number to anything else in the process, and a second [Unix.close]
      would then close that unrelated descriptor. *)
@@ -32,16 +39,12 @@ external fork_exec :
   string array ->
   string array ->
   string option ->
-  int = "ocaml_pty_fork_exec"
+  int * int = "ocaml_pty_fork_exec"
 
-(* Why, and on which platforms, is in pty_stubs.c. *)
-external hold_slave : unit -> bool = "ocaml_pty_hold_slave"
-
-let hold_slave = hold_slave ()
 let file_descr t = t.fd
 let in_fd t = t.fd
 let out_fd t = t.fd
-let pid t = match t.child with Running pid -> Some pid | _ -> None
+let pid t = match t.child with Running { program; _ } -> Some program | _ -> None
 
 (* Every fd-consuming operation goes through this guard so a closed handle
    raises EBADF instead of touching a possibly-reused fd number. *)
@@ -49,25 +52,37 @@ let live_fd t op =
   if t.closed then raise (Unix.Unix_error (Unix.EBADF, op, ""));
   t.fd
 
+(* The program is the keeper's child, which init reaps once the keeper has
+   exited, unless this process is a subreaper (prctl(PR_SET_CHILD_SUBREAPER),
+   procctl(PROC_REAP_ACQUIRE)): the program is then its zombie, and this reaps
+   it, once the keeper is reaped. Elsewhere ECHILD, or a running process of
+   this one's that has the id by now, which the call leaves alone. *)
+let reap_program program =
+  try ignore (Unix.waitpid [ WNOHANG ] program : int * Unix.process_status)
+  with Unix.Unix_error _ -> ()
+
 (* Asks the system, without blocking, what became of a running child. One
    that has exited is reaped here and its status kept. ECHILD means the
-   program reaped it with its own waitpid, and its id may now name another
-   process, so the handle forgets it. *)
+   calling program reaped the keeper itself, with [Unix.wait], and its id may
+   now name another process, so the handle forgets it. *)
 let rec check t =
   match t.child with
   | No_child | Exited _ -> ()
-  | Running pid -> (
-      match Unix.waitpid [ WNOHANG ] pid with
+  | Running { keeper; program } -> (
+      match Unix.waitpid [ WNOHANG ] keeper with
       | 0, _ -> ()
-      | _, status -> t.child <- Exited status
+      | _, status ->
+          reap_program program;
+          t.child <- Exited status
       | exception Unix.Unix_error (EINTR, _, _) -> check t
       | exception Unix.Unix_error (ECHILD, _, _) -> t.child <- No_child)
 
-(* Sends [signal] to the child if it is still running. *)
+(* Sends [signal] to the program's process group if it is still running. *)
 let signal t signal =
   check t;
   match t.child with
-  | Running pid -> ( try Unix.kill pid signal with Unix.Unix_error _ -> ())
+  | Running { program; _ } -> (
+      try Unix.kill (-program) signal with Unix.Unix_error _ -> ())
   | No_child | Exited _ -> ()
 
 let terminate t =
@@ -80,29 +95,38 @@ let kill t =
   | No_child -> invalid_arg "Pty.kill: no child process"
   | Running _ | Exited _ -> signal t Sys.sigkill
 
-let rec wait t =
+(* Reaps the child with [waitpid flags], where [WNOHANG] gives [None] while
+   it runs. *)
+let rec reap name t flags =
   match t.child with
-  | No_child -> invalid_arg "Pty.wait: no child process"
+  | No_child -> invalid_arg (name ^ ": no child process")
   | Exited status ->
       t.child <- No_child;
-      status
-  | Running pid -> (
-      match Unix.waitpid [] pid with
+      Some status
+  | Running { keeper; program } -> (
+      match Unix.waitpid flags keeper with
+      | 0, _ -> None
       | _, status ->
+          reap_program program;
           t.child <- No_child;
-          status
-      | exception Unix.Unix_error (EINTR, _, _) -> wait t
+          Some status
+      | exception Unix.Unix_error (EINTR, _, _) -> reap name t flags
       | exception (Unix.Unix_error (ECHILD, _, _) as e) ->
           t.child <- No_child;
           raise e)
+
+let wait t =
+  match reap "Pty.wait" t [] with Some status -> status | None -> assert false
+
+let poll t = reap "Pty.poll" t [ WNOHANG ]
 
 (* After close's SIGTERM, the child has about 100 ms to exit, polled
    without blocking, before SIGKILL. *)
 let rec grace t attempts =
   check t;
   match t.child with
-  | Running pid when attempts <= 0 -> (
-      try Unix.kill pid Sys.sigkill with Unix.Unix_error _ -> ())
+  | Running { program; _ } when attempts <= 0 -> (
+      try Unix.kill (-program) Sys.sigkill with Unix.Unix_error _ -> ())
   | Running _ ->
       Unix.sleepf 0.01;
       grace t (attempts - 1)
@@ -114,10 +138,9 @@ let close ?wait:(reap = true) t =
   if t.closed then ()
   else (
     t.closed <- true;
-    (* Hang up first: a child whose exit waits for its output to be read can
-       then exit, so the reap below does not wait on it. *)
+    (* Hang up first: the keeper's drain ends, so the reap below does not
+       wait for the output to be read. *)
     close_fd t.fd;
-    Option.iter close_fd t.slave;
     signal t Sys.sigterm;
     grace t 10;
     if reap then (
@@ -141,12 +164,8 @@ let inherit_size ~src ~dst =
 
 let open_pty ?winsize () =
   let master_fd, slave_fd = open_pty_raw () in
-  let master =
-    { fd = master_fd; child = No_child; slave = None; closed = false }
-  in
-  let slave =
-    { fd = slave_fd; child = No_child; slave = None; closed = false }
-  in
+  let master = { fd = master_fd; child = No_child; closed = false } in
+  let slave = { fd = slave_fd; child = No_child; closed = false } in
   (* Set initial window size if provided *)
   (match winsize with
   | Some ws -> (
@@ -174,14 +193,9 @@ let spawn ?env ?cwd ?winsize ~prog ~args () =
   let env = match env with Some env -> env | None -> Unix.environment () in
   let argv = Array.of_list (prog :: args) in
   match fork_exec slave.fd (search_path prog) argv env cwd with
-  | pid ->
-      let slave =
-        if hold_slave then Some slave.fd
-        else (
-          close slave;
-          None)
-      in
-      { master with child = Running pid; slave }
+  | keeper, program ->
+      close slave;
+      { master with child = Running { keeper; program } }
   | exception e ->
       close master;
       close slave;
