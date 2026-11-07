@@ -959,19 +959,6 @@ first.
 - `Pty.close ~wait:false` keeps the child until `Pty.wait` reaps it. The old
   handle could signal a process id that the system had given to another
   process.
-- A program spawned with `matrix.pty` keeps its output past its exit on every
-  kernel. The session's leader is a keeper that `Pty.spawn` forks: it runs
-  the program in the foreground process group, holds the terminal until the
-  master has read all the program wrote or the terminal has hung up, passes
-  the hangup's `SIGHUP` on to the program, and exits as the program did.
-  Before, the program led the session, and FreeBSD dropped the output the
-  master had not read when it exited. So `Pty.pid` is the program's id and
-  process group, which is not a child of your process: reap it with
-  `Pty.wait`, or `Pty.poll` without blocking, never with `Unix.waitpid`.
-  `Pty.terminate`, `kill` and `close` signal the program's process group, so
-  the processes it started in it too, as the terminal's interrupt key does.
-  A program on a spawned terminal is a job of its session, which a stop
-  signal stops, where its own session's group could not be stopped.
 - `Screen.resize` leaves every buffer blank and makes the next render full,
   where it kept the grid's contents. After a resize, the old diff could leave
   stale cells on the screen.

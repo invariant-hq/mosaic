@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+### Matrix
+
+#### Breaking changes
+
+- `Pty.spawn` runs the program under a keeper that leads the pseudo-terminal's
+  session, so the program's output outlives its exit on every kernel: FreeBSD
+  dropped the output the master had not read when the program, as the
+  session's leader, exited (#114). `Pty.pid` is the program's id and process
+  group, not a child of the calling process: reap it with `Pty.wait`, or with
+  the new `Pty.poll` without blocking, never with `Unix.waitpid`.
+  `Pty.terminate`, `kill` and `close` signal the program's process group, so
+  the processes it started in it too, as the terminal's interrupt key does;
+  the hangup's `SIGHUP` reaches the program on every kernel, with a `SIGCONT`
+  if it was stopped. A program on a spawned terminal is a job of its session,
+  which a stop signal stops
+
 ## [0.2.0] - 2026-11-04
 
 0.2.0 changes most of the API of all three packages, and some programs that
@@ -307,12 +325,6 @@ key: in our benchmark, the median time from a key press to the screen is under
   a translucent `fill_rect`.
 - Matrix installs no handler for uncaught exceptions. The run restores the
   terminal and raises the exception again.
-
-- `Pty.spawn` keeps the program's output past its exit on every kernel, by
-  running it under a keeper that leads the session. `Pty.pid` is the program's
-  id and process group, not a child of your process: reap it with `Pty.wait`
-  or `Pty.poll`. `Pty.terminate`, `kill` and `close` signal the program's
-  process group.
 
 `Pty.spawn`, `Screen.resize`, `Terminal.reset_state` and `Vte.cursor_pos` also
 behave differently in smaller ways; the [guide lists
