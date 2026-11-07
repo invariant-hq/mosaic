@@ -46,8 +46,9 @@ val is_controlling : Unix.file_descr -> bool
     (tcgetsid(3)), whose job the process runs in. The shell stops and continues
     the job through it, and its window is the one SIGWINCH reports. The master
     side of a pseudo-terminal is [false], even when its slave is the controlling
-    terminal. So is a pseudo-terminal the process opened, and every descriptor
-    on Windows. *)
+    terminal. So is a pseudo-terminal the process opened. On Windows, where a
+    process has at most one console and receives its control events, it is
+    [true] iff [fd] is a handle of the process's console. *)
 
 val background : Unix.file_descr -> bool
 (** [background fd] is [true] iff [fd] is the process's controlling terminal and
@@ -77,7 +78,8 @@ val readable : Unix.file_descr -> bool
     waits ([poll(2)] with no timeout), takes nothing from [fd] and allocates
     nothing. On Windows a console's handle is asked whether it is signaled,
     which takes none of the records it holds, as waiting with [Unix.select]
-    does. *)
+    does. A console is signaled while it holds records, which may carry no text,
+    such as a resize: {!Signal.read} may then have nothing to give. *)
 
 val now : unit -> int
 (** [now ()] is the time in nanoseconds since an arbitrary origin, on a clock
@@ -98,7 +100,8 @@ val now : unit -> int
 
 type settings
 (** The type for a terminal's settings, what tcgetattr(3) gives, with the
-    [IEXTEN] local flag that [Unix.terminal_io] leaves out. *)
+    [IEXTEN] local flag that [Unix.terminal_io] leaves out. On Windows they are
+    a console's input mode. *)
 
 val raw : Unix.file_descr -> settings
 (** [raw fd] puts [fd] in raw mode immediately and returns the settings it had.
@@ -110,7 +113,16 @@ val raw : Unix.file_descr -> settings
     Output processing ([OPOST]) and the file status flags, such as [O_NONBLOCK],
     stay as they were.
 
-    Raises [Unix.Unix_error] if [fd] is not a terminal. *)
+    On Windows [fd] is a console, which then neither echoes, edits lines nor
+    turns Ctrl+C into a signal, and gives keys, mouse reports, pastes and focus
+    changes as the control functions a VT100-style terminal sends
+    ([ENABLE_VIRTUAL_TERMINAL_INPUT]). It reports resizes, and a click reaches
+    the program instead of starting a selection, where the console's mode says
+    what its quick edit was. Read it with {!Signal.read}, which takes those
+    records as the bytes they carry.
+
+    Raises [Unix.Unix_error] if [fd] is not a terminal, and [Failure] if the
+    Windows console takes no virtual terminal input. *)
 
 val keys : Unix.file_descr -> settings
 (** [keys fd] puts [fd] in the {e key interval} immediately and returns the
@@ -121,9 +133,11 @@ val keys : Unix.file_descr -> settings
     implementation-defined characters stay ([IEXTEN]), and output is processed
     as before. So Ctrl+C ends the job and Ctrl+Z stops it as at a shell's
     prompt, while Ctrl+D, the erase and the kill characters reach the program as
-    bytes. Input not yet read stays.
+    bytes. Input not yet read stays. On Windows the console gives keys as in raw
+    mode, and Ctrl+C still sends its signal.
 
-    Raises [Unix.Unix_error] if [fd] is not a terminal. *)
+    Raises [Unix.Unix_error] if [fd] is not a terminal, and [Failure] if the
+    Windows console takes no virtual terminal input. *)
 
 val no_echo : Unix.file_descr -> settings
 (** [no_echo fd] turns [fd]'s echo off and returns the settings it had, as
@@ -131,20 +145,22 @@ val no_echo : Unix.file_descr -> settings
     characters still send their signals, and nothing typed is shown, line end
     included ([ECHO], [ECHOE], [ECHOK] and [ECHONL] are off). It first discards
     the input not yet read ([TCSAFLUSH]), so what was typed before the question
-    is not taken as its answer.
+    is not taken as its answer. A Windows console's input stays.
 
     Raises [Unix.Unix_error] if [fd] is not a terminal. *)
 
 val restore : Unix.file_descr -> settings -> unit
 (** [restore fd s] sets [fd]'s settings to [s] and keeps the input not yet read
     for whoever reads next. It blocks until the output written to [fd] has been
-    sent ([TCSADRAIN]).
+    sent ([TCSADRAIN]). SIGTTOU is blocked in the calling thread meanwhile, so
+    that a process in the background sets the settings instead of stopping.
 
     Raises [Unix.Unix_error] if [fd] is not a terminal. *)
 
 val flush_input : Unix.file_descr -> unit
 (** [flush_input fd] discards the input [fd] has received and nobody has read
-    ([tcflush], [TCIFLUSH]). It does nothing if [fd] is not a terminal. *)
+    ([tcflush], [TCIFLUSH], or the records of a Windows console). It does
+    nothing if [fd] is not a terminal. *)
 
 type console
 (** The type for what {!enable_vt} changes in a Windows console, the mode of the
@@ -159,8 +175,13 @@ val enable_vt : Unix.file_descr -> console
     the next line only when the next printable character comes, so a line that
     fills the width and ends with a line feed takes one row. The console is
     shared by every process attached to it, the shell among them, so a program
-    must give the result to {!restore_console} before it ends. It does nothing
-    on other systems, or if [fd] is not a console. *)
+    must give the result to {!restore_console} before it ends. If the process
+    ends on a signal that a holder received ({!Signal.raise_default}), or
+    aborts, the consoles not given back get their mode and code page back, the
+    last changed first. It does nothing on other systems, or if [fd] is not a
+    console.
+
+    Raises [Failure] if 16 consoles changed are not given back. *)
 
 val restore_console : Unix.file_descr -> console -> unit
 (** [restore_console fd c] sets the mode of the console [fd] and the output code
@@ -237,14 +258,26 @@ val terminfo :
     Holders take a signal together. The first {!Signal.take} installs the
     handler, and the action it replaced comes back when the last holder gives
     the signal back ({!Signal.give_back}). The handlers are C. A handler records
-    the signal for each holder it concerns and writes one byte to the holder's
-    {e wake pipe} ({!Signal.wake_fd}), which wakes a holder waiting in
-    [select(2)] whenever the signal lands.
+    the signal for each holder it concerns and wakes the holder, by writing one
+    byte to its {e wake pipe} ({!Signal.wake_fd}), so a holder waiting in
+    {!Signal.wait} wakes whenever the signal lands.
 
-    Signals are numbered as OCaml numbers them ([Sys.sigint]). On Windows, which
-    has none of these signals, {!Signal.take} and {!Signal.ignored} are [false],
-    {!Signal.give_back}, {!Signal.raise_default}, {!Signal.stop_group} and
-    {!Signal.restore_all} do nothing, and {!Signal.hold} raises [Failure]. *)
+    Signals are numbered as OCaml numbers them ([Sys.sigint]).
+
+    {2:windows On Windows}
+
+    Windows has SIGINT and SIGABRT alone. A console control handler, which C
+    registers while a holder is active, receives Ctrl+C and Ctrl+Break as SIGINT
+    when SIGINT's action is the default, and the console's closing as SIGHUP,
+    always: the handler then waits while the holders give their terminals back
+    and end the process, which Windows ends after 5 s whatever the handlers do.
+    Ctrl+C reaches the handler only when the console turns it into a signal,
+    outside raw mode. SIGABRT is taken as on POSIX. The other signals are never
+    taken nor received, but SIGWINCH, which {!Signal.read} receives when it
+    reads a resize. {!Signal.ignored} is [false], {!Signal.stop_group} does
+    nothing, and {!Signal.raise_default} ends the process as the console's own
+    handler does, with [STATUS_CONTROL_C_EXIT], and with no exit function run. A
+    holder's wake is an event rather than a pipe. *)
 module Signal : sig
   (** {1:actions Actions} *)
 
@@ -256,7 +289,7 @@ module Signal : sig
   val take : int -> bool
   (** [take s] takes [s] as the {{!policy}policy} says and is [true] iff it did.
       It is [false] when the program has an action of its own for [s] and the
-      policy leaves [s] to it.
+      policy leaves [s] to it, and on Windows for the signals it lacks.
 
       Raises [Invalid_argument] if [s] is not one of {!val-signals}'s. *)
 
@@ -294,13 +327,14 @@ module Signal : sig
 
   val hold : controlling:bool -> output:Unix.file_descr option -> holder
   (** [hold ~controlling ~output] registers a holder of a terminal, the
-      controlling one if [controlling], with a wake pipe of its own. If the
-      process ends where no OCaml code runs, the holder's reset bytes
-      ({!set_reset}) are written to [output], the descriptor that the terminal
-      is written through. It takes no signal ({!take} does).
+      controlling one if [controlling], with a wake of its own. If the process
+      ends where no OCaml code runs, the holder's reset bytes ({!set_reset}) are
+      written to [output], the descriptor that the terminal is written through.
+      It takes no signal ({!take} does).
 
-      Raises [Unix.Unix_error] if the pipe cannot be made, and [Failure] on
-      Windows. *)
+      Raises [Unix.Unix_error] if the wake cannot be made, and [Failure] on a
+      Windows older than Windows 10 1803, which has no high-resolution timer for
+      {!wait}. *)
 
   val release : holder -> unit
   (** [release h] ends [h]. The handlers forget it, and an abort no longer
@@ -309,12 +343,46 @@ module Signal : sig
   val wake_fd : holder -> Unix.file_descr
   (** [wake_fd h] is the read end of [h]'s wake pipe. It is non-blocking, and
       readable once a signal that concerns [h] has been received, or {!wake} has
-      been called, since the holder last read it empty. *)
+      been called, since the holder last read it empty or {!wait} returned.
+
+      Raises [Invalid_argument] on Windows, where the wake is no descriptor. *)
 
   val wake : holder -> unit
-  (** [wake h] makes {!wake_fd} readable. It may be called from any thread or
-      domain, and does nothing once [h] is released, so a thread may wake a
-      holder that another thread releases. *)
+  (** [wake h] wakes [h]: it ends the {!wait} under way or the next one, and
+      makes {!wake_fd} readable. It may be called from any thread or domain, and
+      does nothing once [h] is released, so a thread may wake a holder that
+      another thread releases. *)
+
+  val wait : holder -> input:Unix.file_descr option -> until:int option -> bool
+  (** [wait h ~input ~until] waits until {!read} has something to take from
+      [input], [h] is woken ({!wake}, or a signal that concerns [h]), or {!now}
+      reaches [until], and is [true] iff {!read} has something to take. A wake
+      that came since the last [wait] returned ends it at once. It waits for
+      nothing but the wake and the time when [input] is [None], and forever for
+      those when [until] is [None]. A file is always readable.
+
+      On POSIX it is [select(2)] on [input] and the wake pipe. On Windows
+      [input] is a console or a file, waited for with a high-resolution timer,
+      and [wait] is [true] when the console holds records, which may carry no
+      text.
+
+      Raises [Invalid_argument] on Windows if [input] is neither a console nor a
+      file, such as a pipe, which Windows cannot wait for. *)
+
+  val read : holder -> Unix.file_descr -> bytes -> int -> int -> int
+  (** [read h fd buf off len] reads at most [len] bytes of what [fd] has into
+      [buf] from [off], without waiting once {!wait} said there is something. It
+      is the number of bytes read, [0] at the end of the input, and [-1] when
+      nothing is there, as for a non-blocking [fd] with nothing to read.
+
+      On a Windows console it reads the console's records and gives the text of
+      the keys they carry as UTF-8, as the console's own reader would. Text that
+      does not fit in [len] is kept for the next read. A resize is received for
+      [h] as SIGWINCH ({!received}) and wakes [h]. A read that took only records
+      with no text is [-1].
+
+      Raises [Unix.Unix_error] on an error other than [EINTR] and [EAGAIN], and
+      [Invalid_argument] if [off] and [len] are not a valid range of [buf]. *)
 
   val received : holder -> int -> bool
   (** [received h s] is [true] iff [s] has been received for [h] since [h] was

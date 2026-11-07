@@ -354,9 +354,11 @@ val run :
     giving the terminal back. Raises [Invalid_argument] if [MATRIX_DEBUG] names
     something other than a tool, or if the terminal is the process's controlling
     terminal and another run holds it, unless that run gave it away for
-    {!release}. Raises [Failure] on Windows, where no run starts
-    ({!Tty.Signal.hold}), and [Unix.Unix_error] if the run's wake pipe cannot be
-    made. *)
+    {!release}. Raises [Unix.Unix_error] if the run's wake cannot be made, and
+    [Failure] on a Windows console that takes no virtual terminal input or on a
+    Windows older than Windows 10 1803 ({!Tty.Signal.hold}). On Windows the
+    input is a console or a file: a run raises [Invalid_argument] at its first
+    wait for a pipe's input, which Windows cannot wait for. *)
 
 (** {1:loop The loop}
 
@@ -433,7 +435,11 @@ val fds : 'msg app -> Unix.file_descr list
     not ended, and the run's wake, which {!post} and the signal handlers write,
     and they may differ from one wait to the next. A caller must wait for them
     to be readable and must never read them, since what it reads the run never
-    sees. *)
+    sees.
+
+    Raises [Invalid_argument] on Windows, where no descriptor stands for the
+    console: drive the run with {!next}, or with {!run} on a domain of its own.
+*)
 
 val deadline : 'msg app -> int option
 (** [deadline app] is the time by which {!val-step} must be called again after
@@ -697,7 +703,8 @@ val stop_job : 'msg app -> unit
     calls [stop_job] on it. Nothing happens if SIGTSTP was ignored when the run
     began, as nothing could continue the job, or if the run's terminal is not
     the process's controlling terminal ({!Tty.is_controlling}), since the job is
-    not that terminal's and stopping it would stop every other session. *)
+    not that terminal's and stopping it would stop every other session. Nothing
+    happens on Windows, which has no job control. *)
 
 (** {1:signals Signals}
 
@@ -1124,13 +1131,14 @@ module Device : sig
     unit ->
     t
   (** [unix ~input ~output ~env ()] is the device over the descriptors [input]
-      and [output], as {!run} takes them: it waits with [select(2)] on the input
-      and a wake pipe that {!post} and the signal handlers write, takes the
-      signals as {{!signals}Signals} says, and sets the input's raw mode with
-      termios.
+      and [output], as {!run} takes them: it waits for the input and a wake that
+      {!post} and the signal handlers set ({!Tty.Signal.wait}), reads the input
+      with {!Tty.Signal.read}, takes the signals as {{!signals}Signals} says,
+      and sets the input's raw mode ({!Tty.raw}). On Windows it has the output
+      console interpret control functions ({!Tty.enable_vt}) until [cleanup],
+      and its [fds] raises [Invalid_argument].
 
-      Raises [Failure] on Windows, as {!run} does, and [Unix.Unix_error] if the
-      wake pipe cannot be made. *)
+      Raises what {!run} raises when it makes its device. *)
 end
 
 val on_device : Device.t -> config -> config

@@ -229,3 +229,23 @@
  (package matrix)
  (modules test_examples)
  (libraries windtrap matrix matrix.test unix))
+
+; The decoder of a Windows console's records is portable C, tested on every
+; system.
+
+(test
+ (name test_console_text)
+ (package matrix)
+ (modules test_console_text)
+ (foreign_stubs
+  (language c)
+  (include_dirs ../lib/tty)
+  (extra_deps ../lib/tty/console_text.h)
+  (names test_console_text_stubs))
+ (libraries windtrap))
+
+(test
+ (name test_signal_wait)
+ (package matrix)
+ (modules test_signal_wait)
+ (libraries windtrap matrix.tty unix threads.posix))

@@ -1542,7 +1542,10 @@ val step : 'msg running -> now:int -> [ `Stepped | `Idle | `Stopped ]
     Raises what {!val-run} raises, at the step that had it. *)
 
 val fds : 'msg running -> Unix.file_descr list
-(** [fds r] is the descriptors [r]'s run waits for ({!Matrix.fds}). *)
+(** [fds r] is the descriptors [r]'s run waits for ({!Matrix.fds}).
+
+    Raises [Invalid_argument] on Windows, where no descriptor stands for the
+    console. *)
 
 val deadline : 'msg running -> int option
 (** [deadline r] is the time on {!Matrix.clock} by which {!step} must be called

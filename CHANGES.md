@@ -2,7 +2,44 @@
 
 ## [Unreleased]
 
+### Mosaic
+
+- Mosaic runs on the Windows console again, as Matrix does (below).
+  `Mosaic_eio.run` works there too: the program runs on a domain with no Eio
+  loop, and cancelling the calling fiber still stops it. `Mosaic.fds` raises
+  `Invalid_argument` on Windows.
+
 ### Matrix
+
+Matrix runs on the Windows console again, on Windows 10 1803 or later. The run
+reads the console's input records itself, so a resize reaches it, and keys,
+mouse reports, pastes and focus changes arrive as the sequences a VT terminal
+sends. Ctrl+C and Ctrl+Break reach the run as SIGINT, and closing the console
+as SIGHUP. When the run ends, on one of these too, or the process aborts, the
+console gets back every mode and code page the run changed.
+
+#### Also new
+
+- `Tty.Signal.wait` and `Tty.Signal.read` wait for and read a holder's input,
+  on every system, and `Matrix.Device.unix` is built on them. On a Windows
+  console, `read` gives the text the keys carry as UTF-8 and receives a resize
+  as SIGWINCH.
+- `Tty.raw`, `keys`, `no_echo`, `restore` and `flush_input` work on a Windows
+  console.
+
+#### Changes the compiler won't catch
+
+- On Windows the input is a console or a file. A run whose input is a pipe
+  raises `Invalid_argument` at its first wait, and `Matrix.fds` raises
+  `Invalid_argument`, since no descriptor stands for the console: drive the run
+  with `Matrix.next`, or with `Matrix.run` on a domain of its own.
+- `Tty.is_controlling` is `true` for a handle of the process's console on
+  Windows, so one run at a time holds it.
+- `Tty.restore` blocks SIGTTOU while it sets the settings, so a process in the
+  background no longer needs to block it itself.
+- On OCaml 5.4 and 5.5, Ctrl+Break on Windows ends the process even when a
+  SIGINT handler is installed (ocaml/ocaml#15267). While a run holds the
+  console, Matrix takes it as SIGINT and gives the console back first.
 
 #### Breaking changes
 

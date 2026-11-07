@@ -3931,15 +3931,15 @@ let test_device_debug_ignored () =
       is_false ~msg:"no panel"
         (contains (Matrix.Grid.to_text (Matrix.current_grid app)) "fps"))
 
-(* What Windows lacks: the process signals are POSIX's, and Backend.unix
-   waits on Tty.Signal's wake pipe, which Windows has not (matrix.ml). *)
+(* What Windows lacks: the process signals are POSIX's, and Device.unix
+   cannot wait for a pipe or a device such as /dev/null there. *)
 let posix_signals f () =
   if Sys.win32 then skip ~reason:"POSIX signals, which Windows lacks" ()
   else f ()
 
 let unix_backend f () =
   if Sys.win32 then
-    skip ~reason:"Device.unix, which needs a wake pipe Windows lacks" ()
+    skip ~reason:"Device.unix on a pipe, which Windows cannot wait for" ()
   else f ()
 
 (* Styling ----------------------------------------------------------------- *)

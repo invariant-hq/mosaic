@@ -17,7 +17,23 @@ external readable : Unix.file_descr -> bool = "matrix_tty_readable" [@@noalloc]
 external get_iexten : Unix.file_descr -> bool = "matrix_tty_get_iexten"
 external set_iexten : Unix.file_descr -> bool -> unit = "matrix_tty_set_iexten"
 
-type settings = { termios : Unix.terminal_io; iexten : bool }
+(* A terminal's settings, or a Windows console's input mode. *)
+type settings =
+  | Termios of { termios : Unix.terminal_io; iexten : bool }
+  | Console of int
+
+(* A console's input mode, in the order the stubs number them. *)
+type console_mode = Raw | Keys | No_echo
+
+external console_set : Unix.file_descr -> console_mode -> int
+  = "matrix_tty_console_set"
+
+external console_restore : Unix.file_descr -> int -> unit
+  = "matrix_tty_console_restore"
+
+external console_flush : Unix.file_descr -> unit = "matrix_tty_console_flush"
+external block_ttou : unit -> bool = "matrix_tty_block_ttou"
+external unblock_ttou : bool -> unit = "matrix_tty_unblock_ttou"
 
 (* A signal can interrupt these calls, [TCSADRAIN]'s wait for the output to
    be sent above all (macOS does), with EINTR; the call is made again. *)
@@ -28,62 +44,75 @@ let tcgetattr fd = uninterrupted Unix.tcgetattr fd
 let tcsetattr fd mode t = uninterrupted (Unix.tcsetattr fd mode) t
 
 let raw fd =
-  let termios = tcgetattr fd in
-  let iexten = get_iexten fd in
-  tcsetattr fd Unix.TCSANOW
-    {
-      termios with
-      c_echo = false;
-      c_icanon = false;
-      c_isig = false;
-      c_vmin = 1;
-      c_vtime = 0;
-      c_ixon = false;
-      c_icrnl = false;
-    };
-  (* The record write above leaves IEXTEN as it was. *)
-  set_iexten fd false;
-  { termios; iexten }
+  if Sys.win32 then Console (console_set fd Raw)
+  else
+    let termios = tcgetattr fd in
+    let iexten = get_iexten fd in
+    tcsetattr fd Unix.TCSANOW
+      {
+        termios with
+        c_echo = false;
+        c_icanon = false;
+        c_isig = false;
+        c_vmin = 1;
+        c_vtime = 0;
+        c_ixon = false;
+        c_icrnl = false;
+      };
+    (* The record write above leaves IEXTEN as it was. *)
+    set_iexten fd false;
+    Termios { termios; iexten }
 
 let keys fd =
-  let termios = tcgetattr fd in
-  let iexten = get_iexten fd in
-  tcsetattr fd Unix.TCSANOW
-    {
-      termios with
-      c_echo = false;
-      c_icanon = false;
-      c_vmin = 1;
-      c_vtime = 0;
-      c_icrnl = false;
-      c_inlcr = false;
-      c_igncr = false;
-    };
-  { termios; iexten }
+  if Sys.win32 then Console (console_set fd Keys)
+  else
+    let termios = tcgetattr fd in
+    let iexten = get_iexten fd in
+    tcsetattr fd Unix.TCSANOW
+      {
+        termios with
+        c_echo = false;
+        c_icanon = false;
+        c_vmin = 1;
+        c_vtime = 0;
+        c_icrnl = false;
+        c_inlcr = false;
+        c_igncr = false;
+      };
+    Termios { termios; iexten }
 
 let no_echo fd =
-  let termios = tcgetattr fd in
-  let iexten = get_iexten fd in
-  tcsetattr fd Unix.TCSAFLUSH
-    {
-      termios with
-      c_echo = false;
-      c_echoe = false;
-      c_echok = false;
-      c_echonl = false;
-    };
-  { termios; iexten }
+  if Sys.win32 then Console (console_set fd No_echo)
+  else
+    let termios = tcgetattr fd in
+    let iexten = get_iexten fd in
+    tcsetattr fd Unix.TCSAFLUSH
+      {
+        termios with
+        c_echo = false;
+        c_echoe = false;
+        c_echok = false;
+        c_echonl = false;
+      };
+    Termios { termios; iexten }
 
-let restore fd s =
-  tcsetattr fd Unix.TCSADRAIN s.termios;
-  set_iexten fd s.iexten
+let restore fd = function
+  | Console mode -> console_restore fd mode
+  | Termios { termios; iexten } ->
+      let blocked = block_ttou () in
+      Fun.protect
+        ~finally:(fun () -> unblock_ttou blocked)
+        (fun () ->
+          tcsetattr fd Unix.TCSADRAIN termios;
+          set_iexten fd iexten)
 
 let flush_input fd =
-  try Unix.tcflush fd Unix.TCIFLUSH with Unix.Unix_error _ -> ()
+  if Sys.win32 then console_flush fd
+  else try Unix.tcflush fd Unix.TCIFLUSH with Unix.Unix_error _ -> ()
 
-(* The console's mode and output code page before [enable_vt], or [None]
-   where it changed nothing. *)
-type console = (int * int) option
+(* The index of the record of what [enable_vt] changed, or [None] where it
+   changed nothing. *)
+type console = int option
 
 external enable_vt : Unix.file_descr -> console = "matrix_tty_enable_vt"
 
@@ -248,15 +277,25 @@ module Signal = struct
     if controlling then Sys.sigwinch :: Sys.sigcont :: Sys.sigtstp :: ending
     else ending
 
-  external take : int -> bool = "matrix_tty_take"
+  external take : int -> bool -> bool = "matrix_tty_take"
   external give_back : int -> unit = "matrix_tty_give_back"
   external ignored : int -> bool = "matrix_tty_ignored"
   external raise_default : int -> unit = "matrix_tty_raise"
   external stop_group : unit -> unit = "matrix_tty_stop_group"
 
-  type holder = { id : int; wake_r : Unix.file_descr }
+  (* Whether OCaml's action for SIGINT is the default, which C cannot read on
+     Windows. It is read by setting it, to ignore the signal meanwhile. *)
+  let sigint_default () =
+    let action = Sys.signal Sys.sigint Sys.Signal_ignore in
+    Sys.set_signal Sys.sigint action;
+    match action with Sys.Signal_default -> true | _ -> false
 
-  external hold : bool -> Unix.file_descr option -> int * Unix.file_descr
+  let take s = take s (Sys.win32 && s = Sys.sigint && sigint_default ())
+
+  (* A holder's wake pipe, which Windows has not: its wake is an event. *)
+  type holder = { id : int; wake_r : Unix.file_descr option }
+
+  external hold : bool -> Unix.file_descr option -> int * Unix.file_descr option
     = "matrix_tty_hold"
 
   external unhold : int -> unit = "matrix_tty_unhold"
@@ -272,6 +311,12 @@ module Signal = struct
   external set_reset : int -> string -> unit = "matrix_tty_set_reset"
   external restore_all : unit -> unit = "matrix_tty_restore_all"
 
+  external console_wait : int -> Unix.file_descr option -> int option -> bool
+    = "matrix_tty_wait"
+
+  external console_read : int -> Unix.file_descr -> bytes -> int -> int -> int
+    = "matrix_tty_read"
+
   let hold ~controlling ~output =
     let id, wake_r = hold controlling output in
     { id; wake_r }
@@ -280,7 +325,11 @@ module Signal = struct
 
   let wake_fd h =
     check h.id;
-    h.wake_r
+    match h.wake_r with
+    | Some fd -> fd
+    | None ->
+        invalid_arg
+          "Tty.Signal.wake_fd: a Windows holder's wake is no descriptor"
 
   let wake h = wake h.id
   let received h s = received h.id s
@@ -288,6 +337,61 @@ module Signal = struct
   let keep_settings h ~input = keep_settings h.id input
   let forget_settings h = forget_settings h.id
   let set_reset h bytes = set_reset h.id bytes
+
+  let drain fd =
+    let buf = Bytes.create 64 in
+    let rec go () =
+      match Unix.read fd buf 0 64 with
+      | 64 -> go ()
+      | _ -> ()
+      | exception Unix.Unix_error _ -> ()
+    in
+    go ()
+
+  (* On POSIX, [select(2)] on the input and the wake pipe, then the pipe
+     drained. A wait until a time already past looks with [readable]
+     instead, which allocates nothing. *)
+  let wait h ~input ~until =
+    match h.wake_r with
+    | None -> console_wait h.id input until
+    | Some wake_r -> (
+        check h.id;
+        let now = match until with Some _ -> now () | None -> 0 in
+        match until with
+        | Some until when until <= now -> (
+            if readable wake_r then drain wake_r;
+            match input with Some fd -> readable fd | None -> false)
+        | _ -> (
+            let timeout =
+              match until with
+              | None -> -1.
+              | Some until -> Float.of_int (until - now) *. 1e-9
+            in
+            let fds =
+              match input with Some fd -> [ fd; wake_r ] | None -> [ wake_r ]
+            in
+            let ready, _, _ =
+              try Unix.select fds [] [] timeout
+              with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])
+            in
+            if List.mem wake_r ready then drain wake_r;
+            match input with Some fd -> List.mem fd ready | None -> false))
+
+  let rec read_fd fd buf off len =
+    match Unix.read fd buf off len with
+    | n -> n
+    | exception Unix.Unix_error (Unix.EINTR, _, _) -> read_fd fd buf off len
+    | exception Unix.Unix_error ((Unix.EAGAIN | Unix.EWOULDBLOCK), _, _) -> -1
+
+  let read h fd buf off len =
+    match h.wake_r with
+    | Some _ ->
+        check h.id;
+        read_fd fd buf off len
+    | None ->
+        if off < 0 || len < 0 || off > Bytes.length buf - len then
+          invalid_arg "Tty.Signal.read";
+        console_read h.id fd buf off len
 
   (* [Unix.write] goes on past its first [write(2)] and, interrupted there,
      raises without saying how much went: each call here is one

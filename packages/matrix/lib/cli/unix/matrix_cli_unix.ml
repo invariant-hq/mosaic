@@ -1755,13 +1755,7 @@ let tasks ?(label = "") ?now ?frame out f =
 module Prompt = struct
   type error = [ `Not_interactive | `End_of_input ]
 
-  (* Setting a terminal's settings from the background would stop the
-     process with SIGTTOU. *)
-  let restore fd saved =
-    let mask = Thread.sigmask SIG_BLOCK [ Sys.sigttou ] in
-    Fun.protect
-      ~finally:(fun () -> ignore (Thread.sigmask SIG_SETMASK mask))
-      (fun () -> try Tty.restore fd saved with Unix.Unix_error _ -> ())
+  let restore fd saved = try Tty.restore fd saved with Unix.Unix_error _ -> ()
 
   (* The controlling terminal, for what only its user answers. *)
   let with_terminal f =

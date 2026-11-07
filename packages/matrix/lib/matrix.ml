@@ -86,16 +86,6 @@ module Device = struct
     in_process : in_process option;
   }
 
-  let drain fd =
-    let buf = Bytes.create 64 in
-    let rec go () =
-      match Unix.read fd buf 0 64 with
-      | 64 -> go ()
-      | _ -> ()
-      | exception Unix.Unix_error _ -> ()
-    in
-    go ()
-
   let handled =
     [|
       (Sys.sigwinch, Winch);
@@ -119,12 +109,6 @@ module Device = struct
 
   let signals_from_handlers h () = received_from h 0
 
-  let rec read_input fd buf off len =
-    match Unix.read fd buf off len with
-    | n -> n
-    | exception Unix.Unix_error (Unix.EINTR, _, _) -> read_input fd buf off len
-    | exception Unix.Unix_error ((Unix.EAGAIN | Unix.EWOULDBLOCK), _, _) -> -1
-
   (* The environment of the process, with the description the terminfo
      database has for its [TERM]. *)
   let process_env () =
@@ -135,14 +119,8 @@ module Device = struct
     in
     Terminal.Caps.env ?terminfo Sys.getenv_opt ~win32:Sys.win32
 
-  (* A run on descriptors. Its wait is [select(2)] on the input and the
-     holder's wake pipe, which [post] and the signal handlers write; a wait
-     until a time already past looks with [Tty.readable] instead, which
-     allocates nothing. On Windows the wake would have to be a socket, the
-     one kind of descriptor [Unix.select] waits on without polling, and the
-     console's handle could never be among the descriptors, since waiting
-     on it through [Unix.select] reads away its records that are not keys;
-     [Signal.hold] fails there, so no run starts. *)
+  (* A run on descriptors, which the holder waits for and reads. Windows
+     has no descriptor to wait for a console with: [fds] raises there. *)
   let unix ?(input = Unix.stdin) ?(output = Unix.stdout) ?env () =
     let input_is_tty = Tty.is_tty input in
     let output_is_tty = Tty.is_tty output in
@@ -152,51 +130,38 @@ module Device = struct
       Signal.hold ~controlling
         ~output:(if output_is_tty then Some output else None)
     in
-    let wake_r = Signal.wake_fd holder in
-    let both = [ input; wake_r ] and wake_only = [ wake_r ] in
+    let console = Tty.enable_vt output in
+    let fds =
+      if Sys.win32 then fun ~reading:_ ->
+        invalid_arg "Matrix.fds: no descriptor stands for a Windows console"
+      else
+        let wake_r = Signal.wake_fd holder in
+        let both = [ input; wake_r ] and wake_only = [ wake_r ] in
+        fun ~reading -> if reading then both else wake_only
+    in
     let saved = ref None in
     let set_raw_mode raw =
       match (raw, !saved) with
       | true, None when input_is_tty ->
           Signal.keep_settings holder ~input;
           saved := Some (Tty.raw input)
-      | false, Some termios ->
+      | false, Some settings ->
           saved := None;
-          (* Restoring from the background would stop the process with
-             SIGTTOU, unless the signal is blocked. *)
-          let mask = Thread.sigmask SIG_BLOCK [ Sys.sigttou ] in
-          Fun.protect
-            ~finally:(fun () -> ignore (Thread.sigmask SIG_SETMASK mask))
-            (fun () -> Tty.restore input termios);
+          Tty.restore input settings;
           Signal.forget_settings holder
       | _ -> ()
     in
+    let some_input = Some input in
     let wait ~until ~reading =
-      let now = match until with Some _ -> Tty.now () | None -> 0 in
-      match until with
-      | Some until when until <= now ->
-          if Tty.readable wake_r then drain wake_r;
-          reading && Tty.readable input
-      | _ ->
-          let timeout =
-            match until with
-            | None -> -1.
-            | Some until -> Float.of_int (until - now) *. 1e-9
-          in
-          let readable, _, _ =
-            try Unix.select (if reading then both else wake_only) [] [] timeout
-            with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])
-          in
-          if List.mem wake_r readable then drain wake_r;
-          reading && List.mem input readable
+      Signal.wait holder ~input:(if reading then some_input else None) ~until
     in
     {
       now = Tty.now;
       wait;
       wake = (fun () -> Signal.wake holder);
-      fds = (fun ~reading -> if reading then both else wake_only);
+      fds;
       take_signals = signals_from_handlers holder;
-      read_input = read_input input;
+      read_input = Signal.read holder input;
       write_output = Signal.write holder output;
       terminal_size = (fun () -> Tty.window output);
       window_pixels = (fun () -> Tty.window_pixels output);
@@ -210,7 +175,9 @@ module Device = struct
         (fun () ->
           Fun.protect
             (fun () -> set_raw_mode false)
-            ~finally:(fun () -> Signal.release holder));
+            ~finally:(fun () ->
+              Tty.restore_console output console;
+              Signal.release holder));
       env;
       in_process = None;
     }
@@ -2124,7 +2091,7 @@ let set_mouse t mode =
 
 let stop_job t =
   check t;
-  if t.backend.controlling && not t.tstp_ignored then
+  if t.backend.controlling && (not t.tstp_ignored) && not Sys.win32 then
     release t Signal.stop_group
 
 (* The loop *)

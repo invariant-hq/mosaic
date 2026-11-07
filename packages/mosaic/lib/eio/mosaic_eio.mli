@@ -30,7 +30,9 @@
 
     {!run} uses only {!Mosaic.val-start} and the functions of the program it
     gives, so its source is a worked example of running a program under another
-    event loop. *)
+    event loop. On Windows, where no descriptor stands for a console, the
+    program's domain runs no Eio loop and waits for the console as
+    {!Mosaic.val-run} does. *)
 
 val run :
   ?input:Unix.file_descr ->

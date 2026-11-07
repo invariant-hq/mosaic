@@ -20,7 +20,7 @@ let rec next app =
    whose end it returns as [Stopped]. *)
 let test_next () =
   if Sys.win32 then
-    skip ~reason:"Device.unix, which needs a wake pipe Windows lacks" ();
+    skip ~reason:"Matrix.fds and a pipe's input, which Windows has not" ();
   let input, writer = Unix.pipe ~cloexec:true () in
   let output = Unix.openfile "/dev/null" [ O_WRONLY; O_CLOEXEC ] 0 in
   Fun.protect
