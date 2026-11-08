@@ -1,4 +1,8 @@
-# Matrix needs a 64-bit OCaml, whose ints have 63 bits (packed_cell.ml). The
-# list excludes the 32-bit machines opam names; elsewhere a 32-bit OCaml
-# builds matrix, which then fails at startup.
-available: [arch != "arm32" & arch != "x86_32" & arch != "ppc32"]
+# Matrix needs a 64-bit OCaml, whose ints have 63 bits (packed_cell.ml): the
+# 64-bit machines, by the names opam gives them, and not the 32-bit compiler
+# that ocaml-option-32bit builds on one of them.
+available: [
+  arch = "x86_64" | arch = "arm64" | arch = "ppc64" | arch = "riscv64" |
+  arch = "s390x" | arch = "loongarch64" | arch = "mips64" | arch = "sparc64"
+]
+conflicts: ["ocaml-option-32bit"]
