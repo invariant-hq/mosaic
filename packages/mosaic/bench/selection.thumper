@@ -2,18 +2,18 @@
 # suite: selection
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-cursor-step-100000	alloc_words	exact	46
-select-positional-5000	alloc_words	exact	20
-select-value-5000	alloc_words	exact	79
-table-positional-5000	alloc_words	exact	29
-table-value-5000	alloc_words	exact	104
-tabs-positional-5000	alloc_words	exact	20
-tabs-value-5000	alloc_words	exact	79
-tree-selection-roundtrip-1000	alloc_words	exact	52
-tree-selection-roundtrip-10000	alloc_words	exact	52
+cursor/step-100000	alloc_words	exact	46
+select/positional-5000	alloc_words	exact	20
+select/value-5000	alloc_words	exact	79
+table/positional-5000	alloc_words	exact	29
+table/value-5000	alloc_words	exact	104
+tabs/positional-5000	alloc_words	exact	20
+tabs/value-5000	alloc_words	exact	79
+tree/selection-roundtrip-1000	alloc_words	exact	52
+tree/selection-roundtrip-10000	alloc_words	exact	52
 
 # machine: m1max
 # host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos

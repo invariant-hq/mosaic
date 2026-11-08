@@ -2,19 +2,19 @@
 # suite: reconciler
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
 element/box	alloc_words	exact	27
-element/button	alloc_words	exact	83
-element/map	alloc_words	exact	22
+element/button	alloc_words	exact	84
+element/map	alloc_words	exact	20
 element/memo	alloc_words	exact	11
-element/text	alloc_words	exact	19
-mount-and-empty/keyed-list-20000	alloc_words	exact	7540146
-mount-and-unmount/keyed-list-20000	alloc_words	exact	7446061
-mount-retype-and-empty/unkeyed-list-20000	alloc_words	exact	22740188
-reconcile/nested-map-3-over-1000	alloc_words	exact	22156
-reconcile/reorder-keyed-list-500	alloc_words	exact	23193
-reconcile/reorder-keyed-list-5000	alloc_words	exact	236609
-reconcile/steady-keyed-list-500	alloc_words	exact	16124
-reconcile/steady-keyed-list-5000	alloc_words	exact	166540
+element/text	alloc_words	exact	17
+mount-and-empty/keyed-list-20000	alloc_words	exact	7020146
+mount-and-unmount/keyed-list-20000	alloc_words	exact	6926066
+mount-retype-and-empty/unkeyed-list-20000	alloc_words	exact	21800188
+reconcile/nested-map-3-over-1000	alloc_words	exact	20156
+reconcile/reorder/keyed-list-500	alloc_words	exact	22193
+reconcile/reorder/keyed-list-5000	alloc_words	exact	226609
+reconcile/steady/keyed-list-500	alloc_words	exact	15124
+reconcile/steady/keyed-list-5000	alloc_words	exact	156540

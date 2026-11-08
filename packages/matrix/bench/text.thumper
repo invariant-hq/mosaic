@@ -2,20 +2,20 @@
 # suite: text
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-position/position-find_pos-ascii	alloc_words	exact	4
-position/position-find_pos-mixed	alloc_words	exact	9
-position/position-find_pos-wcwidth	alloc_words	exact	4
-position/position-find_wrap_pos-ascii	alloc_words	exact	4
-position/position-find_wrap_pos-mixed	alloc_words	exact	9
-position/position-find_wrap_pos-wcwidth	alloc_words	exact	4
-position/position-width_at-ascii	alloc_words	exact	0
-position/position-width_at-mixed	alloc_words	exact	5
-position/position-width_at-wcwidth	alloc_words	exact	0
-segment/segment-ascii_line	alloc_words	exact	0
-segment/segment-complex_line	alloc_words	exact	5
-width/width-ascii-unicode	alloc_words	exact	0
-width/width-complex-unicode	alloc_words	exact	5
-width/width-complex-wcwidth	alloc_words	exact	0
+position/position/find_pos/ascii	alloc_words	exact	4
+position/position/find_pos/mixed	alloc_words	exact	9
+position/position/find_pos/wcwidth	alloc_words	exact	4
+position/position/find_wrap_pos/ascii	alloc_words	exact	4
+position/position/find_wrap_pos/mixed	alloc_words	exact	9
+position/position/find_wrap_pos/wcwidth	alloc_words	exact	4
+position/position/width_at/ascii	alloc_words	exact	0
+position/position/width_at/mixed	alloc_words	exact	5
+position/position/width_at/wcwidth	alloc_words	exact	0
+segment/segment/ascii_line	alloc_words	exact	0
+segment/segment/complex_line	alloc_words	exact	5
+width/width/ascii/unicode	alloc_words	exact	0
+width/width/complex/unicode	alloc_words	exact	5
+width/width/complex/wcwidth	alloc_words	exact	0

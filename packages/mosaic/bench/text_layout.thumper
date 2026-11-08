@@ -2,31 +2,31 @@
 # suite: text_layout
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-edit-1mb-middle-undo	alloc_words	exact	250132
-focus-layout-128b	alloc_words	exact	52
-focus-layout-1mb	alloc_words	exact	52
-fragments-normalize-10k	alloc_words	exact	53700
-fragments-normalize-1k	alloc_words	exact	4010
-index-create-1mb	alloc_words	exact	41
-paint-horizontal-100k	alloc_words	exact	512
-paint-horizontal-1m	alloc_words	exact	512
-paint-label	alloc_words	exact	1545
-paint-overlays-dense-200	alloc_words	exact	16645
-paint-overlays-hidden-10k	alloc_words	exact	2270
-paint-styled-100k-middle	alloc_words	exact	7590
-paint-tall-100k	alloc_words	exact	2270
-paint-tall-100k-middle	alloc_words	exact	2270
-paint-tall-1k	alloc_words	exact	2270
-reflow-alternating-widths-100k	alloc_words	exact	550
-reflow-label	alloc_words	exact	16
-reflow-styled-100k	alloc_words	exact	16
-reflow-styled-100k-cold	alloc_words	exact	59
-styles-nested-revision-200	alloc_words	exact	291023
-styles-same-text-layout-100k	alloc_words	exact	24
-text-plain-props	alloc_words	exact	9
+edit/1mb-middle-undo	alloc_words	exact	250132
+focus/layout-128b	alloc_words	exact	52
+focus/layout-1mb	alloc_words	exact	52
+fragments/normalize-10k	alloc_words	exact	53700
+fragments/normalize-1k	alloc_words	exact	4010
+index/create-1mb	alloc_words	exact	41
+paint/horizontal-100k	alloc_words	exact	530
+paint/horizontal-1m	alloc_words	exact	530
+paint/label	alloc_words	exact	1620
+paint/overlays-dense-200	alloc_words	exact	16720
+paint/overlays-hidden-10k	alloc_words	exact	2345
+paint/styled-100k-middle	alloc_words	exact	7665
+paint/tall-100k	alloc_words	exact	2345
+paint/tall-100k-middle	alloc_words	exact	2345
+paint/tall-1k	alloc_words	exact	2345
+reflow/alternating-widths-100k	alloc_words	exact	550
+reflow/label	alloc_words	exact	16
+reflow/styled-100k	alloc_words	exact	16
+reflow/styled-100k-cold	alloc_words	exact	59
+styles/nested-revision-200	alloc_words	exact	291023
+styles/same-text-layout-100k	alloc_words	exact	24
+text/plain-props	alloc_words	exact	7
 
 # machine: fudge
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux

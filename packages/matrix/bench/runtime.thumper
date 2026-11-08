@@ -2,9 +2,9 @@
 # suite: runtime
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-render/frame-full-160x48-and-back	alloc_words	exact	2266
-render/frame-no-changes	alloc_words	exact	18
-render/frame-single-cell	alloc_words	exact	36
+render/frame/full-160x48-and-back	alloc_words	exact	2266
+render/frame/no-changes	alloc_words	exact	18
+render/frame/single-cell	alloc_words	exact	36

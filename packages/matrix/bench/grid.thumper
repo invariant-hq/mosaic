@@ -2,17 +2,17 @@
 # suite: grid
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-grid/grid.cells_equal-independent-stores	alloc_words	exact	0
-grid/grid.draw_text-ascii-full-screen	alloc_words	exact	1440
-grid/grid.draw_text-emoji-full-screen	alloc_words	exact	4320
-grid/grid.fill_rect-opaque-full	alloc_words	exact	21
-grid/grid.fill_rect-translucent-overlay	alloc_words	exact	12
-grid/grid.ownership-linked-copy-independent	alloc_words	exact	83
-grid/grid.ownership-linked-copy-shared	alloc_words	exact	7
-grid/grid.ownership-rotating-hyperlinks	alloc_words	exact	1440
-grid/grid.partial_update-sparse-cells	alloc_words	exact	0
-grid/grid.partial_update-status-line	alloc_words	exact	39
-grid/grid.scroll-terminal-region	alloc_words	exact	2060
+grid/grid.cells_equal/independent-stores	alloc_words	exact	0
+grid/grid.draw_text/ascii-full-screen	alloc_words	exact	1440
+grid/grid.draw_text/emoji-full-screen	alloc_words	exact	4320
+grid/grid.fill_rect/opaque-full	alloc_words	exact	21
+grid/grid.fill_rect/translucent-overlay	alloc_words	exact	12
+grid/grid.ownership/linked-copy-independent	alloc_words	exact	83
+grid/grid.ownership/linked-copy-shared	alloc_words	exact	7
+grid/grid.ownership/rotating-hyperlinks	alloc_words	exact	1440
+grid/grid.partial_update/sparse-cells	alloc_words	exact	0
+grid/grid.partial_update/status-line	alloc_words	exact	39
+grid/grid.scroll/terminal-region	alloc_words	exact	2060

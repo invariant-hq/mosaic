@@ -2,24 +2,24 @@
 # suite: input
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-decoder/fragmented-keyboard-bytewise	alloc_words	exact	85647
-decoder/fragmented-osc-1024-bytes-chunk-1	alloc_words	exact	14161
-decoder/fragmented-osc-256-bytes-chunk-1	alloc_words	exact	3591
-decoder/fragmented-osc-3072-bytes-chunk-1	alloc_words	exact	41814
-decoder/fragmented-osc-3072-bytes-chunk-32	alloc_words	exact	3496
-decoder/keyboard-kitty-hot	alloc_words	exact	95756
-decoder/keyboard-legacy-hot	alloc_words	exact	84492
-decoder/mouse-mixed	alloc_words	exact	7836
-decoder/paste-ci-log	alloc_words	exact	1494
-decoder/paste-overflow-recovery	alloc_words	exact	132684
-decoder/paste-split-end-marker	alloc_words	exact	41880
-decoder/paste-valid-1MiB	alloc_words	exact	132684
-decoder/paste-valid-64KiB	alloc_words	exact	8364
-decoder/typing-ascii-burst	alloc_words	exact	12
-decoder/typing-unicode-burst	alloc_words	exact	8332
+decoder/fragmented/keyboard-bytewise	alloc_words	exact	85647
+decoder/fragmented/osc-1024-bytes-chunk-1	alloc_words	exact	14161
+decoder/fragmented/osc-256-bytes-chunk-1	alloc_words	exact	3591
+decoder/fragmented/osc-3072-bytes-chunk-1	alloc_words	exact	41814
+decoder/fragmented/osc-3072-bytes-chunk-32	alloc_words	exact	3496
+decoder/keyboard/kitty-hot	alloc_words	exact	95756
+decoder/keyboard/legacy-hot	alloc_words	exact	84492
+decoder/mouse/mixed	alloc_words	exact	7836
+decoder/paste/ci-log	alloc_words	exact	1494
+decoder/paste/overflow-recovery	alloc_words	exact	132684
+decoder/paste/split-end-marker	alloc_words	exact	41880
+decoder/paste/valid-1MiB	alloc_words	exact	132684
+decoder/paste/valid-64KiB	alloc_words	exact	8364
+decoder/typing/ascii-burst	alloc_words	exact	12
+decoder/typing/unicode-burst	alloc_words	exact	8332
 
 # machine: fudge
 # host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux

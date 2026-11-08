@@ -2,13 +2,13 @@
 # suite: screen
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-render/render.diff-full-screen	alloc_words	exact	1473
-render/render.diff-no-changes	alloc_words	exact	1478
-render/render.diff-single-line	alloc_words	exact	1480
-render/render.diff-sparse-cells	alloc_words	exact	1479
-render/render.emoji-full-screen	alloc_words	exact	4435
-render/render.scenario-ci-log-view	alloc_words	exact	6351
-render/render.scenario-text-editor-insert-and-back	alloc_words	exact	3117
+render/render.diff/full-screen	alloc_words	exact	1473
+render/render.diff/no-changes	alloc_words	exact	1478
+render/render.diff/single-line	alloc_words	exact	1480
+render/render.diff/sparse-cells	alloc_words	exact	1479
+render/render.emoji/full-screen	alloc_words	exact	4435
+render/render.scenario/ci-log-view	alloc_words	exact	6351
+render/render.scenario/text-editor-insert-and-back	alloc_words	exact	3117

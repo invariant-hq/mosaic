@@ -2,7 +2,7 @@
 # suite: ansi
 
 # machine: exact
-# host: fudge · Intel(R) Core(TM) Ultra 5 235 · x86_64 · linux
+# host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
 control/cursor_script_80x24	alloc_words	exact	39634
