@@ -1,1 +1,4 @@
+# Matrix needs a 64-bit OCaml, whose ints have 63 bits (packed_cell.ml). The
+# list excludes the 32-bit machines opam names; elsewhere a 32-bit OCaml
+# builds matrix, which then fails at startup.
 available: [arch != "arm32" & arch != "x86_32" & arch != "ppc32"]

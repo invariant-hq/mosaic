@@ -14,9 +14,15 @@ let[@inline] unsafe_of_int (x : int) = x
    therefore at most [max_extent + 1] cells wide, which bounds the grid's
    width. *)
 
+(* The layout needs bit 62, so an [int] of 63 bits or more: a 64-bit OCaml,
+   not a 32-bit one or JavaScript, whose ints have 31 or 32 bits. *)
+let () =
+  if Sys.int_size < 63 then
+    failwith "Matrix_grid: 64-bit OCaml required for packed cells"
+
 let empty = 0
-let flag_grapheme = if Sys.word_size = 64 then 1 lsl 62 else 0
-let flag_continuation = if Sys.word_size = 64 then 1 lsl 61 else 0
+let flag_grapheme = 1 lsl 62
+let flag_continuation = 1 lsl 61
 let shift_right_extent = 43
 let shift_left_extent = 25
 let max_extent = (1 lsl 18) - 1
@@ -35,10 +41,6 @@ let () =
 let shift_width = 21
 let mask_codepoint = 0x1FFFFF
 let default_tab_width = 2
-
-let () =
-  if Sys.word_size <> 64 then
-    failwith "Matrix_grid: 64-bit OCaml required for packed cells"
 
 let[@inline] normalize_tab_width w = if w <= 0 then default_tab_width else w
 
