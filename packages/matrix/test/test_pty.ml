@@ -747,13 +747,15 @@ let test_wait_after_terminate () =
   is_true ~msg:"the child's status" (Pty.wait pty = Unix.WEXITED 4);
   Pty.close pty
 
-let test_wait_after_close_without_wait () =
-  let pty = Pty.spawn ~prog:"cat" ~args:[] () in
-  Pty.close ~wait:false pty;
-  (match Pty.wait pty with
-  | Unix.WSIGNALED _ | Unix.WEXITED _ -> ()
-  | Unix.WSTOPPED _ -> fail "stopped");
-  equal ~msg:"the child is reaped" (option int) None (Pty.pid pty)
+(* close reaps the child and keeps the program's status for wait. *)
+let test_wait_after_close () =
+  let pty = Pty.spawn ~prog:"sh" ~args:[ "-c"; "exit 3" ] () in
+  ignore (read_to_eof pty : string);
+  Pty.close pty;
+  equal ~msg:"the child is reaped" (option int) None (Pty.pid pty);
+  is_true ~msg:"the program's status" (Pty.wait pty = Unix.WEXITED 3);
+  raises_match ~msg:"a second wait" (Exn.invalid_arg ~sub:"Pty.wait") (fun () ->
+      ignore (Pty.wait pty : Unix.process_status))
 
 (* Runs [f] while another process sends SIGUSR1 to this one every
    millisecond or so, which interrupts the system calls that block. *)
@@ -821,8 +823,39 @@ let test_close_lets_the_program_act_on_the_hangup () =
       ()
   in
   ignore (Unix.select [ Pty.in_fd pty ] [] [] 2. : _ * _ * _);
-  Pty.close ~wait:false pty;
+  Pty.close pty;
   is_true ~msg:"the program's trap ran" (Pty.wait pty = Unix.WEXITED 7)
+
+(* Regression: when another process held the master too, closing the
+   handle's copy hung nothing up, so the program received no SIGHUP, only the
+   SIGKILL 100 ms later. Here the other holder is a copy in this process. *)
+let test_close_hangs_up_a_shared_master () =
+  let pty =
+    Pty.spawn ~prog:"sh"
+      ~args:[ "-c"; "trap 'exit 7' HUP; echo ready; while :; do :; done" ]
+      ()
+  in
+  ignore (Unix.select [ Pty.in_fd pty ] [] [] 2. : _ * _ * _);
+  let copy = Unix.dup (Pty.file_descr pty) in
+  Pty.close pty;
+  Unix.close copy;
+  is_true ~msg:"the program's trap ran" (Pty.wait pty = Unix.WEXITED 7)
+
+(* Regression: on the BSDs and macOS, close waited for the keeper, which
+   waited for the master to read the program's output, when another process
+   held the master and did not read it. The test's timeout bounds the wait. *)
+let test_close_with_a_shared_master_and_unread_output () =
+  let pty = Pty.spawn ~prog:"sh" ~args:[ "-c"; "echo unread" ] () in
+  Unix.sleepf 0.2;
+  let copy = Unix.dup (Pty.file_descr pty) in
+  let start = Unix.gettimeofday () in
+  Pty.close pty;
+  let elapsed = Unix.gettimeofday () -. start in
+  Unix.close copy;
+  is_true
+    ~msg:(Printf.sprintf "close returned in %.0f ms" (elapsed *. 1000.))
+    (elapsed < 1.);
+  is_true ~msg:"the program's status" (Pty.wait pty = Unix.WEXITED 0)
 
 (* Regression: once the program had exited, nothing ended a process it left
    in its group that ignores SIGHUP and SIGTERM, and that process held the
@@ -970,9 +1003,13 @@ let tests =
       test "wait reaps the child" test_wait_reaps_the_child;
       test "poll" test_poll;
       test "wait after terminate" test_wait_after_terminate;
-      test "wait after close without wait" test_wait_after_close_without_wait;
+      test "wait after close" test_wait_after_close;
       test "reap through signals" test_reap_through_signals;
       test ~timeout:5. "close without wait kills" test_close_without_wait_kills;
+      test ~timeout:5. "close hangs up a shared master"
+        test_close_hangs_up_a_shared_master;
+      test ~timeout:5. "close with a shared master and unread output"
+        test_close_with_a_shared_master_and_unread_output;
       test ~timeout:5. "close lets the program act on the hangup"
         test_close_lets_the_program_act_on_the_hangup;
       test ~timeout:10. "the job ends with the program"

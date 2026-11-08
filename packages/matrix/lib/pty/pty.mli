@@ -299,16 +299,17 @@ val wait : t -> Unix.process_status
 (** [wait pty] is the exit status of [pty]'s program: [WEXITED] with its exit
     code, or [WSIGNALED] with the signal that ended it, or the keeper's own if
     a signal from another process ended the keeper before the program. It
-    reaps the child, and [pty] then has no child. [wait] works on an open or
-    closed handle.
+    reaps the child, and [pty] then has no child. On a handle that {!close}
+    has reaped, it is the status [close] kept.
 
     It blocks until the child has exited ({!section-io}), and releases the
     runtime lock while it blocks.
 
     Raises [Invalid_argument] if [pty] has no child, as a handle from
-    {!open_pty}, a handle closed with [wait] or a handle already waited for has
-    none. Raises [Unix.Unix_error (ECHILD, _, _)] if the program has reaped the
-    child itself, and [pty] then has no child. *)
+    {!open_pty} or a handle already waited for has none. Raises
+    [Unix.Unix_error (ECHILD, _, _)] if the program has reaped the child
+    itself, and [pty] then has no child; once {!close} has found it so, [wait]
+    raises [Invalid_argument]. *)
 
 val poll : t -> Unix.process_status option
 (** [poll pty] is [Some (wait pty)] if the child has exited, and [None] while
@@ -317,15 +318,19 @@ val poll : t -> Unix.process_status option
 val close : ?wait:bool -> t -> unit
 (** [close pty] closes [pty]'s descriptor, which for a handle from {!spawn}
     hangs up the terminal: the output not yet read is lost, and the program
-    receives [SIGHUP]. For a handle with a child, [close] then gives a program
-    still running about 100 ms to act on the hangup and exit, sends [SIGKILL]
-    to its process group if it has not ({!section-process}), and, when [wait]
-    is [true] (the default), reaps the child. A second [close] does
+    receives [SIGHUP], even when another process holds the master too, in
+    which case it may receive it twice. For a handle with a child, [close]
+    then gives a program still running about 100 ms to act on the hangup and
+    exit, sends [SIGKILL] to its process group if it has not
+    ({!section-process}), and, when [wait] is [true] (the default), reaps the
+    child, keeping the program's status for {!wait}. A second [close] does
     nothing.
 
-    With [wait], [close] blocks until the child is reaped. With [~wait:false],
-    it blocks at most about 100 ms, and [pty] keeps its child, which the program
-    must reap with {!wait}.
+    With [wait], [close] blocks until the child is reaped, which a program
+    that has left its process group, or that [SIGKILL] from this process
+    cannot reach, as a set-user-ID program can, delays until it exits. With
+    [~wait:false], it blocks at most about 100 ms, and [pty] keeps its child,
+    which the program must reap with {!wait}.
 
     [close] never raises. *)
 

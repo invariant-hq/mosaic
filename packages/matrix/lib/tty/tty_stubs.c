@@ -2,6 +2,9 @@
    and the process's signals as the holders of terminals share them. */
 
 #define _GNU_SOURCE
+// CAML_INTERNALS declares the runtime's map from OCaml's signal numbers to
+// the system's, which system_signal uses.
+#define CAML_INTERNALS
 #include <caml/alloc.h>
 #include <caml/fail.h>
 #include <caml/memory.h>
@@ -1214,8 +1217,6 @@ static void on_signal(int s, siginfo_t *info, void *context) {
   }
   errno = saved_errno;
 }
-
-extern int caml_convert_signal_number(int);
 
 static int system_signal(value s) {
   int n = caml_convert_signal_number(Int_val(s));

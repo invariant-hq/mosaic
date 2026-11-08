@@ -139,23 +139,31 @@ let rec grace t attempts =
       grace t (attempts - 1)
   | No_child | Exited _ -> ()
 
-let close ?wait:(reap = true) t =
+let close ?wait:(reaps = true) t =
   if t.closed then ()
   else (
     t.closed <- true;
-    (* Hang up: the keeper's drain ends, so the reap below does not wait for
-       the output to be read, and the program receives SIGHUP, with time to
-       act on it: a SIGTERM right behind it would end a shell before its
-       trap for SIGHUP ran. *)
+    (* Hang up: the program receives SIGHUP, with time to act on it, as a
+       SIGTERM right behind it would end a shell before its trap for SIGHUP
+       ran, and the keeper's drain ends, so the reap below does not wait for
+       the output to be read. The keeper is told too, as its own unreaped
+       child: when another process holds the master, closing it here hangs
+       nothing up. *)
     close_fd t.fd;
+    check t;
+    (match t.child with
+    | Running { keeper; _ } -> (
+        try Unix.kill keeper Sys.sighup with Unix.Unix_error _ -> ())
+    | No_child | Exited _ -> ());
     grace t 10;
-    if reap then (
-      (match t.child with
-      | Running _ -> (
-          try ignore (wait t : Unix.process_status)
-          with Unix.Unix_error _ -> ())
-      | No_child | Exited _ -> ());
-      t.child <- No_child))
+    match t.child with
+    | No_child -> ()
+    | Running _ when not reaps -> ()
+    | Running _ | Exited _ -> (
+        match reap "Pty.close" t [] with
+        | Some status -> t.child <- Exited status
+        | None -> ()
+        | exception Unix.Unix_error _ -> ()))
 
 let get_winsize t = get_winsize_raw (live_fd t "get_winsize")
 let set_winsize t ws = set_winsize_raw (live_fd t "set_winsize") ws

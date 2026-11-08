@@ -26,6 +26,9 @@ console gets back every mode and code page the run changed.
   as SIGWINCH.
 - `Tty.raw`, `keys`, `no_echo`, `restore` and `flush_input` work on a Windows
   console.
+- `Pty.close` keeps the program's status when it reaps the child, and
+  `Pty.wait` or `Pty.poll` then gives it, where they used to raise
+  `Invalid_argument`.
 
 #### Changes the compiler won't catch
 
@@ -37,6 +40,9 @@ console gets back every mode and code page the run changed.
   Windows, so one run at a time holds it.
 - `Tty.restore` blocks SIGTTOU while it sets the settings, so a process in the
   background no longer needs to block it itself.
+- `Pty.terminate` and `Pty.kill` on a handle that `Pty.close` has reaped do
+  nothing, as on a child that has exited, where they used to raise
+  `Invalid_argument`.
 - On OCaml 5.4 and 5.5, Ctrl+Break on Windows ends the process even when a
   SIGINT handler is installed (ocaml/ocaml#15267). While a run holds the
   console, Matrix takes it as SIGINT and gives the console back first.
@@ -73,6 +79,10 @@ console gets back every mode and code page the run changed.
 - The handle no longer waits for the program's process id after reaping the
   keeper, which in a subreaper could reap an unrelated child that had been
   given that id.
+- `Pty.close` hangs up the program when another process holds the master
+  too: the program receives `SIGHUP` rather than only the `SIGKILL` 100 ms
+  later, and on the BSDs and macOS `close` no longer waits for that process
+  to read the program's output.
 
 ## [0.2.0] - 2026-11-04
 

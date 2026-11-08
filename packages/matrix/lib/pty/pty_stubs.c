@@ -14,6 +14,7 @@
 #define _GNU_SOURCE  // For ptsname on Linux
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,11 +32,14 @@
 
 #include <errno.h>
 
-// OCaml C FFI headers
+// OCaml C FFI headers. CAML_INTERNALS declares the runtime's map from a
+// system signal number to OCaml's, which Unix.waitpid uses for WSIGNALED.
+#define CAML_INTERNALS
 #include <caml/alloc.h>
 #include <caml/fail.h>
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
+#include <caml/signals.h>
 #include <caml/unixsupport.h>
 
 #ifdef MATRIX_HAS_POSIX_PTY
@@ -230,10 +234,16 @@ static void close_from(int low, int limit) {
 
 // The program's process group, which the keeper's SIGHUP handler signals,
 // with SIGCONT as a shell does, so that a stopped program takes the hangup.
+// The keeper takes every SIGHUP for the terminal's hangup: the kernel's when
+// the master closes, and the one close sends, for a master that another
+// process holds too. Both come when close closes the last copy, so the
+// program can receive the hangup twice.
 static pid_t program_pid;
+static volatile sig_atomic_t hung_up;
 
 static void hangup(int sig) {
   int saved = errno;  // the waitid it interrupts reads errno
+  hung_up = 1;
   kill(-program_pid, sig);
   kill(-program_pid, SIGCONT);
   errno = saved;
@@ -282,6 +292,7 @@ static void exec_program(struct child *c) {
 // parent's runs here, and the keeper keeps them blocked: a signal from the
 // terminal, or from the parent, is the program's.
 static enum step keep(struct child *c) {
+  pid_t parent = getppid();
   // Keep the pipes off the std fds, which the slave replaces, and off 3,
   // where the report goes.
   int report_fd = fcntl(c->report, F_DUPFD_CLOEXEC, 5);
@@ -326,6 +337,10 @@ static enum step keep(struct child *c) {
     exec_program(c);
     return EXEC;
   }
+  // As a shell does, so the group exists for a signal sent to it before the
+  // program's own setpgid. It fails, harmlessly, once the program has
+  // exec'd.
+  setpgid(program_pid, program_pid);
   report(3, PROGRAM, program_pid);
   close(3);
   // The kernel sends the hangup's SIGHUP to the session's leader, the
@@ -373,18 +388,25 @@ static enum step keep(struct child *c) {
   int message[2] = {exited, value};
   (void)!write(4, message, sizeof message);
   close(4);
-  // Wait until the master has read all the program wrote, or the terminal
-  // has hung up, after which the drain fails or returns at once. tcdrain
-  // returns at once on Linux, which keeps unread output after the slave's
-  // last close, and gives up with EAGAIN after kern.tty_drainwait (5
-  // minutes) on FreeBSD, where it is retried: POSIX gives it no timeout.
-  while (tcdrain(0) == -1 && (errno == EINTR || errno == EAGAIN)) {
-  }
+  // Wait until the master has read all the program wrote, the terminal has
+  // hung up, or the calling process is gone. The output queue that TIOCOUTQ
+  // counts is the one tcdrain waits for, which holds what the master has not
+  // read on the BSDs and macOS, and is always empty on Linux, which keeps
+  // unread output after the slave's last close. The keeper looks every
+  // 10 ms rather than block in tcdrain, which close's SIGHUP would not end
+  // if it came just before the call.
+  int queued;
+  while (!hung_up && getppid() == parent && ioctl(0, TIOCOUTQ, &queued) == 0 &&
+         queued > 0)
+    poll(NULL, 0, 10);
   // The job ends with the program: kill what it left in its process group,
   // while the program's id still names that group, then let the id go.
   kill(-program_pid, SIGKILL);
   while (waitpid(program_pid, NULL, 0) == -1 && errno == EINTR) {
   }
+  // Output no one will read: drop it, or the BSDs and macOS would hold the
+  // keeper's exit, its last close of the slave, until they gave up on it.
+  if (hung_up || getppid() != parent) tcflush(0, TCOFLUSH);
   _exit(0);
 }
 
@@ -525,10 +547,6 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
   Store_field(res, 2, Val_int(status_fds[0]));
   CAMLreturn(res);
 }
-
-// The runtime's map from a system signal number to OCaml's, which
-// Unix.waitpid uses for WSIGNALED.
-extern int caml_rev_convert_signal_number(int);
 
 // The program's status from the status pipe of a keeper that has exited,
 // so the read never blocks: Some status, or None if the keeper ended
