@@ -237,6 +237,9 @@ static void hangup(int sig) {
   kill(-program_pid, SIGCONT);
 }
 
+// Wakes the keeper's wait for the program, at each of its changes.
+static void program_changed(int sig) { (void)sig; }
+
 // Runs the program as execvp does: a directory without the program, or that
 // is not a directory, moves on to the next; a file without permission is
 // remembered; any other failure ends the search. A file the kernel cannot
@@ -331,10 +334,32 @@ static enum step keep(struct child *c) {
   sigaddset(&hangups, SIGHUP);
   pthread_sigmask(SIG_UNBLOCK, &hangups, NULL);
   // Learn of the program's exit without reaping it: unreaped, its id names
-  // it and no other process for as long as the handle may signal it.
+  // it and no other process for as long as the handle may signal it. macOS
+  // reports a stop to waitid without WSTOPPED, at once and on every call
+  // while the program is stopped, so the keeper takes an exit alone and
+  // sleeps until the next SIGCHLD otherwise. SIGCHLD stays blocked but in
+  // sigsuspend, so none comes between the look and the sleep unseen.
+  struct sigaction on_change = c->default_action;
+  on_change.sa_handler = program_changed;
+  sigaction(SIGCHLD, &on_change, NULL);
+  sigset_t changes;
+  sigfillset(&changes);
+  sigdelset(&changes, SIGHUP);
+  sigdelset(&changes, SIGCHLD);
   siginfo_t status;
-  while (waitid(P_PID, program_pid, &status, WEXITED | WNOWAIT) == -1)
-    if (errno != EINTR) _exit(127);
+  for (;;) {
+    status.si_pid = 0;
+    if (waitid(P_PID, program_pid, &status, WEXITED | WNOWAIT | WNOHANG) ==
+        -1) {
+      if (errno == EINTR) continue;
+      _exit(127);
+    }
+    if (status.si_pid == program_pid &&
+        (status.si_code == CLD_EXITED || status.si_code == CLD_KILLED ||
+         status.si_code == CLD_DUMPED))
+      break;
+    sigsuspend(&changes);
+  }
   // Wait until the master has read all the program wrote, or the terminal
   // has hung up, after which the drain fails or returns at once. tcdrain
   // returns at once on Linux, which keeps unread output after the slave's
