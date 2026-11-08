@@ -53,7 +53,26 @@ console gets back every mode and code page the run changed.
   the processes it started in it too, as the terminal's interrupt key does;
   the hangup's `SIGHUP` reaches the program on every kernel, with a `SIGCONT`
   if it was stopped. A program on a spawned terminal is a job of its session,
-  which a stop signal stops
+  which a stop signal stops.
+- The job of a spawned program ends with it: once the program has exited and
+  the master has read its output, the keeper kills what the program left in
+  its process group. A process that ignores `SIGHUP` and `SIGTERM` no longer
+  outlives `Pty.close`, and a background job no longer outlives the program
+  (#114).
+- `Pty.close` no longer sends `SIGTERM` behind the hangup's `SIGHUP`: the
+  program has about 100 ms to act on the hangup before `SIGKILL`, so a
+  shell's trap for `SIGHUP` runs.
+- `Pty.spawn` searches for `prog` in the `PATH` of `env`, the program's
+  environment, rather than in the calling process's (#114).
+
+#### Fixed
+
+- The keeper passes the program's status to the handle as data instead of
+  dying by the program's signal, so macOS no longer files a crash report for
+  the calling program when a spawned program crashes.
+- The handle no longer waits for the program's process id after reaping the
+  keeper, which in a subreaper could reap an unrelated child that had been
+  given that id.
 
 ## [0.2.0] - 2026-11-04
 

@@ -1,16 +1,18 @@
 (* The child of a {!spawn} handle. [Running] is a child the handle has not
    seen reaped: [keeper] is the process it reaps, which leads the program's
-   session and exits as the program did ({!spawn}), and [program] is the
-   program's process id and process group, which it signals. Until the keeper
-   is reaped, its id names it and no other process. The program's names the
-   program while the keeper lives, which leaves it unreaped: so [signal] asks
-   whether the keeper has exited just before it signals, and what remains is
-   a keeper that exits between the two, and a program id given out again as a
-   process group's in those microseconds. [Exited status] is a child the
-   handle reaped while checking on it, whose status {!wait} returns. *)
+   session ({!spawn}), [program] is the program's process id and process
+   group, which it signals, and [status] is the pipe on which the keeper
+   writes the program's status. Until the keeper is reaped, its id names it
+   and no other process. The program's names the program and its group
+   while the keeper lives, which leaves it unreaped until the end: so
+   [signal] asks whether the keeper has exited just before it signals, and
+   what remains is a keeper that reaps the program between the two, and a
+   program id given out again as a process group's in those microseconds.
+   [Exited status] is a child the handle reaped while checking on it, whose
+   status {!wait} returns. *)
 type child =
   | No_child
-  | Running of { keeper : int; program : int }
+  | Running of { keeper : int; program : int; status : Unix.file_descr }
   | Exited of Unix.process_status
 
 type t = {
@@ -39,7 +41,10 @@ external fork_exec :
   string array ->
   string array ->
   string option ->
-  int * int = "ocaml_pty_fork_exec"
+  int * int * Unix.file_descr = "ocaml_pty_fork_exec"
+
+external read_status : Unix.file_descr -> Unix.process_status option
+  = "ocaml_pty_read_status"
 
 let file_descr t = t.fd
 let in_fd t = t.fd
@@ -52,14 +57,15 @@ let live_fd t op =
   if t.closed then raise (Unix.Unix_error (Unix.EBADF, op, ""));
   t.fd
 
-(* The program is the keeper's child, which init reaps once the keeper has
-   exited, unless this process is a subreaper (prctl(PR_SET_CHILD_SUBREAPER),
-   procctl(PROC_REAP_ACQUIRE)): the program is then its zombie, and this reaps
-   it, once the keeper is reaped. Elsewhere ECHILD, or a running process of
-   this one's that has the id by now, which the call leaves alone. *)
-let reap_program program =
-  try ignore (Unix.waitpid [ WNOHANG ] program : int * Unix.process_status)
-  with Unix.Unix_error _ -> ()
+let close_fd fd = try Unix.close fd with Unix.Unix_error _ -> ()
+
+(* The status of the program of a keeper that has exited with
+   [keeper_status]: the one the keeper wrote, or the keeper's own if it was
+   killed before the program exited. *)
+let program_status status keeper_status =
+  let program = read_status status in
+  close_fd status;
+  Option.value program ~default:keeper_status
 
 (* Asks the system, without blocking, what became of a running child. One
    that has exited is reaped here and its status kept. ECHILD means the
@@ -68,14 +74,15 @@ let reap_program program =
 let rec check t =
   match t.child with
   | No_child | Exited _ -> ()
-  | Running { keeper; program } -> (
+  | Running { keeper; status; _ } -> (
       match Unix.waitpid [ WNOHANG ] keeper with
       | 0, _ -> ()
-      | _, status ->
-          reap_program program;
-          t.child <- Exited status
+      | _, keeper_status ->
+          t.child <- Exited (program_status status keeper_status)
       | exception Unix.Unix_error (EINTR, _, _) -> check t
-      | exception Unix.Unix_error (ECHILD, _, _) -> t.child <- No_child)
+      | exception Unix.Unix_error (ECHILD, _, _) ->
+          close_fd status;
+          t.child <- No_child)
 
 (* Sends [signal] to the program's process group if it is still running. *)
 let signal t signal =
@@ -103,15 +110,15 @@ let rec reap name t flags =
   | Exited status ->
       t.child <- No_child;
       Some status
-  | Running { keeper; program } -> (
+  | Running { keeper; status; _ } -> (
       match Unix.waitpid flags keeper with
       | 0, _ -> None
-      | _, status ->
-          reap_program program;
+      | _, keeper_status ->
           t.child <- No_child;
-          Some status
+          Some (program_status status keeper_status)
       | exception Unix.Unix_error (EINTR, _, _) -> reap name t flags
       | exception (Unix.Unix_error (ECHILD, _, _) as e) ->
+          close_fd status;
           t.child <- No_child;
           raise e)
 
@@ -120,7 +127,7 @@ let wait t =
 
 let poll t = reap "Pty.poll" t [ WNOHANG ]
 
-(* After close's SIGTERM, the child has about 100 ms to exit, polled
+(* After close's hangup, the child has about 100 ms to exit, polled
    without blocking, before SIGKILL. *)
 let rec grace t attempts =
   check t;
@@ -132,16 +139,15 @@ let rec grace t attempts =
       grace t (attempts - 1)
   | No_child | Exited _ -> ()
 
-let close_fd fd = try Unix.close fd with Unix.Unix_error _ -> ()
-
 let close ?wait:(reap = true) t =
   if t.closed then ()
   else (
     t.closed <- true;
-    (* Hang up first: the keeper's drain ends, so the reap below does not
-       wait for the output to be read. *)
+    (* Hang up: the keeper's drain ends, so the reap below does not wait for
+       the output to be read, and the program receives SIGHUP, with time to
+       act on it: a SIGTERM right behind it would end a shell before its
+       trap for SIGHUP ran. *)
     close_fd t.fd;
-    signal t Sys.sigterm;
     grace t 10;
     if reap then (
       (match t.child with
@@ -178,12 +184,22 @@ let open_pty ?winsize () =
   (master, slave)
 
 (* Where [execvp] looks for [prog], in order: [prog] itself when it names a
-   path, else [prog] in each directory of the parent's [PATH], where an empty
-   directory is the current one. *)
-let search_path prog =
+   path, else [prog] in each directory of the [PATH] of [env], the program's
+   environment, where an empty directory is the current one. *)
+let search_path env prog =
   if String.contains prog '/' then [| prog |]
   else
-    let path = Option.value (Sys.getenv_opt "PATH") ~default:"/bin:/usr/bin" in
+    let path =
+      Array.fold_left
+        (fun path var ->
+          match path with
+          | Some _ -> path
+          | None when String.starts_with ~prefix:"PATH=" var ->
+              Some (String.sub var 5 (String.length var - 5))
+          | None -> None)
+        None env
+      |> Option.value ~default:"/bin:/usr/bin"
+    in
     String.split_on_char ':' path
     |> List.map (fun dir -> if dir = "" then prog else Filename.concat dir prog)
     |> Array.of_list
@@ -192,10 +208,10 @@ let spawn ?env ?cwd ?winsize ~prog ~args () =
   let master, slave = open_pty ?winsize () in
   let env = match env with Some env -> env | None -> Unix.environment () in
   let argv = Array.of_list (prog :: args) in
-  match fork_exec slave.fd (search_path prog) argv env cwd with
-  | keeper, program ->
+  match fork_exec slave.fd (search_path env prog) argv env cwd with
+  | keeper, program, status ->
       close slave;
-      { master with child = Running { keeper; program } }
+      { master with child = Running { keeper; program; status } }
   | exception e ->
       close master;
       close slave;

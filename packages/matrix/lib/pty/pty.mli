@@ -117,9 +117,10 @@ val with_pty : ?winsize:winsize -> (t -> t -> 'a) -> 'a
     a terminal to its session leader: when the leader exits, FreeBSD revokes
     the terminal and drops the output the master has not read, and macOS
     holds the exit until the master has read it. The keeper leads the session
-    in the program's stead: it starts the program, waits for it, exits once
-    the master has read all the program wrote or the terminal has hung up,
-    and exits as the program did, with its exit code or by its signal. So a
+    in the program's stead: it starts the program, waits for it, and passes
+    its status on to the handle. Once the master has read all the program
+    wrote, or the terminal has hung up, it kills what the program left in its
+    process group, so the program's job ends with it, and exits. So a
     program's output is never lost to its exit, on any kernel. The keeper is
     the program's parent, and the one process the handle reaps: a program
     waits for the child with {!wait}, never with [Unix.waitpid] on {!pid}.
@@ -133,9 +134,10 @@ val with_pty : ?winsize:winsize -> (t -> t -> 'a) -> 'a
     fails.
 
     The program's argument vector is [prog :: args]. As with [execvp], a [prog]
-    without ['/'] is searched for in the directories of the parent's [PATH]
-    ([/bin:/usr/bin] when it is unset), and a file that the kernel cannot
-    execute, a script without [#!], runs under [/bin/sh]. *)
+    without ['/'] is searched for in the directories of a [PATH], here the
+    one of the program's environment ([/bin:/usr/bin] when it has none), and
+    a file that the kernel cannot execute, a script without [#!], runs under
+    [/bin/sh]. *)
 
 val spawn :
   ?env:string array ->
@@ -189,10 +191,12 @@ val with_spawn :
     has read it or the terminal has hung up ({!section-spawning}). A program
     therefore reads to the end of output, or {!close}s the handle, before it
     waits for the child ({!wait}), or {!wait} may block until another thread
-    does one of them. On every kernel but Linux the child's exit also revokes
-    the slave from any process still holding it, so the end of output follows
-    the program's exit; on Linux it comes once the last of them has closed the
-    slave. *)
+    does one of them. The child's exit ends what the program left in its
+    process group, so the end of output follows the program's exit. A
+    process that has left the group, with [setsid] or [setpgid], and holds
+    the slave is not ended: the child's exit revokes the slave from it on
+    every kernel but Linux, where the end of output comes once it has closed
+    the slave. *)
 
 val read : t -> bytes -> int -> int -> int
 (** [read pty b off len] reads at most [len] bytes into [b] from [off] and
@@ -280,22 +284,23 @@ val out_fd : t -> Unix.file_descr
     signalled, and {!wait} returns its status. So they signal only a program
     whose keeper was running a moment before, while the program's process id
     names the program and no other process: the keeper leaves the program
-    unreaped as long as it lives. When the calling program has reaped the
-    child itself, with [Unix.wait], the handle forgets it and signals nothing.
-    A program waits for the child with {!wait}, after which {!pid} is [None]. *)
+    unreaped until it has ended the program's group, just before it exits.
+    When the calling program has reaped the child itself, with [Unix.wait],
+    the handle forgets it and signals nothing. A program waits for the child
+    with {!wait}, after which {!pid} is [None]. *)
 
 val pid : t -> int option
 (** [pid pty] is [Some p] while [pty] holds a child that it has not reaped,
     where [p] is the program's process id, and the id of its process group,
     and [None] otherwise. The program is not a child of the calling process
-    ({!section-spawning}): [Unix.waitpid] on [p] fails with [ECHILD], unless
-    the calling process is a subreaper, which gets the program to reap once
-    the keeper has exited, and the handle then reaps it with the keeper. *)
+    ({!section-spawning}): [Unix.waitpid] on [p] fails with [ECHILD]. *)
 
 val wait : t -> Unix.process_status
 (** [wait pty] is the exit status of [pty]'s program: [WEXITED] with its exit
-    code, or [WSIGNALED] with the signal that ended it. It reaps the child,
-    and [pty] then has no child. [wait] works on an open or closed handle.
+    code, or [WSIGNALED] with the signal that ended it, or the keeper's own if
+    a signal from another process ended the keeper before the program. It
+    reaps the child, and [pty] then has no child. [wait] works on an open or
+    closed handle.
 
     It blocks until the child has exited ({!section-io}), and releases the
     runtime lock while it blocks.
@@ -312,11 +317,11 @@ val poll : t -> Unix.process_status option
 val close : ?wait:bool -> t -> unit
 (** [close pty] closes [pty]'s descriptor, which for a handle from {!spawn}
     hangs up the terminal: the output not yet read is lost, and the program
-    receives [SIGHUP]. For a handle with a child, [close] then sends [SIGTERM]
-    to a program still running ({!section-process}) and, when [wait] is
-    [true] (the default), reaps the child. It sends [SIGKILL] to a program
-    that has not exited about 100 ms after the [SIGTERM]. A second [close]
-    does nothing.
+    receives [SIGHUP]. For a handle with a child, [close] then gives a program
+    still running about 100 ms to act on the hangup and exit, sends [SIGKILL]
+    to its process group if it has not ({!section-process}), and, when [wait]
+    is [true] (the default), reaps the child. A second [close] does
+    nothing.
 
     With [wait], [close] blocks until the child is reaped. With [~wait:false],
     it blocks at most about 100 ms, and [pty] keeps its child, which the program

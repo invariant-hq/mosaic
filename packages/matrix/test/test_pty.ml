@@ -812,6 +812,63 @@ let test_close_without_wait_kills () =
   is_true ~msg:"SIGKILL ended the program"
     (Pty.wait pty = Unix.WSIGNALED Sys.sigkill)
 
+(* Regression: close sent SIGTERM right behind the hangup's SIGHUP, which
+   ended a shell before its trap for SIGHUP ran. *)
+let test_close_lets_the_program_act_on_the_hangup () =
+  let pty =
+    Pty.spawn ~prog:"sh"
+      ~args:[ "-c"; "trap 'exit 7' HUP; echo ready; while :; do :; done" ]
+      ()
+  in
+  ignore (Unix.select [ Pty.in_fd pty ] [] [] 2. : _ * _ * _);
+  Pty.close ~wait:false pty;
+  is_true ~msg:"the program's trap ran" (Pty.wait pty = Unix.WEXITED 7)
+
+(* Regression: once the program had exited, nothing ended a process it left
+   in its group that ignores SIGHUP and SIGTERM, and that process held the
+   terminal open. The keeper now kills the group once the program's output
+   is read, so the master reads the end of output at once. *)
+let test_job_ends_with_the_program () =
+  let pty =
+    Pty.spawn ~prog:"sh"
+      ~args:
+        [
+          "-c"; "trap '' HUP TERM; (trap '' HUP TERM; exec sleep 30) & echo $!";
+        ]
+      ()
+  in
+  let start = Unix.gettimeofday () in
+  let straggler = int_of_string (String.trim (read_to_eof pty)) in
+  is_true ~msg:"the end of output came at once"
+    (Unix.gettimeofday () -. start < 5.);
+  is_true ~msg:"the program's status" (Pty.wait pty = Unix.WEXITED 0);
+  (* Init reaps the straggler, which is not this process's child. *)
+  let rec gone n =
+    match Unix.kill straggler 0 with
+    | () when n > 0 ->
+        Unix.sleepf 0.01;
+        gone (n - 1)
+    | () -> false
+    | exception Unix.Unix_error (Unix.ESRCH, _, _) -> true
+  in
+  is_true ~msg:"the straggler is gone" (gone 200);
+  Pty.close pty
+
+(* The program's PATH, not the parent's, is where [prog] is searched for. *)
+let test_spawn_searches_the_path_of_env () =
+  let dir = Filename.temp_dir "pty" "" in
+  let script = Filename.concat dir "pty-test-found" in
+  Out_channel.with_open_text script (fun oc ->
+      output_string oc "#!/bin/sh\necho found\n");
+  Unix.chmod script 0o755;
+  let env = [| "PATH=" ^ dir |] in
+  let output =
+    Pty.with_spawn ~env ~prog:"pty-test-found" ~args:[] read_to_eof
+  in
+  Sys.remove script;
+  Sys.rmdir dir;
+  equal ~msg:"found in env's PATH" string "found\r\n" output
+
 (* Regression: a second close used to call Unix.close on the stored fd number
    again. The kernel reallocates freed numbers to the next opened descriptor,
    so the second close destroyed an unrelated fd. *)
@@ -916,6 +973,11 @@ let tests =
       test "wait after close without wait" test_wait_after_close_without_wait;
       test "reap through signals" test_reap_through_signals;
       test ~timeout:5. "close without wait kills" test_close_without_wait_kills;
+      test ~timeout:5. "close lets the program act on the hangup"
+        test_close_lets_the_program_act_on_the_hangup;
+      test ~timeout:10. "the job ends with the program"
+        test_job_ends_with_the_program;
+      test "spawn searches the PATH of env" test_spawn_searches_the_path_of_env;
       test "eof on close" test_eof_on_close;
       test "pty close" test_pty_close;
     ]

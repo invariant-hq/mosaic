@@ -25,7 +25,6 @@
 #include <unistd.h>
 
 #ifdef __linux__
-#include <sys/prctl.h>
 #include <sys/syscall.h>
 #endif
 #endif  // MATRIX_HAS_POSIX_PTY
@@ -176,6 +175,7 @@ CAMLprim value ocaml_pty_set_winsize(value fd, value ws_val) {
 struct child {
   int slave;
   int report;           // the write end of the report pipe
+  int status;           // the write end of the status pipe
   const char *cwd;      // NULL to stay in the parent's directory
   char **paths;         // where to look for the program, in order
   char **argv, **envp;  // NULL-terminated
@@ -233,8 +233,10 @@ static void close_from(int low, int limit) {
 static pid_t program_pid;
 
 static void hangup(int sig) {
+  int saved = errno;  // the waitid it interrupts reads errno
   kill(-program_pid, sig);
   kill(-program_pid, SIGCONT);
+  errno = saved;
 }
 
 // Wakes the keeper's wait for the program, at each of its changes.
@@ -265,23 +267,26 @@ static void exec_program(struct child *c) {
 
 // The child of spawn: the keeper of the program's session (see spawn in
 // pty.mli). It opens the session on the slave, forks the program into the
-// foreground process group, waits for it, drains the terminal and exits as
-// the program did. It returns, in the keeper or in the program, only on
-// failure, with the step that failed and errno set.
+// foreground process group, waits for it, writes its status on the status
+// pipe, drains the terminal, ends what the program left in its group, and
+// exits. It returns, in the keeper or in the program, only on failure, with
+// the step that failed and errno set.
 //
 // The parent may run other threads, among them OCaml domains, whose locks
 // the fork copied in whatever state they were in: POSIX lets the child of a
 // multithreaded process call only async-signal-safe functions until it
 // execs. Every call here is one, or a plain system call that POSIX leaves
-// off its list (ioctl, close_range, closefrom, waitid, setrlimit, prctl).
+// off its list (ioctl, close_range, closefrom, waitid).
 // Nothing here allocates: the parent built the strings and arrays. Every
 // signal has been blocked since before the fork, so no handler of the
 // parent's runs here, and the keeper keeps them blocked: a signal from the
 // terminal, or from the parent, is the program's.
 static enum step keep(struct child *c) {
-  // Keep the report off the std fds, which the slave replaces.
-  int report_fd = fcntl(c->report, F_DUPFD_CLOEXEC, 3);
-  if (report_fd == -1) return DUP2;
+  // Keep the pipes off the std fds, which the slave replaces, and off 3,
+  // where the report goes.
+  int report_fd = fcntl(c->report, F_DUPFD_CLOEXEC, 5);
+  int status_fd = fcntl(c->status, F_DUPFD_CLOEXEC, 5);
+  if (report_fd == -1 || status_fd == -1) return DUP2;
   c->report = report_fd;
   if (setsid() == -1) return SETSID;
   if (ioctl(c->slave, TIOCSCTTY, 0) == -1) return SETCTTY;
@@ -293,13 +298,13 @@ static enum step keep(struct child *c) {
   // Exec keeps every descriptor that is not close-on-exec, so the program
   // would inherit any the parent opened without the flag, and hold pipes and
   // terminals open that their readers wait to see closed. Keep only the std
-  // fds: park the report at 3, still close-on-exec, and close every other.
-  if (c->report != 3) {
-    if (dup2(c->report, 3) == -1 || fcntl(3, F_SETFD, FD_CLOEXEC) == -1)
-      return DUP2;
-    c->report = 3;
-  }
-  close_from(4, c->fd_limit);
+  // fds: park the report at 3 and the status at 4, still close-on-exec, and
+  // close every other.
+  if (dup2(report_fd, 3) == -1 || fcntl(3, F_SETFD, FD_CLOEXEC) == -1 ||
+      dup2(status_fd, 4) == -1 || fcntl(4, F_SETFD, FD_CLOEXEC) == -1)
+    return DUP2;
+  c->report = 3;
+  close_from(5, c->fd_limit);
   if (c->cwd != NULL && chdir(c->cwd) == -1) return CHDIR;
   // Exec keeps the signals the parent ignores, such as the SIGPIPE that many
   // programs ignore: give every signal its default action, so the program
@@ -334,9 +339,9 @@ static enum step keep(struct child *c) {
   sigaddset(&hangups, SIGHUP);
   pthread_sigmask(SIG_UNBLOCK, &hangups, NULL);
   // Learn of the program's exit without reaping it: unreaped, its id names
-  // it and no other process for as long as the handle may signal it. macOS
-  // reports a stop to waitid without WSTOPPED, at once and on every call
-  // while the program is stopped, so the keeper takes an exit alone and
+  // it and its process group, and no other, for as long as the keeper runs.
+  // macOS reports a stop to waitid without WSTOPPED, at once and on every
+  // call while the program is stopped, so the keeper takes an exit alone and
   // sleeps until the next SIGCHLD otherwise. SIGCHLD stays blocked but in
   // sigsuspend, so none comes between the look and the sleep unseen.
   struct sigaction on_change = c->default_action;
@@ -360,6 +365,14 @@ static enum step keep(struct child *c) {
       break;
     sigsuspend(&changes);
   }
+  // The status, as data: the keeper's own exit says nothing. FreeBSD,
+  // OpenBSD and macOS put the whole value given to _exit in si_status, of
+  // which a status keeps the low byte.
+  int exited = status.si_code == CLD_EXITED;
+  int value = exited ? status.si_status & 0xff : status.si_status;
+  int message[2] = {exited, value};
+  (void)!write(4, message, sizeof message);
+  close(4);
   // Wait until the master has read all the program wrote, or the terminal
   // has hung up, after which the drain fails or returns at once. tcdrain
   // returns at once on Linux, which keeps unread output after the slave's
@@ -367,25 +380,12 @@ static enum step keep(struct child *c) {
   // minutes) on FreeBSD, where it is retried: POSIX gives it no timeout.
   while (tcdrain(0) == -1 && (errno == EINTR || errno == EAGAIN)) {
   }
-  if (status.si_code == CLD_EXITED) _exit(status.si_status);
-  // Die by the program's signal, so the parent sees the status the program
-  // ended with, without a core dump of the keeper: the program's, if any, is
-  // enough. Linux runs its crash handler (systemd-coredump, apport) for a
-  // dumpable process whatever the core limit; macOS writes a crash report
-  // for the keeper, which it cannot be told not to.
-  int sig = status.si_status;
-  struct rlimit no_core = {0, 0};
-  setrlimit(RLIMIT_CORE, &no_core);
-#ifdef __linux__
-  prctl(PR_SET_DUMPABLE, 0);
-#endif
-  sigaction(sig, &c->default_action, NULL);
-  sigset_t fatal;
-  sigemptyset(&fatal);
-  sigaddset(&fatal, sig);
-  pthread_sigmask(SIG_UNBLOCK, &fatal, NULL);
-  raise(sig);
-  _exit(128 + sig);
+  // The job ends with the program: kill what it left in its process group,
+  // while the program's id still names that group, then let the id go.
+  kill(-program_pid, SIGKILL);
+  while (waitpid(program_pid, NULL, 0) == -1 && errno == EINTR) {
+  }
+  _exit(0);
 }
 
 // A pipe whose ends are both close-on-exec. macOS has no pipe2: a fork by
@@ -410,8 +410,10 @@ static void check_strings(value v, const char *cmd) {
 // The keeper reports the program's process id, and the keeper or the
 // program a failure before exec, on a close-on-exec pipe, in either order;
 // the pipe ends when the keeper has closed its end and the program has
-// exec'd or exited. So spawn returns (keeper, program) once the program
-// runs, and raises the child's error otherwise, having reaped the keeper.
+// exec'd or exited. So spawn returns (keeper, program, status) once the
+// program runs, where status is the read end of the pipe on which the
+// keeper writes the program's status, and raises the child's error
+// otherwise, having reaped the keeper.
 CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
                                    value env, value cwd) {
   CAMLparam5(slave, paths, argv, env, cwd);
@@ -421,11 +423,9 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
   check_strings(env, "execvp");
   if (Is_some(cwd)) caml_unix_check_path(Some_val(cwd), "chdir");
 
-  int pipe_fds[2];
-  if (cloexec_pipe(pipe_fds) == -1) caml_uerror("pipe", Nothing);
+  // Allocate first: an allocation that raises leaves no pipe open.
   struct child c;
   c.slave = Int_val(slave);
-  c.report = pipe_fds[1];
   c.cwd = Is_some(cwd) ? caml_stat_strdup(String_val(Some_val(cwd))) : NULL;
   c.paths = caml_unix_cstringvect(paths, "execvp");
   c.argv = caml_unix_cstringvect(argv, "execvp");
@@ -450,6 +450,24 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
   c.default_action.sa_handler = SIG_DFL;
   sigemptyset(&c.default_action.sa_mask);
   sigemptyset(&c.no_signals);
+  int pipe_fds[2], status_fds[2] = {-1, -1};
+  int pipe_failed = cloexec_pipe(pipe_fds) == -1;
+  if (!pipe_failed && cloexec_pipe(status_fds) == -1) {
+    pipe_failed = 1;
+    close(pipe_fds[0]);
+    close(pipe_fds[1]);
+  }
+  if (pipe_failed) {
+    int pipe_errno = errno;
+    caml_stat_free((char *)c.cwd);
+    caml_unix_cstringvect_free(c.paths);
+    caml_unix_cstringvect_free(c.argv);
+    caml_unix_cstringvect_free(c.envp);
+    caml_stat_free(c.sh_argv);
+    caml_unix_error(pipe_errno, "pipe", Nothing);
+  }
+  c.report = pipe_fds[1];
+  c.status = status_fds[1];
 
   sigset_t all_signals, parent_signals;
   sigfillset(&all_signals);
@@ -463,6 +481,7 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
   int fork_errno = errno;
   pthread_sigmask(SIG_SETMASK, &parent_signals, NULL);
   close(pipe_fds[1]);
+  close(status_fds[1]);
   // A keeper that is gone before it reported the program is a failed fork.
   int message[2], failure[2] = {FORK, ECHILD}, program = 0, failed = 0;
   if (keeper != -1) {
@@ -485,6 +504,7 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
     caml_leave_blocking_section();
   }
   close(pipe_fds[0]);
+  if (keeper == -1 || failed) close(status_fds[0]);
 
   caml_stat_free((char *)c.cwd);
   caml_unix_cstringvect_free(c.paths);
@@ -499,10 +519,33 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
                                : Nothing;
     caml_unix_error(failure[1], step_names[step], arg);
   }
-  res = caml_alloc_tuple(2);
+  res = caml_alloc_tuple(3);
   Store_field(res, 0, Val_int(keeper));
   Store_field(res, 1, Val_int(program));
+  Store_field(res, 2, Val_int(status_fds[0]));
   CAMLreturn(res);
+}
+
+// The runtime's map from a system signal number to OCaml's, which
+// Unix.waitpid uses for WSIGNALED.
+extern int caml_rev_convert_signal_number(int);
+
+// The program's status from the status pipe of a keeper that has exited,
+// so the read never blocks: Some status, or None if the keeper ended
+// before it wrote one.
+CAMLprim value ocaml_pty_read_status(value fd) {
+  CAMLparam1(fd);
+  CAMLlocal1(status);
+  int message[2];
+  ssize_t n;
+  do n = read(Int_val(fd), message, sizeof message);
+  while (n == -1 && errno == EINTR);
+  if (n != sizeof message) CAMLreturn(Val_none);
+  status = caml_alloc_small(1, message[0] ? 0 : 1);  // WEXITED | WSIGNALED
+  Field(status, 0) =
+      Val_int(message[0] ? message[1]
+                         : caml_rev_convert_signal_number(message[1]));
+  CAMLreturn(caml_alloc_some(status));
 }
 
 #else  // Unsupported platforms, including Windows: fail loudly.
@@ -536,6 +579,10 @@ CAMLprim value ocaml_pty_fork_exec(value slave, value paths, value argv,
   (void)argv;
   (void)env;
   (void)cwd;
+  return pty_unsupported("spawn");
+}
+CAMLprim value ocaml_pty_read_status(value fd) {
+  (void)fd;
   return pty_unsupported("spawn");
 }
 
