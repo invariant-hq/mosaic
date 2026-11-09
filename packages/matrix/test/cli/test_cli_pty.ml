@@ -622,6 +622,16 @@ let test_quiet_json () =
   is_false ~msg:"no frame on a terminal" (shows "P done" term);
   is_true ~msg:"an event" (shows "\"text\":\"line 3\"" term)
 
+(* Under json a control function or a character one print leaves unfinished
+   is completed by the next: no part of the control function shows as text,
+   and the character shows whole. *)
+let test_json_split () =
+  let ev text = "{\"time\":0,\"event\":\"output\",\"text\":\"" ^ text ^ "\"}" in
+  equal ~msg:"events" strings
+    [ ev "abc"; ev "red"; ev "x"; ev "y"; ev "caf"; ev "\u{e9}"; "" ]
+    (String.split_on_char '\n'
+       (untimed (piped ~env:[ ("CLI_PROGRESS", "json") ] "split")))
+
 (* A grid printed on an output: its rows at the output's styling, each
    ended where it shows nothing more. *)
 let test_print_grid () =
@@ -944,6 +954,7 @@ let () =
              test "a notification" test_notify;
              test "how progress shows" test_progress_of;
              test "quiet and json" test_quiet_json;
+             test "json: a print cut inside a control" test_json_split;
            ];
          group "tasks"
            [

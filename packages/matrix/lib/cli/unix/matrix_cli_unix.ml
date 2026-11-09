@@ -181,6 +181,9 @@ and t = {
   columns : int option;
   lines : int option;
   adapter : Matrix_cli.adapter;
+  json : Ansi.Parser.t option;
+      (** Where its mode is [`Json], the parser of what it prints, read as one
+          stream. *)
   out_device : device;
 }
 
@@ -589,16 +592,20 @@ let make ?color ?progress fd =
   let styling =
     Ansi.Styling.decide ?color getenv ~tty ~dumb:caps.dumb caps.colors
   in
+  let progress =
+    Matrix_cli.Progress.decide ?progress getenv ~tty ~dumb:caps.dumb
+  in
   {
     fd;
     tty;
     caps;
     styling;
-    progress = Matrix_cli.Progress.decide ?progress getenv ~tty ~dumb:caps.dumb;
+    progress;
     made = Tty.now ();
     columns;
     lines;
     adapter = Matrix_cli.adapter styling;
+    json = (if progress = `Json then Some (Ansi.Parser.create ()) else None);
     out_device = device fd;
   }
 
@@ -651,15 +658,32 @@ let event members =
   ^ "}\n"
 
 (* What a program prints on a [`Json] output: an output event of no task for
-   each of its lines, and for what follows its last line end. *)
-let output_events t s =
+   each of its lines, and for what follows its last line end. Its prints are
+   one stream, which [p] reads, so a control function or a character that a
+   print leaves unfinished is completed by the next one, as an adapter
+   completes it, and no part of a control function shows as text. The text
+   and the controls [p] reads are written back for [Ansi.sanitize], which
+   keeps what shows. *)
+let output_events t p s =
   let time =
     json_number
       (match t.out_device.work_time with
       | Some now -> now ()
       | None -> Float.of_int (Tty.now () - t.made) *. 1e-9)
   in
-  let lines = String.split_on_char '\n' (Ansi.sanitize s) in
+  let b = Buffer.create (String.length s) in
+  ignore
+    (Ansi.Parser.feed p (Bytes.unsafe_of_string s) ~off:0 ~len:(String.length s)
+       (function
+       | Text text -> Buffer.add_string b text
+       | Control c when c >= '\x80' ->
+           (* A C1 control, written ESC Fe. *)
+           Buffer.add_char b '\027';
+           Buffer.add_char b (Char.chr (Char.code c - 0x40))
+       | Control c -> Buffer.add_char b c
+       | Esc _ | Csi _ | Open _ | Data _ | Close _ -> ())
+      : int);
+  let lines = String.split_on_char '\n' (Ansi.sanitize (Buffer.contents b)) in
   let lines =
     match List.rev lines with "" :: rest -> List.rev rest | _ -> lines
   in
@@ -678,9 +702,9 @@ let print t s =
   flush_formatters ();
   Mutex.protect t.out_device.lock (fun () ->
       let bytes =
-        match t.progress with
-        | `Json -> output_events t s
-        | _ -> Matrix_cli.adapt t.adapter s
+        match t.json with
+        | Some p -> output_events t p s
+        | None -> Matrix_cli.adapt t.adapter s
       in
       if bytes <> "" then emit t bytes)
 

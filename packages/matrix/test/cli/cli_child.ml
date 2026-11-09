@@ -280,6 +280,18 @@ let () =
              Cells [| cell "file"; cell "size" |];
              Cells [| cell "a.ml"; cell "12" |];
            ])
+  | "split" ->
+      (* Text from someone else, cut inside a control function or a character
+         between two prints. *)
+      List.iter (C.print err)
+        [
+          "abc\027[3";
+          "1mred\n";
+          "x\027]0;ti";
+          "tle\007y\n";
+          "caf\xc3";
+          "\xa9\n";
+        ]
   | "color" ->
       let out = C.stdout () in
       C.print out "\027[1;38;2;255;0;0mBOLDRED\027[0m\n"

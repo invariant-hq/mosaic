@@ -152,8 +152,10 @@ val print : t -> string -> unit
     [o]'s mode is [`Json], it writes each line of [s], and the text after its
     last line end, as {!Ansi.sanitize} leaves them, as an event of its own,
     [{"time":t,"event":"output","text":line}], where [t] is the seconds since
-    [o] was made. So a program prints its own lines for people on another
-    output. *)
+    [o] was made. The prints on [o] are one stream, so a control function or a
+    character that [s] leaves unfinished is completed by the next print, and no
+    part of a control function shows as text, wherever the prints cut it. So a
+    program prints its own lines for people on another output. *)
 
 val print_grid : t -> Matrix_grid.t -> unit
 (** [print_grid o g] writes the rows of [g] to [o] in one write, at [o]'s

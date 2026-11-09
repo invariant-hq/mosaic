@@ -104,6 +104,9 @@ console gets back every mode and code page the run changed.
   left open, in `Region.teardown`, in the run's abort bytes in both modes, and
   when a run gives the terminal back. The shell's prompt used to become part
   of the link.
+- On an output whose mode is `` `Json ``, `Matrix_cli_unix.print` reads the
+  prints as one stream, so a control function cut between two prints no
+  longer shows its tail as text in an event.
 
 ## [0.2.0] - 2026-11-04
 
