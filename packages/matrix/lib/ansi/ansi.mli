@@ -24,8 +24,8 @@
       [0] writes nothing, since a terminal reads an absent or zero count as [1].
     - Rows and columns are 1-based, and one below [1] is [1].
     - A color component is clamped to \[[0];[255]\].
-    - A string argument, such as a title or a URL, is written as it is. A string
-      that holds a control function, such as the ST or BEL that ends a control
+    - A string argument, such as a title, is written as it is. A string that
+      holds a control function, such as the ST or BEL that ends a control
       string, breaks the sequence it is written in, so text from someone else
       goes through {!sanitize} first.
 
@@ -315,9 +315,12 @@ val osc : ?terminator:terminator -> payload:string -> t
 
 val hyperlink_start : ?params:string -> url:string -> t
 (** [hyperlink_start ~params ~url] is the OSC 8 that links the text after it to
-    [url]. [params] holds [key=value] pairs separated by [:], and defaults to
-    [""]; a [;] in it is left out. The link must be closed with
-    {!hyperlink_end}, or all the text after it is linked. *)
+    [url]. [url] is written URI-encoded, as OSC 8 requires: a byte outside
+    [0x21]..[0x7E], such as a space, a control or a byte of a non-ASCII
+    character, is written as [%XX] in uppercase hex, and a [%] is kept, so an
+    encoded [url] is written as it is. [params] holds [key=value] pairs
+    separated by [:], and defaults to [""]; a [;] in it is left out. The link
+    must be closed with {!hyperlink_end}, or all the text after it is linked. *)
 
 val hyperlink_end : t
 (** [hyperlink_end] is the OSC 8 that closes the open link. *)

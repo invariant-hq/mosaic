@@ -132,7 +132,8 @@ val hyperlink : ?params:string -> url:string -> text:string -> t
 
 val hyperlink_open : writer -> string -> unit
 (** [hyperlink_open w url] writes the OSC 8 that opens a hyperlink to [url],
-    without parameters, ended by ST. *)
+    without parameters, ended by ST. [url] is URI-encoded as
+    {!Ansi.hyperlink_start} encodes it. *)
 
 val hyperlink_close : writer -> unit
 (** [hyperlink_close w] writes the OSC 8 that closes the open hyperlink, ended

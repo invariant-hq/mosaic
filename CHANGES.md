@@ -87,6 +87,11 @@ console gets back every mode and code page the run changed.
   adapted once the program spawns a domain. From then on, their line ends and
   indents were lost, and the rest of their output bypassed the styling and the
   live region.
+- A hyperlink's URI is written percent-encoded, as the OSC 8 specification
+  requires: every byte outside `0x21`..`0x7E`, the space included, becomes
+  `%XX`, and a `%` is kept. Controls and invalid UTF-8 used to be dropped from
+  the URI, which changed the link's target, and spaces and non-ASCII bytes went
+  out raw.
 
 ## [0.2.0] - 2026-11-04
 

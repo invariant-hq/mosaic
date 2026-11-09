@@ -1554,11 +1554,49 @@ let osc_text_is_printable () =
     (s (Ansi.notify `Osc9 ~title:"a;b\x07" ~body:"c;\x1bd"));
   equal ~msg:"notify, OSC 777" string "\x1b]777;notify;ab;c;d\x07"
     (s (Ansi.notify `Osc777 ~title:"a;b\x07" ~body:"c;\x1bd"));
-  equal ~msg:"hyperlink" string "\x1b]8;id=1;http://a/\\b\x1b\\"
-    (s (Ansi.hyperlink_start ~params:"id=1;" ~url:"http://a/\x1b\\b"));
+  equal ~msg:"hyperlink params" string "\x1b]8;id=1;http://a/\x1b\\"
+    (s (Ansi.hyperlink_start ~params:"id=1;\x07" ~url:"http://a/"));
   equal ~msg:"osc" string "\x1b]2;tt\x1b\\" (s (Ansi.osc ~payload:"2;t\x9ct"));
   equal ~msg:"explicit width" string "\x1b]66;w=2;ab\x1b\\"
     (s (Ansi.explicit_width ~width:2 ~text:"a\x07b"))
+
+(* The OSC 8 spec allows only bytes 32..126 in a hyperlink's URI and requires
+   the others to be URI-encoded, so every byte outside 0x21..0x7E, the space
+   among them, is written as %XX in uppercase hex. A % is kept, since the URI
+   may already be encoded. Every writer of a URI follows the rule. *)
+let hyperlink_uri_is_percent_encoded () =
+  let s f = Ansi.to_string f in
+  let start url = s (Ansi.hyperlink_start ~url) in
+  let osc8 uri = "\x1b]8;;" ^ uri ^ "\x1b\\" in
+  equal ~msg:"clean" string
+    (osc8 "http://a/b?c=d;e#f")
+    (start "http://a/b?c=d;e#f");
+  equal ~msg:"space" string (osc8 "http://a/b%20c") (start "http://a/b c");
+  equal ~msg:"controls" string
+    (osc8 "http://a/%1B\\b%07%0A%7F")
+    (start "http://a/\x1b\\b\x07\n\x7f");
+  equal ~msg:"non-ASCII scalars" string
+    (osc8 "http://a/%C3%A9%C2%9C%F0%9F%9A%80")
+    (start "http://a/\u{e9}\u{9c}\u{1f680}");
+  equal ~msg:"invalid UTF-8" string
+    (osc8 "http://a/%FF%C3%80")
+    (start "http://a/\xff\xc3\x80");
+  equal ~msg:"literal %" string (osc8 "http://a/%20b%%")
+    (start "http://a/%20b%%");
+  equal ~msg:"hyperlink" string
+    (osc8 "http://a/b%20c" ^ "t\x1b]8;;\x1b\\")
+    (s (Ansi.hyperlink ~url:"http://a/b c" ~text:"t"));
+  equal ~msg:"render" string
+    (osc8 "http://a/b%20c" ^ "t\x1b]8;;\x1b\\\x1b[0m")
+    (Ansi.render
+       [ Ansi.span ~style:(Style.hyperlink "http://a/b c" Style.default) "t" ]);
+  let st = Sgr_state.create () in
+  let w = Writer.create 64 in
+  Sgr_state.update st w ~fg:Color.default_fg ~bg:Color.default_bg ~attrs:0
+    ~link:"http://a/b c";
+  equal ~msg:"Sgr_state" string
+    (osc8 "http://a/b%20c" ^ "\x1b[0m")
+    (Writer.contents w)
 
 let notify_osc9_and_osc777 () =
   check_seq "OSC 9" "\x1b]9;Title: Body\x07"
@@ -2255,6 +2293,7 @@ let tests =
         test "clipboard base64 payload" clipboard_base64_payload;
         test "notify in either form" notify_osc9_and_osc777;
         test "OSC text is printable" osc_text_is_printable;
+        test "hyperlink URI is percent-encoded" hyperlink_uri_is_percent_encoded;
         test "tmux passthrough doubles ESC" tmux_passthrough_doubles_esc;
         test "color scheme report query" color_scheme_report_query;
         test "color queries" color_queries;

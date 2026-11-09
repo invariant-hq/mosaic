@@ -354,6 +354,32 @@ let write_osc_text ?(sep = -1) w b off len =
 let write_osc_string ?sep w s =
   write_osc_text ?sep w (Bytes.unsafe_of_string s) 0 (String.length s)
 
+(* A hyperlink's URI "must not contain any bytes outside of the 32-126 range"
+   and those bytes "must be URI-encoded" (OSC 8 spec, "Encodings"). The space
+   is not a URI character either (RFC 3986, section 2), so [write_uri] writes
+   every byte outside 0x21..0x7E as [%XX] in uppercase hex (RFC 3986, section
+   2.1), which also keeps the controls that would end the sequence out of it.
+   It keeps a [%], since the URI may already be encoded. A URI that needs no
+   encoding is written in one copy. *)
+let[@inline] uri_byte c = c > ' ' && c < '\x7f'
+
+let write_uri w s =
+  let len = String.length s in
+  let rec clean i =
+    i >= len || (uri_byte (String.unsafe_get s i) && clean (i + 1))
+  in
+  if clean 0 then write_string w s
+  else
+    for i = 0 to len - 1 do
+      let c = String.unsafe_get s i in
+      if uri_byte c then write_char w c
+      else
+        let b = Char.code c in
+        write_char w '%';
+        write_char w (String.unsafe_get "0123456789ABCDEF" (b lsr 4));
+        write_char w (String.unsafe_get "0123456789ABCDEF" (b land 0xF))
+    done
+
 (* Terminal Properties *)
 
 let set_title ~title w =
@@ -391,7 +417,7 @@ let hyperlink_start ?(params = "") ~url w =
   write_string w "\027]8;";
   write_osc_string ~sep:(Char.code ';') w params;
   write_char w ';';
-  write_osc_string w url;
+  write_uri w url;
   write_terminator w `St
 
 let hyperlink_end : t = osc ~terminator:`St ~payload:"8;;"
@@ -403,7 +429,7 @@ let hyperlink ?(params = "") ~url ~text w =
 
 let[@inline] hyperlink_open w url =
   write_string w "\027]8;;";
-  write_osc_string w url;
+  write_uri w url;
   write_terminator w `St
 
 let[@inline] hyperlink_close w =
