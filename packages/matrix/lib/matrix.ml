@@ -1217,6 +1217,14 @@ let cursor_show_seq = Ansi.(to_string (enable Cursor_visible))
 let clear_scrollback_seq = Ansi.(to_string (erase_display ~mode:`Scrollback))
 let reset_scroll_region_seq = Ansi.(to_string reset_scrolling_region)
 
+(* What ends a frame write a signal cut anywhere, as [Screen.Region.teardown]
+   begins. CAN ends a control string left open in any state of a
+   DEC-compatible parser; ST ends it on a terminal that lets CAN through. A
+   hyperlink left open is closed, which SGR 0 does not do: the OSC 8
+   specification makes a link an attribute of its own and allows closing one
+   that is not open. *)
+let end_cut_seq = "\024\027\\" ^ Ansi.(to_string hyperlink_end)
+
 (* Helpers for buffered frame output. All frame content is accumulated into
    an ANSI writer and flushed as a single write in [draw]. *)
 
@@ -1537,15 +1545,15 @@ let write_static_sixels t buf static ~shown =
       : int)
 
 (* The bytes that reset what a run may set, which the SIGABRT handler writes
-   itself. In [`Primary] mode they end the region's write a signal cut and
-   leave the cursor below its rows; no scrolling region is set there, and
-   resetting one (DECSTBM) would move the cursor to the screen's first
-   row. *)
+   itself. They first end the frame's write a signal cut, in [`Primary] mode
+   the region's, which also leaves the cursor below its rows; no scrolling
+   region is set there, and resetting one (DECSTBM) would move the cursor to
+   the screen's first row. *)
 let abort_bytes t =
   String.concat ""
     [
       (match t.config.mode with
-      | `Alt -> ""
+      | `Alt -> end_cut_seq
       | `Primary -> Screen.Region.teardown t.region);
       sync_output_off;
       (match t.config.mode with
@@ -1855,14 +1863,16 @@ let take_raw_mode t =
         t.backend.set_raw_mode false;
         if exiting then t.backend.flush_input ()))
 
-(* Frame writes bypass the terminal handle and may stop between mode changes.
-   Attempt every reset independently, before handing the terminal back. A
-   frame sets a scrolling region only in [`Alt] mode, and resetting one
-   (DECSTBM) moves the cursor to the screen's first row, where in [`Primary]
-   mode the region's origin is not. *)
+(* Frame writes bypass the terminal handle and may stop between mode changes,
+   inside a control string or inside a hyperlink. Attempt every reset
+   independently, before handing the terminal back. A frame sets a scrolling
+   region only in [`Alt] mode, and resetting one (DECSTBM) moves the cursor to
+   the screen's first row, where in [`Primary] mode the region's origin is
+   not. *)
 let restore_frame_modes t =
   if t.frame_modes_armed then (
     t.frame_modes_armed <- false;
+    (try Terminal.send t.terminal end_cut_seq with _ -> ());
     (try Terminal.send t.terminal sync_output_off with _ -> ());
     (if t.config.mode = `Alt then
        try Terminal.send t.terminal reset_scroll_region_seq with _ -> ());

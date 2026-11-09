@@ -100,6 +100,10 @@ console gets back every mode and code page the run changed.
 - Task rows show a time of a minute or more as `1m05s`, and of an hour or more
   as `1h02m`, where an hour showed as `3600.0s`. Sizes past 1023 GiB show in
   TiB, PiB and EiB.
+- The bytes that end a frame write cut by a signal close a hyperlink the frame
+  left open, in `Region.teardown`, in the run's abort bytes in both modes, and
+  when a run gives the terminal back. The shell's prompt used to become part
+  of the link.
 
 ## [0.2.0] - 2026-11-04
 

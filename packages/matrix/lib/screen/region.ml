@@ -294,6 +294,13 @@ let clear r =
   r.moved <- false;
   String.concat "" [ sgr0; "\027[H\027[2J" ]
 
+(* What ends a write a signal cut anywhere. CAN ends a control string left
+   open in any state of a DEC-compatible parser; ST ends it on a terminal
+   that lets CAN through. A hyperlink left open is closed, which SGR 0 does
+   not do: the OSC 8 specification makes a link an attribute of its own and
+   allows closing one that is not open. *)
+let end_cut = "\024\027\\" ^ Ansi.(to_string hyperlink_end)
+
 let teardown r =
   let below =
     if r.height > 0 then (
@@ -303,4 +310,4 @@ let teardown r =
       Ansi.Writer.contents w)
     else "\r"
   in
-  String.concat "" [ "\024"; esu; "\027[?7h"; sgr0; "\027[?25h"; below ]
+  String.concat "" [ end_cut; esu; "\027[?7h"; sgr0; "\027[?25h"; below ]

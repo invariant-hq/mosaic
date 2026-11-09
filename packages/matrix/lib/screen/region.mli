@@ -226,7 +226,9 @@ val teardown : t -> string
 (** [teardown r] is the bytes that end [r]'s last write wherever a signal cut it
     and leave the cursor at the start of the row below [r]'s rows, for a process
     that ends without another write. They are CAN, which ends a control function
-    the cut left open, the end of the synchronized update, autowrap on, SGR 0,
-    the cursor shown, then the motion. They describe [r] once its last write has
-    been written whole, so a caller that keeps them for a signal handler must
-    take them only after that write has returned. *)
+    the cut left open, ST, which ends it on a terminal that lets CAN through,
+    the OSC 8 that closes a hyperlink the cut left open, which SGR 0 does not,
+    the end of the synchronized update, autowrap on, SGR 0, the cursor shown,
+    then the motion. They describe [r] once its last write has been written
+    whole, so a caller that keeps them for a signal handler must take them only
+    after that write has returned. *)

@@ -1266,6 +1266,29 @@ let test_region_teardown () =
   is_true ~msg:"the cursor shown" m.cursor_visible;
   is_false ~msg:"the update ended" m.synchronized_output
 
+(* A write a signal cut inside a hyperlink, or inside the OSC that opens
+   one, leaves no link on the text written after the teardown: SGR 0 does
+   not close one. CAN ends a control string the cut left open, ST ends it on
+   a terminal that lets CAN through, and the OSC 8 that follows closes the
+   link. *)
+let test_region_teardown_closes_link () =
+  List.iter
+    (fun cut ->
+      let t = region_term ~cols:10 ~rows:8 in
+      let r = Region.create () in
+      draw r t (frame [ "a"; "b" ]);
+      feed t cut;
+      feed t (Region.teardown r);
+      let row, col = Vte.cursor_pos t in
+      feed t "$ ";
+      equal ~msg:"the prompt shows" region_lines [ ""; "a"; "b"; "$" ] (lines t);
+      equal ~msg:"the prompt links nowhere" Testable.string ""
+        (Grid.get_link (Vte.grid t) ((row * 10) + col)))
+    [ "\027]8;;http://l.test\027\\"; "\027]8;;http://l.te" ];
+  is_true ~msg:"CAN, ST, then the link closed"
+    (String.starts_with ~prefix:"\024\027\\\027]8;;\027\\"
+       (Region.teardown (Region.create ())))
+
 let test_region_background () =
   let t = region_term ~cols:10 ~rows:4 in
   let r = Region.create () in
@@ -2229,6 +2252,7 @@ let () =
              test "Close" test_region_close;
              test "Suspend" test_region_suspend;
              test "Teardown" test_region_teardown;
+             test "Teardown closes a hyperlink" test_region_teardown_closes_link;
              test "A background left set" test_region_background;
              test "Plain rows" test_region_plain;
              test "The cursor between writes" test_region_cursor;

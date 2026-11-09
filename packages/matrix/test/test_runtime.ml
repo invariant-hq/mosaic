@@ -1840,6 +1840,80 @@ let test_partial_frame_restores_transient_modes () =
         [ false; true ])
     [ ("\027[?2026h", false); ("\027[?7l", false); ("row", true) ]
 
+(* A frame write cut inside a hyperlink, or inside the OSC that opens one,
+   leaves no link on what the shell writes next: neither when the run gives
+   the terminal back, nor when the process ends where no OCaml code runs
+   and the reset bytes are written. SGR 0 does not close a link. *)
+let test_cut_frame_closes_hyperlink () =
+  let caps =
+    {
+      (Matrix.Terminal.Caps.derive (Matrix.Terminal.Caps.evidence no_env)) with
+      hyperlinks = true;
+    }
+  in
+  let link =
+    Matrix.Ansi.Style.hyperlink "https://l.test" Matrix.Ansi.Style.default
+  in
+  let shell_link written =
+    let vte = Vte.create ~rows:24 ~cols:80 () in
+    ignore (Vte.feed_string vte written : _ list);
+    let row, col = Vte.cursor_pos vte in
+    ignore (Vte.feed_string vte "$ " : _ list);
+    Matrix.Grid.get_link (Vte.grid vte) ((row * 80) + col)
+  in
+  List.iter
+    (fun mode ->
+      List.iter
+        (fun cut ->
+          let f = fake () in
+          let written = Buffer.create 256 in
+          let failing = ref false and reset = ref "" in
+          let cut_off = ref None in
+          f.fail_write <-
+            (fun frame ->
+              if !failing then (
+                failing := false;
+                let stop =
+                  Option.get (index_of frame cut) + String.length cut
+                in
+                Buffer.add_substring written frame 0 stop;
+                cut_off := Some (Buffer.contents written, !reset);
+                failwith "cut frame")
+              else Buffer.add_string written frame);
+          let backend =
+            {
+              (backend f) with
+              output_is_tty = true;
+              on_fatal = (fun b -> reset := b);
+            }
+          in
+          (try
+             run_on backend ~config:(quiet ~mode ~caps ~color:`Always ())
+               (fun app ->
+                 present app [ "a" ];
+                 failing := true;
+                 match
+                   frame app [ "a" ] ~draw:(fun grid ->
+                       Matrix.Grid.draw_text grid ~x:1 ~y:0 ~text:"l"
+                         ~style:link)
+                 with
+                 | _ -> fail "expected the cut write"
+                 | exception Failure m -> equal string "cut frame" m)
+           with Failure _ -> ());
+          let before, abort =
+            match !cut_off with
+            | Some cut_off -> cut_off
+            | None -> fail "expected the cut write"
+          in
+          equal ~msg:"given back: the prompt links nowhere" string ""
+            (shell_link (Buffer.contents written));
+          equal ~msg:"aborted: the prompt links nowhere" string ""
+            (shell_link (before ^ abort));
+          is_true ~msg:"CAN, ST, then the link closed"
+            (String.starts_with ~prefix:"\024\027\\\027]8;;\027\\" abort))
+        [ "\027]8;;https://l.test\027\\"; "\027]8;;https://l.te" ])
+    [ `Primary; `Alt ]
+
 (* Resize *)
 
 (* The terminal's size is applied when a frame is next drawn: a storm of
@@ -3948,7 +4022,7 @@ let unix_backend f () =
    whose output is a terminal iff [tty], that draws a red, bold, linked "R".
    It is the style the terminal shows the "R" in, every SGR the run wrote
    that sets a style (one with a parameter other than 0), and whether it
-   wrote an OSC 8. *)
+   wrote an OSC 8 that opens a link: one that closes a link has no URI. *)
 let styled_run ?color ?(tty = true) vars =
   let module T = Matrix_test in
   let module P = Matrix.Ansi.Parser in
@@ -3991,7 +4065,9 @@ let styled_run ?color ?(tty = true) vars =
   in
   let rec links = function
     | P.Open _ :: P.Data d :: rest ->
-        String.starts_with ~prefix:"8;" d || links rest
+        String.starts_with ~prefix:"8;" d
+        && not (String.ends_with ~suffix:";" d)
+        || links rest
     | _ :: rest -> links rest
     | [] -> false
   in
@@ -4228,6 +4304,8 @@ let () =
                test_frame_above_default_capacity;
              test "partial frame restores transient modes"
                test_partial_frame_restores_transient_modes;
+             test "a cut frame closes its hyperlink"
+               test_cut_frame_closes_hyperlink;
            ];
          group "Resize"
            [
