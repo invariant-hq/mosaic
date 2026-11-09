@@ -173,7 +173,11 @@ val adapt_std_formatters : ?color:Ansi.Styling.choice -> unit -> unit
     printers of a program that prints with [Fmt.pr] and [Fmt.epr], or reports
     with [Logs_fmt]'s reporter, obey the decision, and their lines go above a
     live region. Fmt writes styles there when its setup gives the two formatters
-    [`Ansi_tty], as [Fmt_tty.setup_std_outputs] does on a terminal. *)
+    [`Ansi_tty], as [Fmt_tty.setup_std_outputs] does on a terminal. The two
+    formatters stay adapted once domains are spawned. Another domain prints with
+    [Format.printf] and [Fmt.pr] on a formatter of its own
+    ([Format.get_std_formatter]), which writes to the standard channels as
+    Format makes it, so its lines are not adapted. *)
 
 val write_raw : t -> string -> unit
 (** [write_raw o bytes] writes [bytes] to [o] as they are, unadapted, for a

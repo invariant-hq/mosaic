@@ -271,6 +271,15 @@ let () =
           C.show live (text_frame "FRAME");
           Format.eprintf "note 3\n";
           C.print err "step b\n")
+  | "fmt-domain" ->
+      (* Line ends and indents through the adapted formatters, once a domain
+         has been spawned, and a line from that domain's own formatter. *)
+      C.adapt_std_formatters ();
+      Format.printf "before@.";
+      Domain.join (Domain.spawn (fun () -> Format.printf "in domain@."));
+      Format.printf "@[<v 2>box@,one@,two@]@.";
+      Format.eprintf "@[<v 2>err@,three@]@.";
+      Format.printf "after@."
   | "tick" ->
       (* A frame that changes on its own, shown once: only a region that
          draws on a clock calls it more than at its show and its end. *)

@@ -713,12 +713,27 @@ let formatter t =
 
 let adapt_std_formatters ?color () =
   let out = stdout ?color () and err = stderr ?color () in
+  let out_fs = out_functions out and err_fs = out_functions err in
+  let install () =
+    Format.pp_set_formatter_out_functions Format.std_formatter out_fs;
+    Format.pp_set_formatter_out_functions Format.err_formatter err_fs
+  in
   Format.pp_print_flush Format.std_formatter ();
   Format.pp_print_flush Format.err_formatter ();
-  Format.pp_set_formatter_out_functions Format.std_formatter (out_functions out);
-  Format.pp_set_formatter_out_functions Format.err_formatter (out_functions err);
+  install ();
   set_margin Format.std_formatter out;
-  set_margin Format.err_formatter err
+  set_margin Format.err_formatter err;
+  (* Before the first domain is spawned, Format gives the two formatters the
+     [out_string] and [out_flush] of a buffer per domain, and keeps the rest
+     of their out functions. The line ends, spaces and indents written here
+     would then go to a buffer that nothing flushes. The functions given to
+     [Domain.before_first_spawn] run in the order they are given, and Format
+     gives its own when it is initialised, before this module is, so [install]
+     runs after it and puts these out functions back. Once a domain has been
+     spawned, Format's has run and [Domain.before_first_spawn] raises. Another
+     domain prints with [Format.printf] on a formatter of its own, which Format
+     makes on the standard channels, so its lines are not adapted. *)
+  try Domain.before_first_spawn install with Invalid_argument _ -> ()
 
 let write_raw t s =
   flush_formatters ();

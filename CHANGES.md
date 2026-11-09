@@ -83,6 +83,10 @@ console gets back every mode and code page the run changed.
   too: the program receives `SIGHUP` rather than only the `SIGKILL` 100 ms
   later, and on the BSDs and macOS `close` no longer waits for that process
   to read the program's output.
+- `Matrix_cli_unix.adapt_std_formatters` keeps the standard formatters
+  adapted once the program spawns a domain. From then on, their line ends and
+  indents were lost, and the rest of their output bypassed the styling and the
+  live region.
 
 ## [0.2.0] - 2026-11-04
 

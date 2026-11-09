@@ -640,6 +640,13 @@ let test_format_order () =
         "result 1\nstep a\nresult 2\nnote 3\nstep b\nFRAME\n" (piped mode))
     [ "fmt-order"; "fmt-order-adapted" ]
 
+(* The adapted formatters keep their line ends and indents once a domain is
+   spawned; the domain prints through a formatter of its own. *)
+let test_format_domain () =
+  equal ~msg:"every line end and indent" Testable.string
+    "before\nin domain\nbox\n  one\n  two\nerr\n  three\nafter\n"
+    (piped "fmt-domain")
+
 (* ───── Tasks ───── *)
 
 let progress mode name = piped ~env:[ ("CLI_PROGRESS", mode) ] name
@@ -891,6 +898,7 @@ let () =
              test "a grid" test_print_grid;
              test "Format's formatters" test_fmt;
              test "Format's buffers keep their order" test_format_order;
+             test "Format after a domain is spawned" test_format_domain;
              test "a notification" test_notify;
              test "how progress shows" test_progress_of;
              test "quiet and json" test_quiet_json;
