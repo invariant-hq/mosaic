@@ -97,6 +97,9 @@ console gets back every mode and code page the run changed.
   VTE and iTerm2, and a longer one ends the link.
 - A line printed in many pieces while a live region shows costs time linear in
   its length. 100k one-byte prints took 5.5 s, and now take 0.03 s.
+- Task rows show a time of a minute or more as `1m05s`, and of an hour or more
+  as `1h02m`, where an hour showed as `3600.0s`. Sizes past 1023 GiB show in
+  TiB, PiB and EiB.
 
 ## [0.2.0] - 2026-11-04
 

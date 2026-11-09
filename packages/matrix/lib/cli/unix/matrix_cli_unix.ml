@@ -1145,12 +1145,20 @@ module Task = struct
     | `Cancelled ->
         Ansi.span ~style:(style ~fg:Ansi.Color.yellow ()) Glyph.cancelled
 
+  (* The binary prefixes of IEC 80000-13, each 1024 times the one before. An
+     int holds less than 2^62 bytes, 4 EiB, so EiB is the last one a count
+     needs. *)
+  let byte_units = [| "KiB"; "MiB"; "GiB"; "TiB"; "PiB"; "EiB" |]
+
   let bytes_text n =
-    let n = Float.of_int n in
-    if n >= 1073741824. then Printf.sprintf "%.2f GiB" (n /. 1073741824.)
-    else if n >= 1048576. then Printf.sprintf "%.2f MiB" (n /. 1048576.)
-    else if n >= 1024. then Printf.sprintf "%.2f KiB" (n /. 1024.)
-    else Printf.sprintf "%.0f B" n
+    if n < 1024 then Printf.sprintf "%d B" n
+    else
+      let rec scaled i v =
+        if v >= 1024. && i < Array.length byte_units - 1 then
+          scaled (i + 1) (v /. 1024.)
+        else Printf.sprintf "%.2f %s" v byte_units.(i)
+      in
+      scaled 0 (Float.of_int n /. 1024.)
 
   let counts (t : t) =
     match (t.counted, t.total) with
@@ -1161,7 +1169,20 @@ module Task = struct
         if t.bytes then bytes_text t.count ^ " / " ^ bytes_text total
         else Printf.sprintf "%d/%d" t.count total
 
-  let seconds f = Printf.sprintf "%.1fs" f
+  (* A time under a minute is in seconds to the tenth, [59.9s]; then in
+     minutes and seconds, [1m05s]; from an hour, in hours and minutes,
+     [1h02m]. Each is rounded, and a time that rounds up to the next unit
+     shows in it: [%.1f] rounds what is below 59.95 to [59.9] at most. *)
+  let seconds f =
+    if not (Float.is_finite f && f >= 59.95) then Printf.sprintf "%.1fs" f
+    else if f < 3599.5 then
+      let s = Float.to_int (Float.round f) in
+      Printf.sprintf "%dm%02ds" (s / 60) (s mod 60)
+    else
+      (* Minutes stay a float, as a finite float of seconds may hold more
+         of them than an int. *)
+      let m = Float.round (f /. 60.) in
+      Printf.sprintf "%.0fh%02.0fm" (Float.trunc (m /. 60.)) (Float.rem m 60.)
 
   (* The labels from the top task down to [t]. *)
   let rec path (t : t) =

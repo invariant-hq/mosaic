@@ -830,6 +830,36 @@ let test_tasks_endings () =
     (List.mem "RATE true false"
        (String.split_on_char '\n' (progress "plain" "tasks-back")))
 
+(* Times of a minute and more show in minutes and hours, and counts of
+   bytes in units up to EiB; a JSON time stays in seconds. *)
+let test_tasks_units () =
+  equal ~msg:"plain" strings
+    [
+      "\u{2022} minute";
+      "\u{2713} minute  1m00s";
+      "\u{2022} hour";
+      "\u{2713} hour  1h00m";
+      "\u{2022} short";
+      "\u{2713} short  59.9s";
+      "\u{2022} gib";
+      "\u{2713} gib  1023.00 GiB  0.0s";
+      "\u{2022} tib";
+      "\u{2713} tib  1.00 TiB  0.0s";
+      "\u{2022} eib";
+      "\u{2713} eib  1.00 EiB  0.0s";
+      "\u{2713} 1h02m  6/6";
+      "";
+    ]
+    (String.split_on_char '\n' (progress "plain" "tasks-units"));
+  let json = String.split_on_char '\n' (progress "json" "tasks-units") in
+  List.iter
+    (fun ending ->
+      is_true ~msg:ending (List.exists (String.ends_with ~suffix:ending) json))
+    [
+      "\"task\":[\"hour\"],\"status\":\"succeeded\",\"elapsed\":3600}";
+      "{\"time\":3719.9,\"event\":\"end\",\"status\":\"succeeded\",\"elapsed\":3719.9}";
+    ]
+
 (* The index of the first line of [term] that starts with [prefix]. *)
 let line_index term prefix =
   let rec go i = function
@@ -923,6 +953,7 @@ let () =
              test "ids of nested works" test_tasks_ids;
              test "lines from threads" test_tasks_threads;
              test "endings" test_tasks_endings;
+             test "units" test_tasks_units;
              test "rows" test_tasks_tty;
              test "a fold" test_tasks_fold;
            ];

@@ -195,6 +195,24 @@ let () =
               C.print err
                 (Printf.sprintf "RATE %b %b\n" rated
                    ((C.Task.state t).rate <> None))))
+  | "tasks-units" ->
+      (* Tasks that take a minute and more, and counts of bytes from GiB to
+         EiB. *)
+      let clock = ref 0. in
+      C.tasks
+        ~now:(fun () -> !clock)
+        err
+        (fun root ->
+          List.iter
+            (fun (label, seconds) ->
+              let t = C.Task.start root label in
+              clock := !clock +. seconds;
+              C.Task.succeed t)
+            [ ("minute", 60.); ("hour", 3600.); ("short", 59.9) ];
+          List.iter
+            (fun (label, n) ->
+              C.Task.run root label (fun t -> C.Task.bytes t n))
+            [ ("gib", 1023 * (1 lsl 30)); ("tib", 1 lsl 40); ("eib", 1 lsl 60) ])
   | "tall" ->
       C.live err (fun live ->
           C.show live (rows_frame (List.init 12 (Printf.sprintf "row %d")));
