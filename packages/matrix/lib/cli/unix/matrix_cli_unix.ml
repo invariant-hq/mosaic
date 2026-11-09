@@ -1102,6 +1102,12 @@ module Task = struct
     mutable message : string option;
     mutable ended : float option;
     mutable children : t list;  (** Newest first. *)
+    mutable runs : t list;  (** The children that run, newest first. *)
+    mutable kept : t list;
+        (** The children that ended and show, the last to end first. *)
+    mutable succeeded : int;  (** The children in [kept] that succeeded. *)
+    mutable failed : int;  (** Those that failed. *)
+    mutable cancelled : int;  (** Those that were cancelled. *)
   }
 
   (* The work as a whole, which its root stands for. [lock] guards the
@@ -1117,6 +1123,8 @@ module Task = struct
     order : Mutex.t;
     mutable live : live option;
     mutable frame : width:int -> height:int -> Matrix_grid.t list;
+    mutable tasks : int;  (** The tasks started under the root. *)
+    mutable finished : int;  (** Those of them that ended. *)
   }
 
   type state = {
@@ -1254,13 +1262,8 @@ module Task = struct
           | _ -> "");
       ]
 
-  let rec all (t : t) =
-    List.concat_map (fun c -> c :: all c) (List.rev t.children)
-
   (* The line that says how far the work is. *)
   let summary (root : t) =
-    let all = all root in
-    let ended = List.filter (fun (t : t) -> t.status <> `Running) all in
     [ mark root.status; Ansi.span " " ]
     @ List.concat_map
         (fun c -> [ c; Ansi.span "  " ])
@@ -1273,7 +1276,7 @@ module Task = struct
            ])
     @ [
         Ansi.span ~style:faint
-          (Printf.sprintf "%d/%d" (List.length ended) (List.length all));
+          (Printf.sprintf "%d/%d" root.work.finished root.work.tasks);
       ]
 
   (* The rows of [`Tty]. A task's row is its mark, its label behind its
@@ -1297,27 +1300,43 @@ module Task = struct
           Glyph.spinner.(((Float.to_int (now *. 10.) mod n) + n) mod n)
     | status -> mark status
 
-  let worst ts =
-    if List.exists (fun (t : t) -> t.status = `Failed) ts then `Failed
-    else if List.exists (fun (t : t) -> t.status = `Cancelled) ts then
-      `Cancelled
+  (* The tasks that ended under [t] and show. *)
+  let ended_under (t : t) = t.succeeded + t.failed + t.cancelled
+
+  (* How the tasks that ended under [t] went, the worst of them. *)
+  let worst (t : t) =
+    if t.failed > 0 then `Failed
+    else if t.cancelled > 0 then `Cancelled
     else `Succeeded
 
-  (* The tasks that ended under a task, as one line, such as [10 done,
+  (* The tasks that ended under [t], as one line, such as [10 done,
      2 failed]. *)
-  let folded ended =
-    let n status =
-      List.length (List.filter (fun (t : t) -> t.status = status) ended)
-    in
+  let folded (t : t) =
     String.concat ", "
       (List.filter_map
          (fun (k, word) ->
            if k > 0 then Some (Printf.sprintf "%d %s" k word) else None)
          [
-           (n `Succeeded, "done");
-           (n `Failed, "failed");
-           (n `Cancelled, "cancelled");
+           (t.succeeded, "done");
+           (t.failed, "failed");
+           (t.cancelled, "cancelled");
          ])
+
+  (* The newest [n] lines of [t]'s output, oldest first. *)
+  let window_of (t : t) n =
+    let rec take acc n = function
+      | l :: rest when n > 0 -> take (l :: acc) (n - 1) rest
+      | _ -> acc
+    in
+    take [] n t.output
+
+  (* The number of lines of [t]'s window when it is at most [n] lines. *)
+  let window_height (t : t) n =
+    let rec count k = function
+      | _ :: rest when k < n -> count (k + 1) rest
+      | _ -> k
+    in
+    count 0 t.output
 
   (* [t]'s rows behind the guide of [lasts], its window at most [window]
      lines, and the tasks that ended under a running one folded when
@@ -1358,38 +1377,35 @@ module Task = struct
     let lines =
       if not running then []
       else
-        List.rev_map
+        List.map
           (fun l ->
             Text
               [
                 Ansi.span ~style:faint (rails ^ "  " ^ Glyph.output ^ " ");
                 Ansi.span l;
               ])
-          (List.filteri (fun i _ -> i < min t.lines window) t.output)
+          (window_of t (min t.lines window))
     in
-    (* A transient task that succeeded leaves nothing. *)
+    (* A transient task that succeeded leaves nothing. The tasks under [t]
+       show in the order they started, which their ids rise in. *)
     let kids =
-      List.filter
-        (fun (c : t) -> not (c.transient && c.status = `Succeeded))
-        (List.rev t.children)
-    in
-    let ended, kids =
-      if fold && running then
-        ( List.filter (fun (c : t) -> c.status <> `Running) kids,
-          List.filter (fun (c : t) -> c.status = `Running) kids )
-      else ([], kids)
+      if fold && running then List.rev t.runs
+      else
+        List.sort
+          (fun (a : t) (b : t) -> Int.compare a.id b.id)
+          (List.rev_append t.runs t.kept)
     in
     let last = List.length kids - 1 in
     let fold_line =
-      if ended = [] then []
+      if not (fold && running && ended_under t > 0) then []
       else
         [
           Text
             [
               Ansi.span ~style:faint
                 (Matrix_cli.Tree.prefix guide ((kids = []) :: lasts));
-              mark (worst ended);
-              Ansi.span ~style:faint (" " ^ folded ended);
+              mark (worst t);
+              Ansi.span ~style:faint (" " ^ folded t);
             ];
         ]
     in
@@ -1483,26 +1499,41 @@ module Task = struct
      longest first. *)
   let rows (t : t) ~width ~height =
     Mutex.protect t.work.lock @@ fun () ->
-    let running =
-      List.filter (fun (c : t) -> c.status = `Running) (List.rev t.children)
-    in
+    let running = List.rev t.runs in
     let summary = if t.id < 0 then [ Text (summary t) ] else [] in
     let items ~fold ~window =
       List.concat_map (tree ~fold ~window []) running @ summary
     in
-    let longest =
-      List.fold_left
-        (fun a (c : t) -> max a (min c.lines (List.length c.output)))
-        0
-        (List.concat_map (fun c -> c :: all c) running)
+    (* The tallest window of a task that runs, a task that ended having
+       none. *)
+    let rec longest a (c : t) =
+      List.fold_left longest (max a (window_height c c.lines)) c.runs
     in
     let rec fit window =
       let items = items ~fold:true ~window in
       if List.length items <= height || window = 0 then items
       else fit (window - 1)
     in
-    let whole = items ~fold:false ~window:max_int in
-    grid ~width (if List.length whole <= height then whole else fit longest)
+    (* The rows left of [room] under [c]'s rows with nothing folded, or a
+       negative number when they do not fit. Each task that ended under [c]
+       takes a row at least. *)
+    let rec room_under room (c : t) =
+      let room =
+        room - 1 - if c.status = `Running then window_height c c.lines else 0
+      in
+      if room < ended_under c then -1
+      else
+        List.fold_left
+          (fun room c -> if room < 0 then room else room_under room c)
+          room
+          (List.rev_append c.runs c.kept)
+    in
+    let whole =
+      List.fold_left room_under (height - List.length summary) running >= 0
+    in
+    grid ~width
+      (if whole then items ~fold:false ~window:max_int
+       else fit (List.fold_left longest 0 running))
 
   (* The lines a top task that ended leaves above the region: its rows as it
      ended, then the whole output of each task in it that failed. *)
@@ -1596,9 +1627,20 @@ module Task = struct
             message = None;
             ended = (if running then None else Some now);
             children = [];
+            runs = [];
+            kept = [];
+            succeeded = 0;
+            failed = 0;
+            cancelled = 0;
           }
         in
         parent.children <- t :: parent.children;
+        w.tasks <- w.tasks + 1;
+        if running then parent.runs <- t :: parent.runs
+        else (
+          w.finished <- w.finished + 1;
+          parent.kept <- t :: parent.kept;
+          parent.cancelled <- parent.cancelled + 1);
         made := Some t;
         if not running then ""
         else if shows_lines t then
@@ -1690,15 +1732,32 @@ module Task = struct
       | _ -> "")
 
   (* Ends [t], and first the tasks under it that run, and is the lines
-     their endings write. *)
-  let rec close (t : t) status message =
+     their endings write. [t] stays in its parent's [runs]. *)
+  let rec close (t : t) (status : [ `Succeeded | `Failed | `Cancelled ]) message
+      =
     if t.status <> `Running then ""
     else
       let under = if status = `Succeeded then `Succeeded else `Cancelled in
       let first =
         String.concat "" (List.rev_map (fun c -> close c under None) t.children)
       in
-      t.status <- status;
+      t.runs <- [];
+      t.status <- (status :> status);
+      (match t.parent with
+      | None -> ()
+      | Some p -> (
+          t.work.finished <- t.work.finished + 1;
+          match status with
+          | `Succeeded when t.transient -> ()
+          | `Succeeded ->
+              p.kept <- t :: p.kept;
+              p.succeeded <- p.succeeded + 1
+          | `Failed ->
+              p.kept <- t :: p.kept;
+              p.failed <- p.failed + 1
+          | `Cancelled ->
+              p.kept <- t :: p.kept;
+              p.cancelled <- p.cancelled + 1));
       t.message <- Option.map one_line message;
       t.ended <- Some (t.work.now ());
       let failure () =
@@ -1729,9 +1788,18 @@ module Task = struct
       in
       first ^ own
 
-  let succeed ?message t = change t.work (fun () -> close t `Succeeded message)
-  let fail ?message t = change t.work (fun () -> close t `Failed message)
-  let cancel ?message t = change t.work (fun () -> close t `Cancelled message)
+  (* Ends [t] as [status], and takes it out of its parent's [runs]. *)
+  let finish status message (t : t) =
+    change t.work @@ fun () ->
+    let lines = close t status message in
+    Option.iter
+      (fun (p : t) -> p.runs <- List.filter (fun c -> c != t) p.runs)
+      t.parent;
+    lines
+
+  let succeed ?message t = finish `Succeeded message t
+  let fail ?message t = finish `Failed message t
+  let cancel ?message t = finish `Cancelled message t
 
   let run ?transient ?lines parent label f =
     let t = start ?transient ?lines parent label in
@@ -1761,6 +1829,8 @@ let tasks ?(label = "") ?now ?frame out f =
       order = Mutex.create ();
       live = None;
       frame = no_frame;
+      tasks = 0;
+      finished = 0;
     }
   in
   let root : Task.t =
@@ -1782,6 +1852,11 @@ let tasks ?(label = "") ?now ?frame out f =
       message = None;
       ended = None;
       children = [];
+      runs = [];
+      kept = [];
+      succeeded = 0;
+      failed = 0;
+      cancelled = 0;
     }
   in
   w.frame <-

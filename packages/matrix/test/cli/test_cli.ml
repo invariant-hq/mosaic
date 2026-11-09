@@ -1014,6 +1014,92 @@ let adapt_tests =
           (List.rev !writes));
   ]
 
+(* ───── Task rows ───── *)
+
+(* The text of [Task.rows root ~width:40 ~height] after [f root], for each
+   height, on an output that shows nothing, by a clock that stands still. *)
+let task_rows ~heights f =
+  let module T = Matrix_cli_unix.Task in
+  let out =
+    Matrix_cli_unix.make ~progress:`Quiet
+      (Unix.openfile "/dev/null" [ Unix.O_WRONLY ] 0)
+  in
+  Matrix_cli_unix.tasks ~now:(fun () -> 0.) out @@ fun root ->
+  f root;
+  List.map (fun height -> Grid.to_text (T.rows root ~width:40 ~height)) heights
+
+let task_tests =
+  let module T = Matrix_cli_unix.Task in
+  [
+    test "a window shows the newest lines, oldest first" (fun () ->
+        equal ~msg:"rows" (list string)
+          [
+            String.concat "\n"
+              [
+                "\u{280B} build   0.0s";
+                "  \u{203A} line 8";
+                "  \u{203A} line 9";
+                "  \u{203A} line 10";
+                "\u{2022} 0.0s  0/1";
+              ];
+          ]
+          (task_rows ~heights:[ 24 ] (fun root ->
+               let t = T.start ~lines:3 root "build" in
+               for i = 1 to 10 do
+                 T.log t (Printf.sprintf "line %d" i)
+               done)));
+    test "the summary counts every task, and rows give way" (fun () ->
+        let fold window =
+          String.concat "\n"
+            ([ "\u{280B} suite               0.0s" ]
+            @ window
+            @ [
+                "\u{251C}\u{2500}\u{2500} \u{2717} 1 done, 2 failed, 1 \
+                 cancelled";
+                "\u{251C}\u{2500}\u{2500} \u{280B} zero            0.0s";
+                "\u{2514}\u{2500}\u{2500} \u{280B} four            0.0s";
+                "    \u{2514}\u{2500}\u{2500} \u{280B} under four  0.0s";
+                "\u{2022} 0.0s  9/13";
+              ])
+        in
+        equal ~msg:"whole, the windows shrunk, then gone" (list string)
+          [
+            String.concat "\n"
+              [
+                "\u{280B} suite               0.0s";
+                "  \u{203A} b";
+                "  \u{203A} c";
+                "\u{251C}\u{2500}\u{2500} \u{280B} zero            0.0s";
+                "\u{251C}\u{2500}\u{2500} \u{2713} one             0.0s";
+                "\u{2502}   \u{2514}\u{2500}\u{2500} \u{2713} inner       0.0s";
+                "\u{251C}\u{2500}\u{2500} \u{2717} two             0.0s";
+                "\u{251C}\u{2500}\u{2500} - three           0.0s";
+                "\u{251C}\u{2500}\u{2500} \u{2717} flaky           0.0s";
+                "\u{2514}\u{2500}\u{2500} \u{280B} four            0.0s";
+                "    \u{2514}\u{2500}\u{2500} \u{280B} under four  0.0s";
+                "\u{2022} 0.0s  9/13";
+              ];
+            fold [ "  \u{203A} c" ];
+            fold [];
+          ]
+          (task_rows ~heights:[ 24; 7; 6 ] (fun root ->
+               let suite = T.start ~lines:2 root "suite" in
+               T.log suite "a\nb\nc";
+               ignore (T.start suite "zero");
+               let one = T.start suite "one" in
+               T.succeed (T.start one "inner");
+               T.succeed one;
+               T.fail (T.start suite "two");
+               T.cancel (T.start suite "three");
+               T.succeed (T.start ~transient:true suite "quick");
+               T.fail (T.start ~transient:true suite "flaky");
+               ignore (T.start (T.start suite "four") "under four");
+               let ended = T.start root "ended" in
+               ignore (T.start ended "running under");
+               T.fail ended;
+               T.succeed (T.start ended "late"))));
+  ]
+
 (* ───── A region's clock ───── *)
 
 (* The clock draws a frame that waits for its time with no other call, on
@@ -1077,5 +1163,6 @@ let () =
          group "ocaml-console" console_tests;
          group "policy" policy_tests;
          group "adapting" adapt_tests;
+         group "task rows" task_tests;
          group "clock" clock_tests;
        ])
