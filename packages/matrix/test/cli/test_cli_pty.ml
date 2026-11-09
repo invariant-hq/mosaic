@@ -152,6 +152,17 @@ let test_partial () =
   equal ~msg:"a line shows whole once its end comes" strings
     [ "half whole"; "R end" ] (lines term)
 
+(* A line printed a byte at a time goes out whole above the region, in one
+   write, and one without its end goes above the last frame. *)
+let test_pieces () =
+  spawn "pieces" @@ fun term c ->
+  exited 0 (T.Child.exit c ~within:10.);
+  equal ~msg:"the lines whole, above the last frame" strings
+    (List.init 25 (fun _ -> String.make 40 'x') @ [ "tail"; "R end" ])
+    (lines term);
+  is_true ~msg:"the line in one piece"
+    (contains (T.Terminal.output term) (String.make 1000 'x'))
+
 let cursor_visible term = (T.Terminal.modes term).cursor_visible
 
 let test_sigint () =
@@ -878,6 +889,7 @@ let () =
              test "lines above, the last frame stays" test_progress;
              test "a frame taller than the screen" test_tall;
              test "a line waits for its end" test_partial;
+             test "a line printed a byte at a time" test_pieces;
              test "a frame of grids" test_stack;
              test "a tick" test_tick;
              test "the height of a frame" test_height;

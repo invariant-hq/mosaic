@@ -74,6 +74,17 @@ let () =
           Unix.sleepf 0.15;
           C.print err "whole\n";
           C.show live (text_frame "R end"))
+  | "pieces" ->
+      (* A line printed a byte at a time, then one still without its end
+         when the scope ends. *)
+      C.live err (fun live ->
+          C.show live (text_frame "R");
+          for _ = 1 to 1000 do
+            C.print err "x"
+          done;
+          C.print err "\n";
+          String.iter (fun c -> C.print err (String.make 1 c)) "tail";
+          C.show live (text_frame "R end"))
   | "wait" ->
       C.live err (fun live ->
           C.show live (rows_frame [ "WAITING"; "TWO" ]);

@@ -152,7 +152,7 @@ and state = {
   mutable failed : (exn * Printexc.raw_backtrace) option;
   mutable on_screen : bool;
   mutable suspended : int;
-  mutable held : string;  (** A line printed above without its end. *)
+  held : Buffer.t;  (** A line printed above without its end. *)
   mutable last_draw : int;
   mutable pending : bool;
   mutable last_tick : int;  (** When the clock last asked for a draw. *)
@@ -339,14 +339,19 @@ let draw l ~above =
       if l.on_screen then Region.moved l.region
 
 (* The lines printed above while a region lives: the complete ones go out
-   with the next write, and a line without its end waits for it. *)
+   with the next write, and a line without its end waits for it. Only the
+   new bytes are searched for a line end, so a line printed in many pieces
+   costs the length of its pieces. *)
 let above l bytes =
-  let s = l.held ^ bytes in
-  match String.rindex_opt s '\n' with
-  | None -> l.held <- s
+  match String.rindex_opt bytes '\n' with
+  | None -> Buffer.add_string l.held bytes
   | Some i ->
-      l.held <- String.sub s (i + 1) (String.length s - i - 1);
-      draw l ~above:(String.sub s 0 (i + 1))
+      let n = String.length bytes in
+      Buffer.add_substring l.held bytes 0 (i + 1);
+      let lines = Buffer.contents l.held in
+      Buffer.reset l.held;
+      Buffer.add_substring l.held bytes (i + 1) (n - i - 1);
+      draw l ~above:lines
 
 (* Erases the region, with the line it holds back after it, so that what
    is written next continues that line. *)
@@ -355,14 +360,14 @@ let take_off l =
   if l.on_screen then
     match window l with
     | Some (cols, _) ->
-        write l (Region.suspend l.region ~cols ^ l.held);
-        l.held <- "";
+        write l (Region.suspend l.region ~cols ^ Buffer.contents l.held);
+        Buffer.reset l.held;
         l.on_screen <- false;
         publish l
     | None -> ()
-  else if l.held <> "" then (
-    write l l.held;
-    l.held <- "")
+  else if Buffer.length l.held > 0 then (
+    write l (Buffer.contents l.held);
+    Buffer.reset l.held)
 
 (* Signals *)
 
@@ -795,7 +800,7 @@ let join t p =
                 failed = None;
                 on_screen = false;
                 suspended = 0;
-                held = "";
+                held = Buffer.create 80;
                 last_draw = 0;
                 pending = false;
                 last_tick = 0;
@@ -834,8 +839,9 @@ let lines t = function
 let closing l frame =
   l.device.live <- None;
   Option.iter stop l.clock;
-  let held = if l.held = "" then "" else l.held ^ "\n" in
-  l.held <- "";
+  if Buffer.length l.held > 0 then Buffer.add_char l.held '\n';
+  let held = Buffer.contents l.held in
+  Buffer.reset l.held;
   let drawable = l.suspended = 0 && not (Tty.background l.out.fd) in
   match window l with
   | Some (cols, rows) when drawable ->

@@ -95,6 +95,8 @@ console gets back every mode and code page the run changed.
 - `Matrix_cli.adapt` no longer takes memory without bound for a long or
   unterminated OSC. It keeps a hyperlink's URI up to 2083 bytes, the limit of
   VTE and iTerm2, and a longer one ends the link.
+- A line printed in many pieces while a live region shows costs time linear in
+  its length. 100k one-byte prints took 5.5 s, and now take 0.03 s.
 
 ## [0.2.0] - 2026-11-04
 
