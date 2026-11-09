@@ -92,6 +92,9 @@ console gets back every mode and code page the run changed.
   `%XX`, and a `%` is kept. Controls and invalid UTF-8 used to be dropped from
   the URI, which changed the link's target, and spaces and non-ASCII bytes went
   out raw.
+- `Matrix_cli.adapt` no longer takes memory without bound for a long or
+  unterminated OSC. It keeps a hyperlink's URI up to 2083 bytes, the limit of
+  VTE and iTerm2, and a longer one ends the link.
 
 ## [0.2.0] - 2026-11-04
 

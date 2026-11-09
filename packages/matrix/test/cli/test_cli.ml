@@ -961,6 +961,46 @@ let adapt_tests =
           "\027]8;;https://a.example\027\\a\027]8;;\027\\ b"
           (adapt `Mono [ linked ]);
         equal ~msg:"plain" string "a b" (adapt `Plain [ linked ]));
+    test "a hyperlink cut between pieces" (fun () ->
+        equal ~msg:"cut in its number, params and URI" string
+          "\027]8;;https://a.example\027\\a\027]8;;\027\\"
+          (adapt `Mono
+             [ "\027]"; "8"; ";id"; "=1"; ";https://a."; "example\027\\a" ]));
+    test "a URI longer than terminals take ends the link, its text stays"
+      (fun () ->
+        (* VTE and iTerm2 take a URI of at most 2083 bytes. *)
+        let uri n = "https://a.example/" ^ String.make (n - 18) 'x' in
+        let link u = "\027]8;;" ^ u ^ "\027\\" in
+        equal ~msg:"2083 bytes" string
+          (link (uri 2083) ^ "b" ^ link "")
+          (adapt `Mono [ link (uri 2083) ^ "b" ]);
+        equal ~msg:"2084 bytes" string
+          (link "https://a.example" ^ "a" ^ link "" ^ "b")
+          (adapt `Mono
+             [ link "https://a.example" ^ "a"; link (uri 2084) ^ "b" ]));
+    test "an OSC the adapter drops holds nothing, however long" (fun () ->
+        let a = Matrix_cli.adapter `Mono in
+        let held () = Obj.reachable_words (Obj.repr a) in
+        let piece = String.make 1024 'x' in
+        let feed n =
+          for _ = 1 to n do
+            ignore (Matrix_cli.adapt a piece : string)
+          done
+        in
+        equal ~msg:"opened" string "" (Matrix_cli.adapt a "\027]0;");
+        let before = held () in
+        feed 1024;
+        is_true ~msg:"a MiB of title held in no more words" (held () <= before);
+        equal ~msg:"text after its end" string "after"
+          (Matrix_cli.adapt a "\007after");
+        equal ~msg:"a link opened" string "" (Matrix_cli.adapt a "\027]8;;");
+        feed 3;
+        let before = held () in
+        feed 1024;
+        is_true ~msg:"a MiB of URI held in no more words than 3 KiB"
+          (held () <= before);
+        equal ~msg:"text after it, unlinked" string "after"
+          (Matrix_cli.adapt a "\007after"));
     test "a formatter writes once a flush" (fun () ->
         let writes = ref [] in
         let ppf =

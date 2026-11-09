@@ -38,13 +38,29 @@ end
    whole lines of their own and a style never spills into what another
    writer prints next. *)
 
+(* The OSC being read. Only OSC 8 ; params ; uri has an effect, so the
+   adapter knows from the first two bytes whether to keep anything, and of
+   an OSC 8 keeps the URI alone, in [uri]. [Start] is an OSC just opened,
+   [Eight] one that begins with 8, [Params] one past [8 ;], [Uri] one past
+   its params, [Long] one whose URI is longer than [uri_max], [Skip] an OSC
+   that is not OSC 8, and [Outside] no OSC. *)
+type osc = Outside | Start | Eight | Params | Uri | Long | Skip
+
+(* The OSC 8 specification sets no maximum, and "Both VTE and iTerm2 limit
+   the URI to 2083 bytes" (Egmont Koblinger, "Hyperlinks (a.k.a. HTML-like
+   anchors) in terminal emulators"). VTE takes a longer URI as an empty one,
+   which ends the link, and so does the adapter: the text after it stays,
+   unlinked. *)
+let uri_max = 2083
+
 type adapter = {
   styling : Ansi.Styling.t;
   parser : Ansi.Parser.t;
   mutable want : Ansi.Style.t;
   mutable have : Ansi.Style.t;
   mutable link : string option;
-  mutable osc : Buffer.t option;
+  mutable osc : osc;
+  uri : Buffer.t;
   mutable cr : bool;
 }
 
@@ -55,7 +71,8 @@ let adapter styling =
     want = Ansi.Style.default;
     have = Ansi.Style.default;
     link = None;
-    osc = None;
+    osc = Outside;
+    uri = Buffer.create 64;
     cr = false;
   }
 
@@ -91,21 +108,37 @@ let line_end a b =
   close a b;
   Buffer.add_char b '\n'
 
+(* [osc_data a d i] reads the content [d] of the OSC from [i]. *)
+let rec osc_data a d i =
+  if i < String.length d then
+    match a.osc with
+    | Start ->
+        a.osc <- (if d.[i] = '8' then Eight else Skip);
+        osc_data a d (i + 1)
+    | Eight ->
+        a.osc <- (if d.[i] = ';' then Params else Skip);
+        osc_data a d (i + 1)
+    | Params -> (
+        match String.index_from_opt d i ';' with
+        | Some j ->
+            a.osc <- Uri;
+            osc_data a d (j + 1)
+        | None -> ())
+    | Uri ->
+        let n = String.length d - i in
+        if Buffer.length a.uri + n <= uri_max then
+          Buffer.add_substring a.uri d i n
+        else a.osc <- Long
+    | Outside | Long | Skip -> ()
+
 (* OSC 8 ; params ; uri sets the link of the text after it, or ends it when
-   the uri is empty. *)
-let osc_link a payload =
-  match String.index_opt payload ';' with
-  | Some i when String.sub payload 0 i = "8" -> (
-      match String.index_from_opt payload (i + 1) ';' with
-      | Some j ->
-          let uri =
-            String.sub payload (j + 1) (String.length payload - j - 1)
-          in
-          a.want <-
-            (if uri = "" then Ansi.Style.unlink a.want
-             else Ansi.Style.hyperlink uri a.want)
-      | None -> ())
-  | _ -> ()
+   the uri is empty or too long. *)
+let osc_end a =
+  match a.osc with
+  | Uri when Buffer.length a.uri > 0 ->
+      a.want <- Ansi.Style.hyperlink (Buffer.contents a.uri) a.want
+  | Uri | Long -> a.want <- Ansi.Style.unlink a.want
+  | Outside | Start | Eight | Params | Skip -> ()
 
 let token a b : Ansi.Parser.token -> unit = function
   | Text s ->
@@ -125,13 +158,15 @@ let token a b : Ansi.Parser.token -> unit = function
   | Csi { marker = None; intermediates = ""; final = 'm'; params } ->
       a.want <- Ansi.Style.apply_sgr params a.want
   | Csi _ -> ()
-  | Open Osc -> a.osc <- Some (Buffer.create 64)
+  | Open Osc ->
+      Buffer.clear a.uri;
+      a.osc <- Start
   | Open _ -> ()
-  | Data d -> Option.iter (fun o -> Buffer.add_string o d) a.osc
+  | Data d -> osc_data a d 0
   | Close (`St | `Bel) ->
-      Option.iter (fun o -> osc_link a (Buffer.contents o)) a.osc;
-      a.osc <- None
-  | Close `Aborted -> a.osc <- None
+      osc_end a;
+      a.osc <- Outside
+  | Close `Aborted -> a.osc <- Outside
 
 let adapt a s =
   let b = Buffer.create (String.length s + 16) in
