@@ -4,6 +4,11 @@
 
 ### Mosaic
 
+- `Mosaic_ui.Cursor.step` reveals the item it lands on from the rows the
+  collection shows, where it revealed from the declared position: a list
+  scrolled past its first page moved on every key, and `Combobox` with it.
+  A move now ends a `Scroll.follow`: a list that should follow its end again
+  declares it after the move.
 - Mosaic runs on the Windows console again, as Matrix does (below).
   `Mosaic_eio.run` works there too: the program runs on a domain with no Eio
   loop, and cancelling the calling fiber still stops it. `Mosaic.fds` raises

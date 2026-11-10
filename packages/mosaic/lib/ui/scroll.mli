@@ -15,7 +15,10 @@ val follow : [ `Top | `Bottom | `Left | `Right ] -> t -> t
 val reveal : ?column:int -> line:int -> t -> t
 (** [reveal ?column ~line t] keeps the given zero-based content coordinates
     visible with the smallest movement from [t]'s declared position. The target
-    remains active until replaced by a position or follow value. *)
+    remains active until replaced by a position or follow value. A reveal
+    measures from the declared position, not from the rows an earlier reveal or
+    a follow shows: to reveal from the rows shown, first position [t] at
+    {!resolve}'s offset with {!with_position}. *)
 
 val with_position : ?x:int -> ?y:int -> t -> t
 (** [with_position ?x ?y t] replaces the specified axes with absolute positions,

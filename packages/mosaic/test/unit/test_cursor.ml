@@ -130,6 +130,151 @@ let reveal () =
            ~content_height:7)
   | _ -> fail "a move"
 
+(* The rows a value shows: its scroll resolved over [page] of [n] items. *)
+let shown ~page ~n c =
+  snd
+    (Scroll.resolve (Cursor.scroll c) ~width:1 ~height:page ~content_width:1
+       ~content_height:n)
+
+(* After [Last] on 7 items, 3 shown, rows 4-6 show: [Prev] lands on a row
+   shown, so the view stays. *)
+let reveal_from_shown () =
+  let c =
+    match step (cursor "apple") Last with Moved c -> c | _ -> fail "a move"
+  in
+  match step c Prev with
+  | Moved c -> equal ~msg:"rows 4-6" int 4 (shown ~page ~n:7 c)
+  | _ -> fail "a move"
+
+let pp_action ppf (a : Cursor.action) =
+  Format.pp_print_string ppf
+    (match a with
+    | Next -> "Next"
+    | Prev -> "Prev"
+    | First -> "First"
+    | Last -> "Last"
+    | Page_down -> "Page_down"
+    | Page_up -> "Page_up"
+    | By k -> Printf.sprintf "By %d" k
+    | _ -> "another action")
+
+(* Where a value starts scrolled: declared at a row, possibly past the
+   last, following an edge, or revealing a row from a declared one. *)
+type start = At of int | Follow_top | Follow_bottom | Reveal of int * int
+
+let start_scroll = function
+  | At y -> Scroll.at y
+  | Follow_top -> Scroll.follow `Top (Scroll.at 0)
+  | Follow_bottom -> Scroll.follow `Bottom (Scroll.at 0)
+  | Reveal (y, line) -> Scroll.reveal ~line (Scroll.at y)
+
+let pp_start ppf = function
+  | At y -> Format.fprintf ppf "At %d" y
+  | Follow_top -> Format.pp_print_string ppf "Follow_top"
+  | Follow_bottom -> Format.pp_print_string ppf "Follow_bottom"
+  | Reveal (y, line) -> Format.fprintf ppf "Reveal (%d, %d)" y line
+
+let pp_case ppf (n, page, start, actions) =
+  Format.fprintf ppf "%d items, page %d, %a, [%a]" n page pp_start start
+    (Format.pp_print_list
+       ~pp_sep:(fun ppf () -> Format.pp_print_string ppf "; ")
+       pp_action)
+    actions
+
+let moves_gen =
+  let open Gen in
+  let action =
+    one_of
+      [
+        of_list ~pp:pp_action Cursor.[ Next; Prev; First; Last; Page_down ];
+        of_list ~pp:pp_action Cursor.[ Page_up ];
+        map (fun k -> Cursor.By k) (int_range (-12) 12) |> with_pp pp_action;
+      ]
+  in
+  (let* n = int_range 1 12 in
+   let* page = int_range 0 6 in
+   let row = int_range 0 (n + page) in
+   let+ start =
+     one_of
+       [
+         map (fun y -> At y) row;
+         constant Follow_top;
+         constant Follow_bottom;
+         map (fun (y, line) -> Reveal (y, line)) (pair row row);
+       ]
+   and+ actions = list ~size:(int_range 1 12) action in
+   (n, page, start, actions))
+  |> with_pp pp_case
+
+(* A move shows the item it lands on with the smallest movement from the rows
+   shown before it, whatever the value declared: the rows stay when they hold
+   the item, else the item becomes the first row shown or the last. A page
+   of no rows shows the item at its first, as {!Scroll.resolve} does. *)
+let reveal_law (n, page, start, actions) =
+  let items = Items.of_list (List.init n string_of_int) in
+  let step c a = Cursor.step ~equal:String.equal ~name:Fun.id ~page items c a in
+  let kept_past_first = ref false in
+  let landed c =
+    match Cursor.index ~equal:String.equal items c with
+    | Some i -> i
+    | None -> fail "a move lands on an item"
+  in
+  let rec go c = function
+    | [] -> ()
+    | a :: rest -> (
+        match step c a with
+        | Cursor.Moved c' ->
+            let before = shown ~page ~n c in
+            let i = landed c' in
+            let expected =
+              if i < before then i
+              else if i >= before + page then i - max 1 page + 1
+              else before
+            in
+            if expected = before && before > 0 then kept_past_first := true;
+            equal ~msg:"the rows shown" int expected (shown ~page ~n c');
+            go c' rest
+        | _ -> go c rest)
+  in
+  cover "started following the end" (start = Follow_bottom && n > page);
+  cover "started past the last row"
+    (match start with At y -> y > n - page | _ -> false);
+  cover "a page of no rows" (page = 0);
+  go (Cursor.with_scroll (start_scroll start) Cursor.none) actions;
+  cover "rows past the first page kept" !kept_past_first
+
+(* A move declares the rows it shows: [Last] from the first row declares
+   rows 4-6, so it equals [Last] from rows 4-6. *)
+let move_declares_shown () =
+  let last c = match step c Last with Moved c -> c | _ -> fail "a move" in
+  let scroll =
+    Testable.make
+      ~pp:(fun ppf s ->
+        Format.fprintf ppf "shows row %d"
+          (shown ~page ~n:7 (Cursor.with_scroll s Cursor.none)))
+      ~equal:Scroll.equal
+  in
+  let value = Testable.make ~pp:pp_cursor ~equal:(Cursor.equal String.equal) in
+  let from_top = last (cursor "apple") in
+  equal ~msg:"the scroll declared" scroll
+    (Scroll.reveal ~line:6 (Scroll.at 4))
+    (Cursor.scroll from_top);
+  equal ~msg:"equal values" value from_top
+    (last (Cursor.with_scroll (Scroll.at 4) (cursor "apple")))
+
+(* A move ends a follow: from a value following the end of 7 items, 3
+   shown, [Prev] keeps rows 4-6, and they stay shown when items are added. *)
+let move_ends_follow () =
+  let c =
+    Cursor.with_scroll (Scroll.follow `Bottom (Scroll.at 0)) (cursor "Date")
+  in
+  equal ~msg:"following" int 4 (shown ~page ~n:7 c);
+  match step c Prev with
+  | Moved c ->
+      equal ~msg:"after the move" int 4 (shown ~page ~n:7 c);
+      equal ~msg:"over more items" int 4 (shown ~page ~n:12 c)
+  | _ -> fail "a move"
+
 let activation () =
   equal outcome (Activated "cherry") (step (cursor "cherry") Activate);
   match step (cursor "cherry") Toggle with
@@ -269,6 +414,11 @@ let () =
              test "from no cursor item" from_no_cursor;
              test "identity" identity;
              test "a move reveals" reveal;
+             test "a move reveals from the rows shown" reveal_from_shown;
+             test "a move ends a follow" move_ends_follow;
+             test "a move declares the rows it shows" move_declares_shown;
+             prop ~count:300 "a move reveals with the smallest movement"
+               moves_gen reveal_law;
              test "activation and toggling" activation;
            ];
          group "Typeahead" [ test "prefix" typeahead ];

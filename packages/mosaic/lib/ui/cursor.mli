@@ -113,10 +113,14 @@ val step :
     equal to [c] gives [Nothing].
 
     A move gives the cursor item it lands on, reveals it and clears the anchor
-    and the typed prefix. From no cursor item, [Next], [Next_wrap], [First],
-    [By n] with [n > 0] and [Page_down] land on the first item, and [Prev],
-    [Prev_wrap], [Last], [By n] with [n < 0] and [Page_up] on the last. [By 0]
-    and every action over no items give [Nothing].
+    and the typed prefix. It reveals from the items [c] shows, its scroll
+    resolved over [page] of [items] ({!Scroll.resolve}): the view stays where it
+    is when it shows the item, and otherwise moves until the item is its first
+    or its last. The next value's scroll declares the rows it shows, with the
+    item revealed, so a move ends a {!Scroll.follow}. From no cursor item,
+    [Next], [Next_wrap], [First], [By n] with [n > 0] and [Page_down] land on
+    the first item, and [Prev], [Prev_wrap], [Last], [By n] with [n < 0] and
+    [Page_up] on the last. [By 0] and every action over no items give [Nothing].
 
     [Typeahead u] adds [u] to the typed prefix and lands on the first item, from
     the cursor item on, whose [name] starts with the prefix, wrapping after the
