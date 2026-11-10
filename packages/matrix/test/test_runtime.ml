@@ -1131,6 +1131,7 @@ let test_calls_off_the_loop_raise () =
           ("pixel_resolution", fun () -> ignore (Matrix.pixel_resolution app));
           ("terminal", fun () -> ignore (Matrix.terminal app));
           ("capabilities", fun () -> ignore (Matrix.capabilities app));
+          ("styling", fun () -> ignore (Matrix.styling app));
           ("set_cursor", fun () -> Matrix.set_cursor app ~visible:true);
           ( "set_cursor_style",
             fun () -> Matrix.set_cursor_style app ~style:`Block ~blinking:false
@@ -4021,8 +4022,9 @@ let unix_backend f () =
 (* A run on an emulated terminal whose session's environment is [vars],
    whose output is a terminal iff [tty], that draws a red, bold, linked "R".
    It is the style the terminal shows the "R" in, every SGR the run wrote
-   that sets a style (one with a parameter other than 0), and whether it
-   wrote an OSC 8 that opens a link: one that closes a link has no URI. *)
+   that sets a style (one with a parameter other than 0), whether it wrote
+   an OSC 8 that opens a link: one that closes a link has no URI, and the
+   styling the run said it writes its frames at, at each frame. *)
 let styled_run ?color ?(tty = true) vars =
   let module T = Matrix_test in
   let module P = Matrix.Ansi.Parser in
@@ -4033,6 +4035,7 @@ let styled_run ?color ?(tty = true) vars =
       ~fg:(Matrix.Ansi.Color.of_rgb 255 0 0)
       ~bold:true ~link:"https://example.org" ()
   in
+  let said = ref [] in
   T.run ~config:(Matrix.config ?color ()) term
     (fun s ->
       Matrix.run ~config:(T.config s) @@ fun app ->
@@ -4040,6 +4043,7 @@ let styled_run ?color ?(tty = true) vars =
         match Matrix.next app with
         | Stopped -> ()
         | Frame ->
+            said := Matrix.styling app :: !said;
             Matrix.draw app (fun g ->
                 Matrix.Grid.draw_text g ~x:0 ~y:0 ~text:"R" ~style);
             loop ()
@@ -4071,68 +4075,82 @@ let styled_run ?color ?(tty = true) vars =
     | _ :: rest -> links rest
     | [] -> false
   in
-  (shown, sgr, links tokens)
+  (shown, sgr, links tokens, List.sort_uniq compare !said)
 
 let t256 = ("TERM", "xterm-256color")
 
 (* Each row: the program's choice, a terminal or not, the session's
-   environment, and the color the "R" shows in, whether it is bold, and
-   whether the run wrote a link. *)
+   environment, the color the "R" shows in, whether it is bold, whether the
+   run wrote a link, and the styling the run says it writes at. *)
 let styling_rows =
   let t24 = ("COLORTERM", "truecolor") in
   [
-    ("24-bit", None, true, [ t256; t24 ], "Rgb(255,0,0)", true, true);
-    ("256", None, true, [ t256 ], "Indexed(196)", true, false);
+    ("24-bit", None, true, [ t256; t24 ], "Rgb(255,0,0)", true, true, `Truecolor);
+    ("256", None, true, [ t256 ], "Indexed(196)", true, false, `Ansi256);
     ( "16 colors are written as 16",
       None,
       true,
       [ ("TERM", "xterm") ],
       "Bright_red",
       true,
-      false );
+      false,
+      `Ansi16 );
     ( "NO_COLOR keeps bold and the link",
       None,
       true,
       [ t256; t24; ("NO_COLOR", "1") ],
       "Default",
       true,
-      true );
+      true,
+      `Mono );
     ( "CLICOLOR=0",
       None,
       true,
       [ t256; t24; ("CLICOLOR", "0") ],
       "Default",
       true,
-      true );
+      true,
+      `Mono );
     ( "--color=never writes no style",
       Some `Never,
       true,
       [ t256; t24 ],
       "Default",
       false,
-      false );
+      false,
+      `Plain );
     ( "--color=always above NO_COLOR",
       Some `Always,
       true,
       [ t256; t24; ("NO_COLOR", "1") ],
       "Rgb(255,0,0)",
       true,
-      true );
-    ("a pipe gets no style", None, false, [ t256; t24 ], "Default", false, false);
+      true,
+      `Truecolor );
+    ( "a pipe gets no style",
+      None,
+      false,
+      [ t256; t24 ],
+      "Default",
+      false,
+      false,
+      `Plain );
     ( "FORCE_COLOR into a pipe",
       None,
       false,
       [ t256; t24; ("FORCE_COLOR", "1") ],
       "Rgb(255,0,0)",
       true,
-      true );
+      true,
+      `Truecolor );
     ( "a dumb terminal gets no style",
       None,
       true,
       [ ("TERM", "dumb") ],
       "Default",
       false,
-      false );
+      false,
+      `Plain );
   ]
 
 (* A run on an emulated kitty, a 24-bit terminal, that draws a picture in
@@ -4176,13 +4194,27 @@ let test_kitty_stylings () =
   equal ~msg:"--color=never shows none" string ""
     (kitty_run ~color:`Never [ t256 ])
 
+let styling_t =
+  let pp ppf (s : Matrix.Ansi.Styling.t) =
+    Format.pp_print_string ppf
+      (match s with
+      | `Plain -> "Plain"
+      | `Mono -> "Mono"
+      | `Ansi8 -> "Ansi8"
+      | `Ansi16 -> "Ansi16"
+      | `Ansi256 -> "Ansi256"
+      | `Truecolor -> "Truecolor")
+  in
+  Testable.make ~pp ~equal:( = )
+
 let styling_tests =
   List.map
-    (fun (name, color, tty, vars, fg, bold, link) ->
+    (fun (name, color, tty, vars, fg, bold, link, styling) ->
       test name (fun () ->
-          let (shown : Matrix.Ansi.Style.t), sgr, links =
+          let (shown : Matrix.Ansi.Style.t), sgr, links, said =
             styled_run ?color ~tty vars
           in
+          equal ~msg:"the styling said" (list styling_t) [ styling ] said;
           equal ~msg:"color" string fg
             (Format.asprintf "%a" Matrix.Ansi.Color.pp
                (Option.value shown.fg ~default:Matrix.Ansi.Color.default_fg));

@@ -1199,6 +1199,7 @@ module Sub : sig
     | On_selection of (string option -> 'msg option)
         (** {!val-on_selection}. *)
     | On_copy of (string -> 'msg option)  (** {!val-on_copy}. *)
+    | On_styling of (Ansi.Styling.t -> 'msg)  (** {!val-on_styling}. *)
 
   val none : 'msg t
   (** [none] is the subscription to nothing. *)
@@ -1337,6 +1338,16 @@ module Sub : sig
       the next answer, so an application that subscribes later asks once. A
       terminal that reports no foreground or no background, or an output that is
       not a terminal, gives no call. *)
+
+  val on_styling : (Ansi.Styling.t -> 'msg) -> 'msg t
+  (** [on_styling f] dispatches [f s] with the styling [s] the program's frames
+      are written at ({!Matrix.styling}): [`Plain], no style; [`Mono], the
+      attributes without color, as with [NO_COLOR] set; or the color depth the
+      terminal shows. It comes as the program begins, when declared then, and
+      whenever the styling changes, as when the terminal's answer says it shows
+      more colors than its environment did, before the first frame written at
+      the new one. A theme that differs by depth reads the depth here, so it
+      agrees with the run. *)
 
   val worker : id:string -> (Stop.t -> 'msg mailbox -> unit) -> 'msg t
   (** [worker ~id f] runs [f stop mailbox] off the loop, on {!val-run}'s

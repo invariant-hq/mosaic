@@ -839,6 +839,17 @@ val capabilities : 'msg app -> Terminal.capabilities
 (** [capabilities app] is what the run knows the terminal can do, which changes
     as the terminal answers. *)
 
+val styling : 'msg app -> Ansi.Styling.t
+(** [styling app] is the styling the run writes its next frame at, decided as
+    {!val-config}'s [color] says from the run's environment and {!capabilities}:
+    [`Plain] writes no style, [`Mono] the attributes without color, and a color
+    depth each color reduced to it. A program that chooses its colors by what
+    the output shows, such as a theme with fewer colors for a terminal of 16,
+    reads it here rather than deciding again from the environment, where it
+    could disagree with the run. It changes as {!capabilities} does, such as
+    when a terminal's answer says it shows 24-bit color, and the frame after the
+    change is written at the new one. *)
+
 (** {1:static Static output}
 
     In [`Primary] mode the application adds rows to the transcript, above the

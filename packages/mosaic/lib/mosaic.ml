@@ -313,6 +313,7 @@ module Sub = struct
     | On_palette of (Ansi.Palette.t -> 'msg option)
     | On_selection of (string option -> 'msg option)
     | On_copy of (string -> 'msg option)
+    | On_styling of (Ansi.Styling.t -> 'msg)
 
   let none = None
   let batch subs = Batch subs
@@ -362,6 +363,7 @@ module Sub = struct
   let on_palette f = On_palette f
   let on_selection f = On_selection f
   let on_copy f = On_copy f
+  let on_styling f = On_styling f
 
   let worker ~id f =
     if id = "" then invalid_arg "Mosaic.Sub.worker: empty id";
@@ -390,6 +392,7 @@ module Sub = struct
     | On_palette g -> On_palette (fun p -> Option.map f (g p))
     | On_selection g -> On_selection (fun text -> Option.map f (g text))
     | On_copy g -> On_copy (fun text -> Option.map f (g text))
+    | On_styling g -> On_styling (fun s -> f (g s))
 end
 
 type ('model, 'msg) app = {
@@ -500,6 +503,9 @@ type ('model, 'msg) runtime = {
   mutable palette_sub : (Ansi.Palette.t -> 'msg option) list;
   mutable selection_sub : (string option -> 'msg option) list;
   mutable copy_sub : (string -> 'msg option) list;
+  mutable styling_sub : (Ansi.Styling.t -> 'msg) list;
+  (* The styling the subscriptions were last given. *)
+  mutable styling : Ansi.Styling.t;
   (* The timer armed at the earliest deadline of the timers and the
      paste stalls, and that deadline. *)
   mutable wakeup : (Matrix.timer * int) option;
@@ -725,6 +731,7 @@ let rec collect_subs runtime (sub : _ Sub.t) =
   | Sub.On_palette f -> runtime.palette_sub <- f :: runtime.palette_sub
   | Sub.On_selection f -> runtime.selection_sub <- f :: runtime.selection_sub
   | Sub.On_copy f -> runtime.copy_sub <- f :: runtime.copy_sub
+  | Sub.On_styling f -> runtime.styling_sub <- f :: runtime.styling_sub
 
 (* How long a paste may be silent before the program ends it, when the
    application declares no stall of its own. *)
@@ -818,6 +825,7 @@ let update_subscriptions runtime =
   runtime.palette_sub <- [];
   runtime.selection_sub <- [];
   runtime.copy_sub <- [];
+  runtime.styling_sub <- [];
   collect_subs runtime (runtime.app.subscriptions runtime.model);
   runtime.key_subs <- List.rev runtime.key_subs;
   runtime.key_release_subs <- List.rev runtime.key_release_subs;
@@ -832,6 +840,7 @@ let update_subscriptions runtime =
   runtime.palette_sub <- List.rev runtime.palette_sub;
   runtime.selection_sub <- List.rev runtime.selection_sub;
   runtime.copy_sub <- List.rev runtime.copy_sub;
+  runtime.styling_sub <- List.rev runtime.styling_sub;
   let ids = Hashtbl.create 8 in
   let check_id id =
     if id = "" || Hashtbl.mem ids id then
@@ -989,6 +998,10 @@ let listen runtime ~stopped listeners dispatch event =
   phase Sub.Capture;
   dispatch event;
   if not (stopped event) then phase Sub.Bubble
+
+let tell_styling runtime styling =
+  runtime.styling <- styling;
+  List.iter (fun f -> push_msg runtime (f styling)) runtime.styling_sub
 
 let handle_resize runtime ~width ~height =
   runtime.view_dirty <- true;
@@ -1349,6 +1362,8 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
       palette_sub = [];
       selection_sub = [];
       copy_sub = [];
+      styling_sub = [];
+      styling = Matrix.styling matrix_app;
       wakeup = None;
       focus_moves = Queue.create ();
     }
@@ -1429,6 +1444,10 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
        so the requests to render they make are this frame's. *)
     Atomic.set rendering true;
     if not runtime.early then handle_tick runtime;
+    (* An answer of the terminal may have changed the styling this frame is
+       written at: the application hears it before the frame is drawn. *)
+    let styling = Matrix.styling matrix_app in
+    if styling <> runtime.styling then tell_styling runtime styling;
     synchronize runtime;
     frame_delta := if runtime.early then 0. else dt;
     runtime.delivering <- true;
@@ -1487,6 +1506,7 @@ let program matrix_app ~process_perform app (model, init_cmd) f =
   in
   Fun.protect ~finally:finish (fun () ->
       Matrix.query_palette matrix_app;
+      tell_styling runtime runtime.styling;
       let width, height = Matrix.size matrix_app in
       handle_resize runtime ~width ~height;
       f

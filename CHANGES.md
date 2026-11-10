@@ -4,6 +4,10 @@
 
 ### Mosaic
 
+- `Mosaic.Sub.on_styling` gives the application the styling its frames are
+  written at, the color depth or none, as the program begins and when it
+  changes, so a theme that differs by depth agrees with the run instead of
+  reading `NO_COLOR` and `TERM` again.
 - `Mosaic.box` and `Mosaic.button` take `~title_style`, as
   `Canvas.draw_box` does, where the title could only take the border's color.
   `Mosaic_ui.Box.set_title_style` sets it.
@@ -33,6 +37,8 @@ console gets back every mode and code page the run changed.
 
 #### Also new
 
+- `Matrix.styling` is the styling the run writes its next frame at, which
+  `config`'s `color`, the environment and the terminal's answers decide.
 - `Tty.Signal.wait` and `Tty.Signal.read` wait for and read a holder's input,
   on every system, and `Matrix.Device.unix` is built on them. On a Windows
   console, `read` gives the text the keys carry as UTF-8 and receives a resize

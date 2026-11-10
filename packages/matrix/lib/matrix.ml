@@ -775,12 +775,18 @@ let set_width_method t m =
 (* The styling is decided from the environment the run's capabilities were
    read from, also when [config.caps] stands in for what it says of the
    terminal, so a test's terminal never reads the process's NO_COLOR. *)
+let decide_styling t =
+  let caps = Terminal.capabilities t.terminal in
+  Ansi.Styling.decide ?color:t.config.color t.variable
+    ~tty:t.backend.output_is_tty ~dumb:caps.dumb caps.colors
+
+let styling t =
+  check t;
+  decide_styling t
+
 let refresh_capabilities t =
   let caps = Terminal.capabilities t.terminal in
-  let styling =
-    Ansi.Styling.decide ?color:t.config.color t.variable
-      ~tty:t.backend.output_is_tty ~dumb:caps.dumb caps.colors
-  in
+  let styling = decide_styling t in
   Screen.apply_capabilities t.screen ~explicit_width:caps.explicit_width
     ~explicit_cursor_positioning:caps.explicit_cursor_positioning
     ~hyperlinks:caps.hyperlinks

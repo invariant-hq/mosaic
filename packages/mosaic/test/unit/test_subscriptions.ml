@@ -570,6 +570,91 @@ let root_theme_follows_a_change () =
       equal ~msg:"the new colors" link (link_of (theme light)) (drawn term);
       equal ~msg:"no view built" int views_before !views)
 
+(* ── The styling ── *)
+
+let styling_name : Ansi.Styling.t -> string = function
+  | `Plain -> "Plain"
+  | `Mono -> "Mono"
+  | `Ansi8 -> "Ansi8"
+  | `Ansi16 -> "Ansi16"
+  | `Ansi256 -> "Ansi256"
+  | `Truecolor -> "Truecolor"
+
+let styling_t =
+  Testable.make
+    ~pp:(fun ppf s -> Format.pp_print_string ppf (styling_name s))
+    ~equal:( = )
+
+let first_row term = Matrix_test.Screen.row (Matrix_test.Terminal.screen term) 0
+
+(* Runs a program that records the stylings it is given and shows the last
+   one, on a terminal of [profile], through [steps]; the stylings given,
+   oldest first, and the first row of each screen [steps] reads. *)
+let stylings_given ?config ?(steps = fun _ _ -> ()) profile =
+  let given = ref [] in
+  let app =
+    {
+      init = (fun () -> ("-", Cmd.none));
+      update =
+        (fun s _ ->
+          given := s :: !given;
+          (styling_name s, Cmd.none));
+      view = (fun name -> text name);
+      subscriptions = (fun _ -> Sub.on_styling Fun.id);
+    }
+  in
+  let term = Matrix_test.Terminal.create ~profile ~cols:12 ~rows:1 () in
+  let shown =
+    Mosaic_test.run ?config term app (fun s ->
+        let first = first_row term in
+        steps s term;
+        first)
+  in
+  (List.rev !given, shown)
+
+let env vars = { Matrix_test.Profile.vte with env = vars }
+let t256 = ("TERM", "xterm-256color")
+
+(* The program is given the styling its run writes at as it begins, and
+   its first frame is drawn from the model that heard it. *)
+let styling_on_start () =
+  let rows =
+    [
+      ("24-bit", None, Matrix_test.Profile.vte, `Truecolor);
+      ("256", None, env [ t256 ], `Ansi256);
+      ("NO_COLOR", None, env [ t256; ("NO_COLOR", "1") ], `Mono);
+      ( "--color=never",
+        Some (Matrix.config ~color:`Never ()),
+        Matrix_test.Profile.vte,
+        `Plain );
+      ("a pipe", None, Matrix_test.Profile.pipe, `Plain);
+      ("a dumb terminal", None, env [ ("TERM", "dumb") ], `Plain);
+    ]
+  in
+  List.iter
+    (fun (name, config, profile, styling) ->
+      let given, shown = stylings_given ?config profile in
+      equal ~msg:(name ^ ": given") (list styling_t) [ styling ] given;
+      equal
+        ~msg:(name ^ ": the first frame")
+        string (styling_name styling) shown)
+    rows
+
+(* The terminal says who it is after the program began: kitty shows 24-bit
+   color, which its environment did not say. The test's terminal answers
+   no query by itself, and the test answers XTVERSION while the run still
+   waits for its probe's answers. The program is given the new styling
+   once, before a frame is drawn at it. *)
+let styling_after_identity () =
+  let profile = { (env [ t256 ]) with answers = false } in
+  let given, shown =
+    stylings_given profile ~steps:(fun s term ->
+        Matrix_test.input s "\027P>|kitty(0.49.2)\027\\";
+        equal ~msg:"the frame after" string "Truecolor" (first_row term))
+  in
+  equal ~msg:"given" (list styling_t) [ `Ansi256; `Truecolor ] given;
+  equal ~msg:"the first frame" string "Ansi256" shown
+
 let () =
   exit
     (Windtrap.run "subscriptions"
@@ -610,6 +695,9 @@ let () =
          test "the palette asked by a late subscriber" palette_asked_late;
          test "a palette of the pair alone" palette_pair_only;
          test "no palette without the pair" palette_none;
+         test "the styling as the program begins" styling_on_start;
+         test "the styling after the terminal says who it is"
+           styling_after_identity;
          test "the root's theme follows the terminal's colors"
            root_theme_follows_colors;
          test "the root's theme follows a change of the colors"
