@@ -742,6 +742,149 @@ let%expect_test "axis titles, sides, formats and hidden axes" =
     ⣀⡠⠤⠤⠒⠒⠉⠉⠁         ⠉⠉⠉⠉⠒⠒⠒⠊⠉⠁
     |}]
 
+let%expect_test "an axis carries the program's labels, ticks keep clear" =
+  let ramp = C.line ~y:Fun.id (Array.init 101 Float.of_int) in
+  show ~width:40 ~height:5
+    C.(
+      layer
+        [
+          ramp;
+          axis
+            ~labels:
+              [
+                (100., Ansi.span "step");
+                (47., Ansi.span "47");
+                (130., Ansi.span "out");
+              ]
+            "x";
+          axis ~labels:[ (75., Ansi.span "cursor") ] "y";
+        ]);
+  [%expect
+    {|
+    cursor ┤                    ⢀⣀⣀⠤⠤⠤⠒⠒⠊⠉⠉
+           │          ⢀⣀⣀⠤⠤⠔⠒⠒⠉⠉⠁
+         0 ┤⣀⣀⡠⠤⠤⠒⠒⠊⠉⠉⠁
+           └┬──────────────┬──────────────┬
+            0             47           step
+    |}];
+  show_ansi ~width:12 ~height:3
+    C.(
+      layer
+        [
+          ramp;
+          axis ~show:false "y";
+          axis
+            ~labels:
+              [ (50., Ansi.span ~style:(Ansi.Style.make ~bold:true ()) "50") ]
+            "x";
+        ]);
+  [%expect
+    {|
+    [0;38;5;6m⣀⣀⣠⠤⠤⠔⠒⠒⠋⠉⠉[39m [0m
+    [0;38;5;245m┬─────────┬[39m [0m
+    [0;38;5;246m0[39m    [38;5;246;1m50[39;22m  [38;5;246m100[0m
+    |}];
+  (try
+     ignore
+       (C.layout ~width:20 ~height:5
+          C.(
+            layer
+              [
+                bar_y ~x:fst ~y:snd quarters;
+                axis ~labels:[ (1., Ansi.span "a") ] "x";
+              ]))
+   with Invalid_argument m -> print_endline m);
+  [%expect {| Matrix_charts.layout: axis of "x", a band scale, with labels |}]
+
+let%expect_test "an axis's labels take room whether drawn or not" =
+  let plot ?(ticks = true) dir labels =
+    let ticks = if ticks then None else Some [] in
+    let r =
+      C.Layout.plot
+        (C.layout ~width:30 ~height:8
+           C.(
+             layer
+               [
+                 line ~x:Fun.id ~y:Fun.id [| 0.; 10. |];
+                 axis
+                   ~labels:(List.map (fun v -> (v, Ansi.span "a label")) labels)
+                   dir;
+               ]
+             |> scale dir (Scale.linear ?ticks ~domain:(0., 10.) ())))
+    in
+    Printf.printf "%s, labels at [%s]%s: x %d, width %d, height %d\n" dir
+      (String.concat "; " (List.map string_of_float labels))
+      (if ticks = None then "" else ", no ticks")
+      r.x r.width r.height
+  in
+  plot "y" [];
+  plot "y" [ 5. ];
+  plot "y" [ 50. ];
+  plot "x" [];
+  plot "x" [ 5. ];
+  plot ~ticks:false "x" [];
+  plot ~ticks:false "x" [ 5. ];
+  [%expect
+    {|
+    y, labels at []: x 4, width 25, height 6
+    y, labels at [5.]: x 9, width 20, height 6
+    y, labels at [50.]: x 9, width 20, height 6
+    x, labels at []: x 4, width 25, height 6
+    x, labels at [5.]: x 4, width 25, height 6
+    x, labels at [], no ticks: x 4, width 26, height 7
+    x, labels at [5.], no ticks: x 4, width 26, height 6
+    |}]
+
+let%expect_test "an axis label sits at its value, a blank cell from tick labels"
+    =
+  Random.init 12;
+  let bad = ref [] and checked = ref 0 in
+  for _ = 1 to 300 do
+    let width = 3 + Random.int 100 in
+    let lo = Random.float 2000. -. 1000. in
+    let hi = lo +. Float.pow 10. (Random.float 6. -. 2.) in
+    let v = lo +. Random.float (hi -. lo) in
+    let s = String.make (1 + Random.int 6) 'z' in
+    let fig =
+      C.(
+        layer
+          [
+            line ~x:Fun.id ~y:Fun.id [| lo; hi |];
+            axis ~show:false "y";
+            axis ~labels:[ (v, Ansi.span s) ] "x";
+          ])
+    in
+    let l = C.layout ~width ~height:3 fig in
+    let g = Grid.create ~width ~height:3 () in
+    C.draw l g ~x:0 ~y:0;
+    let p = C.Layout.plot l in
+    let w = String.length s in
+    let c = C.Layout.position l "x" (C.Layout.Num v) in
+    let start = max p.x (min (c - ((w - 1) / 2)) (p.x + p.width - w)) in
+    let row = 2 in
+    let at x =
+      if x < 0 || x >= width then " "
+      else
+        let i = Grid.idx g ~x ~y:row in
+        if Grid.is_empty g i then " " else Grid.get_text g i
+    in
+    let text = String.concat "" (List.init w (fun k -> at (start + k))) in
+    let clear = at (start - 1) = " " && at (start + w) = " " in
+    (* The region has a row of labels when the plot is left one row. *)
+    if w <= p.width && p.height = 1 then (
+      incr checked;
+      if not (String.equal text s && clear) then
+        bad := (width, lo, hi, v, s) :: !bad)
+  done;
+  Printf.printf "labels misplaced or crowded: %d of %d\n" (List.length !bad)
+    !checked;
+  List.iteri
+    (fun i (width, lo, hi, v, s) ->
+      if i < 3 then
+        Printf.printf "%d cells, [%g, %g], %S at %g\n" width lo hi s v)
+    (List.rev !bad);
+  [%expect {| labels misplaced or crowded: 0 of 294 |}]
+
 let%expect_test "gridlines at ticks, minor ones and every n cells" =
   show ~width:30 ~height:8
     C.(

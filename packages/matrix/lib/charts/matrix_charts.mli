@@ -485,6 +485,7 @@ val axis :
   ?tick_style:Ansi.Style.t ->
   ?label_style:Ansi.Style.t ->
   ?title_style:Ansi.Style.t ->
+  ?labels:(float * Ansi.span) list ->
   string ->
   t
 (** [axis n] is the axis of scale [n] on [side], by default the side its scale's
@@ -499,8 +500,21 @@ val axis :
     [tick_style] the ticks', and [label_style] and [title_style] the labels' and
     the title's.
 
+    [labels] are the program's labels, such as a title at the axis's end or a
+    cursor's value: each [(v, s)] writes [s] among the tick labels at the value
+    [v], in [label_style] with [s]'s style over it, when [v] lies in the shown
+    domain. On a horizontal axis [s] is centered on [v]'s cell and moved inside
+    the plot's extent, so one at the shown domain's end ends at the plot's edge;
+    one wider than the plot starts at the plot's left and is cut at the region's
+    edge. On a vertical axis [s] is on [v]'s row. A tick's label that would come
+    within a cell of one of them is left out, and its tick stays. On a
+    horizontal axis they take the tick labels' row, adding it only when the axis
+    has no ticks. Each widens a vertical axis's margin, drawn or not, so that
+    the plot stays where it is as the view moves.
+
     Raises [Invalid_argument] if [`Minor n] has [n < 2], [`Every n] has [n < 1]
-    or [spacing] is negative. *)
+    or [spacing] is negative. {!layout} raises if a band scale's axis has
+    [labels]. *)
 
 val legend :
   ?side:
@@ -688,7 +702,8 @@ module Layout : sig
       a domain given with {!scale}, and the legends keep their entries, a figure
       has the same plot at one size under one view whatever its marks' rows: a
       program can lay the figure out without its rows to learn the plot, and
-      with {!dot} where each value will be drawn. *)
+      with {!dot} where each value will be drawn. The guides take room, an
+      axis's [labels] included, so that figure keeps them. *)
 
   val value : t -> string -> int * int -> value option
   (** [value l n c] is the value of scale [n] at the middle of cell [c], or the

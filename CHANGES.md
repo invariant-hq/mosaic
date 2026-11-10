@@ -41,6 +41,12 @@ console gets back every mode and code page the run changed.
   without color, and the marks drawn after it cover it.
 - `Matrix_charts.text ~offset:(dx, dy)` moves a text by cells from its point,
   as a label beside a rule or after a line's last point.
+- `Matrix_charts.axis ~labels` writes the program's labels among the tick
+  labels at given values, such as a title at the axis's end or a cursor's
+  value, each in its own style. Tick labels within a cell of them are left
+  out. A horizontal axis's labels stay inside the plot's extent where they fit;
+  a vertical axis's widen its margin whether drawn or not, so the plot stays as
+  the view moves.
 
 #### Changes the compiler won't catch
 

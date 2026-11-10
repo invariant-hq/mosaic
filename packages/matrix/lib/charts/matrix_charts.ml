@@ -156,6 +156,7 @@ type axis = {
   a_tick_style : Style.t option;
   a_label_style : Style.t option;
   a_title_style : Style.t option;
+  a_labels : (float * Ansi.span) list;
 }
 
 type corner = [ `Top_left | `Top_right | `Bottom_left | `Bottom_right ]
@@ -405,7 +406,7 @@ let margins ?(top = 0) ?(right = 0) ?(bottom = 0) ?(left = 0) ?(inset = 0) f =
   Margins ({ top; right; bottom; left; inset }, f)
 
 let axis ?side ?(show = true) ?title ?(grid = `None) ?format ?(spacing = 0)
-    ?style ?tick_style ?label_style ?title_style name =
+    ?style ?tick_style ?label_style ?title_style ?(labels = []) name =
   (match grid with
   | `Minor n when n < 2 -> err "axis" "`Minor %d is below 2" n
   | `Every n when n < 1 -> err "axis" "`Every %d is below 1" n
@@ -424,6 +425,7 @@ let axis ?side ?(show = true) ?title ?(grid = `None) ?format ?(spacing = 0)
       a_tick_style = tick_style;
       a_label_style = label_style;
       a_title_style = title_style;
+      a_labels = labels;
     }
 
 let legend ?(side = `Right) ?(show = true) ?title ?(direction = `Rows) name =
@@ -1117,6 +1119,8 @@ let resolve ?(view = View0.empty) ~(theme : Theme.t) fig =
   List.iter
     (fun a ->
       match List.find_opt (fun s -> String.equal s.name a.a_scale) scales with
+      | Some { dir = X | Y; kind = Band; _ } when a.a_labels <> [] ->
+          err "layout" "axis of %S, a band scale, with labels" a.a_scale
       | Some { dir = X | Y; _ } -> ()
       | Some { dir = C; _ } ->
           err "layout" "axis of %S, a color scale" a.a_scale
@@ -1249,10 +1253,16 @@ type placed_axis = {
   side : side;
   ticks : Ticks.t;
   cells : int list;
+  labels : (int * Ansi.span) list;
+      (* the program's labels: a horizontal axis's by their first column, a
+         vertical one's by their row *)
   label_w : int;
   label_rows : int;
   heading : string option;
 }
+
+(* Whether an axis has a row, or column, of labels. *)
+let labelled pa = pa.ticks.major <> [] || pa.a.a_labels <> []
 
 type placed_legend = {
   lg : legend;
@@ -1324,6 +1334,7 @@ let implied_axis s =
     a_tick_style = None;
     a_label_style = None;
     a_title_style = None;
+    a_labels = [];
   }
 
 let axes_of (r : resolved) =
@@ -1536,13 +1547,16 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
       | Band -> band_center s l (Float.to_int v)
       | _ -> bin l (norm s v)
     in
-    let label_width (t : Ticks.t) =
+    let label_width a (t : Ticks.t) =
       List.fold_left
         (fun m (k : Ticks.tick) ->
           let w = measure wm k.label in
           max m
             (match k.context with Some c -> w + 1 + measure wm c | None -> w))
-        0 t.major
+        (List.fold_left
+           (fun m (_, (sp : Ansi.span)) -> max m (measure wm sp.text))
+           0 a.a_labels)
+        t.major
     in
     let label_rows (t : Ticks.t) =
       if List.exists (fun (k : Ticks.tick) -> k.context <> None) t.major then 2
@@ -1556,12 +1570,14 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
           if sd <> side || not (shown ax) then acc
           else
             let lines = 1 + th.Theme.tick_length in
-            let labels = tiers.t_labels && t.major <> [] in
+            let labels =
+              tiers.t_labels && (t.major <> [] || a.a_labels <> [])
+            in
             match side with
             | `Left | `Right ->
                 max acc
                   (lines
-                  + if labels then th.label_padding + label_width t else 0)
+                  + if labels then th.label_padding + label_width a t else 0)
             | `Top | `Bottom ->
                 let titled = heading a t <> None in
                 max acc
@@ -1721,7 +1737,51 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
         let label_w =
           List.fold_left
             (fun m (k : Ticks.tick) -> max m (measure wm k.label))
-            0 t.major
+            (List.fold_left
+               (fun m (_, (sp : Ansi.span)) -> max m (measure wm sp.text))
+               0 a.a_labels)
+            t.major
+        in
+        (* The program's labels lie at their values in the shown domain: a
+           horizontal one centered as a tick's label, moved inside the plot's
+           extent, so that it never widens the margins. *)
+        let labels =
+          if (not tiers.t_labels) || l <= 0 then []
+          else
+            List.filter_map
+              (fun (v, (sp : Ansi.span)) ->
+                let q = norm s v in
+                if not (q >= 0. && q <= 1.) then None
+                else
+                  let o = bin l q in
+                  if horizontal then
+                    let w = measure wm sp.text in
+                    let c = plot.x + o - ((w - 1) / 2) in
+                    Some (max plot.x (min c (plot.x + l - w)), sp)
+                  else Some (plot.y + l - 1 - o, sp))
+              a.a_labels
+        in
+        (* A tick's label gives way to the program's labels, a blank cell
+           from them: its tick stays, and on a horizontal axis its context. *)
+        let clear (k : Ticks.tick) cell =
+          let near (at, (sp : Ansi.span)) =
+            if horizontal then
+              let w = measure wm k.label in
+              let start = cell - ((w - 1) / 2) in
+              start <= at + measure wm sp.text && start + w >= at
+            else abs (cell - at) <= 1
+          in
+          if not (List.exists near labels) then k
+          else
+            {
+              k with
+              label = "";
+              context = (if horizontal then k.context else None);
+            }
+        in
+        let t =
+          if labels = [] then t
+          else { t with Ticks.major = List.map2 clear t.major cells }
         in
         let label_rows =
           if List.exists (fun (k : Ticks.tick) -> k.context <> None) t.major
@@ -1729,6 +1789,7 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
           else 1
         in
         let a = if tiers.t_lines then a else { a with a_show = false } in
+        let a = if tiers.t_labels then a else { a with a_labels = [] } in
         let t =
           if tiers.t_labels then t
           else
@@ -1740,6 +1801,7 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
           side;
           ticks = t;
           cells;
+          labels;
           label_w;
           label_rows;
           heading = heading a t;
@@ -1813,7 +1875,7 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
           if p.side = `Top && p.a.a_show then
             max m
               (1 + theme.Theme.tick_length
-              + if p.ticks.major <> [] then p.label_rows else 0)
+              + if labelled p then p.label_rows else 0)
           else m)
         0 placed
     in
@@ -3157,12 +3219,26 @@ let draw_axes (l : layout) grid ~ox ~oy =
                       label ~x:(ox + cell - ((cw - 1) / 2)) ~y:(oy + row - 1) c)
                     k.context)
             pa.ticks.major pa.cells;
+          List.iter
+            (fun (at, (sp : Ansi.span)) ->
+              let w = measure l.wm sp.text in
+              let x, y =
+                match pa.side with
+                | `Bottom -> (at, br + tl + 1)
+                | `Top -> (at, tr - tl - 1)
+                | `Left -> (lc - tl - pad - w, at)
+                | `Right -> (rc + tl + pad + 1, at)
+              in
+              text_at grid ~wm:l.wm
+                ~style:(Style.merge ~base:lstyle ~overlay:sp.style)
+                ~x:(ox + x) ~y:(oy + y) sp.text)
+            pa.labels;
           match pa.heading with
           | None -> ()
           | Some h ->
               let hstyle = Option.value pa.a.a_title_style ~default:th.label in
               let hw = measure l.wm h in
-              let rows = if pa.ticks.major = [] then 0 else pa.label_rows in
+              let rows = if labelled pa then pa.label_rows else 0 in
               let x, y =
                 match pa.side with
                 | `Bottom -> (p.x + ((p.width - hw) / 2), br + tl + rows + 1)
