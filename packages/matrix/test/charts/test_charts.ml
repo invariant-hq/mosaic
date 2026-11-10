@@ -2112,3 +2112,41 @@ let%expect_test "clamp brings a window into an extreme domain, once" =
     [0, 1e-310] window [8e-311, 1.2e-310]: inside at [6e-311, 1e-310], again the same
     [0, 1e-310] window [-3e-310, -2.5e-310]: inside at [0, 5e-311], again the same
     |}]
+
+let%expect_test "a log axis over many decades labels few candidates" =
+  List.iter
+    (fun (lo, hi, width) ->
+      let calls = ref 0 in
+      let format _ v =
+        incr calls;
+        Printf.sprintf "%g" v
+      in
+      let fig =
+        C.(
+          layer
+            [
+              dot ~x:Fun.id ~y:(fun _ -> 0.) [| lo; hi |];
+              axis ~format "x";
+              axis ~show:false "y";
+            ]
+          |> scale "x" (Scale.log ~domain:(lo, hi) ()))
+      in
+      let g = drawn ~width ~height:4 fig in
+      Printf.printf "[%g, %g] at %d cells: %d labelled values; %s\n" lo hi width
+        !calls
+        (String.trim (List.nth (text_rows g) 3)))
+    [
+      (4.9e-324, Float.max_float, 40);
+      (1e-300, 1e5, 80);
+      (1e-30, 1e5, 80);
+      (1e-10, 1e5, 80);
+      (1., 1e3, 40);
+    ];
+  [%expect
+    {|
+    [4.94066e-324, 1.79769e+308] at 40 cells: 1266 labelled values; 1e+308
+    [1e-300, 100000] at 80 cells: 8579 labelled values; 1e-279  1e-248  1e-217  1e-186   1e-155  1e-124  1e-93   1e-62   1e-31     1
+    [1e-30, 100000] at 80 cells: 255 labelled values; 1e-28    1e-24    1e-20    1e-16     1e-12    1e-08    0.0001     1      10000
+    [1e-10, 100000] at 80 cells: 310 labelled values; 1e-10     1e-08     1e-06      0.0001     0.01        1        100      10000
+    [1, 1000] at 40 cells: 106 labelled values; 1           10          100         1000
+    |}]

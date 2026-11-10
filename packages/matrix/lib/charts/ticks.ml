@@ -680,6 +680,9 @@ let skips_to_q j i =
   let rec mantissa n = if n mod 10 = 0 then mantissa (n / 10) else n in
   Array.exists (fun (m, _) -> m = mantissa (j * fst q_steps.(i))) q_steps
 
+(* [decimal_family st ~v (a, b)] considers the family's lone tick at once and
+   is the rest of its search, so that another family's search can start with
+   that tick to beat. *)
 let decimal_family st ~v (a, b) =
   let mag = Float.max (Float.abs a) (Float.abs b) in
   let z_top = Float.to_int (Float.floor (Float.log10 mag)) + 2 in
@@ -689,10 +692,10 @@ let decimal_family st ~v (a, b) =
     let s_term = 1. -. q_rank i -. Float.of_int j +. v vs in
     consider st ~s_term ~key:[ 0; j; i; -z; r ] vs
   in
-  (* A lone tick: [j] beyond the multiples of the coarsest power of ten that
-     has one in the domain. *)
-  (* Whether a lone tick was found. A domain without one holds no multiple of
-     any power of ten a float holds, so no candidate of the search either. *)
+  (* Whether a lone tick was found: [j] beyond the multiples of the coarsest
+     power of ten that has one in the domain. A domain without one holds no
+     multiple of any power of ten a float holds, so no candidate of the search
+     either. *)
   let rec seed z =
     z > -400
     &&
@@ -720,12 +723,14 @@ let decimal_family st ~v (a, b) =
       descend j i (z - 1)
     end
   in
-  if seed z_top then
+  let search () =
     skips st ~simplest:2. (fun j ->
         for i = 0 to Array.length q_steps - 1 do
           let s_max = 2. -. q_rank i -. Float.of_int j in
           if skips_to_q j i && worth st s_max 0. then descend j i z_top
         done)
+  in
+  if seed z_top then search else Fun.id
 
 let power base n i =
   if base = 10. then multiple n i 1
@@ -904,10 +909,13 @@ let choose family ~norm ~labels ~length ~spacing ~measure (a, b) =
     let one = match family with Log _ -> 1. | _ -> 0. in
     let v vs = if Array.exists (Float.equal one) vs then 1. else 0. in
     (match family with
-    | Linear -> decimal_family st ~v (a, b)
+    | Linear -> decimal_family st ~v (a, b) ()
     | Log base ->
+        (* Without a tick to beat, every candidate of the powers' search is
+           labelled: hundreds of thousands of values over 600 decades. *)
+        let decimals = decimal_family st ~v (a, b) in
         powers_family st ~v base (a, b);
-        decimal_family st ~v (a, b)
+        decimals ()
     | Time offset -> calendar_family st offset (a, b));
     match st.best with
     | None -> { major = []; note = None }
