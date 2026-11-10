@@ -1276,18 +1276,17 @@ let band_span (s : scale) l i =
   let c1 = max c0 (Float.to_int (Float.round (a +. inner)) - 1) in
   (min c0 (l - 1), min c1 (l - 1))
 
-let band_center (s : scale) l i =
-  let n = max 1 (Array.length s.cats) in
-  let bw = Float.of_int (band_extent s l) /. Float.of_int n in
-  min (l - 1)
-    (Float.to_int (Float.floor ((Float.of_int (band_order s i) +. 0.5) *. bw)))
-
+(* [band_pos s l i] is the position of the middle of category [i]'s band. *)
 let band_pos (s : scale) l i =
   let n = max 1 (Array.length s.cats) in
   (Float.of_int (band_order s i) +. 0.5)
   /. Float.of_int n
   *. Float.of_int (band_extent s l)
   /. Float.of_int (max 1 l)
+
+(* [band_center s l i] is the cell of [band_pos s l i], the one marks at the
+   category draw in. *)
+let band_center (s : scale) l i = min (l - 1) (bin (max 1 l) (band_pos s l i))
 
 let implied_axis s =
   {
@@ -1974,6 +1973,15 @@ let positions (s : scale) len a =
 
 let ch_get = function E_num a -> a | _ -> [||]
 
+(* The ink resolution of [d], [None] for whole cells. *)
+let stroke_res : dots -> Ink.res option = function
+  | `Cell -> None
+  | `Half -> Some Ink.Half
+  | `Quadrant -> Some Ink.Quadrant
+  | `Sextant -> Some Ink.Sextant
+  | `Braille -> Some Ink.Braille
+  | `Octant -> Some Ink.Octant
+
 let stroke (th : Theme.t) d =
   let d =
     match d with
@@ -1983,14 +1991,10 @@ let stroke (th : Theme.t) d =
   if not th.glyphs.blocks then `Cell
   else
     match d with
-    | `Cell -> `Cell
     | `Steps -> `Steps
     | `Density -> `Density
-    | `Half -> `Res Ink.Half
-    | `Quadrant -> `Res Ink.Quadrant
-    | `Sextant -> `Res Ink.Sextant
-    | `Braille -> `Res Ink.Braille
-    | `Octant -> `Res Ink.Octant
+    | #dots as d -> (
+        match stroke_res d with None -> `Cell | Some r -> `Res r)
 
 let row_colors (l : layout) e =
   let base = l.r.mark_color.(e.mi) in
@@ -3373,6 +3377,39 @@ module Layout = struct
           bin (max 1 len) q
     in
     match s.dir with Y -> p.y + len - 1 - off | _ -> p.x + off
+
+  let dot (l : t) n (r : dots) =
+    let s = scale "Layout.dot" l n in
+    let p = l.plot in
+    let len = match s.dir with Y -> p.height | _ -> p.width in
+    let k =
+      match (stroke_res r, s.dir) with
+      | None, _ -> 1
+      | Some r, Y -> Ink.rows r
+      | Some r, _ -> Ink.cols r
+    in
+    fun v ->
+      let q =
+        match (s.kind, v) with
+        | Band, Cat c ->
+            let i = band_index s c in
+            if Float.is_nan i then
+              err "Layout.dot" "%S is not a category of %S" c n;
+            band_pos s (max 1 len) (Float.to_int i)
+        | Band, Num _ -> err "Layout.dot" "scale %S holds categories" n
+        | _, Cat _ -> err "Layout.dot" "scale %S holds quantities" n
+        | _, Num x ->
+            if not (placeable s.kind x) then
+              err "Layout.dot" "%g is a value that marks drop" x;
+            norm s x
+      in
+      (* [d] counts from the axis's start, the bottom for a y scale. *)
+      let d =
+        if q < 0. then -1
+        else if q > 1. || len = 0 then k * len
+        else bin_dots len k q
+      in
+      match s.dir with Y -> (k * len) - 1 - d | _ -> d
 
   let domain (l : t) n =
     let s = scale "Layout.domain" l n in

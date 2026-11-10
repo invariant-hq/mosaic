@@ -29,6 +29,13 @@ console gets back every mode and code page the run changed.
 - `Pty.close` keeps the program's status when it reaps the child, and
   `Pty.wait` or `Pty.poll` then gives it, where they used to raise
   `Invalid_argument`.
+- `Matrix_charts.Layout.dot` is the dot, at a resolution, in which a mark draws
+  a value, or the dot beside the plot when the value lies outside it. A program
+  can reduce its data per dot column as the chart will draw it, from a layout
+  made before the data: `Layout.plot` now states that a figure whose position
+  scales have given domains, and whose legends keep their entries, keeps its
+  plot whatever its marks' rows. A category's tick and `Layout.position` now
+  give the cell `Layout.dot` gives, inside its bar as before.
 
 #### Changes the compiler won't catch
 

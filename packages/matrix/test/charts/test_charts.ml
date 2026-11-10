@@ -1354,3 +1354,271 @@ let%expect_test "marks, rules and ticks at one value share a cell" =
         print_newline ()))
     (List.rev !differ);
   [%expect {| values in two cells: 0 |}]
+
+(* The dots of a braille glyph, as (column, row) in its cell. *)
+let braille_dots s =
+  let u = Uchar.to_int (Uchar.utf_decode_uchar (String.get_utf_8_uchar s 0)) in
+  let bits = u - 0x2800 in
+  let at =
+    [| (0, 0); (0, 1); (0, 2); (1, 0); (1, 1); (1, 2); (0, 3); (1, 3) |]
+  in
+  if bits < 0 || bits > 0xff then []
+  else
+    List.filter_map
+      (fun b -> if bits land (1 lsl b) <> 0 then Some at.(b) else None)
+      (List.init 8 Fun.id)
+
+let%expect_test "a value's dot is where a mark draws it" =
+  Random.init 5;
+  let wrong = ref [] in
+  for _ = 1 to 600 do
+    let lo, hi, v, len = boundary () in
+    let v =
+      match Random.int 8 with
+      | 0 -> lo -. Random.float 10.
+      | 1 -> hi +. Random.float 10.
+      | _ -> v
+    in
+    let reverse = Random.int 4 = 0 in
+    let dir = if Random.bool () then "x" else "y" in
+    let other = if dir = "x" then "y" else "x" in
+    let width, height = if dir = "x" then (len, 1) else (1, len) in
+    let res, k =
+      match Random.int 3 with
+      | 0 -> (`Cell, 1)
+      | 1 -> (`Braille, if dir = "x" then 2 else 4)
+      | _ -> (`Quadrant, 2)
+    in
+    let half _ = 0.5 and value _ = v in
+    let fig =
+      C.(
+        layer
+          [
+            (if dir = "x" then dot ~dots:res ~x:value ~y:half [| () |]
+             else dot ~dots:res ~x:half ~y:value [| () |]);
+            axis ~show:false "x";
+            axis ~show:false "y";
+          ]
+        |> scale dir (Scale.linear ~domain:(lo, hi) ~reverse ())
+        |> scale other (Scale.linear ~domain:(0., 1.) ()))
+    in
+    let l = C.layout ~width ~height fig in
+    let d = C.Layout.dot l dir (res :> C.dots) (C.Layout.Num v) in
+    let g = Grid.create ~width ~height () in
+    C.draw l g ~x:0 ~y:0;
+    let seen =
+      match inked g with
+      | [] -> None
+      | (x, y) :: _ -> (
+          let cell = if dir = "x" then x else y in
+          match res with
+          | `Cell -> Some cell
+          | `Quadrant ->
+              let s = Grid.get_text g (Grid.idx g ~x ~y) in
+              let c, r =
+                match s with
+                | "▘" -> (0, 0)
+                | "▝" -> (1, 0)
+                | "▖" -> (0, 1)
+                | _ -> (1, 1)
+              in
+              Some ((cell * k) + if dir = "x" then c else r)
+          | `Braille -> (
+              match braille_dots (Grid.get_text g (Grid.idx g ~x ~y)) with
+              | [ (c, r) ] -> Some ((cell * k) + if dir = "x" then c else r)
+              | _ -> Some (-2)))
+    in
+    let expected =
+      match seen with Some s -> s | None -> if d < 0 then d else len * k
+    in
+    if d <> expected || (seen = None && d >= 0 && d < len * k) then
+      wrong := (dir, lo, hi, v, len, reverse, d, seen) :: !wrong
+  done;
+  Printf.printf "values whose dot is elsewhere: %d\n" (List.length !wrong);
+  List.iteri
+    (fun i (dir, lo, hi, v, len, reverse, d, seen) ->
+      if i < 3 then
+        Printf.printf "%s on [%g, %g]%s at %d cells, %g: dot %d, drawn %s\n" dir
+          lo hi
+          (if reverse then " reversed" else "")
+          len v d
+          (match seen with Some s -> string_of_int s | None -> "nowhere"))
+    (List.rev !wrong);
+  [%expect {| values whose dot is elsewhere: 0 |}]
+
+let%expect_test "a category's dot lies in the cell of its tick" =
+  let wrong = ref [] and cases = ref 0 in
+  for n = 1 to 40 do
+    for len = 1 to 120 do
+      let cats = List.init n string_of_int in
+      let rows = Array.of_list (List.map (fun c -> (c, 1.)) cats) in
+      List.iter
+        (fun dir ->
+          let fig =
+            if dir = "x" then C.(bare (bar_y ~x:fst ~y:snd rows))
+            else C.(bare (bar_x ~y:fst ~x:snd rows))
+          in
+          let width, height = if dir = "x" then (len, 3) else (3, len) in
+          let l = C.layout ~width ~height fig in
+          let p = C.Layout.plot l in
+          let start = if dir = "x" then p.x else p.y in
+          List.iter
+            (fun c ->
+              let v = C.Layout.Cat c in
+              let cell = C.Layout.position l dir v - start in
+              List.iter
+                (fun (res, k) ->
+                  incr cases;
+                  let d = C.Layout.dot l dir res v in
+                  if d / k <> cell then
+                    wrong := (dir, n, len, c, cell, d) :: !wrong)
+                [ (`Cell, 1); (`Braille, if dir = "x" then 2 else 4) ])
+            cats)
+        [ "x"; "y" ]
+    done
+  done;
+  Printf.printf "category dots outside their tick's cell: %d of %d\n"
+    (List.length !wrong) !cases;
+  List.iteri
+    (fun i (dir, n, len, c, cell, d) ->
+      if i < 3 then
+        Printf.printf "%s, %d categories on %d cells, %S: cell %d, dot %d\n" dir
+          n len c cell d)
+    (List.rev !wrong);
+  [%expect {| category dots outside their tick's cell: 0 of 393600 |}]
+
+let%expect_test "a line's last dot is its value's dot" =
+  Random.init 8;
+  let wrong = ref 0 in
+  for _ = 1 to 600 do
+    let lo, hi, v, len = boundary () in
+    let start = lo +. Random.float (hi -. lo) in
+    let dir = if Random.bool () then "x" else "y" in
+    let other = if dir = "x" then "y" else "x" in
+    let width, height = if dir = "x" then (len, 1) else (1, len) in
+    let k = if dir = "x" then 2 else 4 in
+    let pts =
+      if dir = "x" then [| (start, 0.5); (v, 0.5) |]
+      else [| (0.5, start); (0.5, v) |]
+    in
+    let fig =
+      C.(
+        layer
+          [
+            line ~dots:`Braille ~x:fst ~y:snd pts;
+            axis ~show:false "x";
+            axis ~show:false "y";
+          ]
+        |> scale dir (Scale.linear ~domain:(lo, hi) ())
+        |> scale other (Scale.linear ~domain:(0., 1.) ()))
+    in
+    let l = C.layout ~width ~height fig in
+    let g = Grid.create ~width ~height () in
+    C.draw l g ~x:0 ~y:0;
+    let dots =
+      List.concat_map
+        (fun (x, y) ->
+          let cell = if dir = "x" then x else y in
+          List.map
+            (fun (c, r) -> (cell * k) + if dir = "x" then c else r)
+            (braille_dots (Grid.get_text g (Grid.idx g ~x ~y))))
+        (inked g)
+    in
+    let d = C.Layout.dot l dir `Braille (Num v) in
+    let ds = C.Layout.dot l dir `Braille (Num start) in
+    let toward = if ds <= d then max else min in
+    match dots with
+    | [] -> incr wrong
+    | e :: es -> if List.fold_left toward e es <> d then incr wrong
+  done;
+  Printf.printf "lines whose last dot is elsewhere: %d\n" !wrong;
+  [%expect {| lines whose last dot is elsewhere: 0 |}]
+
+let%expect_test "a value's dot lies outside the plot when the value does" =
+  let l =
+    C.layout ~width:10 ~height:4
+      C.(
+        bare (line ~x:Fun.id ~y:Fun.id [||])
+        |> scale "x" (Scale.linear ~domain:(0., 10.) ())
+        |> scale "y" (Scale.linear ~domain:(0., 10.) ()))
+  in
+  let show n v =
+    Printf.printf "%s %g: %d\n" n v (C.Layout.dot l n `Braille (C.Layout.Num v))
+  in
+  List.iter (show "x") [ -1.; -0.; 0.; 5.; 10.; 10.5 ];
+  List.iter (show "y") [ -1.; 0.; 10.; 10.5 ];
+  List.iter
+    (fun v ->
+      try ignore (C.Layout.dot l "x" `Braille (C.Layout.Num v))
+      with Invalid_argument m -> print_endline m)
+    [ Float.nan; Float.infinity; Float.neg_infinity ];
+  [%expect
+    {|
+    x -1: -1
+    x -0: 0
+    x 0: 0
+    x 5: 10
+    x 10: 19
+    x 10.5: 20
+    y -1: 16
+    y 0: 15
+    y 10: 0
+    y 10.5: -1
+    Matrix_charts.Layout.dot: nan is a value that marks drop
+    Matrix_charts.Layout.dot: inf is a value that marks drop
+    Matrix_charts.Layout.dot: -inf is a value that marks drop
+    |}]
+
+let%expect_test "marks leave the plot alone when the domains are given" =
+  Random.init 8;
+  let num () =
+    match Random.int 10 with
+    | 0 -> Float.nan
+    | 1 -> Float.infinity
+    | 2 -> -1e300
+    | 3 -> 1e300
+    | 4 -> -0.
+    | _ -> Random.float 2e6 -. 1e6
+  in
+  let moved = ref 0 and cases = ref 0 in
+  for _ = 1 to 300 do
+    let width = 1 + Random.int 80 and height = 1 + Random.int 30 in
+    let lo = Random.float 1e4 -. 5e3 in
+    let hi = lo +. Float.pow 10. (Random.float 12. -. 6.) in
+    let ylo = Float.pow 10. (Random.float 6. -. 3.) in
+    let yhi = ylo *. Float.pow 10. (Random.float 6.) in
+    let view =
+      if Random.bool () then C.View.empty
+      else C.View.set "x" (Some (lo +. ((hi -. lo) /. 4.), hi)) C.View.empty
+    in
+    let n = Random.int 30 in
+    let rows = Array.init n (fun _ -> (num (), num (), num ())) in
+    let fst3 (a, _, _) = a and snd3 (_, b, _) = b and thd3 (_, _, c) = c in
+    let fig rows =
+      C.(
+        layer
+          [
+            line ~x:fst3 ~y:snd3 rows;
+            dot ~x:fst3 ~y:thd3 rows;
+            area ~x:fst3 ~y:snd3 ~y2:thd3 rows;
+            rect ~x:fst3 ~x2:snd3 rows;
+            text ~x:fst3 ~y:snd3 ~text:(fun _ -> "label") rows;
+            bar_x ~y:(fun _ -> "b") ~x:thd3 ~color:(const Ansi.Color.red) rows
+            |> rename "y" "band";
+            histogram (Array.map fst3 rows);
+            spark (Array.to_list (Array.map snd3 rows));
+            axis ~title:"x" "x";
+            axis ~title:"y" ~grid:`Ticks "y";
+            axis "band";
+          ]
+        |> scale "x" (Scale.linear ~domain:(lo, hi) ())
+        |> scale "y" (Scale.log ~domain:(ylo, yhi) ())
+        |> scale "band" (Scale.band ~domain:[ "a"; "b" ] ())
+        |> title "a chart")
+    in
+    let plot rows = C.Layout.plot (C.layout ~view ~width ~height (fig rows)) in
+    incr cases;
+    if plot rows <> plot [||] then incr moved
+  done;
+  Printf.printf "plots moved by rows: %d of %d\n" !moved !cases;
+  [%expect {| plots moved by rows: 0 of 300 |}]
