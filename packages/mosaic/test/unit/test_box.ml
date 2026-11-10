@@ -251,6 +251,20 @@ let set_title_alignment () =
   Box.set_title_alignment box `Center;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
+let set_title_style () =
+  let t = make_ctx () in
+  let root = make_root t in
+  let box = Box.create ~parent:root (Box.Props.make ~title:"T" ()) in
+  let bold = Some (Ansi.Style.make ~bold:true ()) in
+  let before = Test_harness.clean t in
+  Box.set_title_style box bold;
+  gt ~msg:"scheduled" ~than:before !(t.schedule_count);
+  let before = Test_harness.clean t in
+  Box.set_title_style box bold;
+  equal ~msg:"the same style schedules nothing" int before !(t.schedule_count);
+  Box.set_title_style box None;
+  gt ~msg:"scheduled again" ~than:before !(t.schedule_count)
+
 (* ── apply_props ── *)
 
 let apply_props_updates () =
@@ -553,6 +567,17 @@ let doors_title_alignment () =
       Box.create ~parent ~style
         (Box.Props.make ~border:true ~title:"T" ~title_alignment:`Right ()))
 
+let doors_title_style () =
+  let bold = Ansi.Style.make ~bold:true () in
+  reaches "title_style"
+    ~base:(Mosaic.box ~size ~border:true ~title:"T")
+    ~element:(Mosaic.box ~size ~border:true ~title:"T" ~title_style:bold)
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ~title:"T" ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~title:"T" ~title_style:bold ()))
+
 let doors_inert () =
   reaches "inert"
     ~observe:(fun _ node -> string_of_bool (Renderable.inert node))
@@ -659,6 +684,7 @@ let () =
            [
              test "set_title sets and clears" set_title;
              test "set_title_alignment" set_title_alignment;
+             test "set_title_style" set_title_style;
            ];
          group "apply_props"
            [ test "updates all properties" apply_props_updates ];
@@ -693,6 +719,7 @@ let () =
              test "fill" doors_fill;
              test "title" doors_title;
              test "title_alignment" doors_title_alignment;
+             test "title_style" doors_title_style;
              test "inert" doors_inert;
            ];
          group "Setter no-ops"

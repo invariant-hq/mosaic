@@ -1926,6 +1926,7 @@ val box :
   ?fill:bool ->
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
+  ?title_style:Ansi.Style.t ->
   'msg t list ->
   'msg t
 (** [box children] is a container for [children]. [border_width], [inert] and
@@ -2021,6 +2022,7 @@ val button :
   ?fill:bool ->
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
+  ?title_style:Ansi.Style.t ->
   ?text_style:Ansi.Style.t ->
   ?disabled:bool ->
   on_activate:'msg ->

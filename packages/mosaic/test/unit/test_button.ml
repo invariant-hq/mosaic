@@ -375,6 +375,18 @@ let doors_title_alignment () =
       Box.create ~parent ~style
         (Box.Props.make ~border:true ~title:"T" ~title_alignment:`Right ()))
 
+let doors_title_style () =
+  reaches "title_style"
+    ~base:(Mosaic.button ~size ~border:true ~title:"T" ~on_activate:() "OK")
+    ~element:
+      (Mosaic.button ~size ~border:true ~title:"T" ~title_style:bold
+         ~on_activate:() "OK")
+    ~create_base:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~border:true ~title:"T" ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style
+        (Box.Props.make ~border:true ~title:"T" ~title_style:bold ()))
+
 let doors_text_style () =
   reaches "text_style" ~text_style:bold
     ~base:(Mosaic.button ~size ~on_activate:() "OK")
@@ -413,6 +425,7 @@ let () =
          test "fill reaches the box" doors_fill;
          test "title reaches the box" doors_title;
          test "title_alignment reaches the box" doors_title_alignment;
+         test "title_style reaches the box" doors_title_style;
          test "text_style reaches the text" doors_text_style;
          test "disabled reaches the text" doors_disabled;
        ])

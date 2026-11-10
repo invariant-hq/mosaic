@@ -16,7 +16,8 @@
     is focused, its border is drawn in [focused_border_color] where it is given,
     and otherwise in {!Matrix_grid.Border.heavy} lines in bold, so focus shows
     by a glyph whatever the output's styling, and by an attribute where it has
-    styling. The title is drawn in the border's style.
+    styling. The title is drawn in [title_style] on the border's background, or
+    without one in the border's foreground.
 
     Setting a border-related property ({!set_border_style}, {!set_border_color},
     {!set_focused_border_color}) auto-enables borders. *)
@@ -46,6 +47,7 @@ module Props : sig
     ?fill:bool ->
     ?title:string ->
     ?title_alignment:[ `Left | `Center | `Right ] ->
+    ?title_style:Ansi.Style.t ->
     ?inert:bool ->
     unit ->
     t
@@ -62,6 +64,8 @@ module Props : sig
       - [fill] defaults to [true].
       - [title] defaults to [None].
       - [title_alignment] defaults to [`Left].
+      - [title_style] is the style of the title. Defaults to none, the border's
+        foreground.
       - [inert] makes the box and its descendants inert
         ({!Renderable.set_inert}). Defaults to [false].
 
@@ -136,6 +140,10 @@ val set_title : t -> string option -> unit
 
 val set_title_alignment : t -> [ `Left | `Center | `Right ] -> unit
 (** [set_title_alignment t align] positions the title within the top border. *)
+
+val set_title_style : t -> Ansi.Style.t option -> unit
+(** [set_title_style t style] sets the style of the title. [None] draws it in
+    the border's foreground. *)
 
 (** {1:layout Layout} *)
 

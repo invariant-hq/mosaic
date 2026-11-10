@@ -140,6 +140,26 @@ let%expect_test "title right aligned" =
 │              │
 └──────────────┘|}]
 
+(* The title takes its own style, attributes too, on the border's
+   background; the border keeps its color. *)
+let%expect_test "title in its style" =
+  render_ansi ~width:8 ~height:2
+    (Mosaic.box ~border:true ~border_color:Ansi.Color.red ~title:"Hi"
+       ~title_style:(Ansi.Style.make ~fg:Ansi.Color.green ~bold:true ())
+       []);
+  [%expect_exact
+    {|
+[0;38;5;1m┌─[38;5;2;1mHi[38;5;1;22m───┐[0m
+[0;38;5;1m└──────┘[0m|}]
+
+(* Without a title style, the title is drawn in the border's color. *)
+let%expect_test "title in the border's color" =
+  render_ansi ~width:8 ~height:2
+    (Mosaic.box ~border:true ~border_color:Ansi.Color.red ~title:"Hi" []);
+  [%expect_exact {|
+[0;38;5;1m┌─Hi───┐[0m
+[0;38;5;1m└──────┘[0m|}]
+
 let%expect_test "title omitted without top border" =
   render ~width:16 ~height:4
     (Mosaic.box ~border:true ~title:"Hidden"

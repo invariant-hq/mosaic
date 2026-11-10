@@ -26,13 +26,14 @@ module Props = struct
     fill : bool;
     title : string option;
     title_alignment : [ `Left | `Center | `Right ];
+    title_style : Ansi.Style.t option;
     inert : bool;
   }
 
   let make ?(border = false) ?(border_style = Matrix_grid.Border.single)
       ?(border_sides = Matrix_grid.Border.all) ?border_width ?border_color
       ?focused_border_color ?background ?(fill = true) ?title
-      ?(title_alignment = `Left) ?(inert = false) () =
+      ?(title_alignment = `Left) ?title_style ?(inert = false) () =
     let border_width =
       Option.map (Toffee.Geometry.Rect.map cells_of_border_width) border_width
     in
@@ -53,6 +54,7 @@ module Props = struct
       fill;
       title;
       title_alignment;
+      title_style;
       inert;
     }
 
@@ -70,6 +72,7 @@ module Props = struct
     && Option.equal Ansi.Color.equal a.background b.background
     && a.fill = b.fill && a.title = b.title
     && a.title_alignment = b.title_alignment
+    && Option.equal Ansi.Style.equal a.title_style b.title_style
     && a.inert = b.inert
 end
 
@@ -168,7 +171,8 @@ let render t _self grid ~dt:_ =
     Matrix_grid.draw_box grid ~x:(Renderable.x t.node) ~y:(Renderable.y t.node)
       ~width:w ~height:h ~border:(border_lines t) ~sides:(drawn_sides t)
       ~style:(border_style t) ?fill ?title:t.props.title
-      ~title_alignment:t.props.title_alignment ()
+      ~title_alignment:t.props.title_alignment ?title_style:t.props.title_style
+      ()
 
 (* Construction *)
 
@@ -241,6 +245,11 @@ let set_title t text =
 let set_title_alignment t align =
   if t.props.title_alignment <> align then (
     t.props <- { t.props with title_alignment = align };
+    request_render t)
+
+let set_title_style t style =
+  if not (Option.equal Ansi.Style.equal t.props.title_style style) then (
+    t.props <- { t.props with title_style = style };
     request_render t)
 
 let set_style t style =

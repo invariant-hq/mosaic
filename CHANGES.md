@@ -4,6 +4,9 @@
 
 ### Mosaic
 
+- `Mosaic.box` and `Mosaic.button` take `~title_style`, as
+  `Canvas.draw_box` does, where the title could only take the border's color.
+  `Mosaic_ui.Box.set_title_style` sets it.
 - `Mosaic.progress_bar ~glyphs` takes the glyphs of the filled, half and empty
   cells (`Progress_bar.glyphs`), such as `━`, `╸` and `─` for a gauge one row
   high. `Mosaic_ui.Progress_bar.set_glyphs` sets them. `filled_color` and

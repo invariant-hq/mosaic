@@ -87,6 +87,7 @@ val box :
   ?fill:bool ->
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
+  ?title_style:Ansi.Style.t ->
   ?children:'msg t list ->
   unit ->
   'msg t
@@ -149,6 +150,7 @@ val button :
   ?fill:bool ->
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
+  ?title_style:Ansi.Style.t ->
   ?text_style:Ansi.Style.t ->
   ?disabled:bool ->
   on_activate:'msg ->

@@ -12,7 +12,7 @@ let box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?visible ?z_index ?opacity ?buffered ?live ?selectable ?inert ?on_mouse
     ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?border
     ?border_style ?border_sides ?border_color ?focused_border_color ?background
-    ?fill ?title ?title_alignment ?(children = []) () =
+    ?fill ?title ?title_alignment ?title_style ?(children = []) () =
   Mosaic.box ?key ?layout ?display ?box_sizing ?position ?overflow
     ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
     ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
@@ -23,7 +23,8 @@ let box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
     ?selectable ?inert ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request
     ?on_size ?focused ?border ?border_style ?border_sides ?border_color
-    ?focused_border_color ?background ?fill ?title ?title_alignment children
+    ?focused_border_color ?background ?fill ?title ?title_alignment ?title_style
+    children
 
 let button ?key ?layout ?display ?box_sizing ?position ?overflow
     ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
@@ -35,7 +36,8 @@ let button ?key ?layout ?display ?box_sizing ?position ?overflow
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
     ?selectable ?on_focus_request ?on_size ?focused ?border ?border_style
     ?border_sides ?border_color ?focused_border_color ?background ?fill ?title
-    ?title_alignment ?text_style ?disabled ~on_activate ?(children = []) () =
+    ?title_alignment ?title_style ?text_style ?disabled ~on_activate
+    ?(children = []) () =
   Mosaic.button ?key ?layout ?display ?box_sizing ?position ?overflow
     ?scrollbar_width ?text_align ?inset ?flex_direction ?flex_wrap
     ?justify_content ?align_items ?size ?min_size ?max_size ?aspect_ratio ?gap
@@ -46,7 +48,7 @@ let button ?key ?layout ?display ?box_sizing ?position ?overflow
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
     ?selectable ?on_focus_request ?on_size ?focused ?border ?border_style
     ?border_sides ?border_color ?focused_border_color ?background ?fill ?title
-    ?title_alignment ?text_style ?disabled ~on_activate
+    ?title_alignment ?title_style ?text_style ?disabled ~on_activate
     (String.concat "" children)
 
 let scroll_box ?key ?layout ?display ?box_sizing ?position ?overflow
