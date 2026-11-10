@@ -1229,3 +1229,128 @@ let%expect_test "a value lies in the same cell at every resolution" =
   done;
   Printf.printf "values in another cell: %d\n" !differ;
   [%expect {| values in another cell: 0 |}]
+
+(* The cells of a grid that hold a glyph. *)
+let inked g =
+  let l = ref [] in
+  for y = Grid.height g - 1 downto 0 do
+    for x = Grid.width g - 1 downto 0 do
+      let i = Grid.idx g ~x ~y in
+      if (not (Grid.is_empty g i)) && Grid.get_text g i <> " " then
+        l := (x, y) :: !l
+    done
+  done;
+  !l
+
+let drawn ~width ~height fig =
+  let g = Grid.create ~width ~height () in
+  C.draw (C.layout ~width ~height fig) g ~x:0 ~y:0;
+  g
+
+(* A value at a cell's boundary: [5 / 6] of [60] cells is [50]. Drawn values
+   are such boundaries, as [k / m] of the domain on an axis of a multiple of
+   [m] cells, half the time. *)
+let boundary () =
+  let m = 1 + Random.int 12 in
+  let len = m * (1 + Random.int 8) in
+  let lo = Float.of_int (Random.int 2000 - 1000) /. 8. in
+  let span = Float.of_int (1 + Random.int 400) /. 16. in
+  let v =
+    if Random.bool () then
+      lo +. (span *. Float.of_int (Random.int (m + 1)) /. Float.of_int m)
+    else lo +. Random.float span
+  in
+  (lo, lo +. span, v, len)
+
+let%expect_test "marks, rules and ticks at one value share a cell" =
+  Random.init 21;
+  let x_marks = [ `Cell; `Half; `Quadrant; `Sextant; `Braille; `Octant ] in
+  let col fig ~width ~height =
+    match inked (drawn ~width ~height fig) with (x, _) :: _ -> x | [] -> -1
+  in
+  let row fig ~width ~height =
+    match inked (drawn ~width ~height fig) with (_, y) :: _ -> y | [] -> -1
+  in
+  let differ = ref [] in
+  let check ?start dir (lo, hi, v, len) =
+    let start =
+      match start with Some s -> s | None -> lo +. Random.float (hi -. lo)
+    in
+    let sx = C.Scale.linear ~domain:(lo, hi) () in
+    let unit = C.Scale.linear ~domain:(0., 1.) () in
+    let other = if dir = "x" then "y" else "x" in
+    let hidden fig =
+      C.(layer [ fig; axis ~show:false "x"; axis ~show:false "y" ])
+      |> C.scale dir sx |> C.scale other unit
+    in
+    let width, height = if dir = "x" then (len, 1) else (1, len) in
+    let at fig =
+      if dir = "x" then col fig ~width ~height else row fig ~width ~height
+    in
+    let half _ = 0.5 and value _ = v in
+    let point (dots : C.dots) =
+      if dir = "x" then
+        C.dot ~dots:(dots :> [ C.dots | `Density ]) ~x:value ~y:half [| () |]
+      else C.dot ~dots:(dots :> [ C.dots | `Density ]) ~x:half ~y:value [| () |]
+    in
+    let rule =
+      C.(
+        layer [ (if dir = "x" then vline v else hline v); axis ~show:false dir ]
+        |> scale dir sx)
+    in
+    let l = C.layout ~width ~height (hidden (point `Cell)) in
+    let tick = C.Layout.position l dir (C.Layout.Num v) in
+    (* A line from [start] ends at [v]: its last cell toward [v]. *)
+    let line (dots : C.dots) =
+      let dots = (dots :> [ C.dots | `Steps ]) in
+      if dir = "x" then C.line ~dots ~x:fst ~y:snd [| (start, 0.5); (v, 0.5) |]
+      else C.line ~dots ~x:fst ~y:snd [| (0.5, start); (0.5, v) |]
+    in
+    let last fig =
+      let g = drawn ~width ~height fig in
+      let cells =
+        List.map (fun (x, y) -> if dir = "x" then x else y) (inked g)
+      in
+      let toward =
+        if C.Layout.position l dir (Num start) <= tick then max else min
+      in
+      match cells with [] -> -1 | c :: cs -> List.fold_left toward c cs
+    in
+    let cells =
+      ("tick", tick)
+      :: ("rule", at rule)
+      :: List.concat_map
+           (fun d ->
+             let name =
+               match d with
+               | `Cell -> "cell"
+               | `Half -> "half"
+               | `Quadrant -> "quadrant"
+               | `Sextant -> "sextant"
+               | `Braille -> "braille"
+               | `Octant -> "octant"
+             in
+             [
+               (name, at (hidden (point d)));
+               ("line " ^ name, last (hidden (line d)));
+             ])
+           x_marks
+    in
+    if List.exists (fun (_, c) -> c <> tick) cells then
+      differ := (dir, lo, hi, v, len, cells) :: !differ
+  in
+  check "x" (0., 6., 5., 60);
+  check "x" ~start:(-87.579420775857358) (-91.25, -71.5, -74.79166666666667, 12);
+  for _ = 1 to 400 do
+    check "x" (boundary ());
+    check "y" (boundary ())
+  done;
+  Printf.printf "values in two cells: %d\n" (List.length !differ);
+  List.iteri
+    (fun i (axis, lo, hi, v, len, cells) ->
+      if i < 3 then (
+        Printf.printf "%s on [%g, %g] at %d cells, %g:" axis lo hi len v;
+        List.iter (fun (n, c) -> Printf.printf " %s %d" n c) cells;
+        print_newline ()))
+    (List.rev !differ);
+  [%expect {| values in two cells: 0 |}]

@@ -110,6 +110,11 @@ console gets back every mode and code page the run changed.
 - A frame of `Matrix_cli_unix.tasks` costs what it shows. It grew with every
   line a running task had logged and every task the work had run: at a
   million logged lines, a frame took 8.8 ms, and now takes 0.24 ms.
+- `matrix.charts` places a mark's value in the cell of the tick and the rule at
+  that value, as its documentation states. Marks rounded the value's position
+  another way, so a line's point at `5` of the domain \[0, 6\] on 60 cells drew
+  one cell left of the tick at `5`. A dot at three dots per cell stays in that
+  cell too.
 
 ## [0.2.0] - 2026-11-04
 

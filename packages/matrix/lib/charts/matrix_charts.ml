@@ -818,9 +818,17 @@ let tf (s : scale) v =
 
 let untf (s : scale) u = match s.kind with Log _ -> Float.exp u | _ -> u
 
+(* [fraction a b u] is the position of [u] on the window [a, b] of a transform's
+   space. Every value a layout places goes through it, ticks and marks alike,
+   so that they land in the same cell: a product with the window's inverse
+   rounds differently, and puts [5] of [0, 6] in cell 49 of 60 where the
+   division puts it in cell 50. A constant window places a finite [u] at
+   [0.5]. *)
+let fraction a b u =
+  if a = b then if Float.is_finite u then 0.5 else u else (u -. a) /. (b -. a)
+
 let norm (s : scale) v =
-  let a = tf s s.lo and b = tf s s.hi in
-  let p = if a = b then 0.5 else (tf s v -. a) /. (b -. a) in
+  let p = fraction (tf s s.lo) (tf s s.hi) (tf s v) in
   if s.reverse then 1. -. p else p
 
 let unnorm (s : scale) p =
@@ -1191,10 +1199,26 @@ let resolve ?(view = View0.empty) ~(theme : Theme.t) fig =
 
 (* {1 Laying out} *)
 
-(* [bin l p] is the cell of the [l]-cell axis holding the normalized [p]. *)
-let bin l p =
-  let x = p *. Float.of_int l in
-  if x < 1. then 0 else min (l - 1) (Float.to_int x)
+(* [floor_in n x] is [⌊x⌋] clamped to [0, n - 1]. *)
+let floor_in n x =
+  if not (x >= 1.) then 0
+  else if x >= Float.of_int n then n - 1
+  else Float.to_int x
+
+(* [bin l p] is the cell of the [l]-cell axis holding the position [p]. *)
+let bin l p = floor_in l (p *. Float.of_int l)
+
+(* [bin_dots l k p] is the dot holding the position [p] on an axis of [l]
+   cells of [k] dots each: [⌊p l k⌋], kept among the dots of the cell
+   [bin l p]. At three dots per cell, [p l k] and [p l] can round to opposite
+   sides of a cell's edge; the cell decides, so that a value lies in one cell
+   at every resolution. *)
+let bin_dots l k p =
+  let c = bin l p in
+  if k = 1 then c
+  else
+    let d = floor_in (l * k) (p *. Float.of_int (l * k)) in
+    max (c * k) (min ((c * k) + k - 1) d)
 
 type placed_axis = {
   s : scale;
@@ -1934,22 +1958,13 @@ let positions (s : scale) len a =
       done
   | Log _ ->
       let lo = Float.log s.lo and hi = Float.log s.hi in
-      let inv = if hi = lo then 0. else 1. /. (hi -. lo) in
       for i = 0 to n - 1 do
         let v = Array.unsafe_get a i in
-        out.(i) <-
-          (if not (v > 0.) then Float.nan
-           else if inv = 0. then 0.5
-           else (Float.log v -. lo) *. inv)
+        out.(i) <- fraction lo hi (if v > 0. then Float.log v else Float.nan)
       done
   | Linear | Time _ ->
-      let lo = s.lo and hi = s.hi in
-      let inv = if hi = lo then 0. else 1. /. (hi -. lo) in
       for i = 0 to n - 1 do
-        let v = Array.unsafe_get a i in
-        out.(i) <-
-          (if inv = 0. then if Float.is_finite v then 0.5 else v
-           else (v -. lo) *. inv)
+        out.(i) <- fraction s.lo s.hi (Array.unsafe_get a i)
       done);
   if s.reverse && s.kind <> Band then
     for i = 0 to n - 1 do
@@ -1990,7 +2005,9 @@ let row_colors (l : layout) e =
 
 let color_of colors base i = match colors with Some a -> a.(i) | None -> base
 
-(* Liang-Barsky clipping of a segment to the unit square. *)
+(* Liang-Barsky clipping of a segment to the unit square. An end the square
+   keeps is returned as given: [x0 + (x1 - x0)] can round into the next cell
+   from the one its value's ticks are in. *)
 let clip x0 y0 x1 y1 =
   let dx = x1 -. x0 and dy = y1 -. y0 in
   let t0 = ref 0. and t1 = ref 1. in
@@ -2008,11 +2025,8 @@ let clip x0 y0 x1 y1 =
   edge (-.dy) y0;
   edge dy (1. -. y0);
   if !ok then
-    Some
-      ( x0 +. (!t0 *. dx),
-        y0 +. (!t0 *. dy),
-        x0 +. (!t1 *. dx),
-        y0 +. (!t1 *. dy) )
+    let at t a d b = if t = 1. then b else a +. (t *. d) in
+    Some (x0 +. (!t0 *. dx), y0 +. (!t0 *. dy), at !t1 x0 dx x1, at !t1 y0 dy y1)
   else None
 
 let bresenham x0 y0 x1 y1 f =
@@ -2040,8 +2054,8 @@ let inside p = p >= 0. && p <= 1.
    line through the rows of [e], [i] the row nearer it, breaking at missing
    rows. *)
 let path c ~cols ~rows ~xs ~ys f =
-  let w = c.pw * cols and h = c.ph * rows in
-  let dx p = bin w p and dy p = h - 1 - bin h p in
+  let h = c.ph * rows in
+  let dx p = bin_dots c.pw cols p and dy p = h - 1 - bin_dots c.ph rows p in
   let n = Array.length xs in
   let valid i = Float.is_finite xs.(i) && Float.is_finite ys.(i) in
   for i = 0 to n - 1 do
@@ -2300,7 +2314,8 @@ let ink_mark c (e : ev) =
       let w = c.pw * cols and h = c.ph * rows in
       let paint x yt yb i =
         let clamp p = Float.max 0. (Float.min 1. p) in
-        let t = h - 1 - bin h (clamp yt) and b = h - 1 - bin h (clamp yb) in
+        let t = h - 1 - bin_dots c.ph rows (clamp yt)
+        and b = h - 1 - bin_dots c.ph rows (clamp yb) in
         let t, b = (min t b, max t b) in
         for y = t to b do
           match res with
@@ -2316,8 +2331,8 @@ let ink_mark c (e : ev) =
       for i = 1 to e.n - 1 do
         if valid i && valid (i - 1) then
           let x0 = xs.(i - 1) and x1 = xs.(i) in
-          let d0 = bin w (Float.max 0. (Float.min 1. x0))
-          and d1 = bin w (Float.max 0. (Float.min 1. x1)) in
+          let d0 = bin_dots c.pw cols (Float.max 0. (Float.min 1. x0))
+          and d1 = bin_dots c.pw cols (Float.max 0. (Float.min 1. x1)) in
           if Float.max x0 x1 >= 0. && Float.min x0 x1 <= 1. then
             for d = min d0 d1 to max d0 d1 do
               let xm = (Float.of_int d +. 0.5) /. Float.of_int w in
@@ -2329,18 +2344,18 @@ let ink_mark c (e : ev) =
             done
       done;
       if e.n = 1 && valid 0 && inside xs.(0) then
-        paint (bin w xs.(0)) ys.(0) y2s.(0) 0
+        paint (bin_dots c.pw cols xs.(0)) ys.(0) y2s.(0) 0
   | K_dot { dots; symbol } -> (
       let xs = xs () and ys = ys () in
       let ok i = inside xs.(i) && inside ys.(i) in
       match stroke th (dots :> [ dots | `Steps | `Density ] option) with
       | `Res r ->
-          let w = c.pw * Ink.cols r and h = c.ph * Ink.rows r in
+          let h = c.ph * Ink.rows r in
           for i = 0 to e.n - 1 do
             if ok i then
               Ink.dot c.ink r
-                ~x:(bin w xs.(i))
-                ~y:(h - 1 - bin h ys.(i))
+                ~x:(bin_dots c.pw (Ink.cols r) xs.(i))
+                ~y:(h - 1 - bin_dots c.ph (Ink.rows r) ys.(i))
                 ~fg:(fg i) ~attrs ~owner:(owner i)
           done
       | `Density ->
@@ -2524,7 +2539,7 @@ let ink_mark c (e : ev) =
               for i = 0 to e.n - 1 do
                 let p = pos sx w xs.(i) and q = pos sy h ys.(i) in
                 if inside p && inside q && Float.is_finite vs.(i) then
-                  put (((h - 1 - bin h q) * w) + bin w p) vs.(i) i
+                  put (((h - 1 - bin_dots c.ph sub q) * w) + bin w p) vs.(i) i
               done;
               if reduce = `Mean then
                 Array.iteri
