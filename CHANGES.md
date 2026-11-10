@@ -141,6 +141,11 @@ console gets back every mode and code page the run changed.
 - `matrix.charts` searches a log axis's ticks with the lone decimal tick to
   beat, so it no longer labels every candidate power: over the floats' whole
   range its search labelled 178,634 values, and now 1,266, for the same ticks.
+- `Matrix_charts.margins ~left` and `~right` now set the plot's width before the
+  x labels' overhang is measured, so a figure whose least margin holds its y
+  axis has the same plot whatever that axis's labels. The overhang was measured
+  against a plot as wide as the guides alone left it, and could end the plot
+  one cell off.
 
 ## [0.2.0] - 2026-11-04
 

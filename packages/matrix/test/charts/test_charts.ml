@@ -932,6 +932,39 @@ let%expect_test "a frame, margins and an inset" =
          0.0               2.5
     |}]
 
+let%expect_test "the plot is the same whatever guide fills a least margin" =
+  Random.init 12;
+  let differ = ref [] and checked = ref 0 in
+  for _ = 1 to 400 do
+    let width = 10 + Random.int 70 and height = 3 + Random.int 6 in
+    let left = 7 + Random.int 6 in
+    let lo = Float.of_int (Random.int 20000 - 10000) in
+    let hi = lo +. Float.of_int (1 + Random.int 5000) in
+    let plot y_axis =
+      C.Layout.plot
+        (C.layout ~width ~height
+           C.(
+             layer [ line ~x:Fun.id ~y:Fun.id [| lo; hi |]; y_axis ]
+             |> scale "x" (Scale.linear ~domain:(lo, hi) ())
+             |> margins ~left))
+    in
+    (* the y axis's room within [left]: no labels, or labels of two cells *)
+    let bare = plot C.(axis ~format:(fun _ _ -> "") "y")
+    and labelled = plot C.(axis ~format:(fun _ _ -> "ab") "y") in
+    if bare.x = left && labelled.x = left then begin
+      incr checked;
+      if bare <> labelled then
+        differ := (width, height, left, lo, hi) :: !differ
+    end
+  done;
+  Printf.printf "plots that differ: %d of %d\n" (List.length !differ) !checked;
+  List.iteri
+    (fun i (w, h, left, lo, hi) ->
+      if i < 3 then
+        Printf.printf "%dx%d, least left %d, x [%g, %g]\n" w h left lo hi)
+    (List.rev !differ);
+  [%expect {| plots that differ: 0 of 393 |}]
+
 let%expect_test "a second y axis reads a second scale" =
   show ~width:40 ~height:8
     C.(

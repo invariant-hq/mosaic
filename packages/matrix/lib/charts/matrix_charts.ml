@@ -1619,9 +1619,14 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
         let n = room ticks side in
         if n > 0 then n + inset else if frame side then 1 + inset else 0
       in
-      let left = base `Left + lw and right = base `Right + rw in
-      let bottom = base `Bottom + bl in
-      let top = base `Top + tl + title_rows + if y_heading then 1 else 0 in
+      (* The least margins first: the plot's width they leave places the x
+         labels whose overhang is measured below. *)
+      let left = max (base `Left + lw) m.left
+      and right = max (base `Right + rw) m.right in
+      let bottom = max (base `Bottom + bl) m.bottom in
+      let top =
+        max (base `Top + tl + title_rows + if y_heading then 1 else 0) m.top
+      in
       (* x labels that run past the plot's ends widen the margins they
          cross. *)
       let pw = width - left - right in
@@ -1644,13 +1649,7 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
                   over_r := max !over_r (start + w - pw))
                 t.major)
           ticks;
-      {
-        top = max top m.top;
-        bottom = max bottom m.bottom;
-        left = max (left + max 0 (!over_l - left)) m.left;
-        right = max (right + max 0 (!over_r - right)) m.right;
-        inset;
-      }
+      { top; bottom; left = max left !over_l; right = max right !over_r; inset }
     in
     (* The search runs once per axis and length: the margins converge in a
        few rounds over the same lengths. *)
