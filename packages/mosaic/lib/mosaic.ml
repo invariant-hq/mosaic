@@ -163,6 +163,7 @@ end
 
 module Tree = Mosaic_ui.Tree
 module Spinner = Mosaic_ui.Spinner
+module Progress_bar = Mosaic_ui.Progress_bar
 module Slider = Mosaic_ui.Slider
 module Scroll_box = Mosaic_ui.Scroll_box
 module Scroll_bar = Mosaic_ui.Scroll_bar
@@ -2215,7 +2216,8 @@ let progress_bar ?key ?layout ?display ?box_sizing ?position ?overflow
     ?grid_template_areas ?grid_template_column_names ?grid_template_row_names
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
     ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
-    ?focused ?value ?min ?max ?orientation ?filled_color ?empty_color () =
+    ?focused ?value ?min ?max ?orientation ?filled_color ?empty_color ?glyphs ()
+    =
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
       ?scrollbar_width ?text_align ?inset ?size ?min_size ?max_size
@@ -2231,7 +2233,7 @@ let progress_bar ?key ?layout ?display ?box_sizing ?position ?overflow
     ?selectable ?on_mouse ?on_key ?on_paste ?on_click ?on_focus_request ?on_size
     ~kind:Kinds.progress_bar
     (Mosaic_ui.Progress_bar.Props.make ?value ?min ?max ?orientation
-       ?filled_color ?empty_color ())
+       ?filled_color ?empty_color ?glyphs ())
     []
 
 let scroll_bar ?key ?layout ?display ?box_sizing ?position ?overflow

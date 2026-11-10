@@ -625,6 +625,17 @@ module Spinner : sig
   (** [default_frame_set] is {!dots}. *)
 end
 
+(** Companion types for the {!val-progress_bar} widget. *)
+module Progress_bar : sig
+  type glyphs = Mosaic_ui.Progress_bar.glyphs = {
+    filled : string;  (** Each cell of the filled portion. *)
+    half : string;  (** The cell where the value ends half way. *)
+    empty : string;  (** Each cell of the unfilled portion. *)
+  }
+  (** The type for the glyphs of a bar's cells
+      ({!Mosaic_ui.Progress_bar.type-glyphs}). *)
+end
+
 (** Companion types for the {!val-slider} widget. *)
 module Slider : sig
   type orientation = Mosaic_ui.Slider.orientation
@@ -2725,11 +2736,12 @@ val progress_bar :
   ?orientation:[ `Horizontal | `Vertical ] ->
   ?filled_color:Ansi.Color.t ->
   ?empty_color:Ansi.Color.t ->
+  ?glyphs:Progress_bar.glyphs ->
   unit ->
   'msg t
 (** [progress_bar ()] is a progress indicator. The labels from [value] to
-    [empty_color] are {!Mosaic_ui.Progress_bar.Props.make}'s and take its
-    defaults. Layout and paint use the other labelled arguments. *)
+    [glyphs] are {!Mosaic_ui.Progress_bar.Props.make}'s and take its defaults.
+    Layout and paint use the other labelled arguments. *)
 
 val scroll_bar :
   ?key:string ->

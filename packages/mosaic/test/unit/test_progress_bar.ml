@@ -92,6 +92,31 @@ let props_detects_empty_color_diff () =
   let b = Progress_bar.Props.make ~empty_color:Ansi.Color.blue () in
   is_false ~msg:"different" (Progress_bar.Props.equal a b)
 
+let props_detects_glyphs_diff () =
+  let thin = { Progress_bar.filled = "━"; half = "╸"; empty = "─" } in
+  let a = Progress_bar.Props.make ~glyphs:thin () in
+  let b = Progress_bar.Props.make ~glyphs:{ thin with half = " " } () in
+  is_false ~msg:"other glyphs" (Progress_bar.Props.equal a b);
+  is_false ~msg:"glyphs or none"
+    (Progress_bar.Props.equal a (Progress_bar.Props.make ()));
+  is_true ~msg:"equal glyphs"
+    (Progress_bar.Props.equal a
+       (Progress_bar.Props.make ~glyphs:{ thin with empty = "─" } ()))
+
+(* A glyph takes one cell: an empty one, two characters, a wide one and a
+   tab, which draws as two spaces, are refused. *)
+let glyphs_take_one_cell () =
+  let thin = { Progress_bar.filled = "━"; half = "╸"; empty = "─" } in
+  let refused glyph =
+    raises_match ~msg:(Printf.sprintf "%S" glyph)
+      (Exn.invalid_arg ~sub:"not one cell wide") (fun () ->
+        ignore (Progress_bar.Props.make ~glyphs:{ thin with half = glyph } ()))
+  in
+  List.iter refused [ ""; "ab"; "\u{4E2D}"; "\t"; "\n" ];
+  let _t, bar = make_bar () in
+  raises_match ~msg:"set_glyphs" (Exn.invalid_arg ~sub:"not one cell wide")
+    (fun () -> Progress_bar.set_glyphs bar { thin with filled = "ab" })
+
 (* ── Construction ── *)
 
 let create_attaches () =
@@ -151,6 +176,16 @@ let set_filled_color_schedules_render () =
   let before = Test_harness.clean t in
   Progress_bar.set_filled_color bar Ansi.Color.red;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
+
+let set_glyphs_schedules_render () =
+  let t, bar = make_bar () in
+  let thin = { Progress_bar.filled = "━"; half = "╸"; empty = "─" } in
+  let before = Test_harness.clean t in
+  Progress_bar.set_glyphs bar thin;
+  gt ~msg:"scheduled" ~than:before !(t.schedule_count);
+  let before = Test_harness.clean t in
+  Progress_bar.set_glyphs bar { thin with filled = "━" };
+  equal ~msg:"equal glyphs schedule nothing" int before !(t.schedule_count)
 
 let set_empty_color_schedules_render () =
   let t, bar = make_bar () in
@@ -317,6 +352,20 @@ let doors_empty_color () =
         (Progress_bar.create ~parent ~style:doors_style
            (Progress_bar.Props.make ~value:0.5 ~empty_color:doors_red ())))
 
+let doors_glyphs () =
+  let thin = { Progress_bar.filled = "━"; half = "╸"; empty = "─" } in
+  Test_harness.reaches "glyphs"
+    ~base:(Mosaic.progress_bar ~size:doors_size ~value:0.5 ())
+    ~element:(Mosaic.progress_bar ~size:doors_size ~value:0.5 ~glyphs:thin ())
+    ~create_base:(fun parent ->
+      Progress_bar.node
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ())))
+    ~create:(fun parent ->
+      Progress_bar.node
+        (Progress_bar.create ~parent ~style:doors_style
+           (Progress_bar.Props.make ~value:0.5 ~glyphs:thin ())))
+
 (* ── Paint ── *)
 
 (* With no color label, the filled part is blocks in the [Plain] role and the
@@ -334,11 +383,31 @@ let paint_without_styling () =
   is_true ~msg:"the filled part" (includes text "\u{2588}");
   is_true ~msg:"the empty part" (includes text "\u{2500}")
 
+(* A colored bar keeps its glyphs where the output shows no color, so it
+   still shows its value, half cell included. *)
+let paint_colored_without_color () =
+  let text =
+    at `Mono
+      (paint
+         (Mosaic.progress_bar
+            ~size:(Mosaic.size ~width:10 ~height:1)
+            ~filled_color:Ansi.Color.green ~empty_color:Ansi.Color.red
+            ~value:0.55 ()))
+  in
+  is_true ~msg:"the filled part" (includes text "\u{2588}");
+  is_true ~msg:"the half cell" (includes text "\u{258C}");
+  is_true ~msg:"the empty part" (includes text "\u{2500}")
+
 let () =
   exit
     (run "mosaic.progress_bar"
        [
-         group "Paint" [ test "shows with no styling" paint_without_styling ];
+         group "Paint"
+           [
+             test "shows with no styling" paint_without_styling;
+             test "a colored bar shows without color"
+               paint_colored_without_color;
+           ];
          group "Props"
            [
              test "default values" props_defaults;
@@ -349,6 +418,8 @@ let () =
              test "detects orientation diff" props_detects_orientation_diff;
              test "detects filled_color diff" props_detects_filled_color_diff;
              test "detects empty_color diff" props_detects_empty_color_diff;
+             test "detects glyphs diff" props_detects_glyphs_diff;
+             test "glyphs take one cell" glyphs_take_one_cell;
            ];
          group "Construction"
            [
@@ -370,6 +441,7 @@ let () =
              test "set_orientation noop same" set_orientation_noop_same;
              test "set_filled_color schedules render"
                set_filled_color_schedules_render;
+             test "set_glyphs schedules render" set_glyphs_schedules_render;
              test "set_empty_color schedules render"
                set_empty_color_schedules_render;
            ];
@@ -401,5 +473,6 @@ let () =
              test "orientation" doors_orientation;
              test "filled_color" doors_filled_color;
              test "empty_color" doors_empty_color;
+             test "glyphs" doors_glyphs;
            ];
        ])

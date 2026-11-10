@@ -9,17 +9,31 @@
     \[[min];[max]\] before rendering. When [min = max], the bar renders as fully
     filled.
 
-    The bar draws by the roles of the theme in scope ({!Renderable.theme}): the
-    filled portion as full blocks in the [Plain] role and the unfilled portion
-    as a line in the [Border] role, so it shows its value whatever the output's
-    styling. A [filled_color] or [empty_color] fills its portion as a background
-    instead. *)
+    The bar draws a glyph in each cell ({!type-glyphs}), by the roles of the
+    theme in scope ({!Renderable.theme}): the filled portion's in the [Plain]
+    role, the unfilled portion's in the [Border] role, and the half glyph, in
+    the cell where the value ends half way, in the filled portion's. So it shows
+    its value whatever the output's styling. A [filled_color] or [empty_color]
+    is the foreground of its portion's glyphs. By default the glyphs are full
+    blocks, a half block and a line; a heavy line filled and a light one empty
+    make a gauge one row high, [━━━━╸─────]. *)
 
 type t
 (** The type for progress bar widgets backed by a {!Renderable.t}. *)
 
 type orientation = [ `Horizontal | `Vertical ]
 (** The type for track direction. *)
+
+type glyphs = {
+  filled : string;  (** Each cell of the filled portion. *)
+  half : string;
+      (** The cell where the value ends half way, its filled half on the filled
+          side: its left half on a horizontal bar, its bottom half on a vertical
+          one, as [╸] (U+2578) and [╻] (U+257B) are. *)
+  empty : string;  (** Each cell of the unfilled portion. *)
+}
+(** The type for the glyphs of a bar's cells. Each glyph takes one cell, by
+    every {!Matrix.Text.width_method}. *)
 
 (** {1:constructors Constructors} *)
 
@@ -39,6 +53,7 @@ module Props : sig
     ?orientation:orientation ->
     ?filled_color:Ansi.Color.t ->
     ?empty_color:Ansi.Color.t ->
+    ?glyphs:glyphs ->
     unit ->
     t
   (** [make ()] is a property set with:
@@ -46,12 +61,17 @@ module Props : sig
       - [min] is the lower bound of the range. Defaults to [0.0].
       - [max] is the upper bound of the range. Defaults to [1.0].
       - [orientation] is the track direction. Defaults to [`Horizontal].
-      - [filled_color] is the color of the filled portion. Defaults to none,
-        blocks in the [Plain] role.
-      - [empty_color] is the color of the unfilled portion. Defaults to none, a
-        line in the [Border] role.
+      - [filled_color] is the color of the filled portion's glyphs. Defaults to
+        none, the [Plain] role.
+      - [empty_color] is the color of the unfilled portion's glyphs. Defaults to
+        none, the [Border] role.
+      - [glyphs] are the glyphs of the bar's cells. Defaults to none: full
+        blocks [█], a half block and a line, [▌] and [─] for [`Horizontal], [▄]
+        and [│] for [`Vertical].
 
-      [Mosaic.progress_bar] takes these labels with these defaults. *)
+      [Mosaic.progress_bar] takes these labels with these defaults.
+
+      Raises [Invalid_argument] if a glyph does not take one cell. *)
 
   val default : t
   (** [default] is [make ()]. *)
@@ -116,6 +136,12 @@ val set_filled_color : t -> Ansi.Color.t -> unit
 val set_empty_color : t -> Ansi.Color.t -> unit
 (** [set_empty_color t c] sets the unfilled portion color of [t] to [c].
     Triggers a re-render if the color changed. *)
+
+val set_glyphs : t -> glyphs -> unit
+(** [set_glyphs t g] sets the glyphs of [t]'s cells to [g]. Triggers a re-render
+    if the glyphs changed.
+
+    Raises [Invalid_argument] if a glyph of [g] does not take one cell. *)
 
 (** {1:fmt Formatting} *)
 
