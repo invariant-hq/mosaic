@@ -335,7 +335,10 @@ val circle :
     [y] implies [reverse]. A domain given to a specification is neither widened
     nor rounded. A domain of no values is \[[0];[1]\], or \[[1];[10]\] on a log
     scale. A domain of one value maps every value to the position [0.5], except
-    that a domain widened to [0] from [0] alone is \[[0];[1]\]. *)
+    that a domain widened to [0] from [0] alone is \[[0];[1]\]. Any other finite
+    increasing domain maps each finite value it does not drop to a finite
+    position, and each value in it to a position in \[[0];[1]\], even when the
+    domain's length or its inverse passes the largest float. *)
 
 module Scale : sig
   type 'd t
@@ -643,14 +646,16 @@ module View : sig
   (** [zoom f k v] is [v] with the shown domain of each continuous position
       scale of [f] on [axes], [`Both] by default, [k] times narrower about its
       middle, in the space of the logarithms on a log scale. A window too narrow
-      for floating-point numbers to narrow it further is left unchanged.
+      for floating-point numbers to narrow it further, or one that would pass
+      the floats' range, is left unchanged.
 
       Raises [Invalid_argument] if [k] is not finite and positive. *)
 
   val pan : figure -> by:float * float -> t -> t
   (** [pan f ~by:(dx, dy) v] is [v] with the shown domain of each continuous x
       scale of [f] moved [dx] times its length toward greater values, and of
-      each y scale [dy] times. *)
+      each y scale [dy] times. A window that would pass the floats' range is
+      left unchanged. *)
 
   val clamp : figure -> t -> t
   (** [clamp f v] is [v] with each window moved inside its scale's domain in
@@ -743,14 +748,15 @@ module Layout : sig
       position scale on [axes], [`Both] by default, [k] times narrower about its
       value at cell [at], or at the plot's nearest cell if [at] is outside it. A
       layout of the new view whose plot has the same place shows that value at
-      [at].
+      [at]. A window that would pass the floats' range is left unchanged.
 
       Raises [Invalid_argument] if [k] is not finite and positive. *)
 
   val pan : t -> by:int * int -> View.t
   (** [pan l ~by:(dx, dy)] is [l]'s view in which the data drawn at cell
       [(x, y)] is drawn at [(x + dx, y + dy)]. For a drag, [by] is the pointer's
-      move in cells since the previous event. *)
+      move in cells since the previous event. A window that would pass the
+      floats' range is left unchanged. *)
 
   val hit :
     ?radius:float ->

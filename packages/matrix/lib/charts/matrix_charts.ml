@@ -838,14 +838,29 @@ let tf (s : scale) v =
 
 let untf (s : scale) u = match s.kind with Log _ -> Float.exp u | _ -> u
 
+(* [half a b] is half the length of [a, b], finite for all finite [a] and
+   [b]: [b -. a] passes the largest float when they lie far apart. *)
+let half a b = (b /. 2.) -. (a /. 2.)
+
 (* [fraction a b u] is the position of [u] on the window [a, b] of a transform's
    space. Every value a layout places goes through it, ticks and marks alike,
    so that they land in the same cell: a product with the window's inverse
    rounds differently, and puts [5] of [0, 6] in cell 49 of 60 where the
    division puts it in cell 50. A constant window places a finite [u] at
-   [0.5]. *)
+   [0.5]. Where a difference passes the largest float, the halves of the
+   values give the position, and a finite [u] far outside the window is held
+   to the largest float, so that it stays finite. *)
 let fraction a b u =
-  if a = b then if Float.is_finite u then 0.5 else u else (u -. a) /. (b -. a)
+  if a = b then if Float.is_finite u then 0.5 else u
+  else
+    let d = b -. a and e = u -. a in
+    let p =
+      if Float.is_finite d && Float.is_finite e then e /. d
+      else half a u /. half a b
+    in
+    if Float.is_finite u then
+      Float.min Float.max_float (Float.max (-.Float.max_float) p)
+    else p
 
 let norm (s : scale) v =
   let p = fraction (tf s s.lo) (tf s s.hi) (tf s v) in
@@ -854,7 +869,10 @@ let norm (s : scale) v =
 let unnorm (s : scale) p =
   let p = if s.reverse then 1. -. p else p in
   let a = tf s s.lo and b = tf s s.hi in
-  untf s (a +. (p *. (b -. a)))
+  let d = b -. a in
+  untf s
+    (if Float.is_finite d then a +. (p *. d)
+     else 2. *. ((a /. 2.) +. (p *. half a b)))
 
 (* [span s] is the shown window of [s] in its transform's space. *)
 let span (s : scale) = (tf s s.lo, tf s s.hi)
@@ -3050,15 +3068,24 @@ let draw_grid (l : layout) grid ~ox ~oy =
                     let a = tf pa.s a.value and b = tf pa.s b.value in
                     let lo, hi = span pa.s in
                     let lo, hi = (Float.min lo hi, Float.max lo hi) in
-                    let step = (b -. a) /. Float.of_int k in
-                    let v =
-                      ref (a -. (Float.floor ((a -. lo) /. step) *. step))
-                    in
-                    while !v <= hi +. (Float.abs step *. 1e-9) do
-                      let q = norm pa.s (untf pa.s !v) in
-                      if inside q then at false (bin len q);
-                      v := !v +. step
-                    done
+                    (* The lines [a + i step], counted by [i] and in halves,
+                       so that neither a step below the values' spacing nor a
+                       window longer than the largest float stalls the walk.
+                       More lines than dots of [k] per cell show nothing
+                       more. *)
+                    let step = Float.abs (half a b) /. Float.of_int k in
+                    let first = Float.floor (half a lo /. step)
+                    and last = Float.floor (half a hi /. step) in
+                    let count = last -. first in
+                    if
+                      Float.is_finite count
+                      && count < Float.of_int ((len + 1) * k)
+                    then
+                      for i = Float.to_int first to Float.to_int last + 1 do
+                        let v = 2. *. ((a /. 2.) +. (Float.of_int i *. step)) in
+                        let q = norm pa.s (untf pa.s v) in
+                        if inside q then at false (bin len q)
+                      done
                 | _ -> ());
                 List.iter
                   (fun (t : Ticks.tick) ->
@@ -3564,7 +3591,9 @@ module Layout = struct
             tf s
               (unnorm s ((Float.of_int off +. 0.5) /. Float.of_int (max 1 len)))
           in
-          set_window view s (u -. ((u -. a) /. k)) (u +. ((b -. u) /. k)))
+          set_window view s
+            (u -. (2. *. (half a u /. k)))
+            (u +. (2. *. (half u b /. k))))
       l.view l.r.scales
 
   let pan (l : t) ~by:(dx, dy) =
@@ -3577,7 +3606,9 @@ module Layout = struct
           let len, d =
             match s.dir with Y -> (p.height, -dy) | _ -> (p.width, dx)
           in
-          let shift = Float.of_int d *. (b -. a) /. Float.of_int (max 1 len) in
+          let shift =
+            Float.of_int d *. (half a b /. Float.of_int (max 1 len)) *. 2.
+          in
           let shift = if s.reverse then -.shift else shift in
           if d = 0 then view else set_window view s (a -. shift) (b -. shift))
       l.view l.r.scales
@@ -3666,7 +3697,7 @@ module View = struct
         if not (on_axes axes s) then v
         else
           let a, b = span s in
-          let c = (a +. b) /. 2. and h = (b -. a) /. 2. /. k in
+          let c = (a /. 2.) +. (b /. 2.) and h = half a b /. k in
           set_window v s (c -. h) (c +. h))
       v r.scales
 
@@ -3680,7 +3711,7 @@ module View = struct
           let f = match s.dir with Y -> fy | _ -> fx in
           if f = 0. then v
           else
-            let d = f *. (b -. a) in
+            let d = f *. half a b *. 2. in
             set_window v s (a +. d) (b +. d))
       v r.scales
 
@@ -3696,13 +3727,16 @@ module View = struct
         | Some _ ->
             let a, b = span s in
             let da = tf s s.dlo and db = tf s s.dhi in
-            if (not (da < db)) || b -. a >= db -. da then
+            if (not (da < db)) || half a b >= half da db then
               View0.set s.name None v
             else
-              let shift =
-                if a < da then da -. a else if b > db then db -. b else 0.
-              in
-              set_window v s (a +. shift) (b +. shift))
+              (* the window's length, by halves, from the end it passes: a
+                 shift by [da - a] passes the largest float when the window
+                 lies far from the domain *)
+              let w = 2. *. half a b in
+              if a < da then set_window v s da (da +. w)
+              else if b > db then set_window v s (db -. w) db
+              else set_window v s a b)
       v r.scales
 end
 

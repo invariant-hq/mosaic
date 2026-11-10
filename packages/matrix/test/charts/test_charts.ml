@@ -1837,3 +1837,278 @@ let%expect_test "marks leave the plot alone when the domains are given" =
   done;
   Printf.printf "plots moved by rows: %d of %d\n" !moved !cases;
   [%expect {| plots moved by rows: 0 of 300 |}]
+
+let%expect_test "every finite domain places every value in it" =
+  let max = Float.max_float and tiny = 4.9e-324 in
+  let domains =
+    [
+      ("linear", (-.max, max));
+      ("linear", (-1e308, 1e308));
+      ("linear", (-.max, -.max /. 2.));
+      ("linear", (0., tiny));
+      ("linear", (tiny, 3. *. tiny));
+      ("linear", (1., 1. +. epsilon_float));
+      ("linear", (-1e-300, 1e300));
+      ("time", (-.max, max));
+      ("log", (tiny, max));
+      ("log", (1., 1. +. epsilon_float));
+    ]
+  in
+  let width = 40 in
+  List.iter
+    (fun (kind, (lo, hi)) ->
+      let spec =
+        match kind with
+        | "log" -> C.Scale.log ~domain:(lo, hi) ()
+        | "time" -> C.Scale.time ~domain:(lo, hi) ()
+        | _ -> C.Scale.linear ~domain:(lo, hi) ()
+      in
+      let vs =
+        List.init 33 (fun i ->
+            let u = Float.of_int i /. 32. in
+            if kind = "log" then
+              Float.exp ((Float.log lo *. (1. -. u)) +. (Float.log hi *. u))
+            else (lo *. (1. -. u)) +. (hi *. u))
+      in
+      let fig =
+        C.(
+          layer
+            [
+              dot ~x:Fun.id ~y:(fun _ -> 0.) (Array.of_list vs);
+              axis ~grid:(`Minor 2) "x";
+            ]
+          |> scale "x" spec)
+      in
+      let l = C.layout ~width ~height:6 fig in
+      let dots = List.map (fun v -> C.Layout.dot l "x" `Braille (Num v)) vs in
+      let k = 2 * (C.Layout.plot l).width in
+      let inside = List.for_all (fun d -> d >= 0 && d < k) dots in
+      let ordered = List.sort compare dots = dots in
+      let p = C.Layout.plot l in
+      let values =
+        List.init p.width (fun c ->
+            match C.Layout.value l "x" (p.x + c, p.y) with
+            | Some (Num v) -> Float.is_finite v && v >= lo && v <= hi
+            | _ -> false)
+      in
+      let g = Grid.create ~width ~height:6 () in
+      C.draw l g ~x:0 ~y:0;
+      Printf.printf "%s [%g, %g]: dots %s, %s, ends %d %d; values %s\n" kind lo
+        hi
+        (if inside then "inside" else "OUTSIDE")
+        (if ordered then "in order" else "OUT OF ORDER")
+        (List.hd dots) (List.nth dots 32)
+        (if List.for_all Fun.id values then "inside" else "OUTSIDE");
+      List.iter print_endline (text_rows g))
+    domains;
+  [%expect
+    {|
+    linear [-1.79769e+308, 1.79769e+308]: dots inside, in order, ends 0 73; values inside
+      │   ┊    ┊    ┊    ┊    ┊    ┊    ┊
+    0 ┤⠂⠂⠂⠂⠐⠐⠐ ⠂⠂⠂⠐⠐⠐ ⠂⠂⠂⠐⠐⠐⠐ ⠂⠂⠂⠐⠐⠐ ⠂⠂⠂⠐⠐⠐⠐
+      │   ┊    ┊    ┊    ┊    ┊    ┊    ┊
+      └───┬─────────┬─────────┬─────────┬───
+         -150      -50        50       150
+                      ×10³⁰⁶
+    linear [-1e+308, 1e+308]: dots inside, in order, ends 0 71; values inside
+      │         ┊        ┊        ┊       ┊
+    0 ┤⠂⠂⠂⠂⠐⠐⠐⠐ ⠂⠂⠂⠂⠐⠐⠐⠐ ⠂⠂⠂⠂⠐⠐⠐⠐ ⠂⠂⠂⠂⠐⠐⠐⠐⠐
+      │         ┊        ┊        ┊       ┊
+      └┬─────────────────┬────────────────┬
+      -100               0               100
+                      ×10³⁰⁶
+    linear [-1.79769e+308, -8.98847e+307]: dots inside, in order, ends 0 73; values inside
+      │ ┊     ┊    ┊    ┊    ┊    ┊    ┊
+    0 ┤⠂⠂⠂⠂⠐⠐⠐┊⠂⠂⠂⠐⠐⠐ ⠂⠂⠂⠐⠐⠐⠐┊⠂⠂⠂⠐⠐⠐ ⠂⠂⠂⠐⠐⠐⠐
+      │ ┊     ┊    ┊    ┊    ┊    ┊    ┊
+      └─┬──────────┬─────────┬─────────┬────
+       -175       -150      -125      -100
+                      ×10³⁰⁶
+    linear [0, 4.94066e-324]: dots inside, in order, ends 0 73; values inside
+      │                                    ┊
+    0 ┤⠂                                   ⠐
+      │                                    ┊
+      └┬───────────────────────────────────┬
+       0                                   5
+                      ×10⁻³²⁴
+    linear [4.94066e-324, 1.4822e-323]: dots inside, in order, ends 0 71; values inside
+      │                  ┊                ┊
+    0 ┤⠂                 ⠂                ⠐
+      │                  ┊                ┊
+      └┬─────────────────┬────────────────┬
+       5                 10               15
+                     ×10⁻³²⁴
+    linear [1, 1]: dots inside, in order, ends 0 71; values inside
+      │                                   ┊
+    0 ┤⠂                                  ⠐
+      │                                   ┊
+      └┬──────────────────────────────────┬
+       0                                 200
+                    ×10⁻¹⁸ +1
+    linear [-1e-300, 1e+300]: dots inside, in order, ends 0 71; values inside
+      │         ┊        ┊        ┊       ┊
+    0 ┤⠂⠂⠂⠂⠐⠐⠐⠐ ⠂⠂⠂⠂⠐⠐⠐⠐ ⠂⠂⠂⠂⠐⠐⠐⠐ ⠂⠂⠂⠂⠂⠐⠐⠐⠐
+      │         ┊        ┊        ┊       ┊
+      └┬─────────────────┬────────────────┬
+      0.0               0.5              1.0
+                      ×10³⁰⁰
+    time [-1.79769e+308, 1.79769e+308]: dots inside, in order, ends 0 73; values inside
+      │
+      │
+    0 ┤⠂⠂⠂⠂⠐⠐⠐ ⠂⠂⠂⠐⠐⠐ ⠂⠂⠂⠐⠐⠐⠐ ⠂⠂⠂⠐⠐⠐ ⠂⠂⠂⠐⠐⠐⠐
+      │
+      │
+      └─────────────────────────────────────
+    log [4.94066e-324, 1.79769e+308]: dots inside, in order, ends 0 69; values inside
+      │                                  ┊
+    0 ┤⡀⡀⡀⡀⡀⡀⢀⢀⢀⢀⢀ ⡀⡀⡀⡀⡀⢀⢀⢀⢀⢀⢀ ⡀⡀⡀⡀⡀⢀⢀⢀⢀⢀⢀
+      │                                  ┊
+      │                                  ┊
+      └──────────────────────────────────┬
+                                       10³⁰⁸
+    log [1, 1]: dots inside, in order, ends 0 71; values inside
+      │                                   ┊
+    0 ┤⠂                                  ⠐
+      │                                   ┊
+      └┬──────────────────────────────────┬
+       0                                 200
+                    ×10⁻¹⁸ +1
+    |}]
+
+let%expect_test "a fitted domain stays finite" =
+  let l =
+    C.layout ~width:30 ~height:4 C.(line ~y:Fun.id [| -1.7e308; 1.7e308 |])
+  in
+  (match C.Layout.domain l "y" with
+  | [ Num lo; Num hi ] -> Printf.printf "%g %g\n" lo hi
+  | _ -> ());
+  [%expect {| -1.7e+308 1.7e+308 |}]
+
+(* Domains whose length, or its inverse, passes the largest float. *)
+let extreme_domains =
+  let max = Float.max_float in
+  [ (-.max, max); (-.max, -.max /. 2.); (0., 1e-310) ]
+
+let extreme_figure (lo, hi) =
+  C.(
+    layer
+      [
+        line ~x:Fun.id ~y:(fun _ -> 0.) [| lo; hi |];
+        axis ~show:false "x";
+        axis ~show:false "y";
+      ]
+    |> scale "x" (Scale.linear ~domain:(lo, hi) ())
+    |> scale "y" (Scale.linear ~domain:(-1., 1.) ()))
+
+let num = function C.Layout.Num v -> v | Cat _ -> Float.nan
+
+let%expect_test "zoom keeps a value at its cell on extreme domains" =
+  List.iter
+    (fun (lo, hi) ->
+      let fig = extreme_figure (lo, hi) in
+      let l = C.layout ~width:40 ~height:4 fig in
+      let p = C.Layout.plot l in
+      List.iter
+        (fun k ->
+          let kept = ref 0 and cells = ref 0 and changed = ref false in
+          for cx = p.x to p.x + p.width - 1 do
+            let at = (cx, p.y) in
+            let v = num (Option.get (C.Layout.value l "x" at)) in
+            let view = C.Layout.zoom ~axes:`X l ~at k in
+            if C.View.window "x" view <> None then changed := true;
+            let l' = C.layout ~view ~width:40 ~height:4 fig in
+            incr cells;
+            if C.Layout.position l' "x" (Num v) = cx then incr kept
+          done;
+          Printf.printf "[%g, %g] zoomed %g: %s, value kept at %d of %d cells\n"
+            lo hi k
+            (if !changed then "window set" else "unchanged")
+            !kept !cells)
+        [ 2.; 0.5 ])
+    extreme_domains;
+  [%expect
+    {|
+    [-1.79769e+308, 1.79769e+308] zoomed 2: window set, value kept at 40 of 40 cells
+    [-1.79769e+308, 1.79769e+308] zoomed 0.5: unchanged, value kept at 40 of 40 cells
+    [-1.79769e+308, -8.98847e+307] zoomed 2: window set, value kept at 40 of 40 cells
+    [-1.79769e+308, -8.98847e+307] zoomed 0.5: unchanged, value kept at 40 of 40 cells
+    [0, 1e-310] zoomed 2: window set, value kept at 40 of 40 cells
+    [0, 1e-310] zoomed 0.5: window set, value kept at 40 of 40 cells
+    |}]
+
+let%expect_test "pan moves the data by its cells on extreme domains" =
+  List.iter
+    (fun (lo, hi) ->
+      let fig = extreme_figure (lo, hi) in
+      let l = C.layout ~width:40 ~height:4 fig in
+      let p = C.Layout.plot l in
+      List.iter
+        (fun dx ->
+          let view = C.Layout.pan l ~by:(dx, 0) in
+          match C.View.window "x" view with
+          | None -> Printf.printf "[%g, %g] panned %d: unchanged\n" lo hi dx
+          | Some _ ->
+              let l' = C.layout ~view ~width:40 ~height:4 fig in
+              let moved = ref 0 and cells = ref 0 in
+              for cx = p.x to p.x + p.width - 1 do
+                if cx + dx >= p.x && cx + dx < p.x + p.width then begin
+                  incr cells;
+                  let v = num (Option.get (C.Layout.value l "x" (cx, p.y))) in
+                  if C.Layout.position l' "x" (Num v) = cx + dx then incr moved
+                end
+              done;
+              Printf.printf "[%g, %g] panned %d: moved %d of %d cells\n" lo hi
+                dx !moved !cells)
+        [ 3; -5 ])
+    extreme_domains;
+  [%expect
+    {|
+    [-1.79769e+308, 1.79769e+308] panned 3: unchanged
+    [-1.79769e+308, 1.79769e+308] panned -5: unchanged
+    [-1.79769e+308, -8.98847e+307] panned 3: unchanged
+    [-1.79769e+308, -8.98847e+307] panned -5: moved 35 of 35 cells
+    [0, 1e-310] panned 3: moved 37 of 37 cells
+    [0, 1e-310] panned -5: moved 35 of 35 cells
+    |}]
+
+let%expect_test "clamp brings a window into an extreme domain, once" =
+  let max = Float.max_float in
+  List.iter
+    (fun ((lo, hi), windows) ->
+      let fig = extreme_figure (lo, hi) in
+      List.iter
+        (fun (a, b) ->
+          let once =
+            C.View.clamp fig (C.View.set "x" (Some (a, b)) C.View.empty)
+          in
+          let twice = C.View.clamp fig once in
+          let w = C.View.window "x" once in
+          Printf.printf "[%g, %g] window [%g, %g]: %s, %s\n" lo hi a b
+            (match w with
+            | None -> "removed"
+            | Some (a', b') ->
+                let w = b -. a and w' = b' -. a' in
+                if lo <= a' && b' <= hi && Float.abs (w' -. w) <= 1e-12 *. w
+                then Printf.sprintf "inside at [%g, %g]" a' b'
+                else Printf.sprintf "OUTSIDE at [%g, %g]" a' b')
+            (if C.View.window "x" twice = w then "again the same"
+             else "MOVED AGAIN"))
+        windows)
+    [
+      ( (-.max, -.max /. 2.),
+        [ (0.75 *. max, max); (-0.6 *. max, -0.4 *. max); (-.max, 0.) ] );
+      ((max /. 2., max), [ (-.max, -0.75 *. max) ]);
+      ((-.max, max), [ (-.max, max); (0., max /. 2.) ]);
+      ((0., 1e-310), [ (8e-311, 1.2e-310); (-3e-310, -2.5e-310) ]);
+    ];
+  [%expect
+    {|
+    [-1.79769e+308, -8.98847e+307] window [1.34827e+308, 1.79769e+308]: inside at [-1.34827e+308, -8.98847e+307], again the same
+    [-1.79769e+308, -8.98847e+307] window [-1.07862e+308, -7.19077e+307]: inside at [-1.25839e+308, -8.98847e+307], again the same
+    [-1.79769e+308, -8.98847e+307] window [-1.79769e+308, 0]: removed, again the same
+    [8.98847e+307, 1.79769e+308] window [-1.79769e+308, -1.34827e+308]: inside at [8.98847e+307, 1.34827e+308], again the same
+    [-1.79769e+308, 1.79769e+308] window [-1.79769e+308, 1.79769e+308]: removed, again the same
+    [-1.79769e+308, 1.79769e+308] window [0, 8.98847e+307]: inside at [0, 8.98847e+307], again the same
+    [0, 1e-310] window [8e-311, 1.2e-310]: inside at [6e-311, 1e-310], again the same
+    [0, 1e-310] window [-3e-310, -2.5e-310]: inside at [0, 5e-311], again the same
+    |}]

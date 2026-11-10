@@ -11,6 +11,14 @@ type t = { major : tick list; note : string option }
 
 let pow10 k = Float.of_string ("1e" ^ string_of_int k)
 
+(* [shift x k] is [x × 10^k], by a division where [10^-k] is a float, and in
+   two steps where [10^k] or [10^-k] passes the floats' range. *)
+let shift x k =
+  if k > 308 then x *. pow10 308 *. pow10 (k - 308)
+  else if k >= 0 then x *. pow10 k
+  else if k >= -300 then x /. pow10 (-k)
+  else x /. pow10 300 /. pow10 (-k - 300)
+
 (* [decompose v] is the digits [d] (no trailing zeros) and the exponent [e] of
    the shortest decimal that reads back as [|v|], so [|v| = d.ddd × 10^e]. *)
 let decompose_printed a =
@@ -148,9 +156,11 @@ let quantities vs =
     else
       let lo = Array.fold_left Float.min infinity vs
       and hi = Array.fold_left Float.max neg_infinity vs in
-      if hi = lo then None
+      let q = magnitude (hi -. lo) + 1 in
+      (* Past 10^308 every value rounds toward zero to [0]; below 10^-308 the
+         unit is no exact power of ten. *)
+      if hi = lo || q > 308 || p < -308 then None
       else
-        let q = magnitude (hi -. lo) + 1 in
         (* scaled by an exact power of ten, so that the offset is the float
            nearest its decimal *)
         let toward_zero x =
@@ -174,7 +184,7 @@ let quantities vs =
   in
   let k = if e < -4 || e > 5 then 3 * floor_div e 3 else 0 in
   let d = max 0 (k - p) in
-  let scaled v = if k = 0 then v else v /. pow10 k in
+  let scaled v = if k = 0 then v else shift v (-k) in
   let written = Array.map (fun v -> fixed d (scaled v)) vs in
   let grouped = Array.exists (fun v -> Float.abs (scaled v) >= 1e4) vs in
   let written = if grouped then Array.map group written else written in
@@ -365,10 +375,7 @@ let label family vs =
 
 (* A decimal step [m × 10^k]. Its multiples are computed from integers so that
    [3 × 0.1] is [0.3]. *)
-let multiple m k i =
-  let n = Float.of_int (i * m) in
-  if k >= 0 then n *. pow10 k else n /. pow10 (-k)
-
+let multiple m k i = shift (Float.of_int (i * m)) k
 let width (m, k) = multiple m k 1
 
 (* The integers [i] whose multiples [i × step] lie in \[[a];[b]\], [None] if
@@ -397,9 +404,12 @@ let multiples ?(skip = 1) ?(offset = 0) (m, k) a b =
 (* The decimal step nearest by ratio to a tenth of \[[a];[b]\], in [1], [2],
    [5] and [10] times a power of ten (d3's tick increment). *)
 let decimal_step a b =
-  let t = (b -. a) /. 10. in
+  (* by halves, which pass no float, or whole where a tenth is below the
+     least float *)
+  let t = ((b /. 2.) -. (a /. 2.)) /. 5. in
+  let t = if t > 0. then t else b -. a in
   let k = Float.to_int (Float.floor (Float.log10 t)) in
-  let f = t /. pow10 k in
+  let f = shift t (-k) in
   let m =
     if f >= Float.sqrt 50. then 10
     else if f >= Float.sqrt 10. then 5
@@ -470,16 +480,18 @@ let boundaries ?(limit = 2_000) offset iv a b =
   let local_day t = Float.to_int (Float.floor ((t +. off) /. day)) in
   let at_day d = (Float.of_int d *. day) -. off in
   let too_many n = n > limit in
+  (* Days and months are counted in integers, exact while the seconds are. *)
+  let civil = Float.abs a <= 0x1p53 && Float.abs b <= 0x1p53 in
   (match iv with
   | Seconds s ->
       let lo = Float.ceil ((a +. off) /. s)
       and hi = Float.floor ((b +. off) /. s) in
-      if not (too_many (Float.to_int (hi -. lo) + 1)) then
-        let i = ref lo in
-        while !i <= hi do
-          push ((!i *. s) -. off);
-          i := !i +. 1.
+      if hi -. lo < Float.of_int limit then
+        for i = 0 to Float.to_int (hi -. lo) do
+          push (((lo +. Float.of_int i) *. s) -. off)
         done
+      else count := limit + 1
+  | (Days _ | Weeks _ | Months _ | Years _) when not civil -> count := limit + 1
   | Days n | Weeks n ->
       let step, base = match iv with Weeks _ -> (7 * n, 4) | _ -> (n, 0) in
       let d0 = local_day a and d1 = local_day b + 1 in
@@ -549,7 +561,9 @@ let nice family (a, b) =
           let power i =
             if base = 10. then pow10 (Float.to_int i) else Float.pow base i
           in
-          (power lo, power hi)
+          (* a power past the floats' range keeps the domain's end *)
+          let lo = power lo and hi = power hi in
+          ((if lo > 0. then lo else a), if Float.is_finite hi then hi else b)
     | Time offset ->
         let rec loop a b prev n =
           if n = 0 then (a, b)
@@ -677,34 +691,41 @@ let decimal_family st ~v (a, b) =
   in
   (* A lone tick: [j] beyond the multiples of the coarsest power of ten that
      has one in the domain. *)
+  (* Whether a lone tick was found. A domain without one holds no multiple of
+     any power of ten a float holds, so no candidate of the search either. *)
   let rec seed z =
-    if z > -400 then
-      match multiples (step q_steps.(0) z) a b with
-      | [||] -> seed (z - 1)
-      | vs ->
-          let w = width (step q_steps.(0) z) in
-          let first = Float.to_int (Float.round (vs.(0) /. w)) in
-          let j = Array.length vs in
-          candidate j 0 z (residue first j)
+    z > -400
+    &&
+    match multiples (step q_steps.(0) z) a b with
+    | [||] -> seed (z - 1)
+    | vs ->
+        let w = width (step q_steps.(0) z) in
+        let first = Float.to_int (Float.round (vs.(0) /. w)) in
+        let j = Array.length vs in
+        candidate j 0 z (residue first j);
+        true
   in
+  (* Half the domain's length, which no domain makes pass the largest
+     float. *)
+  let half = (b /. 2.) -. (a /. 2.) in
   let rec descend j i z =
     let s = step q_steps.(i) z in
     let delta = Float.of_int j *. width s in
-    let n_lb = ((b -. a -. (2. *. delta)) /. delta) +. 1. in
+    let n_lb = (2. *. ((half -. delta) /. delta)) +. 1. in
     let s_max = 2. -. q_rank i -. Float.of_int j in
-    if worth st s_max n_lb && (b -. a) /. delta < 1e4 && delta > 0. then begin
+    if worth st s_max n_lb && half /. delta < 5e3 && delta > 0. then begin
       for r = 0 to j - 1 do
         candidate j i z r
       done;
       descend j i (z - 1)
     end
   in
-  seed z_top;
-  skips st ~simplest:2. (fun j ->
-      for i = 0 to Array.length q_steps - 1 do
-        let s_max = 2. -. q_rank i -. Float.of_int j in
-        if skips_to_q j i && worth st s_max 0. then descend j i z_top
-      done)
+  if seed z_top then
+    skips st ~simplest:2. (fun j ->
+        for i = 0 to Array.length q_steps - 1 do
+          let s_max = 2. -. q_rank i -. Float.of_int j in
+          if skips_to_q j i && worth st s_max 0. then descend j i z_top
+        done)
 
 let power base n i =
   if base = 10. then multiple n i 1
@@ -778,32 +799,35 @@ let calendar_family st offset (a, b) =
         consider st ~s_term ~key:[ 3; j; i; count - 1 - idx; r ] vs;
         true
   in
+  (* Whether a lone tick was found, without which no interval has a boundary
+     in the domain. *)
   let rec seed idx =
-    if idx >= 0 then
-      let iv, _, _ = intervals.(idx) in
-      match boundaries offset iv a b with
-      | Some [||] | None -> seed (idx - 1)
-      | Some vs -> ignore (candidate (Array.length vs) idx 0)
+    idx >= 0
+    &&
+    let iv, _, _ = intervals.(idx) in
+    match boundaries offset iv a b with
+    | Some [||] | None -> seed (idx - 1)
+    | Some vs -> candidate (Array.length vs) idx 0
   in
-  seed (count - 1);
-  skips st ~simplest:1. (fun j ->
-      for rank = 1 to 4 do
-        for idx = count - 1 downto 0 do
-          let iv, i, n = intervals.(idx) in
-          let s_max =
-            1.
-            -. (Float.of_int (i - 1) /. Float.of_int (n - 1))
-            -. Float.of_int j
-          in
-          let span = Float.of_int j *. longest iv in
-          let n_lb = ((length -. (2. *. span)) /. span) +. 1. in
-          if i = rank && worth st s_max n_lb then
-            let rec offsets r =
-              if r < j && candidate j idx r then offsets (r + 1)
+  if seed (count - 1) then
+    skips st ~simplest:1. (fun j ->
+        for rank = 1 to 4 do
+          for idx = count - 1 downto 0 do
+            let iv, i, n = intervals.(idx) in
+            let s_max =
+              1.
+              -. (Float.of_int (i - 1) /. Float.of_int (n - 1))
+              -. Float.of_int j
             in
-            offsets 0
-        done
-      done)
+            let span = Float.of_int j *. longest iv in
+            let n_lb = ((length -. (2. *. span)) /. span) +. 1. in
+            if i = rank && worth st s_max n_lb then
+              let rec offsets r =
+                if r < j && candidate j idx r then offsets (r + 1)
+              in
+              offsets 0
+          done
+        done)
 
 (* About ten values of the scale's own family set the density target. *)
 let reference family (a, b) =

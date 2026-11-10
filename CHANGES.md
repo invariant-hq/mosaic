@@ -133,6 +133,11 @@ console gets back every mode and code page the run changed.
   another way, so a line's point at `5` of the domain \[0, 6\] on 60 cells drew
   one cell left of the tick at `5`. A dot at three dots per cell stays in that
   cell too.
+- `matrix.charts` draws a domain whose length or its inverse passes the
+  largest float, such as `Scale.linear ~domain:(-.max_float, max_float)` or
+  one of subnormals. Its positions were NaN, the tick search or a minor grid
+  did not end, and `View.clamp` left a window far from such a domain outside
+  it.
 
 ## [0.2.0] - 2026-11-04
 
