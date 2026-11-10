@@ -233,6 +233,7 @@ val raster :
 val text :
   ?color:'r paint ->
   ?anchor:[ `Left | `Center | `Right ] ->
+  ?offset:int * int ->
   x:('r -> float) ->
   y:('r -> float) ->
   text:('r -> string) ->
@@ -240,7 +241,10 @@ val text :
   t
 (** [text ~x ~y ~text rows] is [text] written at each point, in the theme's
     label color by default. [anchor] puts the point at the text's start
-    ([`Left], the default), middle or end. *)
+    ([`Left], the default), middle or end. [offset (dx, dy)] then moves the text
+    [dx] cells right and [dy] cells down, [(0, 0)] by default, as a label beside
+    a rule or after a line's last point. A text is drawn when its point lies in
+    the plot, and is cut at the plot's edges. *)
 
 val arrow :
   ?color:'r paint ->

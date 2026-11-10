@@ -39,6 +39,8 @@ console gets back every mode and code page the run changed.
 - `Matrix_charts.rect ~pattern` writes a tile of glyphs over its cells in place
   of a background, repeated from the plot's top-left cell. A hatched span shows
   without color, and the marks drawn after it cover it.
+- `Matrix_charts.text ~offset:(dx, dy)` moves a text by cells from its point,
+  as a label beside a rule or after a line's last point.
 
 #### Changes the compiler won't catch
 

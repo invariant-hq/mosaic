@@ -376,6 +376,29 @@ let%expect_test "text anchors and arrow heads" =
       ─────────────────→
     |}]
 
+let%expect_test "an offset moves a text from its point, cut at the plot" =
+  let label ?anchor offset s (x, y) =
+    C.text ?anchor ~offset ~x:fst ~y:snd ~text:(fun _ -> s) [| (x, y) |]
+  in
+  show ~width:10 ~height:3
+    C.(
+      bare
+        (layer
+           [
+             vline 5.;
+             label (1, -1) "ab" (5., 1.5);
+             label ~anchor:`Right (-1, 1) "cd" (5., 1.5);
+             label (1, 0) "edge" (8., 1.5);
+             label (-1, 0) "out" (11., 1.5);
+           ])
+      |> scale "x" (Scale.linear ~domain:(0., 10.) ())
+      |> scale "y" (Scale.linear ~domain:(0., 3.) ()));
+  [%expect {|
+         │ab
+         │   e
+       cd│
+    |}]
+
 let%expect_test "a circle is an ellipse in cells" =
   show ~width:24 ~height:8
     (bare

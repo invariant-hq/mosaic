@@ -113,7 +113,7 @@ type kind =
       reduce : [ `Last | `Mean | `Max ];
       interpolate : [ `None | `Bilinear ];
     }
-  | K_text of { anchor : [ `Left | `Center | `Right ] }
+  | K_text of { anchor : [ `Left | `Center | `Right ]; offset : int * int }
   | K_arrow of { head : [ `Arrow | `Dot | `None ] }
   | K_spark of { dots : [ `Eighths | `Braille ] }
   | K_rule of { dash : dash; horizontal : bool }
@@ -248,8 +248,8 @@ let raster ?(dots = `Cell) ?(reduce = `Last) ?(interpolate = `None) ~x ~y ~value
     (K_raster { dots; reduce; interpolate })
     rows
 
-let text ?color ?(anchor = `Left) ~x ~y ~text rows =
-  mark ~x:(Num x) ~y:(Num y) ~text ?paint:color (K_text { anchor }) rows
+let text ?color ?(anchor = `Left) ?(offset = (0, 0)) ~x ~y ~text rows =
+  mark ~x:(Num x) ~y:(Num y) ~text ?paint:color (K_text { anchor; offset }) rows
 
 let arrow ?color ?(head = `Arrow) ~x ~y ~x2 ~y2 rows =
   mark ~x:(Num x) ~y:(Num y) ~x2:(Num x2) ~y2:(Num y2) ?paint:color
@@ -2724,7 +2724,7 @@ let ink_mark c (e : ev) =
             done
           done
       | _ -> ())
-  | K_text { anchor } ->
+  | K_text { anchor; offset = ox, oy } ->
       let xs = xs () and ys = ys () in
       for i = 0 to e.n - 1 do
         if inside xs.(i) && inside ys.(i) then
@@ -2737,8 +2737,8 @@ let ink_mark c (e : ev) =
             | `Center -> x - ((tw - 1) / 2)
             | `Right -> x - tw + 1
           in
-          Ink.text c.ink ~width_method:l.wm ~x
-            ~y:(c.ph - 1 - bin c.ph ys.(i))
+          Ink.text c.ink ~width_method:l.wm ~x:(x + ox)
+            ~y:(c.ph - 1 - bin c.ph ys.(i) + oy)
             s ~fg:(fg i) ~attrs ~owner:(owner i)
       done
   | K_arrow { head } ->
