@@ -105,7 +105,7 @@ type kind =
   | K_line of { dots : [ dots | `Steps ] option; dash : dash }
   | K_area of { dots : dots option }
   | K_dot of { dots : [ dots | `Density ] option; symbol : string option }
-  | K_rect
+  | K_rect of { pattern : string array array option }
   | K_bar of { dots : [ `Eighths | `Cell ]; horizontal : bool }
   | K_hist
   | K_raster of {
@@ -210,9 +210,27 @@ let area ?dots ?color ?x ?y2 ~y rows =
 let dot ?dots ?symbol ?color ~x ~y rows =
   mark ~x:(Num x) ~y:(Num y) ?paint:color (K_dot { dots; symbol }) rows
 
-let rect ?color ?x ?x2 ?y ?y2 rows =
+(* A pattern's rows as arrays of glyphs. *)
+let tile pattern =
+  if pattern = [] then err "rect" "pattern has no rows";
+  let glyphs s =
+    let l = ref [] in
+    Matrix_text.iter_graphemes
+      (fun ~offset ~len -> l := String.sub s offset len :: !l)
+      s;
+    Array.of_list (List.rev !l)
+  in
+  let rows = Array.of_list (List.map glyphs pattern) in
+  if Array.exists (fun r -> Array.length r = 0) rows then
+    err "rect" "pattern has an empty row";
+  rows
+
+let rect ?color ?pattern ?x ?x2 ?y ?y2 rows =
+  let pattern = Option.map tile pattern in
   mark ~x:(opt_num x) ~x2:(opt_num x2) ~y:(opt_num y) ~y2:(opt_num y2)
-    ?paint:color K_rect rows
+    ?paint:color
+    (K_rect { pattern })
+    rows
 
 let bar_y ?(dots = `Eighths) ?color ?label ~x ~y rows =
   mark ~x:(Str x) ~y:(Num y) ?text:label ?paint:color
@@ -1161,6 +1179,11 @@ let resolve ?(view = View0.empty) ~(theme : Theme.t) fig =
     | K_line _ | K_rule _ | K_spark { dots = `Braille } -> utf8 g.box.horizontal
     | K_dot { symbol = Some s; _ } -> s
     | K_dot _ | K_text _ | K_arrow _ -> g.point
+    | K_rect { pattern = Some t } -> (
+        let glyphs = List.concat_map Array.to_list (Array.to_list t) in
+        match List.find_opt (fun s -> s <> " ") glyphs with
+        | Some s -> s
+        | None -> " ")
     | _ -> if g.blocks then "█" else "#"
   in
   let mark_color =
@@ -2392,7 +2415,7 @@ let ink_mark c (e : ev) =
                 ~y:(c.ph - 1 - bin c.ph ys.(i))
                 s ~fg:(fg i) ~attrs ~owner:(owner i)
           done)
-  | K_rect | K_hist ->
+  | (K_rect _ | K_hist) as kind -> (
       let range len n0 n1 posf =
         (* the cells of [n0, n1], the whole axis when absent *)
         match (n0, n1) with
@@ -2417,38 +2440,52 @@ let ink_mark c (e : ev) =
                   Some (a, min (len - 1) b)
       in
       let cols = range c.pw e.ex e.ex2 px in
-      if e.kind = K_hist then
-        let ys = ch_get e.ey in
-        let z = match sy with Some s -> pos s c.ph 0. | None -> 0. in
-        for i = 0 to e.n - 1 do
-          match cols i with
-          | None -> ()
-          | Some (c0, c1) ->
-              let p = py ys.(i) in
-              if Float.is_finite p then
-                let eighth p =
-                  Float.to_int
-                    (Float.round
-                       (Float.max 0. (Float.min 1. p) *. Float.of_int (8 * c.ph)))
-                in
-                bar c ~horizontal:false ~eighths:th.glyphs.blocks ~c0 ~c1
-                  ~e0:(eighth z) ~e1:(eighth p) ~first:true ~fg:(fg i) ~attrs
-                  ~owner:(owner i)
-        done
-      else
-        let rows = range c.ph e.ey e.ey2 py in
-        for i = 0 to e.n - 1 do
-          match (cols i, rows i) with
-          | Some (c0, c1), Some (r0, r1) ->
-              for x = c0 to c1 do
-                for k = r0 to r1 do
-                  Ink.fill c.ink ~x
-                    ~y:(c.ph - 1 - k)
-                    ~bg:(fg i) ~owner:(owner i)
+      match kind with
+      | K_hist ->
+          let ys = ch_get e.ey in
+          let z = match sy with Some s -> pos s c.ph 0. | None -> 0. in
+          for i = 0 to e.n - 1 do
+            match cols i with
+            | None -> ()
+            | Some (c0, c1) ->
+                let p = py ys.(i) in
+                if Float.is_finite p then
+                  let eighth p =
+                    Float.to_int
+                      (Float.round
+                         (Float.max 0. (Float.min 1. p)
+                         *. Float.of_int (8 * c.ph)))
+                  in
+                  bar c ~horizontal:false ~eighths:th.glyphs.blocks ~c0 ~c1
+                    ~e0:(eighth z) ~e1:(eighth p) ~first:true ~fg:(fg i) ~attrs
+                    ~owner:(owner i)
+          done
+      | _ ->
+          let pattern =
+            match kind with K_rect { pattern } -> pattern | _ -> None
+          in
+          (* A pattern is anchored at the plot's top-left cell, so that rects
+           side by side, or one that grows, keep one texture. *)
+          let paint x y i =
+            match pattern with
+            | None -> Ink.fill c.ink ~x ~y ~bg:(fg i) ~owner:(owner i)
+            | Some t ->
+                let row = t.(y mod Array.length t) in
+                let g = row.(x mod Array.length row) in
+                if g <> " " then
+                  Ink.glyph c.ink ~x ~y g ~fg:(fg i) ~attrs ~owner:(owner i)
+          in
+          let rows = range c.ph e.ey e.ey2 py in
+          for i = 0 to e.n - 1 do
+            match (cols i, rows i) with
+            | Some (c0, c1), Some (r0, r1) ->
+                for x = c0 to c1 do
+                  for k = r0 to r1 do
+                    paint x (c.ph - 1 - k) i
+                  done
                 done
-              done
-          | _ -> ()
-        done
+            | _ -> ()
+          done)
   | K_bar { dots; horizontal } -> (
       let cat_s, val_s = if horizontal then (sy, sx) else (sx, sy) in
       match (cat_s, val_s) with
@@ -3297,9 +3334,24 @@ type hit = { id : id; row : int; cell : int * int; distance : float }
 
 let continuous (s : scale) = s.kind <> Band
 
+(* A pattern's glyph takes one cell, which only the width method decides. A
+   tab is no glyph and takes none. *)
+let check_patterns wm (r : resolved) =
+  let check g =
+    let w = if g = "\t" then 0 else measure wm g in
+    if w <> 1 then err "layout" "pattern glyph %S takes %d cells" g w
+  in
+  Array.iter
+    (fun (e : ev) ->
+      match e.kind with
+      | K_rect { pattern = Some t } -> Array.iter (Array.iter check) t
+      | _ -> ())
+    r.evs
+
 let layout ?(view = View0.empty) ?(theme = Theme.dark) ?(depth = `Truecolor)
     ?(width_method = `Unicode) ~width ~height fig =
   let r = resolve ~view ~theme fig in
+  check_patterns width_method r;
   place ~theme ~depth ~wm:width_method ~width ~height ~view r
 
 let set_window view (s : scale) a b =

@@ -36,6 +36,9 @@ console gets back every mode and code page the run changed.
   scales have given domains, and whose legends keep their entries, keeps its
   plot whatever its marks' rows. A category's tick and `Layout.position` now
   give the cell `Layout.dot` gives, inside its bar as before.
+- `Matrix_charts.rect ~pattern` writes a tile of glyphs over its cells in place
+  of a background, repeated from the plot's top-left cell. A hatched span shows
+  without color, and the marks drawn after it cover it.
 
 #### Changes the compiler won't catch
 

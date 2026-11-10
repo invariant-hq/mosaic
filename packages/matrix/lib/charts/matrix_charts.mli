@@ -165,6 +165,7 @@ val dot :
 
 val rect :
   ?color:'r paint ->
+  ?pattern:string list ->
   ?x:('r -> float) ->
   ?x2:('r -> float) ->
   ?y:('r -> float) ->
@@ -174,7 +175,19 @@ val rect :
 (** [rect rows] is the background of the cells from [x] to [x2] and from [y] to
     [y2] of each row. An extent with neither end covers the plot, and an extent
     with one end covers the cells of that value. [rect ~x ~x2:x] fills the
-    column of [x]. *)
+    column of [x].
+
+    With [pattern], a tile of rows of glyphs one cell wide, the cells take the
+    tile's glyphs in the rect's color in place of the background, so they show
+    without color and a later mark's glyphs cover them. The tile repeats from
+    the plot's top-left cell: the cell [(x, y)] of the plot takes the glyph
+    [x mod n] of the tile's row [y mod m], for [m] rows and a row of [n] glyphs.
+    A space leaves its cell as it is. The tile
+    [[ "╱   "; "   ╱"; "  ╱ "; " ╱  " ]] hatches.
+
+    Raises [Invalid_argument] if [pattern] has no rows or an empty row, and
+    {!layout} raises if a glyph of [pattern] does not take one cell by its width
+    method. *)
 
 val bar_y :
   ?dots:[ `Eighths | `Cell ] ->

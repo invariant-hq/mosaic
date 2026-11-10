@@ -194,6 +194,55 @@ let%expect_test "rects shade an x interval and one column" =
     [0m  [48;5;1m   [49m   [48;5;2m [49m   [0m
     |}]
 
+let hatch = [ "╱   "; "   ╱"; "  ╱ "; " ╱  " ]
+
+let%expect_test "a patterned rect tiles glyphs that later marks cover" =
+  let fig =
+    C.(
+      bare
+        (layer
+           [
+             vline 6.5;
+             rect ~pattern:hatch ~x:Fun.id ~x2:(fun _ -> 11.) [| 3. |];
+             hline 2.5;
+           ])
+      |> scale "x" (Scale.linear ~domain:(0., 12.) ())
+      |> scale "y" (Scale.linear ~domain:(0., 4.) ()))
+  in
+  show ~width:12 ~height:4 fig;
+  [%expect
+    {|
+        ╱ │ ╱
+    ────────────
+          ╱   ╱
+         ╱│  ╱
+    |}];
+  let l =
+    C.layout ~width:12 ~height:4
+      C.(rect ~pattern:[ "  "; " ▚" ] ~color:(series "gap") ~x:Fun.id [| 1. |])
+  in
+  List.iter (fun (c, _, sw) -> Printf.printf "%s %s\n" sw c) (C.Layout.legend l);
+  [%expect {| ▚ gap |}];
+  List.iter
+    (fun pattern ->
+      try ignore (C.rect ~pattern ~x:Fun.id [| 1. |])
+      with Invalid_argument m -> print_endline m)
+    [ []; [ "╱"; "" ] ];
+  List.iter
+    (fun pattern ->
+      try
+        ignore
+          (C.layout ~width:10 ~height:4 (C.rect ~pattern ~x:Fun.id [| 1. |]))
+      with Invalid_argument m -> print_endline m)
+    [ [ "中 " ]; [ "\t" ] ];
+  [%expect
+    {|
+    Matrix_charts.rect: pattern has no rows
+    Matrix_charts.rect: pattern has an empty row
+    Matrix_charts.layout: pattern glyph "\228\184\173" takes 2 cells
+    Matrix_charts.layout: pattern glyph "\t" takes 0 cells
+    |}]
+
 (* {1 Bars} *)
 
 let quarters = [| ("Q1", 30.0); ("Q2", 45.0); ("Q3", 25.0); ("Q4", 50.0) |]
