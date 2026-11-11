@@ -727,13 +727,15 @@ module Layout : sig
       not one of its values. *)
 
   val dot : t -> string -> dots -> value -> int
-  (** [dot l n r v] is the dot in which a mark of resolution [r] draws [v] on
-      scale [n]: its column of dots, or for a y scale its row, counted from [0]
-      at the plot's left, or top, and clamped to \[[-1];[k L]\], with [k] the
-      dots of a cell along the axis and [L] the plot's length in cells: [-1]
-      before the plot's first dot and [k L] past its last. For [v] in the plot,
-      [d / k] is the plot's cell {!position} gives. A category's dot is its
-      band's middle. The theme's {!Theme.glyphs.blocks} plays no part.
+  (** [dot l n r v] is the dot of resolution [r] that holds [v] on scale [n],
+      where a mark of that resolution draws it: its column of dots, or for a y
+      scale its row, counted from [0] at the plot's left, or top, and clamped to
+      \[[-1];[k L]\], with [k] the dots of a cell along the axis and [L] the
+      plot's length in cells: [-1] before the plot's first dot and [k L] past
+      its last. For [v] in the plot, [d / k] is [position l n v] less the plot's
+      origin. A category's dot is its band's middle. Under a theme without
+      {!Theme.glyphs.blocks}, marks draw whole cells and [dot] still counts the
+      dots of [r].
 
       [dot l n r] looks the scale up once, for a program that maps many values.
 
