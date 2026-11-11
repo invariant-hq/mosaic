@@ -840,7 +840,7 @@ let untf (s : scale) u = match s.kind with Log _ -> Float.exp u | _ -> u
 
 (* [half a b] is half the length of [a, b], finite for all finite [a] and
    [b]: [b -. a] passes the largest float when they lie far apart. *)
-let half a b = (b /. 2.) -. (a /. 2.)
+let[@inline] half a b = (b /. 2.) -. (a /. 2.)
 
 (* [fraction a b u] is the position of [u] on the window [a, b] of a transform's
    space. Every value a layout places goes through it, ticks and marks alike,
@@ -849,8 +849,9 @@ let half a b = (b /. 2.) -. (a /. 2.)
    division puts it in cell 50. A constant window places a finite [u] at
    [0.5]. Where a difference passes the largest float, the halves of the
    values give the position, and a finite [u] far outside the window is held
-   to the largest float, so that it stays finite. *)
-let fraction a b u =
+   to the largest float, so that it stays finite. Inlined, so that a loop
+   over a mark's rows boxes no float. *)
+let[@inline] fraction a b u =
   if a = b then if Float.is_finite u then 0.5 else u
   else
     let d = b -. a and e = u -. a in
@@ -858,8 +859,8 @@ let fraction a b u =
       if Float.is_finite d && Float.is_finite e then e /. d
       else half a u /. half a b
     in
-    if Float.is_finite u then
-      Float.min Float.max_float (Float.max (-.Float.max_float) p)
+    if Float.is_finite u && Float.abs p > Float.max_float then
+      Float.copy_sign Float.max_float p
     else p
 
 let norm (s : scale) v =
@@ -1244,26 +1245,27 @@ let resolve ?(view = View0.empty) ~(theme : Theme.t) fig =
 
 (* {1 Laying out} *)
 
-(* [floor_in n x] is [⌊x⌋] clamped to [0, n - 1]. *)
-let floor_in n x =
+(* [floor_in n x] is [⌊x⌋] clamped to [0, n - 1]. It, [bin] and [bin_dots]
+   are inlined, so that placing a mark's rows boxes no float. *)
+let[@inline] floor_in n x =
   if not (x >= 1.) then 0
   else if x >= Float.of_int n then n - 1
   else Float.to_int x
 
 (* [bin l p] is the cell of the [l]-cell axis holding the position [p]. *)
-let bin l p = floor_in l (p *. Float.of_int l)
+let[@inline] bin l p = floor_in l (p *. Float.of_int l)
 
 (* [bin_dots l k p] is the dot holding the position [p] on an axis of [l]
    cells of [k] dots each: [⌊p l k⌋], kept among the dots of the cell
    [bin l p]. At three dots per cell, [p l k] and [p l] can round to opposite
    sides of a cell's edge; the cell decides, so that a value lies in one cell
    at every resolution. *)
-let bin_dots l k p =
+let[@inline] bin_dots l k p =
   let c = bin l p in
   if k = 1 then c
   else
     let d = floor_in (l * k) (p *. Float.of_int (l * k)) in
-    max (c * k) (min ((c * k) + k - 1) d)
+    Int.max (c * k) (Int.min ((c * k) + k - 1) d)
 
 type placed_axis = {
   s : scale;
@@ -1306,6 +1308,22 @@ type layout = {
 }
 
 let measure wm s = Matrix_text.measure ~width_method:wm ~tab_width:1 s
+
+(* [spans_width wm m spans] is the widest of [m] and the spans' texts. *)
+let rec spans_width wm m = function
+  | [] -> m
+  | (_, (sp : Ansi.span)) :: rest ->
+      spans_width wm (max m (measure wm sp.text)) rest
+
+(* [label_width wm a t] is the width of the widest of [t]'s labels and the
+   program's labels of [a]. *)
+let label_width wm a (t : Ticks.t) =
+  List.fold_left
+    (fun m (k : Ticks.tick) ->
+      let w = measure wm k.label in
+      max m (match k.context with Some c -> w + 1 + measure wm c | None -> w))
+    (spans_width wm 0 a.a_labels)
+    t.major
 
 (* Band geometry on an axis of [l] cells: the extent the bands take, and the
    first and last cell of category [i]'s bar, counted from the axis's
@@ -1565,17 +1583,6 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
       | Band -> band_center s l (Float.to_int v)
       | _ -> bin l (norm s v)
     in
-    let label_width a (t : Ticks.t) =
-      List.fold_left
-        (fun m (k : Ticks.tick) ->
-          let w = measure wm k.label in
-          max m
-            (match k.context with Some c -> w + 1 + measure wm c | None -> w))
-        (List.fold_left
-           (fun m (_, (sp : Ansi.span)) -> max m (measure wm sp.text))
-           0 a.a_labels)
-        t.major
-    in
     let label_rows (t : Ticks.t) =
       if List.exists (fun (k : Ticks.tick) -> k.context <> None) t.major then 2
       else 1
@@ -1595,7 +1602,8 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
             | `Left | `Right ->
                 max acc
                   (lines
-                  + if labels then th.label_padding + label_width a t else 0)
+                  + if labels then th.label_padding + label_width wm a t else 0
+                  )
             | `Top | `Bottom ->
                 let titled = heading a t <> None in
                 max acc
@@ -1754,16 +1762,14 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
         let label_w =
           List.fold_left
             (fun m (k : Ticks.tick) -> max m (measure wm k.label))
-            (List.fold_left
-               (fun m (_, (sp : Ansi.span)) -> max m (measure wm sp.text))
-               0 a.a_labels)
+            (spans_width wm 0 a.a_labels)
             t.major
         in
         (* The program's labels lie at their values in the shown domain: a
            horizontal one centered as a tick's label, moved inside the plot's
            extent, so that it never widens the margins. *)
         let labels =
-          if (not tiers.t_labels) || l <= 0 then []
+          if (not tiers.t_labels) || l <= 0 || a.a_labels = [] then []
           else
             List.filter_map
               (fun (v, (sp : Ansi.span)) ->
@@ -1778,27 +1784,29 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
                   else Some (plot.y + l - 1 - o, sp))
               a.a_labels
         in
-        (* A tick's label gives way to the program's labels, a blank cell
-           from them: its tick stays, and on a horizontal axis its context. *)
-        let clear (k : Ticks.tick) cell =
-          let near (at, (sp : Ansi.span)) =
-            if horizontal then
-              let w = measure wm k.label in
-              let start = cell - ((w - 1) / 2) in
-              start <= at + measure wm sp.text && start + w >= at
-            else abs (cell - at) <= 1
-          in
-          if not (List.exists near labels) then k
-          else
-            {
-              k with
-              label = "";
-              context = (if horizontal then k.context else None);
-            }
-        in
         let t =
           if labels = [] then t
-          else { t with Ticks.major = List.map2 clear t.major cells }
+          else
+            (* A tick's label gives way to the program's labels, a blank cell
+               from them: its tick stays, and on a horizontal axis its
+               context. *)
+            let clear (k : Ticks.tick) cell =
+              let near (at, (sp : Ansi.span)) =
+                if horizontal then
+                  let w = measure wm k.label in
+                  let start = cell - ((w - 1) / 2) in
+                  start <= at + measure wm sp.text && start + w >= at
+                else abs (cell - at) <= 1
+              in
+              if not (List.exists near labels) then k
+              else
+                {
+                  k with
+                  label = "";
+                  context = (if horizontal then k.context else None);
+                }
+            in
+            { t with Ticks.major = List.map2 clear t.major cells }
         in
         let label_rows =
           if List.exists (fun (k : Ticks.tick) -> k.context <> None) t.major
@@ -3438,17 +3446,16 @@ let continuous (s : scale) = s.kind <> Band
 
 (* A pattern's glyph takes one cell, which only the width method decides. A
    tab is no glyph and takes none. *)
+let check_glyph wm g =
+  let w = if g = "\t" then 0 else measure wm g in
+  if w <> 1 then err "layout" "pattern glyph %S takes %d cells" g w
+
 let check_patterns wm (r : resolved) =
-  let check g =
-    let w = if g = "\t" then 0 else measure wm g in
-    if w <> 1 then err "layout" "pattern glyph %S takes %d cells" g w
-  in
-  Array.iter
-    (fun (e : ev) ->
-      match e.kind with
-      | K_rect { pattern = Some t } -> Array.iter (Array.iter check) t
-      | _ -> ())
-    r.evs
+  for i = 0 to Array.length r.evs - 1 do
+    match r.evs.(i).kind with
+    | K_rect { pattern = Some t } -> Array.iter (Array.iter (check_glyph wm)) t
+    | _ -> ()
+  done
 
 let layout ?(view = View0.empty) ?(theme = Theme.dark) ?(depth = `Truecolor)
     ?(width_method = `Unicode) ~width ~height fig =

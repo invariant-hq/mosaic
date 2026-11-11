@@ -12,8 +12,9 @@ type t = { major : tick list; note : string option }
 let pow10 k = Float.of_string ("1e" ^ string_of_int k)
 
 (* [shift x k] is [x × 10^k], by a division where [10^-k] is a float, and in
-   two steps where [10^k] or [10^-k] passes the floats' range. *)
-let shift x k =
+   two steps where [10^k] or [10^-k] passes the floats' range. Inlined, so
+   that [x] is not boxed. *)
+let[@inline] shift x k =
   if k > 308 then x *. pow10 308 *. pow10 (k - 308)
   else if k >= 0 then x *. pow10 k
   else if k >= -300 then x /. pow10 (-k)
@@ -680,10 +681,10 @@ let skips_to_q j i =
   let rec mantissa n = if n mod 10 = 0 then mantissa (n / 10) else n in
   Array.exists (fun (m, _) -> m = mantissa (j * fst q_steps.(i))) q_steps
 
-(* [decimal_family st ~v (a, b)] considers the family's lone tick at once and
-   is the rest of its search, so that another family's search can start with
-   that tick to beat. *)
-let decimal_family st ~v (a, b) =
+(* [decimal_family st ~v ~others (a, b)] considers the family's lone tick,
+   then runs the other families' search [others ()], then the rest of its
+   own, so that the others start with that tick to beat. *)
+let decimal_family st ~v ~others (a, b) =
   let mag = Float.max (Float.abs a) (Float.abs b) in
   let z_top = Float.to_int (Float.floor (Float.log10 mag)) + 2 in
   let step (m, dk) z = (m, z + dk) in
@@ -708,10 +709,11 @@ let decimal_family st ~v (a, b) =
         candidate j 0 z (residue first j);
         true
   in
-  (* Half the domain's length, which no domain makes pass the largest
-     float. *)
-  let half = (b /. 2.) -. (a /. 2.) in
   let rec descend j i z =
+    (* half the domain's length, which no domain makes pass the largest
+       float, computed here: bound outside, it would be boxed for the
+       closure *)
+    let half = (b /. 2.) -. (a /. 2.) in
     let s = step q_steps.(i) z in
     let delta = Float.of_int j *. width s in
     let n_lb = (2. *. ((half -. delta) /. delta)) +. 1. in
@@ -723,14 +725,14 @@ let decimal_family st ~v (a, b) =
       descend j i (z - 1)
     end
   in
-  let search () =
+  let seeded = seed z_top in
+  others ();
+  if seeded then
     skips st ~simplest:2. (fun j ->
         for i = 0 to Array.length q_steps - 1 do
           let s_max = 2. -. q_rank i -. Float.of_int j in
           if skips_to_q j i && worth st s_max 0. then descend j i z_top
         done)
-  in
-  if seed z_top then search else Fun.id
 
 let power base n i =
   if base = 10. then multiple n i 1
@@ -909,13 +911,13 @@ let choose family ~norm ~labels ~length ~spacing ~measure (a, b) =
     let one = match family with Log _ -> 1. | _ -> 0. in
     let v vs = if Array.exists (Float.equal one) vs then 1. else 0. in
     (match family with
-    | Linear -> decimal_family st ~v (a, b) ()
+    | Linear -> decimal_family st ~v ~others:ignore (a, b)
     | Log base ->
         (* Without a tick to beat, every candidate of the powers' search is
            labelled: hundreds of thousands of values over 600 decades. *)
-        let decimals = decimal_family st ~v (a, b) in
-        powers_family st ~v base (a, b);
-        decimals ()
+        decimal_family st ~v
+          ~others:(fun () -> powers_family st ~v base (a, b))
+          (a, b)
     | Time offset -> calendar_family st offset (a, b));
     match st.best with
     | None -> { major = []; note = None }
