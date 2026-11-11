@@ -617,8 +617,9 @@ module Theme : sig
   (** [rounded_glyphs] are light box-drawing glyphs with round corners. *)
 
   val ascii_glyphs : glyphs
-  (** [ascii_glyphs] are ASCII characters, without blocks, so that every chart
-      draws in ASCII. *)
+  (** [ascii_glyphs] are ASCII characters, without blocks. A chart under them
+      draws its own glyphs in ASCII; a program's glyphs, such as a rect's
+      [pattern], a dot's [symbol], texts and labels, draw as given. *)
 end
 
 (** {1:views Views}
