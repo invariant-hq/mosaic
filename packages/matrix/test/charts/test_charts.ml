@@ -976,6 +976,56 @@ let%expect_test "an axis label sits at its value, a blank cell from tick labels"
     (List.rev !bad);
   [%expect {| labels misplaced or crowded: 0 of 294 |}]
 
+let%expect_test "an axis label shows whole or not at all" =
+  Random.init 5;
+  let bad = ref 0 and wider = ref 0 and shown = ref 0 in
+  for _ = 1 to 300 do
+    let width = 3 + Random.int 20 and height = 2 + Random.int 4 in
+    let v = Random.float 1. in
+    let s = String.make (1 + Random.int 15) 'z' in
+    let fig =
+      C.(
+        layer
+          [
+            line ~x:Fun.id ~y:Fun.id [| 0.; 1. |];
+            axis ~show:false "y";
+            axis ~labels:[ (v, Ansi.span s) ] "x";
+          ])
+    in
+    let l = C.layout ~width ~height fig in
+    let g = Grid.create ~width ~height () in
+    C.draw l g ~x:0 ~y:0;
+    let rows = String.split_on_char '\n' (Grid.to_text g) in
+    let zs =
+      List.fold_left
+        (fun n r ->
+          n + String.fold_left (fun n c -> if c = 'z' then n + 1 else n) 0 r)
+        0 rows
+    in
+    let w = String.length s in
+    let fits = w <= (C.Layout.plot l).width in
+    if not fits then incr wider;
+    let whole =
+      zs = w
+      && List.exists
+           (fun r ->
+             let n = String.length r in
+             let rec at i =
+               i + w <= n && (String.sub r i w = s || at (i + 1))
+             in
+             at 0)
+           rows
+    in
+    if whole then incr shown;
+    if (zs > 0 && not whole) || ((not fits) && zs > 0) then incr bad
+  done;
+  Printf.printf
+    "labels cut, or shown when wider than the plot: %d of 300 (%d shown, %d \
+     wider)\n"
+    !bad !shown !wider;
+  [%expect
+    {| labels cut, or shown when wider than the plot: 0 of 300 (172 shown, 82 wider) |}]
+
 let%expect_test "gridlines at ticks, minor ones and every n cells" =
   show ~width:30 ~height:8
     C.(

@@ -1780,7 +1780,9 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
                   if horizontal then
                     let w = measure wm sp.text in
                     let c = plot.x + o - ((w - 1) / 2) in
-                    Some (max plot.x (min c (plot.x + l - w)), sp)
+                    (* a label wider than the plot is left out, not cut *)
+                    if w > l then None
+                    else Some (max plot.x (min c (plot.x + l - w)), sp)
                   else Some (plot.y + l - 1 - o, sp))
               a.a_labels
         in
