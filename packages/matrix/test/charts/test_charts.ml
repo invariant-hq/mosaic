@@ -2183,3 +2183,73 @@ let%expect_test "a log axis over many decades labels few candidates" =
     [1e-10, 100000] at 80 cells: 310 labelled values; 1e-10     1e-08     1e-06      0.0001     0.01        1        100      10000
     [1, 1000] at 40 cells: 106 labelled values; 1           10          100         1000
     |}]
+
+let%expect_test "a line toward a value outside the plot reaches its edge" =
+  Random.init 31;
+  let big = Float.max_float in
+  let short = ref [] and lines = ref 0 and overflowing = ref 0 in
+  for i = 1 to 200 do
+    (* Even draws: a domain shorter than the least normal float and a value
+       whose position passes the largest float. Odd draws: a domain whose
+       length nears the largest float. *)
+    let lo, hi, beyond =
+      if i mod 2 = 0 then begin
+        incr overflowing;
+        let hi = Float.pow 10. (-.Float.of_int (309 + Random.int 14)) in
+        let u = Float.pow 10. (Float.of_int (Random.int 300)) in
+        (0., hi, if Random.bool () then u else -.u)
+      end
+      else
+        let lo = -.big *. (0.5 +. Random.float 0.4) in
+        let hi = lo +. (big *. (0.1 +. Random.float 0.4)) in
+        ( lo,
+          hi,
+          if Random.bool () then big *. (0.5 +. Random.float 0.5) else -.big )
+    in
+    let start = lo +. Random.float (hi -. lo) in
+    let dir = if Random.bool () then "x" else "y" in
+    let other = if dir = "x" then "y" else "x" in
+    let width, height = if dir = "x" then (20, 3) else (3, 12) in
+    let pts =
+      if dir = "x" then [| (start, 0.5); (beyond, 0.5) |]
+      else [| (0.5, start); (0.5, beyond) |]
+    in
+    let fig =
+      C.(
+        layer
+          [
+            line ~dots:`Braille ~x:fst ~y:snd pts;
+            axis ~show:false "x";
+            axis ~show:false "y";
+          ]
+        |> scale dir (Scale.linear ~domain:(lo, hi) ())
+        |> scale other (Scale.linear ~domain:(0., 1.) ()))
+    in
+    let l = C.layout ~width ~height fig in
+    let p = C.Layout.plot l in
+    let g = Grid.create ~width ~height () in
+    C.draw l g ~x:0 ~y:0;
+    let cells = List.map (fun (x, y) -> if dir = "x" then x else y) (inked g) in
+    (* the edge the value lies past: right or top for a greater value *)
+    let edge, toward =
+      match (dir, beyond > hi) with
+      | "x", true -> (p.x + p.width - 1, max)
+      | "x", false -> (p.x, min)
+      | _, true -> (p.y, min)
+      | _, false -> (p.y + p.height - 1, max)
+    in
+    incr lines;
+    match cells with
+    | c :: cs when List.fold_left toward c cs = edge -> ()
+    | _ -> short := (dir, lo, hi, start, beyond) :: !short
+  done;
+  Printf.printf
+    "lines short of the edge: %d of %d (%d past the largest float)\n"
+    (List.length !short) !lines !overflowing;
+  List.iteri
+    (fun i (dir, lo, hi, start, beyond) ->
+      if i < 3 then
+        Printf.printf "%s on [%g, %g], from %g toward %g\n" dir lo hi start
+          beyond)
+    (List.rev !short);
+  [%expect {| lines short of the edge: 0 of 200 (100 past the largest float) |}]
