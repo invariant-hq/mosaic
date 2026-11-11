@@ -604,13 +604,15 @@ module Spinner : sig
   (** The type for animation frame sets. *)
 
   val dots : frame_set
-  (** Braille dot pattern (10 frames, 80 ms). *)
+  (** Braille dot pattern (10 frames, 80 ms), the spinner of
+      {!Mosaic_ui.Glyphs.unicode}. *)
 
   val dots2 : frame_set
   (** Braille block pattern (8 frames, 80 ms). *)
 
   val line : frame_set
-  (** ASCII line rotation (4 frames, 130 ms). *)
+  (** ASCII line rotation (4 frames, 130 ms), the spinner of
+      {!Mosaic_ui.Glyphs.ascii}. *)
 
   val arc : frame_set
   (** Quarter-circle arc (6 frames, 100 ms). *)
@@ -620,20 +622,17 @@ module Spinner : sig
 
   val circle : frame_set
   (** Circle animation (3 frames, 120 ms). *)
-
-  val default_frame_set : frame_set
-  (** [default_frame_set] is {!dots}. *)
 end
 
 (** Companion types for the {!val-progress_bar} widget. *)
 module Progress_bar : sig
   type glyphs = Mosaic_ui.Progress_bar.glyphs = {
-    filled : string;  (** Each cell of the filled portion. *)
-    half : string;  (** The cell where the value ends half way. *)
-    empty : string;  (** Each cell of the unfilled portion. *)
+    filled : string;
+    half : string;
+    empty : string;
   }
   (** The type for the glyphs of a bar's cells
-      ({!Mosaic_ui.Progress_bar.type-glyphs}). *)
+      ({!Mosaic_ui.Glyphs.type-progress}). *)
 end
 
 (** Companion types for the {!val-slider} widget. *)

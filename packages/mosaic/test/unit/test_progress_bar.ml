@@ -404,12 +404,66 @@ let paint_colored_without_color () =
   is_true ~msg:"the half cell" (includes text "\u{258C}");
   is_true ~msg:"the empty part" (includes text "\u{2500}")
 
+let ascii view = paint (Mosaic.themed (Theme.with_glyphs Glyphs.ascii) view)
+
+(* The texts of the [n] cells from [x], [y], [dx] and [dy] apart. *)
+let cells r ~x ~y ~dx ~dy n =
+  String.concat ""
+    (List.init n (fun i -> cell_text r ~x:(x + (i * dx)) ~y:(y + (i * dy))))
+
+(* Under the ASCII glyph set, a bar without glyphs of its own draws only
+   ASCII, across and up, its half cell included: its orientation's glyphs
+   of the set. *)
+let paint_ascii () =
+  let across =
+    ascii
+      (Mosaic.progress_bar
+         ~size:(Mosaic.size ~width:10 ~height:1)
+         ~value:0.55 ())
+  in
+  equal ~msg:"across" (list string) [] (non_ascii across);
+  equal ~msg:"across, the set's glyphs" string "#####=----"
+    (cells across ~x:0 ~y:0 ~dx:1 ~dy:0 10);
+  let up =
+    ascii
+      (Mosaic.progress_bar
+         ~size:(Mosaic.size ~width:1 ~height:8)
+         ~orientation:`Vertical ~value:0.55 ())
+  in
+  equal ~msg:"up" (list string) [] (non_ascii up);
+  equal ~msg:"up, the set's glyphs" string "|||=####"
+    (cells up ~x:0 ~y:0 ~dx:0 ~dy:1 8)
+
+(* Glyphs of its own win over the theme's, until they are set to none. *)
+let paint_own_glyphs () =
+  let thin = { Progress_bar.filled = "━"; half = "╸"; empty = "─" } in
+  let r =
+    ascii
+      (Mosaic.progress_bar
+         ~size:(Mosaic.size ~width:4 ~height:1)
+         ~value:0.5 ~glyphs:thin ())
+  in
+  equal ~msg:"its own glyphs" string "━━──" (cells r ~x:0 ~y:0 ~dx:1 ~dy:0 4);
+  let t = make_ctx () in
+  let root = make_root t in
+  Renderable.set_theme root (Some (Theme.with_glyphs Glyphs.ascii));
+  let bar =
+    Progress_bar.create ~parent:root
+      (Progress_bar.Props.make ~value:0.5 ~glyphs:thin ())
+  in
+  Progress_bar.set_glyphs bar None;
+  let grid = render_bar bar ~width:4 ~height:1 in
+  equal ~msg:"none: the theme's glyphs" string "##--"
+    (String.concat "" (List.init 4 (Matrix_grid.get_text grid)))
+
 let () =
   exit
     (run "mosaic.progress_bar"
        [
          group "Paint"
            [
+             test "draws the theme's ASCII glyphs" paint_ascii;
+             test "own glyphs over the theme's" paint_own_glyphs;
              test "shows with no styling" paint_without_styling;
              test "a colored bar shows without color"
                paint_colored_without_color;

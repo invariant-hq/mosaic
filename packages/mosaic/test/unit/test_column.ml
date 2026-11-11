@@ -23,6 +23,12 @@ let fields (g : Glyphs.t) =
     ("arrow_down", g.arrow_down, true);
     ("arrow_left", g.arrow_left, true);
     ("arrow_right", g.arrow_right, true);
+    ("progress_horizontal.filled", g.progress_horizontal.filled, true);
+    ("progress_horizontal.half", g.progress_horizontal.half, true);
+    ("progress_horizontal.empty", g.progress_horizontal.empty, true);
+    ("progress_vertical.filled", g.progress_vertical.filled, true);
+    ("progress_vertical.half", g.progress_vertical.half, true);
+    ("progress_vertical.empty", g.progress_vertical.empty, true);
   ]
 
 let width s = Matrix.Text.measure ~width_method:`Unicode ~tab_width:2 s
@@ -43,6 +49,19 @@ let ascii_set () =
     && Glyphs.ascii.cursor <> Glyphs.ascii.cursor_inactive);
   is_true ~msg:"the checks differ"
     (Glyphs.ascii.checked <> Glyphs.ascii.unchecked);
+  let frames (g : Glyphs.t) = Array.to_list g.spinner.frames in
+  let ascii s = String.for_all (fun c -> Char.code c < 128) s in
+  equal ~msg:"spinner: ASCII frames" (list string) []
+    (List.filter (fun f -> not (ascii f)) (frames Glyphs.ascii));
+  List.iter
+    (fun (set, g) ->
+      equal
+        ~msg:("spinner: one cell in " ^ set)
+        (list int)
+        (List.map (fun _ -> 1) (frames g))
+        (List.map width (frames g));
+      gt ~msg:("spinner: frames in " ^ set) ~than:1 (List.length (frames g)))
+    [ ("unicode", Glyphs.unicode); ("ascii", Glyphs.ascii) ];
   is_false (Glyphs.equal Glyphs.unicode Glyphs.ascii);
   is_true (Glyphs.equal Glyphs.ascii { Glyphs.ascii with cursor = ">" })
 

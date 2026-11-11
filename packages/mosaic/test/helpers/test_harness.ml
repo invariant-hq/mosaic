@@ -572,6 +572,18 @@ let cell_text renderer ~x ~y =
   let grid = painted renderer in
   Matrix_grid.get_text grid (Matrix_grid.idx grid ~x ~y)
 
+(* The texts of the cells of the frame [renderer] drew last that are not
+   ASCII. *)
+let non_ascii renderer =
+  let grid = painted renderer in
+  let ascii s = String.for_all (fun c -> Char.code c < 128) s in
+  let cells = ref [] in
+  for i = (Matrix_grid.width grid * Matrix_grid.height grid) - 1 downto 0 do
+    let text = Matrix_grid.get_text grid i in
+    if not (ascii text) then cells := text :: !cells
+  done;
+  !cells
+
 let has attr (s : Ansi.Style.t) = Ansi.Attr.mem attr s.attrs
 
 let fg_is color (s : Ansi.Style.t) =

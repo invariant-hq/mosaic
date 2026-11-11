@@ -1,7 +1,12 @@
 (* ───── Props ───── *)
 
 type orientation = [ `Horizontal | `Vertical ]
-type glyphs = { filled : string; half : string; empty : string }
+
+type glyphs = Glyphs.progress = {
+  filled : string;
+  half : string;
+  empty : string;
+}
 
 let equal_glyphs a b =
   String.equal a.filled b.filled
@@ -72,13 +77,16 @@ let clamp_ratio props =
 
 (* ───── Rendering ───── *)
 
-(* Without given glyphs the bar draws full blocks over a line, and the
-   half block of its orientation: the left half across, the lower half up. *)
-let horizontal_blocks =
-  { filled = "\u{2588}"; half = "\u{258C}"; empty = "\u{2500}" }
-
-let vertical_blocks =
-  { filled = "\u{2588}"; half = "\u{2584}"; empty = "\u{2502}" }
+(* Without given glyphs the bar draws its orientation's from the theme in
+   scope, read at each paint so that a new theme needs no other work. *)
+let glyphs t theme =
+  match t.props.glyphs with
+  | Some g -> g
+  | None -> (
+      let set = Theme.glyphs theme in
+      match t.props.orientation with
+      | `Horizontal -> set.progress_horizontal
+      | `Vertical -> set.progress_vertical)
 
 (* [texts grid style text ~x ~y ~width ~height] draws the one-cell [text] in
    each cell of the rectangle in [style], over the cells' backgrounds. A
@@ -106,9 +114,9 @@ let texts grid (style : Ansi.Style.t) text ~x ~y ~width ~height =
 (* Each part draws its glyph in its role, [Plain] filled and [Border]
    empty, so the bar shows its value whatever the styling. A color given
    is its part's foreground, and the half glyph is the filled part's. *)
-let paint t ~blocks grid ~x ~y ~width ~height ~filled ~half =
-  let g = Option.value t.props.glyphs ~default:blocks in
+let paint t grid ~x ~y ~width ~height ~filled ~half =
   let theme = Renderable.theme t.node in
+  let g = glyphs t theme in
   let style role color =
     let s = Theme.style theme role in
     match color with Some c -> Ansi.Style.fg c s | None -> s
@@ -134,7 +142,7 @@ let render_horizontal t grid =
   in
   let full_cells = virtual_filled / 2 in
   let has_half = virtual_filled mod 2 = 1 in
-  paint t ~blocks:horizontal_blocks grid ~x ~y ~width:w ~height:h
+  paint t grid ~x ~y ~width:w ~height:h
     ~filled:{ Matrix_grid.x; y; width = full_cells; height = h }
     ~half:
       (if has_half && full_cells < w then Some (x + full_cells, y, 1, h)
@@ -152,7 +160,7 @@ let render_vertical t grid =
   in
   let full_cells = virtual_filled / 2 in
   let has_half = virtual_filled mod 2 = 1 in
-  paint t ~blocks:vertical_blocks grid ~x ~y ~width:w ~height:h
+  paint t grid ~x ~y ~width:w ~height:h
     ~filled:
       { Matrix_grid.x; y = y + h - full_cells; width = w; height = full_cells }
     ~half:

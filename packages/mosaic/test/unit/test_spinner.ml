@@ -37,7 +37,9 @@ let props_equal_identical () =
 let props_detects_frame_set_diff () =
   let a = Spinner.Props.make ~frame_set:Spinner.dots () in
   let b = Spinner.Props.make ~frame_set:Spinner.line () in
-  is_false ~msg:"different" (Spinner.Props.equal a b)
+  is_false ~msg:"different" (Spinner.Props.equal a b);
+  is_false ~msg:"a frame set or none"
+    (Spinner.Props.equal a (Spinner.Props.make ()))
 
 let props_detects_color_diff () =
   let a = Spinner.Props.make ~color:Ansi.Color.red () in
@@ -72,7 +74,7 @@ let static_frame_set_is_not_live () =
   in
   is_false ~msg:"single frame needs no ticks"
     (Renderable.live (Spinner.node spinner));
-  Spinner.set_frame_set spinner Spinner.dots;
+  Spinner.set_frame_set spinner (Some Spinner.dots);
   is_true ~msg:"animating set restores liveness"
     (Renderable.live (Spinner.node spinner))
 
@@ -111,6 +113,23 @@ let on_frame_large_delta_skips_frames () =
   advance_frame spinner ~dt:0.25;
   equal ~msg:"advanced 3" int 3 (Spinner.frame_index spinner)
 
+(* A theme with fewer frames wraps the index: frame 7 of the unicode set's
+   ten is frame 3 of the ascii set's four. *)
+let theme_change_wraps_index () =
+  let t = make_ctx () in
+  let root = make_root t in
+  let spinner = Spinner.create ~parent:root (Spinner.Props.make ()) in
+  for _ = 1 to 7 do
+    advance_frame spinner ~dt:Glyphs.unicode.spinner.period
+  done;
+  equal ~msg:"at frame 7" int 7 (Spinner.frame_index spinner);
+  Renderable.set_theme root (Some (Theme.with_glyphs Glyphs.ascii));
+  equal ~msg:"frame 3 of four" int 3 (Spinner.frame_index spinner);
+  let grid = render_spinner spinner ~width:2 ~height:1 in
+  equal ~msg:"draws the ascii set's frame 3" string
+    Glyphs.ascii.spinner.frames.(3)
+    (Matrix_grid.get_text grid 0)
+
 (* ── Setters ── *)
 
 let set_frame_set_resets_elapsed () =
@@ -119,7 +138,7 @@ let set_frame_set_resets_elapsed () =
   satisfies ~claim:"elapsed above 0" float_exact
     (fun e -> e > 0.)
     (Spinner.elapsed spinner);
-  Spinner.set_frame_set spinner Spinner.line;
+  Spinner.set_frame_set spinner (Some Spinner.line);
   is_true ~msg:"elapsed reset" (Float.equal (Spinner.elapsed spinner) 0.)
 
 let set_frame_set_clamps_index () =
@@ -130,7 +149,7 @@ let set_frame_set_clamps_index () =
   done;
   equal ~msg:"at frame 8" int 8 (Spinner.frame_index spinner);
   (* bounce has only 4 frames, so index should be clamped *)
-  Spinner.set_frame_set spinner Spinner.bounce;
+  Spinner.set_frame_set spinner (Some Spinner.bounce);
   let frames = Array.length Spinner.bounce.frames in
   lt ~msg:"frame index in range" ~than:frames (Spinner.frame_index spinner)
 
@@ -258,11 +277,69 @@ let paint_role () =
                 (Mosaic.spinner ~size:doors_size ~color:blue ())))
           ~x:0 ~y:0))
 
+let ascii = Mosaic.themed (Theme.with_glyphs Glyphs.ascii)
+
+(* Under the ASCII glyph set, a spinner without frames of its own draws
+   only ASCII through its whole cycle: the set's frames, each for its
+   period. *)
+let paint_ascii () =
+  let r = paint (ascii (Mosaic.spinner ~size:doors_size ())) in
+  let drawn = ref [] and other = ref [] in
+  for _ = 1 to 8 do
+    drawn := cell_text r ~x:0 ~y:0 :: !drawn;
+    other := non_ascii r @ !other;
+    Renderer.render_frame r ~width:doors_width ~height:doors_height
+      ~dt:Glyphs.ascii.spinner.period
+  done;
+  equal ~msg:"only ASCII" (list string) [] !other;
+  equal ~msg:"the set's frames in turn" (list string)
+    (List.init 8 (fun i -> Glyphs.ascii.spinner.frames.(i mod 4)))
+    (List.rev !drawn)
+
+(* Under the ASCII glyph set, a default spinner shows each frame for the
+   set's period, that of [Spinner.line], which has the same frames. *)
+let paint_ascii_period () =
+  let r = paint (ascii (Mosaic.spinner ~size:doors_size ())) in
+  let after dt =
+    Renderer.render_frame r ~width:doors_width ~height:doors_height ~dt;
+    cell_text r ~x:0 ~y:0
+  in
+  let period = Spinner.line.period in
+  equal ~msg:"within the first period" string Spinner.line.frames.(0)
+    (after (period *. 0.9));
+  equal ~msg:"after one period" string Spinner.line.frames.(1)
+    (after (period *. 0.2))
+
+(* A frame set of its own wins over the theme's, until it is set to none. *)
+let paint_own_frames () =
+  let r =
+    paint (ascii (Mosaic.spinner ~size:doors_size ~frame_set:Spinner.dots ()))
+  in
+  equal ~msg:"its own frames" string Spinner.dots.frames.(0)
+    (cell_text r ~x:0 ~y:0);
+  let t = make_ctx () in
+  let root = make_root t in
+  Renderable.set_theme root (Some (Theme.with_glyphs Glyphs.ascii));
+  let spinner =
+    Spinner.create ~parent:root (Spinner.Props.make ~frame_set:Spinner.dots ())
+  in
+  Spinner.set_frame_set spinner None;
+  let grid = render_spinner spinner ~width:2 ~height:1 in
+  equal ~msg:"none: the theme's frames" string
+    Glyphs.ascii.spinner.frames.(0)
+    (Matrix_grid.get_text grid 0)
+
 let () =
   exit
     (run "mosaic.spinner"
        [
-         group "Paint" [ test "by role, label first" paint_role ];
+         group "Paint"
+           [
+             test "by role, label first" paint_role;
+             test "draws the theme's ASCII frames" paint_ascii;
+             test "the theme's period" paint_ascii_period;
+             test "own frames over the theme's" paint_own_frames;
+           ];
          group "Props"
            [
              test "default values" props_defaults;
@@ -285,6 +362,8 @@ let () =
              test "wraps around" on_frame_wraps_around;
              test "short delta no advance" on_frame_short_delta_no_advance;
              test "large delta skips frames" on_frame_large_delta_skips_frames;
+             test "a theme with fewer frames wraps the index"
+               theme_change_wraps_index;
            ];
          group "Setters"
            [

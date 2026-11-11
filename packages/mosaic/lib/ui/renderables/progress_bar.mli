@@ -14,9 +14,10 @@
     role, the unfilled portion's in the [Border] role, and the half glyph, in
     the cell where the value ends half way, in the filled portion's. So it shows
     its value whatever the output's styling. A [filled_color] or [empty_color]
-    is the foreground of its portion's glyphs. By default the glyphs are full
-    blocks, a half block and a line; a heavy line filled and a light one empty
-    make a gauge one row high, [━━━━╸─────]. *)
+    is the foreground of its portion's glyphs. By default the glyphs are its
+    orientation's in the glyph set of the theme in scope ({!Theme.glyphs}): in
+    {!Glyphs.unicode} full blocks, a half block and a line. A heavy line filled
+    and a light one empty make a gauge one row high, [━━━━╸─────]. *)
 
 type t
 (** The type for progress bar widgets backed by a {!Renderable.t}. *)
@@ -24,16 +25,13 @@ type t
 type orientation = [ `Horizontal | `Vertical ]
 (** The type for track direction. *)
 
-type glyphs = {
-  filled : string;  (** Each cell of the filled portion. *)
+type glyphs = Glyphs.progress = {
+  filled : string;
   half : string;
-      (** The cell where the value ends half way, its filled half on the filled
-          side: its left half on a horizontal bar, its bottom half on a vertical
-          one, as [╸] (U+2578) and [╻] (U+257B) are. *)
-  empty : string;  (** Each cell of the unfilled portion. *)
+  empty : string;
 }
-(** The type for the glyphs of a bar's cells. Each glyph takes one cell, by
-    every {!Matrix.Text.width_method}. *)
+(** The type for the glyphs of a bar's cells ({!Glyphs.type-progress}). Each
+    glyph takes one cell, by every {!Matrix.Text.width_method}. *)
 
 (** {1:constructors Constructors} *)
 
@@ -65,9 +63,9 @@ module Props : sig
         none, the [Plain] role.
       - [empty_color] is the color of the unfilled portion's glyphs. Defaults to
         none, the [Border] role.
-      - [glyphs] are the glyphs of the bar's cells. Defaults to none: full
-        blocks [█], a half block and a line, [▌] and [─] for [`Horizontal], [▄]
-        and [│] for [`Vertical].
+      - [glyphs] are the glyphs of the bar's cells. Defaults to none: the
+        orientation's in the glyph set of the theme in scope,
+        {!Glyphs.t.progress_horizontal} or {!Glyphs.t.progress_vertical}.
 
       [Mosaic.progress_bar] takes these labels with these defaults.
 
@@ -138,9 +136,9 @@ val set_empty_color : t -> Ansi.Color.t -> unit
     Triggers a re-render if the color changed. *)
 
 val set_glyphs : t -> glyphs option -> unit
-(** [set_glyphs t g] sets the glyphs of [t]'s cells to [g]. [None] draws the
-    default glyphs of [t]'s orientation. Triggers a re-render if the glyphs
-    changed.
+(** [set_glyphs t g] sets the glyphs of [t]'s cells to [g]. [None] draws its
+    orientation's in the glyph set of the theme in scope. Triggers a re-render
+    if the glyphs changed.
 
     Raises [Invalid_argument] if a glyph of [g] does not take one cell. *)
 

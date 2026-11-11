@@ -4,6 +4,10 @@
 
 ### Mosaic
 
+- A progress bar and a spinner draw from the theme's glyph set, which now
+  holds a bar's glyphs across and up and a spinner's frames and period, so
+  under `Glyphs.ascii` they draw ASCII where they drew blocks and braille. A
+  bar's `~glyphs` or a spinner's `~frame_set` still wins.
 - `Mosaic.box` and `Mosaic.button` take `~surface`, a theme role whose style
   is merged under every cell of the box after its children draw, canvases
   and gaps included. A row on `Cursor` now shows in reverse video at every
@@ -20,8 +24,8 @@
 - `Mosaic.progress_bar ~glyphs` takes the glyphs of the filled, half and empty
   cells (`Progress_bar.glyphs`), such as `━`, `╸` and `─` for a gauge one row
   high. `Mosaic_ui.Progress_bar.set_glyphs` sets them, and `None` the
-  orientation's blocks. `filled_color` and `empty_color` now color the glyphs,
-  where they painted a solid band that showed nothing without color.
+  theme's. `filled_color` and `empty_color` now color the glyphs, where they
+  painted a solid band that showed nothing without color.
 - `Mosaic_ui.Cursor.step` reveals the item it lands on from the rows the
   collection shows, where it revealed from the declared position: a list
   scrolled past its first page moved on every key, and `Combobox` with it.
@@ -31,6 +35,18 @@
   `Mosaic_eio.run` works there too: the program runs on a domain with no Eio
   loop, and cancelling the calling fiber still stops it. `Mosaic.fds` raises
   `Invalid_argument` on Windows.
+
+#### Breaking changes
+
+- `Spinner.default_frame_set` is removed. A spinner without `~frame_set`
+  draws the spinner of the theme's glyph set, `Spinner.dots` in
+  `Glyphs.unicode`; pass `~frame_set:Spinner.dots` to keep braille under
+  every theme.
+- `Mosaic_ui.Spinner.set_frame_set` takes a `frame_set option`: write
+  `Some fs` where you wrote `fs`, and `None` for the theme's spinner.
+- `Glyphs.t` has the fields `progress_horizontal`, `progress_vertical` and
+  `spinner`. A set built with `{ Glyphs.unicode with ... }` is unaffected;
+  one written as a whole record needs them.
 
 ### Matrix
 

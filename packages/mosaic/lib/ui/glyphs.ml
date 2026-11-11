@@ -1,3 +1,6 @@
+type progress = { filled : string; half : string; empty : string }
+type spinner = { frames : string array; period : float }
+
 type t = {
   cursor : string;
   cursor_inactive : string;
@@ -15,6 +18,9 @@ type t = {
   arrow_down : string;
   arrow_left : string;
   arrow_right : string;
+  progress_horizontal : progress;
+  progress_vertical : progress;
+  spinner : spinner;
 }
 
 let unicode =
@@ -35,6 +41,27 @@ let unicode =
     arrow_down = "\u{25BC}";
     arrow_left = "\u{25C0}";
     arrow_right = "\u{25B6}";
+    progress_horizontal =
+      { filled = "\u{2588}"; half = "\u{258C}"; empty = "\u{2500}" };
+    progress_vertical =
+      { filled = "\u{2588}"; half = "\u{2584}"; empty = "\u{2502}" };
+    spinner =
+      {
+        frames =
+          [|
+            "\u{280B}";
+            "\u{2819}";
+            "\u{2839}";
+            "\u{2838}";
+            "\u{283C}";
+            "\u{2834}";
+            "\u{2826}";
+            "\u{2827}";
+            "\u{2807}";
+            "\u{280F}";
+          |];
+        period = 0.08;
+      };
   }
 
 let ascii =
@@ -55,7 +82,11 @@ let ascii =
     arrow_down = "v";
     arrow_left = "<";
     arrow_right = ">";
+    progress_horizontal = { filled = "#"; half = "="; empty = "-" };
+    progress_vertical = { filled = "#"; half = "="; empty = "|" };
+    spinner = { frames = [| "-"; "\\"; "|"; "/" |]; period = 0.13 };
   }
 
-(* Every field is a string, so structural equality compares the glyphs. *)
+(* Every field is made of strings and periods, so structural equality
+   compares the glyphs. *)
 let equal (g : t) g' = g = g'

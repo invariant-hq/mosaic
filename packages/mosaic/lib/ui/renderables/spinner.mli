@@ -5,16 +5,18 @@
     advances on each tick: elapsed time accumulates and the frame index advances
     by one for each whole period accumulated.
 
-    Several built-in frame sets are provided ({!dots}, {!line}, {!arc}, etc.).
-    Custom frame sets can be constructed directly as {!type-frame_set} records.
-*)
+    Without a frame set of its own, a spinner draws the spinner of the glyph set
+    of the theme in scope ({!Glyphs.t.spinner}): {!dots} in {!Glyphs.unicode},
+    {!line} in {!Glyphs.ascii}. Several built-in frame sets are provided
+    ({!dots}, {!line}, {!arc}, etc.). Custom frame sets can be constructed
+    directly as {!type-frame_set} records. *)
 
 (** {1:types Types} *)
 
 type t
 (** The type for animated spinner widgets. *)
 
-type frame_set = {
+type frame_set = Glyphs.spinner = {
   frames : string array;  (** Frames to cycle through. *)
   period : float;  (** Time between frames, in seconds. *)
 }
@@ -24,13 +26,13 @@ type frame_set = {
 (** {1:frame_sets Built-in frame sets} *)
 
 val dots : frame_set
-(** Braille dot pattern (10 frames, 80 ms). *)
+(** Braille dot pattern (10 frames, 80 ms), the spinner of {!Glyphs.unicode}. *)
 
 val dots2 : frame_set
 (** Braille block pattern (8 frames, 80 ms). *)
 
 val line : frame_set
-(** ASCII line rotation (4 frames, 130 ms). *)
+(** ASCII line rotation (4 frames, 130 ms), the spinner of {!Glyphs.ascii}. *)
 
 val arc : frame_set
 (** Quarter-circle arc (6 frames, 100 ms). *)
@@ -40,9 +42,6 @@ val bounce : frame_set
 
 val circle : frame_set
 (** Circle animation (3 frames, 120 ms). *)
-
-val default_frame_set : frame_set
-(** [default_frame_set] is {!dots}. *)
 
 (** {1:constructors Constructors} *)
 
@@ -57,7 +56,8 @@ module Props : sig
 
   val make : ?frame_set:frame_set -> ?color:Ansi.Color.t -> unit -> t
   (** [make ()] is a property set, with:
-      - [frame_set] is the animation sequence. Defaults to {!default_frame_set}.
+      - [frame_set] is the animation sequence. Defaults to none: the spinner of
+        the glyph set of the theme in scope.
       - [color] is the foreground color for the spinner glyphs. Defaults to
         none, the [Plain] role of the theme in scope.
 
@@ -84,10 +84,10 @@ val create :
 (** [create ~parent props] is a spinner attached to [parent], showing [props].
     The node declares itself unselectable ({!Renderable.set_selectable}).
 
-    The spinner manages its own liveness: the node is made live while the frame
-    set animates (more than one frame and a positive period), so the animation
-    runs without further wiring, and is taken out of the live set when a static
-    frame set makes per-frame ticks pointless. *)
+    The spinner manages its own liveness: the node is made live while it
+    animates ({!animates}), so the animation runs without further wiring, and is
+    taken out of the live set when a static frame set makes per-frame ticks
+    pointless. *)
 
 val apply_props : t -> Props.t -> unit
 (** [apply_props t props] replaces all properties of [t] with [props]. Wraps the
@@ -103,14 +103,17 @@ val elapsed : t -> float
     of [t]. *)
 
 val animates : t -> bool
-(** [animates t] is [true] iff [t]'s frame set has more than one frame and a
-    positive period. The node of [t] is live exactly while it animates. *)
+(** [animates t] is [true] iff [t] draws the theme's frames, whatever their
+    count, since the theme in scope can change without [t], or its frame set has
+    more than one frame and a positive period. The node of [t] is live exactly
+    while it animates. *)
 
 (** {1:setters Setters} *)
 
-val set_frame_set : t -> frame_set -> unit
-(** [set_frame_set t fs] changes the frame set of [t] to [fs]. Resets elapsed
-    time to [0.] and wraps the frame index to the new frame count. *)
+val set_frame_set : t -> frame_set option -> unit
+(** [set_frame_set t fs] changes the frame set of [t] to [fs]. [None] draws the
+    frames of the glyph set of the theme in scope. Resets elapsed time to [0.]
+    and wraps the frame index to the new frame count. *)
 
 val set_color : t -> Ansi.Color.t -> unit
 (** [set_color t c] changes the foreground color of [t] to [c]. Re-renders only
