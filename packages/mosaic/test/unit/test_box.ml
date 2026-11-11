@@ -638,6 +638,43 @@ let paint_border_role () =
   in
   is_true ~msg:"the label's color" (fg_is blue (cell_style r ~x:0 ~y:0))
 
+(* A title style without a foreground keeps the border's: a bold title is
+   drawn bold in the border's color, the role's or the label's. *)
+let paint_title_style_merges () =
+  let bold = Ansi.Style.make ~bold:true () in
+  let title_cell r =
+    match
+      List.find_opt
+        (fun x -> cell_text r ~x ~y:0 = "T")
+        (List.init (Matrix_grid.width (painted r)) Fun.id)
+    with
+    | Some x -> cell_style r ~x ~y:0
+    | None -> fail "the title is drawn"
+  in
+  let themed = Theme.with_style Border (Ansi.Style.make ~fg:red ()) in
+  let r =
+    paint
+      (Mosaic.themed themed
+         (Mosaic.box ~border:true ~title:"T" ~title_style:bold ~size:paint_size
+            []))
+  in
+  let fg = Testable.make ~pp:Ansi.Color.pp ~equal:Ansi.Color.equal in
+  equal ~msg:"the role's color" (option fg) (Some red) (title_cell r).fg;
+  equal ~msg:"its own attribute" bool true (has Ansi.Attr.Bold (title_cell r));
+  let r =
+    paint
+      (Mosaic.box ~border:true ~border_color:blue ~title:"T" ~title_style:bold
+         ~size:paint_size [])
+  in
+  equal ~msg:"the label's color" (option fg) (Some blue) (title_cell r).fg;
+  let r =
+    paint
+      (Mosaic.box ~border:true ~border_color:blue ~title:"T"
+         ~title_style:(Ansi.Style.make ~fg:red ())
+         ~size:paint_size [])
+  in
+  equal ~msg:"its own color first" (option fg) (Some red) (title_cell r).fg
+
 let paint_focus_shows () =
   focus_shows (Mosaic.box ~border:true ~size:paint_size [])
 
@@ -842,6 +879,7 @@ let () =
            [
              test "legible on a light terminal" paint_legible_on_light;
              test "border by role, label first" paint_border_role;
+             test "title style over the border's color" paint_title_style_merges;
              test "focus shows at every styling" paint_focus_shows;
              test "focused_border_color" paint_focused_border_color;
              test "surface reaches every cell" paint_surface_every_cell;

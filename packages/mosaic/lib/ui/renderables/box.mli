@@ -16,8 +16,10 @@
     is focused, its border is drawn in [focused_border_color] where it is given,
     and otherwise in {!Matrix_grid.Border.heavy} lines in bold, so focus shows
     by a glyph whatever the output's styling, and by an attribute where it has
-    styling. The title is drawn in [title_style] on the border's background, or
-    without one in the border's foreground.
+    styling. The title is drawn on the border's background in [title_style]
+    merged over the border's foreground ({!Ansi.Style.merge}): [title_style]'s
+    colors where it has them, and its attributes. Without [title_style] it is
+    drawn in the border's foreground.
 
     A box may stand on a theme {e surface} ({!Theme.type-role}), such as
     [Cursor] for the row a list's cursor is on, drawn in the surface's style in

@@ -183,11 +183,19 @@ let render t _self grid ~dt:_ =
           | None -> bg_color)
     in
     let fill = if t.props.fill then Some bg_color else None in
+    let style = border_style t in
+    (* The title's style over the border's foreground, as an element's
+       content style is merged over its role. *)
+    let title_style =
+      match (t.props.title_style, style.fg) with
+      | Some s, Some fg ->
+          Some (Ansi.Style.merge ~base:(Ansi.Style.make ~fg ()) ~overlay:s)
+      | s, _ -> s
+    in
     Matrix_grid.draw_box grid ~x:(Renderable.x t.node) ~y:(Renderable.y t.node)
-      ~width:w ~height:h ~border:(border_lines t) ~sides:(drawn_sides t)
-      ~style:(border_style t) ?fill ?title:t.props.title
-      ~title_alignment:t.props.title_alignment ?title_style:t.props.title_style
-      ()
+      ~width:w ~height:h ~border:(border_lines t) ~sides:(drawn_sides t) ~style
+      ?fill ?title:t.props.title ~title_alignment:t.props.title_alignment
+      ?title_style ()
 
 (* After the descendants, the surface's style goes under every cell of the
    box ([Matrix_grid.merge_rect]): a cell keeps what was drawn in it and
