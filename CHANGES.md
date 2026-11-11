@@ -88,9 +88,11 @@ console gets back every mode and code page the run changed.
 - `Matrix_charts.axis ~labels` writes the program's labels among the tick
   labels at given values, such as a title at the axis's end or a cursor's
   value, each in its own style. Tick labels within a cell of them are left
-  out. A horizontal axis's labels stay inside the plot's extent, and one
-  wider than the plot is left out; a vertical axis's widen its margin whether
-  drawn or not, so the plot stays as the view moves.
+  out. They are placed from the last to the first, and one within a cell of a
+  label already placed is left out, so of two that meet, the earlier is drawn
+  only when the later is left out. A horizontal axis's labels stay inside the
+  plot's extent, and one wider than the plot is left out; a vertical axis's
+  widen its margin whether drawn or not, so the plot stays as the view moves.
 
 #### Changes the compiler won't catch
 

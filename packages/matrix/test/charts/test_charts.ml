@@ -1028,6 +1028,140 @@ let%expect_test "an axis label sits at its value, a blank cell from tick labels"
     (List.rev !bad);
   [%expect {| labels misplaced or crowded: 0 of 294 |}]
 
+(* A figure whose [dir] axis has [labels], laid out and drawn. *)
+let two_labels ~dir ~width ~height labels =
+  let other = if dir = "x" then "y" else "x" in
+  let fig =
+    C.(
+      layer
+        [
+          line ~x:Fun.id ~y:Fun.id [| 0.; 1. |];
+          axis ~show:false other;
+          axis ~labels:(List.map (fun (v, s) -> (v, Ansi.span s)) labels) dir;
+        ])
+  in
+  let l = C.layout ~width ~height fig in
+  let g = Grid.create ~width ~height () in
+  C.draw l g ~x:0 ~y:0;
+  (l, g)
+
+let cells g ~y ~x w =
+  String.concat ""
+    (List.init w (fun k ->
+         let x = x + k in
+         if x < 0 || x >= Grid.width g then " "
+         else
+           let i = Grid.idx g ~x ~y in
+           if Grid.is_empty g i then " " else Grid.get_text g i))
+
+let%expect_test "an axis's labels keep clear of each other, the later drawn" =
+  Random.init 7;
+  (* Horizontal: [qqq] then [z…], each centred on its value's column and
+     moved inside the plot. [z…] is always drawn; [qqq] exactly when it is
+     a blank cell or more from it, and when left out the axis reads as if it
+     was never given. *)
+  let bad = ref 0 and checked = ref 0 in
+  let both = ref 0 and dropped = ref 0 and ticks_back = ref 0 in
+  for _ = 1 to 300 do
+    let width = 8 + Random.int 60 in
+    let u = Random.float 1. in
+    let v =
+      if Random.bool () then Random.float 1.
+      else Float.min 1. (Float.max 0. (u +. Random.float 0.2 -. 0.1))
+    in
+    let z = String.make (1 + Random.int 5) 'z' in
+    let labels = [ (u, "qqq"); (v, z) ] in
+    let l, g = two_labels ~dir:"x" ~width ~height:3 labels in
+    let _, g_z = two_labels ~dir:"x" ~width ~height:3 [ (v, z) ] in
+    let p = C.Layout.plot l in
+    let wz = String.length z in
+    (* The region has a row of labels when the plot is left one row. *)
+    if wz <= p.width && 3 <= p.width && p.height = 1 then begin
+      incr checked;
+      let start a w =
+        let c = C.Layout.position l "x" (C.Layout.Num a) in
+        max p.x (min (c - ((w - 1) / 2)) (p.x + p.width - w))
+      in
+      let sq = start u 3 and sz = start v wz in
+      let near = sq <= sz + wz && sq + 3 >= sz in
+      let ok =
+        String.equal (cells g ~y:2 ~x:sz wz) z
+        &&
+        if near then String.equal (Grid.to_text g) (Grid.to_text g_z)
+        else String.equal (cells g ~y:2 ~x:sq 3) "qqq"
+      in
+      if near then (
+        incr dropped;
+        if String.trim (cells g_z ~y:2 ~x:sq 3) <> "" then incr ticks_back)
+      else incr both;
+      if not ok then (
+        incr bad;
+        if !bad <= 3 then
+          Printf.printf "%d cells, qqq at %g, %S at %g: %S\n" width u z v
+            (List.nth (String.split_on_char '\n' (Grid.to_text g)) 2))
+    end
+  done;
+  Printf.printf
+    "horizontal: %d of %d wrong; both drawn %d, one left out %d, a tick's \
+     label in its place %d\n"
+    !bad !checked !both !dropped !ticks_back;
+  (* Vertical: [aaa] then [bbb], each on its value's row. [bbb] is always
+     drawn; [aaa] exactly when a row or more lies between them. *)
+  let bad = ref 0 and both = ref 0 and dropped = ref 0 in
+  for _ = 1 to 300 do
+    let a = Random.float 1. in
+    let b =
+      if Random.bool () then Random.float 1.
+      else Float.min 1. (Float.max 0. (a +. Random.float 0.4 -. 0.2))
+    in
+    let l, g =
+      two_labels ~dir:"y" ~width:20 ~height:12 [ (a, "aaa"); (b, "bbb") ]
+    in
+    let _, g_b = two_labels ~dir:"y" ~width:20 ~height:12 [ (b, "bbb") ] in
+    let rows = String.split_on_char '\n' (Grid.to_text g) in
+    let row_of s =
+      List.find_index
+        (fun r ->
+          let n = String.length r in
+          let rec at i = i + 3 <= n && (String.sub r i 3 = s || at (i + 1)) in
+          at 0)
+        rows
+    in
+    let ra = C.Layout.position l "y" (C.Layout.Num a)
+    and rb = C.Layout.position l "y" (C.Layout.Num b) in
+    let near = abs (ra - rb) <= 1 in
+    let ok =
+      row_of "bbb" = Some rb
+      &&
+      if near then String.equal (Grid.to_text g) (Grid.to_text g_b)
+      else row_of "aaa" = Some ra
+    in
+    if near then incr dropped else incr both;
+    if not ok then incr bad
+  done;
+  Printf.printf "vertical: %d of 300 wrong; both drawn %d, one left out %d\n"
+    !bad !both !dropped;
+  [%expect {|
+    horizontal: 0 of 300 wrong; both drawn 138, one left out 162, a tick's label in its place 135
+    vertical: 0 of 300 wrong; both drawn 167, one left out 133
+    |}]
+
+let%expect_test "a label left out hides no other" =
+  (* C meets B and B meets A, but C is clear of A: B is left out, and A,
+     no longer met by a label drawn, stays. *)
+  let l0, _ = two_labels ~dir:"x" ~width:30 ~height:3 [] in
+  let at c =
+    match C.Layout.value l0 "x" (c, (C.Layout.plot l0).y) with
+    | Some (C.Layout.Num v) -> v
+    | _ -> assert false
+  in
+  let _, g =
+    two_labels ~dir:"x" ~width:30 ~height:3
+      [ (at 11, "aaa"); (at 14, "bbb"); (at 17, "ccc") ]
+  in
+  Printf.printf "|%s|\n" (cells g ~y:2 ~x:0 30);
+  [%expect {| |0.0       aaa   ccc        1.0| |}]
+
 let%expect_test "an axis label shows whole or not at all" =
   Random.init 5;
   let bad = ref 0 and wider = ref 0 and shown = ref 0 in

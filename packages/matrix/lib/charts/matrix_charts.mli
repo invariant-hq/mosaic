@@ -517,10 +517,14 @@ val axis :
     domain. On a horizontal axis [s] is centered on [v]'s cell and moved inside
     the plot's extent, so one at the shown domain's end ends at the plot's edge;
     one wider than the plot is left out. On a vertical axis [s] is on [v]'s row.
-    A tick's label that would come within a cell of one of them is left out, and
-    its tick stays. On a horizontal axis they take the tick labels' row, adding
-    it only when the axis has no ticks. Each widens a vertical axis's margin,
-    drawn or not, so that the plot stays where it is as the view moves.
+    They are placed from the last in [labels] to the first, and one that would
+    come within a cell of a label already placed is left out, so of two labels
+    that meet, the earlier is drawn only when the later is left out: a cursor's
+    value given after a label at the axis's end hides it. A tick's label that
+    would come within a cell of one drawn is left out, and its tick stays. On a
+    horizontal axis they take the tick labels' row, adding it only when the axis
+    has no ticks. Each widens a vertical axis's margin, drawn or not, so that
+    the plot stays where it is as the view moves.
 
     Raises [Invalid_argument] if [`Minor n] has [n < 2], [`Every n] has [n < 1]
     or [spacing] is negative. {!layout} raises if a band scale's axis has

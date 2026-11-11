@@ -1786,6 +1786,20 @@ let place ~theme ~depth ~wm ~width ~height ~view (r : resolved) =
                   else Some (plot.y + l - 1 - o, sp))
               a.a_labels
         in
+        (* Placed from the last to the first; one within a cell of a label
+           already placed is left out, as a tick's label gives way to them,
+           so a label left out hides nothing. *)
+        let labels =
+          let near (at, (sp : Ansi.span)) (at', (sp' : Ansi.span)) =
+            if horizontal then
+              at <= at' + measure wm sp'.text && at + measure wm sp.text >= at'
+            else abs (at - at') <= 1
+          in
+          List.fold_right
+            (fun p kept ->
+              if List.exists (near p) kept then kept else p :: kept)
+            labels []
+        in
         let t =
           if labels = [] then t
           else
