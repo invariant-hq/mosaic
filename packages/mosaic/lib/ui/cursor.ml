@@ -91,22 +91,19 @@ let put items ~scroll i =
     prefix = "";
   }
 
+(* The first of the [rows] rows of [n] items that [scroll] shows. *)
+let shown ~rows ~n scroll =
+  snd
+    (Scroll.resolve scroll ~width:0 ~height:rows ~content_width:0
+       ~content_height:n)
+
 (* [scroll] on [rows] rows of [n] items, revealing item [i] from the rows it
    shows, which its declared position may not be: a reveal or a follow moves
-   the rows shown from it. The value declares the rows it shows, with [i]
-   revealed. The rows come from Scroll.reveal's rule, the smallest movement
-   that shows [i], applied to the rows shown. *)
+   the rows shown from it. The value declares the rows the reveal leaves
+   shown, with [i] revealed. Top-level calls, so a move builds no closure. *)
 let reveal ~rows ~n scroll i =
-  let _, shown =
-    Scroll.resolve scroll ~width:0 ~height:rows ~content_width:0
-      ~content_height:n
-  in
-  let y =
-    if i < shown then i
-    else if i >= shown + rows then i - max 1 rows + 1
-    else shown
-  in
-  let y = max 0 (min (max 0 (n - rows)) y) in
+  let from = Scroll.with_position ~y:(shown ~rows ~n scroll) scroll in
+  let y = shown ~rows ~n (Scroll.reveal ~line:i from) in
   Scroll.reveal ~line:i (Scroll.with_position ~y scroll)
 
 (* A move from the cursor item at [current] (-1 for none) to [target]. *)
