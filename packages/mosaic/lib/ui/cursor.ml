@@ -79,22 +79,40 @@ type 'a outcome =
   | Changed of 'a change * 'a t
   | Nothing
 
-(* A value on the item at [i], scrolled to [reveal i], with no anchor and no
+(* A value on the item at [i], scrolled to [scroll], with no anchor and no
    typed prefix. *)
-let put items ~reveal i =
+let put items ~scroll i =
   {
     item = Some (Items.get items i);
     hint = i;
-    scroll = reveal i;
+    scroll;
     anchor = None;
     anchor_hint = 0;
     prefix = "";
   }
 
+(* [scroll] on [rows] rows of [n] items, revealing item [i] from the rows it
+   shows, which its declared position may not be: a reveal or a follow moves
+   the rows shown from it. The value declares the rows it shows, with [i]
+   revealed. The rows come from Scroll.reveal's rule, the smallest movement
+   that shows [i], applied to the rows shown. *)
+let reveal ~rows ~n scroll i =
+  let _, shown =
+    Scroll.resolve scroll ~width:0 ~height:rows ~content_width:0
+      ~content_height:n
+  in
+  let y =
+    if i < shown then i
+    else if i >= shown + rows then i - max 1 rows + 1
+    else shown
+  in
+  let y = max 0 (min (max 0 (n - rows)) y) in
+  Scroll.reveal ~line:i (Scroll.with_position ~y scroll)
+
 (* A move from the cursor item at [current] (-1 for none) to [target]. *)
-let move items ~reveal c ~current target =
+let move items ~rows ~n c ~current target =
   if target = current && c.anchor = None && c.prefix = "" then Nothing
-  else Moved (put items ~reveal target)
+  else Moved (put items ~scroll:(reveal ~rows ~n c.scroll target) target)
 
 (* Whether [s] starts with [p], ASCII letters of [s] folded to lower case;
    [p] is folded already. *)
@@ -123,7 +141,7 @@ let folded u =
   Buffer.add_utf_8_uchar b u;
   String.lowercase_ascii (Buffer.contents b)
 
-let typeahead ~name items ~reveal c ~current n u =
+let typeahead ~name items ~rows c ~current n u =
   let typed = folded u in
   let prefix = c.prefix ^ typed in
   let after = if current < 0 then 0 else (current + 1) mod n in
@@ -136,11 +154,11 @@ let typeahead ~name items ~reveal c ~current n u =
   in
   if i < 0 then Nothing
   else if i = current && String.equal prefix c.prefix then Nothing
-  else Moved { (put items ~reveal i) with prefix }
+  else Moved { (put items ~scroll:(reveal ~rows ~n c.scroll i) i) with prefix }
 
 (* The change to the range from the anchor at [a] when the cursor moves from
    [i] to [j], one item apart. *)
-let extend items ~reveal c ~equal ~current ~target =
+let extend items ~rows c ~equal ~current ~target =
   let x = Items.get items target in
   let anchor_at =
     match c.anchor with
@@ -148,7 +166,8 @@ let extend items ~reveal c ~equal ~current ~target =
     | Some a -> find equal items a c.anchor_hint
   in
   let next a anchor_hint =
-    { (put items ~reveal target) with anchor = Some a; anchor_hint }
+    let scroll = reveal ~rows ~n:(Items.length items) c.scroll target in
+    { (put items ~scroll target) with anchor = Some a; anchor_hint }
   in
   if current < 0 then Changed (Add [ x ], next x target)
   else
@@ -163,55 +182,44 @@ let extend items ~reveal c ~equal ~current ~target =
 let rec all items i acc =
   if i < 0 then acc else all items (i - 1) (Items.get items i :: acc)
 
+(* A move of [k] items from [current], or onto an end from no cursor
+   item. *)
+let by items ~rows ~n c ~current k =
+  if k = 0 then Nothing
+  else if current < 0 then
+    move items ~rows ~n c ~current (if k > 0 then 0 else n - 1)
+  else move items ~rows ~n c ~current (max 0 (min (n - 1) (current + k)))
+
 let step ~equal ~name ~page items c action =
   let n = Items.length items in
   if n = 0 then Nothing
   else
     let current = position equal items (c.item, c.hint) in
-    (* A move reveals from the rows [c] shows, which its declared position
-       may not be: a reveal or a follow moves the rows shown from it. The
-       next value declares the rows it shows, with its item revealed. *)
-    let shown scroll =
-      snd
-        (Scroll.resolve scroll ~width:0 ~height:page ~content_width:0
-           ~content_height:n)
-    in
-    let reveal i =
-      let from = Scroll.with_position ~y:(shown c.scroll) c.scroll in
-      let y = shown (Scroll.reveal ~line:i from) in
-      Scroll.reveal ~line:i (Scroll.with_position ~y c.scroll)
-    in
-    let by k =
-      if k = 0 then Nothing
-      else if current < 0 then
-        move items ~reveal c ~current (if k > 0 then 0 else n - 1)
-      else move items ~reveal c ~current (max 0 (min (n - 1) (current + k)))
-    in
-    let page = max 1 (page - 1) in
+    let rows = page and page = max 1 (page - 1) in
     match action with
     | (Next | Prev | Extend_next | Extend_prev) when current < 0 -> (
         let target = match action with Next | Extend_next -> 0 | _ -> n - 1 in
         match action with
-        | Next | Prev -> move items ~reveal c ~current target
-        | _ -> extend items ~reveal c ~equal ~current ~target)
+        | Next | Prev -> move items ~rows ~n c ~current target
+        | _ -> extend items ~rows c ~equal ~current ~target)
     | Next ->
         if current = n - 1 then Nothing
-        else move items ~reveal c ~current (current + 1)
+        else move items ~rows ~n c ~current (current + 1)
     | Prev ->
         if current = 0 then Nothing
-        else move items ~reveal c ~current (current - 1)
+        else move items ~rows ~n c ~current (current - 1)
     | Next_wrap ->
-        move items ~reveal c ~current
+        move items ~rows ~n c ~current
           (if current < 0 then 0 else (current + 1) mod n)
     | Prev_wrap ->
-        move items ~reveal c ~current
+        move items ~rows ~n c ~current
           (if current <= 0 then n - 1 else current - 1)
-    | First -> move items ~reveal c ~current 0
-    | Last -> move items ~reveal c ~current (n - 1)
-    | By k -> by k
-    | Page_down -> by page
-    | Page_up -> by (-page)
-    | Typeahead u -> typeahead ~name items ~reveal c ~current n u
+    | First -> move items ~rows ~n c ~current 0
+    | Last -> move items ~rows ~n c ~current (n - 1)
+    | By k -> by items ~rows ~n c ~current k
+    | Page_down -> by items ~rows ~n c ~current page
+    | Page_up -> by items ~rows ~n c ~current (-page)
+    | Typeahead u -> typeahead ~name items ~rows c ~current n u
     | Activate ->
         if current < 0 then Nothing else Activated (Items.get items current)
     | Toggle ->
@@ -229,10 +237,10 @@ let step ~equal ~name ~page items c action =
               } )
     | Extend_next ->
         if current = n - 1 then Nothing
-        else extend items ~reveal c ~equal ~current ~target:(current + 1)
+        else extend items ~rows c ~equal ~current ~target:(current + 1)
     | Extend_prev ->
         if current = 0 then Nothing
-        else extend items ~reveal c ~equal ~current ~target:(current - 1)
+        else extend items ~rows c ~equal ~current ~target:(current - 1)
     | Select_all ->
         Changed
           (Add (all items (n - 1) []), { c with anchor = None; prefix = "" })
@@ -265,7 +273,7 @@ let nearest ~equal ~before items c =
         if i < 0 then { c with item = None; prefix = "" }
         else
           {
-            (put items ~reveal:(fun i -> Scroll.reveal ~line:i c.scroll) i) with
+            (put items ~scroll:(Scroll.reveal ~line:i c.scroll) i) with
             anchor = c.anchor;
             anchor_hint = c.anchor_hint;
           }
