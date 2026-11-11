@@ -278,10 +278,11 @@ let set_title_style t style =
     t.props <- { t.props with title_style = style };
     request_render t)
 
+(* The node's surface may have been set on it directly, so it is always
+   passed on; [Renderable.set_surface] ignores an equal one. *)
 let set_surface t role =
-  if t.props.surface <> role then (
-    t.props <- { t.props with surface = role };
-    Renderable.set_surface t.node role)
+  if t.props.surface <> role then t.props <- { t.props with surface = role };
+  Renderable.set_surface t.node role
 
 let set_style t style =
   let updated = style_with_border t style in

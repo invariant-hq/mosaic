@@ -264,6 +264,26 @@ let set_surface () =
   Box.set_surface box None;
   gt ~msg:"scheduled again" ~than:before !(t.schedule_count)
 
+(* [Box.set_surface] sets the node's surface also where it was set on the
+   node directly, so [None] removes it. *)
+let set_surface_after_node () =
+  let t = make_ctx () in
+  let root = make_root t in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
+  let role =
+    Testable.make
+      ~pp:(fun ppf r ->
+        Format.pp_print_string ppf
+          (match r with
+          | Some Theme.Cursor -> "Cursor"
+          | Some _ -> "a role"
+          | None -> "none"))
+      ~equal:( = )
+  in
+  Renderable.set_surface (Box.node box) (Some Cursor);
+  Box.set_surface box None;
+  equal ~msg:"none on the node" role None (Renderable.surface (Box.node box))
+
 let set_title_style () =
   let t = make_ctx () in
   let root = make_root t in
@@ -957,6 +977,7 @@ let () =
              test "set_title_alignment" set_title_alignment;
              test "set_title_style" set_title_style;
              test "set_surface" set_surface;
+             test "set_surface after the node's" set_surface_after_node;
            ];
          group "apply_props"
            [ test "updates all properties" apply_props_updates ];
