@@ -778,6 +778,24 @@ let paint_surface_background () =
   equal ~msg:"the child's own background" (option color) (Some red) (bg 2);
   equal ~msg:"outside the box" (option color) (Some red) (bg 6)
 
+(* The fill follows the node's surface however it was set: one set on the
+   box's node shows its background over an opaque parent as one given to
+   the box does. *)
+let paint_surface_on_node () =
+  let r = Renderer.create () in
+  Renderer.set_theme r
+    (Theme.with_style Cursor (Ansi.Style.make ~bg:blue ()) Theme.plain);
+  let style = Toffee.Style.make ~size:(Mosaic.size ~width:4 ~height:1) () in
+  let parent =
+    Box.create ~parent:(Renderer.root r) ~style
+      (Box.Props.make ~background:red ())
+  in
+  let box = Box.create ~parent:(Box.node parent) ~style (Box.Props.make ()) in
+  Renderable.set_surface (Box.node box) (Some Cursor);
+  Renderer.render_frame r ~width:doors_width ~height:doors_height ~dt:0.;
+  equal ~msg:"a blank of the box" (option color) (Some blue)
+    (cell_style r ~x:1 ~y:0).bg
+
 (* What a terminal shows of the frame's first [height] rows at [`Mono],
    where only attributes are written: the cells of [width] columns that it
    does not show in reverse video. The rows are written one per line, each
@@ -886,6 +904,7 @@ let () =
              test "surface marks children's own styles" paint_surface_own_styles;
              test "surface background over an opaque parent"
                paint_surface_background;
+             test "surface set on the node fills the box" paint_surface_on_node;
              test "surface shows without color" paint_surface_mono;
              test "surface marks munin's row" paint_surface_munin_row;
              test "a box at opacity 0 marks nothing" paint_surface_hidden;

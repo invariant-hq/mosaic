@@ -169,14 +169,15 @@ let surface_style t role = Theme.style (Renderable.theme t.node) role
 (* The box is filled with the background, and the surface's background
    over it, so a surface with a color shows under the children also where
    the box stands on an opaque parent. The renderer merges the surface under
-   the box's cells after its descendants ([Renderable.set_surface]). *)
+   the box's cells after its descendants. Both read the node's surface, so
+   one set with [Renderable.set_surface] fills the box too. *)
 let render t _self grid ~dt:_ =
   let w = Renderable.width t.node in
   let h = Renderable.height t.node in
   if w > 0 && h > 0 then
     let bg_color = Option.value t.props.background ~default:transparent in
     let bg_color =
-      match t.props.surface with
+      match Renderable.surface t.node with
       | None -> bg_color
       | Some role -> (
           match (surface_style t role).bg with
