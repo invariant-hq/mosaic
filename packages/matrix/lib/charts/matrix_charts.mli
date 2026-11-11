@@ -247,7 +247,9 @@ val text :
     ([`Left], the default), middle or end. [offset (dx, dy)] then moves the text
     [dx] cells right and [dy] cells down, [(0, 0)] by default, as a label beside
     a rule or after a line's last point. A text is drawn when its point lies in
-    the plot, and is cut at the plot's edges. *)
+    the plot. One that the plot's edges would cut is moved inside the plot, and
+    one wider than the plot is not drawn, so a text shows whole or not at all.
+*)
 
 val arrow :
   ?color:'r paint ->

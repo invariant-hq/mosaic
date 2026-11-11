@@ -376,7 +376,7 @@ let%expect_test "text anchors and arrow heads" =
       ─────────────────→
     |}]
 
-let%expect_test "an offset moves a text from its point, cut at the plot" =
+let%expect_test "an offset moves a text from its point, kept inside the plot" =
   let label ?anchor offset s (x, y) =
     C.text ?anchor ~offset ~x:fst ~y:snd ~text:(fun _ -> s) [| (x, y) |]
   in
@@ -394,9 +394,100 @@ let%expect_test "an offset moves a text from its point, cut at the plot" =
       |> scale "x" (Scale.linear ~domain:(0., 10.) ())
       |> scale "y" (Scale.linear ~domain:(0., 3.) ()));
   [%expect {|
-         │ab
-         │   e
-       cd│
+      │ab
+      │edge
+    cd│
+    |}]
+
+let%expect_test "a text at a point in the plot is moved inside it, or left out"
+    =
+  Random.init 41;
+  let wrong = ref [] and fit = ref 0 and wide = ref 0 in
+  (* fitting texts in an inset plot moved from its left, right, top, bottom *)
+  let moved = Array.make 4 0 in
+  for _ = 1 to 600 do
+    let width = 1 + Random.int 24 and height = 1 + Random.int 9 in
+    let s = String.init (1 + Random.int 8) (fun i -> Char.chr (97 + i)) in
+    let tw = String.length s in
+    let anchor =
+      match Random.int 3 with 0 -> `Left | 1 -> `Center | _ -> `Right
+    in
+    (* offsets reach past every edge of the largest plot *)
+    let dx = Random.int 49 - 24 and dy = Random.int 19 - 9 in
+    let x = Random.float 1. and y = Random.float 1. in
+    (* margins on every side, so that the plot and the region differ *)
+    let m () = Random.int 3 in
+    let l =
+      C.layout ~width ~height
+        C.(
+          bare
+            (text ~anchor ~offset:(dx, dy) ~x:fst ~y:snd
+               ~text:(fun _ -> s)
+               [| (x, y) |])
+          |> scale "x" (Scale.linear ~domain:(0., 1.) ())
+          |> scale "y" (Scale.linear ~domain:(0., 1.) ())
+          |> margins ~top:(m ()) ~right:(m ()) ~bottom:(m ()) ~left:(m ()))
+    in
+    let g = Grid.create ~width ~height () in
+    C.draw l g ~x:0 ~y:0;
+    let at x y =
+      let i = Grid.idx g ~x ~y in
+      if Grid.is_empty g i then " " else Grid.get_text g i
+    in
+    let letters = ref 0 in
+    for y = 0 to height - 1 do
+      for x = 0 to width - 1 do
+        if at x y <> " " then incr letters
+      done
+    done;
+    let p = C.Layout.plot l in
+    let fits = p.height > 0 && tw <= p.width in
+    if fits then incr fit else incr wide;
+    let ok =
+      if not fits then !letters = 0
+      else
+        let a = C.Layout.position l "x" (C.Layout.Num x)
+        and r = C.Layout.position l "y" (C.Layout.Num y) in
+        let a =
+          match anchor with
+          | `Left -> a
+          | `Center -> a - ((tw - 1) / 2)
+          | `Right -> a - tw + 1
+        in
+        let clamp lo hi v = max lo (min hi v) in
+        let col = clamp p.x (p.x + p.width - tw) (a + dx)
+        and row = clamp p.y (p.y + p.height - 1) (r + dy) in
+        let inset =
+          p.x > 0 && p.y > 0 && p.x + p.width < width && p.y + p.height < height
+        in
+        let count i b = if inset && b then moved.(i) <- moved.(i) + 1 in
+        count 0 (a + dx < col);
+        count 1 (a + dx > col);
+        count 2 (r + dy < row);
+        count 3 (r + dy > row);
+        !letters = tw
+        && String.concat "" (List.init tw (fun k -> at (col + k) row)) = s
+    in
+    if not ok then
+      wrong := (width, height, s, (dx, dy), Grid.to_text g) :: !wrong
+  done;
+  Printf.printf
+    "texts not at their clamped cell when they fit, or shown when wider: %d of \
+     %d (%d wider than the plot)\n"
+    (List.length !wrong) (!fit + !wide) !wide;
+  Printf.printf
+    "fitting in an inset plot, moved from its left %d, right %d, top %d, \
+     bottom %d\n"
+    moved.(0) moved.(1) moved.(2) moved.(3);
+  List.iteri
+    (fun i (w, h, s, (dx, dy), text) ->
+      if i < 2 then
+        Printf.printf "%dx%d, %S offset (%d, %d):\n%s\n" w h s dx dy text)
+    (List.rev !wrong);
+  [%expect
+    {|
+    texts not at their clamped cell when they fit, or shown when wider: 0 of 600 (121 wider than the plot)
+    fitting in an inset plot, moved from its left 20, right 23, top 22, bottom 25
     |}]
 
 let%expect_test "a circle is an ellipse in cells" =

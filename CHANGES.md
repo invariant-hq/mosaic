@@ -76,6 +76,10 @@ console gets back every mode and code page the run changed.
 
 #### Changes the compiler won't catch
 
+- `Matrix_charts.text` moves a text that the plot's edges would cut inside
+  the plot, and leaves out one wider than the plot. It drew the part inside the
+  plot, and a cut label can read as another word or number: `now` as `no`,
+  `1500` as `150`.
 - On Windows the input is a console or a file. A run whose input is a pipe
   raises `Invalid_argument` at its first wait, and `Matrix.fds` raises
   `Invalid_argument`, since no descriptor stands for the console: drive the run

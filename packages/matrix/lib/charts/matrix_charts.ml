@@ -2817,16 +2817,21 @@ let ink_mark c (e : ev) =
         if inside xs.(i) && inside ys.(i) then
           let s = e.texts.(i) in
           let tw = measure l.wm s in
-          let x = bin c.pw xs.(i) in
-          let x =
-            match anchor with
-            | `Left -> x
-            | `Center -> x - ((tw - 1) / 2)
-            | `Right -> x - tw + 1
-          in
-          Ink.text c.ink ~width_method:l.wm ~x:(x + ox)
-            ~y:(c.ph - 1 - bin c.ph ys.(i) + oy)
-            s ~fg:(fg i) ~attrs ~owner:(owner i)
+          (* moved inside the plot rather than cut, and left out when wider *)
+          if tw <= c.pw then
+            let x = bin c.pw xs.(i) in
+            let x =
+              match anchor with
+              | `Left -> x
+              | `Center -> x - ((tw - 1) / 2)
+              | `Right -> x - tw + 1
+            in
+            let x = Int.max 0 (Int.min (c.pw - tw) (x + ox))
+            and y =
+              Int.max 0 (Int.min (c.ph - 1) (c.ph - 1 - bin c.ph ys.(i) + oy))
+            in
+            Ink.text c.ink ~width_method:l.wm ~x ~y s ~fg:(fg i) ~attrs
+              ~owner:(owner i)
       done
   | K_arrow { head } ->
       let xs = xs () and ys = ys () in
