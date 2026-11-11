@@ -341,9 +341,9 @@ val circle :
     nor rounded. A domain of no values is \[[0];[1]\], or \[[1];[10]\] on a log
     scale. A domain of one value maps every value to the position [0.5], except
     that a domain widened to [0] from [0] alone is \[[0];[1]\]. Any other finite
-    increasing domain maps each finite value it does not drop to a finite
-    position, and each value in it to a position in \[[0];[1]\], even when the
-    domain's length or its inverse passes the largest float. *)
+    increasing domain, however long or short, maps each finite value it does not
+    drop to a finite position, and each value in it to a position in
+    \[[0];[1]\]. *)
 
 module Scale : sig
   type 'd t
