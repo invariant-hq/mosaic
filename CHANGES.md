@@ -7,7 +7,8 @@
 - `Mosaic.box` and `Mosaic.button` take `~surface`, a theme role whose style
   is merged under every cell of the box after its children draw, canvases
   and gaps included. A row on `Cursor` now shows in reverse video at every
-  color depth, where `~background` vanished without color.
+  color depth, where `~background` vanished without color. Any node may stand
+  on a surface with `Mosaic_ui.Renderable.set_surface`.
 - `Mosaic.Sub.on_styling` gives the application the styling its frames are
   written at, the color depth or none, as the program begins and when it
   changes, so a theme that differs by depth agrees with the run instead of

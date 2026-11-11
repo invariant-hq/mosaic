@@ -325,6 +325,16 @@ val set_opacity : t -> float -> unit
 val opacity : t -> float
 (** [opacity t] is [t]'s opacity in \[[0.0];[1.0]\]. *)
 
+val set_surface : t -> Theme.role option -> unit
+(** [set_surface t role] has [t] stand on [role]: after [t]'s descendants are
+    drawn, [role]'s style in the theme in scope at [t] ({!val-theme}) is merged
+    under every cell of [t]'s bounds ({!Matrix_grid.merge_rect}), in the scissor
+    and opacity [t] is drawn in, before the nodes drawn after [t]. [None]
+    removes it. *)
+
+val surface : t -> Theme.role option
+(** [surface t] is the surface [t] stands on, if any. *)
+
 val set_buffered : t -> bool -> unit
 (** [set_buffered t v] enables or disables offscreen buffering. When [true], [t]
     renders into a private grid that is blitted to the parent grid. *)
@@ -693,18 +703,6 @@ module Private : sig
   (** [render_full t ~grid ~dt] runs the complete render sequence for [t]: frame
       buffer selection, pre-render hook, render callback, post-render hook, and
       frame buffer blit. *)
-
-  val set_render_over : t -> render option -> unit
-  (** [set_render_over t hook] has [hook] draw after [t]'s descendants, over
-      what they drew and before the nodes drawn after [t], in the scissor and
-      opacity [t] itself is drawn in rather than its children's scissor. It
-      draws on the frame's grid, also when [t] is buffered. [None] clears it. *)
-
-  val has_render_over : t -> bool
-  (** [has_render_over t] is [true] iff [t] has a {!set_render_over} hook. *)
-
-  val render_over : t -> grid:Matrix_grid.t -> dt:float -> unit
-  (** [render_over t ~grid ~dt] runs [t]'s {!set_render_over} hook, if any. *)
 
   val pending_work : t -> Pending.t option
   (** [pending_work t] is [Some work] when [t] reports pending render work. *)

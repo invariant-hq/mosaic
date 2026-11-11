@@ -161,40 +161,41 @@ let zero_sized_clipping_node_hides_children () =
   let hit = Matrix_screen.query_hit (Renderer.screen t) ~x:0 ~y:0 in
   is_false ~msg:"child not hit-testable through the empty clip" (hit = child_num)
 
-(* ── Drawing over descendants ── *)
+(* ── Surfaces ── *)
 
-(* A node's [render_over] hook draws after its descendants, so it reads
-   what they drew, and before the siblings drawn after it. *)
-let render_over_after_descendants () =
+let reversed grid ~x ~y =
+  Ansi.Attr.mem Inverse
+    (Matrix_grid.get_style grid (Matrix_grid.idx grid ~x ~y)).attrs
+
+(* A node's surface is merged under its cells after its descendants draw,
+   so it marks what they drew, and before the siblings drawn after it,
+   which draw over it. The renderer's theme is plain, whose [Cursor] is
+   reverse video. *)
+let surface_after_descendants () =
   let t = make_renderer () in
-  let order = ref [] in
-  let log name = order := name :: !order in
   let node = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:4 ~h:2 () in
   let child = make_child ~parent:node ~x:1 ~y:0 ~w:2 ~h:1 () in
   let grandchild = make_child ~parent:child ~x:0 ~y:0 ~w:1 ~h:1 () in
   let sibling = make_child ~parent:(Renderer.root t) ~x:0 ~y:1 ~w:1 ~h:1 () in
-  let seen = ref "" in
-  Renderable.set_render node (fun _ _ ~dt:_ -> log "node");
-  Renderable.set_render child (fun _ _ ~dt:_ -> log "child");
-  Renderable.set_render grandchild (fun self grid ~dt:_ ->
-      log "grandchild";
-      Matrix_grid.draw_text grid ~x:(Renderable.x self) ~y:(Renderable.y self)
-        ~text:"g");
-  Renderable.set_render sibling (fun _ _ ~dt:_ -> log "sibling");
-  Renderable.Private.set_render_over node
-    (Some
-       (fun _ grid ~dt:_ ->
-         log "over";
-         seen := Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:1 ~y:0)));
-  do_frame t;
-  equal ~msg:"order" (list string)
-    [ "node"; "child"; "grandchild"; "over"; "sibling" ]
-    (List.rev !order);
-  equal ~msg:"what the descendants drew" string "g" !seen
+  let draws text self grid ~dt:_ =
+    Matrix_grid.draw_text grid ~x:(Renderable.x self) ~y:(Renderable.y self)
+      ~text
+  in
+  Renderable.set_render grandchild (draws "g");
+  Renderable.set_render sibling (draws "s");
+  Renderable.set_surface node (Some Cursor);
+  Renderer.render_frame t ~width:6 ~height:2 ~dt:0.;
+  let grid = Matrix_screen.next_grid (Renderer.screen t) in
+  equal ~msg:"what a descendant drew" string "g"
+    (Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:1 ~y:0));
+  equal ~msg:"a descendant's cell marked" bool true (reversed grid ~x:1 ~y:0);
+  equal ~msg:"a cell nothing drew marked" bool true (reversed grid ~x:3 ~y:1);
+  equal ~msg:"a later sibling over it" bool false (reversed grid ~x:0 ~y:1);
+  equal ~msg:"outside the node" bool false (reversed grid ~x:4 ~y:0)
 
-(* The hook draws in the scissor the node is drawn in: its own child clip
-   no longer holds, and an ancestor's does. *)
-let render_over_clip () =
+(* The surface is merged in the scissor the node is drawn in: its own
+   child clip no longer holds, and an ancestor's does. *)
+let surface_clip () =
   let t = make_renderer () in
   let hidden =
     Toffee.Geometry.Point.
@@ -218,14 +219,11 @@ let render_over_clip () =
              height = 1;
            }));
   let _child = make_child ~parent:node ~x:0 ~y:0 ~w:1 ~h:1 () in
-  Renderable.Private.set_render_over node
-    (Some
-       (fun self grid ~dt:_ ->
-         Matrix_grid.draw_text grid ~x:(Renderable.x self) ~y:0 ~text:"xxxxx"));
+  Renderable.set_surface node (Some Cursor);
   Renderer.render_frame t ~width:6 ~height:1 ~dt:0.;
   let grid = Matrix_screen.next_grid (Renderer.screen t) in
-  equal ~msg:"drawn within the ancestor's clip" string "xxx"
-    (Matrix_grid.to_text grid)
+  equal ~msg:"cells marked" (list int) [ 0; 1; 2 ]
+    (List.filter (fun x -> reversed grid ~x ~y:0) (List.init 6 Fun.id))
 
 let starts_dirty () =
   let t = make_renderer () in
@@ -3067,11 +3065,11 @@ let () =
            scrollbar_geometry_settles_before_next_input;
          test "paste behavior runs on the focus current then"
            paste_behavior_runs_on_the_focus_current_then;
-         group "Drawing over descendants"
+         group "Surfaces"
            [
              test "after the descendants, before later siblings"
-               render_over_after_descendants;
-             test "in the scissor the node is drawn in" render_over_clip;
+               surface_after_descendants;
+             test "in the scissor the node is drawn in" surface_clip;
            ];
          group "Lifecycle"
            [

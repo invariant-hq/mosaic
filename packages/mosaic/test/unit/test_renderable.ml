@@ -572,6 +572,31 @@ let opacity_noop_same_value () =
   Renderable.set_opacity child 1.0;
   equal ~msg:"no schedule" int before !(t.schedule_count)
 
+let surface_set_and_read () =
+  let t = make_ctx () in
+  let root = make_root t in
+  let child = Renderable.create ~parent:root () in
+  let role =
+    Testable.make
+      ~pp:(fun ppf r ->
+        Format.pp_print_string ppf
+          (match r with
+          | Some Theme.Cursor -> "Cursor"
+          | Some _ -> "a role"
+          | None -> "none"))
+      ~equal:( = )
+  in
+  equal ~msg:"none at first" role None (Renderable.surface child);
+  let before = Test_harness.clean t in
+  Renderable.set_surface child (Some Cursor);
+  equal ~msg:"set" role (Some Theme.Cursor) (Renderable.surface child);
+  gt ~msg:"scheduled" ~than:before !(t.schedule_count);
+  let before = Test_harness.clean t in
+  Renderable.set_surface child (Some Cursor);
+  equal ~msg:"the same surface schedules nothing" int before !(t.schedule_count);
+  Renderable.set_surface child None;
+  equal ~msg:"removed" role None (Renderable.surface child)
+
 let buffered_toggle () =
   let t = make_ctx () in
   let root = make_root t in
@@ -1316,6 +1341,7 @@ let () =
              test "set_z_index" set_z_index;
              test "set_z_index no-op on same value" z_index_noop_same_value;
              test "set_opacity clamps 0-1" opacity_clamp;
+             test "set_surface and surface" surface_set_and_read;
              test "set_opacity no-op on same value" opacity_noop_same_value;
              test "set_buffered toggle" buffered_toggle;
              test "set_live toggle" live_toggle;

@@ -189,12 +189,12 @@ and node = {
   mutable render : render;
   mutable render_before : render option;
   mutable render_after : render option;
-  mutable render_over : render option;
   mutable frame_buffer : Grid.t option;
   (* Visual *)
   mutable visible : bool;
   mutable z_index : int;
   mutable opacity : float;
+  mutable surface : Theme.role option;
   mutable buffered : bool;
   mutable live : bool;
   mutable self_live : int;
@@ -439,11 +439,11 @@ let make_node ctx ~toffee_node ~id ~num ?(style = Toffee.Style.default)
     render;
     render_before = None;
     render_after = None;
-    render_over = None;
     frame_buffer = None;
     visible;
     z_index;
     opacity;
+    surface = None;
     buffered = false;
     live;
     self_live;
@@ -1557,6 +1557,13 @@ let set_opacity t v =
     t.opacity <- clamped;
     t.ctx.schedule ())
 
+let surface t = t.surface
+
+let set_surface t role =
+  if t.surface <> role then (
+    t.surface <- role;
+    t.ctx.schedule ())
+
 let buffered t = t.buffered
 
 let set_buffered t v =
@@ -2140,16 +2147,6 @@ module Private = struct
   let pre_render_update = pre_render_update
   let render = render_node
   let render_full = render_full
-
-  let set_render_over t hook =
-    t.render_over <- hook;
-    request_render t
-
-  let has_render_over t = Option.is_some t.render_over
-
-  let render_over t ~grid ~dt =
-    Option.iter (fun f -> f t grid ~dt) t.render_over
-
   let pending_work = pending_work
   let children_z = children_z
   let iter_children_z = iter_children_z

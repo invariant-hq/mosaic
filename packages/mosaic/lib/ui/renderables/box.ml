@@ -166,9 +166,10 @@ let border_lines t =
 
 let surface_style t role = Theme.style (Renderable.theme t.node) role
 
-(* The inside is filled with the background, and the surface's background
+(* The box is filled with the background, and the surface's background
    over it, so a surface with a color shows under the children also where
-   the box stands on an opaque parent. *)
+   the box stands on an opaque parent. The renderer merges the surface under
+   the box's cells after its descendants ([Renderable.set_surface]). *)
 let render t _self grid ~dt:_ =
   let w = Renderable.width t.node in
   let h = Renderable.height t.node in
@@ -197,26 +198,6 @@ let render t _self grid ~dt:_ =
       ?fill ?title:t.props.title ~title_alignment:t.props.title_alignment
       ?title_style ()
 
-(* After the descendants, the surface's style goes under every cell of the
-   box ([Matrix_grid.merge_rect]): a cell keeps what was drawn in it and
-   gains the surface's attributes, whoever drew it and however, a canvas
-   included. Drawing first could not do it, since a write replaces a
-   cell's attributes. *)
-let render_over t _self grid ~dt:_ =
-  match t.props.surface with
-  | None -> ()
-  | Some role ->
-      Matrix_grid.merge_rect grid ~x:(Renderable.x t.node)
-        ~y:(Renderable.y t.node) ~width:(Renderable.width t.node)
-        ~height:(Renderable.height t.node) (surface_style t role)
-
-(* The hook only on a surface: a box without one allocates nothing for it. *)
-let set_render_over t =
-  let hook =
-    match t.props.surface with None -> None | Some _ -> Some (render_over t)
-  in
-  Renderable.Private.set_render_over t.node hook
-
 (* Construction *)
 
 let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
@@ -229,7 +210,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   Renderable.set_render node (render t);
   Renderable.set_child_clip node (Some (child_clip t));
   apply_border_style t;
-  set_render_over t;
+  Renderable.set_surface node props.surface;
   t
 
 (* Setters *)
@@ -299,7 +280,7 @@ let set_title_style t style =
 let set_surface t role =
   if t.props.surface <> role then (
     t.props <- { t.props with surface = role };
-    set_render_over t)
+    Renderable.set_surface t.node role)
 
 let set_style t style =
   let updated = style_with_border t style in
@@ -308,9 +289,8 @@ let set_style t style =
 (* Apply props *)
 
 let apply_props t (props : Props.t) =
-  let surface_changed = t.props.surface <> props.surface in
   t.props <- props;
-  if surface_changed then set_render_over t;
+  Renderable.set_surface t.node props.surface;
   Renderable.set_inert t.node props.inert;
   apply_border_style t;
   request_render t

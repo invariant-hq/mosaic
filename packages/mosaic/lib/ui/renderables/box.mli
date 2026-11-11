@@ -23,11 +23,13 @@
 
     A box may stand on a theme {e surface} ({!Theme.type-role}), such as
     [Cursor] for the row a list's cursor is on, drawn in the surface's style in
-    the theme in scope. After its descendants are drawn, the style is merged
-    under every cell of the box, its border, padding and the gaps between
+    the theme in scope. The box gives its node the surface
+    ({!Renderable.set_surface}), so after its descendants are drawn the style is
+    merged under every cell of the box, its border, padding and the gaps between
     children included, whoever drew the cell and however, a canvas included
-    ({!Matrix_grid.merge_rect}). Merging keeps what the cell has and adds what
-    it lacks:
+    ({!Matrix_grid.merge_rect}). Any role may be given, such as [Error] to mark
+    a row as failed; its style is merged the same way. Merging keeps what the
+    cell has and adds what it lacks:
     - The cell keeps a foreground of its own and takes the surface's in place of
       the default one.
     - It keeps a background of its own, such as a child box's [background], and
