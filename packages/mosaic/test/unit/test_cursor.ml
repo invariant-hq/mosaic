@@ -209,7 +209,8 @@ let moves_gen =
 (* A move shows the item it lands on with the smallest movement from the rows
    shown before it, whatever the value declared: the rows stay when they hold
    the item, else the item becomes the first row shown or the last. A page
-   of no rows shows the item at its first, as {!Scroll.resolve} does. *)
+   of no rows shows the item at its first, as {!Scroll.resolve} does. The
+   next value declares those rows, with the item revealed. *)
 let reveal_law (n, page, start, actions) =
   let items = Items.of_list (List.init n string_of_int) in
   let step c a = Cursor.step ~equal:String.equal ~name:Fun.id ~page items c a in
@@ -233,6 +234,21 @@ let reveal_law (n, page, start, actions) =
             in
             if expected = before && before > 0 then kept_past_first := true;
             equal ~msg:"the rows shown" int expected (shown ~page ~n c');
+            (* The value declares those rows with its item revealed, which
+               the rows shown alone may not tell apart. *)
+            let declared =
+              Testable.make
+                ~pp:(fun ppf s ->
+                  Format.fprintf ppf "a scroll showing row %d"
+                    (shown ~page ~n (Cursor.with_scroll s Cursor.none)))
+                ~equal:Scroll.equal
+            in
+            equal
+              ~msg:
+                (Printf.sprintf "declared: row %d, item %d revealed" expected i)
+              declared
+              (Scroll.reveal ~line:i (Scroll.at expected))
+              (Cursor.scroll c');
             go c' rest
         | _ -> go c rest)
   in
