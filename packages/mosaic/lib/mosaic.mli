@@ -1307,7 +1307,8 @@ module Sub : sig
   val on_resize : (width:int -> height:int -> 'msg) -> 'msg t
   (** [on_resize f] dispatches [f ~width ~height] with the usable size in
       columns and rows ({!Matrix.size}) as the program begins, when declared
-      then, and whenever the size changes ({!Matrix.Resize}). *)
+      then, and whenever the size changes ({!Matrix.Resize}). A subscription
+      declared after the program begins hears only the next change. *)
 
   val on_focus : 'msg -> 'msg t
   (** [on_focus msg] dispatches [msg] when the terminal window gains focus. *)
@@ -1346,8 +1347,9 @@ module Sub : sig
       terminal shows. It comes as the program begins, when declared then, and
       whenever the styling changes, as when the terminal's answer says it shows
       more colors than its environment did, before the first frame written at
-      the new one. A theme that differs by depth reads the depth here, so it
-      agrees with the run. *)
+      the new one. A subscription declared after the program begins hears only
+      the next change, as for {!on_resize}. A theme that differs by depth reads
+      the depth here, so it agrees with the run. *)
 
   val worker : id:string -> (Stop.t -> 'msg mailbox -> unit) -> 'msg t
   (** [worker ~id f] runs [f stop mailbox] off the loop, on {!val-run}'s
