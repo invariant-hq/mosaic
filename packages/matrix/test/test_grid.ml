@@ -1095,6 +1095,148 @@ let fill_rect_fills_region () =
     done
   done
 
+(* merge_rect puts its style under each cell of the rectangle and the
+   scissor: the cell's colors stay where it has them, its default
+   foreground and transparent background take the style's, and the
+   attributes add. Cells outside, and every cell's text, stay. *)
+let merge_width = 4
+let merge_height = 3
+
+let merge_colors =
+  Gen.of_list ~pp:Ansi.Color.pp
+    Ansi.Color.
+      [
+        default_fg; transparent; red; blue; of_rgba 0 255 0 128; of_rgba 0 0 0 0;
+      ]
+
+let merge_attrs =
+  Gen.of_list ~pp:Ansi.Attr.pp
+    Ansi.Attr.[ empty; inverse; bold; union inverse underline ]
+
+let merge_style =
+  let open Gen in
+  let+ fg = option merge_colors
+  and+ bg = option merge_colors
+  and+ attrs = merge_attrs in
+  Ansi.Style.make ?fg ?bg () |> Ansi.Style.with_attrs attrs
+
+let merge_region =
+  let open Gen in
+  let+ x = int_range (-1) merge_width
+  and+ y = int_range (-1) merge_height
+  and+ width = int_range 0 (merge_width + 1)
+  and+ height = int_range 0 (merge_height + 1) in
+  { Grid.x; y; width; height }
+
+let pp_region ppf (r : Grid.region) =
+  Format.fprintf ppf "{x=%d; y=%d; w=%d; h=%d}" r.x r.y r.width r.height
+
+let merge_case =
+  let open Gen in
+  let+ cells = list ~size:(constant (merge_width * merge_height)) merge_style
+  and+ style = merge_style
+  and+ rect = with_pp pp_region merge_region
+  and+ scissor = option (with_pp pp_region merge_region)
+  and+ opacity = of_list ~pp:Format.pp_print_float [ 1.; 0. ] in
+  (cells, style, rect, scissor, opacity)
+
+let within (r : Grid.region) x y =
+  x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height
+
+let merge_rect_law
+    (cells, (style : Ansi.Style.t), (rect : Grid.region), scissor, opacity) =
+  let grid = Grid.create ~width:merge_width ~height:merge_height () in
+  List.iteri
+    (fun i cell ->
+      Grid.draw_text grid ~style:cell ~x:(i mod merge_width) ~y:(i / merge_width)
+        ~text:(if i mod 2 = 0 then "a" else " "))
+    cells;
+  let before = Array.init (merge_width * merge_height) (Grid.get_style grid) in
+  let texts = Array.init (merge_width * merge_height) (Grid.get_text grid) in
+  Option.iter (Grid.push_clip grid) scissor;
+  Grid.push_opacity grid opacity;
+  Grid.merge_rect grid ~x:rect.x ~y:rect.y ~width:rect.width ~height:rect.height
+    style;
+  let check_style = Testable.make ~pp:Ansi.Style.pp ~equal:Ansi.Style.equal in
+  let covered = ref false and contested = ref false and hidden = ref false in
+  Array.iteri
+    (fun i (cell : Ansi.Style.t) ->
+      let x = i mod merge_width and y = i / merge_width in
+      let in_rect =
+        within rect x y
+        && Option.fold ~none:true ~some:(fun s -> within s x y) scissor
+      in
+      if in_rect && opacity = 0. then hidden := true;
+      (* At opacity 0 nothing changes, as for every other write. *)
+      let inside = in_rect && opacity > 0. in
+      if inside then covered := true;
+      (* The case that tells the cell's colors from the style's: both have
+         a foreground and a background of their own, and they differ. *)
+      let differ ~own c s = own c && own s && not (Ansi.Color.equal c s) in
+      let own_fg c = not (Ansi.Color.equal c Ansi.Color.default_fg) in
+      let own_bg c = Ansi.Color.alpha c > 0. in
+      (match (cell.fg, style.fg, cell.bg, style.bg) with
+      | Some cf, Some sf, Some cb, Some sb
+        when inside && differ ~own:own_fg cf sf && differ ~own:own_bg cb sb ->
+          contested := true
+      | _ -> ());
+      let take ~own ~absent theirs =
+        match (own, theirs) with
+        | Some c, Some t when inside && absent c -> Some t
+        | own, _ -> own
+      in
+      let expected =
+        if not inside then cell
+        else
+          let fg =
+            take ~own:cell.fg
+              ~absent:(Ansi.Color.equal Ansi.Color.default_fg)
+              style.fg
+          in
+          let bg =
+            take ~own:cell.bg
+              ~absent:(fun c -> Ansi.Color.alpha c = 0.)
+              style.bg
+          in
+          Ansi.Style.make ?fg ?bg ?link:cell.link ()
+          |> Ansi.Style.with_attrs (Ansi.Attr.union cell.attrs style.attrs)
+      in
+      let msg = Printf.sprintf "cell (%d, %d)" x y in
+      equal ~msg check_style expected (Grid.get_style grid i);
+      equal ~msg string texts.(i) (Grid.get_text grid i))
+    before;
+  cover "some cell inside" !covered;
+  cover "a cell's own colors against the style's" !contested;
+  cover "a cell inside at opacity 0" !hidden;
+  cover "a cell outside" ((not (within rect 0 0)) || Option.is_some scissor)
+
+(* A cell's own colors stay over a style with colors, and a cell without
+   them takes the style's: the style is under the cell, not over it. *)
+let merge_rect_order () =
+  let grid = Grid.create ~width:2 ~height:1 () in
+  let own = Ansi.Style.make ~fg:Ansi.Color.red ~bg:Ansi.Color.blue () in
+  Grid.draw_text grid ~style:own ~x:0 ~y:0 ~text:"a";
+  Grid.draw_text grid ~x:1 ~y:0 ~text:"b";
+  let style =
+    Ansi.Style.make ~fg:Ansi.Color.green ~bg:Ansi.Color.yellow ~inverse:true ()
+  in
+  Grid.merge_rect grid ~x:0 ~y:0 ~width:2 ~height:1 style;
+  let check_style = Testable.make ~pp:Ansi.Style.pp ~equal:Ansi.Style.equal in
+  equal ~msg:"the cell's own colors" check_style
+    (Ansi.Style.with_inverse true own)
+    (Grid.get_style grid 0);
+  equal ~msg:"the style's colors" check_style style (Grid.get_style grid 1)
+
+let merge_rect_opacity () =
+  let grid = Grid.create ~width:1 ~height:1 () in
+  Grid.push_opacity grid 0.5;
+  Grid.merge_rect grid ~x:0 ~y:0 ~width:1 ~height:1
+    (Ansi.Style.make ~bg:Ansi.Color.blue ());
+  equal ~msg:"the style's background at half its alpha" (quad int int int int)
+    (let r, g, b, _ = Ansi.Color.to_rgba Ansi.Color.blue in
+     (r, g, b, 128))
+    (Ansi.Color.to_rgba (Grid.get_bg grid 0))
+
 let replace_wide_grapheme_clears_continuations () =
   let grid = Grid.create ~width:3 ~height:1 () in
   Grid.draw_text grid ~x:0 ~y:0 ~text:"😊";
@@ -2492,6 +2634,9 @@ let tests =
     test "set cell blends" set_uchar_honours_blending;
     test "set uchar accumulates alpha" set_uchar_accumulates_alpha;
     test "fill rect" fill_rect_fills_region;
+    prop "merge rect puts its style under the cells" merge_case merge_rect_law;
+    test "merge rect keeps the cell's colors over the style's" merge_rect_order;
+    test "merge rect at an opacity" merge_rect_opacity;
     test "replace wide grapheme clears continuations"
       replace_wide_grapheme_clears_continuations;
     test "replace wide grapheme clears continuation colors"

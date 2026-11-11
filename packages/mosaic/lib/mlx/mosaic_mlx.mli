@@ -88,6 +88,7 @@ val box :
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
   ?title_style:Ansi.Style.t ->
+  ?surface:Mosaic.Theme.role ->
   ?children:'msg t list ->
   unit ->
   'msg t
@@ -151,6 +152,7 @@ val button :
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
   ?title_style:Ansi.Style.t ->
+  ?surface:Mosaic.Theme.role ->
   ?text_style:Ansi.Style.t ->
   ?disabled:bool ->
   on_activate:'msg ->

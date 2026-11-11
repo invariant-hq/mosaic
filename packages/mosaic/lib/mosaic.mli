@@ -1938,6 +1938,7 @@ val box :
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
   ?title_style:Ansi.Style.t ->
+  ?surface:Theme.role ->
   'msg t list ->
   'msg t
 (** [box children] is a container for [children]. [border_width], [inert] and
@@ -2034,6 +2035,7 @@ val button :
   ?title:string ->
   ?title_alignment:[ `Left | `Center | `Right ] ->
   ?title_style:Ansi.Style.t ->
+  ?surface:Theme.role ->
   ?text_style:Ansi.Style.t ->
   ?disabled:bool ->
   on_activate:'msg ->

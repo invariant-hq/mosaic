@@ -277,6 +277,18 @@ val fill_rect :
     each cell, keeps its text and drops its hyperlink. An opaque one makes each
     cell a blank on [color], as {!clear_rect} does. *)
 
+val merge_rect :
+  t -> x:int -> y:int -> width:int -> height:int -> Ansi.Style.t -> unit
+(** [merge_rect g ~x ~y ~width ~height style] puts [style] under each cell of
+    the rectangle, cut to the scissor, after multiplying the alpha of its colors
+    by the opacity. A cell keeps its foreground and takes [style]'s where it has
+    the default one, keeps its background and takes [style]'s where it is
+    transparent, and has the attributes of both, so an attribute that the cell
+    and [style] both set stays set once. Its text and hyperlink stay as they
+    are. This is {!Ansi.Style.merge} with the cell as [overlay]. The attributes
+    apply whole at any opacity above [0], as {!draw_text}'s do. It changes
+    nothing while the opacity of [g] is [0]. *)
+
 val clear_rect :
   ?color:Ansi.Color.t -> t -> x:int -> y:int -> width:int -> height:int -> unit
 (** [clear_rect g ~x ~y ~width ~height] makes the cells of the rectangle, cut to

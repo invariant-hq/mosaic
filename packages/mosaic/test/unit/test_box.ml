@@ -251,6 +251,19 @@ let set_title_alignment () =
   Box.set_title_alignment box `Center;
   gt ~msg:"scheduled" ~than:before !(t.schedule_count)
 
+let set_surface () =
+  let t = make_ctx () in
+  let root = make_root t in
+  let box = Box.create ~parent:root (Box.Props.make ()) in
+  let before = Test_harness.clean t in
+  Box.set_surface box (Some Cursor);
+  gt ~msg:"scheduled" ~than:before !(t.schedule_count);
+  let before = Test_harness.clean t in
+  Box.set_surface box (Some Cursor);
+  equal ~msg:"the same surface schedules nothing" int before !(t.schedule_count);
+  Box.set_surface box None;
+  gt ~msg:"scheduled again" ~than:before !(t.schedule_count)
+
 let set_title_style () =
   let t = make_ctx () in
   let root = make_root t in
@@ -578,6 +591,13 @@ let doors_title_style () =
       Box.create ~parent ~style
         (Box.Props.make ~border:true ~title:"T" ~title_style:bold ()))
 
+let doors_surface () =
+  reaches "surface" ~base:(Mosaic.box ~size)
+    ~element:(Mosaic.box ~size ~surface:Cursor)
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~surface:Cursor ()))
+
 let doors_inert () =
   reaches "inert"
     ~observe:(fun _ node -> string_of_bool (Renderable.inert node))
@@ -629,6 +649,191 @@ let paint_focused_border_color () =
   is_true ~msg:"the label's color" (fg_is red (cell_style r ~x:0 ~y:0));
   equal ~msg:"its own lines" string "\u{250C}" (cell_text r ~x:0 ~y:0)
 
+(* A box on a surface draws every cell inside it in the surface's style,
+   the padding and the gaps between its children included, and its
+   children's text keeps its own colors on it. In the plain theme the
+   [Cursor] surface is reverse video, which shows without color. *)
+let surface_width = 12
+let surface_height = 3
+
+let surface_view =
+  Mosaic.box ~surface:Cursor
+    ~size:(Mosaic.size ~width:surface_width ~height:surface_height)
+    ~flex_direction:Mosaic.Flex_direction.Row ~padding:(Mosaic.padding 1)
+    ~gap:(Mosaic.gap 1)
+    [
+      Mosaic.text "ab";
+      Mosaic.text ~text_style:(Ansi.Style.make ~fg:red ()) "cd";
+    ]
+
+let color = Testable.make ~pp:Ansi.Color.pp ~equal:Ansi.Color.equal
+
+let not_reversed r ~width ~height =
+  List.concat_map
+    (fun y ->
+      List.filter_map
+        (fun x ->
+          if has Ansi.Attr.Inverse (cell_style r ~x ~y) then None
+          else Some (Printf.sprintf "(%d, %d)" x y))
+        (List.init width Fun.id))
+    (List.init height Fun.id)
+
+let paint_surface_every_cell () =
+  let r = paint surface_view in
+  equal ~msg:"cells of the box not reversed" (list string) []
+    (not_reversed r ~width:surface_width ~height:surface_height);
+  equal ~msg:"text drawn" string "c" (cell_text r ~x:4 ~y:1);
+  equal ~msg:"its own color" (option color) (Some red)
+    (cell_style r ~x:4 ~y:1).fg;
+  equal ~msg:"outside the box" bool false
+    (has Ansi.Attr.Inverse (cell_style r ~x:surface_width ~y:0))
+
+(* A child that draws in its own style, a canvas's trend or a box with its
+   own background, is marked as the rest: the cell keeps the colors the
+   child gave it and gains the surface's attributes. *)
+let paint_surface_own_styles () =
+  let trend c ~dt:_ =
+    Canvas.draw_text c
+      ~style:(Ansi.Style.make ~fg:red ())
+      ~x:0 ~y:0 ~text:"\u{2847}"
+  in
+  let r =
+    paint
+      (Mosaic.box ~surface:Cursor
+         ~size:(Mosaic.size ~width:surface_width ~height:1)
+         ~flex_direction:Mosaic.Flex_direction.Row ~gap:(Mosaic.gap 1)
+         [
+           Mosaic.canvas ~size:(Mosaic.size ~width:3 ~height:1) trend;
+           Mosaic.box ~background:blue ~size:(Mosaic.size ~width:3 ~height:1) [];
+         ])
+  in
+  equal ~msg:"cells of the box not reversed" (list string) []
+    (not_reversed r ~width:surface_width ~height:1);
+  equal ~msg:"the trend keeps its color" (option color) (Some red)
+    (cell_style r ~x:0 ~y:0).fg;
+  equal ~msg:"the child box keeps its background" (option color) (Some blue)
+    (cell_style r ~x:4 ~y:0).bg
+
+(* A surface with a color shows under the children where the box stands on
+   an opaque parent, and a child's own background stays its own. *)
+let paint_surface_background () =
+  let cursor = Theme.with_style Cursor (Ansi.Style.make ~bg:blue ()) in
+  let r =
+    paint
+      (Mosaic.themed cursor
+         (Mosaic.box ~background:red
+            ~size:(Mosaic.size ~width:surface_width ~height:1)
+            [
+              Mosaic.box ~surface:Cursor
+                ~size:(Mosaic.size ~width:6 ~height:1)
+                ~flex_direction:Mosaic.Flex_direction.Row
+                [
+                  Mosaic.text "ab";
+                  Mosaic.box ~background:red
+                    ~size:(Mosaic.size ~width:2 ~height:1)
+                    [];
+                ];
+            ]))
+  in
+  let bg x = (cell_style r ~x ~y:0).bg in
+  equal ~msg:"the text's cell" (option color) (Some blue) (bg 0);
+  equal ~msg:"a blank of the box" (option color) (Some blue) (bg 5);
+  equal ~msg:"the child's own background" (option color) (Some red) (bg 2);
+  equal ~msg:"outside the box" (option color) (Some red) (bg 6)
+
+(* What a terminal shows of the frame's first [height] rows at [`Mono],
+   where only attributes are written: the cells of [width] columns that it
+   does not show in reverse video. The rows are written one per line, each
+   from the first column. *)
+let mono_not_reversed r ~width ~height =
+  let vte = Vte.create ~rows:height ~cols:doors_width () in
+  ignore
+    (Vte.feed_string vte
+       (String.concat "\r\n"
+          (String.split_on_char '\n'
+             (Matrix_grid.to_ansi ~styling:`Mono ~rows:height (painted r))))
+      : _ list);
+  let shown = Vte.grid vte in
+  List.concat_map
+    (fun y ->
+      List.filter_map
+        (fun x ->
+          let s = Matrix_grid.get_style shown (Matrix_grid.idx shown ~x ~y) in
+          if has Ansi.Attr.Inverse s then None
+          else Some (Printf.sprintf "(%d, %d)" x y))
+        (List.init width Fun.id))
+    (List.init height Fun.id)
+
+let paint_surface_mono () =
+  equal ~msg:"cells shown not reversed" (list string) []
+    (mono_not_reversed (paint surface_view) ~width:surface_width
+       ~height:surface_height)
+
+(* A box at opacity 0 draws nothing, its surface included. *)
+let paint_surface_hidden () =
+  let r =
+    paint
+      (Mosaic.box ~surface:Cursor ~opacity:0.
+         ~size:(Mosaic.size ~width:surface_width ~height:1)
+         [])
+  in
+  equal ~msg:"cells reversed" (list string) []
+    (List.filter
+       (fun x -> has Ansi.Attr.Inverse (cell_style r ~x ~y:0))
+       (List.init surface_width Fun.id)
+    |> List.map string_of_int)
+
+(* munin's cursor row: text in explicit styles, a fragment and a
+   [text_style], and a canvas that clears itself and draws braille in its
+   own style. At [`Mono] every cell of the row shows reversed. *)
+let munin_row_width = 16
+
+let munin_row =
+  let trend c ~dt:_ =
+    Canvas.clear c;
+    Canvas.draw_text c ~x:1 ~y:0
+      ~style:(Ansi.Style.make ~fg:Ansi.Color.green ())
+      ~text:"\u{28C0}\u{28E0}"
+  in
+  Mosaic.box ~surface:Cursor
+    ~size:(Mosaic.size ~width:munin_row_width ~height:1)
+    ~flex_direction:Mosaic.Flex_direction.Row
+    [
+      Mosaic.rich_text
+        [
+          Mosaic.Text.Fragment.text
+            ~style:
+              (Ansi.Style.make ~fg:(Ansi.Color.of_rgb 200 100 0) ~bold:true ())
+            "ab";
+        ];
+      Mosaic.text ~text_style:(Ansi.Style.make ~fg:red ()) "cd";
+      Mosaic.canvas ~size:(Mosaic.size ~width:6 ~height:1) trend;
+    ]
+
+let paint_surface_munin_row () =
+  let r = paint munin_row in
+  equal ~msg:"cells of the row not reversed" (list string) []
+    (not_reversed r ~width:munin_row_width ~height:1);
+  equal ~msg:"cells shown not reversed" (list string) []
+    (mono_not_reversed r ~width:munin_row_width ~height:1)
+
+(* A widget that clears its area before drawing, as a select does, is
+   marked as the rest. *)
+let paint_surface_clearing_widget () =
+  let items = List.map (fun v -> Mosaic.Select.item v v) [ "one"; "two" ] in
+  let r =
+    paint
+      (Mosaic.box ~surface:Cursor
+         ~size:(Mosaic.size ~width:surface_width ~height:2)
+         [
+           Mosaic.select
+             ~size:(Mosaic.size ~width:surface_width ~height:2)
+             ~equal:String.equal ~selected:(Some "one") ~on_change:ignore items;
+         ])
+  in
+  equal ~msg:"cells shown not reversed" (list string) []
+    (mono_not_reversed r ~width:surface_width ~height:2)
+
 let () =
   exit
     (run "mosaic.box"
@@ -639,6 +844,15 @@ let () =
              test "border by role, label first" paint_border_role;
              test "focus shows at every styling" paint_focus_shows;
              test "focused_border_color" paint_focused_border_color;
+             test "surface reaches every cell" paint_surface_every_cell;
+             test "surface marks children's own styles" paint_surface_own_styles;
+             test "surface background over an opaque parent"
+               paint_surface_background;
+             test "surface shows without color" paint_surface_mono;
+             test "surface marks munin's row" paint_surface_munin_row;
+             test "a box at opacity 0 marks nothing" paint_surface_hidden;
+             test "surface marks a widget that clears its area"
+               paint_surface_clearing_widget;
            ];
          group "Props"
            [
@@ -685,6 +899,7 @@ let () =
              test "set_title sets and clears" set_title;
              test "set_title_alignment" set_title_alignment;
              test "set_title_style" set_title_style;
+             test "set_surface" set_surface;
            ];
          group "apply_props"
            [ test "updates all properties" apply_props_updates ];
@@ -720,6 +935,7 @@ let () =
              test "title" doors_title;
              test "title_alignment" doors_title_alignment;
              test "title_style" doors_title_style;
+             test "surface" doors_surface;
              test "inert" doors_inert;
            ];
          group "Setter no-ops"

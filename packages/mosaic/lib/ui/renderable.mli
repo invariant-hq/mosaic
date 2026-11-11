@@ -694,6 +694,18 @@ module Private : sig
       buffer selection, pre-render hook, render callback, post-render hook, and
       frame buffer blit. *)
 
+  val set_render_over : t -> render option -> unit
+  (** [set_render_over t hook] has [hook] draw after [t]'s descendants, over
+      what they drew and before the nodes drawn after [t], in the scissor and
+      opacity [t] itself is drawn in rather than its children's scissor. It
+      draws on the frame's grid, also when [t] is buffered. [None] clears it. *)
+
+  val has_render_over : t -> bool
+  (** [has_render_over t] is [true] iff [t] has a {!set_render_over} hook. *)
+
+  val render_over : t -> grid:Matrix_grid.t -> dt:float -> unit
+  (** [render_over t ~grid ~dt] runs [t]'s {!set_render_over} hook, if any. *)
+
   val pending_work : t -> Pending.t option
   (** [pending_work t] is [Some work] when [t] reports pending render work. *)
 

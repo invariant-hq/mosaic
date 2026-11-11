@@ -4,6 +4,10 @@
 
 ### Mosaic
 
+- `Mosaic.box` and `Mosaic.button` take `~surface`, a theme role whose style
+  is merged under every cell of the box after its children draw, canvases
+  and gaps included. A row on `Cursor` now shows in reverse video at every
+  color depth, where `~background` vanished without color.
 - `Mosaic.Sub.on_styling` gives the application the styling its frames are
   written at, the color depth or none, as the program begins and when it
   changes, so a theme that differs by depth agrees with the run instead of
@@ -37,6 +41,9 @@ console gets back every mode and code page the run changed.
 
 #### Also new
 
+- `Matrix_grid.merge_rect` puts a style under the cells of a rectangle: each
+  keeps its own colors and attributes, and takes the style's where it has
+  none.
 - `Matrix.styling` is the styling the run writes its next frame at, which
   `config`'s `color`, the environment and the terminal's answers decide.
 - `Tty.Signal.wait` and `Tty.Signal.read` wait for and read a holder's input,

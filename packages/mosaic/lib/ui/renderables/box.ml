@@ -27,13 +27,14 @@ module Props = struct
     title : string option;
     title_alignment : [ `Left | `Center | `Right ];
     title_style : Ansi.Style.t option;
+    surface : Theme.role option;
     inert : bool;
   }
 
   let make ?(border = false) ?(border_style = Matrix_grid.Border.single)
       ?(border_sides = Matrix_grid.Border.all) ?border_width ?border_color
       ?focused_border_color ?background ?(fill = true) ?title
-      ?(title_alignment = `Left) ?title_style ?(inert = false) () =
+      ?(title_alignment = `Left) ?title_style ?surface ?(inert = false) () =
     let border_width =
       Option.map (Toffee.Geometry.Rect.map cells_of_border_width) border_width
     in
@@ -55,6 +56,7 @@ module Props = struct
       title;
       title_alignment;
       title_style;
+      surface;
       inert;
     }
 
@@ -73,7 +75,7 @@ module Props = struct
     && a.fill = b.fill && a.title = b.title
     && a.title_alignment = b.title_alignment
     && Option.equal Ansi.Style.equal a.title_style b.title_style
-    && a.inert = b.inert
+    && a.surface = b.surface && a.inert = b.inert
 end
 
 (* Types *)
@@ -162,17 +164,47 @@ let border_lines t =
   then Matrix_grid.Border.heavy
   else t.props.border_style
 
+let surface_style t role = Theme.style (Renderable.theme t.node) role
+
+(* The inside is filled with the background, and the surface's background
+   over it, so a surface with a color shows under the children also where
+   the box stands on an opaque parent. *)
 let render t _self grid ~dt:_ =
   let w = Renderable.width t.node in
   let h = Renderable.height t.node in
   if w > 0 && h > 0 then
     let bg_color = Option.value t.props.background ~default:transparent in
+    let bg_color =
+      match t.props.surface with
+      | None -> bg_color
+      | Some role -> (
+          match (surface_style t role).bg with
+          | Some src -> Ansi.Color.blend ~src ~dst:bg_color
+          | None -> bg_color)
+    in
     let fill = if t.props.fill then Some bg_color else None in
     Matrix_grid.draw_box grid ~x:(Renderable.x t.node) ~y:(Renderable.y t.node)
       ~width:w ~height:h ~border:(border_lines t) ~sides:(drawn_sides t)
       ~style:(border_style t) ?fill ?title:t.props.title
       ~title_alignment:t.props.title_alignment ?title_style:t.props.title_style
       ()
+
+(* After the descendants, the surface's style goes under every cell of the
+   box ([Matrix_grid.merge_rect]): a cell keeps what was drawn in it and
+   gains the surface's attributes, whoever drew it and however, a canvas
+   included. Drawing first could not do it, since a write replaces a
+   cell's attributes. *)
+let render_over t _self grid ~dt:_ =
+  match t.props.surface with
+  | None -> ()
+  | Some role ->
+      Matrix_grid.merge_rect grid ~x:(Renderable.x t.node)
+        ~y:(Renderable.y t.node) ~width:(Renderable.width t.node)
+        ~height:(Renderable.height t.node) (surface_style t role)
+
+let set_render_over t =
+  let hook = Option.map (fun _ -> render_over t) t.props.surface in
+  Renderable.Private.set_render_over t.node hook
 
 (* Construction *)
 
@@ -186,6 +218,7 @@ let create ~parent ?index ?id ?style ?visible ?z_index ?opacity
   Renderable.set_render node (render t);
   Renderable.set_child_clip node (Some (child_clip t));
   apply_border_style t;
+  set_render_over t;
   t
 
 (* Setters *)
@@ -252,14 +285,21 @@ let set_title_style t style =
     t.props <- { t.props with title_style = style };
     request_render t)
 
+let set_surface t role =
+  if t.props.surface <> role then (
+    t.props <- { t.props with surface = role };
+    set_render_over t)
+
 let set_style t style =
   let updated = style_with_border t style in
   Renderable.set_style t.node updated
 
 (* Apply props *)
 
-let apply_props t props =
+let apply_props t (props : Props.t) =
+  let surface_changed = t.props.surface <> props.surface in
   t.props <- props;
+  if surface_changed then set_render_over t;
   Renderable.set_inert t.node props.inert;
   apply_border_style t;
   request_render t

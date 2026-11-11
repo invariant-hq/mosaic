@@ -811,6 +811,35 @@ let fill_rect t ~x ~y ~width ~height ~color =
           done
         done
 
+(* The style lies under each cell: a cell's own colors stay where it has
+   them, the default foreground and a transparent background take the
+   style's, and the attributes add, keeping the protected bit. *)
+let merge_rect t ~x ~y ~width ~height (style : Ansi.Style.t) =
+  match clip_rect_to_grid t Rect.{ x; y; width; height } with
+  | _ when t.opacity_product <= 0. -> ()
+  | None -> ()
+  | Some r ->
+      let packed c =
+        Option.map (fun c -> apply_opacity t (Color_packed.encode c)) c
+      in
+      let fg = packed style.fg and bg = packed style.bg in
+      let attrs = Ansi.Attr.pack style.attrs in
+      for row = r.y to r.y + r.height - 1 do
+        let base = row * t.width in
+        for i = base + r.x to base + r.x + r.width - 1 do
+          (match fg with
+          | Some c when Buf.get t.fg_color i = default_fg_packed ->
+              Buf.set t.fg_color i c
+          | _ -> ());
+          (match bg with
+          | Some c when Color_packed.alpha (Buf.get t.bg_color i) = 0 ->
+              Buf.set t.bg_color i c
+          | _ -> ());
+          if attrs <> 0 then
+            Buf.set_short t.attrs i (Buf.get_short t.attrs i lor attrs)
+        done
+      done
+
 (* {1 Copying} *)
 
 let blit ~src ~dst =

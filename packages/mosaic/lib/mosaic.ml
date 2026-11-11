@@ -1813,7 +1813,7 @@ let box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ?visible ?z_index ?opacity ?buffered ?live ?selectable ?inert ?on_mouse
     ?on_key ?on_paste ?on_click ?on_focus_request ?on_size ?focused ?border
     ?border_style ?border_sides ?border_color ?focused_border_color ?background
-    ?fill ?title ?title_alignment ?title_style children =
+    ?fill ?title ?title_alignment ?title_style ?surface children =
   (* The box owns its border widths, so [border_width] goes to the box. *)
   let style =
     layout_style ?layout ?display ?box_sizing ?position ?overflow
@@ -1831,7 +1831,7 @@ let box ?key ?layout ?display ?box_sizing ?position ?overflow ?scrollbar_width
     ~kind:Kinds.box
     (Mosaic_ui.Box.Props.make ?inert ?border ?border_style ?border_sides
        ?border_width ?border_color ?focused_border_color ?background ?fill
-       ?title ?title_alignment ?title_style ())
+       ?title ?title_alignment ?title_style ?surface ())
     children
 
 (* In the top layer a modal is laid out against the root, which its size
@@ -1933,8 +1933,8 @@ let button ?key ?layout ?display ?box_sizing ?position ?overflow
     ?grid_row ?grid_column ?visible ?z_index ?opacity ?buffered ?live
     ?selectable ?on_focus_request ?on_size ?(focused = false) ?border
     ?border_style ?border_sides ?border_color ?focused_border_color ?background
-    ?fill ?title ?title_alignment ?title_style ?text_style ?(disabled = false)
-    ~on_activate label =
+    ?fill ?title ?title_alignment ?title_style ?surface ?text_style
+    ?(disabled = false) ~on_activate label =
   let text_style = Option.value text_style ~default:Ansi.Style.default in
   let text_style =
     if disabled then Ansi.Style.with_dim true text_style
@@ -1974,7 +1974,7 @@ let button ?key ?layout ?display ?box_sizing ?position ?overflow
     ~selectable:(Option.value selectable ~default:`Off)
     ?on_focus_request ?on_size ~focused:(focused && not disabled) ?border
     ?border_style ?border_sides ?border_color ?focused_border_color ?background
-    ?fill ?title ?title_alignment ?title_style ~on_key ~on_click
+    ?fill ?title ?title_alignment ?title_style ?surface ~on_key ~on_click
     [ text ~text_style label ]
 
 let slider ?key ?layout ?display ?box_sizing ?position ?overflow

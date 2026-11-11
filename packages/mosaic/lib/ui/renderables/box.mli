@@ -19,6 +19,30 @@
     styling. The title is drawn in [title_style] on the border's background, or
     without one in the border's foreground.
 
+    A box may stand on a theme {e surface} ({!Theme.type-role}), such as
+    [Cursor] for the row a list's cursor is on, drawn in the surface's style in
+    the theme in scope. After its descendants are drawn, the style is merged
+    under every cell of the box, its border, padding and the gaps between
+    children included, whoever drew the cell and however, a canvas included
+    ({!Matrix_grid.merge_rect}). Merging keeps what the cell has and adds what
+    it lacks:
+    - The cell keeps a foreground of its own and takes the surface's in place of
+      the default one.
+    - It keeps a background of its own, such as a child box's [background], and
+      takes the surface's in place of a transparent one. Under reverse video, a
+      background of its own shows as the color of its text.
+    - It has the attributes of both. A child cannot turn off an attribute of the
+      surface, and one that the child also sets stays set once. A child that is
+      itself in reverse video, such as text in [Highlight] under {!Theme.plain},
+      therefore shows as the surface does on a [Cursor] surface.
+
+    With [fill], the surface's background is also drawn over the box's
+    [background] across the whole box, under its border and its children, so it
+    shows where the box stands on an opaque parent. Without [fill], the cells
+    are still merged. A box at opacity [0] marks nothing. In {!Theme.plain} the
+    [Cursor] surface is reverse video, so a row on it shows where the terminal
+    draws no color.
+
     Setting a border-related property ({!set_border_style}, {!set_border_color},
     {!set_focused_border_color}) auto-enables borders. *)
 
@@ -48,6 +72,7 @@ module Props : sig
     ?title:string ->
     ?title_alignment:[ `Left | `Center | `Right ] ->
     ?title_style:Ansi.Style.t ->
+    ?surface:Theme.role ->
     ?inert:bool ->
     unit ->
     t
@@ -66,6 +91,7 @@ module Props : sig
       - [title_alignment] defaults to [`Left].
       - [title_style] is the style of the title. Defaults to none, the border's
         foreground.
+      - [surface] is the surface the box stands on. Defaults to none.
       - [inert] makes the box and its descendants inert
         ({!Renderable.set_inert}). Defaults to [false].
 
@@ -144,6 +170,12 @@ val set_title_alignment : t -> [ `Left | `Center | `Right ] -> unit
 val set_title_style : t -> Ansi.Style.t option -> unit
 (** [set_title_style t style] sets the style of the title. [None] draws it in
     the border's foreground. *)
+
+(** {1:surface Surface} *)
+
+val set_surface : t -> Theme.role option -> unit
+(** [set_surface t role] sets the surface [t] stands on. [None] draws [t] on the
+    theme in scope. *)
 
 (** {1:layout Layout} *)
 

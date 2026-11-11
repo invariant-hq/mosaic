@@ -11,6 +11,8 @@ module Layout = Matrix.Text.Layout
 type render_command =
   | Render of Renderable.t
   | Render_inert of Renderable.t  (** Drawn, and not found under the pointer. *)
+  | Render_over of Renderable.t
+      (** The node's drawing over its descendants, after them. *)
   | Push_scissor of Grid.region
   | Pop_scissor
   | Push_opacity of float
@@ -418,7 +420,7 @@ let query_input_hit t ~x ~y =
         let hit = ref 0 and depth = ref 0 and outside = ref 0 in
         for i = 0 to t.cmd_len - 1 do
           match t.commands.(i) with
-          | Render_inert _ -> ()
+          | Render_inert _ | Render_over _ -> ()
           | Render node ->
               if
                 !outside = 0
@@ -969,8 +971,8 @@ let painted_texts t scope =
             Renderable.width node,
             Renderable.height node )
           :: !texts
-    | Render _ | Render_inert _ | Push_scissor _ | Pop_scissor | Push_opacity _
-    | Pop_opacity ->
+    | Render _ | Render_inert _ | Render_over _ | Push_scissor _ | Pop_scissor
+    | Push_opacity _ | Pop_opacity ->
         ()
   done;
   !texts
@@ -2745,6 +2747,8 @@ let rec build_commands (t : t) (node : Renderable.t) ~parent_x ~parent_y
           render_children child_clip;
           emit_cmd t Pop_scissor
         end);
+    if Renderable.Private.has_render_over node then
+      emit_cmd t (Render_over node);
     t.walk_inert <- outer_inert;
     if has_opacity then emit_cmd t Pop_opacity
 
@@ -2768,6 +2772,7 @@ let execute_commands (t : t) ~(grid : Grid.t) ~(hits : Screen.Hit_grid.t)
     | Push_opacity opacity -> Grid.push_opacity grid opacity
     | Pop_opacity -> Grid.pop_opacity grid
     | Render_inert node -> Renderable.Private.render_full node ~grid ~dt
+    | Render_over node -> Renderable.Private.render_over node ~grid ~dt
   done
 
 (* ───── Render Frame ───── *)

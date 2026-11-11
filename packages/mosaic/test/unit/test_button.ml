@@ -387,6 +387,14 @@ let doors_title_style () =
       Box.create ~parent ~style
         (Box.Props.make ~border:true ~title:"T" ~title_style:bold ()))
 
+let doors_surface () =
+  reaches "surface"
+    ~base:(Mosaic.button ~size ~on_activate:() "OK")
+    ~element:(Mosaic.button ~size ~surface:Cursor ~on_activate:() "OK")
+    ~create_base:(fun ~parent -> Box.create ~parent ~style (Box.Props.make ()))
+    ~create:(fun ~parent ->
+      Box.create ~parent ~style (Box.Props.make ~surface:Cursor ()))
+
 let doors_text_style () =
   reaches "text_style" ~text_style:bold
     ~base:(Mosaic.button ~size ~on_activate:() "OK")
@@ -426,6 +434,7 @@ let () =
          test "title reaches the box" doors_title;
          test "title_alignment reaches the box" doors_title_alignment;
          test "title_style reaches the box" doors_title_style;
+         test "surface reaches the box" doors_surface;
          test "text_style reaches the text" doors_text_style;
          test "disabled reaches the text" doors_disabled;
        ])

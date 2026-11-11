@@ -161,6 +161,72 @@ let zero_sized_clipping_node_hides_children () =
   let hit = Matrix_screen.query_hit (Renderer.screen t) ~x:0 ~y:0 in
   is_false ~msg:"child not hit-testable through the empty clip" (hit = child_num)
 
+(* ── Drawing over descendants ── *)
+
+(* A node's [render_over] hook draws after its descendants, so it reads
+   what they drew, and before the siblings drawn after it. *)
+let render_over_after_descendants () =
+  let t = make_renderer () in
+  let order = ref [] in
+  let log name = order := name :: !order in
+  let node = make_child ~parent:(Renderer.root t) ~x:0 ~y:0 ~w:4 ~h:2 () in
+  let child = make_child ~parent:node ~x:1 ~y:0 ~w:2 ~h:1 () in
+  let grandchild = make_child ~parent:child ~x:0 ~y:0 ~w:1 ~h:1 () in
+  let sibling = make_child ~parent:(Renderer.root t) ~x:0 ~y:1 ~w:1 ~h:1 () in
+  let seen = ref "" in
+  Renderable.set_render node (fun _ _ ~dt:_ -> log "node");
+  Renderable.set_render child (fun _ _ ~dt:_ -> log "child");
+  Renderable.set_render grandchild (fun self grid ~dt:_ ->
+      log "grandchild";
+      Matrix_grid.draw_text grid ~x:(Renderable.x self) ~y:(Renderable.y self)
+        ~text:"g");
+  Renderable.set_render sibling (fun _ _ ~dt:_ -> log "sibling");
+  Renderable.Private.set_render_over node
+    (Some
+       (fun _ grid ~dt:_ ->
+         log "over";
+         seen := Matrix_grid.get_text grid (Matrix_grid.idx grid ~x:1 ~y:0)));
+  do_frame t;
+  equal ~msg:"order" (list string)
+    [ "node"; "child"; "grandchild"; "over"; "sibling" ]
+    (List.rev !order);
+  equal ~msg:"what the descendants drew" string "g" !seen
+
+(* The hook draws in the scissor the node is drawn in: its own child clip
+   no longer holds, and an ancestor's does. *)
+let render_over_clip () =
+  let t = make_renderer () in
+  let hidden =
+    Toffee.Geometry.Point.
+      { x = Toffee.Style.Overflow.Hidden; y = Toffee.Style.Overflow.Hidden }
+  in
+  let clipping ~parent ~x ~w =
+    Renderable.create ~parent
+      ~style:(Toffee.Style.set_overflow hidden (absolute ~x ~y:0 ~w ~h:1))
+      ()
+  in
+  let ancestor = clipping ~parent:(Renderer.root t) ~x:0 ~w:3 in
+  let node = clipping ~parent:ancestor ~x:0 ~w:5 in
+  Renderable.set_child_clip node
+    (Some
+       (fun self ->
+         Some
+           {
+             Matrix_grid.x = Renderable.x self + 1;
+             y = 0;
+             width = 1;
+             height = 1;
+           }));
+  let _child = make_child ~parent:node ~x:0 ~y:0 ~w:1 ~h:1 () in
+  Renderable.Private.set_render_over node
+    (Some
+       (fun self grid ~dt:_ ->
+         Matrix_grid.draw_text grid ~x:(Renderable.x self) ~y:0 ~text:"xxxxx"));
+  Renderer.render_frame t ~width:6 ~height:1 ~dt:0.;
+  let grid = Matrix_screen.next_grid (Renderer.screen t) in
+  equal ~msg:"drawn within the ancestor's clip" string "xxx"
+    (Matrix_grid.to_text grid)
+
 let starts_dirty () =
   let t = make_renderer () in
   is_true ~msg:"needs_render" (Renderer.needs_render t)
@@ -3001,6 +3067,12 @@ let () =
            scrollbar_geometry_settles_before_next_input;
          test "paste behavior runs on the focus current then"
            paste_behavior_runs_on_the_focus_current_then;
+         group "Drawing over descendants"
+           [
+             test "after the descendants, before later siblings"
+               render_over_after_descendants;
+             test "in the scissor the node is drawn in" render_over_clip;
+           ];
          group "Lifecycle"
            [
              test "creates with default style" creates_with_default_style;
