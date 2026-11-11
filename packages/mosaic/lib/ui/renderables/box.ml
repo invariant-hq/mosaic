@@ -202,8 +202,11 @@ let render_over t _self grid ~dt:_ =
         ~y:(Renderable.y t.node) ~width:(Renderable.width t.node)
         ~height:(Renderable.height t.node) (surface_style t role)
 
+(* The hook only on a surface: a box without one allocates nothing for it. *)
 let set_render_over t =
-  let hook = Option.map (fun _ -> render_over t) t.props.surface in
+  let hook =
+    match t.props.surface with None -> None | Some _ -> Some (render_over t)
+  in
   Renderable.Private.set_render_over t.node hook
 
 (* Construction *)
