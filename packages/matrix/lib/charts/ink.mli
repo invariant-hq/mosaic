@@ -2,10 +2,10 @@
 
     An ink is a rectangle of cells, each with two {e planes}: a glyph with its
     foreground and attributes, and a background. A write replaces the plane it
-    paints, except that dots of the resolution, foreground and attributes
-    already in a cell merge into its glyph. Each plane keeps the {e owner}, the
-    mark and row, of its last write. Writes outside the rectangle are left out.
-*)
+    paints, except that dots merge into a cell that holds dots of their
+    resolution, and the cell takes the later write's foreground and attributes.
+    Each plane keeps the {e owner}, the mark and row, of its last write. Writes
+    outside the rectangle are left out. *)
 
 type res =
   | Half

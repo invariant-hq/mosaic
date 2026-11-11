@@ -178,6 +178,58 @@ let%expect_test "an area fills to zero and between two series" =
     ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
     |}]
 
+let%expect_test "dots merge whatever their colors, other writes replace them" =
+  let red () = C.const Ansi.Color.red and blue () = C.const Ansi.Color.blue in
+  let up =
+    C.line ~dots:`Braille ~color:(red ()) ~x:fst ~y:snd [| (0., 0.); (1., 1.) |]
+  and down =
+    C.line ~dots:`Braille ~color:(blue ()) ~x:fst ~y:snd
+      [| (0., 1.); (1., 0.) |]
+  in
+  let rule = C.hline ~color:Ansi.Color.blue 0.5 in
+  let label =
+    C.text ~color:(blue ()) ~x:Fun.id
+      ~y:(fun _ -> 0.5)
+      ~text:(fun _ -> "ab")
+      [| 0. |]
+  in
+  let quadrant =
+    C.dot ~dots:`Quadrant ~color:(blue ()) ~x:fst ~y:snd [| (0.25, 0.75) |]
+  in
+  let show_cells name marks =
+    let fig =
+      C.(
+        bare (layer marks)
+        |> scale "x" (Scale.linear ~domain:(0., 1.) ())
+        |> scale "y" (Scale.linear ~domain:(0., 1.) ()))
+    in
+    let g = Grid.create ~width:2 ~height:1 () in
+    C.draw (C.layout ~width:2 ~height:1 fig) g ~x:0 ~y:0;
+    let cell x =
+      let i = Grid.idx g ~x ~y:0 in
+      Format.asprintf "%s %a" (Grid.get_text g i) Ansi.Color.pp
+        (Grid.get_fg g i)
+    in
+    Printf.printf "%-14s %s | %s\n" name (cell 0) (cell 1)
+  in
+  show_cells "up" [ up ];
+  show_cells "down" [ down ];
+  show_cells "up, down" [ up; down ];
+  show_cells "down, up" [ down; up ];
+  show_cells "up, rule" [ up; rule ];
+  show_cells "up, text" [ up; label ];
+  show_cells "up, quadrant" [ up; quadrant ];
+  [%expect
+    {|
+    up             ⡠ Red | ⠊ Red
+    down           ⠑ Blue | ⢄ Blue
+    up, down       ⡱ Blue | ⢎ Blue
+    down, up       ⡱ Red | ⢎ Red
+    up, rule       ─ Blue | ─ Blue
+    up, text       a Blue | b Blue
+    up, quadrant   ▝ Blue | ⠊ Red
+    |}]
+
 let%expect_test "rects shade an x interval and one column" =
   show_ansi ~width:12 ~height:2
     (bare
@@ -1175,23 +1227,23 @@ let%expect_test "legends: implied, on each side, in rows or columns" =
   [%expect
     {|
     1 ┤⠉⠒⠤⢄⡀    ⢀⡠⠤⠒⠉ ─ up
-      │    ⠈⠉⠒⠤⣀⡀     ─ down
+      │    ⢈⣉⠶⠶⣉⡁     ─ down
     0 ┤⣀⠤⠒⠊⠁    ⠈⠑⠒⠤⣀
       └┬────────────┬
        0            1
     ⠑⠢⢄⡀         ⢀⡠⠔⠊ key
        ⠈⠒⠤⣀   ⣀⠤⠒⠁    ─ up
-           ⠑⠢⢄        ─ down
+           ⡱⠶⢎        ─ down
        ⢀⠤⠒⠉   ⠉⠒⠤⡀
     ⡠⠔⠊⠁         ⠈⠑⠢⢄
     ⠉⠑⠒⠒⠢⠤⠤⣀⣀⡀          ⢀⣀⣀⠤⠤⠔⠒⠒⠊⠉
-             ⠈⠉⠉⠑⠒⠒⠤⠤⢄⣀⣀⡀
+             ⢈⣉⣉⡱⠶⠶⠶⠶⢎⣉⣉⡁
     ⣀⡠⠤⠤⠔⠒⠒⠉⠉⠁          ⠈⠉⠉⠒⠒⠢⠤⠤⢄⣀
     key
     ─ up  ─ down
     ⠉⠒⠤⢄⡀              ⢀⡠⠤⠒⠉
         ⠈⠉⠒⠤⢄⡀    ⢀⡠⠤⠒⠉⠁
-    key      ⠈⠉⠒⠤⣀⡀
+    key      ⢈⣉⠶⠶⣉⡁
     ─ up  ⠤⠒⠊⠁    ⠈⠑⠒⠤⣀⡀
     ─ down             ⠈⠑⠒⠤⣀
     |}]
@@ -1463,6 +1515,36 @@ let%expect_test "hits name the topmost row under the pointer" =
     b row 1 at (28, 9) d=0.00
     none
     none
+    |}]
+
+let%expect_test "a cell whose dots several rows inked hits the last of them" =
+  let a = (0.25, 0.75) and b = (0.75, 0.25) in
+  let dots id color rows =
+    C.(dot ~dots:`Braille ~color:(const color) ~x:fst ~y:snd rows |> name id)
+  in
+  let hit marks =
+    let l =
+      C.layout ~width:1 ~height:1
+        C.(
+          bare (layer marks)
+          |> scale "x" (Scale.linear ~domain:(0., 1.) ())
+          |> scale "y" (Scale.linear ~domain:(0., 1.) ()))
+    in
+    let p = C.Layout.plot l in
+    match C.Layout.hit ~radius:0. l (p.x, p.y) with
+    | None -> print_endline "none"
+    | Some h -> Printf.printf "%s row %d\n" (String.concat "/" h.id) h.row
+  in
+  let red = Ansi.Color.red and blue = Ansi.Color.blue in
+  hit [ dots "a" red [| a |]; dots "b" blue [| b |] ];
+  hit [ dots "b" blue [| b |]; dots "a" red [| a |] ];
+  hit [ dots "a" red [| a; b |] ];
+  hit [ dots "a" red [| b; a |] ];
+  [%expect {|
+    0/b row 0
+    0/a row 0
+    0/a row 1
+    0/a row 1
     |}]
 
 let%expect_test "bars, areas and rasters are hit over their cells" =
@@ -2394,3 +2476,109 @@ let%expect_test "a line toward a value outside the plot reaches its edge" =
           beyond)
     (List.rev !short);
   [%expect {| lines short of the edge: 0 of 200 (100 past the largest float) |}]
+
+let%expect_test
+    "a cell's dots are the union of the dot writes since its last other write" =
+  Random.init 9;
+  let colors = Ansi.Color.[| red; blue; green; of_rgb 200 120 0 |]
+  and attrs = Ansi.Attr.[| empty; bold |] in
+  let dims = function
+    | `Half -> (1, 2)
+    | `Quadrant -> (2, 2)
+    | `Sextant -> (2, 3)
+    | `Braille | `Octant -> (2, 4)
+  in
+  let all = [| `Half; `Quadrant; `Sextant; `Braille; `Octant |] in
+  let pick a = a.(Random.int (Array.length a)) in
+  (* A write in the cell of a 1 by 1 plot: dots of a resolution, or a rule or
+     a text, which replace them. *)
+  let mark = function
+    | `Dots (res, dots, c, a) ->
+        let cols, rows = dims res in
+        let pt (i, j) =
+          ( (Float.of_int i +. 0.5) /. Float.of_int cols,
+            (Float.of_int j +. 0.5) /. Float.of_int rows )
+        in
+        C.(
+          dot
+            ~dots:(res :> [ dots | `Density ])
+            ~color:(const c) ~x:fst ~y:snd
+            (Array.of_list (List.map pt dots))
+          |> C.attrs a)
+    | `Rule c -> C.hline ~color:c 0.5
+    | `Text c ->
+        C.text ~color:(C.const c) ~x:Fun.id ~y:Fun.id
+          ~text:(fun _ -> "t")
+          [| 0.5 |]
+  in
+  (* a mark without rows reads both scales, which a rule alone does not *)
+  let reads = C.dot ~x:fst ~y:snd [||] in
+  let cell marks =
+    let fig =
+      C.(
+        bare (layer (reads :: marks))
+        |> scale "x" (Scale.linear ~domain:(0., 1.) ())
+        |> scale "y" (Scale.linear ~domain:(0., 1.) ()))
+    in
+    let g = Grid.create ~width:1 ~height:1 () in
+    C.draw (C.layout ~width:1 ~height:1 fig) g ~x:0 ~y:0;
+    let i = Grid.idx g ~x:0 ~y:0 in
+    (Grid.get_text g i, Grid.get_fg g i, Grid.get_attrs g i)
+  in
+  let wrong = ref 0 and blank = ref 0 in
+  let colors_merged = ref 0 and attrs_merged = ref 0 in
+  let replaced = ref 0 and resolution_changed = ref 0 in
+  for _ = 1 to 1000 do
+    let main = pick all in
+    let writes =
+      List.init
+        (1 + Random.int 6)
+        (fun _ ->
+          match Random.int 8 with
+          | 0 -> `Rule (pick colors)
+          | 1 -> `Text (pick colors)
+          | k ->
+              let res = if k = 2 then pick all else main in
+              let cols, rows = dims res in
+              let dots =
+                List.init
+                  (1 + Random.int 3)
+                  (fun _ -> (Random.int cols, Random.int rows))
+              in
+              `Dots (res, dots, pick colors, pick attrs))
+    in
+    (* the one write the cell shows: the last write, with the dots of the
+       writes of its resolution just before it *)
+    let shown =
+      List.fold_left
+        (fun prev w ->
+          match (prev, w) with
+          | Some (`Dots (r0, d0, c0, a0)), `Dots (r, d, c, a) when r0 = r ->
+              if not (Ansi.Color.equal c0 c) then incr colors_merged;
+              if a0 <> a then incr attrs_merged;
+              Some (`Dots (r, d0 @ d, c, a))
+          | Some (`Dots _), `Dots _ ->
+              incr resolution_changed;
+              Some w
+          | Some (`Dots _), (`Rule _ | `Text _) ->
+              incr replaced;
+              Some w
+          | _ -> Some w)
+        None writes
+    in
+    let s0, fg0, a0 = cell (Option.to_list (Option.map mark shown)) in
+    let s, fg, a = cell (List.map mark writes) in
+    if s = " " then incr blank;
+    if s <> s0 || (not (Ansi.Color.equal fg fg0)) || a <> a0 then incr wrong
+  done;
+  Printf.printf "cells unlike their one write: %d (%d blank)\n" !wrong !blank;
+  Printf.printf
+    "covered: colors merged %b, attributes merged %b, dots replaced %b, \
+     resolution changed %b\n"
+    (!colors_merged > 50) (!attrs_merged > 50) (!replaced > 50)
+    (!resolution_changed > 50);
+  [%expect
+    {|
+    cells unlike their one write: 0 (0 blank)
+    covered: colors merged true, attributes merged true, dots replaced true, resolution changed true
+    |}]

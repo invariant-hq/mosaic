@@ -51,8 +51,11 @@
       domains and when it draws, and a line breaks at it.
     - A mark {e inks} the cells it writes, and is cut at the plot's edges. A
       cell has two {e planes}, a glyph with its foreground and a background. A
-      mark's write replaces the plane it paints, except that dots of the color
-      already in the cell merge into its glyph.
+      mark's write replaces the plane it paints, except that dots merge into a
+      cell that holds dots of their resolution, whatever its colors, and the
+      cell takes the later write's foreground and attributes: a cell shared by
+      marks or rows of different colors shows all their dots in the last one's
+      color.
     - Layout accepts a region of any size from one cell and never raises because
       of it. A region too small for every guide gives up the title, the legends,
       the axis titles, the tick labels with their notes, the axis lines and the
@@ -771,14 +774,15 @@ module Layout : sig
     t ->
     int * int ->
     hit option
-  (** [hit l c] is the row whose mark inked cell [c] last. When no mark inked
-      [c], it is the row that inked last the nearest cell within [radius], [3.]
-      by default, the later mark's of two at one distance, and [None] if there
-      is none or [c] is outside the plot. Distances are in columns.
-      [`Euclidean], the default, counts a row of cells as {!Theme.t.aspect}
-      columns. [`X] keeps the cells within [radius] columns and adds a hundredth
-      of the vertical distance, which breaks ties, and [`Y] the converse. It
-      inks the marks again, so it costs about a draw. *)
+  (** [hit l c] is the row whose mark inked cell [c] last. A cell whose dots
+      several rows inked gives the last of them. When no mark inked [c], it is
+      the row that inked last the nearest cell within [radius], [3.] by default,
+      the later mark's of two at one distance, and [None] if there is none or
+      [c] is outside the plot. Distances are in columns. [`Euclidean], the
+      default, counts a row of cells as {!Theme.t.aspect} columns. [`X] keeps
+      the cells within [radius] columns and adds a hundredth of the vertical
+      distance, which breaks ties, and [`Y] the converse. It inks the marks
+      again, so it costs about a draw. *)
 
   val legend : t -> (string * Ansi.Color.t * string) list
   (** [legend l] is the category, color and glyph of every legend entry of [l],

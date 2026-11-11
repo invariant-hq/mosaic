@@ -1,8 +1,10 @@
 (* Ink: the cells of a plot as marks paint them, before they reach a grid.
 
    A cell has two planes, a glyph with its foreground and attributes, and a
-   background. A write replaces the plane it paints, except that dots of the
-   resolution, color and attributes already in the cell merge into its glyph.
+   background. A write replaces the plane it paints, except that dots merge
+   into a cell that holds dots of their resolution, and the cell takes the
+   later write's foreground and attributes: a dot is data, so no dot erases
+   another of its resolution.
    Each plane remembers the mark and row that last wrote it (its owner), which
    hit-testing reads. *)
 
@@ -110,20 +112,16 @@ let dot t r ~x ~y ~fg ~attrs ~owner =
       let bit = 1 lsl ((sy * c) + sx) in
       let code = res_code r in
       let fg = color_int fg and attrs = attrs_int attrs in
-      if
-        kind t i = k_dots
-        && Char.code (Bytes.unsafe_get t.res i) = code
-        && t.fg.(i) = fg
-        && t.attrs.(i) = attrs
-      then t.bits.(i) <- t.bits.(i) lor bit
+      if kind t i = k_dots && Char.code (Bytes.unsafe_get t.res i) = code then
+        t.bits.(i) <- t.bits.(i) lor bit
       else begin
         clear_span t i;
         Bytes.unsafe_set t.kind i (Char.unsafe_chr k_dots);
         Bytes.unsafe_set t.res i (Char.unsafe_chr code);
-        t.bits.(i) <- bit;
-        t.fg.(i) <- fg;
-        t.attrs.(i) <- attrs
+        t.bits.(i) <- bit
       end;
+      t.fg.(i) <- fg;
+      t.attrs.(i) <- attrs;
       t.gowner.(i) <- owner
     end
 

@@ -94,6 +94,9 @@ console gets back every mode and code page the run changed.
 
 #### Changes the compiler won't catch
 
+- `matrix.charts` merges the dots of every color that meet in a cell, in the
+  later mark's color and attributes. A series drawn over another erased its
+  dots there, so the earlier line seemed to end where its data went on.
 - `Matrix_charts.text` moves a text that the plot's edges would cut inside
   the plot, and leaves out one wider than the plot. It drew the part inside the
   plot, and a cut label can read as another word or number: `now` as `no`,
