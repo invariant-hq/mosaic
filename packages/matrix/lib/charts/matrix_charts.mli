@@ -38,9 +38,12 @@
 
     Unless a value's doc says otherwise:
     - Lengths are in cells. A value at position [p] lies in the cell
-      [min (W - 1) ⌊p W⌋] of a [W]-cell axis, and in the matching dot at every
-      sub-cell resolution, so every mark and tick at one value lands in the same
-      cell.
+      [c = min (W - 1) ⌊p W⌋] of a [W]-cell axis and, at [k] dots per cell, in
+      the dot [⌊p W k⌋] clamped to the dots of [c], so every point, rule and
+      tick at one value lands in one cell; {!Layout.position} and {!Layout.dot}
+      give them. A range ends at an edge between cells: a rect covers the cells
+      that meet \[[x];[x2]), and a bar ends at the eighth, or the cell, nearest
+      its value.
     - Accessors and format functions must be pure, since layout calls them and
       may call them again.
     - A row is {e dropped} when a value a position role reads is NaN, infinite
