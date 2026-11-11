@@ -222,9 +222,9 @@ let set_empty_color t c =
     request_render t)
 
 let set_glyphs t g =
-  let g = check_glyphs g in
-  if not (Option.equal equal_glyphs t.props.glyphs (Some g)) then (
-    t.props <- { t.props with glyphs = Some g };
+  let g = Option.map check_glyphs g in
+  if not (Option.equal equal_glyphs t.props.glyphs g) then (
+    t.props <- { t.props with glyphs = g };
     request_render t)
 
 (* ───── Apply Props ───── *)

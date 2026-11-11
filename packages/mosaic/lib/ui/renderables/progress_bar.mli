@@ -137,9 +137,10 @@ val set_empty_color : t -> Ansi.Color.t -> unit
 (** [set_empty_color t c] sets the unfilled portion color of [t] to [c].
     Triggers a re-render if the color changed. *)
 
-val set_glyphs : t -> glyphs -> unit
-(** [set_glyphs t g] sets the glyphs of [t]'s cells to [g]. Triggers a re-render
-    if the glyphs changed.
+val set_glyphs : t -> glyphs option -> unit
+(** [set_glyphs t g] sets the glyphs of [t]'s cells to [g]. [None] draws the
+    default glyphs of [t]'s orientation. Triggers a re-render if the glyphs
+    changed.
 
     Raises [Invalid_argument] if a glyph of [g] does not take one cell. *)
 

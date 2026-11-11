@@ -17,9 +17,9 @@
   `Mosaic_ui.Box.set_title_style` sets it.
 - `Mosaic.progress_bar ~glyphs` takes the glyphs of the filled, half and empty
   cells (`Progress_bar.glyphs`), such as `━`, `╸` and `─` for a gauge one row
-  high. `Mosaic_ui.Progress_bar.set_glyphs` sets them. `filled_color` and
-  `empty_color` now color the glyphs, where they painted a solid band that
-  showed nothing without color.
+  high. `Mosaic_ui.Progress_bar.set_glyphs` sets them, and `None` the
+  orientation's blocks. `filled_color` and `empty_color` now color the glyphs,
+  where they painted a solid band that showed nothing without color.
 - `Mosaic_ui.Cursor.step` reveals the item it lands on from the rows the
   collection shows, where it revealed from the declared position: a list
   scrolled past its first page moved on every key, and `Combobox` with it.

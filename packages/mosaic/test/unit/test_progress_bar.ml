@@ -115,7 +115,7 @@ let glyphs_take_one_cell () =
   List.iter refused [ ""; "ab"; "\u{4E2D}"; "\t"; "\n" ];
   let _t, bar = make_bar () in
   raises_match ~msg:"set_glyphs" (Exn.invalid_arg ~sub:"not one cell wide")
-    (fun () -> Progress_bar.set_glyphs bar { thin with filled = "ab" })
+    (fun () -> Progress_bar.set_glyphs bar (Some { thin with filled = "ab" }))
 
 (* ── Construction ── *)
 
@@ -181,11 +181,17 @@ let set_glyphs_schedules_render () =
   let t, bar = make_bar () in
   let thin = { Progress_bar.filled = "━"; half = "╸"; empty = "─" } in
   let before = Test_harness.clean t in
-  Progress_bar.set_glyphs bar thin;
+  Progress_bar.set_glyphs bar (Some thin);
   gt ~msg:"scheduled" ~than:before !(t.schedule_count);
   let before = Test_harness.clean t in
-  Progress_bar.set_glyphs bar { thin with filled = "━" };
-  equal ~msg:"equal glyphs schedule nothing" int before !(t.schedule_count)
+  Progress_bar.set_glyphs bar (Some { thin with filled = "━" });
+  equal ~msg:"equal glyphs schedule nothing" int before !(t.schedule_count);
+  let before = Test_harness.clean t in
+  Progress_bar.set_glyphs bar None;
+  gt ~msg:"back to the orientation's glyphs" ~than:before !(t.schedule_count);
+  let before = Test_harness.clean t in
+  Progress_bar.set_glyphs bar None;
+  equal ~msg:"no glyphs again schedule nothing" int before !(t.schedule_count)
 
 let set_empty_color_schedules_render () =
   let t, bar = make_bar () in
