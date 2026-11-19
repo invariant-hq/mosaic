@@ -2503,13 +2503,25 @@ let%expect_test "clamp brings a window into an extreme domain, once" =
     [0, 1e-310] window [-3e-310, -2.5e-310]: inside at [0, 5e-311], again the same
     |}]
 
+(* [g v] is [Printf.sprintf "%g" v] with the exponent in two digits or more on
+   every system, where the Windows C library writes three. *)
+let g v =
+  let s = Printf.sprintf "%g" v in
+  match String.index_opt s 'e' with
+  | None -> s
+  | Some i ->
+      let e = int_of_string (String.sub s (i + 1) (String.length s - i - 1)) in
+      Printf.sprintf "%se%c%02d" (String.sub s 0 i)
+        (if e < 0 then '-' else '+')
+        (abs e)
+
 let%expect_test "a log axis over many decades labels few candidates" =
   List.iter
     (fun (lo, hi, width) ->
       let calls = ref 0 in
       let format _ v =
         incr calls;
-        Printf.sprintf "%g" v
+        g v
       in
       let fig =
         C.(
@@ -2521,10 +2533,10 @@ let%expect_test "a log axis over many decades labels few candidates" =
             ]
           |> scale "x" (Scale.log ~domain:(lo, hi) ()))
       in
-      let g = drawn ~width ~height:4 fig in
-      Printf.printf "[%g, %g] at %d cells: %d labelled values; %s\n" lo hi width
-        !calls
-        (String.trim (List.nth (text_rows g) 3)))
+      let grid = drawn ~width ~height:4 fig in
+      Printf.printf "[%s, %s] at %d cells: %d labelled values; %s\n" (g lo)
+        (g hi) width !calls
+        (String.trim (List.nth (text_rows grid) 3)))
     [
       (4.9e-324, Float.max_float, 40);
       (1e-300, 1e5, 80);

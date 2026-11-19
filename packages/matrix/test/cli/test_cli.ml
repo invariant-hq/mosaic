@@ -1022,7 +1022,7 @@ let task_rows ~heights f =
   let module T = Matrix_cli_unix.Task in
   let out =
     Matrix_cli_unix.make ~progress:`Quiet
-      (Unix.openfile "/dev/null" [ Unix.O_WRONLY ] 0)
+      (Unix.openfile Filename.null [ Unix.O_WRONLY ] 0)
   in
   Matrix_cli_unix.tasks ~now:(fun () -> 0.) out @@ fun root ->
   f root;
