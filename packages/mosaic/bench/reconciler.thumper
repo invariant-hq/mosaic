@@ -5,16 +5,16 @@
 # host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-element/box	alloc_words	exact	27
-element/button	alloc_words	exact	84
+element/box	alloc_words	exact	29
+element/button	alloc_words	exact	86
 element/map	alloc_words	exact	20
 element/memo	alloc_words	exact	11
 element/text	alloc_words	exact	17
-mount-and-empty/keyed-list-20000	alloc_words	exact	7020146
-mount-and-unmount/keyed-list-20000	alloc_words	exact	6926066
-mount-retype-and-empty/unkeyed-list-20000	alloc_words	exact	21800188
-reconcile/nested-map-3-over-1000	alloc_words	exact	20156
-reconcile/reorder/keyed-list-500	alloc_words	exact	22193
-reconcile/reorder/keyed-list-5000	alloc_words	exact	226609
-reconcile/steady/keyed-list-500	alloc_words	exact	15124
-reconcile/steady/keyed-list-5000	alloc_words	exact	156540
+mount-and-empty/keyed-list-20000	alloc_words	exact	7040146
+mount-and-unmount/keyed-list-20000	alloc_words	exact	6946067
+mount-retype-and-empty/unkeyed-list-20000	alloc_words	exact	21860188
+reconcile/nested-map-3-over-1000	alloc_words	exact	20158
+reconcile/reorder/keyed-list-500	alloc_words	exact	22195
+reconcile/reorder/keyed-list-5000	alloc_words	exact	226611
+reconcile/steady/keyed-list-500	alloc_words	exact	15126
+reconcile/steady/keyed-list-5000	alloc_words	exact	156542

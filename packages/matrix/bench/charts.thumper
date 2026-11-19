@@ -5,8 +5,8 @@
 # host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-frame/frame/loss-78x20	alloc_words	exact	103313
-frame/frame/scatter-10k-120x40	alloc_words	exact	224952
-frame/frame/spark-30x4	alloc_words	exact	2759
-pointer/pointer/hit-loss-78x20	alloc_words	exact	81939
-pointer/pointer/layout-loss-78x20	alloc_words	exact	39206
+frame/frame/loss-78x20	alloc_words	exact	101469
+frame/frame/scatter-10k-120x40	alloc_words	exact	185009
+frame/frame/spark-30x4	alloc_words	exact	2768
+pointer/pointer/hit-loss-78x20	alloc_words	exact	80063
+pointer/pointer/layout-loss-78x20	alloc_words	exact	39230

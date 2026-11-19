@@ -7,7 +7,7 @@
 
 control/cursor_script_80x24	alloc_words	exact	39634
 sgr_state/sgr_alternating_styles_1920	alloc_words	exact	0
-sgr_state/sgr_hyperlink_transitions	alloc_words	exact	720
+sgr_state/sgr_hyperlink_transitions	alloc_words	exact	200
 sgr_state/sgr_partial_changes	alloc_words	exact	0
 sgr_state/sgr_same_style_1920	alloc_words	exact	0
 sgr_state/sgr_tui_frame_80x24	alloc_words	exact	0

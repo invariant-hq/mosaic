@@ -5,7 +5,7 @@
 # host: Thibauts-MacBook-2.local · Apple M1 Max · arm64 · macos
 # ocaml: 5.5.1 · 64-bit · release
 
-cursor/step-100000	alloc_words	exact	46
+cursor/step-100000	alloc_words	exact	112
 select/positional-5000	alloc_words	exact	20
 select/value-5000	alloc_words	exact	79
 table/positional-5000	alloc_words	exact	29
