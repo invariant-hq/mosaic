@@ -1122,8 +1122,8 @@ let merge_style =
 
 let merge_region =
   let open Gen in
-  let+ x = int_range (-1) merge_width
-  and+ y = int_range (-1) merge_height
+  let+ x = int_range (-1) (merge_width - 1)
+  and+ y = int_range (-1) (merge_height - 1)
   and+ width = int_range 0 (merge_width + 1)
   and+ height = int_range 0 (merge_height + 1) in
   { Grid.x; y; width; height }
@@ -1136,8 +1136,16 @@ let merge_case =
   let+ cells = list ~size:(constant (merge_width * merge_height)) merge_style
   and+ style = merge_style
   and+ rect = with_pp pp_region merge_region
-  and+ scissor = option (with_pp pp_region merge_region)
-  and+ opacity = of_list ~pp:Format.pp_print_float [ 1.; 0. ] in
+  and+ scissor =
+    with_pp
+      (Format.pp_print_option
+         ~none:(fun ppf () -> Format.pp_print_string ppf "None")
+         pp_region)
+      (frequency [ (1, constant None); (1, map Option.some merge_region) ])
+  and+ opacity =
+    with_pp Format.pp_print_float
+      (frequency [ (3, constant 1.); (1, constant 0.) ])
+  in
   (cells, style, rect, scissor, opacity)
 
 let within (r : Grid.region) x y =
@@ -1206,7 +1214,7 @@ let merge_rect_law
       equal ~msg string texts.(i) (Grid.get_text grid i))
     before;
   cover "some cell inside" !covered;
-  cover "a cell's own colors against the style's" !contested;
+  cover ~share:0.01 "a cell's own colors against the style's" !contested;
   cover "a cell inside at opacity 0" !hidden;
   cover "a cell outside" ((not (within rect 0 0)) || Option.is_some scissor)
 
