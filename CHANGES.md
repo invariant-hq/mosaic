@@ -1,204 +1,211 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0] - 2026-11-19
+
+0.3.0 is mostly a bug-fix release. The one new capability is Windows support:
+Matrix and Mosaic run on the Windows console again, on Windows 10 1803 or
+later, after 0.2.0 dropped it.
+
+Upgrading from 0.2.0 takes a few changes. In Mosaic, spinners and progress
+bars now draw from the theme's glyph set, so `Spinner.default_frame_set` is
+gone and `Glyphs.t` has new fields. In Matrix, `Pty.spawn` runs the program
+under a keeper process so that its output is no longer lost on FreeBSD. The
+program is no longer a child of yours: reap it with `Pty.wait`, not
+`Unix.waitpid`. Toffee is unchanged.
+
+### Windows
+
+Matrix reads the console's input records itself, so resizes come through, and
+keys, mouse reports, pastes and focus changes arrive as the same sequences a VT
+terminal sends. Ctrl+C and Ctrl+Break reach the program as SIGINT, and closing
+the console as SIGHUP. However the run ends, even when the process aborts, the
+console gets back every mode and code page Matrix changed.
+
+Mosaic works there too, and so does `Mosaic_eio.run`: the program runs on a
+domain with no Eio loop, and cancelling the calling fiber still stops it.
+
+A few things differ on Windows:
+
+- The input must be a console or a file. With a pipe, the run raises
+  `Invalid_argument` at its first wait.
+- `Matrix.fds` and `Mosaic.fds` raise `Invalid_argument`, since no file
+  descriptor stands for the console. Drive the run with `Matrix.next`, or call
+  `Matrix.run` on a domain of its own.
+- `Tty.is_controlling` is `true` for a handle on the process's console, so
+  only one run holds it at a time.
+- On OCaml 5.4 and 5.5, Ctrl+Break ends the process even when a SIGINT handler
+  is installed (ocaml/ocaml#15267). While a run holds the console, Matrix
+  treats it as SIGINT and gives the console back first.
+
+`Tty.raw`, `keys`, `no_echo`, `restore` and `flush_input` work on a Windows
+console. The new `Tty.Signal.wait` and `Tty.Signal.read` wait for and read
+input on every system, and `Matrix.Device.unix` is built on them. On a
+console, `read` returns the typed text as UTF-8 and reports a resize as
+SIGWINCH.
 
 ### Mosaic
 
-- A progress bar and a spinner draw from the theme's glyph set, which now
-  holds a bar's glyphs across and up and a spinner's frames and period, so
-  under `Glyphs.ascii` they draw ASCII where they drew blocks and braille. A
-  bar's `~glyphs` or a spinner's `~frame_set` still wins.
+#### Fixed
+
+- In a list driven by `Cursor`, once you scrolled past the first page, every
+  key press scrolled the list again, and the same happened in `Combobox`.
+  `Mosaic_ui.Cursor.step` now reveals the item from the rows actually on
+  screen. A move also ends a `Scroll.follow`, so a list that should keep
+  following its end needs to declare it again after the move.
+- Progress bars and spinners always drew blocks and braille, whatever the
+  theme. They now take their glyphs from the theme's glyph set, so
+  `Glyphs.ascii` gives ASCII ones. A bar's `~glyphs` or a spinner's
+  `~frame_set` still wins.
+- A progress bar's `filled_color` and `empty_color` painted a solid band,
+  which disappeared without color. They now color the bar's glyphs.
+
+#### Small additions
+
 - `Mosaic.box` and `Mosaic.button` take `~surface`, a theme role whose style
-  is merged under every cell of the box after its children draw, canvases
-  and gaps included. A row on `Cursor` now shows in reverse video at every
-  color depth, where `~background` vanished without color. Any node may stand
-  on a surface with `Mosaic_ui.Renderable.set_surface`.
-- `Mosaic.Sub.on_styling` gives the application the styling its frames are
-  written at, the color depth or none, as the program begins and when it
-  changes, so a theme that differs by depth agrees with the run instead of
-  reading `NO_COLOR` and `TERM` again.
-- `Mosaic.box` and `Mosaic.button` take `~title_style`, as
-  `Canvas.draw_box` does, where the title could only take the border's color.
-  It is merged over the border's foreground, so a bold title keeps the
-  border's color. `Mosaic_ui.Box.set_title_style` sets it.
-- `Mosaic.progress_bar ~glyphs` takes the glyphs of the filled, half and empty
-  cells (`Progress_bar.glyphs`), such as `━`, `╸` and `─` for a gauge one row
-  high. `Mosaic_ui.Progress_bar.set_glyphs` sets them, and `None` the
-  theme's. `filled_color` and `empty_color` now color the glyphs, where they
-  painted a solid band that showed nothing without color.
-- `Mosaic_ui.Cursor.step` reveals the item it lands on from the rows the
-  collection shows, where it revealed from the declared position: a list
-  scrolled past its first page moved on every key, and `Combobox` with it.
-  A move now ends a `Scroll.follow`: a list that should follow its end again
-  declares it after the move.
-- Mosaic runs on the Windows console again, as Matrix does (below).
-  `Mosaic_eio.run` works there too: the program runs on a domain with no Eio
-  loop, and cancelling the calling fiber still stops it. `Mosaic.fds` raises
-  `Invalid_argument` on Windows.
+  goes under every cell of the box once its children have drawn, canvases and
+  gaps included. A row on the `Cursor` surface shows in reverse video at every
+  color depth, where a `~background` disappeared without color. Any node can
+  stand on a surface with `Mosaic_ui.Renderable.set_surface`.
+- `Mosaic.box` and `Mosaic.button` take `~title_style`, so a title no longer
+  has to share the border's color. The style is merged over the border's
+  foreground, so a bold title keeps that color. `Mosaic_ui.Box.set_title_style`
+  changes it.
+- `Mosaic.progress_bar ~glyphs` sets the glyphs of the filled, half and empty
+  cells, such as `━`, `╸` and `─` for a one-row gauge.
+  `Mosaic_ui.Progress_bar.set_glyphs` changes them, and `None` goes back to the
+  theme's.
+- `Mosaic.Sub.on_styling` tells the application which styling its frames are
+  written at, a color depth or none, when the program starts and whenever it
+  changes. A theme that depends on the color depth can follow the run instead
+  of reading `NO_COLOR` and `TERM` itself.
 
 #### Breaking changes
 
-- `Spinner.default_frame_set` is removed. A spinner without `~frame_set`
-  draws the spinner of the theme's glyph set, `Spinner.dots` in
-  `Glyphs.unicode`; pass `~frame_set:Spinner.dots` to keep braille under
-  every theme.
+- `Spinner.default_frame_set` is gone. A spinner without `~frame_set` draws
+  the theme's spinner, which is `Spinner.dots` in `Glyphs.unicode`. Pass
+  `~frame_set:Spinner.dots` to keep braille under every theme.
 - `Mosaic_ui.Spinner.set_frame_set` takes a `frame_set option`: write
   `Some fs` where you wrote `fs`, and `None` for the theme's spinner.
-- `Glyphs.t` has the fields `progress_horizontal`, `progress_vertical` and
-  `spinner`. A set built with `{ Glyphs.unicode with ... }` is unaffected;
-  one written as a whole record needs them.
+- `Glyphs.t` has three new fields, `progress_horizontal`, `progress_vertical`
+  and `spinner`. A set built with `{ Glyphs.unicode with ... }` still compiles;
+  one written out as a full record needs them.
 
 ### Matrix
 
-Matrix runs on the Windows console again, on Windows 10 1803 or later. The run
-reads the console's input records itself, so a resize reaches it, and keys,
-mouse reports, pastes and focus changes arrive as the sequences a VT terminal
-sends. Ctrl+C and Ctrl+Break reach the run as SIGINT, and closing the console
-as SIGHUP. When the run ends, on one of these too, or the process aborts, the
-console gets back every mode and code page the run changed.
+#### Fixed
 
-#### Also new
+- Hyperlink URIs are now percent-encoded, as the OSC 8 specification
+  requires: every byte outside `0x21`..`0x7E`, spaces included, becomes `%XX`,
+  and a `%` is kept as is. Control characters and invalid UTF-8 used to be
+  dropped, which changed where the link went, and spaces and non-ASCII bytes
+  went out raw.
+- A frame cut short by a signal could leave a hyperlink open, and the shell's
+  prompt then became part of the link. The bytes that end such a frame now
+  close it: in `Region.teardown`, in the run's abort bytes in both modes, and
+  when a run gives the terminal back.
+- `Tty.restore` blocks SIGTTOU while it applies the settings, so a process in
+  the background no longer has to block it itself.
+- `Pty.close` hangs up the program even when another process also holds the
+  master. The program used to get only the `SIGKILL` 100 ms later, and on the
+  BSDs and macOS `close` waited for that other process to read the program's
+  output.
+- `Pty.wait` after `Pty.close` gives the program's status, as does the new
+  `Pty.poll`, where it used to raise `Invalid_argument`. `Pty.terminate` and
+  `Pty.kill` on a handle that `Pty.close` has reaped do nothing, as on a
+  program that has already exited, instead of raising.
+- `Matrix_cli_unix.adapt_std_formatters` kept the standard formatters adapted
+  only until the program spawned a domain. After that, their line ends and
+  indents were lost, and their output bypassed the styling and the live
+  region.
+- `Matrix_cli.adapt` no longer takes unbounded memory for a long or
+  unterminated OSC. It keeps a hyperlink's URI up to 2083 bytes, the limit in
+  VTE and iTerm2, and a longer one ends the link.
+- With a `` `Json `` output, `Matrix_cli_unix.print` reads successive prints
+  as one stream, so a control sequence split across two prints no longer shows
+  up as text in an event.
+- Printing a line in many small pieces while a live region is shown took time
+  quadratic in its length. 100k one-byte prints took 5.5 s, and now take
+  0.03 s.
+- A frame of `Matrix_cli_unix.tasks` grew with every line a running task had
+  logged and every task that had run. At a million logged lines it took
+  8.8 ms, and now takes 0.24 ms, the cost of what it shows.
+- Task rows show a minute or more as `1m05s` and an hour or more as `1h02m`,
+  where an hour used to show as `3600.0s`. Sizes past 1023 GiB show in TiB,
+  PiB and EiB.
+- In `matrix.charts`, a mark could land one cell off the tick for its own
+  value: a line's point at `5` on the domain \[0, 6\] over 60 cells drew one
+  cell left of the tick at `5`. Marks, ticks and rules now place a value by the
+  same rule, as the documentation says. A dot at three dots per cell stays in
+  that cell too.
+- When two marks of different colors met in a cell, the later one erased the
+  earlier one's dots there, so a line seemed to stop where its data went on.
+  The dots are now merged, in the later mark's color and attributes.
+- `Matrix_charts.text` cut a text at the plot's edges, and a cut label can
+  read as something else: `now` as `no`, `1500` as `150`. A text is now moved
+  inside the plot, and one wider than the plot is left out.
+- A domain whose length, or its inverse, overflows a float, such as
+  `Scale.linear ~domain:(-.max_float, max_float)` or one made of subnormals,
+  drew NaN positions, the tick search or a minor grid never ended, and
+  `View.clamp` left a window far from such a domain outside it.
+- A log axis's tick search labelled every candidate power: over the floats'
+  whole range, 178,634 values. It now labels 1,266 for the same ticks.
+- `Matrix_charts.margins ~left` and `~right` now fix the plot's width before
+  measuring how far the x labels overhang. The overhang was measured against
+  the wider plot the guides alone left, so the plot could end a cell off and
+  change with the y axis's labels.
+
+#### Small additions
 
 - `Matrix_grid.merge_rect` puts a style under the cells of a rectangle: each
-  keeps its own colors and attributes, and takes the style's where it has
-  none.
-- `Matrix.styling` is the styling the run writes its next frame at, which
-  `config`'s `color`, the environment and the terminal's answers decide.
-- `Tty.Signal.wait` and `Tty.Signal.read` wait for and read a holder's input,
-  on every system, and `Matrix.Device.unix` is built on them. On a Windows
-  console, `read` gives the text the keys carry as UTF-8 and receives a resize
-  as SIGWINCH.
-- `Tty.raw`, `keys`, `no_echo`, `restore` and `flush_input` work on a Windows
-  console.
-- `Pty.close` keeps the program's status when it reaps the child, and
-  `Pty.wait` or `Pty.poll` then gives it, where they used to raise
-  `Invalid_argument`.
-- `Matrix_charts.Layout.dot` is the dot, at a resolution, in which a mark draws
-  a value, or the dot beside the plot when the value lies outside it. A program
-  can reduce its data per dot column as the chart will draw it, from a layout
-  made before the data: `Layout.plot` now states that a figure whose position
-  scales have given domains, and whose legends keep their entries, keeps its
-  plot whatever its marks' rows. A category's tick and `Layout.position` now
-  give the cell `Layout.dot` gives, inside its bar as before.
-- `Matrix_charts.rect ~pattern` writes a tile of glyphs over its cells in place
-  of a background, repeated from the plot's top-left cell. A hatched span shows
-  without color, and the marks drawn after it cover it.
+  cell keeps its own colors and attributes, and takes the style's where it
+  has none.
+- `Matrix.styling` is the styling the run writes its next frame at, as
+  decided by `config`'s `color`, the environment and the terminal's answers.
+- `Matrix_charts.Layout.dot` gives the dot, at a resolution, in which a mark
+  draws a value, or the dot just outside the plot when the value is outside
+  it. A program can thin its data per dot column the way the chart will draw
+  it, from a layout made before the data: a figure whose position scales have
+  given domains, and whose legends keep their entries, keeps its plot whatever
+  its marks' rows. A category's tick and `Layout.position` give the same cell
+  as `Layout.dot`, inside the bar as before.
+- `Matrix_charts.rect ~pattern` fills its cells with a repeating tile of
+  glyphs instead of a background, so a hatched span shows without color.
+  Marks drawn after it cover it.
 - `Matrix_charts.text ~offset:(dx, dy)` moves a text by cells from its point,
-  as a label beside a rule or after a line's last point.
-- `Matrix_charts.axis ~labels` writes the program's labels among the tick
-  labels at given values, such as a title at the axis's end or a cursor's
-  value, each in its own style. Tick labels within a cell of them are left
-  out. They are placed from the last to the first, and one within a cell of a
-  label already placed is left out, so of two that meet, the earlier is drawn
-  only when the later is left out. A horizontal axis's labels stay inside the
-  plot's extent, and one wider than the plot is left out; a vertical axis's
-  widen its margin whether drawn or not, so the plot stays as the view moves.
-
-#### Changes the compiler won't catch
-
-- `matrix.charts` merges the dots of every color that meet in a cell, in the
-  later mark's color and attributes. A series drawn over another erased its
-  dots there, so the earlier line seemed to end where its data went on.
-- `Matrix_charts.text` moves a text that the plot's edges would cut inside
-  the plot, and leaves out one wider than the plot. It drew the part inside the
-  plot, and a cut label can read as another word or number: `now` as `no`,
-  `1500` as `150`.
-- On Windows the input is a console or a file. A run whose input is a pipe
-  raises `Invalid_argument` at its first wait, and `Matrix.fds` raises
-  `Invalid_argument`, since no descriptor stands for the console: drive the run
-  with `Matrix.next`, or with `Matrix.run` on a domain of its own.
-- `Tty.is_controlling` is `true` for a handle of the process's console on
-  Windows, so one run at a time holds it.
-- `Tty.restore` blocks SIGTTOU while it sets the settings, so a process in the
-  background no longer needs to block it itself.
-- `Pty.terminate` and `Pty.kill` on a handle that `Pty.close` has reaped do
-  nothing, as on a child that has exited, where they used to raise
-  `Invalid_argument`.
-- On OCaml 5.4 and 5.5, Ctrl+Break on Windows ends the process even when a
-  SIGINT handler is installed (ocaml/ocaml#15267). While a run holds the
-  console, Matrix takes it as SIGINT and gives the console back first.
+  for a label beside a rule or after a line's last point.
+- `Matrix_charts.axis ~labels` puts your own labels among the tick labels at
+  given values, such as a title at the end of the axis or a cursor's value,
+  each in its own style. Tick labels within a cell of them are left out. When
+  two of your labels meet, the later one wins. A horizontal axis keeps its
+  labels within the plot and leaves out one wider than it; a vertical axis
+  widens its margin for them whether they're drawn or not, so the plot stays
+  put as the view moves.
 
 #### Breaking changes
 
-- `Pty.spawn` runs the program under a keeper that leads the pseudo-terminal's
-  session, so the program's output outlives its exit on every kernel: FreeBSD
-  dropped the output the master had not read when the program, as the
-  session's leader, exited (#114). `Pty.pid` is the program's id and process
-  group, not a child of the calling process: reap it with `Pty.wait`, or with
-  the new `Pty.poll` without blocking, never with `Unix.waitpid`.
-  `Pty.terminate`, `kill` and `close` signal the program's process group, so
-  the processes it started in it too, as the terminal's interrupt key does;
-  the hangup's `SIGHUP` reaches the program on every kernel, with a `SIGCONT`
-  if it was stopped. A program on a spawned terminal is a job of its session,
-  which a stop signal stops.
-- The job of a spawned program ends with it: once the program has exited and
-  the master has read its output, the keeper kills what the program left in
-  its process group. A process that ignores `SIGHUP` and `SIGTERM` no longer
-  outlives `Pty.close`, and a background job no longer outlives the program
-  (#114).
-- `Pty.close` no longer sends `SIGTERM` behind the hangup's `SIGHUP`: the
-  program has about 100 ms to act on the hangup before `SIGKILL`, so a
-  shell's trap for `SIGHUP` runs.
-- `Pty.spawn` searches for `prog` in the `PATH` of `env`, the program's
-  environment, rather than in the calling process's (#114).
+These come from fixing how `Pty.spawn` runs a program (#114). On FreeBSD, a
+program's output was lost when it exited before the master had read it,
+because the program led the terminal's session. The program now runs under a
+small keeper process that leads the session instead, so its output outlives it
+on every kernel.
 
-#### Fixed
-
-- The keeper passes the program's status to the handle as data instead of
-  dying by the program's signal, so macOS no longer files a crash report for
-  the calling program when a spawned program crashes.
-- The handle no longer waits for the program's process id after reaping the
-  keeper, which in a subreaper could reap an unrelated child that had been
-  given that id.
-- `Pty.close` hangs up the program when another process holds the master
-  too: the program receives `SIGHUP` rather than only the `SIGKILL` 100 ms
-  later, and on the BSDs and macOS `close` no longer waits for that process
-  to read the program's output.
-- `Matrix_cli_unix.adapt_std_formatters` keeps the standard formatters
-  adapted once the program spawns a domain. From then on, their line ends and
-  indents were lost, and the rest of their output bypassed the styling and the
-  live region.
-- A hyperlink's URI is written percent-encoded, as the OSC 8 specification
-  requires: every byte outside `0x21`..`0x7E`, the space included, becomes
-  `%XX`, and a `%` is kept. Controls and invalid UTF-8 used to be dropped from
-  the URI, which changed the link's target, and spaces and non-ASCII bytes went
-  out raw.
-- `Matrix_cli.adapt` no longer takes memory without bound for a long or
-  unterminated OSC. It keeps a hyperlink's URI up to 2083 bytes, the limit of
-  VTE and iTerm2, and a longer one ends the link.
-- A line printed in many pieces while a live region shows costs time linear in
-  its length. 100k one-byte prints took 5.5 s, and now take 0.03 s.
-- Task rows show a time of a minute or more as `1m05s`, and of an hour or more
-  as `1h02m`, where an hour showed as `3600.0s`. Sizes past 1023 GiB show in
-  TiB, PiB and EiB.
-- The bytes that end a frame write cut by a signal close a hyperlink the frame
-  left open, in `Region.teardown`, in the run's abort bytes in both modes, and
-  when a run gives the terminal back. The shell's prompt used to become part
-  of the link.
-- On an output whose mode is `` `Json ``, `Matrix_cli_unix.print` reads the
-  prints as one stream, so a control function cut between two prints no
-  longer shows its tail as text in an event.
-- A frame of `Matrix_cli_unix.tasks` costs what it shows. It grew with every
-  line a running task had logged and every task the work had run: at a
-  million logged lines, a frame took 8.8 ms, and now takes 0.24 ms.
-- `matrix.charts` places a mark's value in the cell of the tick and the rule at
-  that value, as its documentation states. Marks rounded the value's position
-  another way, so a line's point at `5` of the domain \[0, 6\] on 60 cells drew
-  one cell left of the tick at `5`. A dot at three dots per cell stays in that
-  cell too.
-- `matrix.charts` draws a domain whose length or its inverse passes the
-  largest float, such as `Scale.linear ~domain:(-.max_float, max_float)` or
-  one of subnormals. Its positions were NaN, the tick search or a minor grid
-  did not end, and `View.clamp` left a window far from such a domain outside
-  it.
-- `matrix.charts` searches a log axis's ticks with the lone decimal tick to
-  beat, so it no longer labels every candidate power: over the floats' whole
-  range its search labelled 178,634 values, and now 1,266, for the same ticks.
-- `Matrix_charts.margins ~left` and `~right` now set the plot's width before the
-  x labels' overhang is measured, so a figure whose least margin holds its y
-  axis has the same plot whatever that axis's labels. The overhang was measured
-  against a plot as wide as the guides alone left it, and could end the plot
-  one cell off.
+- `Pty.pid` is the program's id and its process group, but the program is no
+  longer a child of the calling process. Reap it with `Pty.wait`, or with the
+  new `Pty.poll` to avoid blocking, and never with `Unix.waitpid`.
+- `Pty.terminate`, `kill` and `close` signal the program's whole process
+  group, so whatever it started there gets the signal too, as with the
+  terminal's interrupt key. The hangup's `SIGHUP` reaches the program on every
+  kernel, with a `SIGCONT` if it was stopped. A program on a spawned terminal
+  is a job in its session, so a stop signal stops it.
+- Once the program has exited and the master has read its output, the keeper
+  kills whatever the program left in its process group. A process that ignores
+  `SIGHUP` and `SIGTERM` no longer survives `Pty.close`, and a background job
+  no longer outlives the program.
+- `Pty.close` no longer sends `SIGTERM` after the hangup's `SIGHUP`. The
+  program gets about 100 ms to handle the hangup before `SIGKILL`, enough for
+  a shell's `SIGHUP` trap to run.
+- `Pty.spawn` looks for `prog` in the `PATH` of `env`, the program's
+  environment, rather than the calling process's.
 
 ## [0.2.0] - 2026-11-04
 
